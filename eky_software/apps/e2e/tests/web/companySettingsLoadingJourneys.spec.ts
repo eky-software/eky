@@ -193,7 +193,11 @@ async function expectNoMasterForm(view: Page | Locator): Promise<void> {
 }
 
 async function expectPending(view: Page | Locator): Promise<void> {
-  await expect(view.getByText(loadingMessage, { exact: true })).toBeVisible();
+  const progress = view.getByRole('status').filter({ hasText: loadingMessage });
+  await expect(progress).toBeVisible();
+  await expect(progress).toHaveAttribute('aria-live', 'polite');
+  await expect(progress).toHaveAttribute('aria-atomic', 'true');
+  await expect(progress.locator('[aria-hidden="true"]')).toHaveCount(1);
   await expectNoMasterForm(view);
 }
 

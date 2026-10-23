@@ -49,6 +49,7 @@ import {
   type InvoiceDraftSaveMode,
 } from '../hooks/useSaveInvoiceDraft.js';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 
 export type NewInvoiceFormMode =
   | { type: 'create' }
@@ -445,6 +446,9 @@ export function NewInvoiceForm({
         </p>
       ) : null}
 
+      <LoadingStatus active={isSaving || approveState.isApproving} className={styles.operationStatus}>
+        {approveState.isApproving ? uiText.invoicing.approvingDraft : saveButtonText}
+      </LoadingStatus>
       {showManualSaveSuccess ? (
         <p
           className={`message success-message ${styles.validationMessage}`}

@@ -3,6 +3,7 @@ import type { Customer, InvoiceDraftSummary } from '@eky/api-client';
 import { InvoiceDraftListItem } from './InvoiceDraftListItem.js';
 import styles from './InvoiceDraftList.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 
 interface InvoiceDraftListProps {
   customers: Customer[];
@@ -36,7 +37,7 @@ export function InvoiceDraftList({
   onRequestDelete,
 }: InvoiceDraftListProps): React.JSX.Element {
   if (isLoading || isCustomerLoading) {
-    return <p className={styles.state}>{uiText.invoicing.loading}</p>;
+    return <LoadingStatus className={styles.state}>{uiText.invoicing.loading}</LoadingStatus>;
   }
 
   if (errorMessage) {

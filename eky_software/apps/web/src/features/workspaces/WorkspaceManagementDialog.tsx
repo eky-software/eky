@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import type { WorkspaceManagementEntry } from '../../app/desktopWorkspaceManagement.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 import { WorkspaceList } from './WorkspaceList.js';
 import { WorkspaceOperationForm } from './WorkspaceOperationForm.js';
 import {
@@ -149,9 +150,9 @@ export function WorkspaceManagementDialog({
         </header>
 
         {state.loadState === 'loading' ? (
-          <p aria-live="polite" className={styles.statusMessage}>
+          <LoadingStatus className={styles.statusMessage}>
             {uiText.workspaces.loading}
-          </p>
+          </LoadingStatus>
         ) : null}
         {state.loadState === 'error' ? (
           <div className={styles.loadError}>

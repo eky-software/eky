@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 
 import styles from './CompanyEmailSecretForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface CompanyEmailSecretFormProps {
   configured: boolean | null;
@@ -115,6 +116,9 @@ export function CompanyEmailSecretForm({
                 : uiText.companySettings.emailSecretSet}
           </button>
         </div>
+        <LoadingStatus active={isSaving} className="">
+          {uiText.companySettings.emailSecretWorking}
+        </LoadingStatus>
       </form>
     </section>
   );

@@ -7,179 +7,241 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (23.10.2026):** H1-H5/R21/R22/R24/R25/R26 ja
-D029-03/04/05 on hyväksytty PR #315:n kautta mainiin
-`7e2dba840f4434eeb6049feda70852751343e134`.
-[H:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918)
-erottaa katselmoidun PR-headin `bc44ffc20552d81ae27e69f5376f8cfdef6bdf51`,
-uuden mainin omat portit ja omistajan rajatun loppupäätöksen. Mainin puu
-vastaa hyväksyttyä PR-headia. T/A/B/C/K/D/E/F/G/H säilyvät hyväksyttyinä;
+**Hyväksytty lähtö (23.10.2026):** I0-I3/R30/R31 on hyväksytty
+[PR #316:n loppupäätöksellä](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644)
+mainiin `267bf6f2a1fc142d61308c7c2e730d2c0870eb11`.
+Mainin puu vastaa katselmoitua PR-headia
+`a0bae6cea3f34f4c295903ce8ab7460da1becbd4`.
+T/A/B/C/K/D/E/F/G/H/I säilyvät hyväksyttyinä omissa rajauksissaan;
 niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR #315 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39919386542/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39919386450) läpäisi ensimmäisellä suoritusyrityksellä. |
-| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39936314545/attempts/2): 38 onnistunutta työtä ja samat kuusi valitsematonta diagnostiikkatyötä. [Mainin oma riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39936392065) läpäisi ensimmäisellä suoritusyrityksellä. Vaaditut työt ja askeleet, kaikki viisi fault-skenaariota ja molemmat toistot varmennettiin; ohituksia ei lasketa läpäisyiksi. |
+| PR #316 | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/39970413784) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39970413684) läpäisivät hyväksytyllä headilla. |
+| Mainin omat portit | [V2, suoritusyritys 3](https://github.com/eky-software/eky/actions/runs/39975808892/attempts/3) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/39975808891) läpäisivät. PR ja main kumpikin: 38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä; kaikki 11 perhettä, viisi fault-skenaariota, molemmat toistot ja pakolliset askeleet varmennettu. |
 
-**Nykyinen työ:** I/R30/R31:n hyväksytyn rajauksen toteutus ja todennus
-[alla olevan rajauksen mukaan](#i--ci-politiikan-ja-ajantasaisten-sopimusten-valmistelu).
-Omistaja hyväksyi 23.10.2026 esitetyn rajatun jatkon Goalina: neljän
-nimetyn asiakasselaintestin CI-erottelu ja osoitettujen ohjevirheiden korjaus.
-Kohderegressiot, nykyinen 425 testin CI-sopimussarja, riippuvuusauditointi
-ja rajattu riippumaton katselmus ovat läpäisseet. [PR #316](https://github.com/eky-software/eky/pull/316)
-ei ole vielä hyväksytty: ensimmäinen kierros ja sen yksi rajattu
-kohdeuusinta säilyvät [integraatiocheckpointissa](https://github.com/eky-software/eky/pull/316#issuecomment-6366351666).
-Supervisor ja Electron läpäisivät kohdeuusinnan, mutta web-työ katkaistiin
-kokonaisaikarajaan. Erillinen laskun jälkiluvun yhteysvirhe ja ensimmäisten
-yritysten aineisto-/siivouspuutteet jäävät avoimiksi, eivät korjatuiksi.
+**Nykyinen työ:** M4.1/R030-01:n suunnitelma, rajattu toteutus ja testit on
+hyväksytty 23.10.2026; 24.10.2026 jatketaan PR/main-integraatioon. Katso
+[toteutussopimus ja puuttuva hyväksyntänäyttö](#m41-odotustilojen-toteutussopimus).
+M4.2/M4.3/W7:n tekninen valmistelu säilyy erillään; niille ei ole tämän
+päätöksen perusteella tuotantokytkentää, uusia riippuvuuksia tai
+API-/poistoformaatteja hyväksytty. I:tä ei avata uudelleen.
+Omistaja hyväksyi aiempien M4/W7-suunnitelmadokumenttien mukaan ottamisen
+omana valmistelucommitinaan; tämä ei hyväksy W7:n tuotantototeutusta.
+Koko `0.3.0` ei ole valmis.
 
-**Omistajan jatkopäätös 23.10.2026:** vain web-työn kokonaisraja nostetaan
-15 minuutista 20 minuuttiin. Talteen saatu yhteysvirhe tutkitaan rajatusti
-ennen yhtä uutta normaalia PR/CI-kierrosta. Testikohtaiset, runtime- ja
-siivousrajat, flaky-hylkäys ja muut hyväksyntäehdot säilyvät
-[testausohjeen rajauksen mukaan](../ai/testing-rules.md#web-cin-kokonaisbudjetti).
-Mahdollinen sovelluskoodin muutos vaatii erillisen päätöksen. Jäädytetyn
-uuden PR-headin ja uuden mainin omat portit vaaditaan edelleen.
-Rajatussa lähdekatselmuksessa ei osoitettu yhteyskatkon korjattavaa syytä.
-Nykyisen laskun elinkaaritestin yksi kohdeajo läpäisi ilman uusintaa ja
-varmensi siivouksen. Tämä ei selitä alkuperäistä yhteysvirhettä eikä muuta
-sitä korjatuksi; testiin tai sen kuljetuskerrokseen ei lisätty uusintaa.
-I:n aiemmin hyväksyttyä ohjeverkon huoltoa ei tehdä uudelleen.
+**Avoimet havainnot:** I:n ensimmäisen native-valmistelun viiveen tarkka
+syy jää avoimeksi. Sen omistettu käännösprosessipuu todettiin poistuneeksi,
+mutta myöhemmin katkaistun koko työn loppusiivousta ei varmennettu.
+Ensimmäinen legacy-pakettirakennus hylättiin ilman talteen jäänyttä
+alkuperäistä syytä tai loppusiivoustodistetta. Omistajan erikseen hyväksymä
+lisäuusinta tuotti ensimmäisen valmiin legacy-paketin; molemmat kuluttajat
+varmensivat sisällön, toisen käynnistyksen ja siivouksen. Kolme aiempaa
+valmista pakettia ja 34 onnistunutta suoritusta säilyivät ennallaan.
+Loppupäätös hyväksyy rajatun etenemisen, ei ensihylkäyksiä korjatuiksi.
+Myös aiempi API-katkoksen syy sekä H/G:n ja vanhempien pakettien syy- ja
+siivousepävarmuudet säilyvät niiden omissa checkpointteissa. Aineistoa ei
+poisteta eikä käytettyä uusintalupaa uusita dokumentoinnin perusteella.
+[I:n aiempi jatkamiskohta ja suunnitelma](release-0.3.0-integration-history.md#in-integraatiota-edeltävä-jatkamiskohta-23102026)
+sekä H:n aiemmat kierrokset säilyvät historiassa.
 
-**Avoimet havainnot:** PR #315:n ensimmäisen kiintiö-/flush-testin
-aikakatkaisun tarkka syy säilyy avoimena. Mainin ensimmäisessä
-legacy-kokeessa prosessipuun poistumista ei saatu varmennettua
-siivousbudjetissa; alkuperäinen siivoustila jää epävarmaksi. Keräyksen
-rajaamassa aineistossa ei ollut kyseisen epäonnistuneen vaiheen tulosta.
-Mainin ensimmäinen workspace-fault-ajo odotti MSI:n sulkemispyynnön
-vastausta ennen kohteen keskeytysinjektiota. Tarkkaa estäjää tai syytä
-ei tunnistettu. Sen loppusiivous ja business-datan säilyminen todennettiin,
-mutta hylätyn skenaarion semanttista onnistumista ei tarkistettu.
-Yksi hyväksytty kohdeuusinta läpäisi samalla lähteellä ja samoilla valmiin
-workspace-paketin tavuilla. Se ei korjaa tai jälkikäteen hyväksy
-ensihylkäyksiä; luvat on käytetty ja keräyksen kattavuusrajat säilyvät.
-Myös G:n ja aiempien pakettien avoimet syyt sekä aineistoaukot säilyvät
-niiden omissa checkpointteissa. [H:n edeltävä jatkamiskohta ja suunnitelma](release-0.3.0-integration-history.md#hn-integraatiota-edeltävä-jatkamiskohta-23102026)
-ovat historiassa. I:n loppuosa sekä M4/M5 ovat vielä avoimia;
-H:n hyväksyntä ei ole koko `0.3.0`:n hyväksyntä.
+### M4 / Käyttäjäkokemuksen valmistelu
+
+**Tila 23.10.2026:** M4.1:n toteutus hyväksytty ja työn alla; muut palat
+teknisessä valmistelussa, eivät tuotantohyväksyttyjä. Roadmap omistaa
+julkaisuun sovitut R030-01, R030-02/W7, R030-03 ja R030-08.
+R030-04/R030-05:n palaute ja käyttöohjeet kulkevat jokaisen palan mukana.
+Alla oleva ositus on suositus hyväksyttäväksi, ei uusi rinnakkainen roadmap.
+
+| Pala | Nykykoodista varmennettu lähtö | Suunnittelun tulos ja kohdenäyttö |
+| --- | --- | --- |
+| M4.1 / R030-01 | Webin `ProfileBackupPanelView.tsx` poistaa napit käytöstä, mutta käynnissä olevan luomisen/tarkistuksen teksti ei erotu samalla tavalla kuin alkulataus. `WorkspaceOperationForm.tsx` näyttää jo live-tilatekstin; laskujen PDF-/sähköpostitoiminnoilla on omat pending-tilat. | Täydennä toiminto- ja vaihekohtainen kartta, säilytä toimiva palaute ja hyväksy pieni yhteinen esityssopimus. Testaa hidas/nopea onnistuminen, esto, virhe, peruutus, näkymän vaihto, kaksoiskäynnistys, näppäimistö ja vähennetty liike. |
+| M4.2 / R030-03 | `portableProfileBackup.ts` muodostaa vain päivämäärän sisältävän nimen; `profileBackupCapability.ts` antaa sen mainin native-tallennusdialogille. | Omistaja hyväksyi yritysvalitsimen nimen ja päivämäärän. Täsmennä turvallinen nimeämissääntö nykyiseen polkuun; testaa vieraat/pitkät nimet, polkumerkit, samannimisyys, peruutus, olemassa oleva kohde ja yrityksen vaihdon rajaus. |
+| M4.3 / R030-08 | `listDiagnosticEvents.ts` käyttää oletusta 100 ja maksimia 200. HTTP ja strict-client hyväksyvät vain `limit`-haun. `FileSystemDiagnosticEventReader` lukee uusimpien lähteiden rajattuja taileja; `useDiagnostics` ja taulukko eivät tarjoa jatkohakua. | Hyväksy erä-/jatkohakusopimus ennen API-muutosta: vakaa järjestys, rajattu työ, vanhempi/uudempi, aikaväli sekä loppu/osittaisuus/vanhentunut selaus erikseen. Todista lukija -> HTTP -> strict-client -> UI ja paketoitu selaus. |
+| M4.4 / R030-02/W7 | Management-capabilityn operaatiot ovat status/create/import/replace/switch/rename; maintenance-leasella ei ole poistoa. Registry sallii null-aktiivisen, mutta `resolveWorkspaceSwitchStartup` torjuu sen ja management-composition tarvitsee aktiivisen kohteen. | Keskustelun nimetyt käyttäytymisvalinnat on hyväksytty. Täsmennä työtilasuunnitelman W7.0-W7.5:n poisto-/quarantine-/recovery-sopimus, muut yritykset säilyttävä inventaario ja oikean paketin keskeytys-/palautustodistus. Poisto ei ole pelkkä UI-kytkentä. |
+
+Kartoitus on edustava lähdeluku, ei kaikkien odotustilojen tai koko
+sovelluksen katselmus. Suositus on M4.1 -> M4.2 -> M4.3 -> M4.4;
+W7:n käyttäytymispäätökset valmistellaan ajoissa erillään ensimmäisestä
+pienestä UI-toteutuksesta. Pelkkä passiivisen yrityksen poisto ei täytä
+koko W7:n julkaisuvaatimusta.
+
+**Sovitut linjaukset ja avoimet päätökset ennen toteutusta:**
+
+- R030-01: yhteinen tilailmaisin käyttää nykyistä feature-tilaa, ei uutta
+  yleistä työnohjausta. Suositus on välitön saavutettava tilapalaute
+  ilman uutta ajastinviivettä; animaatio ei muuta työn etenemistä.
+  Yhteinen web-primitiivi perustellaan usean featuren todellisella tarpeella
+  [UI-ohjeen mukaan](ui-design-system-roadmap.md); `packages/ui` ei aktivoidu.
+- R030-03: omistaja hyväksyi 23.10.2026 nimen lähteeksi valitsimen validoidun
+  `workspaceLabel`-nimen ja päivämäärän. Puuttuvan nimen varavaihtoehdoksi
+  säilytetään aiemmin ehdotettu nykyinen päivämääränimi. Tarkka turvallinen
+  merkkien, pituuden ja tiedostonimen käsittely täsmennetään toteutussopimukseen.
+  Ehdotus sidotaan samaan aktiiviseen työtilaan nykyisen maintenance-omistajan
+  sisällä, ei rendererin lähettämään polkuun tai mielivaltaiseen nimeen.
+  Yritysnimi on näkyvissä salatun tiedoston nimestä; formaatti, lineage,
+  salaus, self-inspection ja olemassa olevan kohteen suoja säilyvät.
+- R030-08: omistajan täsmennys 23.10.2026 on palvelinpuolinen lajittelu ja
+  rajattu sivutus: käyttöliittymä saa vain pyydetyn erän, ei koko historiaa.
+  Sama vastuunjako on jo asiakashistorian ja hyväksyttyjen laskujen listoissa;
+  SQLiten offset-toteutusta ei kuitenkaan oleteta suoraan JSONL-lokien malliksi.
+  Määritä tasatilanteiden järjestys, jatkon saatavuus ja
+  muuttuneen/poistuneen lokin käyttäytyminen. Pelkkä aikaleimarajaus
+  nykyisen tail-otoksen päälle ei riitä: myös vanhemmat säilyneet tavut
+  pitää voida saavuttaa rajatuilla erillä. Jatkohakusyöte ei anna polkuja,
+  muuta `viewDiagnostics`-oikeutta tai lupaa laajempaa raakaprojektiota.
+  H:n erilliset lista-/yhteenvetotilat, retention ja tukipakettirajat säilyvät.
+- W7: [omistava päätöslista](local-company-workspace-plan.md#omistajan-päätettävät-sopimukset)
+  kirjaa viimeisen yrityksen poiston ja sen jälkeisen tyhjän hallintatilan
+  rajatun hyväksynnän 23.10.2026: luonti tai tuonti, ei automaattista
+  oletusyritystä. Myös [vikatilaisen yrityksen poisto ilman piilokopioita](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate)
+  on hyväksytty suunnaksi: tietokantaa ei tarvitse ensin korjata, mutta kohde
+  tunnistetaan ja sitä käyttävien töiden päättyminen todistetaan. Quarantine
+  on saman poistotoiminnon välivaihe; onnistunut poisto kattaa SMTP-slotit,
+  keskeytyminen näkyy keskeneräisenä. W7-D4:n poisto ilman toimivaa backupia
+  on hyväksytty: erillinen tietojen menetyksen hyväksyntä, yritysnimen
+  kirjoitus ja native-vahvistus. Backupin virhe tai peruutus ei hyväksy riskiä.
+  W7-D2:n aktiivisen yrityksen poiston jälkeinen yritysvalinta on hyväksytty:
+  toista yritystä ei avata automaattisesti. W7-D8:n omien palautuspisteiden
+  poisto, myös viimeisen hyvän pisteen, on hyväksytty rajatuksi poikkeukseksi
+  normaaliin säilytykseen. Muiden yritysten pisteet ja käyttäjän vientibackupit
+  säilyvät; pisteestä ei tehdä automaattista vientikopiota. W7-D6:n yrityksen
+  oman muutos-/tapahtumahistorian ja business-auditin poisto on hyväksytty;
+  tekniset virhelokit säilyvät normaalein säännöin ilman historiarivien kopiointia.
+  W7-D3:n peruutus viimeiseen vahvistukseen asti on hyväksytty; varsinaisen
+  poiston alettua käyttöliittymä ei peru sitä. Keskeytys ei ole peruutus tai
+  onnistuminen. Myös [nimien yksilöllisyys](local-company-workspace-plan.md#yritysvalitsimen-nimien-yksilöllisyys)
+  on hyväksytty luonnille, tuonnille ja nimenmuutokselle: kirjainkoko tai
+  ylimääräiset välilyönnit eivät kierrä estoa. Vanhojen samannimisten
+  säilyttäminen huomautuksella ilman automaattista nimeämistä on hyväksytty;
+  pelkkä nimikaksoiskappale ei estä aiemmin käyttökelpoisen yrityksen avaamista.
+  W7-D9:n käyttäjän ulkoisten PDF-arkistokopioiden säilyminen on hyväksytty,
+  myös EKYn tekemien työtilakohtaisten kopioiden. Sisäiset auktoritatiiviset
+  PDF:t poistuvat yrityksen mukana; arkistointityön päättyminen todistetaan
+  ennen sisäisen asetuksen ja retry-journalin poistoa.
+  W7-D5/D10:n aloitettua lopullista poistoa saa jatkaa automaattisesti
+  restartissa vain varmasti todetun kohteen, omistajuuden ja keskeytystilan
+  perusteella. Epävarma jatko pysähtyy näkyvään keskeneräiseen tilaan.
+  Tämän keskustelun nimetyt käyttäytymisvalinnat on ratkaistu;
+  [koottu W7-toteutusehdotus](local-company-workspace-plan.md#koottu-toteutusehdotus)
+  omistaa seuraavan teknisen täsmennyksen ja katselmuksen.
+  Vahvistusten tarkka kohdesidonta, tapahtumakytkentä, aineiston inventaario sekä
+  poisto-/recovery- ja backendittoman tuen toteutussopimus ovat avoimia.
+  Ei tuotantokytkennän tai registry-/journal-formaatin hyväksyntää.
+
+**Säilyvät vastuut ja todistus:** feature omistaa käyttöliittymätilansa,
+API-client HTTP-kulun, Diagnostics turvallisen lukuprojektion ja Electron
+main native-dialogit, valtuudet sekä työtilan elinkaaren. Latausikoni ei
+korvaa backendin invarianttia tai D/C/K:n todistettua sulkua. Uusia
+riippuvuuksia, yleistä manageria, loggeria tai testialustaa ei ehdoteta.
+R030-04 tarkistaa myös saman version päivitysyrityksen turvallisen palautteen,
+ei poista sen estoa. D029-06:n erillinen Päivitä-toiminto ja R030-07:n
+suodattimet eivät tule mukaan ilman omaa rajauspäätöstä.
+
+Kukin toteutuspala käyttää nykyisiä kohdetestejä ja kolmea yhteistä
+E2E-fixtureä riskinsä mukaan. Uusi turvalliseksi koodiksi muuttava raja
+kytkee alkuperäisen testivirheen nykyiseen yksityiseen havaitsijaan ennen
+muunnosta; salatun aineiston purkutodistus tehdään soveltuvalle uudelle
+rajalle. Pakkokatkaisun puuttuvaa aineistoa ei luvata saatavaksi.
+Tapahtumien Diagnostics-/tukipakettisisällytys tai poissulku ratkaistaan
+omistavan sopimuksen mukaan. Backup-/profiili-/lifecycle-muutos tarvitsee
+nykyisen hardened Windows backup -> inspect -> restore -> restart -> compare
+-portin; W7 lisäksi omat muut yritykset säilyttävät packaged-/fault-porttinsa.
+Testikattavuutta, aikarajoja tai CI-ehtoja ei muuteta tässä valmistelussa.
+M5:n koko koodin katselmus, sen jälkeinen Deep Scan ja julkaisuhyväksyntä
+ovat tämän jälkeen erikseen; laaja rakennesiivous ei kuulu M4:ään.
+
+#### Koottu toteutusjärjestys
+
+**Järjestys 23.10.2026:** M4.1:n rajattu toteutus ja testit on hyväksytty.
+Muiden palojen käyttäytymisvalinnat eivät vielä ole tuotantototeutuksen
+tai uusien formaattien lupa. Etene rajattuihin paloihin
+sidotuin checkpointtein yllä olevan taulukon järjestyksessä:
+
+1. **M4.1:** lukitse odotustilojen käyttökohdelista ja pieni saavutettava
+   esityssopimus, sitten toteuta nykyisten feature-tilojen päälle. Ei uutta
+   työnohjausta eikä jo toimivien PDF-/SMTP-tilakoneiden uudistusta.
+2. **M4.2:** nimeä backup nykyisessä mainin tallennuspolussa validoidusta
+   työtilan nimestä ja päivämäärästä. Todista turvalliset tiedostonimet,
+   oikea yrityssidonta ja muuttumaton backup-/palautusketju.
+3. **M4.3:** katselmoi ensin Diagnosticsin rajattu erä-/jatkohakusopimus.
+   Toteuta lukija -> service/HTTP -> strict-client -> käyttöliittymä saman
+   sopimuksen mukaan. Älä korvaa koko historian selausta suuremmalla taililla.
+4. **M4.4/W7:** viimeistele omistavan suunnitelman W7.0:n inventaario,
+   sulku-, keskeytys- ja formaattisopimus sekä pieni koe. Tämän jälkeen
+   hyväksyttävä tuotantokytkentä kattaa W7.1-W7.5:n nimet, backendittoman
+   valinnan, poiston, automaattijatkon ja todellisen palaute-/tukiketjun.
+5. **Hyväksyntä:** jokaisen palan kohdetestit, käyttäjäpalaute, diagnostiikka,
+   ohjeet ja korvattujen polkujen poisto samassa checkpointissa. Käytä
+   nykyisen riskipolitiikan PR-portteja ja vaikutusalueen paketoituja
+   todisteita. Suojattu merge ja mainin omat portit vasta valtuutetussa
+   toteutusvaiheessa. M4.1:n Goal kattaa sen normaalin PR/main-integraation;
+   muiden palojen valmistelulupa ei käynnistä niiden toteutusta.
+
+#### M4.1: Odotustilojen toteutussopimus
+
+Omistaja hyväksyi 23.10.2026 R030-01:n toteutuksen ja testit. Yhteinen
+[esityssopimus](ui-design-system-roadmap.md#odotustilan-esitys) on webin
+sisäinen ja tilaton. Nykyiset hookit, API-/native-capabilityt, virhekoodit,
+salaisuuksien säilytys, business-päätökset ja elinkaaren sulut säilyvät.
+
+| Käyttökohde | Nykyinen tilan omistaja ja palaute |
+| --- | --- |
+| Customers | Listan, yksittäisen asiakkaan, historian, laskujen ja tuntihinnan alkuluvut; nykyinen tallennustila ja peruutus/virhe säilyvät. |
+| Company Settings | Perustietojen, SMTP-tilan, numeroinnin, maksuehdon ja ALV:n luku/tallennus; D:n alkuluvun portti ja CS-2:n odotusaikaiset muokkaukset säilyvät. |
+| Backup | Nykyinen panelin busy-tila erotellaan vain esitystä varten status/backup/inspection/recoveryPoint-arvoihin. Main omistaa edelleen native-dialogin, salauksen ja palautuspisteet. |
+| Paikallispäivitys ja PDF-arkisto | Nykyiset luku-/operaatiotilat, ei uutta päivitys-, kopiointi- tai retry-logiikkaa. Ilmaisin ei väitä taustajonon valmistuneen. |
+| Invoicing | Nykyiset lista-/detail-/toimitus-/hyvitysluvut, tallennus, hyväksyntä, PDF, sähköpostin valmistelu/lähetys, maksu, mitätöinti ja luonnoksen poisto. Autosaven debouncesta ei tehdä aktiivista kirjoitusta. |
+| Workspaces | Nykyinen brand-, lista-, toiminto- ja relaunch-tila; mainin vahvistukset ja prosessiomistajuus eivät siirry käyttöliittymään. |
+| Activity ja Diagnostics | Nykyiset luvut; Diagnosticsin lista ja yhteenveto pysyvät erillisinä. Tukipaketin luominen käyttää nykyistä pending-lippua. Historian sivutusta ei toteuteta tässä. |
+
+Nykyiset käyttäjän virhe-/onnistumisviestit säilyvät. Esitysmuutos ei lisää
+audit- tai teknistä lokitapahtumaa: onnistumisen, hylkäyksen ja epäselvän
+tuloksen nykyinen omistava tapahtuma ja lukuketju säilyvät. Uutta
+turvalliseksi koodiksi muuttavaa virherajaa ei lisätä. Testit käyttävät
+nykyistä alkuperäisen virheen ja salatun aineiston ketjua, eivät uutta loggeria.
+Välitön, nopeasti päättyvä työ ei saa keinotekoista vähimmäisodotusta.
+Natiivin lokikansion avaukseen ei lisätä keinotekoista pitkäkestoista tilaa.
+
+**CI:tä edeltävä checkpoint 24.10.2026:** paikallinen toteutus,
+webin komponenttisarja, työtilan
+tyyppitarkistus ja 14 kohdistettua selainkoetta läpäisivät.
+Selainkokeissa tarkistettiin nykyiset COMPANY-LOAD/SAVE-polut ja
+UI-WAIT-001/002/003. Backup-panelin desktop/mobile-kuvat ja tekstiskaalaus
+125/150 prosenttiin tarkistettiin; tämä ei ole kaikkien näkymien tai
+oikean ruudunlukijaohjelman kattava hyväksyntä. Rajattu riippumaton
+koodikatselmus ei löytänyt toteutusvirhettä.
+Ensimmäisen uuden selainkokeen liian väljä status-valitsin korjattiin;
+alkuperäinen hylkäys ja aineisto säilyvät erillään korjatusta kokeesta.
+Koko pakettien testisarja ja web-build läpäisivät. Ei vielä PR-/main-
+hyväksyntää: julkaisutarkistus sekä täsmällisen PR-revision ja uuden mainin
+nykyiset pakolliset portit ovat avoinna.
+Selainkomponentin hallittu native-vastaus ei ole varmuuskopion
+palautettavuuden tai SMTP-verkkotoimituksen todiste. Uusia backend-,
+profiili-, native-, salaisuus- tai lifecycle-polkuja ei tässä muuteta.
 
 ### I / CI-politiikan ja ajantasaisten sopimusten valmistelu
 
-**Tila 23.10.2026:** rajattu toteutus hyväksytty Goalina, todennus kesken. I omistaa vain
-CI-valinnan politiikan ja nykyisten sopimusten vastaavuuden tarkistuksen.
-Se ei omista testiskenaarioita, prosessienhallintaa tai liiketoimintalogiikkaa.
-Lähtöhavainnot R30/R31 on verrattu nykyiseen lähteeseen; historiallinen
-havainto ei sellaisenaan todista nykyistä puutetta.
-
-| Pala | Nykyinen havainto ja omistaja | Suunniteltu tulos |
-| --- | --- | --- |
-| I0: lähtö ja säilyvät sopimukset | Hyväksytty H-main sekä aiemman PR #306:n ohjehuollon ja myöhempien pakettien omat checkpointit. | Rajattu nykytila ja tiedosto-/testikartta; valmiita korjauksia tai ohjeiden reititystä ei rakenneta uudelleen. |
-| I1 / R31: sopimusten vastaavuus | [Integraatiomatriisi](module-integration-matrix.md), [E2E-strategia](e2e-testing-strategy.md) ja niiden lifecycle/recovery-lähteet. | Vertaa voimassa olevat väitteet todellisiin kutsujiin. Korjaa vain osoitetut nykytilavirheet; säilytä päivätyt foundation-vaiheet historiana. Kirjaa myös jo korjatun havainnon vastanäyttö. |
-| I2 / R30: rajattu valinta | Repositoryjuuren `.github/scripts/ciRiskPolicy.mjs` omistaa hyväksytyn neljän asiakasselaintestin täsmällisen listan. Muu `apps/e2e/` säilyttää aiemman luokituksen. | Kolme nopeaa perhettä vain nimettyjen testien PR-muutokseen; negatiiviset verrokit ja nykyiset hyväksyntäportit säilyvät. Ei kaikkien E2E-polkujen yleistä kevennystä. |
-| I3: todistus ja integraatio | Nykyiset riskiluokittimen, diff-valinnan, tuloskoonnin ja workflow-kytkentöjen sopimustestit. | Hyväksytyn muutoksen regressiot, riippumaton katselmus ja täsmärevision omat PR/main-portit. Valmistelun tai yhden luokittelukokeen läpäisy ei sulje I:tä. |
-
-**I1:n rajattu lähdekatselmus ja korjaus:** integraatiomatriisi kuvasi
-Update Coordinatorin Diagnostics-/support-projektion G/D029-02:n
-tulevaksi työksi, vaikka diagnostiikan omistava suunnitelma sulkee kohdan
-ja nykyinen `diagnosticOperationalEventProjector.ts` käyttää
-`diagnosticUpdateSpecs`-projektiota. Myös Company Settings -> Invoicing
--salaisuusrajan D- ja Diagnosticsin H-integraatiomerkinnät olivat jäljessä
-hyväksytyistä porteista. Nämä status- ja omistajaviitteet on oikaistu;
-tuotantopolkuja ei tarvitse rakentaa uudelleen. Matriisin W2-W6-tekstit
-on jo nimetty historiallisiksi ja E2E-strategian kahden prosessin
-packaged-palautus vastaa nykyistä smoke-ajuria. Tämä otoskatselmus ei
-todista kaikkien ohjeiden sisällön ajantasaisuutta tai sulje vielä R31:tä.
+**Hyväksytty:** I0-I3/R30/R31, yllä linkitetty PR #316:n loppuhyväksyntä.
+R30:n täsmällinen neljän polun valinta ja R31:n rajatut G/D/H-korjaukset
+ovat toteutettuja; historiallista valmistelutekstiä ei käytetä uutena työjonona.
+Nykyistä CI-politiikkaa omistavat toteutus ja [testausohje](../ai/testing-rules.md);
+hyväksyntä ei ole koko sovelluksen tai kaikkien ohjeiden sisältökatselmus.
 
 #### I:n säilytettävä CI-sopimus
 
-- Nykyinen controller on repositoryjuuren
-  `.github/workflows/ci-cadence-contracts.yml`. Se käyttää
-  `classifyCiChanges.mjs`:ää, `ciRiskPolicy.mjs`:ää,
-  `verifyCiRun.mjs`:ää ja `ciJobCoverage.mjs`:ää. Sama suunnitelma
-  välitetään nykyisille reusable-workfloweille; rinnakkaista valitsinta
-  tai hyväksyntäkoontia ei lisätä.
-- Nopea PR-valinta säilyttää `verify`-, `systemSecurity`- ja
-  `webCritical`-perheet. Se ei tarkoita testien ohittamista.
-  Desktopin jaetut fixturet, ympäristö, raportointi, buildit ja
-  elinkaarikoodi säilyttävät nykyiset compatibility-/full-ehdot.
-- Tuntematon polku, puuttuva/epätäydellinen vertailu, sekamuutoksen tiukin
-  riski sekä siirron vanha ja uusi polku käsitellään suljetusti.
-  `AGENTS.md`, riippuvuudet, SQL, tsconfig-/pakettimääritykset ja CI-politiikka
-  säilyttävät täyden valinnan.
-- Main-push, ajastettu ja manuaalinen controller-ajo säilyttävät kaikki
-  nykyiset 11 perhettä, viisi fault-skenaariota ja kaksi toistoa.
-  Vaaditut `V2 acceptance` ja `Audit dependencies` sekä mainin omat
-  portit eivät muutu. R30-ehdotus nopeuttaisi vain nimettyjen PR-muutosten
-  palautetta, ei mainin täyttä hyväksyntää.
-- T1/T2/T3:n fixturet, prosessiomistajuus, sandbox, testitapaukset,
-  aikarajat ja alkuperäisten virheiden salattu keräys säilyvät. Luku-,
-  valinta- ja tulostodisteet erotetaan; puuttuvaa näyttöä ei arvata.
+[Hyväksytty rajaus ja alkuperäinen valmistelu](release-0.3.0-integration-history.md#in-säilytettävä-ci-sopimus)
+säilyvät historiassa; nykyinen web-työn erillinen budjettipäätös on
+[testausohjeessa](../ai/testing-rules.md#web-cin-kokonaisbudjetti).
 
 #### I-P1: R30:n hyväksytty pienin muutos
 
-**Omistajan hyväksymä rajaus 23.10.2026:** käytä täsmällistä
-tiedostoallowlistiä, älä koko `tests/web/`-hakemistoa. Listaan kuuluvat
-`customerAndCompanyJourneys.spec.ts`, `customerOverviewJourneys.spec.ts`,
-`customerRelationshipJourneys.spec.ts` ja `customerInvariantJourneys.spec.ts`
-nykyisessä `apps/e2e/tests/web/`-kansiossa. Neljä skenaariota tarkistettiin
-tukikutsuineen: nykyinen `isolatedWebTest`, loopback-API, browser/UI sekä
-synteettisen aineiston DB-/lokiväitteet. Lasku-/PDF-kutsut käyttävät nykyistä
-backend-API:a, eivät Electronia tai installer-/palautuspolkua. Salaisuusdata
-on testiruntimen synteettistä dataa, ei käyttöjärjestelmän secret-store.
-Yhteisen fixturen, datan, assertionien tai journey-tuen muutos säilyttää
-compatibility-valinnan. Pelkkä tiedoston nimi ei todista sen kaikkia
-tulevia muutoksia turvallisiksi.
-
-Hyväksytty lista muuttaa vain näiden tiedostojen yksinomaisen PR-muutoksen
-nykyiselle nopealle polulle. Uudet selaintiedostot, Electron-/packaged-/
-endurance-testit, fixturet, apukoodi, konfiguraatio ja raportointi säilyvät
-nykyisellä varovaisella polulla. Listaan otettavan testin vastuun myöhempi
-muutos edellyttää myös riskikartan tarkistusta. Valitsematta jäi aiemman
-konservatiivisen luokituksen säilyttäminen kaikille skenaarioille;
-R30:n P3-havainto ei itsessään tarkoittanut sovelluksen correctness-virhettä.
-
-**Paikallinen checkpoint:** viisi uutta väitettä hylkäsi aiemman luokittimen
-odotetusti (35 testiä: 30 läpäisi, viisi hylkäsi). Korjauksen jälkeen kaikki
-35 luokittelu-/diff-testiä läpäisivät. Ensihylkäys säilyy erillisenä;
-kyse on ennen/jälkeen-regressiosta, ei saman revision vihreäksi uusimisesta.
-Nykyinen koko `test:ci` läpäisi myös uuden selaintapauksen
-`classifyCiRisk -> requiredCiJobs -> evaluateCiRun`-ketjun kanssa: 425 testiä,
-ei hylkäyksiä tai ohituksia. Riippuvuusauditointi ja rajattu riippumaton
-katselmus läpäisivät; katselmoija ei ajanut testejä itse. Dokumenttien
-132 tiedoston 1 640 suhteellista linkkiä ja ankkuria tarkistettiin ilman
-rikkinäistä kohdetta. Siirretyn H-tekstin ja aiemman historian säilyminen
-varmennettiin erikseen. Nämä paikalliset tulokset eivät korvaa PR/main-portteja.
+[Hyväksytty polkulista ja sen perusteet](release-0.3.0-integration-history.md#i-p1-r30n-hyväksytty-pienin-muutos).
 
 #### I:n toteutus- ja todistusjärjestys
 
-1. Sulje I1/R31 lähdeviitteillä: nykyinen väite -> oikea tuotantokutsu ->
-   säilyvä vastuuohje -> testi/portti. M1:n hyväksyntätilan oikaisu ei yksin
-   todista koko ohjeverkon sisällön ajantasaisuutta.
-2. Ratkaise I-P1 ja lopulliset polut ennen `ciRiskPolicy.mjs`:n muutosta.
-   Käytä nykyisiä `ciRiskPolicy.test.mjs`-, `classifyCiChanges.test.mjs`-,
-   `ciAcceptanceResult.test.mjs`-, `ciRunAcceptance.test.mjs`- ja
-   `verifyCiRun.test.mjs`-testejä. Ei uutta testialustaa tai riippuvuutta.
-3. Todista nimetty selaintapaus ja sen verrokit: uusi tuntematon testipolku,
-   yhteinen fixture, Electron-/packaged-polku, riippuvuus-/SQL-/policy-muutos,
-   siirto molempiin suuntiin, sekoitus ja polkujärjestys,
-   epäonnistunut diff sekä main/ajastus/manuaaliajo.
-   Virheellinen suunnitelma, puuttuva työ/askel/toisto tai sallimaton
-   onnistuminen ei saa päästä koonnista läpi.
-4. Varmenna muuttuneiden ohjeiden reitit, ankkurit, siirretyn tekstin
-   säilyminen ja julkaisuyksityisyys. Nykyinen kohdekomento on `pnpm test:ci`;
-   uuden kokeen alussa nimetään seurannan omistaja ja säilytysketju.
-5. Rajattu riippumaton katselmus, jäädytetyn PR-headin normaalit portit ja
-   auditointi, hyväksytyn Goalin valtuudella normaali suojattu merge sekä
-   uuden mainin omat portit. CI-politiikkatiedoston muutos valitsee itsessään
-   täyden matriisin. Vanhoja MSI-/cleanup-havaintoja ei suljeta vihreydellä.
-
-I ei lisää runtime-, DB-, HTTP-, preload-, secret- tai backup-formaattimuutosta.
-Siksi erillistä uutta toiminnon backup-/restore-toteutusta ei tarvita
-pelkän dokumentti-/valintapolitiikan vuoksi; nykyiset paketti- ja
-palautusportit säilyvät. M4:n ominaisuudet, W7:n käyttäytymisvalinnat,
-M5:n koko sovelluksen katselmus/Deep Scan ja laaja refaktorointi jäävät
-erillisiksi. Rajattu takaperin tehtävä tarkistus valinnasta toteutukseen
-riittää I:lle; koko arkkitehtuuria ei suunnitella uudelleen.
+[Alkuperäinen järjestys ja kohdenäyttö](release-0.3.0-integration-history.md#in-toteutus--ja-todistusjärjestys)
+eivät avaa hyväksyttyä I:tä uudelleen.
 
 ### H / Diagnostiikan saatavuuden ja oikeellisuuden suunnitelma
 

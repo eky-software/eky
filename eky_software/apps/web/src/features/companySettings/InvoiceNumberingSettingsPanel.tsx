@@ -14,6 +14,7 @@ import {
 } from './invoiceNumberingSettingsFormModel.js';
 import { useInvoiceNumberingSettings } from './hooks/useInvoiceNumberingSettings.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoiceNumberingSettingsPanelProps {
   apiClient: Pick<
@@ -84,7 +85,7 @@ export function InvoiceNumberingSettingsPanel({
   }
 
   if (numberingSettingsState.isLoading) {
-    return <p className="message">{uiText.companySettings.invoiceNumberingLoading}</p>;
+    return <LoadingStatus>{uiText.companySettings.invoiceNumberingLoading}</LoadingStatus>;
   }
 
   if (numberingSettingsState.errorMessage) {

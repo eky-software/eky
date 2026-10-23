@@ -16,6 +16,7 @@ import {
   validateAndMapCreditInvoiceDraftForm,
 } from '../form/creditInvoiceDraftForm.js';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import { MessageBanner } from '../../../shared/ui/index.js';
 import {
   CreditInvoiceDraftLineEditor,
@@ -71,7 +72,7 @@ export function CreditInvoiceDraftEditorView({
   if (isLoading) {
     return (
       <section className={`panel ${styles.statePanel}`}>
-        <p>{uiText.invoicing.creditDraftLoading}</p>
+        <LoadingStatus>{uiText.invoicing.creditDraftLoading}</LoadingStatus>
       </section>
     );
   }
@@ -365,6 +366,9 @@ export function CreditInvoiceDraftEditorView({
         </section>
       ) : null}
 
+      <LoadingStatus active={isSaving || isApproving} className="">
+        {isApproving ? uiText.invoicing.creditDraftApproving : uiText.invoicing.creditDraftSaving}
+      </LoadingStatus>
       <footer className={styles.footer}>
         <button className="ghost-button" onClick={onBack} type="button">
           {uiText.invoicing.backToDrafts}

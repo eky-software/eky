@@ -17,9 +17,11 @@ Yhteinen rajaus ja tehtävälista ovat
 G:n toteutus ja erilliset PR/main-portit on hyväksytty 23.10.2026
 [PR #314:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094).
 Tapahtumakohtainen sisällytys/poissulku säilyy [M1:n G-sopimuksessa](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
-Seuraava työ on [H:n suunnittelu](release-0.3.0-m1-preparation-plan.md#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma),
-ei G:n uusiminen. H:n lukutilan ja ei-estävän häiriöpalautteen suunta on
-hyväksytty; täsmällinen kytkentä ja sen todennus ovat kesken.
+Myös H1-H5 ja D029-03/04/05 on hyväksytty erillisillä PR/main-porteilla
+[PR #315:n loppuhyväksynnässä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
+Seuraava julkaisuun kuuluva diagnostiikkatyö on M4:n R030-08-historiaselaus,
+ei G/H:n uudelleentoteutus. Alla olevat D029-03/04/05-havainnot kuvaavat
+korjauksia edeltänyttä tilaa; niiden hyväksyntäehdot ja nykyiset turvarajat säilyvät.
 Tämän dokumentin vanha tarkistustulos ei itsessään ole toteutushyväksyntä.
 Manifestien versionosto tehdään erikseen `release-versioning-policy.md`:n
 mukaan; tämä suunnitelma ei muuta ajettavaa versiota.
@@ -164,6 +166,12 @@ Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
 Tehtävä on yhteisessä julkaisulistassa tunnuksella `R030-08`; toteutus
 ja muuttuva API-sopimus ovat vielä suunnittelematta.
 
+**Omistajan täsmennys 23.10.2026:** lajittelu ja rajattu sivutus tehdään
+backendissä, ja käyttöliittymä pyytää vain kulloisenkin erän. Koko historiaa
+ei lähetetä selaimelle siellä pilkottavaksi. Tarkka jatkohaku ja sen
+työbudjetti määritellään lokilähteelle; nykyisten SQL-listojen offset-mallia
+ei kopioida sellaisenaan muuttuvien lokitiedostojen päälle.
+
 **Nykyinen raja:** `listDiagnosticEvents` palauttaa oletuksena 100
 tapahtumaa, hyväksyy enintään 200 eikä tarjoa jatkohakua. Tiedostolukijalla
 on lisäksi lähdetiedosto- ja tavurajat. Nykyisen otoksen vierittäminen tai
@@ -199,10 +207,12 @@ päivitystä ei hyväksytä tämän selaustoiveen sivutyönä.
 
 ### Muut käytettävyystoiveet
 
-**D029-06, suositus:** lisää diagnostiikan päivitystoiminto ja viimeisimmän
-onnistuneen haun aika. `useDiagnostics` hakee tiedot vain efektin ajossa ja
-`Promise.all` poistaa myös onnistuneen osan, jos toinen haku epäonnistuu.
-Arvioi osakohtainen virhetila ja hallittu uudelleenyritys. Vanha tieto
+**D029-06, edelleen erikseen rajattava suositus:** diagnostiikan Päivitä-toiminto
+ja viimeisimmän onnistuneen haun aika. H korjasi alkuperäisen yhteisen
+`Promise.all`-virhetilan: nykyinen `useDiagnostics` lataa listan ja yhteenvedon
+erikseen ja säilyttää toisen onnistumisen. Tätä ei toteuteta uudelleen.
+Erillinen päivityspainike, onnistumisaika ja hallittu uudelleenyritys eivät
+seuraa automaattisesti H:n hyväksynnästä tai R030-08:sta. Vanha tieto
 merkitään vanhaksi, ei nykyiseksi. Automaattista pollingia ei tarvita tämän
 vuoksi. UI-muutos testataan myös hitaalla haulla ja näkymästä poistuttaessa.
 
@@ -224,11 +234,11 @@ niiden läpäisy ei ole korjausten hyväksyntä. Paketoitua UI-/restore-/update-
 hyväksyntää tai uutta julkaisua ei tehty tässä dokumentointivaiheessa.
 
 1. D029-01/02:n tapahtumasopimukset ja ketjut on hyväksytty G:ssä.
-   Niitä ei toteuteta uudelleen; nykyinen jatkamiskohta on M1:n H-suunnitelma.
-2. Korjaa D029-03 rajatut lukijat ja lisää oikeaa aikajärjestystä vaativat
-   pysyvät regressiotestit molempiin read modeleihin.
-3. Päätä D029-04 ja D029-05 häiriö-/kattavuussopimukset, toteuta ja testaa
-   tuotantokytkennät. Nykyistä turvallisuusrajaa ei väljennetä.
+   Niitä ei toteuteta uudelleen; nykyinen jatkamiskohta on M1:n M4-valmistelu.
+2. D029-03:n aikajärjestys, rajatut lukijat ja pysyvät regressiot on
+   hyväksytty H:ssa; myöhemmän muutoksen omat portit säilyvät.
+3. D029-04/05:n lukutilat, häiriöpalaute ja todelliset tuotantokytkennät
+   on hyväksytty H:ssa. Nykyistä turvallisuusrajaa ei väljennetä.
 4. Suunnittele ja toteuta julkaisuun sovittu R030-08:n historian selaus
    yhdessä D029-04:n kattavuustiedon ja R030-01:n latauspalautteen kanssa.
 5. Toteuta D029-06 erillisenä UI-täydennyksenä, jos se mahtuu julkaisuun.

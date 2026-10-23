@@ -14,6 +14,7 @@ import {
 } from './invoiceNumberingSeriesTransitionFormModel.js';
 import { useInvoiceNumberingSeriesTransition } from './hooks/useInvoiceNumberingSeriesTransition.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 import { formatFinnishDateTime } from '../../shared/date/formatFinnishDateTime.js';
 import { getBusinessCalendarDate } from '../../shared/date/getBusinessCalendarDate.js';
 
@@ -152,9 +153,9 @@ export function InvoiceNumberingSeriesTransitionPanel({
 
   if (state.isLoading) {
     return (
-      <p className="message">
+      <LoadingStatus>
         {uiText.companySettings.invoiceNumberingSeriesLoading}
-      </p>
+      </LoadingStatus>
     );
   }
 

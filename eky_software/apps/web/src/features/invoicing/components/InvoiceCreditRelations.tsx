@@ -10,7 +10,7 @@ import {
   formatApprovedInvoicePresentedCurrency,
 } from '../approved/approvedInvoiceFormatting.js';
 import { uiText } from '../../../i18n/fi.js';
-import { MessageBanner } from '../../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../../shared/ui/index.js';
 
 interface InvoiceCreditRelationsProps {
   context: InvoiceCreditContext | null;
@@ -69,7 +69,7 @@ export function InvoiceCreditRelations({
   return (
     <section className={styles.relations}>
       <h3>{uiText.invoicing.creditRelations}</h3>
-      {isLoading ? <p>{uiText.invoicing.creditContextLoading}</p> : null}
+      {isLoading ? <LoadingStatus>{uiText.invoicing.creditContextLoading}</LoadingStatus> : null}
       {errorMessage !== null ? (
         <MessageBanner variant="error">{errorMessage}</MessageBanner>
       ) : null}

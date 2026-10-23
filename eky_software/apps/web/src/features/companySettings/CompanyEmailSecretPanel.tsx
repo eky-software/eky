@@ -3,6 +3,7 @@ import type { EkyApiClient } from '@eky/api-client';
 import { CompanyEmailSecretForm } from './CompanyEmailSecretForm.js';
 import { useCompanyEmailSecret } from './hooks/useCompanyEmailSecret.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface CompanyEmailSecretPanelProps {
   apiClient: Pick<
@@ -19,7 +20,7 @@ export function CompanyEmailSecretPanel({
   const emailSecretState = useCompanyEmailSecret(apiClient);
 
   if (emailSecretState.isLoading) {
-    return <p className="message">{uiText.companySettings.emailSecretLoading}</p>;
+    return <LoadingStatus>{uiText.companySettings.emailSecretLoading}</LoadingStatus>;
   }
 
   return (

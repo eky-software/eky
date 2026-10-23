@@ -59,3 +59,8 @@
     flex-direction: column;
   }
 }
+
+.operationStatus {
+  margin: 0;
+  min-block-size: 3em;
+}

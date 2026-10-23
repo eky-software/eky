@@ -5,6 +5,32 @@ import { uiText } from '../../i18n/fi.js';
 import { ProfileBackupPanelView } from './ProfileBackupPanelView.js';
 
 describe('ProfileBackupPanelView', () => {
+  it.each([
+    ['status', uiText.companySettings.profileBackupLoading],
+    ['backup', uiText.companySettings.profileBackupCreating],
+    ['inspection', uiText.companySettings.profileBackupInspecting],
+    ['recoveryPoint', uiText.companySettings.profileRecoveryPointCreating],
+  ] as const)('shows the actual %s operation and keeps all conflicting controls disabled', (operation, message) => {
+    const html = renderView({ operation, status: availableStatus });
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain('aria-live="polite"');
+    expect(html).toContain('aria-hidden="true"');
+    expect(html).toContain(message);
+    expect(html.match(/disabled=""/g)).toHaveLength(3);
+    expect(html).not.toContain('role="progressbar"');
+  });
+
+  it('clears the pending text and decoration when the operation ends', () => {
+    const html = renderView({ operation: null, status: availableStatus });
+
+    expect(html).not.toContain(uiText.companySettings.profileBackupCreating);
+    expect(html).not.toContain(uiText.companySettings.profileBackupInspecting);
+    expect(html).not.toContain(uiText.companySettings.profileRecoveryPointCreating);
+    expect(html).not.toContain('aria-hidden="true"');
+    expect(html).not.toContain('disabled=""');
+  });
+
   it('shows only desktop availability information in browser runtime', () => {
     const html = renderView({
       capabilityAvailable: false,
@@ -107,7 +133,7 @@ function renderView(
       capabilityAvailable
       errorMessage={null}
       inspection={null}
-      isBusy={false}
+      operation={null}
       onCreateBackup={vi.fn(async () => undefined)}
       onCreateRecoveryPoint={vi.fn(async () => undefined)}
       onInspectBackup={vi.fn(async () => undefined)}

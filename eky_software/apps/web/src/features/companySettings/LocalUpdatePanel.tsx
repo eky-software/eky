@@ -5,7 +5,7 @@ import type {
   LocalUpdateStatus,
 } from '../../app/desktopBridge.js';
 import { uiText } from '../../i18n/fi.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 import styles from './LocalUpdatePanel.module.css';
 
 interface LocalUpdatePanelProps {
@@ -127,10 +127,16 @@ export function LocalUpdatePanelView({
           {uiText.companySettings.localUpdateUnavailable}
         </MessageBanner>
       ) : null}
-      {isLoading ? (
-        <MessageBanner variant="info">
-          {uiText.companySettings.localUpdateLoading}
-        </MessageBanner>
+      {capabilityAvailable ? (
+        <LoadingStatus active={isLoading || operation !== null} className={styles.operationStatus}>
+          {isLoading
+            ? uiText.companySettings.localUpdateLoading
+            : operation === 'select'
+              ? uiText.companySettings.localUpdateSelecting
+              : operation === 'discard'
+                ? uiText.companySettings.localUpdateDiscarding
+                : uiText.companySettings.localUpdateStarting}
+        </LoadingStatus>
       ) : null}
       {errorMessage ? (
         <MessageBanner variant="error">{errorMessage}</MessageBanner>

@@ -240,6 +240,11 @@
   gap: 16px;
 }
 
+.statusMessage {
+  margin: 0;
+  min-block-size: 3em;
+}
+
 .replacementWarning {
   border-left: 4px solid #b66a00;
   padding: 12px 14px;

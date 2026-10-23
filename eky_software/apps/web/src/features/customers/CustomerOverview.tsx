@@ -9,6 +9,7 @@ import { ManagedHousingCompaniesSection } from './ManagedHousingCompaniesSection
 import styles from './CustomerOverview.module.css';
 import { centsToEuroInput } from '../../shared/money/hourlyRateInput.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface CustomerOverviewProps {
   customer: Customer;
@@ -117,6 +118,7 @@ export function CustomerOverview({
 
         <CustomerOverviewSection heading={uiText.customers.pricing}>
           <CustomerFact
+            isLoading={customer.hourlyRateOverrideCents === null && defaultHourlyRateState.status === 'loading'}
             label={uiText.customers.hourlyRate}
             value={pricing.value}
           />
@@ -203,19 +205,23 @@ function CustomerOverviewSection({
 
 interface CustomerFactProps {
   className?: string | undefined;
+  isLoading?: boolean;
   label: string;
   value: string;
 }
 
 function CustomerFact({
   className,
+  isLoading = false,
   label,
   value,
 }: CustomerFactProps): React.JSX.Element {
   return (
     <div className={`${styles.fact} ${className ?? ''}`}>
       <dt>{label}</dt>
-      <dd>{value.trim().length === 0 ? uiText.customers.noValue : value}</dd>
+      <dd>{isLoading
+        ? <LoadingStatus className="">{value}</LoadingStatus>
+        : value.trim().length === 0 ? uiText.customers.noValue : value}</dd>
     </div>
   );
 }

@@ -139,3 +139,8 @@
     padding-top: 0;
   }
 }
+
+.operationStatus {
+  margin: 0;
+  min-block-size: 3em;
+}

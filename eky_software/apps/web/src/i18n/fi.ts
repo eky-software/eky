@@ -519,6 +519,7 @@ export const uiText = {
       'SMTP-salasanaa ei voitu tallentaa turvallisesti. Tarkista tieto ja yritä uudelleen.',
     emailSecretSaveSuccess: 'SMTP-salasana tallennettu turvallisesti.',
     emailSecretSaving: 'Tallennetaan...',
+    emailSecretWorking: 'Käsitellään SMTP-salasanaa...',
     emailSecretSet: 'Aseta salasana',
     emailSecretStatus: 'Salasanan tila',
     emailSmtpHost: 'SMTP-palvelin',
@@ -558,6 +559,7 @@ export const uiText = {
     invoicePdfArchiveLoadError:
       'PDF-kopioinnin tilaa ei voitu tarkistaa turvallisesti.',
     invoicePdfArchiveLoading: 'Tarkistetaan PDF-kopioinnin tilaa...',
+    invoicePdfArchiveWorking: 'Käsitellään PDF-arkistoa...',
     invoicePdfArchiveOpenDirectory: 'Avaa kansio',
     invoicePdfArchiveOperationError:
       'PDF-kopiointia ei voitu käsitellä turvallisesti. Yritä uudelleen.',
@@ -589,6 +591,9 @@ export const uiText = {
     profileBackupLoadError:
       'Varmuuskopioinnin tilaa ei voitu tarkistaa turvallisesti.',
     profileBackupLoading: 'Tarkistetaan varmuuskopioinnin tilaa...',
+    profileBackupCreating: 'Luodaan varmuuskopiota...',
+    profileBackupInspecting: 'Valitaan ja tarkistetaan varmuuskopiota...',
+    profileRecoveryPointCreating: 'Luodaan palautuspistettä...',
     profileBackupOperationError:
       'Toimintoa ei voitu suorittaa turvallisesti. Nykyisiä yritystietoja ei korvattu.',
     profileBackupPasswordWarning:
@@ -831,6 +836,7 @@ export const uiText = {
     localUpdateUnavailable:
       'Paikallinen päivitystoiminto on käytettävissä vain Eky-työpöytäsovelluksessa.',
     localUpdateLoading: 'Tarkistetaan päivityksen tilaa...',
+    localUpdateDiscarding: 'Poistetaan pakettivalintaa...',
     localUpdateError:
       'Päivityksen tilaa tai pakettia ei voitu käsitellä turvallisesti.',
     localUpdateCurrentVersion: 'Nykyinen versio',

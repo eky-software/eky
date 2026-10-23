@@ -1,4 +1,5 @@
 import { uiText } from '../../i18n/fi.js';
+import { LoadingMark } from '../../shared/ui/index.js';
 import type { WorkspaceBrandState } from './useWorkspaceManagement.js';
 import styles from './WorkspaceSelector.module.css';
 
@@ -37,7 +38,10 @@ export function WorkspaceBrandButton({
             </span>
           ) : null}
         </strong>
-        <span>{secondaryLabel(brandState)}</span>
+        <span>
+          <LoadingMark active={brandState === 'loading' || brandState === 'busy'} />{' '}
+          {secondaryLabel(brandState)}
+        </span>
       </span>
     </>
   );

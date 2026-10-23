@@ -7,6 +7,7 @@ import type {
 import type { ActivityViewQuery } from './ActivityPage.js';
 import styles from './ActivityPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 
 interface ActivityPageViewProps {
@@ -115,7 +116,7 @@ export function ActivityPageView({
       </div>
 
       {isLoading ? (
-        <p className={styles.message}>{uiText.activity.loading}</p>
+        <LoadingStatus className={styles.message}>{uiText.activity.loading}</LoadingStatus>
       ) : null}
       {errorMessage !== null ? (
         <p className={`${styles.message} ${styles.error}`} role="alert">

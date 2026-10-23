@@ -1,0 +1,44 @@
+.status {
+  margin: 0;
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  min-block-size: 1.5em;
+  line-height: 1.5;
+}
+
+.spinner {
+  display: inline-block;
+  flex: none;
+  inline-size: 1em;
+  block-size: 1em;
+  margin-block-start: 0.25em;
+  border: 2px solid currentColor;
+  border-inline-end-color: transparent;
+  border-radius: 50%;
+  animation: spin 900ms linear infinite;
+}
+
+.inactiveSpinner {
+  animation: none;
+  visibility: hidden;
+}
+
+.text {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .spinner {
+    animation: none;
+  }
+}

@@ -23,9 +23,9 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 
 | Tunnus | Tehtävä ja tavoite | Tila |
 | --- | --- | --- |
-| R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | Suunniteltu; käyttökohteiden kartoitus tekemättä. |
+| R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1:n suunnitelma ja toteutus testeineen hyväksytty 23.10.2026. Paikallinen toteutus ja kohdetodennus valmiit; 24.10.2026 jatketaan PR/main-portteihin, joiden hyväksyntä on avoin. Käyttökohdelista ja rajat M1:n M4.1-osiossa. |
 | R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; valmistelu ja päätösjono kirjattu. Sopimusten hyväksyntä ja toteutus avoinna. |
-| R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Suunniteltu; nimen lähde ja turvallinen nimeämissääntö päätettävä. |
+| R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Omistaja hyväksyi 23.10.2026 yritysvalitsimen nimen ja päivämäärän; turvallinen nimeämissääntö ja toteutus vielä täsmennettävä. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
 | D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3 hyväksytty PR #315:n ja uuden mainin omilla porteilla; loppuhyväksyntä M1:n kautta. |
@@ -33,7 +33,7 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H5:n ei-estävä ilmoitus, incident-yritys ja todellinen main/preload/UI-ketju hyväksytty H:n PR/main-porteilla. |
 | R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | Tarkistettava ja rajattava; saman version torjunta ei itsessään ole vika. |
 | R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Suunniteltu; tarkistetaan toteutusten yhteydessä. |
-| R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | Mukaan sovittu 2026-09-22; sivutuksen käyttöliittymä ja turvallinen lukusopimus suunniteltava ennen toteutusta. |
+| R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | M4-valmistelussa: nykyinen 100/200-otos ja jatkohaun puuttuminen varmennettu; sivutuksen lukusopimus hyväksyttävä ennen toteutusta. |
 
 Diagnostiikan `D029-*`-tunnukset ja sen vanha tiedostonimi säilytetään
 jäljitettävyyden vuoksi. Niiden tavoitejulkaisu on nyt `0.3.0`.
@@ -75,19 +75,42 @@ UI-vastuut säilyvät [UI-periaatteissa](../design/ui-principles.md) ja
 Poisto on tämän julkaisun vaadittu ominaisuus, ei valinnainen myöhempi lisä.
 Toteutus noudattaa [ADR-0011:tä](../decisions/ADR-0011-local-multi-workspace-company-model.md)
 ja [työtilasuunnitelman W7-vaihetta](local-company-workspace-plan.md#w7-workspace-deletion).
+Omistaja hyväksyi 23.10.2026 suunnaksi myös vikatilaisen yrityksen tietojen
+ja SMTP-salaisuuden poiston ilman piilokopioita. Quarantine on saman
+poistotoiminnon välivaihe; keskeytynyt poisto ei ole onnistuminen.
+Aktiivisen yrityksen onnistuneen poiston jälkeen palataan yritysvalintaan
+ilman toisen yrityksen automaattista avausta. Viimeisen jälkeen tarjotaan
+luonti tai tuonti ilman automaattista oletusyritystä.
+Omistaja hyväksyi myös [yritysvalitsimen nimien yksilöllisyyden](local-company-workspace-plan.md#yritysvalitsimen-nimien-yksilöllisyys)
+luonnissa, tuonnissa ja nimenmuutoksessa kirjainkoko- ja välilyöntivariantteineen.
+Vanhat samannimiset säilytetään huomautuksella ilman automaattista
+nimeämistä, yhdistämistä tai poistoa; tekninen erottelu täsmennetään.
+Ulkoiset PDF-arkistokopiot ja käyttäjän vientibackupit säilyvät. Omistaja
+hyväksyi aloitettujen lopullisten poistojen automaattisen jatkamisen
+restartissa vain varmasti todetulle kohteelle, omistajuudelle ja
+keskeytystilalle; epävarma tilanne pysyy keskeneräisenä.
+Tarkka [poistoperiaate ja avoimet rajat](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate)
+omistetaan työtilasuunnitelmassa, ei uutena rinnakkaisena sopimuksena täällä.
 Ennen toteutusta ratkaistaan vähintään:
 
-- aktiivisen, passiivisen ja viimeisen yrityksen poistaminen sekä
-  virhe-/palautumistilassa olevan työtilan rajaus
+- aktiivisen, passiivisen, viimeisen ja vikatilaisen yrityksen poiston
+  tekninen sopimus sekä keskeytys- ja virhepolut
 - kirjoitusten esto, prosessien hallittu sulkeminen, nimen kirjoittamalla
   tehtävä vahvistus ja Electron mainin native-vahvistus
-- tuore validoitu varmuuskopio tai ADR:n edellyttämä nimenomainen
-  riskihyväksyntä; ei uutta piilotettua varmuuskopiointia
-- quarantine-vaiheen tarkoitus, käyttäjälle näkyvä palautumismenettely,
-  säilytys ja lopullinen poisto; väliaikaista turvavaihetta ei esitetä
-  erillisen varmuuskopion korvaajana
-- salaisuuksien, palautuspisteiden ja ulkoisten PDF-arkistojen käsittely
-  niin, ettei muita työtiloja tai niiden tiedostoja poisteta
+- peruutus- ja keskeytysrajan tekninen kytkentä: omistaja hyväksyi perumisen
+  viimeiseen vahvistukseen asti, ei enää käyttöliittymästä poiston alettua
+- varmuuskopion tuoreuden ja tarkistuksen täsmällinen sopimus; omistaja
+  hyväksyi ilman toimivaa kopiota poistamisen erillisellä tietojen menetyksen
+  hyväksynnällä sekä molemmilla poistovahvistuksilla. Ei piilokopiointia
+- quarantine-vaiheen tekninen järjestys, keskeytyksestä palautuminen ja
+  lopullisen poiston raja ilman ajastettua säilytystä tai piilokopioita
+- salaisuuksien, palautuspisteiden ja ulkoisten PDF-arkistojen tarkka
+  cleanup-sopimus. Omistaja hyväksyi yrityksen omien palautuspisteiden poiston
+  lopullisessa poistossa, myös viimeisen hyvän pisteen; muiden yritysten
+  pisteet ja käyttäjän vientibackupit säilyvät
+- yrityksen oman muutos-/tapahtumahistorian poistamisen todennus ilman
+  erillistä kopiota; suunta on hyväksytty ja tekniset virhelokit säilyvät
+  normaalien sääntöjen mukaan
 - keskeytyminen, levy-/kirjoitusvirhe, restart ja turvallinen recovery.
 
 Julkaisu vaatii alemman tason testien lisäksi oikean paketoidun Windows-
@@ -96,9 +119,9 @@ Pelkkä poistopainike tai onnistuva normaalitapaus ei täytä tehtävää.
 
 ### R030-03: Varmuuskopion nimi
 
-Yrityksen nimi helpottaa kopioiden erottamista. Ennen toteutusta sovitaan,
-käytetäänkö työtilan näyttönimeä vai Oma yritys -tietojen nimeä ja mikä on
-puuttuvan nimen varavaihtoehto. Nimi on ulkoista syötettä: pituus, Windowsin
+Yrityksen nimi helpottaa kopioiden erottamista. Omistaja hyväksyi 23.10.2026
+työtilan yritysvalitsimessa näkyvän nimen ja päivämäärän. Puuttuvan nimen
+varavaihtoehto on nykyinen päivämääränimi. Nimi on ulkoista syötettä: pituus, Windowsin
 kielletyt nimet/merkit ja polkuerottimet käsitellään omistavassa runtimessa.
 Käyttäjä valitsee edelleen tallennuskohteen native-dialogissa.
 
@@ -129,7 +152,7 @@ hakusuodattimia. Tarkat turvallisuus- ja testiehdot ovat
 
 | Tunnus | Aiemmin esiin noussut asia | Päätöstilanne |
 | --- | --- | --- |
-| R030-06 | Ensikäyttö ilman automaattista oletusyritystä: luo yritys tai tuo kopio. | Säilyy jatkotoiveena W7:n yhteydessä. Viimeisen yrityksen jälkeinen tyhjä tila on ratkaistava W7:ssä joka tapauksessa; ensiasennuksen laajempi muutos rajataan erikseen. Päivitys ei poista olemassa olevia yrityksiä. |
+| R030-06 | Ensikäyttö ilman automaattista oletusyritystä: luo yritys tai tuo kopio. | Ensiasennuksen muutos säilyy erikseen rajattavana jatkotoiveena. Omistaja hyväksyi 23.10.2026 W7:n viimeisen yrityksen poiston jälkeisen tyhjän tilan ilman automaattista oletusyritystä; se ei yksin hyväksy ensiasennuksen muutosta. Päivitys ei poista olemassa olevia yrityksiä. |
 | D029-06 | Diagnostiikan Päivitä-toiminto, viimeisin onnistunut hakuaika ja osakohtainen virhetila. | Kirjattu suositus; mukaanotto päätetään ennen julkaisurajauksen lukitsemista. |
 | R030-07 | Diagnostiikan virhe-/varoitussuodatus ja turvallisen virhekoodin kopiointi. | Valinnainen myöhempi lisä, ei muiden korjausten edellytys. |
 
@@ -232,12 +255,13 @@ F/R15 on hyväksytty PR #313:n omilla PR/main-porteilla. Myös G/R20/R23 ja
 D029-01/02 on hyväksytty PR #314:n omilla PR/main-porteilla.
 Myös H/R21/R22/R24/R25/R26 ja D029-03/04/05 on hyväksytty
 [PR #315:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
-Nykyinen työ on I/R30/R31:n hyväksytyn rajauksen toteutus ja todennus.
-Omistaja hyväksyi neljän nimetyn asiakasselaintestin CI-erottelun Goalina;
-muut politiikka- tai turvallisuusmuutokset tarvitsevat edelleen oman päätöksen.
+Myös I0-I3/R30/R31 on hyväksytty
+[PR #316:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644).
+Nykyinen työ on M4:n käyttäjäkokemuksen suunnittelu; sen avoimet
+käyttäytymis-, API- ja turvallisuuspäätökset eivät ole toteutushyväksyntöjä.
 Täsmällinen näyttö ja nykytila ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
-T/A/B/C/K/D/E/F/G/H:ta ei avata uudelleen ilman niiden omaa todennettua regressiota.
+T/A/B/C/K/D/E/F/G/H/I:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
 Vanhat sulkuaikakatkaisut eivät
 muutu korjatuiksi tämän integraation perusteella. B0:ssa tarkistettiin alkuperäiset
 turvallisuushavainnot, B1-B5-toteutusjärjestys ja
@@ -312,7 +336,7 @@ ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
 F/R15 on hyväksytty [PR #313:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977).
 G on hyväksytty [PR #314:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094).
 H on hyväksytty [PR #315:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
-I:n jäljellä oleva osuus on edelleen avoin.
+I0-I3/R30/R31 on hyväksytty [PR #316:n loppupäätöksellä](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644).
 D1-D3 ja niiden rajattu HTTP-sulun jatkokorjaus on hyväksytty PR #308:n
 ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
 [D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
@@ -323,7 +347,7 @@ Vitest-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta;
 erottaa korjatun revision PR/main-portit avoimista historiallisista syistä.
 [Asiakasinvarianttien suunnitelma](release-0.3.0-customer-invariants-plan.md)
 säilyttää E:n sopimukset. Nykyinen työ on
-[I:n rajattu toteutus](release-0.3.0-m1-preparation-plan.md#i--ci-politiikan-ja-ajantasaisten-sopimusten-valmistelu).
+[M4:n suunnittelu](release-0.3.0-m1-preparation-plan.md#m4--käyttäjäkokemuksen-valmistelu).
 H:n hyväksytyt lukutila- ja häiriöpalautesopimukset säilyvät; H ei toteuttanut
 M4:n historian selausta. I ei muuta testisisältöä tai mainin täysiä vaatimuksia.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
@@ -344,8 +368,10 @@ pääagentti kokoaa havaitut linkki-, ankkuri-, päällekkäisyys- ja
 ajantasaisuuspuutteet sekä varmentaa korjaukset. Tämä dokumentaatio-osuus
 tehtiin ennen D:tä omine lukureitti-, katselmus- ja integraatioportteineen;
 se ei hyväksynyt koko I:tä tai sen erillisiä CI-politiikkamuutoksia.
-Nykyinen I-valmistelu tarkistaa muuttuneiden alueiden sopimusten vastaavuuden
-ja R30:n täsmällisen jäljellä olevan rajauksen, ei aloita ohjehuoltoa alusta.
+PR #316:n hyväksytty I0-I3 täydensi muuttuneiden alueiden sopimusten
+vastaavuuden ja R30:n täsmällisen neljän polun rajauksen, ei aloittanut
+ohjehuoltoa alusta. Alkuperäiset syy- ja siivousepävarmuudet säilyvät
+loppupäätöksessä, eivät korjattuina havaintoina.
 Se täydentää jokaisen tehtävän pysyvää
 [ohjeiden tarkistusvelvoitetta](../ai/workflow.md#työn-aloitusjärjestys),
 ei siirrä sitä myöhemmäksi tai rajoita sitä 0.3.0-julkaisuun.
@@ -450,6 +476,13 @@ sopimukseen, ei tyhjien shared-pakettien täyttämiseksi tai tarkoituksellisen
 luottamusrajavalidoinnin poistamiseksi.
 
 ### M4: Sovittu 0.3.0-käyttäjäkokemus
+
+**Tila 23.10.2026:** nykykoodin rajattu kartoitus ja suunnittelu aloitettu
+hyväksytystä I-mainista. [Omistava valmistelukohta](release-0.3.0-m1-preparation-plan.md#m4--käyttäjäkokemuksen-valmistelu)
+erottaa lähdehavainnot, suositellun osituksen ja vielä hyväksyttävät sopimukset.
+Suositeltu toteutusjärjestys on odotuspalaute, backup-nimi, diagnostiikan
+selaus ja W7; W7:n päätökset valmistellaan ajoissa, eivät vasta lopuksi.
+Tämä ei hyväksy tuotantokytkentää tai muuta julkaisuun sovittua sisältöä.
 
 Toteuta korjatun pohjan päälle R030-01, R030-02/W7, R030-03 ja R030-08
 rajattuina muutoksina. Diagnostiikan selaus tarvitsee G/H:n oikean lukuketjun

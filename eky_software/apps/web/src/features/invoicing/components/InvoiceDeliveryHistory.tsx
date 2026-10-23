@@ -4,6 +4,7 @@ import { InvoiceDeliveryPdfAction } from './InvoiceDeliveryPdfAction.js';
 import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 import styles from './InvoiceDeliveryHistory.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 
 interface InvoiceDeliveryHistoryProps {
@@ -28,9 +29,9 @@ export function InvoiceDeliveryHistory({
     >
       <h3>{uiText.invoicing.invoiceDeliveryHistory}</h3>
       {isLoading ? (
-        <p className={styles.state}>
+        <LoadingStatus className={styles.state}>
           {uiText.invoicing.invoiceDeliveryHistoryLoading}
-        </p>
+        </LoadingStatus>
       ) : errorMessage !== null ? (
         <p className="message error-message" role="alert">
           {errorMessage}

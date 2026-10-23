@@ -7,7 +7,7 @@ import { useState } from 'react';
 import { InvoiceCancellationPanel } from './InvoiceCancellationPanel.js';
 import styles from './ApprovedInvoicePreview.module.css';
 import { uiText } from '../../../i18n/fi.js';
-import { MessageBanner } from '../../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../../shared/ui/index.js';
 
 interface ApprovedInvoiceActionsProps {
   canCreateCreditDraft: boolean;
@@ -129,6 +129,18 @@ export function ApprovedInvoiceActions({
       onEditInvoice(invoiceId);
     }
   }
+
+  const pendingMessage = isCreatingPdf
+    ? uiText.invoicing.approvedInvoicePdfCreating
+    : isPreparingEmail
+      ? uiText.invoicing.invoiceEmailPreparing
+      : isCopyingInvoice
+        ? uiText.invoicing.copiedApprovedInvoice
+        : isMarkingSent
+          ? uiText.invoicing.markingApprovedInvoiceSent
+          : isReopening
+            ? uiText.invoicing.reopeningApprovedInvoice
+            : null;
 
   return (
     <>
@@ -296,6 +308,9 @@ export function ApprovedInvoiceActions({
         </section>
       ) : null}
 
+      <LoadingStatus active={pendingMessage !== null} className={styles.operationStatus}>
+        {pendingMessage}
+      </LoadingStatus>
       {reopenErrorMessage !== null ? (
         <MessageBanner variant="error">{reopenErrorMessage}</MessageBanner>
       ) : null}

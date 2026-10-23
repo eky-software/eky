@@ -485,6 +485,21 @@ Electron-navigointitesti tai oikea verkkolähetys.
 Tallennuskorjauksen [hyväksyntätila ja erilliset avoimet havainnot](release-0.3.0-m1-preparation-plan.md#oma-yritys-rajattu-tallennuskorjaus)
 erottavat kohdetodennuksen koko workspace- ja PR/main-porttien hyväksynnästä.
 
+### M4.1: Odotustilan esitys
+
+Nykyinen eristetty web-fixture mounttaa oikean backup-panelin ja pidättää
+vain sen native-capabilityn vastaukset. Tämä on selainkomponentin
+integraatiotodistus, ei backupin salaamisen/palauttamisen Electron-todistus.
+Nykyiset COMPANY-LOAD- ja COMPANY-SAVE-ketjut todistavat rinnalla oikean
+HTTP-polun; tiedot ja audit säilyvät niiden omien odotusten mukaan.
+Esitysmuutos ei lisää business-auditia tai teknistä tapahtumaperhettä.
+
+| ID | Riski ja tasot | Lähtö / toiminto / fault | Odotus | Tila ja havainnot | Erityinen vuotokielto | Tila |
+| --- | --- | --- | --- | --- | --- | --- |
+| UI-WAIT-001 | P1; browser-component integration, critical | Todellinen backup-paneli; pidätetty status, luominen ja tarkistuksen peruutus | Oikea vaiheteksti, polite/atomic ja koristeellinen merkki; näppäimistökäynnistys, yksi keskeneräinen työ, loppuminen ja peruutus vapauttavat nykyiset kontrollit | Täsmälliset capability-kutsut; ei oikeita tiedostoja, auditia tai SMTP:tä | Raakavirhe, polku tai salaisuus UI:ssa/liitteessä | implemented-integration; kohdetodennus läpäisi, PR/main avoin |
+| UI-WAIT-002 | P1; browser-component integration, critical, fault | Vanha tarkistus hylätään unmount/paluun jälkeen; nykyinen palautuspiste epäonnistuu ja käsin uusittu onnistuu | Vanha vastaus ei poista uuden alkuluvun tilaa; nykyinen virhe on turvallinen ja busy päättyy | Ei automaattista uusintaa, nykyiset omistajat säilyvät | Synteettinen alkuperäinen virhe käyttäjäpalautteessa | implemented-integration; kohdetodennus läpäisi, PR/main avoin |
+| UI-WAIT-003 | P1; browser-component integration, critical | Todellinen paneli desktop/mobile-koossa, normaali/vähennetty liike ja pidätetty/peruttu työ | Vakaa painikegeometria, mahtuva tilateksti ja pysähtynyt reduced-motion-animaatio | Synteettinen kuvakaappaus ja DOM-/CSS-havainnot nykyisessä artifact-kanavassa; ei koneinventaarioa | Native-dialogi, profiili tai käyttäjädata kuvassa | implemented-integration; kohdetodennus läpäisi, PR/main avoin |
+
 ## Invoicing
 
 A2:n tallennuksen omistajuus ja epäselvän ensimmäisen tallennuksen käyttötapa

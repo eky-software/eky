@@ -6,7 +6,7 @@ import type {
   ProfileProtectionStatus,
 } from '../../app/desktopBridge.js';
 import { uiText } from '../../i18n/fi.js';
-import { ProfileBackupPanelView } from './ProfileBackupPanelView.js';
+import { ProfileBackupPanelView, type ProfileBackupOperation } from './ProfileBackupPanelView.js';
 
 interface ProfileBackupPanelProps {
   capability?: ProfileProtectionCapability;
@@ -24,20 +24,22 @@ export function ProfileBackupPanel({
   const [successMessage, setSuccessMessage] = useState<string | null>(
     null,
   );
-  const [isBusy, setIsBusy] = useState(capability !== undefined);
+  const [operation, setOperation] = useState<ProfileBackupOperation | null>(
+    capability === undefined ? null : 'status',
+  );
 
   useEffect(() => {
     let active = true;
 
     if (capability === undefined) {
-      setIsBusy(false);
+      setOperation(null);
       setStatus(null);
       return () => {
         active = false;
       };
     }
 
-    setIsBusy(true);
+    setOperation('status');
     setErrorMessage(null);
     void capability
       .getStatus()
@@ -53,7 +55,7 @@ export function ProfileBackupPanel({
       })
       .finally(() => {
         if (active) {
-          setIsBusy(false);
+          setOperation(null);
         }
       });
 
@@ -66,7 +68,7 @@ export function ProfileBackupPanel({
     if (capability === undefined) {
       return;
     }
-    await run(async () => {
+    await run('backup', async () => {
       const result = await capability.createBackup();
       if (result === 'created') {
         setSuccessMessage(
@@ -81,7 +83,7 @@ export function ProfileBackupPanel({
     if (capability === undefined) {
       return;
     }
-    await run(async () => {
+    await run('inspection', async () => {
       const result = await capability.inspectBackup();
       if (result.status === 'inspected') {
         setInspection(result.summary);
@@ -96,7 +98,7 @@ export function ProfileBackupPanel({
     if (capability === undefined) {
       return;
     }
-    await run(async () => {
+    await run('recoveryPoint', async () => {
       setStatus(await capability.createRecoveryPoint());
       setSuccessMessage(
         uiText.companySettings.profileRecoveryPointCreateSuccess,
@@ -104,19 +106,19 @@ export function ProfileBackupPanel({
     });
   }
 
-  async function run(operation: () => Promise<void>): Promise<void> {
-    if (isBusy) {
+  async function run(kind: ProfileBackupOperation, perform: () => Promise<void>): Promise<void> {
+    if (operation !== null) {
       return;
     }
-    setIsBusy(true);
+    setOperation(kind);
     setErrorMessage(null);
     setSuccessMessage(null);
     try {
-      await operation();
+      await perform();
     } catch {
       setErrorMessage(uiText.companySettings.profileBackupOperationError);
     } finally {
-      setIsBusy(false);
+      setOperation(null);
     }
   }
 
@@ -125,7 +127,7 @@ export function ProfileBackupPanel({
       capabilityAvailable={capability !== undefined}
       errorMessage={errorMessage}
       inspection={inspection}
-      isBusy={isBusy}
+      operation={operation}
       onCreateBackup={createBackup}
       onCreateRecoveryPoint={createRecoveryPoint}
       onInspectBackup={inspectBackup}

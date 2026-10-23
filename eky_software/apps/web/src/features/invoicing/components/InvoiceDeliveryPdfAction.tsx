@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 
 import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingMark } from '../../../shared/ui/index.js';
 
 interface InvoiceDeliveryPdfActionProps {
   invoiceId: string;
@@ -47,6 +48,7 @@ export function InvoiceDeliveryPdfAction({
         onClick={() => void open()}
         type="button"
       >
+        <LoadingMark active={isOpening} />{' '}
         {isOpening
           ? uiText.invoicing.invoiceEmailAttachmentOpening
           : uiText.invoicing.invoiceDeliveryPdfOpen}

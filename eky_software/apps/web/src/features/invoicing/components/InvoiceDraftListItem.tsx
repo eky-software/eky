@@ -9,6 +9,7 @@ import {
 import { getInvoiceDraftCustomerDisplayName } from '../drafts/invoiceDraftCustomerDisplay.js';
 import styles from './InvoiceDraftList.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 
 interface InvoiceDraftListItemProps {
   customers: Customer[];
@@ -105,6 +106,9 @@ export function InvoiceDraftListItem({
                   : uiText.invoicing.deleteDraftConfirmAction}
               </button>
             </div>
+            <LoadingStatus active={isDeleting} className="">
+              {uiText.invoicing.deletingDraft}
+            </LoadingStatus>
           </div>
         </div>
       ) : null}

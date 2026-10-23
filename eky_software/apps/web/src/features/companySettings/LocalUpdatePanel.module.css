@@ -46,6 +46,11 @@
   gap: 10px;
 }
 
+.operationStatus {
+  margin: 0;
+  min-block-size: 3em;
+}
+
 @media (max-width: 620px) {
   .facts {
     grid-template-columns: 1fr;

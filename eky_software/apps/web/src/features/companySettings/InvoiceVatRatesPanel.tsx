@@ -13,6 +13,7 @@ import {
 } from './invoiceVatRatesFormModel.js';
 import { useInvoiceVatRates } from './hooks/useInvoiceVatRates.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoiceVatRatesPanelProps {
   apiClient: Pick<EkyApiClient, 'getInvoiceVatRates' | 'updateInvoiceVatRates'>;
@@ -36,9 +37,9 @@ export function InvoiceVatRatesPanel({
 
   if (state.isLoading) {
     return (
-      <p className="message">
+      <LoadingStatus>
         {uiText.companySettings.invoiceVatRatesLoading}
-      </p>
+      </LoadingStatus>
     );
   }
 

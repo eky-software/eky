@@ -41,6 +41,11 @@
   gap: 8px;
 }
 
+.operationStatus {
+  margin: 0;
+  min-block-size: 3em;
+}
+
 .statusGrid,
 .summaryGrid {
   display: grid;

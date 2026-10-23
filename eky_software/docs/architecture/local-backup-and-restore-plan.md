@@ -679,6 +679,12 @@ R0-retention on:
   pre-operation-piste ovat aina suojattuja
 - profiilikohtainen absoluuttinen levybudjetti on 2 GiB
 
+Suojattujen pisteiden rajattu poikkeus on erikseen vahvistettu yrityksen
+lopullinen poisto: vain sen yrityksen omat pisteet poistetaan
+[ADR-0009:n W7-päätöksen](../decisions/ADR-0009-local-backup-encryption-and-recovery-points.md#rotaatio)
+mukaan. Normaali rotaatio ei saa käyttää tätä poikkeusta. W7:n tarkka
+tuotantokytkentä ja keskeytyksestä palautuminen ovat vielä suunniteltavia.
+
 Budjetti poistaa vanhimmat suojaamattomat pisteet. Suojattua pistettä ei
 poisteta budjetin ylityksessä, vaan tila muuttuu turvalliseksi
 `protectedPointsExceedBudget`-varoitukseksi. Poistot kirjataan ennen

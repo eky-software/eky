@@ -6,6 +6,7 @@ import type {
 } from './invoicePaymentSettingsFormModel.js';
 import styles from './InvoiceNumberingSettingsForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoicePaymentSettingsFormProps {
   errorMessage: string | null;
@@ -116,6 +117,9 @@ export function InvoicePaymentSettingsForm({
               : uiText.companySettings.invoicePaymentSave}
           </button>
         </div>
+        <LoadingStatus active={isSaving} className="">
+          {uiText.companySettings.saving}
+        </LoadingStatus>
       </form>
     </section>
   );

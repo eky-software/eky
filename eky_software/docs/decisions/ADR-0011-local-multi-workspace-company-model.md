@@ -158,10 +158,23 @@ Tästä seuraa:
 - täsmälleen sama lineage saa kuulua rekisterissä enintään yhdelle työtilalle
 - lineage-formaatin muuttaminen vaatii versionoidun backup-yhteensopivuuspäätöksen.
 
-Yrityksen nimi tai Y-tunnus ei määritä lineagea. Eri lineageilla olevilla
-työtiloilla saa olla sama nimi tai sama liiketoiminnallinen tunniste. UI voi
-varoittaa mahdollisesta kaksoiskappaleesta, mutta se ei saa yhdistää tai
-korvata työtiloja näiden kenttien perusteella.
+Yrityksen virallinen nimi tai Y-tunnus ei määritä lineagea. Eri lineageilla
+olevilla työtiloilla saa olla sama virallinen nimi tai sama liiketoiminnallinen
+tunniste. UI ei saa yhdistää tai korvata työtiloja näiden kenttien perusteella.
+
+**Näyttönimen rajattu muutos, omistajan päätös 23.10.2026:** yritysvalitsimen
+`workspaceLabel` on eri asia kuin yrityksen virallinen nimi. Luonti, tuonti
+uutena ja nimenmuutos estävät saman asennuksen nimikaksoiskappaleet yhteisellä
+säännöllä, jota kirjainkoko tai ylimääräiset välilyönnit eivät kierrä.
+Tämä korvaa aiemman samat näyttönimet sallineen linjauksen; sisäiset
+identiteetit ja backupin business-sisältö eivät muutu. Tarkka vertailu ja
+vanhojen samannimisten tekninen yhteensopivuus omistetaan
+[työtilasuunnitelmassa](../architecture/local-company-workspace-plan.md#yritysvalitsimen-nimien-yksilöllisyys).
+Omistaja hyväksyi samana päivänä vanhojen samannimisten säilyttämisen ja
+huomautuksen ilman automaattista nimeämistä, yhdistämistä tai poistamista.
+Uusi nimisääntö ei yksin estä aiemmin käyttökelpoisen työtilan avaamista.
+Päätökset hyväksyvät suunnittelurajan, eivät vielä tuotantokytkentää tai
+muiden eheys- ja recovery-porttien ohittamista.
 
 ## Omistajuus- ja storage-scope
 
