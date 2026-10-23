@@ -45,13 +45,39 @@ describe('workspace backup operational observer', () => {
     expect(write).toHaveBeenCalledTimes(2);
   });
 
-  it('does not report success, unrelated operations or unobserved causes', () => {
+  it('does not report success, status or an impossible inspection on another operation', () => {
     const write = vi.fn();
     const observer = createWorkspaceBackupOperationalObserver({ operationalIdentity: identity, operationalLogger: { write } });
     observer.record({ ...failure, outcome: 'succeeded' });
     observer.record({ ...failure, operationKind: 'create' });
-    const { inspectionCauseCode: _cause, ...unobserved } = failure;
-    observer.record(unobserved);
+    observer.record({ ...failure, operationKind: 'status' });
     expect(write).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['create', 'WORKSPACE_MANAGEMENT_CREATE_FAILED'], ['import', 'WORKSPACE_MANAGEMENT_IMPORT_FAILED'],
+    ['replace', 'WORKSPACE_MANAGEMENT_REPLACE_FAILED'], ['switch', 'WORKSPACE_MANAGEMENT_SWITCH_FAILED'],
+    ['rename', 'WORKSPACE_MANAGEMENT_RENAME_FAILED'],
+  ] as const)('writes one non-inspection %s failure with a logical operation only', (operationKind, errorCode) => {
+    const write = vi.fn();
+    const observer = createWorkspaceBackupOperationalObserver({ operationalIdentity: identity, operationalLogger: { write } });
+    const { inspectionCauseCode: _cause, ...unobserved } = failure;
+    observer.record({ ...unobserved, operationKind, errorCode });
+    expect(write).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      eventName: 'workspaceManagement.operationFailed', operationId: `workspace.${operationKind}`,
+      errorCode, stage: 'operation', sideEffectState: 'unknown',
+    }));
+    expect(JSON.stringify(write.mock.calls)).not.toMatch(/workspaceId|profileId|companyId|password|message|stack/);
+  });
+
+  it('keeps a separate cleanup failure even when the non-inspection primary writer fails', () => {
+    const write = vi.fn().mockImplementationOnce(() => { throw new Error('synthetic write failure'); });
+    const observer = createWorkspaceBackupOperationalObserver({ operationalIdentity: identity, operationalLogger: { write } });
+    const { inspectionCauseCode: _cause, ...unobserved } = failure;
+    observer.record({ ...unobserved, cleanupCauseCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' });
+    expect(write.mock.calls.map(([event]) => [event.eventName, event.errorCode])).toEqual([
+      ['workspaceManagement.operationFailed', 'WORKSPACE_MANAGEMENT_IMPORT_FAILED'],
+      ['workspaceBackup.cleanupFailed', 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED'],
+    ]);
   });
 });

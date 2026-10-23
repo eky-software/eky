@@ -359,6 +359,17 @@ Lokissa tai tukipaketissa ei saa olla:
 Tavallista kopiointionnistumista ei lisätä Activityyn, koska se on
 paikallinen tekninen toiminto eikä laskun liiketoimintatila.
 
+Diagnostics ja sanitoitu tukipaketti käyttävät
+[G:n perhekohtaista projektiorajaa](release-0.3.0-m1-preparation-plan.md#g-p1-hyväksytty-projektiorajaus).
+Detailed-lokin `attemptCount` tarkistetaan lähderivillä mutta jätetään pois
+DTO:sta; kopiointivirheen valinnainen sisäinen stage/fingerprint ei siirry
+projektioon. Jonovirheen kiinteä koodi, queue-vaihe, retryable ja
+side-effect-state säilyvät. Desktopin kopiointivirhe säilyttää turvallisen
+koodin sekä saatavilla olevan keston/retryable-/side-effect-tiedon.
+TaskQueued, copySucceeded ja configurationChanged ovat vain Diagnosticsin
+info-tietoa, eivät tukipakettisisältöä. Tämä ei muuta arkistointia,
+journalia tai jo onnistuneen laskutoimituksen tulosta.
+
 ## Testausportti
 
 Toteutuksen pitää kattaa vähintään:

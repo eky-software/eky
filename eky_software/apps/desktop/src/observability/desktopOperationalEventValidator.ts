@@ -10,6 +10,7 @@ import {
   type DesktopOperationalEventName,
 } from './desktopOperationalEvent.js';
 import { workspaceCandidateFailureCauses } from '../runtime/workspaceCandidateMessages.js';
+import { isWorkspaceManagementFailureContext } from './workspaceManagementFailureContext.js';
 
 const coreFields = new Set([
   'appVersion',
@@ -170,6 +171,9 @@ export function validateDesktopOperationalEvent(
     }
   }
   validateRecoveryEventSemantics(eventName, normalized);
+  if (eventName === 'workspaceManagement.operationFailed' && !isWorkspaceManagementFailureContext(normalized)) {
+    throw new DesktopOperationalEventValidationError('Workspace management failure is invalid.');
+  }
 
   if (Buffer.byteLength(JSON.stringify(normalized), 'utf8') > maximumEventBytes) {
     throw new DesktopOperationalEventValidationError(

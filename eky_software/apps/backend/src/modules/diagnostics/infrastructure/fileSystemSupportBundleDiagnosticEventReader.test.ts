@@ -74,6 +74,36 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     });
   });
 
+  it('includes archive failures but not info payloads even inside a warning stream', async () => {
+    const logsRoot = createLogsRoot();
+    const identity = eventOptions('synthetic-archive-copy', '2026-07-27T10:00:00.000Z');
+    const desktop = { ...identity, category: 'invoicePdfArchive', component: 'desktop', schemaVersion: 1 };
+    writeLines(logsRoot, 'desktop', 'desktop-warning-error-2026-07-001.jsonl', [
+      { ...desktop, eventName: 'invoicePdfArchive.copyFailed', level: 'warn', outcome: 'failure',
+        errorCode: 'ARCHIVE_REQUEST_FAILED', attemptCount: 2, durationMs: 3, retryable: true, sideEffectState: 'none' },
+      { ...desktop, eventId: 'archive-copy-success', eventName: 'invoicePdfArchive.copySucceeded',
+        level: 'info', outcome: 'success', attemptCount: 2, durationMs: 3 },
+      { ...desktop, eventId: 'archive-task', eventName: 'invoicePdfArchive.taskQueued', level: 'info', outcome: 'success' },
+      { ...desktop, eventId: 'archive-config', eventName: 'invoicePdfArchive.configurationChanged',
+        level: 'info', outcome: 'success', stage: 'enabled' },
+    ]);
+    const queue = createBackendOperationalEvent({
+      eventName: 'invoicePdfArchive.queueFailed', errorCode: 'INVOICE_PDF_ARCHIVE_QUEUE_FAILED',
+      retryable: true, sideEffectState: 'none', stage: 'queue',
+    }, eventOptions('archive-queue', '2026-07-27T10:01:00.000Z'));
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-001.jsonl', [queue]);
+    const result = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot)
+      .readSupportBundleDiagnosticEvents({
+        earliestTimestamp: '2026-07-01T00:00:00.000Z', latestTimestamp: '2026-07-28T00:00:00.000Z',
+      });
+    expect(result.sourceTruncated).toBe(false);
+    expect(result.diagnosticEvents).toEqual([
+      expect.objectContaining({ eventName: 'invoicePdfArchive.queueFailed', stage: 'queue' }),
+      expect.objectContaining({ eventName: 'invoicePdfArchive.copyFailed', durationMs: 3 }),
+    ]);
+    expect(JSON.stringify(result)).not.toContain('attemptCount');
+  });
+
   it('prioritizes newest segments and reports event limits as truncation', async () => {
     const logsRoot = createLogsRoot();
     writeLines(

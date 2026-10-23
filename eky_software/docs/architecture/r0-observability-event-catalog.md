@@ -229,6 +229,7 @@ liiketoimintasisältöä.
 - `restore.recoveryRequired`
 - `workspaceBackup.operationFailed`
 - `workspaceBackup.cleanupFailed`
+- `workspaceManagement.operationFailed`
 
 `electron.permissionDenied` säilyy vain olemassa olevien lokien
 yhteensopivuuden vuoksi. Tavallinen Chromiumin permission check estetään
@@ -427,6 +428,53 @@ Tuotannon composition välittää nykyisen loggerin ja runtime-identiteetin
 havaitsijalle; kummankin tapahtuman best-effort-kirjoitus on erillinen eikä
 saa muuttaa hallintatoiminnon palautusta tai peittää ensivirhettä.
 
+### PDF-arkiston tekniset tapahtumat
+
+Backendin `invoicePdfArchive.queueFailed` on warn/failure, ja sen kiinteä
+koodi on `INVOICE_PDF_ARCHIVE_QUEUE_FAILED`, `stage=queue`, `retryable=true`
+ja `sideEffectState=none`. Desktopin `taskQueued`, `copySucceeded` ja
+`configurationChanged` ovat info/success; `copyFailed` on warn/failure.
+`configurationChanged` sallii vain enabled/disabled-vaiheen.
+CopySucceeded vaatii keston ja lähteessä yrityskerran. CopyFailed vaatii
+lähteessä turvallisen virhekoodin ja yrityskerran; saatavilla olevat
+kesto/retryable/side-effect-kentät säilyvät projektiossa.
+
+Detailed-lokin `attemptCount` tarkistetaan mutta jätetään pois DTO:sta.
+Kopiointivirheen valinnainen detailed-stage/fingerprint ei siirry DTO:hon.
+Polut, lasku-/toimitus-/dokumenttiviitteet, PDF-tiivisteet ja raakavirheet
+ovat kiellettyjä. Kaikki nämä nimet kuuluvat Diagnosticsiin, vain warn-
+virheet tukipakettiin. Activityyn ei kirjoiteta teknistä kopiota; incident-
+indeksin nykyiset kelpoisuusehdot säilyvät. Arkistoinnin ja sen lokituksen
+virhe ei muuta jo onnistunutta laskutoimitusta. Rajauksen ja hyväksyntätilan
+omistaa [G-P1](release-0.3.0-m1-preparation-plan.md#g-p1-hyväksytty-projektiorajaus).
+
+### Työtilahallinnan muu ensivirhe
+
+`workspaceManagement.operationFailed` on desktop/workspaceManagement,
+error/failure. Sen pakolliset kentät ovat UUID-korrelaatio, ei-negatiivinen
+kokonaislukukesto, suljettu looginen `workspace.create|import|replace|switch|rename`
+-operationId, vaihe, virhekoodi, boolean-retryable ja `none|unknown`-sivuvaikutus.
+Koodi/toiminto/vaihe/retryable-yhdistelmät omistaa
+[G-P2:n suljettu taulukko](release-0.3.0-m1-preparation-plan.md#g-p2-hyväksytty-workspace-virheen-omistajuus).
+`operationId` ei ole työtilan tai yrityksen tunniste. Status-pollingia ja
+onnistumisia ei lisätä tähän julkiseen perheeseen.
+
+K:n import/replace-tarkistushylkäys säilyy workspaceBackup-perheessä.
+Tyypitetty tarkistusraja voi säilyttää tuntemattoman ensisyyn; pelkkää
+muuta tuntematonta hallintavirhettä tai operation guardin estoa ei nimetä
+tarkistimen virheeksi. Alkuperäinen tyypitetty replacement-lineage-hylkäys
+säilyy `WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH`-/lineageCheck-tietona ennen
+yleistä käyttäjävirhemuunnosta. Käyttäjän ilmoitus ja tietomuutoksen esto
+eivät muutu. Sama ensivirhe ei kirjoitu molempiin perheisiin. Todellinen
+erillinen cleanup-virhe säilyy workspaceBackup.cleanupFailed-tapahtumana
+myös silloin, kun ensivirheen kirjoitus epäonnistuu.
+
+Perhe kuuluu Diagnosticsiin ja sanitoituun tukipakettiin; error-tason
+incident-yhteenveto käyttää nykyistä minimointia. Ei fingerprintiä,
+toisen perheen metadataa, business-tunnisteita, polkuja tai raakaa syyketjua
+julkiseen tapahtumaan. Onnistumisen sisäinen completed ei muutu committed-
+sivuvaikutukseksi. Lokitus pysyy best effort eikä ohjaa workspace-toimintoa.
+
 ### Local update
 
 ADR-0010 omistaa päivityksen runtime- ja datarajat. C2:n jo määritellyt
@@ -437,10 +485,15 @@ ADR-0010 omistaa päivityksen runtime- ja datarajat. C2:n jo määritellyt
 Ne eivät automaattisesti laajenna alla olevaa C3C-sopimusta.
 
 G:n [D029-02](diagnostics-0.2.9-completion-plan.md#d029-02-päivitystapahtumien-katalogikatkos)
-omistaa toteuttamattoman lukijaketjun ja sen perhekohtaisen sisällytys- tai
-poissulkukartan. C2:n julkinen projektio ja mahdollinen kohdeversiotieto
-pysyvät siellä nimettyinä rajauksina; writerin olemassaolo ei hyväksy vientiä.
-Nykyisiä kenttiä tai allowlistoja ei laajenneta dokumentaation siivouksessa.
+omistaa lukijaketjun toteutuksen ja hyväksyntänäytön. Hyväksytty
+[G-P1](release-0.3.0-m1-preparation-plan.md#g-p1-hyväksytty-projektiorajaus)
+sisällyttää C2/C3C:n nykyisiin DTO-kenttiin: nimi, komponentti, kategoria,
+taso, outcome, korrelaatio, vaihe ja tapahtuman vaatima kesto/virhekoodi/
+retryable/side-effect-state tarkistetaan yhdessä. C2:n neljää historiallista
+vaihetta ei laajenneta nykyisen writerin stage-enumin perusteella.
+Info ei kuulu tukipakettiin; warn/success-rollback kuuluu onnistumisena.
+AppVersion säilyy kontekstina, mutta currentVersion/targetVersion/
+releaseChannel, fingerprint ja journalin metadata eivät kuulu projektioon.
 
 Paikallisen päivityksen tekniset tapahtumaperheet ovat:
 

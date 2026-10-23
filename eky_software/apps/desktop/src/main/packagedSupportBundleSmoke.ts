@@ -4,6 +4,7 @@ import { dirname } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 
 import type { BrowserWindow } from 'electron';
+import { validatePackagedDiagnosticEvidence } from './packagedDiagnosticEvidence.js';
 
 import {
   maximumUncompressedSupportBundleBytes,
@@ -33,6 +34,7 @@ export async function runPackagedSupportBundleSmoke(options: {
   appVersion: string;
   buildRevision: string;
   mainWindow: BrowserWindow;
+  observeFailure?(error: unknown): void;
   runtimeSessionSecret: string;
   supportBundlePath: string;
 }): Promise<void> {
@@ -63,6 +65,7 @@ export async function runPackagedSupportBundleSmoke(options: {
       runtimeSessionSecret: options.runtimeSessionSecret,
     });
   } catch (error) {
+    try { options.observeFailure?.(error); } catch { /* Private evidence must not change the result. */ }
     if (
       error instanceof Error &&
       /^DESKTOP_SMOKE_SUPPORT_BUNDLE_[A-Z_]+$/.test(error.message)
@@ -144,6 +147,17 @@ export function validateSupportBundleDocument(
   ) {
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CHECKSUM_FAILED');
   }
+
+  validatePackagedDiagnosticEvidence({
+    backendVersion: value.system.backendVersion,
+    database: value.database,
+    diagnosticEvents: value.diagnosticEvents,
+    diagnosticPeriodDays: value.manifest.diagnosticPeriodDays,
+    incidentSummaries: value.incidentSummaries,
+    incidentSummariesTruncated: value.manifest.truncatedSections.includes('incidentSummaries'),
+    runtimeSummary: value.runtimeSummary,
+    truncated: false,
+  });
 
   const serialized = JSON.stringify(value);
   if (

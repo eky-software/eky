@@ -5,6 +5,9 @@ import {
   restoreAcceptanceFailureCodes,
 } from '../observability/desktopOperationalEvent.js';
 import { desktopRecoveryEventStages } from '../observability/desktopOperationalEventValidator.js';
+import { isSupportBundleInvoiceArchiveProjection } from './supportBundleInvoiceArchiveProjection.js';
+import { isSupportBundleUpdateProjection } from './supportBundleUpdateProjection.js';
+import { isWorkspaceManagementFailureContext } from '../observability/workspaceManagementFailureContext.js';
 
 export interface SupportBundleDiagnosticEvent {
   appVersion?: string;
@@ -286,7 +289,10 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
     !isOptionalExactValue(value.smtpProfile, 'dnaSmtp') ||
     !isOptionalTlsVersion(value.tlsVersion) ||
     !isWorkspaceBackupFailureProjection(value) ||
-    !isProfileRecoveryProjection(value)
+    !isProfileRecoveryProjection(value) ||
+    !isSupportBundleInvoiceArchiveProjection(value) ||
+    !isSupportBundleUpdateProjection(value) ||
+    !isWorkspaceManagementProjection(value)
   ) {
     throw new Error('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
   }
@@ -357,6 +363,18 @@ function readDiagnosticEvent(value: unknown): SupportBundleDiagnosticEvent {
       ? {}
       : { tlsVersion: value.tlsVersion }),
   };
+}
+
+function isWorkspaceManagementProjection(value: Record<string, unknown>): boolean {
+  if (typeof value.eventName !== 'string' || !value.eventName.startsWith('workspaceManagement.')) return true;
+  const eventName = 'workspaceManagement.operationFailed';
+  const definition = desktopOperationalEventSpecs[eventName];
+  return value.eventName === eventName && value.category === definition.category &&
+    value.component === 'desktop' && value.level === definition.level && value.outcome === definition.outcome &&
+    hasOnlyKeys(value, [
+      'appVersion', 'buildRevision', 'category', 'component', 'errorCode', 'eventName',
+      'id', 'level', 'occurredAt', 'outcome', 'runtimeInstanceId', ...definition.payloadFields,
+    ]) && isWorkspaceManagementFailureContext(value);
 }
 
 function isProfileRecoveryProjection(value: Record<string, unknown>): boolean {

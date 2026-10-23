@@ -1,5 +1,8 @@
 import type { BackendOperationalEvent } from '../../../observability/operationalEvent.js';
 import { validateBackendOperationalEvent } from '../../../observability/operationalEventValidator.js';
+import { isInvoiceArchiveSourcePayload } from './diagnosticInvoiceArchiveProjection.js';
+import { diagnosticUpdateSpecs, isUpdateSourcePayload } from './diagnosticUpdateProjection.js';
+import { isWorkspaceManagementSourcePayload } from './diagnosticWorkspaceManagementProjection.js';
 import type {
   DiagnosticEventItem,
   DiagnosticEventLevel,
@@ -14,6 +17,12 @@ interface DesktopDiagnosticSpec {
 }
 
 const desktopDiagnosticSpecs = Object.freeze({
+  'workspaceManagement.operationFailed': spec('workspaceManagement', 'error', 'failure'),
+  ...diagnosticUpdateSpecs,
+  'invoicePdfArchive.taskQueued': spec('invoicePdfArchive', 'info', 'success'),
+  'invoicePdfArchive.copySucceeded': spec('invoicePdfArchive', 'info', 'success'),
+  'invoicePdfArchive.copyFailed': spec('invoicePdfArchive', 'warn', 'failure'),
+  'invoicePdfArchive.configurationChanged': spec('invoicePdfArchive', 'info', 'success'),
   'workspaceBackup.operationFailed': spec('backup', 'error', 'failure'),
   'workspaceBackup.cleanupFailed': spec('backup', 'error', 'failure'),
   'applicationWindow.loadFailed': spec(
@@ -253,7 +262,11 @@ export function projectDiagnosticOperationalEvent(
     }
 
     if (value.component === 'backend') {
-      return projectBackendEvent(validateBackendOperationalEvent(value));
+      const event = validateBackendOperationalEvent(value);
+      if (event.eventName === 'invoicePdfArchive.queueFailed' && !isInvoiceArchiveSourcePayload(event)) {
+        return null;
+      }
+      return projectBackendEvent(event);
     }
     if (value.component === 'desktop') {
       return projectDesktopEvent(validateDesktopEvent(value));
@@ -302,6 +315,19 @@ function projectSafeTechnicalContext(
 ): Partial<DiagnosticEventItem> {
   const isSmtpTransportEvent =
     eventName !== undefined && smtpTransportEventNames.has(eventName);
+  if (typeof event.eventName === 'string' && event.eventName.startsWith('invoicePdfArchive.')) {
+    return {
+      appVersion: event.appVersion as string,
+      buildRevision: event.buildRevision as string,
+      runtimeInstanceId: event.runtimeInstanceId as string,
+      ...(isNonNegativeInteger(event.durationMs) ? { durationMs: event.durationMs } : {}),
+      ...(typeof event.retryable === 'boolean' ? { retryable: event.retryable } : {}),
+      ...(isSideEffectState(event.sideEffectState) ? { sideEffectState: event.sideEffectState } : {}),
+      ...(event.eventName === 'invoicePdfArchive.queueFailed' ||
+        event.eventName === 'invoicePdfArchive.configurationChanged'
+        ? { stage: event.stage as string } : {}),
+    };
+  }
 
   return {
     ...(isSafeVersion(event.appVersion)
@@ -382,6 +408,13 @@ function validateDesktopEvent(
   }
 
   for (const [key, fieldValue] of Object.entries(value)) {
+    if (key === 'operationId' && value.eventName === 'workspaceManagement.operationFailed' &&
+      isSafeIdentifier(fieldValue, 300)) continue;
+    if (key === 'attemptCount' &&
+      (value.eventName === 'invoicePdfArchive.copySucceeded' || value.eventName === 'invoicePdfArchive.copyFailed') &&
+      isNonNegativeInteger(fieldValue)) {
+      continue;
+    }
     if (
       forbiddenKeyPattern.test(key) ||
       !allowedDesktopFields.has(key) ||
@@ -420,6 +453,15 @@ function validateDesktopEvent(
   }
 
   validateRecoveryEvent(value);
+  if (value.eventName.startsWith('invoicePdfArchive.') && !isInvoiceArchiveSourcePayload(value)) {
+    throw new Error('Diagnostic invoice archive event is invalid.');
+  }
+  if (value.eventName.startsWith('update.') && !isUpdateSourcePayload(value)) {
+    throw new Error('Diagnostic update event is invalid.');
+  }
+  if (value.eventName === 'workspaceManagement.operationFailed' && !isWorkspaceManagementSourcePayload(value)) {
+    throw new Error('Diagnostic workspace management event is invalid.');
+  }
 
   return value;
 }

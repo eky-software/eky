@@ -3,6 +3,44 @@ import { describe, expect, it } from 'vitest';
 import { createEkyApiClient, EkyApiError } from '../index.js';
 
 describe('diagnostics API client', () => {
+  it.each([
+    { eventName: 'invoicePdfArchive.queueFailed', component: 'backend', level: 'warn',
+      outcome: 'failure', errorCode: 'INVOICE_PDF_ARCHIVE_QUEUE_FAILED', stage: 'queue',
+      retryable: true, sideEffectState: 'none' },
+    { eventName: 'invoicePdfArchive.taskQueued', component: 'desktop', level: 'info', outcome: 'success', errorCode: null },
+    { eventName: 'invoicePdfArchive.copySucceeded', component: 'desktop', level: 'info', outcome: 'success', errorCode: null, durationMs: 1 },
+    { eventName: 'invoicePdfArchive.copyFailed', component: 'desktop', level: 'warn', outcome: 'failure', errorCode: 'ARCHIVE_REQUEST_FAILED', durationMs: 1, retryable: true, sideEffectState: 'none' },
+    { eventName: 'invoicePdfArchive.configurationChanged', component: 'desktop', level: 'info', outcome: 'success', errorCode: null, stage: 'enabled' },
+  ])('reads the closed $eventName projection', async payload => {
+    const event = { category: 'invoicePdfArchive', id: 'synthetic-archive', occurredAt: '2026-10-22T10:00:00.000Z', ...payload };
+    const read = (value: unknown) => createEkyApiClient({
+      baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [value] }),
+    }).listDiagnosticEvents();
+    await expect(read(event)).resolves.toEqual([event]);
+    for (const change of [
+      { category: 'smtp' }, { component: event.component === 'backend' ? 'desktop' : 'backend' },
+      { level: 'error' }, { outcome: 'unknown' }, { eventName: 'invoicePdfArchive.unknown' },
+      { attemptCount: 1 }, { fingerprint: 'synthetic-fingerprint' },
+      { operationId: 'synthetic-invoice' }, { recoveryPointKind: 'daily' },
+      { cipherName: 'synthetic-cipher' }, { rawError: 'synthetic-private' },
+      { path: '/synthetic/private.pdf' }, { companyId: 'synthetic-company' },
+      { errorCode: event.errorCode === null ? 'ARCHIVE_REQUEST_FAILED' : null },
+    ]) await expect(read({ ...event, ...change })).rejects.toBeInstanceOf(EkyApiError);
+    if (payload.eventName === 'invoicePdfArchive.queueFailed') {
+      for (const change of [{ stage: undefined }, { stage: 'copy' }, { retryable: false },
+        { sideEffectState: 'unknown' }, { errorCode: 'ARCHIVE_REQUEST_FAILED' }]) {
+        await expect(read({ ...event, ...change })).rejects.toBeInstanceOf(EkyApiError);
+      }
+    }
+    if (payload.eventName === 'invoicePdfArchive.copySucceeded') {
+      await expect(read({ ...event, durationMs: undefined })).rejects.toBeInstanceOf(EkyApiError);
+    }
+    if (payload.eventName === 'invoicePdfArchive.configurationChanged') {
+      await expect(read({ ...event, stage: 'disabled' })).resolves.toEqual([{ ...event, stage: 'disabled' }]);
+      await expect(read({ ...event, stage: 'privateDirectory' })).rejects.toBeInstanceOf(EkyApiError);
+    }
+  });
+
   it.each(['workspaceBackup.operationFailed', 'workspaceBackup.cleanupFailed'])(
     'retains the safe %s projection', async eventName => {
       const event = {

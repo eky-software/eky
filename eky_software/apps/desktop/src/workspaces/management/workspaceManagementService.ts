@@ -1,8 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import {
   readWorkspaceCandidateCleanupCause,
-  readWorkspaceCandidateFailureCause,
 } from '../../runtime/workspaceCandidateFailure.js';
+import { classifyWorkspaceManagementFailure } from './workspaceManagementFailureClassification.js';
 
 import type { EmptyWorkspaceCreationResult } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import type {
@@ -168,8 +168,10 @@ export class WorkspaceManagementService {
       throw busyError;
     }
     this.activeOperation = true;
+    let operationStarted = false;
     try {
       await this.options.operationGuard.assertNoUnresolvedOperations();
+      operationStarted = true;
       const result = await operation();
       this.record({
         correlationId,
@@ -181,18 +183,22 @@ export class WorkspaceManagementService {
       });
       return result;
     } catch (error) {
+      const classification = operationStarted
+        ? classifyWorkspaceManagementFailure(error, operationKind)
+        : { lineageMismatch: false };
       const mapped = mapWorkspaceManagementError(error, operationKind);
-      const cleanupCauseCode = readWorkspaceCandidateCleanupCause(error);
+      const cleanupCauseCode = operationStarted ? readWorkspaceCandidateCleanupCause(error) : undefined;
       this.record({
         ...((operationKind === 'import' || operationKind === 'replace')
           ? {
-              inspectionCauseCode: readWorkspaceCandidateFailureCause(error),
+              ...('inspectionCauseCode' in classification && classification.inspectionCauseCode !== undefined
+                ? { inspectionCauseCode: classification.inspectionCauseCode } : {}),
               ...(cleanupCauseCode === undefined ? {} : { cleanupCauseCode }),
             }
           : {}),
         correlationId,
         durationMs: Math.max(0, this.now() - startedAt),
-        errorCode: mapped.code,
+        errorCode: classification.lineageMismatch ? 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH' : mapped.code,
         operationKind,
         outcome: 'failed',
         retryable: mapped.code === 'WORKSPACE_MANAGEMENT_BUSY',
@@ -201,7 +207,7 @@ export class WorkspaceManagementService {
           mapped.code === 'WORKSPACE_MANAGEMENT_BUSY'
             ? 'none'
             : 'unknown',
-        stage: 'operation',
+        stage: classification.lineageMismatch ? 'lineageCheck' : 'operation',
       });
       throw mapped;
     } finally {

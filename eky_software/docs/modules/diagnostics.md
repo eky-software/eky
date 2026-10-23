@@ -71,6 +71,29 @@ Smoke ei yksin todista kaikkien event-katalogien kattavuutta tai jokaisen
 ominaisuuden observer-kytkentää. Niille tarvitaan erilliset sopimus- ja
 composition-testit.
 
+## Arkiston ja päivityksen tapahtumaprojektiot
+
+G:n hyväksytty perhekohtainen rajaus on
+[M1-suunnitelmassa](../architecture/release-0.3.0-m1-preparation-plan.md#g-p1-hyväksytty-projektiorajaus).
+PDF-arkiston backendin queue-hylkäys ja desktopin jonotus, kopioinnin tulos
+sekä asetuksen enabled/disabled-tila käyttävät nykyisiä DTO-kenttiä.
+Detailed-lokin `attemptCount` validoidaan mutta sitä ei palauteta. Arkiston
+fingerprint tai kopioinnin vapaa sisäinen vaihe ei siirry projektioon.
+Arkistopolku, PDF-tiiviste ja lasku-/toimitusviitteet pysyvät poissa.
+
+Update-projektio erottaa historialliset C2:n operation-tapahtumat nykyisistä
+C3C:n nimetyistä vaiheista. Vaiheen, nimen, tason, outcomen ja pakollisten
+kenttien pitää vastata toisiaan. `appVersion` on kontekstia, ei kohdeversion
+tai päivityksen hyväksynnän todiste. `currentVersion`, `targetVersion`,
+`releaseChannel` tai journalin metadata eivät kuulu DTO:hon.
+
+Info-tapahtumat näkyvät Diagnosticsissa mutta eivät tukipaketissa.
+Warn-tason onnistuneet rollback-vaiheet säilyvät tukipaketissa onnistumisina.
+Main validoi G:n tapahtumakohtaiset kentät uudelleen; kelvollinenkin
+archive/update-info torjutaan tukipaketin vastaanotossa. Tuntematon HTTP-
+tapahtuma torjutaan edelleen strict-clientissä. Toteutuksen ajantasainen
+hyväksyntätila ja jäljellä oleva ketjunäyttö luetaan M1:n jatkamiskohdasta.
+
 ## K:n tarkistushylkäys ja lukuketju
 
 K:n hyväksytty lukuketju on nykyinen sopimus; päivätty integraationäyttö ja

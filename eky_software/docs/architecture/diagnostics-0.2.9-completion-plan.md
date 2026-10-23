@@ -14,6 +14,9 @@ Tavoitejulkaisu on `0.3.0`. Aiempi työnimi `0.2.9`, tämän
 tiedoston nimi ja `D029-*`-tunnukset säilyvät historiallisina viitteinä.
 Yhteinen rajaus ja tehtävälista ovat
 [0.3.0-julkaisusuunnitelmassa](release-0.3.0-plan.md).
+G:n hyväksytty toteutusrajaus, tapahtumakohtainen sisällytys/poissulku
+ja nykyinen hyväksyntänäyttö ovat [M1:n G-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
+Tämän dokumentin vanha tarkistustulos ei ole G:n toteutushyväksyntä.
 Manifestien versionosto tehdään erikseen `release-versioning-policy.md`:n
 mukaan; tämä suunnitelma ei muuta ajettavaa versiota.
 
@@ -56,11 +59,13 @@ restore/lifecycle-muutos tarvitsee nykyisen hardened Windows -portin.
 
 ### D029-02: Päivitystapahtumien katalogikatkos
 
-**Havainto:** desktopin writer hyväksyy `update.*`-tapahtumia, mutta
+**Alkuperäinen havainto:** desktopin writer hyväksyy `update.*`-tapahtumia, mutta
 `diagnosticOperationalEventProjector.ts`:n desktop-katalogi ja
 API-clientin `diagnosticsTypes.ts` eivät sisällä niitä.
 `update.packageInspectionFailed` hylätään sekä projektiossa että
 strict clientissä. Tukipaketin tapahtumalukija käyttää samaa projektoria.
+Paikallinen G-toteutus korjaa tätä ketjua; koko ketjun ja integraation tila
+luetaan yllä linkitetystä M1:stä.
 
 **Tavoite:** sovittu turvallinen päivitysprojektio koko lukuketjuun.
 Kaikkia writerin kenttiä ei siirretä automaattisesti eteenpäin.
