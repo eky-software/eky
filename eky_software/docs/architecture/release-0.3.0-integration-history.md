@@ -5,6 +5,192 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## I:n integraatiota edeltävä jatkamiskohta 23.10.2026
+
+Seuraava jatkamiskohta ja I:n valmistelusopimus siirrettiin M1:stä
+M4-valmistelun alkaessa muuttamatta alkuperäistä tekstiä. Sen avoimet
+portit ja tulevaa työtä kuvaavat muodot ovat päivättyä historiaa.
+[I:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644)
+sitoo hyväksynnän katselmoituun PR-headiin, uuden mainin omiin portteihin
+ja erilliseen omistajan päätökseen. Ensihylkäykset ja puuttuvat todisteet
+eivät muutu korjatuiksi; nykyinen lähtö ja M4-valmistelu ovat M1:n alussa.
+
+### I:n aiempi jatkamiskohta
+
+**Hyväksytty lähtö (23.10.2026):** H1-H5/R21/R22/R24/R25/R26 ja
+D029-03/04/05 on hyväksytty PR #315:n kautta mainiin
+`7e2dba840f4434eeb6049feda70852751343e134`.
+[H:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918)
+erottaa katselmoidun PR-headin `bc44ffc20552d81ae27e69f5376f8cfdef6bdf51`,
+uuden mainin omat portit ja omistajan rajatun loppupäätöksen. Mainin puu
+vastaa hyväksyttyä PR-headia. T/A/B/C/K/D/E/F/G/H säilyvät hyväksyttyinä;
+niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #315 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39919386542/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39919386450) läpäisi ensimmäisellä suoritusyrityksellä. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39936314545/attempts/2): 38 onnistunutta työtä ja samat kuusi valitsematonta diagnostiikkatyötä. [Mainin oma riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39936392065) läpäisi ensimmäisellä suoritusyrityksellä. Vaaditut työt ja askeleet, kaikki viisi fault-skenaariota ja molemmat toistot varmennettiin; ohituksia ei lasketa läpäisyiksi. |
+
+**Nykyinen työ:** I/R30/R31:n hyväksytyn rajauksen toteutus ja todennus
+[alla olevan rajauksen mukaan](#i--ci-politiikan-ja-ajantasaisten-sopimusten-valmistelu).
+Omistaja hyväksyi 23.10.2026 esitetyn rajatun jatkon Goalina: neljän
+nimetyn asiakasselaintestin CI-erottelu ja osoitettujen ohjevirheiden korjaus.
+Kohderegressiot, nykyinen 425 testin CI-sopimussarja, riippuvuusauditointi
+ja rajattu riippumaton katselmus ovat läpäisseet. [PR #316](https://github.com/eky-software/eky/pull/316)
+ei ole vielä hyväksytty: ensimmäinen kierros ja sen yksi rajattu
+kohdeuusinta säilyvät [integraatiocheckpointissa](https://github.com/eky-software/eky/pull/316#issuecomment-6366351666).
+Supervisor ja Electron läpäisivät kohdeuusinnan, mutta web-työ katkaistiin
+kokonaisaikarajaan. Erillinen laskun jälkiluvun yhteysvirhe ja ensimmäisten
+yritysten aineisto-/siivouspuutteet jäävät avoimiksi, eivät korjatuiksi.
+
+**Omistajan jatkopäätös 23.10.2026:** vain web-työn kokonaisraja nostetaan
+15 minuutista 20 minuuttiin. Talteen saatu yhteysvirhe tutkitaan rajatusti
+ennen yhtä uutta normaalia PR/CI-kierrosta. Testikohtaiset, runtime- ja
+siivousrajat, flaky-hylkäys ja muut hyväksyntäehdot säilyvät
+[testausohjeen rajauksen mukaan](../ai/testing-rules.md#web-cin-kokonaisbudjetti).
+Mahdollinen sovelluskoodin muutos vaatii erillisen päätöksen. Jäädytetyn
+uuden PR-headin ja uuden mainin omat portit vaaditaan edelleen.
+Rajatussa lähdekatselmuksessa ei osoitettu yhteyskatkon korjattavaa syytä.
+Nykyisen laskun elinkaaritestin yksi kohdeajo läpäisi ilman uusintaa ja
+varmensi siivouksen. Tämä ei selitä alkuperäistä yhteysvirhettä eikä muuta
+sitä korjatuksi; testiin tai sen kuljetuskerrokseen ei lisätty uusintaa.
+I:n aiemmin hyväksyttyä ohjeverkon huoltoa ei tehdä uudelleen.
+
+**Avoimet havainnot:** PR #315:n ensimmäisen kiintiö-/flush-testin
+aikakatkaisun tarkka syy säilyy avoimena. Mainin ensimmäisessä
+legacy-kokeessa prosessipuun poistumista ei saatu varmennettua
+siivousbudjetissa; alkuperäinen siivoustila jää epävarmaksi. Keräyksen
+rajaamassa aineistossa ei ollut kyseisen epäonnistuneen vaiheen tulosta.
+Mainin ensimmäinen workspace-fault-ajo odotti MSI:n sulkemispyynnön
+vastausta ennen kohteen keskeytysinjektiota. Tarkkaa estäjää tai syytä
+ei tunnistettu. Sen loppusiivous ja business-datan säilyminen todennettiin,
+mutta hylätyn skenaarion semanttista onnistumista ei tarkistettu.
+Yksi hyväksytty kohdeuusinta läpäisi samalla lähteellä ja samoilla valmiin
+workspace-paketin tavuilla. Se ei korjaa tai jälkikäteen hyväksy
+ensihylkäyksiä; luvat on käytetty ja keräyksen kattavuusrajat säilyvät.
+Myös G:n ja aiempien pakettien avoimet syyt sekä aineistoaukot säilyvät
+niiden omissa checkpointteissa. [H:n edeltävä jatkamiskohta ja suunnitelma](release-0.3.0-integration-history.md#hn-integraatiota-edeltävä-jatkamiskohta-23102026)
+ovat historiassa. I:n loppuosa sekä M4/M5 ovat vielä avoimia;
+H:n hyväksyntä ei ole koko `0.3.0`:n hyväksyntä.
+
+### I / CI-politiikan ja ajantasaisten sopimusten valmistelu
+
+**Tila 23.10.2026:** rajattu toteutus hyväksytty Goalina, todennus kesken. I omistaa vain
+CI-valinnan politiikan ja nykyisten sopimusten vastaavuuden tarkistuksen.
+Se ei omista testiskenaarioita, prosessienhallintaa tai liiketoimintalogiikkaa.
+Lähtöhavainnot R30/R31 on verrattu nykyiseen lähteeseen; historiallinen
+havainto ei sellaisenaan todista nykyistä puutetta.
+
+| Pala | Nykyinen havainto ja omistaja | Suunniteltu tulos |
+| --- | --- | --- |
+| I0: lähtö ja säilyvät sopimukset | Hyväksytty H-main sekä aiemman PR #306:n ohjehuollon ja myöhempien pakettien omat checkpointit. | Rajattu nykytila ja tiedosto-/testikartta; valmiita korjauksia tai ohjeiden reititystä ei rakenneta uudelleen. |
+| I1 / R31: sopimusten vastaavuus | [Integraatiomatriisi](module-integration-matrix.md), [E2E-strategia](e2e-testing-strategy.md) ja niiden lifecycle/recovery-lähteet. | Vertaa voimassa olevat väitteet todellisiin kutsujiin. Korjaa vain osoitetut nykytilavirheet; säilytä päivätyt foundation-vaiheet historiana. Kirjaa myös jo korjatun havainnon vastanäyttö. |
+| I2 / R30: rajattu valinta | Repositoryjuuren `.github/scripts/ciRiskPolicy.mjs` omistaa hyväksytyn neljän asiakasselaintestin täsmällisen listan. Muu `apps/e2e/` säilyttää aiemman luokituksen. | Kolme nopeaa perhettä vain nimettyjen testien PR-muutokseen; negatiiviset verrokit ja nykyiset hyväksyntäportit säilyvät. Ei kaikkien E2E-polkujen yleistä kevennystä. |
+| I3: todistus ja integraatio | Nykyiset riskiluokittimen, diff-valinnan, tuloskoonnin ja workflow-kytkentöjen sopimustestit. | Hyväksytyn muutoksen regressiot, riippumaton katselmus ja täsmärevision omat PR/main-portit. Valmistelun tai yhden luokittelukokeen läpäisy ei sulje I:tä. |
+
+**I1:n rajattu lähdekatselmus ja korjaus:** integraatiomatriisi kuvasi
+Update Coordinatorin Diagnostics-/support-projektion G/D029-02:n
+tulevaksi työksi, vaikka diagnostiikan omistava suunnitelma sulkee kohdan
+ja nykyinen `diagnosticOperationalEventProjector.ts` käyttää
+`diagnosticUpdateSpecs`-projektiota. Myös Company Settings -> Invoicing
+-salaisuusrajan D- ja Diagnosticsin H-integraatiomerkinnät olivat jäljessä
+hyväksytyistä porteista. Nämä status- ja omistajaviitteet on oikaistu;
+tuotantopolkuja ei tarvitse rakentaa uudelleen. Matriisin W2-W6-tekstit
+on jo nimetty historiallisiksi ja E2E-strategian kahden prosessin
+packaged-palautus vastaa nykyistä smoke-ajuria. Tämä otoskatselmus ei
+todista kaikkien ohjeiden sisällön ajantasaisuutta tai sulje vielä R31:tä.
+
+#### I:n säilytettävä CI-sopimus
+
+- Nykyinen controller on repositoryjuuren
+  `.github/workflows/ci-cadence-contracts.yml`. Se käyttää
+  `classifyCiChanges.mjs`:ää, `ciRiskPolicy.mjs`:ää,
+  `verifyCiRun.mjs`:ää ja `ciJobCoverage.mjs`:ää. Sama suunnitelma
+  välitetään nykyisille reusable-workfloweille; rinnakkaista valitsinta
+  tai hyväksyntäkoontia ei lisätä.
+- Nopea PR-valinta säilyttää `verify`-, `systemSecurity`- ja
+  `webCritical`-perheet. Se ei tarkoita testien ohittamista.
+  Desktopin jaetut fixturet, ympäristö, raportointi, buildit ja
+  elinkaarikoodi säilyttävät nykyiset compatibility-/full-ehdot.
+- Tuntematon polku, puuttuva/epätäydellinen vertailu, sekamuutoksen tiukin
+  riski sekä siirron vanha ja uusi polku käsitellään suljetusti.
+  `AGENTS.md`, riippuvuudet, SQL, tsconfig-/pakettimääritykset ja CI-politiikka
+  säilyttävät täyden valinnan.
+- Main-push, ajastettu ja manuaalinen controller-ajo säilyttävät kaikki
+  nykyiset 11 perhettä, viisi fault-skenaariota ja kaksi toistoa.
+  Vaaditut `V2 acceptance` ja `Audit dependencies` sekä mainin omat
+  portit eivät muutu. R30-ehdotus nopeuttaisi vain nimettyjen PR-muutosten
+  palautetta, ei mainin täyttä hyväksyntää.
+- T1/T2/T3:n fixturet, prosessiomistajuus, sandbox, testitapaukset,
+  aikarajat ja alkuperäisten virheiden salattu keräys säilyvät. Luku-,
+  valinta- ja tulostodisteet erotetaan; puuttuvaa näyttöä ei arvata.
+
+#### I-P1: R30:n hyväksytty pienin muutos
+
+**Omistajan hyväksymä rajaus 23.10.2026:** käytä täsmällistä
+tiedostoallowlistiä, älä koko `tests/web/`-hakemistoa. Listaan kuuluvat
+`customerAndCompanyJourneys.spec.ts`, `customerOverviewJourneys.spec.ts`,
+`customerRelationshipJourneys.spec.ts` ja `customerInvariantJourneys.spec.ts`
+nykyisessä `apps/e2e/tests/web/`-kansiossa. Neljä skenaariota tarkistettiin
+tukikutsuineen: nykyinen `isolatedWebTest`, loopback-API, browser/UI sekä
+synteettisen aineiston DB-/lokiväitteet. Lasku-/PDF-kutsut käyttävät nykyistä
+backend-API:a, eivät Electronia tai installer-/palautuspolkua. Salaisuusdata
+on testiruntimen synteettistä dataa, ei käyttöjärjestelmän secret-store.
+Yhteisen fixturen, datan, assertionien tai journey-tuen muutos säilyttää
+compatibility-valinnan. Pelkkä tiedoston nimi ei todista sen kaikkia
+tulevia muutoksia turvallisiksi.
+
+Hyväksytty lista muuttaa vain näiden tiedostojen yksinomaisen PR-muutoksen
+nykyiselle nopealle polulle. Uudet selaintiedostot, Electron-/packaged-/
+endurance-testit, fixturet, apukoodi, konfiguraatio ja raportointi säilyvät
+nykyisellä varovaisella polulla. Listaan otettavan testin vastuun myöhempi
+muutos edellyttää myös riskikartan tarkistusta. Valitsematta jäi aiemman
+konservatiivisen luokituksen säilyttäminen kaikille skenaarioille;
+R30:n P3-havainto ei itsessään tarkoittanut sovelluksen correctness-virhettä.
+
+**Paikallinen checkpoint:** viisi uutta väitettä hylkäsi aiemman luokittimen
+odotetusti (35 testiä: 30 läpäisi, viisi hylkäsi). Korjauksen jälkeen kaikki
+35 luokittelu-/diff-testiä läpäisivät. Ensihylkäys säilyy erillisenä;
+kyse on ennen/jälkeen-regressiosta, ei saman revision vihreäksi uusimisesta.
+Nykyinen koko `test:ci` läpäisi myös uuden selaintapauksen
+`classifyCiRisk -> requiredCiJobs -> evaluateCiRun`-ketjun kanssa: 425 testiä,
+ei hylkäyksiä tai ohituksia. Riippuvuusauditointi ja rajattu riippumaton
+katselmus läpäisivät; katselmoija ei ajanut testejä itse. Dokumenttien
+132 tiedoston 1 640 suhteellista linkkiä ja ankkuria tarkistettiin ilman
+rikkinäistä kohdetta. Siirretyn H-tekstin ja aiemman historian säilyminen
+varmennettiin erikseen. Nämä paikalliset tulokset eivät korvaa PR/main-portteja.
+
+#### I:n toteutus- ja todistusjärjestys
+
+1. Sulje I1/R31 lähdeviitteillä: nykyinen väite -> oikea tuotantokutsu ->
+   säilyvä vastuuohje -> testi/portti. M1:n hyväksyntätilan oikaisu ei yksin
+   todista koko ohjeverkon sisällön ajantasaisuutta.
+2. Ratkaise I-P1 ja lopulliset polut ennen `ciRiskPolicy.mjs`:n muutosta.
+   Käytä nykyisiä `ciRiskPolicy.test.mjs`-, `classifyCiChanges.test.mjs`-,
+   `ciAcceptanceResult.test.mjs`-, `ciRunAcceptance.test.mjs`- ja
+   `verifyCiRun.test.mjs`-testejä. Ei uutta testialustaa tai riippuvuutta.
+3. Todista nimetty selaintapaus ja sen verrokit: uusi tuntematon testipolku,
+   yhteinen fixture, Electron-/packaged-polku, riippuvuus-/SQL-/policy-muutos,
+   siirto molempiin suuntiin, sekoitus ja polkujärjestys,
+   epäonnistunut diff sekä main/ajastus/manuaaliajo.
+   Virheellinen suunnitelma, puuttuva työ/askel/toisto tai sallimaton
+   onnistuminen ei saa päästä koonnista läpi.
+4. Varmenna muuttuneiden ohjeiden reitit, ankkurit, siirretyn tekstin
+   säilyminen ja julkaisuyksityisyys. Nykyinen kohdekomento on `pnpm test:ci`;
+   uuden kokeen alussa nimetään seurannan omistaja ja säilytysketju.
+5. Rajattu riippumaton katselmus, jäädytetyn PR-headin normaalit portit ja
+   auditointi, hyväksytyn Goalin valtuudella normaali suojattu merge sekä
+   uuden mainin omat portit. CI-politiikkatiedoston muutos valitsee itsessään
+   täyden matriisin. Vanhoja MSI-/cleanup-havaintoja ei suljeta vihreydellä.
+
+I ei lisää runtime-, DB-, HTTP-, preload-, secret- tai backup-formaattimuutosta.
+Siksi erillistä uutta toiminnon backup-/restore-toteutusta ei tarvita
+pelkän dokumentti-/valintapolitiikan vuoksi; nykyiset paketti- ja
+palautusportit säilyvät. M4:n ominaisuudet, W7:n käyttäytymisvalinnat,
+M5:n koko sovelluksen katselmus/Deep Scan ja laaja refaktorointi jäävät
+erillisiksi. Rajattu takaperin tehtävä tarkistus valinnasta toteutukseen
+riittää I:lle; koko arkkitehtuuria ei suunnitella uudelleen.
+
 ## H:n integraatiota edeltävä jatkamiskohta 23.10.2026
 
 Seuraava jatkamiskohta sekä H:n suunnitelma ja toteutuscheckpointit

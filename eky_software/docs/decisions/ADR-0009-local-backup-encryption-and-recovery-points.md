@@ -122,6 +122,18 @@ Uusinta validoitua hyvää pistettä ei poisteta. Aktiivista pre-update- tai
 pre-restore-pistettä ei poisteta ennen kuin sitä seuraava käyttöönottovaihe on
 hyväksytty tai uudempi korvaava piste on validoitu.
 
+**Rajattu poikkeus, omistajan päätös 23.10.2026:** W7:n erikseen vahvistettu
+yrityksen lopullinen poisto kattaa kyseisen yrityksen omat palautuspisteet,
+myös viimeisen hyvän pisteen. Muiden yritysten pisteet ja käyttäjän
+tallentamat siirrettävät varmuuskopiot säilyvät. Palautuspistettä ei viedä
+automaattisesti varmuuskopioksi eikä säilytetä poistetun yrityksen arkistona.
+Käynnissä olevaa päivitystä tai palautusta ei ohiteta: omistajuus ja työn
+päättyminen varmennetaan ennen tiedostopoistoa. Tarkka keskeytys-, indeksi-
+ja avainkuorisiivous omistetaan
+[W7-suunnitelmassa](../architecture/local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate).
+Tämä on hyväksytty poistosuunnittelun raja, ei vielä tuotantototeutuksen
+hyväksyntä. Tavallisen rotaation ja palautuksen suojat eivät muutu.
+
 Tarkat säilytysmäärät ja levybudjetti määritetään toteutusvaiheessa
 kohdelaitteen kapasiteetin perusteella. Retention ei saa perustua pelkkään
 tiedostonimeen tai luontiaikaan, vaan artifactin validointi- ja

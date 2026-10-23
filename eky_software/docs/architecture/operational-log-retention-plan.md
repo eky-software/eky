@@ -62,6 +62,15 @@ warning/error-eventissä 24 kuukauden retentionilla. Etä-IP:tä ei kirjoiteta
 
 ## Business-auditin automaattinen retention
 
+**Rajattu poikkeus, omistajan päätös 23.10.2026:** erikseen vahvistettu
+koko yrityksen lopullinen poisto kattaa myös sen oman muutos- ja
+tapahtumahistorian sekä business-auditin ilman erillistä historiakopiota.
+Tämä on [W7:n poistosopimus](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate),
+ei tämän luvun automaattisen retentionin laajennus. Muiden yritysten
+historiaan ei kosketa. Tekniset virhelokit säilyvät nykyisten luokkien ja
+kenttärajausten mukaan; poistettavaa business-historiaa ei kopioida niihin.
+Tarkka tuotantokytkentä ja keskeytysrecovery ovat vielä suunniteltavia.
+
 Moduulien business audit -tauluja ei käsitellä teknisten JSONL-lokien
 tiedostomaintenancella. Customers, Company Settings ja Invoicing tarjoavat
 omat rajatut retention-porttinsa, ja backendin startup-maintenance koordinoi

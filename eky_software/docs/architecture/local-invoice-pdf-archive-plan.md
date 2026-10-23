@@ -210,6 +210,13 @@ varsinaisen kirjoituskohteen aina muodossa
 - ulkoinen arkistojuuri, config, journal ja kopiot eivät kuulu portable
   backupiin eivätkä ole auktoritatiivisia laskuartifacteja.
 
+W7:n yrityspoiston suunnittelussa omistaja hyväksyi 23.10.2026 ulkoisten
+PDF-kopioiden säilyttämisen, myös työtilakohtaisen alikansion sisällön.
+Sisäisen asetuksen ja retry-journalin poisto edellyttää arkistointityön
+todettua päättymistä. Tarkka poisto- ja testisopimus on
+[työtilasuunnitelman hyväksytyssä poistoperiaatteessa](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate);
+tämä ei vielä ole poiston tuotantokytkentä.
+
 Eristyksen hyväksyntä vaatii `WORKSPACE-ARCHIVE-001`-skenaarion ennen
 multi-workspace-releasea. W1:n alkuperäinen inertti registry-vaihe on
 historiaa; nykyisen hyväksynnän reitti on
