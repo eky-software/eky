@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { rename, unlink, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { createDiagnosticsApi } from '../../../../packages/api-client/src/diagnostics/diagnosticsClient.js';
 import { readDiagnosticsResponse } from '../../../../packages/api-client/src/diagnostics/diagnosticsResponse.js';
@@ -8,10 +10,12 @@ import { createBackendOperationalEvent } from '../../../backend/src/observabilit
 import { createBackendOperationalLogger } from '../../../backend/src/observability/infrastructure/createBackendOperationalLogger.js';
 import { createDesktopOperationalEvent } from '../../../desktop/src/observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalEvent } from '../../../desktop/src/observability/desktopOperationalEvent.js';
+import { IncidentIndexDesktopLogFailureSink } from '../../../desktop/src/observability/infrastructure/incidentIndexDesktopLogFailureSink.js';
 import { DesktopIncidentIndexingOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopIncidentIndex.js';
 import { JsonLineDesktopOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopOperationalLogger.js';
 import { createSupportBundleArchive } from '../../../desktop/src/supportBundle/supportBundleArchive.js';
 import { readSupportBundleBackendData } from '../../../desktop/src/supportBundle/supportBundleBackendData.js';
+import { inspectSupportBundle } from '../../../desktop/scripts/inspect-support-bundle.mjs';
 import { expectSafeHttpError } from '../../src/assertions/expectSafeHttpError.js';
 import { expect, test } from '../../src/fixtures/isolatedBackendTest.js';
 
@@ -77,6 +81,23 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
     taskQueued, copySuccess, configurationChanged, updateSuccess, legacyFailure];
   for (const event of written) logger.write(event);
 
+  const desktopRoot = join(e2eBackend.paths.logsRoot, 'desktop');
+  const heldDesktopRoot = join(e2eBackend.paths.logsRoot, 'h5-preserved-desktop');
+  await rename(desktopRoot, heldDesktopRoot);
+  await writeFile(desktopRoot, 'synthetic H5 writer obstruction', { flag: 'wx' });
+  const failureSink = new IncidentIndexDesktopLogFailureSink({
+    logsRoot: e2eBackend.paths.logsRoot, operationalIdentity: identity,
+  });
+  const blockedLogger = new JsonLineDesktopOperationalLogger({
+    logsRoot: e2eBackend.paths.logsRoot, failureSink,
+  });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    blockedLogger.write(createDesktopOperationalEvent({ eventName: 'desktop.started' }, identity));
+  }
+  expect(failureSink.failureObserved).toBe(true);
+  await unlink(desktopRoot);
+  await rename(heldDesktopRoot, desktopRoot);
+
   const expectedSupportEvents = [
     projection(archiveFailure, { durationMs: 7, retryable: true, sideEffectState: 'none' }),
     projection(updateFailure, { correlationId: updateCorrelationId, stage: 'runtimeShutdown',
@@ -101,7 +122,10 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
       status: response.status(), headers: { 'content-type': 'application/json' },
     });
   }, e2eBackend.backend.backendOrigin);
-  const events = await api.listDiagnosticEvents({ limit: 200 });
+  const { diagnosticEvents: events, readState } = await api.listDiagnosticEvents({ limit: 200 });
+  expect(readState).toEqual({ status: 'complete', reasons: [] });
+  expect((await api.getDiagnosticSummary()).operationalLogReadState)
+    .toEqual({ status: 'complete', reasons: [] });
   const selectedEvents = events.filter(event => names.has(event.eventName));
   expect(selectedEvents).toHaveLength(written.length + 1);
   expect(selectedEvents).toEqual(expect.arrayContaining([...expectedSupportEvents, ...expectedInfoEvents]));
@@ -130,6 +154,15 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   const incidents = support.incidentSummaries.filter(event => names.has(event.eventName));
   expect(incidents).toHaveLength(3);
   expect(incidents).not.toContainEqual(expect.objectContaining({ eventName: queueFailure.eventName }));
+  const logFailures = support.incidentSummaries.filter(event => event.eventName === 'operationalLog.writeFailed');
+  expect(logFailures).toHaveLength(1);
+  expect(logFailures[0]).toMatchObject({
+    appVersion: identity.appVersion, buildRevision: identity.buildRevision,
+    count: 1, errorCode: 'LOG_WRITE_FAILED', fingerprint: 'LOG_WRITE_FAILED:desktop-info',
+    outcome: 'failure',
+  });
+  expect(logFailures[0]?.firstOccurredAt).toBe(logFailures[0]?.lastOccurredAt);
+  expect(events.some(event => event.eventName === 'operationalLog.writeFailed')).toBe(false);
   for (const event of [updateFailure, lineageFailure, legacyFailure]) {
     expect(incidents).toContainEqual({
       appVersion: identity.appVersion, buildRevision: identity.buildRevision, count: 1,
@@ -145,10 +178,11 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   const document = JSON.parse(gunzipSync(archive.compressed).toString('utf8')) as {
     diagnosticEvents: unknown[];
     incidentSummaries: unknown[];
+    runtimeSummary: Record<string, unknown>;
     manifest: {
       supportBundleFormatVersion: number;
       truncatedSections: string[];
-      sectionChecksums: { diagnosticEvents: string; incidentSummaries: string };
+      sectionChecksums: { diagnosticEvents: string; incidentSummaries: string; runtimeSummary: string };
     };
   };
   expect(archive.fileName).toMatch(/\.json\.gz$/);
@@ -157,10 +191,17 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   expect(document.diagnosticEvents).toEqual(support.diagnosticEvents);
   expect(document.diagnosticEvents).toContainEqual(expectedQueueFailure);
   expect(document.incidentSummaries).toEqual(support.incidentSummaries);
-  for (const section of ['diagnosticEvents', 'incidentSummaries'] as const) {
+  expect(document.runtimeSummary).not.toHaveProperty('operationalLogReadState');
+  expect(support.runtimeSummary).not.toHaveProperty('operationalLogReadState');
+  for (const section of ['diagnosticEvents', 'incidentSummaries', 'runtimeSummary'] as const) {
     expect(document.manifest.sectionChecksums[section]).toBe(
       createHash('sha256').update(JSON.stringify(document[section]), 'utf8').digest('hex'),
     );
+  }
+  for (const name of [archive.fileName, 'synthetic-legacy.ekysupport']) {
+    const path = join(e2eBackend.paths.supportBundlesRoot, name);
+    await writeFile(path, archive.compressed, { flag: 'wx', mode: 0o600 });
+    expect(inspectSupportBundle(path).summary.formatVersion).toBe(2);
   }
   for (const event of expectedInfoEvents) {
     expect(event).toMatchObject({ level: 'info', outcome: 'success', errorCode: null });
@@ -174,13 +215,14 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   for (const event of supportEvents.filter(event => event.eventName !== legacyFailure.eventName)) {
     for (const change of [{ recoveryPointKind: 'preUpdate' }, { durationMs: 'invalid' }]) {
       const invalid = { ...event, ...change };
-      expect(() => readDiagnosticsResponse({ diagnosticEvents: [invalid] })).toThrow();
+      expect(() => readDiagnosticsResponse({ diagnosticEvents: [invalid], readState })).toThrow();
       expect(() => readSupportBundleBackendData({ ...support, diagnosticEvents: [invalid] }))
         .toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
     }
   }
   expect(() => readDiagnosticsResponse({
     diagnosticEvents: [{ ...expectedSupportEvents[0], eventName: 'invoicePdfArchive.unknown' }],
+    readState,
   })).toThrow();
 
   const published = JSON.stringify({ events, document });
@@ -208,7 +250,7 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
       e2eBackend.backend.sessionSecret,
     ]);
   }
-  expect(await api.listDiagnosticEvents({ limit: 200 })).toEqual(expect.arrayContaining(expectedSupportEvents));
+  expect((await api.listDiagnosticEvents({ limit: 200 })).diagnosticEvents).toEqual(expect.arrayContaining(expectedSupportEvents));
   expect((await e2eBackend.api.get('/health')).status()).toBe(200);
 });
 

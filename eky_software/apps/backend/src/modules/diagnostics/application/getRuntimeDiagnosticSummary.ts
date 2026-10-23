@@ -7,6 +7,9 @@ import type {
 } from '../domain/runtimeDiagnosticSummary.js';
 import type { OperationalLogDiagnosticSummaryReader } from '../ports/operationalLogDiagnosticSummaryReader.js';
 import type { SystemDiagnosticSummaryReader } from '../ports/systemDiagnosticSummaryReader.js';
+import { notConfiguredDiagnosticReadState, unavailableDiagnosticReadState } from '../domain/diagnosticReadState.js';
+import type { DiagnosticReadFailureObserver } from '../ports/diagnosticReadFailureObserver.js';
+import { observeDiagnosticReadFailure } from './observeDiagnosticReadFailure.js';
 
 export interface GetRuntimeDiagnosticSummaryInput {
   actorContext: ActorContext;
@@ -25,6 +28,7 @@ export interface RuntimeDiagnosticIdentity {
 }
 
 interface GetRuntimeDiagnosticSummaryDependencies {
+  failureObserver?: DiagnosticReadFailureObserver;
   identity: Readonly<RuntimeDiagnosticIdentity>;
   operationalLogSummaryReader: OperationalLogDiagnosticSummaryReader;
   systemDiagnosticSummaryReader?: SystemDiagnosticSummaryReader;
@@ -44,7 +48,7 @@ export async function getRuntimeDiagnosticSummary(
 
   const [database, logs] = await Promise.all([
     readDatabaseSummary(dependencies.systemDiagnosticSummaryReader),
-    readOperationalLogSummary(dependencies.operationalLogSummaryReader),
+    readOperationalLogSummary(dependencies.operationalLogSummaryReader, dependencies.failureObserver),
   ]);
 
   return {
@@ -56,10 +60,12 @@ export async function getRuntimeDiagnosticSummary(
 
 async function readOperationalLogSummary(
   reader: OperationalLogDiagnosticSummaryReader,
+  failureObserver?: DiagnosticReadFailureObserver,
 ): Promise<OperationalLogDiagnosticSummary> {
   try {
     return await reader.readOperationalLogSummary();
-  } catch {
+  } catch (error) {
+    observeDiagnosticReadFailure(failureObserver, error);
     return unavailableOperationalLogSummary;
   }
 }
@@ -94,6 +100,7 @@ async function readDatabaseSummary(
 
 export const unavailableOperationalLogSummary: OperationalLogDiagnosticSummary =
   Object.freeze({
+    operationalLogReadState: unavailableDiagnosticReadState,
     latestErrorAt: null,
     latestSecurityEventAt: null,
     latestWarningAt: null,
@@ -102,3 +109,7 @@ export const unavailableOperationalLogSummary: OperationalLogDiagnosticSummary =
     operationalLogsAvailable: false,
     operationalLogTotalBytes: 0,
   });
+
+export const notConfiguredOperationalLogSummary: OperationalLogDiagnosticSummary = Object.freeze({
+  ...unavailableOperationalLogSummary, operationalLogReadState: notConfiguredDiagnosticReadState,
+});

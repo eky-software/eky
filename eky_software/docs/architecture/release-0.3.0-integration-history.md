@@ -5,6 +5,108 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## G:n integraatiota edeltävä jatkamiskohta 23.10.2026
+
+Seuraava jatkamiskohta ja G:n toteutuscheckpoint siirrettiin M1:stä H:n
+suunnittelun alkaessa. Teksti säilyi linkin kohteen sovitusta lukuun
+ottamatta; se kuvaa G:n hyväksyntää edeltävää tilannetta, ei uutta työjonoa.
+PR #314:n [loppuhyväksyntä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094)
+erottaa lopulliset PR/main-portit alkuperäisistä hylkäyksistä. Nykyinen
+lähtö ja seuraava työ ovat M1:n alussa.
+
+### Aiempi jatkamiskohta
+
+**Hyväksytty lähtö (22.10.2026):** F/R15 on hyväksytty PR #313:n kautta
+mainiin `96b62944087bec64970e6233e57a730ab31ec1ea`.
+[F:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977)
+erottaa korjatun PR-headin, yhden hyväksytyn valmistelun kohdeuusinnan ja
+uuden mainin omat portit. Mainin puu vastaa hyväksyttyä PR-headia
+`04f7a0f6d5ed56cca9cc95ba6e7f788c723f6d26`.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #313 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39739184364/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39739184332) läpäisi. |
+| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39761715390): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39761715368) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
+
+**Nykyinen työ:** G/R20/R23:n rajattu toteutus
+[alla olevan sopimuksen mukaan](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
+Omistaja hyväksyi G-P1/G-P2:n rajauksen, toteutuksen ja testit 22.10.2026.
+G1-G3:n paikalliset projektiot ja kohdetestit ovat työpuussa. G4:n
+writer -> HTTP -> strict-client -> tuotettu tukipaketti -system-testi
+läpäisi. Packaged-smoken G-fixture, UI:n onnistumistilan tarkistus ja
+kaikkien G-rivien semanttinen tarkistus ovat toteutettuina; niiden
+kohderegressiot ja tyypitys läpäisivät. Alkuperäisen synteettisen
+smoke-virheen säilyminen nykyisessä salaus/purku-ketjussa on todennettu.
+Normaali desktop-sarja ja vaikutusalueen neljän paketin tyypitys läpäisivät.
+Puhtaan revision `ab53bf706db75351eb21cdc22a74487cfc94fd50` Windows-paketin
+käyttöliittymä-, tukipaketti- ja backup -> inspect -> restore -> restart ->
+compare -todennus läpäisi. Rajattu riippumaton loppukatselmus ei löytänyt
+korjattavaa ja riippuvuusauditointi läpäisi. Seuraava portti on jäädytetyn
+PR-headin normaalit tarkistukset ja niiden jälkeen uuden mainin omat portit.
+Tämä paikallinen näyttö ei vielä ole G:n integraatiohyväksyntä.
+Sitä edeltävä rajattu palautustestin aikabudjettimuutos on hyväksytty
+ja paikallisesti todennettu alla kuvatulla rajauksella.
+Backendin ja API-clientin laajat sarjat läpäisivät. Desktopin
+muuttumattomassa `desktopRestoreStartup.test.ts`:ssä yksi aikakatkaisu
+johti seuraavien tapausten `PREVIOUS_WORK_UNSETTLED`-suojaestoihin.
+Yksi sallittu kohdeuusinta aikakatkaisi saman palautusketjun toisen
+tapauksen. Ensivirheet, osittaiseksi rajautunut raportointi ja epävarma
+siivoustila säilytetään; niitä ei merkitä korjatuiksi tai läpäisyiksi.
+Juurisyytä tai yhteyttä G-muutokseen ei ole vielä todistettu.
+Omistajan hyväksymä kolmen tapauksen rajattu aikarajakoe läpäisi.
+Sen jälkeen omistaja hyväksyi pysyvän, vain näihin kolmeen testiin
+rajatun kymmenen sekunnin testirajan sekä yhden normaalin desktop-sarjan.
+Ennen migraatiota tehtävän tapauksen erillinen valmisteluraja säilyy
+viidessä sekunnissa. Tarkka rajaus on
+[testausohjeessa](../ai/testing-rules.md#palautustestin-erillinen-valmistelu).
+Muutos on paikallisessa työpuussa. Yksi normaali desktop-sarja läpäisi
+molemmat osansa: Vitest 282 tiedostoa ja 4 378 testiä, Node-testit 412 testiä.
+Erikseen ohitetut 5 ja 12 tapausta eivät ole läpäisyjä.
+Sarjan jälkeen tyypitys osoitti parametrisoidun testin aikarajakutsussa
+tyyppivirheen. Kutsu korjattiin nykyisen rajapinnan asetusobjektimuotoon;
+lopullisen muodon desktop-tyypitys ja kaikki kolme kohdetapausta läpäisivät.
+G4:n toteutuksen jälkeen normaali desktop-sarja läpäisi myös tällä
+kutsumuodolla: 283 tiedostoa ja 4 402 Vitest-testiä sekä 412 Node-testiä;
+erikseen ohitetut 5 ja 12 tapausta eivät ole läpäisyjä.
+Tämä näyttö ei korvaa aiempia hylkäyksiä eikä todista vanhan viiveen syytä
+korjatuksi. Sovelluskoodi ja CI:n kokonaisrajat eivät muuttuneet tässä korjauksessa.
+G:lle ei vielä ole toteutus- tai
+PR/main-hyväksyntää. T/A/B/C/K/D/E/F säilyvät hyväksyttyinä;
+H/I:n loppuosa ja M4/M5 odottavat.
+
+**Avoimet havainnot:** PR #312:n ensimmäisen MSI-ikkunan luetteloluennan
+viiveen syy ja sitä edeltävän mainin supervisor-havainnon puute jäävät
+avoimiksi. Alkuperäinen virheaineisto säilytetään; hyväksytty uusinta tai
+Vitest-päivitys ei todista niiden korjausta. Myös aikaisemmat MSI-odotukset,
+sulkuviiveet, puuttuvat aineistot ja tuntemattomat siivoustilat säilyvät
+historiallisissa rajauksissaan. PR #313:n ensimmäisen valmisteluhylkäyksen
+alkuperäinen npm-alisyy jää myös tuntemattomaksi; onnistunut kohdeuusinta
+ei todista sen korjausta. E:n hälytystilan loppulukeminen on päivätty
+historiatieto, ei G-revision auditointitodiste. Edeltävä jatkamiskohta on
+[integraatiohistoriassa](release-0.3.0-integration-history.md#fn-valmistelua-edeltävä-jatkamiskohta-22102026).
+
+### Aiempi G-toteutuscheckpoint
+
+**Toteutuscheckpoint (22.10.2026):** G1:n archive-projektio on paikallisessa
+työpuussa. Backendin, strict-clientin ja mainin kohderegressiot sekä kolmen
+paketin tyyppitarkistus läpäisivät. Oikea laskutoimitus -> queue-failure-
+writer -> tiedostolukija -> Diagnostics-/tukipaketti-HTTP todennettiin myös
+loggerin virheessä; toimitustulos säilyi. Rajattu riippumaton G1-katselmus
+ei löytänyt korjattavaa. Myös G2:n update-projektio, kenttämatriisit,
+tyypitys ja rajattu katselmus läpäisivät paikallisesti. G3:n haaravalinta,
+kolmen vastaanottorajan kenttämatriisit, management-/K-regressiot ja tyypitys
+läpäisivät; myös rajattu G3-katselmus päättyi ilman korjattavaa. Oikean replacement-coordinatorin
+lineage-hylkäys tuottaa yhden tapahtuman lokitiedostoon ennen leasea,
+sulkua tai profiilimuutosta. G4:n system-lukuketju, tuotetun artifactin
+tiukka semantiikka ja alkuperäisen synteettisen smoke-virheen salaus/purku
+läpäisivät kohdetodennuksen 23.10.2026. Rajattu katselmus havaitsi yhden
+info-poissulun testidatan puutteen; muuten kelvollinen info-rivi korvasi sen
+ja regressio läpäisi. Myös paketoidun käyttöliittymän ja palautuksen
+todennus sekä rajattu loppukatselmus läpäisivät yllä nimetyllä revisiolla.
+Nämä eivät vielä ole G:n PR/main-hyväksyntä.
+Edeltävien palautustestien aikakatkaisujen syyt ja epävarma siivoustila
+säilyvät avoimina; hyväksytyn rajatun testibudjetin näyttö on yllä.
+
 ## F:n valmistelua edeltävä jatkamiskohta 22.10.2026
 
 Seuraava E:n hyväksyntään perustuva F-valmistelun checkpoint siirrettiin

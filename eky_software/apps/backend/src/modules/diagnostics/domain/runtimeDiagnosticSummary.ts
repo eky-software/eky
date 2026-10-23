@@ -1,8 +1,10 @@
 import type { DatabaseDiagnosticSummary } from './supportBundleDiagnosticData.js';
+import type { DiagnosticReadState } from './diagnosticReadState.js';
 
 export type DatabaseDiagnosticHealth = 'failed' | 'ok' | 'unavailable';
 
 export interface OperationalLogDiagnosticSummary {
+  operationalLogReadState: DiagnosticReadState;
   latestErrorAt: string | null;
   latestSecurityEventAt: string | null;
   latestWarningAt: string | null;

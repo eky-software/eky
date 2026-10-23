@@ -51,7 +51,9 @@ describe('profile recovery diagnostic response contract', () => {
       ...(eventName.endsWith('Started') || eventName.endsWith('.started') ? {} : { durationMs: 1 }),
       ...(outcome === 'failure' ? { retryable: false, sideEffectState: 'unknown' } : {}),
     };
-    const read = (value: unknown) => readDiagnosticsResponse({ diagnosticEvents: [value] });
+    const read = (value: unknown) => readDiagnosticsResponse({
+      diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
+    }).diagnosticEvents;
     expect(read(event)).toEqual([event]);
     const withIdentity = {
       ...event, appVersion: '0.2.81', buildRevision: 'abcdef1234',

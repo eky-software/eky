@@ -31,6 +31,7 @@ describe('readNewestJsonlLines', () => {
       ),
       lines: ['{"id":"second"}', '{"id":"first"}'],
       sourceTruncated: false,
+      issues: [],
     });
   });
 
@@ -46,6 +47,7 @@ describe('readNewestJsonlLines', () => {
       bytesRead: maximumBytes,
       lines: ['{"id":"newest"}'],
       sourceTruncated: true,
+      issues: ['limitReached'],
     });
   });
 
@@ -56,6 +58,7 @@ describe('readNewestJsonlLines', () => {
       bytesRead: Buffer.byteLength('{"id":"unfinished"}'),
       lines: ['{"id":"unfinished"}'],
       sourceTruncated: true,
+      issues: ['invalidEntries'],
     });
   });
 
@@ -70,11 +73,13 @@ describe('readNewestJsonlLines', () => {
       bytesRead: 0,
       lines: [],
       sourceTruncated: false,
+      issues: [],
     });
     expect(readNewestJsonlLines(directoryPath, 1_024)).toEqual({
       bytesRead: 0,
       lines: [],
       sourceTruncated: true,
+      issues: ['sourceUnavailable'],
     });
     expect(
       readNewestJsonlLines(join(root, 'missing.jsonl'), 1_024),
@@ -82,6 +87,7 @@ describe('readNewestJsonlLines', () => {
       bytesRead: 0,
       lines: [],
       sourceTruncated: true,
+      issues: ['sourceUnavailable'],
     });
   });
 });

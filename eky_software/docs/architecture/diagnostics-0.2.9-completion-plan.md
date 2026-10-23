@@ -14,9 +14,13 @@ Tavoitejulkaisu on `0.3.0`. Aiempi työnimi `0.2.9`, tämän
 tiedoston nimi ja `D029-*`-tunnukset säilyvät historiallisina viitteinä.
 Yhteinen rajaus ja tehtävälista ovat
 [0.3.0-julkaisusuunnitelmassa](release-0.3.0-plan.md).
-G:n hyväksytty toteutusrajaus, tapahtumakohtainen sisällytys/poissulku
-ja nykyinen hyväksyntänäyttö ovat [M1:n G-suunnitelmassa](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
-Tämän dokumentin vanha tarkistustulos ei ole G:n toteutushyväksyntä.
+G:n toteutus ja erilliset PR/main-portit on hyväksytty 23.10.2026
+[PR #314:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094).
+Tapahtumakohtainen sisällytys/poissulku säilyy [M1:n G-sopimuksessa](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
+Seuraava työ on [H:n suunnittelu](release-0.3.0-m1-preparation-plan.md#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma),
+ei G:n uusiminen. H:n lukutilan ja ei-estävän häiriöpalautteen suunta on
+hyväksytty; täsmällinen kytkentä ja sen todennus ovat kesken.
+Tämän dokumentin vanha tarkistustulos ei itsessään ole toteutushyväksyntä.
 Manifestien versionosto tehdään erikseen `release-versioning-policy.md`:n
 mukaan; tämä suunnitelma ei muuta ajettavaa versiota.
 
@@ -41,9 +45,10 @@ observer puuttui ja replacement-virhe yleistyi ennen havainnointia.
 Nykyinen composition välittää loggerin ja runtime-identiteetin observerille;
 tuonnin ja korvauksen turvallinen ensisyy sekä erillinen cleanup-tapahtuma
 on määritelty [katalogissa](r0-observability-event-catalog.md#tarkistuksen-ensisyy-ja-lukijaketju).
-G rajaa tästä jäljelle jäävän väärän lineagen palautteen sekä
-create/import/replace/switch/rename-kattavuuden. Kytkennän olemassaolo ei
-yksin todista kaikkien näiden käyttötapausten hyväksyntää eikä sulje D029-01:tä.
+G on hyväksynyt tästä jäljelle jääneen väärän lineagen palautteen sekä
+create/import/replace/switch/rename-kattavuuden nimetyssä rajauksessaan.
+D029-01 on suljettu yllä linkitetyllä G:n ketju- ja integraationäytöllä,
+ei pelkän observer-kytkennän olemassaolon perusteella.
 
 **Tavoite:** nykyisen observerin rajattu syy-/vaiheluokitus. Käyttäjäviesti
 voi pysyä yleisenä, mutta tekninen tapahtuma erottaa väärän yrityksen
@@ -64,8 +69,9 @@ restore/lifecycle-muutos tarvitsee nykyisen hardened Windows -portin.
 API-clientin `diagnosticsTypes.ts` eivät sisällä niitä.
 `update.packageInspectionFailed` hylätään sekä projektiossa että
 strict clientissä. Tukipaketin tapahtumalukija käyttää samaa projektoria.
-Paikallinen G-toteutus korjaa tätä ketjua; koko ketjun ja integraation tila
-luetaan yllä linkitetystä M1:stä.
+G:n korjaus on hyväksytty sovituilla C2/C3C-projektioilla ja poissuluilla;
+D029-02 on suljettu yllä linkitetyllä ketju- ja integraationäytöllä.
+Alla säilyy korjauksen alkuperäinen havainto ja hyväksyntäsopimus.
 
 **Tavoite:** sovittu turvallinen päivitysprojektio koko lukuketjuun.
 Kaikkia writerin kenttiä ei siirretä automaattisesti eteenpäin.
@@ -128,7 +134,7 @@ rajojen katkaisemalle aineistolle. UI ei esitä puuttuvaa tietoa
 
 ### D029-05: Desktopin lokikirjoituksen häiriö näkyväksi
 
-**Havainto:** `JsonLineDesktopOperationalLogger` tukee failure sinkiä,
+**Lähtöhavainto:** `JsonLineDesktopOperationalLogger` tukee failure sinkiä,
 mutta `desktopComposition.ts` ei anna sitä. Oletus on no-op. Ulompi
 `DesktopIncidentIndexingOperationalLogger` kirjaa alkuperäisiä error- ja
 security-tapahtumia, ei sisemmän writerin virhettä. Synteettinen
@@ -143,8 +149,12 @@ rikkinäiseen lokiin.
 **Hyväksyntä:** production composition -testi; kirjoitusesto ja täysi
 budjetti eivät muuta varsinaisen toiminnon tulosta. Myös varailmoituksen
 epäonnistuminen käsitellään rajatusti. Saman levyn incident-tiedostoa ei
-väitetä varmaksi fallbackiksi levyvirheessä; näkyvän häiriötilan sopimus
-päätetään erikseen. Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
+väitetä varmaksi fallbackiksi levyvirheessä. Omistaja hyväksyi H-P2:ssa
+saman käynnistyksen ei-estävän sovellusilmoituksen. Tarkka
+[toimitussopimus](observability-and-audit-plan.md#desktopin-lokikirjoituksen-häiriöpalaute)
+ja [M1:n hyväksyntätila](release-0.3.0-m1-preparation-plan.md#h-p2-hyväksytty-writer-häiriön-palaute)
+erottavat paikallisen toteutuksen integraatiohyväksynnästä.
+Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
 
 ## Käytettävyysparannukset
 
@@ -208,12 +218,13 @@ kehottaa toistamaan esimerkiksi lähetystä tai palautusta sokkona.
 
 ## Tarkistustila ja toteutusjärjestys
 
-Nykyisen lähteen kohdetestit: 161 testiä / 25 tiedostoa läpäisi.
-Erilliset seitsemän synteettistä tutkimustestiä toistivat nykyiset puutteet;
+Alkuperäisen 22.9.2026 katselmuksen kohdetestit: 161 testiä / 25 tiedostoa läpäisi.
+Erilliset seitsemän synteettistä tutkimustestiä toistivat silloiset puutteet;
 niiden läpäisy ei ole korjausten hyväksyntä. Paketoitua UI-/restore-/update-
 hyväksyntää tai uutta julkaisua ei tehty tässä dokumentointivaiheessa.
 
-1. Rajaa D029-01 ja D029-02 tapahtumasopimuksineen ja kytkentätesteineen.
+1. D029-01/02:n tapahtumasopimukset ja ketjut on hyväksytty G:ssä.
+   Niitä ei toteuteta uudelleen; nykyinen jatkamiskohta on M1:n H-suunnitelma.
 2. Korjaa D029-03 rajatut lukijat ja lisää oikeaa aikajärjestystä vaativat
    pysyvät regressiotestit molempiin read modeleihin.
 3. Päätä D029-04 ja D029-05 häiriö-/kattavuussopimukset, toteuta ja testaa

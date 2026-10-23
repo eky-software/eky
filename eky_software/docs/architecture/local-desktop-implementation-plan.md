@@ -211,6 +211,15 @@ Vastuut:
 - backendin moduulit pysyvät `apps/backend`-sovelluksessa
 - API-clientin julkinen sopimus säilyy Electronista riippumattomana
 
+Lokikirjoituksen häiriöpalaute käyttää nykyisen mainin failure sinkiä ja
+kahta rajattua preload-metodia, `getOperationalLogFailureStatus` ja
+`onOperationalLogFailure`. Ne eivät välitä lokirivejä tai käyttöjärjestelmän
+polkuja. Vain pääikkunan pääframe saa alkutilan; payloaditon muutosilmoitus
+ja kuuntelija suljetaan nykyisessä capability-ryhmässä. Sovelluksen yhteinen
+React-ilmoitus ei estä liiketoimintaa. Tarkka sopimus on
+[observability-ohjeessa](observability-and-audit-plan.md#desktopin-lokikirjoituksen-häiriöpalaute),
+toteutuksen hyväksyntätila [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
 W4:n multi-workspace-runtime jakaa pysyvän desktop-tilan kahteen omistukseen:
 
 - Electron-installationin yhteinen tekninen tila säilyy

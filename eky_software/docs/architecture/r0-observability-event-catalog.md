@@ -174,6 +174,15 @@ olemassa olevaan incident-indeksiin per event- ja stream-yhdistelmä.
 Yhteenveto ei sisällä company-, actor- tai entity-tunnisteita eikä
 liiketoimintasisältöä.
 
+Desktopin failure sink käyttää samaa minimoitua incident-rakennetta,
+ei detailed-writerin rekursiivista kutsua. Enintään kuusi syy/virta-
+yhdistelmää säilyy yhden main-prosessin muistissa. Pääikkunalle toimitetaan
+vain tämän käynnistyksen häiriöhavainto, ei incidentin sisältöä. Saman levyn
+varakirjoitus tai ilmoituksen toimitus voi epäonnistua; kumpikaan ei muuta
+alkuperäisen toiminnon tulosta. Tarkka
+[häiriöpalautteen sopimus](observability-and-audit-plan.md#desktopin-lokikirjoituksen-häiriöpalaute)
+on erillinen permission-suojatusta Diagnostics-lukuprojektiosta.
+
 ## Desktop operational ja security
 
 - `desktop.starting`

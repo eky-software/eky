@@ -4,6 +4,7 @@ import {
   getDesktopInvoicePdfArchive,
   getDesktopInvoicePdfPreview,
   getDesktopLocalUpdate,
+  getDesktopOperationalLogFailure,
   getDesktopOperationalLogFolder,
   getDesktopProfileProtection,
   getDesktopSupportBundleCreator,
@@ -121,6 +122,118 @@ describe('desktop bridge', () => {
 
     expect(openOperationalLogFolder).toHaveBeenCalledOnce();
   });
+
+  it.each([false, true])(
+    'copies only the exact operational log failure snapshot (%s)',
+    async (failureObserved) => {
+      const snapshot = { failureObserved };
+      const getOperationalLogFailureStatus = vi.fn(async () => snapshot);
+      const capability = getDesktopOperationalLogFailure({
+        ekyDesktop: createDesktopApi({
+          getOperationalLogFailureStatus,
+          onOperationalLogFailure: vi.fn(() => () => undefined),
+        }),
+      });
+
+      const status = await capability?.getStatus();
+
+      expect(status).toEqual({ failureObserved });
+      expect(status).not.toBe(snapshot);
+      expect(getOperationalLogFailureStatus).toHaveBeenCalledExactlyOnceWith();
+    },
+  );
+
+  it('forwards failure notifications without arguments and exposes unsubscribe', () => {
+    let listener: ((...args: unknown[]) => void) | undefined;
+    const unsubscribe = vi.fn();
+    const onOperationalLogFailure = vi.fn((callback: () => void) => {
+      listener = callback;
+      return unsubscribe;
+    });
+    const capability = getDesktopOperationalLogFailure({
+      ekyDesktop: createDesktopApi({
+        getOperationalLogFailureStatus: vi.fn(async () => ({
+          failureObserved: false,
+        })),
+        onOperationalLogFailure,
+      }),
+    });
+    const callback = vi.fn();
+
+    const stop = capability?.subscribe(callback);
+    listener?.({ rawDetail: 'synthetic-private-detail' });
+    stop?.();
+
+    expect(onOperationalLogFailure).toHaveBeenCalledOnce();
+    expect(callback).toHaveBeenCalledExactlyOnceWith();
+    expect(unsubscribe).toHaveBeenCalledExactlyOnceWith();
+  });
+
+  it('does not invent an operational log failure capability in the browser', () => {
+    expect(getDesktopOperationalLogFailure({})).toBeUndefined();
+  });
+
+  it.each([
+    {},
+    { getOperationalLogFailureStatus: async () => ({ failureObserved: false }) },
+    { onOperationalLogFailure: () => () => undefined },
+    {
+      getOperationalLogFailureStatus: undefined,
+      onOperationalLogFailure: () => () => undefined,
+    },
+    {
+      getOperationalLogFailureStatus: async () => ({ failureObserved: false }),
+      onOperationalLogFailure: undefined,
+    },
+    {
+      getOperationalLogFailureStatus: false,
+      onOperationalLogFailure: () => () => undefined,
+    },
+    {
+      getOperationalLogFailureStatus: async () => ({ failureObserved: false }),
+      onOperationalLogFailure: true,
+    },
+  ])('does not expose an incomplete operational log failure bridge', (desktop) => {
+    expect(getDesktopOperationalLogFailure({
+      ekyDesktop: desktop as unknown as EkyDesktopApi,
+    })).toBeUndefined();
+  });
+
+  it.each([
+    undefined,
+    null,
+    true,
+    'true',
+    [],
+    [{ failureObserved: true }],
+    {},
+    { failureObserved: undefined },
+    { failureObserved: null },
+    { failureObserved: 1 },
+    { failureObserved: 'true' },
+    { failureObserved: [] },
+    { failureObserved: true, reason: 'synthetic-private-detail' },
+    { failureObserved: false, status: 'healthy' },
+    Object.create({ failureObserved: true }) as unknown,
+    Object.defineProperty({ failureObserved: true }, 'rawDetail', {
+      value: 'synthetic-private-detail',
+    }),
+    { failureObserved: true, [Symbol('extra')]: 'synthetic-private-detail' },
+  ].map((status) => ({ status })))(
+    'rejects malformed operational log failure status without exposing it',
+    async ({ status }) => {
+      const capability = getDesktopOperationalLogFailure({
+        ekyDesktop: createDesktopApi({
+          getOperationalLogFailureStatus: vi.fn(async () => status),
+          onOperationalLogFailure: vi.fn(() => () => undefined),
+        }),
+      });
+
+      await expect(capability?.getStatus()).rejects.toThrow(
+        'Invalid operational log failure status.',
+      );
+    },
+  );
 
   it('exposes support bundle creation without returning a file path', async () => {
     const createSupportBundle = vi.fn(async () => 'created' as const);

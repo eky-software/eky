@@ -464,6 +464,7 @@ export async function createApp(
       electronVersion: options.electronVersion ?? null,
       operationalIdentity,
       operationalLogsRoot: options.operationalLogsRoot,
+      ...(options.httpRequestFailureObserver === undefined ? {} : { failureObserver: options.httpRequestFailureObserver }),
       runtimeArchitecture: options.architecture ?? process.arch,
       runtimeNodeVersion: process.version,
       runtimePlatform: options.platform ?? process.platform,

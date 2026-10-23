@@ -3,6 +3,7 @@ import type { RuntimeDiagnosticSummary } from '@eky/api-client';
 import { uiText } from '../../../i18n/fi.js';
 import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 import styles from './RuntimeDiagnosticSummaryView.module.css';
+import { DiagnosticReadNotice } from './DiagnosticReadNotice.js';
 
 interface RuntimeDiagnosticSummaryViewProps {
   summary: RuntimeDiagnosticSummary;
@@ -72,7 +73,8 @@ export function RuntimeDiagnosticSummaryView({
         />
       </dl>
 
-      {summary.operationalLogsAvailable ? (
+      <DiagnosticReadNotice readState={summary.operationalLogReadState} className={styles.notice!} summary />
+      {summary.operationalLogReadState.status !== 'unavailable' ? (
         <div className={styles.logSummary}>
           <h3>{uiText.diagnostics.operationalLogs}</h3>
           <dl className={styles.grid}>
@@ -98,11 +100,7 @@ export function RuntimeDiagnosticSummaryView({
             />
           </dl>
         </div>
-      ) : (
-        <p className={styles.notice}>
-          {uiText.diagnostics.desktopLogsOnly}
-        </p>
-      )}
+      ) : null}
     </section>
   );
 }

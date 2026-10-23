@@ -1,4 +1,4 @@
-import type { BackendOperationalEvent } from '../../../observability/operationalEvent.js';
+import { backendOperationalEventSpecs, type BackendOperationalEvent } from '../../../observability/operationalEvent.js';
 import { validateBackendOperationalEvent } from '../../../observability/operationalEventValidator.js';
 import { isInvoiceArchiveSourcePayload } from './diagnosticInvoiceArchiveProjection.js';
 import { diagnosticUpdateSpecs, isUpdateSourcePayload } from './diagnosticUpdateProjection.js';
@@ -275,6 +275,18 @@ export function projectDiagnosticOperationalEvent(
   } catch {
     return null;
   }
+}
+
+export function classifyDiagnosticOperationalEvent(value: unknown):
+  | { kind: 'event'; event: DiagnosticEventItem }
+  | { kind: 'excluded' }
+  | { kind: 'invalid' } {
+  if (!isRecord(value) || typeof value.eventName !== 'string' ||
+    (value.component !== 'backend' && value.component !== 'desktop')) return { kind: 'invalid' };
+  const catalog = value.component === 'backend' ? backendOperationalEventSpecs : desktopDiagnosticSpecs;
+  if (!Object.hasOwn(catalog, value.eventName)) return { kind: 'excluded' };
+  const event = projectDiagnosticOperationalEvent(value);
+  return event === null ? { kind: 'invalid' } : { kind: 'event', event };
 }
 
 function projectBackendEvent(

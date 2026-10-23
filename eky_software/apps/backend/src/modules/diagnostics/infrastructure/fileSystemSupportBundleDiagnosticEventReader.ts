@@ -83,12 +83,10 @@ export class FileSystemSupportBundleDiagnosticEventReader
       sourceTruncated = true;
     }
 
-    const diagnosticEvents: DiagnosticEventItem[] = [];
-    const seenIds = new Set<string>();
-    let projectedEventBytes = 0;
+    const newestCandidates = new Map<string, DiagnosticEventItem>();
     let remainingSourceBytes = this.#limits.maximumSourceBytes;
 
-    candidateLoop: for (const candidate of candidates) {
+    for (const candidate of candidates) {
       if (remainingSourceBytes <= 0) {
         sourceTruncated = true;
         break;
@@ -115,34 +113,47 @@ export class FileSystemSupportBundleDiagnosticEventReader
             event.occurredAt,
             period.earliest,
             period.latest,
-          ) ||
-          seenIds.has(event.id)
+          )
         ) {
           continue;
         }
 
-        const eventBytes = Buffer.byteLength(
-          JSON.stringify(event),
-          'utf8',
-        );
-        if (
-          diagnosticEvents.length >=
-            this.#limits.maximumDiagnosticEvents ||
-          projectedEventBytes + eventBytes >
-            this.#limits.maximumProjectedEventBytes
-        ) {
-          sourceTruncated = true;
-          break candidateLoop;
+        const existing = newestCandidates.get(event.id);
+        if (existing !== undefined) {
+          if (JSON.stringify(existing) !== JSON.stringify(event)) {
+            sourceTruncated = true;
+            if (compareEventsNewestFirst(event, existing) < 0) {
+              newestCandidates.set(event.id, event);
+            }
+          }
+          continue;
         }
 
-        diagnosticEvents.push(event);
-        seenIds.add(event.id);
-        projectedEventBytes += eventBytes;
+        newestCandidates.set(event.id, event);
+        if (newestCandidates.size > this.#limits.maximumDiagnosticEvents * 2) {
+          retainNewestEventCandidates(newestCandidates, this.#limits.maximumDiagnosticEvents);
+          sourceTruncated = true;
+        }
       }
     }
 
+    const sorted = [...newestCandidates.values()].sort(compareEventsNewestFirst);
+    sourceTruncated ||= sorted.length > this.#limits.maximumDiagnosticEvents;
+    const diagnosticEvents: DiagnosticEventItem[] = [];
+    let projectedEventBytes = 2;
+    for (const event of sorted.slice(0, this.#limits.maximumDiagnosticEvents)) {
+      const eventBytes = Buffer.byteLength(JSON.stringify(event), 'utf8') +
+        (diagnosticEvents.length === 0 ? 0 : 1);
+      if (projectedEventBytes + eventBytes > this.#limits.maximumProjectedEventBytes) {
+        sourceTruncated = true;
+        break;
+      }
+      diagnosticEvents.push(event);
+      projectedEventBytes += eventBytes;
+    }
+
     return {
-      diagnosticEvents: diagnosticEvents.sort(compareEventsNewestFirst),
+      diagnosticEvents,
       sourceTruncated,
     };
   }
@@ -319,10 +330,22 @@ function compareEventsNewestFirst(
   left: DiagnosticEventItem,
   right: DiagnosticEventItem,
 ): number {
-  const timeComparison = right.occurredAt.localeCompare(left.occurredAt);
+  const timeComparison = Date.parse(right.occurredAt) - Date.parse(left.occurredAt);
   return timeComparison === 0
     ? right.id.localeCompare(left.id)
     : timeComparison;
+}
+
+// Batch pruning bounds candidate memory without assuming any source's timestamp order.
+function retainNewestEventCandidates(
+  candidates: Map<string, DiagnosticEventItem>,
+  maximum: number,
+): void {
+  const retained = [...candidates.values()].sort(compareEventsNewestFirst).slice(0, maximum);
+  candidates.clear();
+  for (const event of retained) {
+    candidates.set(event.id, event);
+  }
 }
 
 function belongsToDirectory(

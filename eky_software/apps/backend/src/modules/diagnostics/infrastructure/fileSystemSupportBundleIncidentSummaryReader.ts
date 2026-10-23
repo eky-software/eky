@@ -93,10 +93,13 @@ export class FileSystemSupportBundleIncidentSummaryReader
     const listed = listIncidentFiles(this.#logsRoot, period.years);
     let sourceTruncated = listed.sourceTruncated;
     let remainingSourceBytes = this.#limits.maximumSourceBytes;
-    let projectedBytes = 2;
     const grouped = new Map<string, SupportBundleIncidentSummary>();
+    const observedSources: Array<{
+      component: IncidentIndexFile['component'];
+      lines: string[];
+    }> = [];
 
-    fileLoop: for (const file of listed.files) {
+    for (const file of listed.files) {
       if (remainingSourceBytes <= 0) {
         sourceTruncated = true;
         break;
@@ -108,6 +111,7 @@ export class FileSystemSupportBundleIncidentSummaryReader
       );
       remainingSourceBytes -= readResult.bytesRead;
       sourceTruncated ||= readResult.sourceTruncated;
+      observedSources.push({ component: file.component, lines: readResult.lines });
 
       for (const line of readResult.lines) {
         const entry = parseIncidentEntry(line, file.component);
@@ -126,41 +130,58 @@ export class FileSystemSupportBundleIncidentSummaryReader
         const key = incidentGroupKey(entry);
         const existing = grouped.get(key);
         if (existing !== undefined) {
-          existing.count += 1;
-          if (entry.timestamp < existing.firstOccurredAt) {
-            existing.firstOccurredAt = entry.timestamp;
-          }
           if (entry.timestamp > existing.lastOccurredAt) {
             existing.lastOccurredAt = entry.timestamp;
           }
           continue;
         }
 
-        if (grouped.size >= this.#limits.maximumIncidentSummaries) {
+        grouped.set(key, toSummary(entry));
+        if (grouped.size > this.#limits.maximumIncidentSummaries * 2) {
+          retainNewestIncidentCandidates(grouped, this.#limits.maximumIncidentSummaries);
           sourceTruncated = true;
-          break fileLoop;
         }
-        const summary = toSummary(entry);
-        const summaryBytes = Buffer.byteLength(
-          JSON.stringify(summary),
-          'utf8',
-        );
-        if (
-          projectedBytes + summaryBytes + (grouped.size === 0 ? 0 : 1) >
-          this.#limits.maximumProjectedBytes
-        ) {
-          sourceTruncated = true;
-          break fileLoop;
-        }
-        grouped.set(key, summary);
-        projectedBytes += summaryBytes + (grouped.size === 1 ? 0 : 1);
       }
     }
 
+    sourceTruncated ||= grouped.size > this.#limits.maximumIncidentSummaries;
+    retainNewestIncidentCandidates(grouped, this.#limits.maximumIncidentSummaries);
+    for (const summary of grouped.values()) {
+      summary.count = 0;
+      summary.firstOccurredAt = summary.lastOccurredAt;
+    }
+    // Recount selected groups from the same bounded bytes, never from a second file read.
+    for (const source of observedSources) {
+      for (const line of source.lines) {
+        const entry = parseIncidentEntry(line, source.component);
+        if (entry === null) continue;
+        const occurredAt = Date.parse(entry.timestamp);
+        if (occurredAt < period.earliest || occurredAt > period.latest) continue;
+        const summary = grouped.get(incidentGroupKey(entry));
+        if (summary !== undefined) {
+          summary.count += 1;
+          if (entry.timestamp < summary.firstOccurredAt) {
+            summary.firstOccurredAt = entry.timestamp;
+          }
+        }
+      }
+    }
+
+    const incidentSummaries: SupportBundleIncidentSummary[] = [];
+    let projectedBytes = 2;
+    for (const summary of [...grouped.values()].sort(compareSummariesNewestFirst)) {
+      const summaryBytes = Buffer.byteLength(JSON.stringify(summary), 'utf8') +
+        (incidentSummaries.length === 0 ? 0 : 1);
+      if (projectedBytes + summaryBytes > this.#limits.maximumProjectedBytes) {
+        sourceTruncated = true;
+        break;
+      }
+      incidentSummaries.push(summary);
+      projectedBytes += summaryBytes;
+    }
+
     return {
-      incidentSummaries: [...grouped.values()].sort(
-        compareSummariesNewestFirst,
-      ),
+      incidentSummaries,
       sourceTruncated,
     };
   }
@@ -282,7 +303,9 @@ function toSummary(
   };
 }
 
-function incidentGroupKey(entry: IncidentSourceEntry): string {
+function incidentGroupKey(entry: Pick<IncidentSourceEntry,
+  'appVersion' | 'buildRevision' | 'errorCode' | 'eventName' | 'fingerprint' | 'outcome'
+>): string {
   return JSON.stringify([
     entry.appVersion,
     entry.buildRevision,
@@ -330,8 +353,20 @@ function compareSummariesNewestFirst(
     left.lastOccurredAt,
   );
   return timeComparison === 0
-    ? left.eventName.localeCompare(right.eventName)
+    ? left.eventName.localeCompare(right.eventName) ||
+      incidentGroupKey(left).localeCompare(incidentGroupKey(right))
     : timeComparison;
+}
+
+function retainNewestIncidentCandidates(
+  candidates: Map<string, SupportBundleIncidentSummary>,
+  maximum: number,
+): void {
+  const retained = [...candidates.values()].sort(compareSummariesNewestFirst).slice(0, maximum);
+  candidates.clear();
+  for (const summary of retained) {
+    candidates.set(incidentGroupKey(summary), summary);
+  }
 }
 
 function inspectPath(

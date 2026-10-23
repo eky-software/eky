@@ -17,7 +17,9 @@ describe('desktop secret broker boundaries', () => {
 
     expect(preloadSource).not.toMatch(/safeStorage|secretBroker|MessagePort/i);
     expect(preloadSource).not.toMatch(/node:fs|shell|process\.|openUrl|openFile|rawIpc/i);
-    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(23);
+    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(24);
+    expect(preloadSource).toContain('getOperationalLogFailureStatus');
+    expect(preloadSource).toContain('onOperationalLogFailure');
     expect(preloadSource).toContain('invoicePdfPreviewIpcChannel');
     expect(preloadSource).toContain(
       `invoicePdfPreviewIpcChannel = '${invoicePdfPreviewIpcChannel}'`,

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { createBackendOperationalEvent } from '../../../observability/createOperationalEvent.js';
 
 import { FileSystemOperationalLogDiagnosticSummaryReader } from './fileSystemOperationalLogDiagnosticSummaryReader.js';
 
@@ -58,15 +59,16 @@ describe('FileSystemOperationalLogDiagnosticSummaryReader', () => {
     expect(JSON.stringify(result)).not.toContain('private-message');
   });
 
-  it('returns the normal unavailable state when no allowlisted logs exist', async () => {
+  it('distinguishes a verified empty source from unavailability', async () => {
     const result =
       await new FileSystemOperationalLogDiagnosticSummaryReader(
         createRoot(),
       ).readOperationalLogSummary();
 
     expect(result).toMatchObject({
-      operationalLogsAvailable: false,
+      operationalLogsAvailable: true,
       operationalLogTotalBytes: 0,
+      operationalLogReadState: { status: 'complete', reasons: [] },
     });
   });
 
@@ -129,7 +131,8 @@ describe('FileSystemOperationalLogDiagnosticSummaryReader', () => {
       latestSecurityEventAt: '2026-05-30T12:00:00.000Z',
       latestWarningAt: '2026-05-30T12:00:00.000Z',
       operationalLogNewestMonth: '2026-05',
-      operationalLogOldestMonth: '2026-01',
+      operationalLogOldestMonth: '2026-02',
+      operationalLogReadState: { status: 'partial', reasons: ['limitReached'] },
     });
   });
 });
@@ -144,13 +147,28 @@ function writeLog(
   root: string,
   directoryName: string,
   fileName: string,
-  events: unknown[],
+  events: Array<{ level: 'error' | 'warn'; timestamp: string; message?: string }>,
 ): void {
   const directory = join(root, directoryName);
   mkdirSync(directory, { recursive: true });
   writeFileSync(
     join(directory, fileName),
-    `${events.map((event) => JSON.stringify(event)).join('\n')}\n`,
+    `${events.map((event, index) => JSON.stringify({
+      ...summaryEvent(event.level, event.timestamp, directoryName === 'desktop' || fileName.startsWith('desktop-'), index),
+      ...(event.message === undefined ? {} : { message: event.message }),
+    })).join('\n')}\n`,
     'utf8',
   );
+}
+
+function summaryEvent(level: 'error' | 'warn', timestamp: string, desktop: boolean, index: number) {
+  const identity = { appVersion: '1.0.0', buildRevision: 'abcdef123456',
+    eventId: `summary-${index}`, runtimeInstanceId: '11111111-1111-4111-8111-111111111111', timestamp };
+  if (!desktop) return level === 'error'
+    ? createBackendOperationalEvent({ eventName: 'database.openFailed', errorCode: 'DATABASE_OPEN_FAILED' }, identity)
+    : createBackendOperationalEvent({ eventName: 'operationalLog.capacityReached', stage: 'write' }, identity);
+  return { ...identity, schemaVersion: 1, component: 'desktop',
+    category: 'operationalLog', level, outcome: 'failure', stage: 'write',
+    eventName: level === 'error' ? 'operationalLog.writeFailed' : 'operationalLog.capacityReached',
+    ...(level === 'error' ? { errorCode: 'LOG_WRITE_FAILED' } : {}) };
 }

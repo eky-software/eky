@@ -1,7 +1,7 @@
 import {
+  type Dirent,
   lstatSync,
   readdirSync,
-  statSync,
   unlinkSync,
 } from 'node:fs';
 import { basename, join, resolve } from 'node:path';
@@ -30,6 +30,7 @@ export function maintainDesktopOperationalLogs(options: {
 }): DesktopOperationalLogRetentionResult {
   const logsRoot = requireAbsoluteRoot(options.logsRoot);
   const now = options.now ?? new Date();
+  const currentMonth = now.toISOString().slice(0, 7);
   const candidates = listCandidates(logsRoot);
   const result: DesktopOperationalLogRetentionResult = {
     deletedByteCount: 0,
@@ -43,7 +44,7 @@ export function maintainDesktopOperationalLogs(options: {
   }
 
   const remaining = candidates
-    .filter((candidate) => candidate.exists)
+    .filter((candidate) => candidate.exists && candidate.month <= currentMonth)
     .sort(compareOldestFirst);
   let totalBytes = remaining.reduce(
     (total, candidate) => total + candidate.byteCount,
@@ -56,7 +57,9 @@ export function maintainDesktopOperationalLogs(options: {
     }
 
     removeCandidate(candidate, result);
-    totalBytes -= candidate.byteCount;
+    if (!candidate.exists) {
+      totalBytes -= candidate.byteCount;
+    }
   }
 
   const oldestRemainingMonth = candidates
@@ -85,7 +88,14 @@ function listCandidates(logsRoot: string): LogCandidate[] {
       continue;
     }
 
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
       if (!entry.isFile() || entry.isSymbolicLink()) {
         continue;
       }
@@ -99,8 +109,18 @@ function listCandidates(logsRoot: string): LogCandidate[] {
         continue;
       }
 
+      let stats: ReturnType<typeof lstatSync>;
+      try {
+        stats = lstatSync(filePath);
+      } catch {
+        continue;
+      }
+      if (!stats.isFile() || stats.isSymbolicLink()) {
+        continue;
+      }
+
       candidates.push({
-        byteCount: statSync(filePath).size,
+        byteCount: stats.size,
         exists: true,
         filePath,
         month,

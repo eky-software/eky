@@ -151,6 +151,19 @@ ylittyessä. Tulevaisuuteen päivätty tiedosto ei saa aiheuttaa muiden
 tiedostojen poistamista. Katkennut JSONL-rivi ei estä muiden rivien lukemista.
 Maintenance-virhe ei kaada sovellusta.
 
+Luotetun lokijuuren virheellinen konfiguraatio hylätään edelleen. Tunnetun
+hakemiston listauksen tai tiedoston metatiedon I/O-virhe rajataan kyseiseen
+kohteeseen; terveitä muita lokivirtoja voidaan käsitellä. Epäonnistunut poisto
+ei kasvata poistolaskureita eikä vapauta laskennallista kapasiteettia.
+Lukematta jäänyttä tiedostoa ei arvata turvalliseksi poistokohteeksi.
+
+Tuleva kuukausi/vuosi ei kuulu retentionin poistobudjettiin eikä automaattisen
+poiston kohteisiin. Incident-writerin kapasiteettilaskenta sisältää silti myös
+tulevat tiedostot. Jos indeksiin käytettyä tilaa ei voida varmasti laskea,
+huoltotulos estää lisäkirjoituksen nykyisen kapasiteettirajan mukaisesti;
+epävarmuus ei tarkoita vapaata levytilaa. Tämä ei muuta säilytysaikoja,
+segmenttirajoja tai business-auditin omistajuutta.
+
 Yhteenvetoeventissä sallitaan vain:
 
 - deletedFileCount

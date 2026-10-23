@@ -2,6 +2,7 @@ import type {
   DiagnosticEventItem,
   DiagnosticEventLevel,
   DiagnosticEventOutcome,
+  DiagnosticReadState,
   RuntimeDiagnosticSummary,
 } from '@eky/api-client';
 import { useState } from 'react';
@@ -14,6 +15,7 @@ import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTim
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
 import { DiagnosticEventDetail } from './DiagnosticEventDetail.js';
+import { DiagnosticReadNotice } from './DiagnosticReadNotice.js';
 import { RuntimeDiagnosticSummaryView } from './RuntimeDiagnosticSummaryView.js';
 
 interface DiagnosticsPageViewProps {
@@ -21,8 +23,11 @@ interface DiagnosticsPageViewProps {
   errorMessage: string | null;
   events: DiagnosticEventItem[];
   isLoading: boolean;
+  isSummaryLoading: boolean;
+  readState: DiagnosticReadState | null;
   openOperationalLogFolder?: OpenOperationalLogFolder;
   summary: RuntimeDiagnosticSummary | null;
+  summaryErrorMessage: string | null;
 }
 
 export function DiagnosticsPageView({
@@ -30,8 +35,11 @@ export function DiagnosticsPageView({
   errorMessage,
   events,
   isLoading,
+  isSummaryLoading,
+  readState,
   openOperationalLogFolder,
   summary,
+  summaryErrorMessage,
 }: DiagnosticsPageViewProps): React.JSX.Element {
   const [desktopErrorMessage, setDesktopErrorMessage] = useState<
     string | null
@@ -131,10 +139,19 @@ export function DiagnosticsPageView({
           {errorMessage}
         </p>
       ) : null}
-      {!isLoading && errorMessage === null && summary !== null ? (
+      {summaryErrorMessage !== null ? (
+        <p className={`${styles.message} ${styles.error}`} role="alert">{summaryErrorMessage}</p>
+      ) : null}
+      {isSummaryLoading ? (
+        <p className={styles.message} role="status">
+          {uiText.diagnostics.summaryLoading}
+        </p>
+      ) : null}
+      {!isSummaryLoading && summary !== null ? (
         <RuntimeDiagnosticSummaryView summary={summary} />
       ) : null}
-      {!isLoading && errorMessage === null && events.length === 0 ? (
+      {!isLoading && readState !== null ? <DiagnosticReadNotice readState={readState} className={styles.message!} /> : null}
+      {!isLoading && errorMessage === null && readState?.status === 'complete' && events.length === 0 ? (
         <p className={styles.message}>{uiText.diagnostics.empty}</p>
       ) : null}
       {!isLoading && errorMessage === null && events.length > 0 ? (

@@ -150,7 +150,7 @@ describe('exact preserved PDF in production composition', () => {
     }));
     expect(JSON.stringify(f.write.mock.calls)).not.toContain(JSON.stringify(privateMessage).slice(1, -1));
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const diagnosticEvents = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
     expect(diagnosticEvents).toEqual([expect.objectContaining({
       eventName: 'http.requestFailed', errorCode: 'HTTP_REQUEST_FAILED', stage: 'response',
     })]);

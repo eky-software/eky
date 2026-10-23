@@ -190,7 +190,7 @@ describe('revision-bound SMTP production composition', () => {
     expect(f.sendEmail).not.toHaveBeenCalled();
     expect(f.sendTestEmail).not.toHaveBeenCalled();
     expect(f.noNetwork).not.toHaveBeenCalled();
-    const events = await new FileSystemDiagnosticEventReader(f.logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents: events } = await new FileSystemDiagnosticEventReader(f.logsRoot).listRecentDiagnosticEvents(10);
     expect(events.some(event => event.eventName === 'invoiceDelivery.providerFailed')).toBe(false);
   });
 
@@ -227,7 +227,7 @@ describe('revision-bound SMTP production composition', () => {
     expect(f.database.prepare('SELECT status FROM invoices').get()).toEqual({ status: 'sent' });
     expect(f.sendEmail).toHaveBeenCalledTimes(1);
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const diagnosticEvents = await new FileSystemDiagnosticEventReader(f.logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents } = await new FileSystemDiagnosticEventReader(f.logsRoot).listRecentDiagnosticEvents(10);
     expect(diagnosticEvents).toEqual([expect.objectContaining({
       eventName: 'invoiceDelivery.finalizationFailed', errorCode: 'INVOICE_DELIVERY_COMMITTED_READ_FAILED',
       stage: 'read', retryable: false, sideEffectState: 'committed',

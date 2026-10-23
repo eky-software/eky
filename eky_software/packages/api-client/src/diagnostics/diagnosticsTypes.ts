@@ -1,4 +1,11 @@
 import { diagnosticUpdateEventNames } from './diagnosticUpdateProjection.js';
+import type { DiagnosticReadState } from './diagnosticsReadState.js';
+
+export type {
+  DiagnosticReadReason,
+  DiagnosticReadState,
+  DiagnosticReadStatus,
+} from './diagnosticsReadState.js';
 
 export const diagnosticEventNames = Object.freeze([
   'workspaceManagement.operationFailed',
@@ -151,6 +158,11 @@ export interface DiagnosticEventListQuery {
   limit?: number;
 }
 
+export interface DiagnosticEventReadResult {
+  diagnosticEvents: DiagnosticEventItem[];
+  readState: DiagnosticReadState;
+}
+
 export interface RuntimeDiagnosticSummary {
   appVersion: string;
   appliedMigrationCount: number | null;
@@ -167,6 +179,7 @@ export interface RuntimeDiagnosticSummary {
   nodeVersion: string;
   operationalLogNewestMonth: string | null;
   operationalLogOldestMonth: string | null;
+  operationalLogReadState: DiagnosticReadState;
   operationalLogsAvailable: boolean;
   operationalLogTotalBytes: number;
   platform: string;
@@ -177,5 +190,5 @@ export interface DiagnosticsApi {
   getDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   listDiagnosticEvents(
     query?: DiagnosticEventListQuery,
-  ): Promise<DiagnosticEventItem[]>;
+  ): Promise<DiagnosticEventReadResult>;
 }

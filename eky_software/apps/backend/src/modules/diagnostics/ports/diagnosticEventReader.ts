@@ -1,6 +1,6 @@
-import type { DiagnosticEventItem } from '../domain/diagnosticEventItem.js';
+import type { DiagnosticEventReadResult } from '../domain/diagnosticEventReadResult.js';
 
 export interface DiagnosticEventReader {
-  listRecentDiagnosticEvents(limit: number): Promise<DiagnosticEventItem[]>;
+  listRecentDiagnosticEvents(limit: number): Promise<DiagnosticEventReadResult>;
 }
 

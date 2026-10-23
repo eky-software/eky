@@ -214,7 +214,7 @@ describe('preserved legacy email form preparation in production composition', ()
     const earliestTimestamp = new Date().toISOString();
     expect((await app.request(`/invoices/${f.scope.invoiceId}/email/dry-run`, { method: 'POST' })).status).toBe(409);
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const diagnosticEvents = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
     expect(diagnosticEvents).toEqual([expect.objectContaining(cleanupEvent)]);
     const support = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot).readSupportBundleDiagnosticEvents(period);
     expect(support).toEqual({ diagnosticEvents, sourceTruncated: false });

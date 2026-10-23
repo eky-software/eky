@@ -60,7 +60,33 @@ export async function prepareSupportBundleDiagnosticData(
     diagnosticPeriodDays,
     incidentSummaries: incidentReadResult.incidentSummaries,
     incidentSummariesTruncated: incidentReadResult.sourceTruncated,
-    runtimeSummary,
+    runtimeSummary: toSupportBundleRuntimeSummary(runtimeSummary),
     truncated: diagnosticReadResult.sourceTruncated,
+  };
+}
+
+function toSupportBundleRuntimeSummary(
+  summary: RuntimeDiagnosticSummary,
+): SupportBundleDiagnosticData['runtimeSummary'] {
+  return {
+    appVersion: summary.appVersion,
+    appliedMigrationCount: summary.appliedMigrationCount,
+    architecture: summary.architecture,
+    buildCreatedAt: summary.buildCreatedAt,
+    buildDirty: summary.buildDirty,
+    buildRevision: summary.buildRevision,
+    databaseHealth: summary.databaseHealth,
+    electronVersion: summary.electronVersion,
+    latestErrorAt: summary.latestErrorAt,
+    latestMigrationName: summary.latestMigrationName,
+    latestSecurityEventAt: summary.latestSecurityEventAt,
+    latestWarningAt: summary.latestWarningAt,
+    nodeVersion: summary.nodeVersion,
+    operationalLogNewestMonth: summary.operationalLogNewestMonth,
+    operationalLogOldestMonth: summary.operationalLogOldestMonth,
+    operationalLogsAvailable: summary.operationalLogsAvailable,
+    operationalLogTotalBytes: summary.operationalLogTotalBytes,
+    platform: summary.platform,
+    runtimeInstanceId: summary.runtimeInstanceId,
   };
 }

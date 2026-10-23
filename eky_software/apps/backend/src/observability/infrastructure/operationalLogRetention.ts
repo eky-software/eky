@@ -1,6 +1,5 @@
 import {
   lstatSync,
-  statSync,
   unlinkSync,
 } from 'node:fs';
 import { basename } from 'node:path';
@@ -23,6 +22,7 @@ export function maintainOperationalLogs(options: {
   now?: Date;
 }): OperationalLogRetentionResult {
   const now = options.now ?? new Date();
+  const currentMonth = now.toISOString().slice(0, 7);
   const activeFilePaths = options.activeFilePaths ?? new Set<string>();
   const candidates = listKnownOperationalLogFiles(options.logsRoot)
     .map(readCandidate)
@@ -42,7 +42,7 @@ export function maintainOperationalLogs(options: {
   }
 
   const remaining = candidates
-    .filter((candidate) => candidate.exists)
+    .filter((candidate) => candidate.exists && candidate.month <= currentMonth)
     .sort(compareOldestFirst);
   let totalByteCount = remaining.reduce(
     (sum, candidate) => sum + candidate.byteCount,
@@ -58,7 +58,9 @@ export function maintainOperationalLogs(options: {
     }
 
     removeCandidate(candidate, result);
-    totalByteCount -= candidate.byteCount;
+    if (!candidate.exists) {
+      totalByteCount -= candidate.byteCount;
+    }
   }
 
   const oldestRemainingMonth = candidates
@@ -93,13 +95,18 @@ function readCandidate(filePath: string): LogFileCandidate | null {
     return null;
   }
 
-  const stats = lstatSync(filePath);
+  let stats: ReturnType<typeof lstatSync>;
+  try {
+    stats = lstatSync(filePath);
+  } catch {
+    return null;
+  }
   if (!stats.isFile() || stats.isSymbolicLink()) {
     return null;
   }
 
   return {
-    byteCount: statSync(filePath).size,
+    byteCount: stats.size,
     exists: true,
     filePath,
     month,

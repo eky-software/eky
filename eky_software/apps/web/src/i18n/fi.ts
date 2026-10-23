@@ -18,6 +18,8 @@ export const uiText = {
     expandSidebar: 'Avaa päävalikko',
     localBackend: 'Paikallinen backend',
     modules: 'Moduulit',
+    operationalLogFailure:
+      'Lokituksessa havaittiin häiriö. Osa teknisistä tapahtumista voi puuttua.',
     primaryNavigation: 'Päätoiminnot',
   },
   modules: {
@@ -197,14 +199,22 @@ export const uiText = {
       latestMigrationName === null
         ? `${migrationCount} migraatiota`
         : `${migrationCount} migraatiota, viimeisin ${latestMigrationName}`,
-    desktopLogsOnly:
-      'Tekniset tiedostolokit ovat käytettävissä paketoidussa desktopissa.',
     dirtyBuild: 'Työpuussa oli muutoksia',
     details: 'Tiedot',
     duration: 'Kesto',
     durationValue: (durationMs: number) => `${durationMs} ms`,
     electronVersion: 'Electron',
     empty: 'Diagnostiikkatapahtumia ei ole vielä.',
+    eventRead: {
+      partial: 'Diagnostiikkatiedot ovat osittaiset. Näkyvissä on vain luettu aineisto.',
+      unavailable: 'Diagnostiikkatietoja ei voitu lukea.',
+      notConfigured: 'Tässä ajotilassa ei ole määritetty diagnostiikan lokilähdettä.',
+    },
+    summaryRead: {
+      partial: 'Lokiyhteenveto on osittainen. Ajat ja määrät koskevat havaittua aineistoa.',
+      unavailable: 'Teknisten lokien yhteenvetoa ei voitu lukea.',
+      notConfigured: 'Tässä ajotilassa ei ole määritetty teknisten lokien lähdettä.',
+    },
     errorCode: 'Virhekoodi',
     event: 'Tapahtuma',
     fingerprint: 'Virheen sormenjälki',
@@ -251,6 +261,7 @@ export const uiText = {
     stage: 'Vaihe',
     status: 'Tila',
     summaryHeading: 'Järjestelmäyhteenveto',
+    summaryLoading: 'Ladataan järjestelmäyhteenvetoa...',
     supportBundleCreated:
       'Eky-tukipaketti luotiin GZip-pakattuna JSON-tiedostona. Paketti ei ole salattu. Lähetä se vain luotetulle tukihenkilölle.',
     version: 'Versio',

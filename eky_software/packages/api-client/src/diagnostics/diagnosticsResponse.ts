@@ -3,6 +3,7 @@ import { isProfileRecoveryProjection } from './diagnosticRecoveryProjection.js';
 import { isInvoiceArchiveProjection } from './diagnosticInvoiceArchiveProjection.js';
 import { isUpdateProjection } from './diagnosticUpdateProjection.js';
 import { isWorkspaceManagementProjection } from './diagnosticWorkspaceManagementProjection.js';
+import { isDiagnosticReadState } from './diagnosticsReadState.js';
 import {
   diagnosticEventNames,
   type DiagnosticEventComponent,
@@ -10,6 +11,7 @@ import {
   type DiagnosticEventLevel,
   type DiagnosticEventName,
   type DiagnosticEventOutcome,
+  type DiagnosticEventReadResult,
   type DiagnosticEventSideEffectState,
   type RuntimeDiagnosticSummary,
 } from './diagnosticsTypes.js';
@@ -49,16 +51,23 @@ const workspaceBackupFailureCauses = new Set([
   'WORKSPACE_CANDIDATE_OPERATION_CANCELLED',
 ]);
 
-export function readDiagnosticsResponse(value: unknown): DiagnosticEventItem[] {
+export function readDiagnosticsResponse(
+  value: unknown,
+): DiagnosticEventReadResult {
   if (
     !isRecord(value) ||
-    !hasOnlyKeys(value, ['diagnosticEvents']) ||
-    !Array.isArray(value.diagnosticEvents)
+    !hasOnlyKeys(value, ['diagnosticEvents', 'readState']) ||
+    !Array.isArray(value.diagnosticEvents) ||
+    !isDiagnosticReadState(value.readState) ||
+    (value.readState.status === 'unavailable' && value.diagnosticEvents.length !== 0)
   ) {
     throw invalidResponse(value);
   }
 
-  return value.diagnosticEvents.map(readDiagnosticEvent);
+  return {
+    diagnosticEvents: value.diagnosticEvents.map(readDiagnosticEvent),
+    readState: value.readState,
+  };
 }
 
 export function readDiagnosticSummaryResponse(
@@ -80,6 +89,7 @@ export function readDiagnosticSummaryResponse(
     'nodeVersion',
     'operationalLogNewestMonth',
     'operationalLogOldestMonth',
+    'operationalLogReadState',
     'operationalLogsAvailable',
     'operationalLogTotalBytes',
     'platform',
@@ -107,8 +117,10 @@ export function readDiagnosticSummaryResponse(
     !isVersion(value.nodeVersion) ||
     !isNullableMonth(value.operationalLogNewestMonth) ||
     !isNullableMonth(value.operationalLogOldestMonth) ||
+    !isDiagnosticReadState(value.operationalLogReadState) ||
     typeof value.operationalLogsAvailable !== 'boolean' ||
     !isNonNegativeInteger(value.operationalLogTotalBytes) ||
+    !hasConsistentOperationalLogMetrics(value) ||
     !isSafeIdentifier(value.platform, 40) ||
     typeof value.runtimeInstanceId !== 'string' ||
     !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
@@ -119,6 +131,26 @@ export function readDiagnosticSummaryResponse(
   }
 
   return value as unknown as RuntimeDiagnosticSummary;
+}
+
+function hasConsistentOperationalLogMetrics(
+  value: Record<string, unknown>,
+): boolean {
+  if (!isDiagnosticReadState(value.operationalLogReadState)) {
+    return false;
+  }
+  if (value.operationalLogReadState.status !== 'unavailable') {
+    return value.operationalLogsAvailable === true;
+  }
+  return (
+    value.operationalLogsAvailable === false &&
+    value.operationalLogTotalBytes === 0 &&
+    value.operationalLogNewestMonth === null &&
+    value.operationalLogOldestMonth === null &&
+    value.latestErrorAt === null &&
+    value.latestSecurityEventAt === null &&
+    value.latestWarningAt === null
+  );
 }
 
 function readDiagnosticEvent(value: unknown): DiagnosticEventItem {

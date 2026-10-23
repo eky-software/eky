@@ -1,6 +1,7 @@
 import {
   EkyApiError,
   type DiagnosticEventItem,
+  type DiagnosticReadState,
   type EkyApiClient,
   type RuntimeDiagnosticSummary,
 } from '@eky/api-client';
@@ -17,7 +18,10 @@ export interface DiagnosticsState {
   errorMessage: string | null;
   events: DiagnosticEventItem[];
   isLoading: boolean;
+  isSummaryLoading: boolean;
+  readState: DiagnosticReadState | null;
   summary: RuntimeDiagnosticSummary | null;
+  summaryErrorMessage: string | null;
 }
 
 export function useDiagnostics(
@@ -27,7 +31,10 @@ export function useDiagnostics(
     errorMessage: null,
     events: [],
     isLoading: true,
+    isSummaryLoading: true,
+    readState: null,
     summary: null,
+    summaryErrorMessage: null,
   });
 
   useEffect(() => {
@@ -36,33 +43,35 @@ export function useDiagnostics(
       errorMessage: null,
       events: [],
       isLoading: true,
+      isSummaryLoading: true,
+      readState: null,
       summary: null,
+      summaryErrorMessage: null,
     });
 
-    void Promise.all([
-      apiClient.getDiagnosticSummary(),
-      apiClient.listDiagnosticEvents(),
-    ])
-      .then(([summary, events]) => {
-        if (isCurrent) {
-          setState({
-            errorMessage: null,
-            events,
-            isLoading: false,
-            summary,
-          });
-        }
-      })
-      .catch((error: unknown) => {
-        if (isCurrent) {
-          setState({
-            errorMessage: getDiagnosticsErrorMessage(error),
-            events: [],
-            isLoading: false,
-            summary: null,
-          });
-        }
-      });
+    void readSummary();
+    void readEvents();
+
+    async function readSummary() {
+      try {
+        const summary = await apiClient.getDiagnosticSummary();
+        if (isCurrent) setState(current => ({ ...current, summary, isSummaryLoading: false }));
+      } catch (error) {
+        if (isCurrent) setState(current => ({ ...current, isSummaryLoading: false,
+          summaryErrorMessage: getDiagnosticsErrorMessage(error) }));
+      }
+    }
+
+    async function readEvents() {
+      try {
+        const result = await apiClient.listDiagnosticEvents();
+        if (isCurrent) setState(current => ({ ...current, events: result.diagnosticEvents,
+          readState: result.readState, isLoading: false }));
+      } catch (error) {
+        if (isCurrent) setState(current => ({ ...current, isLoading: false,
+          errorMessage: getDiagnosticsErrorMessage(error) }));
+      }
+    }
 
     return () => {
       isCurrent = false;

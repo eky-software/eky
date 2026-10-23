@@ -44,6 +44,16 @@ incident-index-yhteenvedot omiksi checksum-osioikseen. Osioiden SHA-256-
 checksumit havaitsevat tahattoman sisältömuutoksen, mutta ne eivät ole
 digitaalinen allekirjoitus eivätkä todista artifactin alkuperää.
 
+Diagnosticsin HTTP-yhteenvedon `operationalLogReadState` ei kuulu formaattiin
+2. Backend projisoi tukipaketin `runtimeSummary`-kentät eksplisiittisesti
+nykyiseen kenttäjoukkoon ennen mainin strict-validointia. Mainin tarkistinta
+ei löysennetä lisäkentille. Vanhat yhteenvedon ajat ja määrät kuvaavat
+havaittua aineistoa, eivät todista täydellistä historiaa tai writerin terveyttä.
+Events-/incident-katkaisuliput syntyvät edelleen omista 30 päivän lukijoista,
+eivät eri haun runtime-yhteenvedon tilasta. JSONL-, HTTP-, gzip- ja
+checksum-ketju sekä nykyinen tarkastin todennetaan samalla generoituun
+pakettiin; `.ekysupport`-lukuyhteensopivuus säilyy ilman uudelleenkirjoitusta.
+
 ## Sallittu sisältö
 
 - manifest ja creation correlation ID
@@ -69,6 +79,24 @@ SMTP:n onnistuneet info-tason transport-eventit eivät kuulu tukipakettiin,
 vaikka info-event olisi virheellisesti päätynyt warning/error-tiedostoon.
 Reader rajaa lähteet täsmällisesti viimeiseen 30 päivään ja käsittelee
 segmentit uusimmasta vanhimpaan.
+
+Tapahtuma- tai ryhmäraja ei lopeta muiden valittujen lähteiden lukua.
+Lähdetavu- ja tiedostobudjetti säilyy erillisenä: vain todella luetusta
+aineistosta valitaan yhteisen aikajärjestyksen uusin prefiksi.
+Tapahtuman tasatilanteen ratkaisee sen nykyinen projektiotunniste;
+incident-ryhmän tasatilanteen tapahtumanimi ja koko nykyinen ryhmäavain.
+Tapahtumat deduplikoidaan tunnisteella. Ristiriitaiset saman tunnisteen
+projektiot ilmoitetaan osittaisuutena; niistä valitaan havaittu uusin,
+ei väitetä rekonstruoiduksi muuttumattomaksi historiaksi.
+
+Ehdokkaita karsitaan erissä: väliaikainen joukko on enintään kaksi kertaa
+nykyinen tulosmääräraja ja yksi käsiteltävä alkio. Incidentien rajatut
+lähderivit säilytetään vain nykyisen lähdetavubudjetin sisällä. Valittujen
+ryhmien laskurit ja ensimmäinen/viimeinen aika lasketaan uudelleen juuri
+näistä samoista riveistä, ei toisella muuttuvan tiedoston lukukerralla.
+Lähdekatkaisussa luvut kattavat vain havaitut rivit, eivät varmasti koko
+30 päivän historiaa. Lopullinen tavuraja tarkistetaan valmiista
+projektiosta myös laskurin numeromäärän ja JSON-taulukon erotinmerkkien osalta.
 
 `sourceTruncated` välittyy manifestin `truncatedSections`-tiedoksi. Katkaisu
 ilmoitetaan, jos tapahtuma-, tavu-, tiedosto- tai pakettibudjetti täyttyy,

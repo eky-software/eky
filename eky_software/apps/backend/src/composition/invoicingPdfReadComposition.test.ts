@@ -86,7 +86,7 @@ describe('invoice PDF read production composition', () => {
     expect(response.status).toBe(500);
     await expect(response.json()).resolves.toEqual({ error: new InvoiceDocumentIntegrityError().message });
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const diagnosticEvents = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
     expect(diagnosticEvents).toEqual([expect.objectContaining({
       eventName: 'invoicePdf.storageFailed', errorCode: 'INVOICE_PDF_INTEGRITY_FAILED',
       stage: 'read', retryable: false, sideEffectState: 'none',

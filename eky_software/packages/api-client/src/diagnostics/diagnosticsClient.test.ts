@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 
 import { createEkyApiClient, EkyApiError } from '../index.js';
 
+const completeReadState = { status: 'complete', reasons: [] } as const;
+
 describe('diagnostics API client', () => {
   it.each([
     { eventName: 'invoicePdfArchive.queueFailed', component: 'backend', level: 'warn',
@@ -14,9 +16,9 @@ describe('diagnostics API client', () => {
   ])('reads the closed $eventName projection', async payload => {
     const event = { category: 'invoicePdfArchive', id: 'synthetic-archive', occurredAt: '2026-10-22T10:00:00.000Z', ...payload };
     const read = (value: unknown) => createEkyApiClient({
-      baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [value] }),
+      baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [value], readState: completeReadState }),
     }).listDiagnosticEvents();
-    await expect(read(event)).resolves.toEqual([event]);
+    await expect(read(event)).resolves.toEqual({ diagnosticEvents: [event], readState: completeReadState });
     for (const change of [
       { category: 'smtp' }, { component: event.component === 'backend' ? 'desktop' : 'backend' },
       { level: 'error' }, { outcome: 'unknown' }, { eventName: 'invoicePdfArchive.unknown' },
@@ -36,7 +38,9 @@ describe('diagnostics API client', () => {
       await expect(read({ ...event, durationMs: undefined })).rejects.toBeInstanceOf(EkyApiError);
     }
     if (payload.eventName === 'invoicePdfArchive.configurationChanged') {
-      await expect(read({ ...event, stage: 'disabled' })).resolves.toEqual([{ ...event, stage: 'disabled' }]);
+      await expect(read({ ...event, stage: 'disabled' })).resolves.toEqual({
+        diagnosticEvents: [{ ...event, stage: 'disabled' }], readState: completeReadState,
+      });
       await expect(read({ ...event, stage: 'privateDirectory' })).rejects.toBeInstanceOf(EkyApiError);
     }
   });
@@ -50,8 +54,8 @@ describe('diagnostics API client', () => {
         level: 'error', occurredAt: '2026-10-09T10:00:00.000Z', outcome: 'failure',
         retryable: false, sideEffectState: 'unknown', stage: 'import',
       };
-      const client = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [event] }) });
-      await expect(client.listDiagnosticEvents()).resolves.toEqual([event]);
+      const client = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [event], readState: completeReadState }) });
+      await expect(client.listDiagnosticEvents()).resolves.toEqual({ diagnosticEvents: [event], readState: completeReadState });
       for (const errorCode of [
         'unknown', 'PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID',
         'PROFILE_INSPECTION_LIMIT_EXCEEDED', 'PROFILE_INSPECTION_TIMEOUT',
@@ -63,8 +67,11 @@ describe('diagnostics API client', () => {
       ]) {
         const knownCause = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
           diagnosticEvents: [{ ...event, errorCode }],
+          readState: completeReadState,
         }) });
-        await expect(knownCause.listDiagnosticEvents()).resolves.toEqual([{ ...event, errorCode }]);
+        await expect(knownCause.listDiagnosticEvents()).resolves.toEqual({
+          diagnosticEvents: [{ ...event, errorCode }], readState: completeReadState,
+        });
       }
       for (const change of [
         { rawError: 'synthetic private message' },
@@ -86,15 +93,18 @@ describe('diagnostics API client', () => {
       ]) {
         const invalid = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
           diagnosticEvents: [{ ...event, ...change }],
+          readState: completeReadState,
         }) });
         await expect(invalid.listDiagnosticEvents()).rejects.toBeInstanceOf(EkyApiError);
       }
       const unknown = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
         diagnosticEvents: [{ ...event, errorCode: 'unknown', stage: 'replace' }],
+        readState: completeReadState,
       }) });
-      await expect(unknown.listDiagnosticEvents()).resolves.toEqual([
-        { ...event, errorCode: 'unknown', stage: 'replace' },
-      ]);
+      await expect(unknown.listDiagnosticEvents()).resolves.toEqual({
+        diagnosticEvents: [{ ...event, errorCode: 'unknown', stage: 'replace' }],
+        readState: completeReadState,
+      });
     },
   );
 
@@ -138,6 +148,7 @@ describe('diagnostics API client', () => {
       fetch: async (input) => {
         requests.push(input.toString());
         return jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               appVersion: '0.1.0-alpha.1',
@@ -166,14 +177,15 @@ describe('diagnostics API client', () => {
 
     await expect(
       client.listDiagnosticEvents({ limit: 20 }),
-    ).resolves.toEqual([
-      expect.objectContaining({
+    ).resolves.toEqual({
+      diagnosticEvents: [expect.objectContaining({
         correlationId: '11111111-1111-4111-8111-111111111111',
         durationMs: 120,
         retryable: true,
         stage: 'tlsHandshake',
-      }),
-    ]);
+      })],
+      readState: completeReadState,
+    });
     expect(requests).toEqual([
       'http://127.0.0.1:3000/diagnostics/events?limit=20',
     ]);
@@ -195,6 +207,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'recoveryPoint',
@@ -215,12 +228,13 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toEqual([
-      expect.objectContaining({
+    await expect(client.listDiagnosticEvents()).resolves.toEqual({
+      diagnosticEvents: [expect.objectContaining({
         eventName: 'recoveryPoint.failed',
         recoveryPointKind: 'daily',
-      }),
-    ]);
+      })],
+      readState: completeReadState,
+    });
   });
 
   it('accepts the portable backup and restore recovery event contracts', async () => {
@@ -237,6 +251,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: eventNames.map((eventName, index) => {
             const failed =
               eventName === 'backup.failed' ||
@@ -272,11 +287,12 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toEqual(
-      eventNames.map((eventName) =>
+    await expect(client.listDiagnosticEvents()).resolves.toEqual({
+      diagnosticEvents: eventNames.map((eventName) =>
         expect.objectContaining({ eventName }),
       ),
-    );
+      readState: completeReadState,
+    });
   });
 
   it('accepts only the public SMTP TLS diagnostic projection', async () => {
@@ -289,6 +305,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -310,15 +327,16 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toEqual([
-      expect.objectContaining({
+    await expect(client.listDiagnosticEvents()).resolves.toEqual({
+      diagnosticEvents: [expect.objectContaining({
         cipherName: 'TLS_AES_256_GCM_SHA384',
         eventName: 'smtp.connectionSecured',
         peerCertificateFingerprint256,
         smtpProfile: 'dnaSmtp',
         tlsVersion: 'TLSv1.3',
-      }),
-    ]);
+      })],
+      readState: completeReadState,
+    });
   });
 
   it.each([
@@ -332,6 +350,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -368,6 +387,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: eventNames.map((eventName, index) => ({
             category: diagnosticCategory(eventName),
             component: eventName === 'desktop.started' ? 'desktop' : 'backend',
@@ -388,11 +408,12 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toEqual(
-      eventNames.map((eventName) =>
+    await expect(client.listDiagnosticEvents()).resolves.toEqual({
+      diagnosticEvents: eventNames.map((eventName) =>
         expect.objectContaining({ eventName }),
       ),
-    );
+      readState: completeReadState,
+    });
   });
 
   it('rejects raw metadata and unknown event names', async () => {
@@ -400,6 +421,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -433,6 +455,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -459,6 +482,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             'operationalLogFolder.opened',
             'operationalLogFolder.openFailed',
@@ -492,7 +516,7 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(3);
+    expect((await client.listDiagnosticEvents()).diagnosticEvents).toHaveLength(3);
   });
 
   it('accepts the classified desktop permission request event', async () => {
@@ -500,6 +524,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'security',
@@ -515,7 +540,7 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
+    expect((await client.listDiagnosticEvents()).diagnosticEvents).toHaveLength(1);
   });
 
   it('accepts the safe desktop bootstrap failure projection', async () => {
@@ -523,6 +548,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
+          readState: completeReadState,
           diagnosticEvents: [
             {
               category: 'runtime',
@@ -538,7 +564,7 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    await expect(client.listDiagnosticEvents()).resolves.toHaveLength(1);
+    expect((await client.listDiagnosticEvents()).diagnosticEvents).toHaveLength(1);
   });
 });
 
@@ -559,6 +585,7 @@ function createRuntimeSummary() {
     nodeVersion: 'v24.11.0',
     operationalLogNewestMonth: null,
     operationalLogOldestMonth: null,
+    operationalLogReadState: { status: 'unavailable', reasons: ['notConfigured'] },
     operationalLogsAvailable: false,
     operationalLogTotalBytes: 0,
     platform: 'win32',

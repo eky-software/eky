@@ -23,9 +23,10 @@ import {
   FileSystemOperationalLogDiagnosticSummaryReader,
 } from '../modules/diagnostics/infrastructure/fileSystemOperationalLogDiagnosticSummaryReader.js';
 import {
-  unavailableOperationalLogSummary,
+  notConfiguredOperationalLogSummary,
 } from '../modules/diagnostics/application/getRuntimeDiagnosticSummary.js';
 import type { OperationalRuntimeIdentity } from '../observability/operationalEvent.js';
+import type { DiagnosticReadFailureObserver } from '../modules/diagnostics/ports/diagnosticReadFailureObserver.js';
 
 export function createDiagnosticsComposition(
   options: {
@@ -35,6 +36,7 @@ export function createDiagnosticsComposition(
     electronVersion: string | null;
     operationalIdentity: Readonly<OperationalRuntimeIdentity>;
     operationalLogsRoot: string | undefined;
+    failureObserver?: DiagnosticReadFailureObserver;
     runtimeArchitecture: string;
     runtimeNodeVersion: string;
     runtimePlatform: string;
@@ -43,7 +45,7 @@ export function createDiagnosticsComposition(
   const reader =
     options.operationalLogsRoot === undefined
       ? emptyDiagnosticEventReader
-      : new FileSystemDiagnosticEventReader(options.operationalLogsRoot);
+      : new FileSystemDiagnosticEventReader(options.operationalLogsRoot, options.failureObserver);
   const supportBundleReader =
     options.operationalLogsRoot === undefined
       ? emptySupportBundleDiagnosticEventReader
@@ -62,11 +64,12 @@ export function createDiagnosticsComposition(
     options.operationalLogsRoot === undefined
       ? {
           async readOperationalLogSummary() {
-            return unavailableOperationalLogSummary;
+            return notConfiguredOperationalLogSummary;
           },
         }
       : new FileSystemOperationalLogDiagnosticSummaryReader(
           options.operationalLogsRoot,
+          options.failureObserver,
         );
   const readRuntimeSummary = (actorContext: Parameters<
     typeof getRuntimeDiagnosticSummary
@@ -84,6 +87,7 @@ export function createDiagnosticsComposition(
           platform: options.runtimePlatform,
         },
         operationalLogSummaryReader,
+        ...(options.failureObserver === undefined ? {} : { failureObserver: options.failureObserver }),
         systemDiagnosticSummaryReader,
       },
     );
@@ -91,7 +95,7 @@ export function createDiagnosticsComposition(
   return createDiagnosticRoutes({
     getRuntimeDiagnosticSummary: (input) =>
       readRuntimeSummary(input.actorContext),
-    listDiagnosticEvents: (input) => listDiagnosticEvents(input, reader),
+    listDiagnosticEvents: (input) => listDiagnosticEvents(input, reader, options.failureObserver),
     prepareSupportBundleDiagnosticData: (input) =>
       prepareSupportBundleDiagnosticData(input, {
         supportBundleDiagnosticEventReader: supportBundleReader,

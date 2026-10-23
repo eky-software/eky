@@ -11,7 +11,7 @@ import type { PrepareSupportBundleDiagnosticDataInput } from '../application/pre
 import type {
   GetRuntimeDiagnosticSummaryInput,
 } from '../application/getRuntimeDiagnosticSummary.js';
-import type { DiagnosticEventItem } from '../domain/diagnosticEventItem.js';
+import type { DiagnosticEventReadResult } from '../domain/diagnosticEventReadResult.js';
 import type { RuntimeDiagnosticSummary } from '../domain/runtimeDiagnosticSummary.js';
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
 
@@ -21,7 +21,7 @@ interface DiagnosticRouteDependencies {
   ): Promise<RuntimeDiagnosticSummary>;
   listDiagnosticEvents(
     input: ListDiagnosticEventsInput,
-  ): Promise<DiagnosticEventItem[]>;
+  ): Promise<DiagnosticEventReadResult>;
   prepareSupportBundleDiagnosticData(
     input: PrepareSupportBundleDiagnosticDataInput,
   ): Promise<SupportBundleDiagnosticData>;
@@ -64,11 +64,11 @@ export function createDiagnosticRoutes(
     }
 
     try {
-      const diagnosticEvents = await dependencies.listDiagnosticEvents({
+      const result = await dependencies.listDiagnosticEvents({
         actorContext: context.get('actorContext'),
         ...(limit === undefined ? {} : { limit }),
       });
-      return context.json({ diagnosticEvents });
+      return context.json(result);
     } catch (error) {
       return handleKnownError(context, error);
     }
