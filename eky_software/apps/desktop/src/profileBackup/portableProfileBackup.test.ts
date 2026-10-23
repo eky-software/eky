@@ -248,7 +248,7 @@ describe('portable profile backup', () => {
     });
   });
 
-  it('uses a non-identifying filename and appends only the expected extension', () => {
+  it('keeps the date-only fallback and appends only the expected extension', () => {
     expect(
       createPortableProfileBackupFileName(
         new Date('2026-08-04T12:00:00.000Z'),
@@ -260,6 +260,32 @@ describe('portable profile backup', () => {
     expect(ensurePortableProfileBackupExtension('backup.EKYBACKUP')).toBe(
       'backup.EKYBACKUP',
     );
+  });
+
+  it.each([
+    ['Synthetic Company Oy', 'Synthetic Company Oy'],
+    ['CON', 'CON'],
+    ['../A\\B:C*D?E"F<G>H|I', '..-A-B-C-D-E-F-G-H-I'],
+    ['  Synthetic   Company...  ', 'Synthetic Company'],
+    ['.', ''],
+    ['..', ''],
+    ['', ''],
+    ['A\u202eB\nC', 'A-B-C'],
+    ['A\u0308 Oy', '\u00c4 Oy'],
+  ])('uses only a safe filename component for label %j', (label, expectedLabel) => {
+    const result = createPortableProfileBackupFileName(new Date(2026, 7, 4), label);
+    expect(result).toBe(`Eky-varmuuskopio-${expectedLabel ? `${expectedLabel}-` : ''}2026-08-04.ekybackup`);
+    expect(result).not.toMatch(/[<>:"/\\|?*\u0000-\u001f]/u);
+  });
+
+  it('bounds Unicode filenames without splitting code points or changing the date or extension', () => {
+    for (const label of ['X'.repeat(1_000), '\u00c4'.repeat(80), '\u{1f3d7}'.repeat(80)]) {
+      const result = createPortableProfileBackupFileName(new Date(2026, 7, 4), label);
+      expect(Buffer.byteLength(result, 'utf8')).toBeLessThanOrEqual(158);
+      expect(Buffer.from(result, 'utf8').toString('utf8')).toBe(result);
+      expect(result).toMatch(/^Eky-varmuuskopio-.+-2026-08-04\.ekybackup$/u);
+      expect(createPortableProfileBackupFileName(new Date(2026, 7, 4), label)).toBe(result);
+    }
   });
 
   it('restores the latest successful timestamp without storing a destination path', async () => {

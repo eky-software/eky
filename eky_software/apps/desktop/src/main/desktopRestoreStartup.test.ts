@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } fro
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import * as snapshotInspection from '../profileBackup/runProfileSnapshotInspection.js';
 import * as profileBackupComposition from '../profileBackup/profileBackupComposition.js';
+import { createProfileBackupIpcChannel } from '../profileBackup/portableProfileBackupTypes.js';
 import * as secretBrokerMain from '../secrets/secretBrokerMain.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
@@ -489,6 +490,48 @@ describe('desktop restore startup composition', () => {
     expect(electronBoundary.createWindow).not.toHaveBeenCalled();
     await expect(fixture.journal.peek()).resolves.toBeUndefined();
     await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
+  });
+
+  it('reads the backup label from the current registered active workspace after startup and rename', async () => {
+    const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
+    const compose = profileBackupComposition.createProfileBackupComposition;
+    let readLabel: (() => Promise<string | undefined>) | undefined;
+    vi.spyOn(profileBackupComposition, 'createProfileBackupComposition').mockImplementation(async options => {
+      readLabel = options.readActiveWorkspaceLabel;
+      return compose(options);
+    });
+    const lifecycle = await fixture.start();
+    expect(lifecycle).toBeDefined();
+    const registry = (await fixture.registry.read())!;
+    try {
+      const active = registry.workspaces.find(entry => entry.workspaceId === registry.activeWorkspaceId)!;
+      await expect(readLabel!()).resolves.toBe(active.workspaceLabel);
+      await fixture.registry.write({ ...registry, workspaces: registry.workspaces.map(entry =>
+        entry.workspaceId === active.workspaceId ? { ...entry, workspaceLabel: 'Synthetic Renamed Company' } : entry) });
+      await expect(readLabel!()).resolves.toBe('Synthetic Renamed Company');
+      const handler = electronBoundary.handle.mock.calls.find(([channel]) =>
+        channel === createProfileBackupIpcChannel)![1];
+      await expect(handler({ sender: fixture.mainWindow.webContents,
+        senderFrame: fixture.mainWindow.webContents.mainFrame })).resolves.toBe('cancelled');
+      expect(fixture.showSaveDialog).toHaveBeenCalledWith(fixture.mainWindow, expect.objectContaining({
+        defaultPath: expect.stringMatching(/^Eky-varmuuskopio-Synthetic Renamed Company-\d{4}-\d{2}-\d{2}\.ekybackup$/u),
+      }));
+      const nextPath = join(fixture.root, `${WORKSPACE_REGISTRY_FILE_NAME}.next`);
+      const nextBytes = 'Synthetic interrupted registry write';
+      await writeFile(nextPath, nextBytes, { mode: 0o600 });
+      await expect(readLabel!()).resolves.toBe('Synthetic Renamed Company');
+      await expect(readFile(nextPath, 'utf8')).resolves.toBe(nextBytes);
+      await rm(nextPath);
+      const otherId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
+      await fixture.registry.write({ ...registry, activeWorkspaceId: otherId,
+        workspaces: [{ ...active, workspaceId: otherId, workspaceLabel: 'Synthetic Other Company' }] });
+      await expect(readLabel!()).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+      await fixture.registry.write({ formatVersion: 1, activeWorkspaceId: null, workspaces: [] });
+      await expect(readLabel!()).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    } finally {
+      await fixture.registry.write(registry);
+      await lifecycle!.shutdown();
+    }
   });
 
   it('keeps ordinary restore authority alive after startup and closes it on runtime shutdown', async () => {
@@ -2354,6 +2397,7 @@ async function createFixture(
   };
   const quit = vi.fn();
   const showErrorBox = vi.fn();
+  const showSaveDialog = vi.fn(async () => ({ canceled: true, filePath: '' }));
   // This composition fixture has a controlled backend, not a delivered native addon.
   const inspectionContractPath = join(root, 'resources', 'backend', 'dist',
     'database', 'connection', 'profileInspectionNativeContract.js');
@@ -2603,6 +2647,7 @@ async function createFixture(
     mainWindow,
     quit,
     showErrorBox,
+    showSaveDialog,
     assertRegistryUnchanged,
     async assertOriginalRestored() {
       await expect(readFile(paths.databaseFilePath, 'utf8')).resolves.toBe(originalBytes);
@@ -2641,6 +2686,7 @@ async function createFixture(
         createRuntimeSession,
         showErrorBox,
         showMessageBox,
+        showSaveDialog,
         async startBackend(input) {
           events.push('backendStarted');
           try {

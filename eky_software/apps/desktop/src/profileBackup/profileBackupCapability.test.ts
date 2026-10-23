@@ -20,6 +20,80 @@ const backupFailureCases = [
 ] as const;
 
 describe('profile backup capability', () => {
+  it('reads the current label inside the backup lease for every native selection', async () => {
+    let label = 'Synthetic Company A';
+    const fixture = createFixture({
+      targetPath: null,
+      readActiveWorkspaceLabel: async () => {
+        expect(fixture.maintenancePurposes.length).toBe(fixture.maintenanceReleaseCount + 1);
+        return label;
+      },
+    });
+    await fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent);
+    label = 'Synthetic Company A Renamed';
+    await fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent);
+    expect(fixture.selectBackupTarget.mock.calls).toEqual([
+      ['Eky-varmuuskopio-Synthetic Company A-2026-08-04.ekybackup'],
+      ['Eky-varmuuskopio-Synthetic Company A Renamed-2026-08-04.ekybackup'],
+    ]);
+    expect(fixture.create).not.toHaveBeenCalled();
+    expect(fixture.readActiveWorkspaceLabel).toHaveBeenCalledTimes(2);
+    expect(fixture.maintenanceReleaseCount).toBe(2);
+    expect(JSON.stringify(fixture.operationalWrite.mock.calls)).not.toContain('Synthetic Company');
+  });
+
+  it('keeps a label lookup failure safe and does not select a destination', async () => {
+    const original = new Error('Synthetic private registry detail');
+    const fixture = createFixture({ readActiveWorkspaceLabel: async () => { throw original; } });
+    await expect(fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent))
+      .rejects.toMatchObject({ message: 'PROFILE_BACKUP_CREATE_FAILED', cause: original });
+    expect(fixture.selectBackupTarget).not.toHaveBeenCalled();
+    expect(fixture.requestPassword).not.toHaveBeenCalled();
+    expect(fixture.create).not.toHaveBeenCalled();
+    expect(fixture.maintenanceReleaseCount).toBe(1);
+    expect(fixture.showSafeError).toHaveBeenCalledWith('create');
+    expect(fixture.operationalWrite).toHaveBeenCalledWith(expect.objectContaining({
+      eventName: 'backup.failed', errorCode: 'PROFILE_BACKUP_CREATE_FAILED', sideEffectState: 'none',
+    }));
+    expect(JSON.stringify(fixture.operationalWrite.mock.calls)).not.toContain(original.message);
+  });
+
+  it('does not open a dialog after disposal during the label lookup', async () => {
+    let finish!: (label: string) => void;
+    const lookup = new Promise<string>(resolve => { finish = resolve; });
+    const fixture = createFixture({ readActiveWorkspaceLabel: () => lookup });
+    const pending = fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent);
+    await vi.waitFor(() => expect(fixture.readActiveWorkspaceLabel).toHaveBeenCalledTimes(1));
+    fixture.capability.dispose();
+    finish('Synthetic Company');
+    await expect(pending).rejects.toThrow('PROFILE_PROTECTION_OPERATION_BUSY');
+    expect(fixture.selectBackupTarget).not.toHaveBeenCalled();
+    expect(fixture.maintenanceReleaseCount).toBe(1);
+  });
+
+  it('does not read a label when maintenance is busy', async () => {
+    const fixture = createFixture({ maintenanceBusy: true });
+    await expect(fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent))
+      .rejects.toThrow('PROFILE_PROTECTION_OPERATION_BUSY');
+    expect(fixture.readActiveWorkspaceLabel).not.toHaveBeenCalled();
+    expect(fixture.selectBackupTarget).not.toHaveBeenCalled();
+  });
+
+  it('does not report a label lookup failure after disposal', async () => {
+    let fail!: (error: Error) => void;
+    const lookup = new Promise<string>((_resolve, reject) => { fail = reject; });
+    const fixture = createFixture({ readActiveWorkspaceLabel: () => lookup });
+    const pending = fixture.invoke(createProfileBackupIpcChannel, fixture.trustedEvent);
+    await vi.waitFor(() => expect(fixture.readActiveWorkspaceLabel).toHaveBeenCalledTimes(1));
+    fixture.capability.dispose();
+    fail(new Error('Synthetic late private read failure'));
+    await expect(pending).rejects.toThrow('PROFILE_PROTECTION_OPERATION_BUSY');
+    expect(fixture.selectBackupTarget).not.toHaveBeenCalled();
+    expect(fixture.showSafeError).not.toHaveBeenCalled();
+    expect(fixture.operationalWrite).not.toHaveBeenCalled();
+    expect(fixture.maintenanceReleaseCount).toBe(1);
+  });
+
   it('lets main own paths and passwords without renderer arguments', async () => {
     const fixture = createFixture();
 
@@ -411,6 +485,7 @@ function createFixture(options: {
   operationalLoggerThrows?: boolean;
   sourcePath?: string | null;
   targetPath?: string | null;
+  readActiveWorkspaceLabel?: () => Promise<string | undefined>;
 } = {}) {
   const handlers = new Map<
     string,
@@ -458,6 +533,7 @@ function createFixture(options: {
   });
   const maintenancePurposes: string[] = [];
   let maintenanceReleaseCount = 0;
+  const readActiveWorkspaceLabel = vi.fn(options.readActiveWorkspaceLabel ?? (async () => undefined));
   const showSafeError = vi.fn();
   const capability = createProfileBackupCapability({
     backupService: {
@@ -499,6 +575,7 @@ function createFixture(options: {
       runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
     },
     operationalLogger: { write: operationalWrite },
+    readActiveWorkspaceLabel,
     passwordWindow: {
       dispose: vi.fn(),
       requestPassword,
@@ -538,6 +615,7 @@ function createFixture(options: {
     operationalWrite,
     removeHandler,
     requestPassword,
+    readActiveWorkspaceLabel,
     selectBackupSource,
     selectBackupTarget,
     showSafeError,

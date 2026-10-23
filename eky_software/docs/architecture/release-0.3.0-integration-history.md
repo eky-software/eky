@@ -5,6 +5,30 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## M4.1:n CI:tä edeltävä checkpoint 24.10.2026
+
+Seuraava checkpoint siirrettiin M1:stä muuttamatta alkuperäistä tekstiä.
+Sen odottavat PR/main-portit ovat vaihehistoriaa;
+[M4.1:n loppupäätös](https://github.com/eky-software/eky/pull/317#issuecomment-6376623066)
+omistaa toteutuneen hyväksynnän. Ensihylkäysten tuntemattomia syitä ei suljeta.
+
+**CI:tä edeltävä checkpoint 24.10.2026:** paikallinen toteutus,
+webin komponenttisarja, työtilan
+tyyppitarkistus ja 14 kohdistettua selainkoetta läpäisivät.
+Selainkokeissa tarkistettiin nykyiset COMPANY-LOAD/SAVE-polut ja
+UI-WAIT-001/002/003. Backup-panelin desktop/mobile-kuvat ja tekstiskaalaus
+125/150 prosenttiin tarkistettiin; tämä ei ole kaikkien näkymien tai
+oikean ruudunlukijaohjelman kattava hyväksyntä. Rajattu riippumaton
+koodikatselmus ei löytänyt toteutusvirhettä.
+Ensimmäisen uuden selainkokeen liian väljä status-valitsin korjattiin;
+alkuperäinen hylkäys ja aineisto säilyvät erillään korjatusta kokeesta.
+Koko pakettien testisarja ja web-build läpäisivät. Ei vielä PR-/main-
+hyväksyntää: julkaisutarkistus sekä täsmällisen PR-revision ja uuden mainin
+nykyiset pakolliset portit ovat avoinna.
+Selainkomponentin hallittu native-vastaus ei ole varmuuskopion
+palautettavuuden tai SMTP-verkkotoimituksen todiste. Uusia backend-,
+profiili-, native-, salaisuus- tai lifecycle-polkuja ei tässä muuteta.
+
 ## I:n integraatiota edeltävä jatkamiskohta 23.10.2026
 
 Seuraava jatkamiskohta ja I:n valmistelusopimus siirrettiin M1:stä
