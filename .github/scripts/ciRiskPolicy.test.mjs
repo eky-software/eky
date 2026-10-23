@@ -7,6 +7,74 @@ import { classifyCiRisk, CI_GATES, CI_FAULT_SCENARIOS, validateCiRiskPlan } from
 const input = (changedPaths, extra = {}) => ({ eventName: 'pull_request', ref: 'refs/pull/1/merge',
   changedPaths, comparisonComplete: true, ...extra });
 const path = (suffix) => `eky_software/${suffix}`;
+const customerBrowserScenarios = [
+  'customerAndCompanyJourneys.spec.ts', 'customerOverviewJourneys.spec.ts',
+  'customerRelationshipJourneys.spec.ts', 'customerInvariantJourneys.spec.ts',
+].map((name) => path(`apps/e2e/tests/web/${name}`));
+
+for (const file of customerBrowserScenarios) {
+  test(`reviewed customer browser scenario retains the three fast gates: ${file}`, () => {
+    assert.ok(existsSync(new URL(`../../${file}`, import.meta.url)));
+    const plan = classifyCiRisk(input([file]));
+    assert.equal(plan.risk, 'fast');
+    assert.deepEqual(CI_GATES.filter((gate) => plan.gates[gate]), ['verify', 'systemSecurity', 'webCritical']);
+    assert.deepEqual(plan.faultScenarios, []);
+    assert.equal(plan.repetitions, 1);
+    assert.deepEqual(validateCiRiskPlan(JSON.parse(JSON.stringify(plan))), plan);
+  });
+}
+
+test('customer browser selection does not generalize to neighbours or shared E2E support', () => {
+  for (const suffix of [
+    'tests/web/newCustomerJourneys.spec.ts', 'tests/web/CustomerInvariantJourneys.spec.ts',
+    'tests/web/customerInvariantJourneys.spec.ts.bak', 'tests/web/nested/customerInvariantJourneys.spec.ts',
+    'tests/system/customerInvariants.spec.ts', 'tests/electron/customerInvariantJourneys.spec.ts',
+    'tests/electron-stress/customerInvariantJourneys.spec.ts',
+    'tests/web/operationalLogNoticeJourneys.spec.ts', 'playwright.config.ts',
+    'playwright.packaged-legacy.config.ts', 'src/fixtures/isolatedWebTest.ts',
+    'src/environment/createE2eWebRuntime.ts', 'src/journeys/invoicingWebJourney.ts',
+    'src/data/syntheticBusinessInputs.ts', 'scripts/safeCiReporter.mjs',
+  ]) {
+    const plan = classifyCiRisk(input([path(`apps/e2e/${suffix}`)]));
+    assert.equal(plan.risk, 'installer', suffix);
+    assert.ok(CI_GATES.every((gate) => plan.gates[gate]), suffix);
+    assert.deepEqual(plan.faultScenarios, CI_FAULT_SCENARIOS, suffix);
+    assert.equal(plan.repetitions, 1, suffix);
+  }
+  assert.equal(classifyCiRisk(input(['other/apps/e2e/tests/web/customerInvariantJourneys.spec.ts'])).risk, 'full');
+});
+
+test('mixed customer scenario changes keep the strictest risk independent of path order', () => {
+  for (const [other, risk, repetitions] of [
+    [path('apps/e2e/src/fixtures/isolatedWebTest.ts'), 'installer', 1],
+    [path('apps/desktop/src/main/index.ts'), 'installer', 1],
+    [path('pnpm-lock.yaml'), 'full', 2],
+    [path('apps/backend/src/modules/customers/migrations/001.sql'), 'full', 2],
+    ['.github/scripts/ciRiskPolicy.mjs', 'full', 2],
+    ['unknown/platform.ts', 'full', 2],
+  ]) {
+    const files = [...customerBrowserScenarios, other];
+    const plan = classifyCiRisk(input(files));
+    assert.deepEqual(plan, classifyCiRisk(input([...files].reverse())));
+    assert.equal(plan.risk, risk);
+    assert.equal(plan.repetitions, repetitions);
+    assert.ok(CI_GATES.every((gate) => plan.gates[gate]));
+    assert.deepEqual(plan.faultScenarios, CI_FAULT_SCENARIOS);
+  }
+});
+
+test('customer scenarios do not reduce incomplete comparisons or any main and release event', () => {
+  const incomplete = classifyCiRisk(input(customerBrowserScenarios, { comparisonComplete: false }));
+  assert.equal(incomplete.risk, 'full');
+  assert.equal(incomplete.reason, 'comparisonUnavailable');
+  for (const eventName of ['push', 'schedule', 'workflow_dispatch']) {
+    const plan = classifyCiRisk(input(customerBrowserScenarios, { eventName, ref: 'refs/heads/main' }));
+    assert.equal(plan.risk, 'full');
+    assert.ok(CI_GATES.every((gate) => plan.gates[gate]));
+    assert.deepEqual(plan.faultScenarios, CI_FAULT_SCENARIOS);
+    assert.equal(plan.repetitions, 2);
+  }
+});
 
 test('ordinary UI, domain and module application edits retain fast security and build gates', () => {
   const plan = classifyCiRisk(input([

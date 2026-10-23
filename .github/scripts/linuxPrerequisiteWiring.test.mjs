@@ -14,7 +14,7 @@ const consumers = [
   { job: 'e2e-system-security', step: 'Run isolated system security E2E tests',
     consumer: 'system-api', command: 'pnpm test:e2e:system', timeout: 10 },
   { job: 'e2e-web-critical', step: 'Run critical web E2E journeys',
-    consumer: 'web-chromium', command: 'pnpm --filter @eky/e2e e2e:web:critical', timeout: 15 },
+    consumer: 'web-chromium', command: 'pnpm --filter @eky/e2e e2e:web:critical', timeout: 20 },
 ];
 
 function windowsGitBash(searchPath, isFile) {

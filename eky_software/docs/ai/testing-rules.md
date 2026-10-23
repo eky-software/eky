@@ -85,6 +85,21 @@ pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäa
 pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
 syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
 
+## Web-CI:n kokonaisbudjetti
+
+Omistajan 23.10.2026 hyväksymä `Web critical E2E` -työn kokonaisaikaraja
+on 20 minuuttia. Sama raja kattaa selainympäristön valmistelun, nykyisen
+kriittisen testijoukon ja työn loppuvaiheet. Muutos koskee vain
+repositoryjuuren `.github/workflows/ci.yml`:n `e2e-web-critical`-työtä.
+
+Testien, Playwrightin, käynnistyksen, prosessisiivouksen ja salatun
+virhekeräyksen omat aikarajat, uusintaehdot ja pakolliset tulokset säilyvät.
+`failOnFlakyTests` säilyy: yhteysvirheen jälkeinen läpäisy ei muutu
+hyväksynnäksi pidemmän kokonaisbudjetin vuoksi. Aiemmat katkaisut,
+ensivirheet ja puuttuvat siivoustodisteet jäävät erillisiksi havainnoiksi.
+Kokonaisrajan ja muuttumattoman testikomennon tarkistaa nykyinen
+`ciRunAcceptance.test.mjs`; Linuxin valmistelukytkentä vaatii saman rajan.
+
 ## Desktopin Vitest-rinnakkaisuus
 
 Desktopin tavallisen `vitest run` -ajon enimmäistyöntekijämäärä on neljä.
@@ -406,6 +421,8 @@ Dokumentaatiomuutoskaan ei ohita riskiluokitusta. Nykyisen
 | Muutos tai tapahtuma | Vaadittu valinta |
 | --- | --- |
 | Tavallinen `eky_software/docs/**/*.md`, pois lukien alla olevat politiikkaohjeet | `verify`, `systemSecurity`, `webCritical`, yksi toisto |
+| Vain riskiluokittimen `FAST_BROWSER_SCENARIO_PATHS`-listan nimetyt asiakasselaintestit | `verify`, `systemSecurity`, `webCritical`, yksi toisto |
+| Muut `apps/e2e/`-polut, myös uudet skenaariot, fixturet, raportointi ja konfiguraatio | Nykyinen compatibility-valinta: kaikki 11 perhettä, yksi toisto; alla nimetyt yhteiset politiikka-/pakettitiedostot vaativat täyden valinnan |
 | Mikä tahansa `AGENTS.md`, `.github/**`, tämä testauskäytäntö tai Windows-harnessin ohje | Kaikki 11 perhettä, kaksi toistoa |
 | `apps/e2e/experiments/processOwnership/README.md` | Compatibility-riski: kaikki 11 perhettä, yksi toisto |
 | Tuntematon polku, puuttuva/epätäydellinen vertailu tai tyhjä muutoslista | Täysi portti, kaksi toistoa |
@@ -414,6 +431,12 @@ Dokumentaatiomuutoskaan ei ohita riskiluokitusta. Nykyisen
 Sekamuutoksessa tiukin luokitus määrää. Nopea portti ajaa oikeat sopimus-,
 build- ja system/web-testit; se ei tarkoita pelkkää dokumenttilinkkien linttiä.
 Täysi portti säilyttää paketti-, palautus-, prosessi- ja fault-vaatimukset.
+I/R30:n hyväksytty rajaus koskee vain riskiluokittimen täsmällistä
+`FAST_BROWSER_SCENARIO_PATHS`-listaa, ei koko selaintestihakemistoa.
+Lista on luokittimen omistama; nimeäminen ei tee uudesta testistä kevyttä.
+Listatun testin vastuun muutos vaatii riskikartan tarkistuksen samassa työssä.
+Yhteisen tukikoodin muutos tai siirron toinen polku säilyttää korkeamman
+riskin. Mainin, ajastuksen ja manuaaliajon täydet portit eivät kevene.
 [Audit-workflow](../../../.github/workflows/dependency-security.yml) käynnistyy
 jokaisesta mainiin kohdistuvasta PR:stä. Sen main-push on erikseen
 polkusuodatettu: pelkkä dokumenttimuutos ei automaattisesti käynnistä

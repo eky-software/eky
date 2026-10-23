@@ -37,6 +37,24 @@ test('removed and renamed source paths retain their compatibility requirements',
   assert.equal(plan.gates.workspaceFault, true);
 });
 
+test('complete customer scenario diffs use fast gates but renames retain both old and new risks', () => {
+  const browser = 'eky_software/apps/e2e/tests/web/customerInvariantJourneys.spec.ts';
+  const classify = (files) => classifyCiChanges(environment, { git: () => ({ status: 0, stdout: diff(files) }) });
+  assert.equal(classify([browser]).risk, 'fast');
+  for (const other of [
+    'eky_software/apps/e2e/tests/web/newCustomerJourneys.spec.ts',
+    'eky_software/apps/e2e/src/fixtures/isolatedWebTest.ts',
+    'eky_software/apps/e2e/tests/electron/electronRuntime.spec.ts',
+  ]) {
+    for (const files of [[browser, other], [other, browser]]) {
+      const plan = classify(files);
+      assert.equal(plan.risk, 'installer');
+      assert.equal(plan.gates.legacyUpgrade, true);
+      assert.equal(plan.gates.workspaceFault, true);
+    }
+  }
+});
+
 test('Git error, signal, truncated output, invalid UTF-8 and byte overflow select the full matrix', () => {
   for (const result of [
     { status: 1, stdout: diff([file]) }, { status: null, stdout: diff([file]) },

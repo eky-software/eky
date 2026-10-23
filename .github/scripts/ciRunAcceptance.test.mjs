@@ -10,6 +10,7 @@ import { summarizeLegacyCapture } from './legacyCaptureObservation.mjs';
 import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
 
 const fast = 'eky_software/apps/web/src/features/customers/CustomerList.tsx';
+const customerBrowser = 'eky_software/apps/e2e/tests/web/customerInvariantJourneys.spec.ts';
 const critical = 'eky_software/apps/desktop/src/profileBackup/restore/profileRestoreStartupRecovery.ts';
 const planFor = (paths, eventName = 'pull_request') => classifyCiRisk({ eventName,
   ref: eventName === 'pull_request' ? 'refs/pull/1/merge' : 'refs/heads/main',
@@ -42,7 +43,10 @@ function evidence(plan) {
 test('light, lifecycle, mixed and full-event changes select exact coverage and complete', () => {
   for (const [paths, event, count] of [
     [[fast], 'pull_request', 5], [[critical], 'pull_request', 25],
+    [[customerBrowser], 'pull_request', 5], [[customerBrowser, critical], 'pull_request', 25],
     [[fast, critical], 'pull_request', 25], [[fast], 'push', 36],
+    [[customerBrowser], 'push', 36], [[customerBrowser], 'schedule', 36],
+    [[customerBrowser], 'workflow_dispatch', 36],
     [[fast], 'schedule', 36], [[fast], 'workflow_dispatch', 36],
   ]) {
     const plan = planFor(paths, event);
@@ -495,7 +499,7 @@ test('manual diagnostics select independent existing jobs without changing reusa
 const linuxConsumers = [
   { job: 'e2e-system-security', scope: 'system', consumer: 'system-api', timeout: 10,
     normal: 'Run isolated system security E2E tests' },
-  { job: 'e2e-web-critical', scope: 'web', consumer: 'web-chromium', timeout: 15,
+  { job: 'e2e-web-critical', scope: 'web', consumer: 'web-chromium', timeout: 20,
     normal: 'Run critical web E2E journeys' },
 ];
 
@@ -519,12 +523,12 @@ function workflowStep(source, name) {
   return section.trimEnd();
 }
 
-test('only the Windows Electron job has the approved 35-minute preparation and execution budget', async () => {
+test('core jobs preserve their exact approved preparation and execution budgets', async () => {
   const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
   const budgets = {
     verify: 15,
     'e2e-system-security': 10,
-    'e2e-web-critical': 15,
+    'e2e-web-critical': 20,
     'e2e-electron-windows-critical': 35,
     'windows-contracts': 15,
   };
@@ -536,6 +540,11 @@ test('only the Windows Electron job has the approved 35-minute preparation and e
   assert.equal(workflowStep(electron, 'Run critical Electron E2E journeys'),
     '        run: pnpm test:e2e:electron:critical');
   assert.match(workflowStep(electron, 'Preserve encrypted CI failure evidence'),
+    /^        timeout-minutes: 3$/mu);
+  const web = workflowJob(core, 'e2e-web-critical');
+  assert.match(workflowStep(web, 'Run critical web E2E journeys'),
+    /^          pnpm --filter @eky\/e2e e2e:web:critical$/mu);
+  assert.match(workflowStep(web, 'Preserve encrypted CI failure evidence'),
     /^        timeout-minutes: 3$/mu);
 });
 

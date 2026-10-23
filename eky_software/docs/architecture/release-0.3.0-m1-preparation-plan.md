@@ -7,368 +7,207 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (23.10.2026):** G/R20/R23 ja D029-01/02 on hyväksytty
-PR #314:n kautta mainiin `80139f6dffc01f7df2ed0ef8779636d67c4ee23d`.
-[G:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094)
-erottaa hyväksytyn PR-headin `9c5d3ffe08046c6be81e5e61de7852731ee22c98`,
-uuden mainin omat portit ja ensihylkäysten avoimet havainnot. Mainin puu
-vastaa hyväksyttyä PR-headia. T/A/B/C/K/D/E/F/G säilyvät hyväksyttyinä;
+**Hyväksytty lähtö (23.10.2026):** H1-H5/R21/R22/R24/R25/R26 ja
+D029-03/04/05 on hyväksytty PR #315:n kautta mainiin
+`7e2dba840f4434eeb6049feda70852751343e134`.
+[H:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918)
+erottaa katselmoidun PR-headin `bc44ffc20552d81ae27e69f5376f8cfdef6bdf51`,
+uuden mainin omat portit ja omistajan rajatun loppupäätöksen. Mainin puu
+vastaa hyväksyttyä PR-headia. T/A/B/C/K/D/E/F/G/H säilyvät hyväksyttyinä;
 niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR #314 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39860418986/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39860418852) läpäisi ensimmäisellä suoritusyrityksellä. |
-| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39887988572/attempts/2): 38 onnistunutta työtä ja samat kuusi valitsematonta diagnostiikkatyötä. [Mainin oma riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39888226627) läpäisi ensimmäisellä suoritusyrityksellä. Ohituksia ei lasketa läpäisyiksi. |
+| PR #315 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39919386542/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39919386450) läpäisi ensimmäisellä suoritusyrityksellä. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39936314545/attempts/2): 38 onnistunutta työtä ja samat kuusi valitsematonta diagnostiikkatyötä. [Mainin oma riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39936392065) läpäisi ensimmäisellä suoritusyrityksellä. Vaaditut työt ja askeleet, kaikki viisi fault-skenaariota ja molemmat toistot varmennettiin; ohituksia ei lasketa läpäisyiksi. |
 
-**Nykyinen työ:** H:n hyväksytyn rajauksen toteutus
-[alla olevan valmistelun mukaan](#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma).
-Omistaja hyväksyi 23.10.2026 H-P1:n kolmen lukutilan suunnan sekä H-P2:n
-ei-estävän, deduplikoidun häiriöpalautteen ja koko H:n loppuunviennin Goalina.
-H1-H3:n paikallinen korjauscheckpoint on tallennettu. H4:n lukutila kulkee
-nykyisistä lukijoista HTTP:n ja strict-clientin kautta käyttöliittymään;
-kohde-, selain- ja tukipakettiketjun näyttö on alla. H4:n katselmushavainto
-on korjattu ja H5:n hyväksytty sovellusilmoitus on paikallisesti todennettu
-main/preload/UI-ketjussa. Vaikutusalueen paikalliset loppusarjat, tyypitys,
-auditointi ja katselmus ovat läpäisseet. Korjatun puhtaan revision
-pakettitodistus on läpäissyt; seuraavaksi tehdään H:n PR/main-integraatio.
-PR #315:n ensimmäinen kierros hylkäsi itsenäisen virheaineistofixturen
-valmistelun; rajattu testikorjaus ja uusi täsmärevision kierros ovat kesken
-[alla olevan checkpointin mukaan](#hn-pr-integraation-rajattu-jatko).
-Uudet käyttäytymis-, turvallisuus-
-tai muut erilliset päätökset ratkaistaan ennen niiden vaikutusalueen kytkentää;
-samoja H-P1/H-P2-periaatteita ei kysytä uudelleen. Toteutus ja sen portit
-ovat vielä avoimia.
-I:n loppuosa ja M4/M5 odottavat; tämä ei ole koko 0.3.0:n hyväksyntä.
+**Nykyinen työ:** I/R30/R31:n hyväksytyn rajauksen toteutus ja todennus
+[alla olevan rajauksen mukaan](#i--ci-politiikan-ja-ajantasaisten-sopimusten-valmistelu).
+Omistaja hyväksyi 23.10.2026 esitetyn rajatun jatkon Goalina: neljän
+nimetyn asiakasselaintestin CI-erottelu ja osoitettujen ohjevirheiden korjaus.
+Kohderegressiot, nykyinen 425 testin CI-sopimussarja, riippuvuusauditointi
+ja rajattu riippumaton katselmus ovat läpäisseet. [PR #316](https://github.com/eky-software/eky/pull/316)
+ei ole vielä hyväksytty: ensimmäinen kierros ja sen yksi rajattu
+kohdeuusinta säilyvät [integraatiocheckpointissa](https://github.com/eky-software/eky/pull/316#issuecomment-6366351666).
+Supervisor ja Electron läpäisivät kohdeuusinnan, mutta web-työ katkaistiin
+kokonaisaikarajaan. Erillinen laskun jälkiluvun yhteysvirhe ja ensimmäisten
+yritysten aineisto-/siivouspuutteet jäävät avoimiksi, eivät korjatuiksi.
 
-**Avoimet havainnot:** PR #314:n ensimmäinen legacy-ajo päättyi työn
-37 minuutin kokonaisrajaan ilman saatavaa testilokia tai siivoustodistetta.
-Omistaja hyväksyi rajatun etenemisen yhden samoilla paketeilla läpäisseen
-kohdeuusinnan jälkeen; ensimmäinen syy ja siivoustila jäävät tuntemattomiksi.
-Mainin ensimmäinen native-ikkunatestin valmistelu ylitti nykyisen
-käännösrajan; alkuperäiset virheet säilyivät salatussa paketissa ja
-prosessipuun poistuminen todennettiin. Viiveen tarkka syy jäi avoimeksi.
-Mainin ensimmäinen web-ajo katkesi kokonaisrajaan ulkoisen
-riippuvuusvalmistelun viivyttyä; osittainen testitulos ja puuttuva lopullinen
-siivoustodiste eivät muutu läpäisyksi. Yksi kohdeuusinta läpäisi molemmat
-työt ja niiden pakolliset seuraajat samalla lähteellä. Aiempien
-palautustestien, PR #312/313:n ja vanhempien ajojen syyepävarmuudet sekä
-aineiston säilytysrajat pysyvät avoimina.
-G:n [edeltävä jatkamiskohta ja toteutuscheckpoint](release-0.3.0-integration-history.md#gn-integraatiota-edeltävä-jatkamiskohta-23102026)
-säilyvät historiassa; yksittäinen onnistunut uusinta ei todista vikaa
-korjatuksi.
+**Omistajan jatkopäätös 23.10.2026:** vain web-työn kokonaisraja nostetaan
+15 minuutista 20 minuuttiin. Talteen saatu yhteysvirhe tutkitaan rajatusti
+ennen yhtä uutta normaalia PR/CI-kierrosta. Testikohtaiset, runtime- ja
+siivousrajat, flaky-hylkäys ja muut hyväksyntäehdot säilyvät
+[testausohjeen rajauksen mukaan](../ai/testing-rules.md#web-cin-kokonaisbudjetti).
+Mahdollinen sovelluskoodin muutos vaatii erillisen päätöksen. Jäädytetyn
+uuden PR-headin ja uuden mainin omat portit vaaditaan edelleen.
+Rajatussa lähdekatselmuksessa ei osoitettu yhteyskatkon korjattavaa syytä.
+Nykyisen laskun elinkaaritestin yksi kohdeajo läpäisi ilman uusintaa ja
+varmensi siivouksen. Tämä ei selitä alkuperäistä yhteysvirhettä eikä muuta
+sitä korjatuksi; testiin tai sen kuljetuskerrokseen ei lisätty uusintaa.
+I:n aiemmin hyväksyttyä ohjeverkon huoltoa ei tehdä uudelleen.
+
+**Avoimet havainnot:** PR #315:n ensimmäisen kiintiö-/flush-testin
+aikakatkaisun tarkka syy säilyy avoimena. Mainin ensimmäisessä
+legacy-kokeessa prosessipuun poistumista ei saatu varmennettua
+siivousbudjetissa; alkuperäinen siivoustila jää epävarmaksi. Keräyksen
+rajaamassa aineistossa ei ollut kyseisen epäonnistuneen vaiheen tulosta.
+Mainin ensimmäinen workspace-fault-ajo odotti MSI:n sulkemispyynnön
+vastausta ennen kohteen keskeytysinjektiota. Tarkkaa estäjää tai syytä
+ei tunnistettu. Sen loppusiivous ja business-datan säilyminen todennettiin,
+mutta hylätyn skenaarion semanttista onnistumista ei tarkistettu.
+Yksi hyväksytty kohdeuusinta läpäisi samalla lähteellä ja samoilla valmiin
+workspace-paketin tavuilla. Se ei korjaa tai jälkikäteen hyväksy
+ensihylkäyksiä; luvat on käytetty ja keräyksen kattavuusrajat säilyvät.
+Myös G:n ja aiempien pakettien avoimet syyt sekä aineistoaukot säilyvät
+niiden omissa checkpointteissa. [H:n edeltävä jatkamiskohta ja suunnitelma](release-0.3.0-integration-history.md#hn-integraatiota-edeltävä-jatkamiskohta-23102026)
+ovat historiassa. I:n loppuosa sekä M4/M5 ovat vielä avoimia;
+H:n hyväksyntä ei ole koko `0.3.0`:n hyväksyntä.
+
+### I / CI-politiikan ja ajantasaisten sopimusten valmistelu
+
+**Tila 23.10.2026:** rajattu toteutus hyväksytty Goalina, todennus kesken. I omistaa vain
+CI-valinnan politiikan ja nykyisten sopimusten vastaavuuden tarkistuksen.
+Se ei omista testiskenaarioita, prosessienhallintaa tai liiketoimintalogiikkaa.
+Lähtöhavainnot R30/R31 on verrattu nykyiseen lähteeseen; historiallinen
+havainto ei sellaisenaan todista nykyistä puutetta.
+
+| Pala | Nykyinen havainto ja omistaja | Suunniteltu tulos |
+| --- | --- | --- |
+| I0: lähtö ja säilyvät sopimukset | Hyväksytty H-main sekä aiemman PR #306:n ohjehuollon ja myöhempien pakettien omat checkpointit. | Rajattu nykytila ja tiedosto-/testikartta; valmiita korjauksia tai ohjeiden reititystä ei rakenneta uudelleen. |
+| I1 / R31: sopimusten vastaavuus | [Integraatiomatriisi](module-integration-matrix.md), [E2E-strategia](e2e-testing-strategy.md) ja niiden lifecycle/recovery-lähteet. | Vertaa voimassa olevat väitteet todellisiin kutsujiin. Korjaa vain osoitetut nykytilavirheet; säilytä päivätyt foundation-vaiheet historiana. Kirjaa myös jo korjatun havainnon vastanäyttö. |
+| I2 / R30: rajattu valinta | Repositoryjuuren `.github/scripts/ciRiskPolicy.mjs` omistaa hyväksytyn neljän asiakasselaintestin täsmällisen listan. Muu `apps/e2e/` säilyttää aiemman luokituksen. | Kolme nopeaa perhettä vain nimettyjen testien PR-muutokseen; negatiiviset verrokit ja nykyiset hyväksyntäportit säilyvät. Ei kaikkien E2E-polkujen yleistä kevennystä. |
+| I3: todistus ja integraatio | Nykyiset riskiluokittimen, diff-valinnan, tuloskoonnin ja workflow-kytkentöjen sopimustestit. | Hyväksytyn muutoksen regressiot, riippumaton katselmus ja täsmärevision omat PR/main-portit. Valmistelun tai yhden luokittelukokeen läpäisy ei sulje I:tä. |
+
+**I1:n rajattu lähdekatselmus ja korjaus:** integraatiomatriisi kuvasi
+Update Coordinatorin Diagnostics-/support-projektion G/D029-02:n
+tulevaksi työksi, vaikka diagnostiikan omistava suunnitelma sulkee kohdan
+ja nykyinen `diagnosticOperationalEventProjector.ts` käyttää
+`diagnosticUpdateSpecs`-projektiota. Myös Company Settings -> Invoicing
+-salaisuusrajan D- ja Diagnosticsin H-integraatiomerkinnät olivat jäljessä
+hyväksytyistä porteista. Nämä status- ja omistajaviitteet on oikaistu;
+tuotantopolkuja ei tarvitse rakentaa uudelleen. Matriisin W2-W6-tekstit
+on jo nimetty historiallisiksi ja E2E-strategian kahden prosessin
+packaged-palautus vastaa nykyistä smoke-ajuria. Tämä otoskatselmus ei
+todista kaikkien ohjeiden sisällön ajantasaisuutta tai sulje vielä R31:tä.
+
+#### I:n säilytettävä CI-sopimus
+
+- Nykyinen controller on repositoryjuuren
+  `.github/workflows/ci-cadence-contracts.yml`. Se käyttää
+  `classifyCiChanges.mjs`:ää, `ciRiskPolicy.mjs`:ää,
+  `verifyCiRun.mjs`:ää ja `ciJobCoverage.mjs`:ää. Sama suunnitelma
+  välitetään nykyisille reusable-workfloweille; rinnakkaista valitsinta
+  tai hyväksyntäkoontia ei lisätä.
+- Nopea PR-valinta säilyttää `verify`-, `systemSecurity`- ja
+  `webCritical`-perheet. Se ei tarkoita testien ohittamista.
+  Desktopin jaetut fixturet, ympäristö, raportointi, buildit ja
+  elinkaarikoodi säilyttävät nykyiset compatibility-/full-ehdot.
+- Tuntematon polku, puuttuva/epätäydellinen vertailu, sekamuutoksen tiukin
+  riski sekä siirron vanha ja uusi polku käsitellään suljetusti.
+  `AGENTS.md`, riippuvuudet, SQL, tsconfig-/pakettimääritykset ja CI-politiikka
+  säilyttävät täyden valinnan.
+- Main-push, ajastettu ja manuaalinen controller-ajo säilyttävät kaikki
+  nykyiset 11 perhettä, viisi fault-skenaariota ja kaksi toistoa.
+  Vaaditut `V2 acceptance` ja `Audit dependencies` sekä mainin omat
+  portit eivät muutu. R30-ehdotus nopeuttaisi vain nimettyjen PR-muutosten
+  palautetta, ei mainin täyttä hyväksyntää.
+- T1/T2/T3:n fixturet, prosessiomistajuus, sandbox, testitapaukset,
+  aikarajat ja alkuperäisten virheiden salattu keräys säilyvät. Luku-,
+  valinta- ja tulostodisteet erotetaan; puuttuvaa näyttöä ei arvata.
+
+#### I-P1: R30:n hyväksytty pienin muutos
+
+**Omistajan hyväksymä rajaus 23.10.2026:** käytä täsmällistä
+tiedostoallowlistiä, älä koko `tests/web/`-hakemistoa. Listaan kuuluvat
+`customerAndCompanyJourneys.spec.ts`, `customerOverviewJourneys.spec.ts`,
+`customerRelationshipJourneys.spec.ts` ja `customerInvariantJourneys.spec.ts`
+nykyisessä `apps/e2e/tests/web/`-kansiossa. Neljä skenaariota tarkistettiin
+tukikutsuineen: nykyinen `isolatedWebTest`, loopback-API, browser/UI sekä
+synteettisen aineiston DB-/lokiväitteet. Lasku-/PDF-kutsut käyttävät nykyistä
+backend-API:a, eivät Electronia tai installer-/palautuspolkua. Salaisuusdata
+on testiruntimen synteettistä dataa, ei käyttöjärjestelmän secret-store.
+Yhteisen fixturen, datan, assertionien tai journey-tuen muutos säilyttää
+compatibility-valinnan. Pelkkä tiedoston nimi ei todista sen kaikkia
+tulevia muutoksia turvallisiksi.
+
+Hyväksytty lista muuttaa vain näiden tiedostojen yksinomaisen PR-muutoksen
+nykyiselle nopealle polulle. Uudet selaintiedostot, Electron-/packaged-/
+endurance-testit, fixturet, apukoodi, konfiguraatio ja raportointi säilyvät
+nykyisellä varovaisella polulla. Listaan otettavan testin vastuun myöhempi
+muutos edellyttää myös riskikartan tarkistusta. Valitsematta jäi aiemman
+konservatiivisen luokituksen säilyttäminen kaikille skenaarioille;
+R30:n P3-havainto ei itsessään tarkoittanut sovelluksen correctness-virhettä.
+
+**Paikallinen checkpoint:** viisi uutta väitettä hylkäsi aiemman luokittimen
+odotetusti (35 testiä: 30 läpäisi, viisi hylkäsi). Korjauksen jälkeen kaikki
+35 luokittelu-/diff-testiä läpäisivät. Ensihylkäys säilyy erillisenä;
+kyse on ennen/jälkeen-regressiosta, ei saman revision vihreäksi uusimisesta.
+Nykyinen koko `test:ci` läpäisi myös uuden selaintapauksen
+`classifyCiRisk -> requiredCiJobs -> evaluateCiRun`-ketjun kanssa: 425 testiä,
+ei hylkäyksiä tai ohituksia. Riippuvuusauditointi ja rajattu riippumaton
+katselmus läpäisivät; katselmoija ei ajanut testejä itse. Dokumenttien
+132 tiedoston 1 640 suhteellista linkkiä ja ankkuria tarkistettiin ilman
+rikkinäistä kohdetta. Siirretyn H-tekstin ja aiemman historian säilyminen
+varmennettiin erikseen. Nämä paikalliset tulokset eivät korvaa PR/main-portteja.
+
+#### I:n toteutus- ja todistusjärjestys
+
+1. Sulje I1/R31 lähdeviitteillä: nykyinen väite -> oikea tuotantokutsu ->
+   säilyvä vastuuohje -> testi/portti. M1:n hyväksyntätilan oikaisu ei yksin
+   todista koko ohjeverkon sisällön ajantasaisuutta.
+2. Ratkaise I-P1 ja lopulliset polut ennen `ciRiskPolicy.mjs`:n muutosta.
+   Käytä nykyisiä `ciRiskPolicy.test.mjs`-, `classifyCiChanges.test.mjs`-,
+   `ciAcceptanceResult.test.mjs`-, `ciRunAcceptance.test.mjs`- ja
+   `verifyCiRun.test.mjs`-testejä. Ei uutta testialustaa tai riippuvuutta.
+3. Todista nimetty selaintapaus ja sen verrokit: uusi tuntematon testipolku,
+   yhteinen fixture, Electron-/packaged-polku, riippuvuus-/SQL-/policy-muutos,
+   siirto molempiin suuntiin, sekoitus ja polkujärjestys,
+   epäonnistunut diff sekä main/ajastus/manuaaliajo.
+   Virheellinen suunnitelma, puuttuva työ/askel/toisto tai sallimaton
+   onnistuminen ei saa päästä koonnista läpi.
+4. Varmenna muuttuneiden ohjeiden reitit, ankkurit, siirretyn tekstin
+   säilyminen ja julkaisuyksityisyys. Nykyinen kohdekomento on `pnpm test:ci`;
+   uuden kokeen alussa nimetään seurannan omistaja ja säilytysketju.
+5. Rajattu riippumaton katselmus, jäädytetyn PR-headin normaalit portit ja
+   auditointi, hyväksytyn Goalin valtuudella normaali suojattu merge sekä
+   uuden mainin omat portit. CI-politiikkatiedoston muutos valitsee itsessään
+   täyden matriisin. Vanhoja MSI-/cleanup-havaintoja ei suljeta vihreydellä.
+
+I ei lisää runtime-, DB-, HTTP-, preload-, secret- tai backup-formaattimuutosta.
+Siksi erillistä uutta toiminnon backup-/restore-toteutusta ei tarvita
+pelkän dokumentti-/valintapolitiikan vuoksi; nykyiset paketti- ja
+palautusportit säilyvät. M4:n ominaisuudet, W7:n käyttäytymisvalinnat,
+M5:n koko sovelluksen katselmus/Deep Scan ja laaja refaktorointi jäävät
+erillisiksi. Rajattu takaperin tehtävä tarkistus valinnasta toteutukseen
+riittää I:lle; koko arkkitehtuuria ei suunnitella uudelleen.
 
 ### H / Diagnostiikan saatavuuden ja oikeellisuuden suunnitelma
 
-**Tila 23.10.2026:** H-P1/H-P2:n suositukset ja H:n toteutus Goalina hyväksytty.
-H1-H5:n korjaukset ovat paikallisesti toteutettuja ja rajatusti todennettuja;
-PR-/main-portit ovat avoimia. Paikallinen puhdas pakettinäyttö on alla.
-Alkuperäiset R21/R22/R24/R25/R26
-on verrattu hyväksytyn G-mainin lähteeseen; taulukko kuvaa lähtöpuutteet,
-korjausvastuut ja niiden todistusvaatimukset. R24/R25/R26 vastaavat D029-03/04/05:tä,
-eivät erillisiä toteutusjonoja. [Roadmap](release-0.3.0-plan.md#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys)
-omistaa rajauksen ja [diagnostiikan täydennyssuunnitelma](diagnostics-0.2.9-completion-plan.md#korjauskohteet)
-sen aiemmat synteettiset havainnot. Historiallista vikaprobea ei lasketa
-nykyisen revision korjaustestiksi.
+**Hyväksytty:** H1-H5 ja niiden omat PR/main-portit
+[PR #315:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
+Alkuperäiset hylkäykset ja omistajan rajattu etenemispäätös on erotettu
+hyväksytystä revisiosta yllä. H ei toteuttanut historian selausta tai
+muuttanut tukipaketin formaattia.
 
-#### H:n omistajat ja etenemisjärjestys
+Nykyiset tekniset velvoitteet omistavat
+[Diagnostics](../modules/diagnostics.md),
+[lokiretention](operational-log-retention-plan.md),
+[tukipaketti](support-bundle-plan.md) ja
+[tapahtumakatalogi](r0-observability-event-catalog.md).
+[H:n hyväksytty suunnitelma ja päivätyt toteutuscheckpointit](release-0.3.0-integration-history.md#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma)
+säilyvät muuttamattomina historiassa. Siirto ei poista hyväksyttyä
+sopimusta tai muuta sen turvallisuusrajoja.
 
-| Pala / havainto | Nykyinen omistaja ja lähdehavainto | Rajattu suunniteltu korjaus ja todistus |
-| --- | --- | --- |
-| H1 / R21 | Backendin `operationalLogRetention.ts` ja `incidentIndexRetention.ts`, desktopin vastaavat `desktopOperationalLogRetention.ts` ja `desktopIncidentIndexRetention.ts`; `createBackendOperationalLogger.ts`, `http/app.ts` ja `desktopComposition.ts` kutsuvat huoltoa käynnistyksessä. Listaus- ja stat-poikkeuksia voi nousta ennen best-effort-rajaa. | Rajaa tunnetun lokijuuren I/O-virheet nykyiseen huoltovastuuseen, jatka muita turvallisesti tarkistettavia kohteita äläkä merkitse epäonnistunutta poistoa tehdyksi. Testaa EACCES, listauksen jälkeinen ENOENT ja muu stat-/readdir-/unlink-virhe kaikissa neljässä adapterissa sekä todellinen backend-/main-koostaminen. Väärä luotettu konfiguraatio, DB-/omistajuusvirhe tai epävarma palautus ei muutu onnistumiseksi tämän catchin kautta. |
-| H2 / R22 | Molempien runtimejen detailed- ja incident-retention laskee tulevat kuukaudet/vuodet kokonaisbudjettiin ennen vanhimpien poistoa. Nykyinen tulevaisuustesti ei kata kiintiopainetta. | Tuleva tiedosto ei osallistu kelvollisen historian poistoperusteeseen eikä saa muuttua automaattiseksi poistokohteeksi. Testaa todellinen kiintiopaine, nykyinen aktiivisen tiedoston suoja, epäonnistuneen poiston laskurit ja vuosiraja. Retention-ajat ja kapasiteettirajat eivät muutu; tulevaisuusaineisto ei todista vanhan historian kattavuutta. |
-| H3 / R24, D029-03 | Diagnosticsin `fileSystemSupportBundleDiagnosticEventReader.ts` ja `fileSystemSupportBundleIncidentSummaryReader.ts` katkaisevat valinnan tiedostojärjestyksessä ja lajittelevat vasta valitut rivit/ryhmät. | Valitse ajan ja vakaan tasatilanteen mukaan uusimmat tapahtumat/ryhmät luetusta, validoidusta aineistosta eri virtojen yli. Rajaa lähdeluku, ehdokkaat, muisti ja ulostulo erikseen; incidentin laskuri ja ensimmäinen/viimeinen aika kattavat vain todella käsitellyn aineiston. Testaa limit=1, lomittuvat ajat, tasatilanteet, duplikaatit, ryhmän myöhemmät rivit, lukumäärä-/tavu-/lähderajat ja rikkinäinen lähde. |
-| H4 / R25, D029-04 | `fileSystemDiagnosticEventReader.ts` hukkaa rivin/lähteen lukuvirheen tyhjään listaan; `fileSystemOperationalLogDiagnosticSummaryReader.ts` päättelee saatavuuden tiedostoista. Portti, `listDiagnosticEvents.ts`, HTTP, strict API-client ja `useDiagnostics`/`DiagnosticsPageView` eivät välitä kattavuustilaa. | Hyväksy H-P1 ennen yhteistä reader -> application -> HTTP -> strict-client -> UI -muutosta. Tyhjä tulos, osittainen luku ja puuttuva tieto erotetaan. Kelvolliset rivit säilyvät muun lähteen hajotessa. Summaryn viimeisin virheaika ei lupaa rajattoman historian kattavuutta tai toimivaa writeriä. |
-| H5 / R26, D029-05 | `desktopComposition.ts` ei anna `JsonLineDesktopOperationalLogger`:lle failure sinkiä; backendin `IncidentIndexOperationalLogFailureSink` toimii nykyisenä vertailuna. Ulompi incident-adapteri ei havaitse sisemmän info-kirjoituksen häiriötä. | Kytke nykyinen failure-sink-portti vasta H-P2:n jälkeen. Deduplikoi rajattu syy/virta prosessin sisällä, käytä olemassa olevaa minimoitua incident-indeksiä best effort -yritykseen ja testaa myös sen epäonnistuminen. Kirjoitus-/kapasiteettihäiriö ei muuta business-tulosta, toista business-operaatiota tai kutsu rikkoutunutta writeriä rekursiivisesti. |
+<details>
+<summary>H:n aiemmat osiot ja pysyvät linkit</summary>
 
-H1/H2 ovat saman retention-vastuun korjauksia, eivät uusi huoltopalvelu.
-H1/H2:n neljä adapteria läpäisivät 104 kohdetestiä. Oikean backendin
-koostamisen kolme regressiota ja nykyisen desktop-koostamisen kaksi
-käynnistysregressiota läpäisivät; writerin ja fallbackin kuusi viereistä
-regressiota sekä backendin ja desktopin tyypitys läpäisivät. Desktopin koko
-nykyinen käynnistys-/palautustiedosto ja kaksi writer-tiedostoa läpäisivät
-myös 163 testin sarjana. Määrät ovat osittain päällekkäisiä, eivät erillinen
-yhteistulos. Paketoitu näyttö on edelleen avoin.
+<p><a id="hn-omistajat-ja-etenemisjärjestys"></a><a href="release-0.3.0-integration-history.md#hn-omistajat-ja-etenemisjärjestys">H:n omistajat ja etenemisjärjestys</a></p>
+<p><a id="h-p1-hyväksytty-lukutilan-suunta"></a><a href="release-0.3.0-integration-history.md#h-p1-hyväksytty-lukutilan-suunta">H-P1: Hyväksytty lukutilan suunta</a></p>
+<p><a id="h-p2-hyväksytty-writer-häiriön-palaute"></a><a href="release-0.3.0-integration-history.md#h-p2-hyväksytty-writer-häiriön-palaute">H-P2: Hyväksytty writer-häiriön palaute</a></p>
+<p><a id="hn-pr-integraation-rajattu-jatko"></a><a href="release-0.3.0-integration-history.md#hn-pr-integraation-rajattu-jatko">H:n PR-integraation rajattu jatko</a></p>
+<p><a id="hn-säilyvät-rajat-ja-valmistumisportti"></a><a href="release-0.3.0-integration-history.md#hn-säilyvät-rajat-ja-valmistumisportti">H:n säilyvät rajat ja valmistumisportti</a></p>
 
-H3:n uudet regressiot toistivat seitsemän odotettua valinta-/laskuripuutetta
-ennen korjausta. Kahden lukijan viimeisin rajattu sarja läpäisi 31 testiä,
-mukaan lukien ristiriitaisen saman tunnisteen valinta ja saman luetun
-aineiston uudelleenlaskennan sekä incidentin täsmällisen aikaleimaformaatin
-säilymisen todistus. Riippumaton H1-H3:n adapteri- ja
-lukijakatselmus ei löytänyt korjattavaa; viimeiset käynnistystestit eivät
-kuuluneet sen tarkistushetkeen. H4/H5:n näyttö on alla; loppusarjat,
-pakettinäyttö ja H:n integraatiohyväksyntä ovat edelleen kesken.
-H3 hyödyntää nykyistä `boundedJsonlSourceReader`-primitiiviä; projektio,
-incident-ryhmittely ja budjetit säilyvät omissa adaptereissaan. Lopullinen
-tapahtumajärjestys ja incident-ryhmän päivittyvä koko tarkistetaan myös
-budjetin jälkeen. Kaikkia lähteitä ei lueta rajatta uusimman etsimiseksi:
-lähdekatkaisu ilmoitetaan, eikä luetun otoksen uusinta väitetä koko
-historian uusimmaksi. Tuntemattoman eventin tarkoituksellinen poissulku
-erotetaan todetusta luku-/rakenneviasta ilman katalogin löysennystä.
-
-#### H-P1: Hyväksytty lukutilan suunta
-
-Omistajan hyväksymä suunta on pieni, suljettu lukutulos: tapahtumat sekä kattavuustila
-`complete|partial|unavailable` ja vain tarpeelliset sallitut tekniset syyt.
-Tyhjyys johdetaan tapahtumista, ei neljänneksi terveysväitteeksi.
-`complete` tarkoittaa vain sovitun rajatun haun kattavuutta, ei koko
-retention-historian tai writerin terveyden todistusta. Tulos-/lähderajan
-tuleminen vastaan on `partial`, ei historian loppu. Puuttuva konfiguraatio
-erotetaan todellisesta lukuvirheestä; tarkoituksella tyhjä browser-profiili
-ei esitä lokihäiriötä. Kelvolliset rivit ja niiden osittaisuus voidaan
-näyttää yhdessä. Tiedostoja löytyi -boolean ei korvaa tätä sopimusta.
-
-Täsmällinen events-/summary-vastaus, yhdistelmäsäännöt ja puuttuvan
-hakemiston tulkinta omistetaan [Diagnosticsin lukutilan sopimuksessa](../modules/diagnostics.md#lukutilan-sopimus).
-Strict-client hylkää väärät kentät, arvot ja ristiriitaiset yhdistelmät.
-Tässä on myös erillinen tukipakettiraja: `prepareSupportBundleDiagnosticData.ts`
-liitti aiemmin `runtimeSummary`-olion vastaukseen sellaisenaan, mutta
-mainin `supportBundleBackendData.ts` hylkää lisäkentät omalla strict-
-validaattorillaan. Pelkkä julkisen API-clientin päivitys ei siis riittänyt.
-H-P1:ssä hyväksytään siksi samalla uuden summaryn eksplisiittinen projektio
-nykyiseen formaatti-2-yhteenvetoon ja olemassa oleviin katkaisulippuihin.
-Nimetyt kentät mapataan erikseen; uusi lukutila ei valu artifactiin
-spreadillä tai validaattorin yleisellä löysennyksellä. Pysyvä regressio
-todistaa uuden summaryn -> tuotetun paketin -> nykyisen tarkastimen ketjun,
-uuden lukutilan poissulun ja vanhan formaatin lukuyhteensopivuuden.
-Jo käytössä oleva tukipaketin `sourceTruncated` ja formaatti 2 säilyvät.
-Vanhoja `.json.gz`-/`.ekysupport`-paketteja ei kirjoiteta uudelleen.
-Summary ja lista kuvaavat omia lukutuloksiaan, eivät atomista yhteissnapshotia.
-Rajattu riippumaton H3/H4-suunnitelmakatselmus tunnisti tämän erillisen
-summary-vastaanottorajan; yllä oleva täsmennys kuuluu samaan H-P1-päätökseen,
-ei uuteen tukipakettiformaattiin tai toteutuksen hyväksyntään.
-
-**H4:n toteutettu kytkentäsopimus (paikallinen näyttö, ei integraatiohyväksyntä):**
-
-- Events-vastaus sisältää `diagnosticEvents`-listan ja `readState`-olion;
-  summary saa erillisen `operationalLogReadState`-olion. Portti palauttaa
-  saman lukutuloksen kuin application/HTTP/client, ei rinnakkaista
-  yhteensopivuuslukijaa. Nykyiset kuluttajat päivitetään samassa palassa.
-- Tilakentät ovat `status` ja `reasons`. Sallitut syyt ovat
-  `notConfigured`, `sourceUnavailable`, `invalidEntries` ja `limitReached`.
-  Syyt ovat yksilöllisiä ja rajattuja, eivät raakavirheitä. `complete`
-  vaatii tyhjän syylistan. `partial` vaatii vähintään yhden muun syyn kuin
-  `notConfigured`. `unavailable` käyttää vain syytä `notConfigured` tai
-  `sourceUnavailable`, eikä palauta tapahtumia tai havaituiksi väitettyjä
-  lokimittareita. Strict-client hylkää ristiriitaiset yhdistelmät.
-- Konfiguroimaton browser-runtime on `unavailable/notConfigured`;
-  puuttuva tai turvaton konfiguroitu juuri on
-  `unavailable/sourceUnavailable`. Varmennetun lokijuuren puuttuva
-  valinnainen virtakansio on tunnettu tyhjä lähde, ei itsessään virhe.
-  Koko haun lukematta jääminen on `unavailable`; kelvollisten osatulosten
-  rinnalla oleva lukuvirhe on `partial`. Luettava mutta rikkinäinen aineisto
-  on `partial/invalidEntries`, ei onnistunut tyhjä historia.
-- Tiedosto-, tavu- tai tulosrajan havaittu katkaisu on `limitReached`.
-  Tuntemattoman tapahtumaperheen tarkoituksellinen poissulku erotetaan
-  tunnetun perheen virheellisestä rivistä nykyisen katalogin omistajassa.
-  Kelvollinen aineisto säilytetään muun lähteen hajotessa. Summaryn ajat ja
-  tavumäärä kuvaavat havaittua aineistoa, eivät puuttuvan osan arvausta.
-- UI erottaa tekstit "Diagnostiikkatapahtumia ei ole vielä.",
-  "Diagnostiikkatiedot ovat osittaiset." ja
-  "Diagnostiikkatietoja ei voitu lukea." Konfiguroimaton browser-lähde
-  kerrotaan saatavuusrajoitteena, ei lokituksen toimivuuden väitteenä.
-  Partial-lista näkyy ilmoituksen rinnalla; epäonnistunut summary ei muuta
-  onnistunutta tapahtumahakua tyhjäksi. Tyhjyys ei osoita writerin terveyttä.
-- Tukipaketin `runtimeSummary` saa vain nykyisen formaatin nimetyt kentät
-  eksplisiittisestä projektiosta. Uutta lukutilaa ei serialisoida siihen.
-  Vanhojen kenttien havaintoluonne dokumentoidaan; niiden tyhjyydestä ei
-  päätellä täydellistä historiaa. Nykyiset `truncated`-liput johdetaan edelleen
-  omista 30 päivän lukijoistaan, ei eri haun summary-tilasta. Epävarmaa
-  summarya ei väitetä näillä lipuilla tarkasti mitatuksi tukipakettikatkaisuksi.
-
-H4:n lukija- ja kuluttajamatriisi on päivitetty samassa muutoksessa.
-Diagnostiikan ja todellisen HTTP-koostamisen 233 kohdetestin sarja sekä
-laajempi 383 testin sarja nykyisine laskutuskuluttajineen läpäisivät.
-API-clientin 555 testiä ja koko webin 966 testiä läpäisivät. Seitsemän
-selainruntimen tapausta todensi osittaiset rivit, riippumattoman summary-
-virheen, kaksi unavailable-syytä sekä komponentin molemmat valmistumis-
-järjestykset ja myöhäisten virheiden torjunnan clientin vaihdossa/remountissa.
-Kahden system-testin sarja todensi
-HTTP/strict-clientin, generoidun gzipin/checksumit sekä nykyisen tarkastimen
-`.json.gz`- ja `.ekysupport`-luvut. Määrät ovat eri rajojen näyttöjä, eivät
-koko H:n tai saman revision kaikkien porttien yhteistulos.
-
-Nykyisen yksityisen virheketjun kaksi salaus-/purkukoetta läpäisivät:
-synteettisen lukijan alkuperäinen poikkeus, pino ja syyketju säilyivät ennen
-turvallista muunnosta. Malformed-rivin sisältöä ei kerätä. Tavallinen
-runtime ei kytke testihavaitsijaa. Ensimmäisten testiodotusten hylkäykset
-säilytetään; korjaukset koskivat puuttuvaa lukutuloskuluttajaa, tarkkaa
-nykyistä esitysmuotoa ja uuden testin yksiselitteistä otsikkovalitsinta.
-Backendin, API-clientin ja E2E:n tyypitykset sekä web-build läpäisivät;
-buildin nykyinen kokovaroitus ei ole poistunut. Tarkastimen 11 vanhan
-formaatin regressiota läpäisivät. Riippumaton H4-katselmus löysi summaryn
-puuttuvan latauspalautteen: oma palaute lisättiin ja yllä mainittu
-viivästettyjen lukujen näyttö todensi korjauksen. Koko H:n loppukatselmus,
-paketti- ja PR/main-portit ovat edelleen avoimia.
-
-#### H-P2: Hyväksytty writer-häiriön palaute
-
-Omistajan hyväksymä suunta on ei-estävä, deduplikoitu turvallinen häiriöilmoitus desktopin
-nykyisessä main/UI-vastuussa sekä nykyinen minimoitu incident-yritys.
-Saman levyn incident-kirjoitus voi epäonnistua yhdessä detailed-writerin
-kanssa. Siksi pelkkä incident-tiedosto ei riitä näkyvyyden takeeksi, eikä
-puuttuvista riveistä saa päätellä writerin toimivan. Ilmoituksen tarkka
-näyttötapa, välitysketju, enimmäistiheys ja runtime-kohtaisen tilan elinkaari
-päätetään ennen kytkentää; uutta yleistä tilapalvelua ei hyväksytä tällä
-suunnitelmalla. Myös varailmoituksen oma virhe käsitellään ilman rekursiota,
-odotussilmukkaa tai varmaa toimitusväitettä. Backendin nykyinen fallback
-säilyy, eikä permission-rajaa ohiteta mainin ilmoituksen vuoksi.
-
-Omistaja hyväksyi sovelluksen ei-estävän ilmoituspalkin, joka näkyy myös
-Diagnostiikan ulkopuolella. Se säilyttää vain tiedon tässä käynnistyksessä
-havaitusta lokitushäiriöstä, ei raakaa syytä, polkua tai yritystietoa.
-Ei käyttöjärjestelmäilmoitusta, modaalista ikkunaa tai business-estoa.
-
-H5:n rajattu kytkentäsopimus nykyisissä omistajissa:
-
-- Nykyisen detailed-writerin failure-sink deduplikoi kaksi turvallista
-  syykoodia ja kolme desktop-virtaa, enintään kuusi yhdistelmää prosessissa.
-  Sama virhe ei käynnistä uutta kirjoitus- tai ilmoitusyritystä. Vain nykyinen
-  minimoitu incident-kirjoitus on fallback-yritys, ei lupaus saman levyn
-  toimivuudesta; sitä ei ohjata detailed-writerin kautta.
-- Main säilyttää monotonisen `failureObserved`-booleanin muistissa tämän
-  käynnistyksen ajan. Se ei ole writerin terveystodistus, kuittaus tai
-  business-audit. Incident- tai ilmoitusadapterin virhe ei muuta tätä
-  havaintoa tai alkuperäistä business-tulosta eikä toista operaatiota.
-- Nykyiseen desktop-siltaan lisätään nolla-argumenttinen
-  `getOperationalLogFailureStatus()` ja rajattu
-  `onOperationalLogFailure(callback)`-tilaus. Snapshotin ainoa kenttä on
-  boolean `failureObserved`; muutosilmoitus ei sisällä syytä tai muita
-  arvoja. Main hyväksyy vain nykyisen pääikkunan pääframen, ja dispose
-  poistaa handlerin sekä mainin tilauksen nykyisessä sulkuryhmässä.
-- Preload ei paljasta Electron-tapahtumaoliota tai yleistä kanavanvalintaa.
-  App-kerros validoi snapshotin täsmällisesti. UI tilaa ensin, lukee sitten
-  alkutilan ja säilyttää jo havaitun true-tilan myös myöhäisen false-vastauksen
-  yli. Tilaus poistetaan unmountissa; uusia ajastimia tai kyselysilmukoita
-  ei lisätä. Selain ilman capabilityä säilyy ennallaan.
-- Ilmoitusteksti kertoo vain, että lokituksessa havaittiin häiriö ja osa
-  teknisistä tapahtumista voi puuttua. Se ei tarjoa automaattista uusintaa,
-  väitä lokituksen korjaantuneen tai ohita Diagnosticsin permission-rajaa.
-  Ilmoituksen oma epäonnistuminen käsitellään ilman rekursiivista lokitusta;
-  näkyvyyttä ei väitetä varmaksi, jos sekä toimitus että alkuluku epäonnistuvat.
-
-Regressiot todentavat writerin I/O:n, kapasiteetin, deduplikoinnin,
-incident- ja ilmoitusvirheen, väärän senderin/framen/argumentit, alkutilan,
-tilaus-/vastauskilpailun sekä nykyisen main/preload/UI-ketjun. Uutta
-yleistä loggeria, tilapalvelua tai ilmoituskehystä ei rakenneta.
-
-H5:n rajattu katselmus ei löytänyt korjattavaa. Writerin, incidentin,
-capabilityn, preloadin ja viereisten rajojen 62 kohdetestiä sekä mainin
-nykyisen käynnistys-/palautustiedoston 158 testiä läpäisivät. Webin
-silta-/ilmoitus-/diagnostiikkakohdesarja läpäisi 69 testiä; ilmoituksen
-kopiotesti ei yksin todista React-elinkaarta. Kaksi oikean Appin selainkoetta
-todentavat tilaus-/alkulukukilpailun ja tilausvirheen turvallisen käsittelyn.
-Määrät ovat osittain päällekkäisiä, eivät yksi kokonaisajon tulos.
-
-Nimetty Windowsin development-Electron-ajo läpäisi viisi testiä yhdellä
-suoritusyrityksellä. Mukana ovat nykyisen runtimen ja preload-rajan kontrollit
-sekä kaksi todellista lokikirjoituksen main/preload/UI-virheketjua. Ilmoitus
-säilyy näkymänvaihdossa, asiakkaan luonti onnistuu ja uuden main-prosessin
-alkutila on false myös incident-yrityksen epäonnistumisen jälkeen. Tämä ei
-vielä ole paketoidun sovelluksen palautus- tai PR/main-hyväksyntä.
-
-Nykyisen salaus/purku-kokeen kolme tapausta läpäisivät: H5:n oikea
-tiedostovirhe säilyy rajattuine alkuperäisine viesteineen ja writerin
-kutsupinoineen puretussa salatussa paketissa. Olematonta syyketjua ei
-keksitä, eikä julkinen tuloste sisällä alkuperäistä poikkeusta. Ensimmäiset
-testivalmistelun hylkäykset säilytetään erillään onnistuneesta todennuksesta.
-Normaalin tuotantomainin havaitsijaa ei kytketä tämän testin perusteella.
-
-H5:n koko web-sarja läpäisi 996 testiä. Desktopin normaali skripti läpäisi
-4 468 Vitest- ja 412 Node-testiä; viisi ja 12 nykyistä ohitusta eivät ole
-läpäisyjä. Koko backendin sarja läpäisi 4 070 testiä ja viisi nykyistä
-ohitusta. Viimeinen koko työtilan tyypitys läpäisi. HTTP-virhehavaitsijan
-nykyiset onnistumis-, odotettu hylkäys- ja havaitsijavirheen kontrollit
-läpäisivät muutetulla testiapurilla.
-H5:n todellinen writer -> minimoitu incident -> HTTP -> strict support-
-vastaanotin -> gzip -> nykyinen tarkastin -koe läpäisi. Sama häiriö ei
-monistanut incidentiä, eikä incidentistä keksitty detailed-tapahtumaa.
-Nämä ovat paikallisia revision työpuuhun sidottuja näyttöjä, eivät H:n
-lopullinen PR/main-hyväksyntä.
-
-Loppukatselmus löysi yhden testiaukon: selainkoe ei lukinnut tilauksen ja
-alkuluvun todellista kutsujärjestystä. Testisilta tallentaa nyt nämä kaksi
-kutsua ja koe vaatii tilauksen ensin; molemmat selainkokeet läpäisivät
-uudella tarkistuksella. Rajattu uudelleenkatselmus ei löytänyt avoimia
-korjattavia havaintoja. Riippuvuusauditointi läpäisi; riippuvuuksia ei muutettu.
-
-Ensimmäinen puhdas H5-paketti hylättiin palautussmoken preload-
-pintatarkistuksessa: nykyinen `hasRendererBridgeForSmoke` odotti edelleen
-23 metodia, vaikka hyväksytty H5-pinta sisältää 25. Uusi regressio suorittaa
-oikean tarkistuslausekkeen todellista transpiloitua preload-pintaa vasten ja
-toisti puutteen ennen korjausta. Guard vaatii nyt molemmat H5-metodit ja
-täsmälleen 25 avainta; jokaisen metodin puuttuminen, väärä tyyppi ja vieras
-lisämetodi hylätään. Rajattu kolmen tiedoston sarja läpäisi 64 testiä eikä
-uudelleenkatselmukseen jäänyt havaintoja. Ensihylkäyksen paketti ja aineisto
-säilyvät; korjattu revisio tarvitsee uuden puhtaan paketti-/palautustodisteen.
-
-Korjattu puhdas revisio `1b9423e4a0da2a469ef8b4819d34bb23c30101d0`
-läpäisi Windows-paketoinnin, nykyisen runtime-/fuse-/sisältöinventaarion ja
-hardened backup -> inspect -> restore -> restart -> compare -smoken.
-Sama ajo tarkisti nykyisen paketoidun Diagnostiikka-käyttöliittymän ja
-tukipaketin. Paketin koko inventaario ja ASAR-sisältö varmennettiin samoiksi
-ennen ajoa ja sen jälkeen. Testien välissä ei tehty uutta buildiä.
-Ensimmäinen hylätty paketti ja sen aineisto säilyvät erillisinä.
-Tätä lähdettä seuraava checkpoint-muutos on vain dokumentaatiota; normaalit
-PR-portit vaaditaan silti täsmälliselle PR-headille ja mergen jälkeiselle
-mainille. H ei ole vielä integraatiohyväksytty.
-
-#### H:n PR-integraation rajattu jatko
-
-[PR #315:n ensimmäinen V2-kierros](https://github.com/eky-software/eky/actions/runs/39916113813)
-hylkäsi kolme HTTP-/diagnostiikka-/desktop-writerin salauskoetta tunnuksella
-`F_ORIGINAL_CAPTURE_MISSING`. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39916113723)
-läpäisi. V2:n hylätyn valmistelun vuoksi suorittamatta jääneet jatkot eivät
-ole läpäisyjä. Alkuperäinen loki ja salattu paketti säilytettiin; purun,
-run/attempt/job-sidonnan, todellisen checkout-puun ja tiedostotiivisteiden
-tarkistus läpäisi. Paketti sisältää parent-testien väitteet, ei sisemmän
-koeprosessin alkuperäistä import-virhettä.
-
-Lähdeanalyysi osoitti fixturen uuden `listDiagnosticEvents`-tuonnin hakevan
-`@eky/permissions`-paketin build-exporttia, jota tämä itsenäinen CI-askel ei
-valmista. Hallittu paikallinen koe toisti puuttuvan kaappauksen ja yksilöi
-permission-tuonnin: käännettyjen työtilapakettien estäminen pysäytti testin
-ennen sen runkoa. Fixturen täsmällinen lähdealias poistaa build-riippuvuuden;
-sama estoregressio, tavalliset kontrollit ja kaikki kolme OpenPGP-ketjua
-läpäisivät neljän parent-testin sarjana. Tämä paikallinen syynäyttö erotetaan
-alkuperäisessä CI-paketissa säilyneestä tiedosta.
-
-Korjaus koskee vain nykyistä testifixtureä ja sen regressiota, ei sovellusta,
-CI-askelten sisältöä, salauksen rajoja tai hyväksyntäehtoja. Korjattu head
-tarvitsee normaalit PR-portit. Hyväksyttyä puhdasta pakettia ei korvata
-toisilla tavuilla pelkän testiapurikorjauksen vuoksi.
-
-#### H:n säilyvät rajat ja valmistumisportti
-
-Diagnostics säilyy read-only-projektiona. Kiinteä lokijuuri, backendin
-`viewDiagnostics`-/`createSupportBundle`-oikeudet, uudelleenvalidointi,
-G:n perhekohtaiset kentät ja poissulut, incidentin minimointi sekä
-tukipaketin 30 päivän raja säilyvät. Ei uusia riippuvuuksia, yleistä
-loggeria/manageria, telemetriaa, raakavirheitä tuotannon lokiin,
-business-/DB-migraatiota tai salattujen CI-pakettien sisältörajan muutosta.
-Lokihuolto ei käsittele yritysprofiileja, backupeja tai business-artifacteja.
-
-Todennus etenee pienistä deterministisistä kohdetesteistä oikeaan
-backend-/main-koostamiseen ja HTTP-/client-/UI-ketjuun. H3:n tuotetusta
-gzip-tukipaketista tarkistetaan aidot uusimmat rivit, ryhmien laskurit,
-budjetit, manifestin katkaisut ja checksumit. H4/H5:n tyhjä/partial/unavailable-
-ja fallback-failure-tapaukset todistetaan myös tarkoitetussa
-käyttöliittymässä, ei vain testiin injektoidulla no-op-loggerilla.
-Hylätty testi tarjoaa alkuperäisen virheen nykyiseen salattuun
-keräykseen ennen yleistä koodimuunnosta; tämä varmennetaan nykyisellä
-salaus/purku-kokeella, ei uudella keräysjärjestelmällä.
-
-Lopuksi vaikutusalueen normaalit sarjat, tyypitys/build, riippumaton rajattu
-katselmus ja julkaisuyksityisyys. Desktop-startup-/lifecycle-rajaan
-koskettaessa vaaditaan sama puhdas hardened Windows
-backup -> inspect -> restore -> restart -> compare -paketti; installer on
-erillinen portti. Jäädytetty PR-head ja mergen jälkeinen main tarvitsevat
-omat nykyiset hyväksyntäporttinsa ja auditoinnin. Paikallinen koe ei sulje
-H:ta. H:n integraatio odottaa näitä portteja; hyväksyttyä H-P2:n
-ilmoituskytkentää ei tulkita koko H:n hyväksynnäksi.
-
-R030-08:n historian selaus, D029-06:n erikseen päätettävä päivitystoiminto,
-W7, I, M5:n syväkatselmus/Deep Scan sekä pilvi/mobiili jäävät erilleen.
-H:n tilasopimus valmistelee myöhempää selausta mutta ei toteuta sitä.
+</details>
 
 ### G / Diagnostiikan tapahtumaketjun suunnitelma
 
