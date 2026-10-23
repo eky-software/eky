@@ -58,6 +58,48 @@ ohitetaan.
 Käyttötapaus vaatii `viewDiagnostics`-oikeuden. Browser-developmentissa
 diagnostiikkalista voi olla tyhjä, jos backendille ei ole annettu logs-rootia.
 
+### Lukutilan sopimus
+
+Tapahtumahaku palauttaa `diagnosticEvents`-listan ja `readState`-olion.
+Runtime-yhteenvedon erillinen tila on `operationalLogReadState`. Molemmissa
+on vain `status` ja yksilöllinen, enintään kolmen sallitun syyn `reasons`:
+
+- `complete`: syitä ei ole. Tämä on rajatun haun kattavuus, ei writerin
+  terveystodistus tai rajattoman historian lupaus.
+- `partial`: vähintään yksi syy `sourceUnavailable`, `invalidEntries` tai
+  `limitReached`; kelvolliset havainnot säilyvät muun aineiston hajotessa.
+- `unavailable`: vain yksi syy, `notConfigured` tai `sourceUnavailable`.
+  Tapahtumia tai havaituiksi väitettyjä lokimittareita ei palauteta.
+
+Tyhjä lista esitetään tyhjänä historiana vain `complete`-tilassa.
+Konfiguroimaton browser-lähde erotetaan todellisesta lukuhäiriöstä. Puuttuva
+tai turvaton konfiguroitu juuri on unavailable; varmennetun juuren puuttuva
+valinnainen virtakansio on tunnettu tyhjä lähde. Luettava mutta virheellinen
+JSONL-aineisto on partial, ei terve tyhjä lista. Tuntematon tapahtumaperhe
+voidaan tarkoituksella sulkea pois, mutta tunnetun perheen virheellinen
+rivi merkitsee osittaisuutta. Kenttiä tai raakavirheitä ei löysennetä.
+
+Tapahtumien lähderaja on edelleen 32 tiedostoa, yhteenvedon 96 tiedostoa ja
+yhden tiedoston tail enintään 256 KiB. Nimet luetellaan virtaavasti; vain
+rajatut uusimmat nimiehdokkaat etenevät metatieto- ja sisältölukuun.
+Hakemiston nimiluettelo käydään edelleen läpi uusimpien löytämiseksi:
+tämä ei ole koko pyynnön kova aika- tai muistikatto. Yhteenvedon lokikuukaudet
+ja tavumäärä kuvaavat valittua, varmennettua metatietoa. Rajan ulkopuolista
+historiaa ei lasketa mukaan tai päätellä puuttuvaksi.
+
+Lista ja yhteenveto ovat erillisiä lukuja, eivät atominen snapshot. Niiden
+lataukset, virheet ja tulokset esitetään itsenäisesti; toisen haun virhe ei
+pyyhi toisen onnistunutta tulosta. Strict-client torjuu väärät kentät,
+syyt sekä ristiriitaisen saatavuus-/mittariyhdistelmän.
+
+Lukutila ei ole business-audit tai uusi incident-tapahtuma. Lukijan häiriöstä
+ei kirjoiteta rekursiivisesti rikkoutuneeseen lokiin. Vain testikoostaminen
+voi tarjota alkuperäisen I/O-poikkeuksen nykyiselle yksityiselle
+poikkeushavaitsijalle ennen turvallista tilamuunnosta. Normaali runtime ei
+kytke tätä havaitsijaa. Virheellisen JSONL-rivin sisältöä ei kerätä sen kautta.
+Tukipaketin erillinen projektio omistetaan
+[tukipakettisopimuksessa](../architecture/support-bundle-plan.md).
+
 Lokikansion avaaminen ja tukipaketin tallennus toteutetaan erillisinä Electron
 mainin omistamina, käyttäjän käynnistäminä capabilityina.
 

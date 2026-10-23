@@ -14,7 +14,8 @@ import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-a
 const ROOT = fileURLToPath(new URL('../../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-test('F HTTP evidence survives OpenPGP encryption and private decryption', {
+for (const mode of ['unexpected', 'diagnostic-read']) {
+test(`HTTP evidence survives OpenPGP encryption and private decryption: ${mode}`, {
   skip: !['win32', 'linux'].includes(process.platform), timeout: 240_000,
 }, async () => {
   const fixture = await createOpenPgpTestFixture(ROOT);
@@ -28,7 +29,7 @@ test('F HTTP evidence survives OpenPGP encryption and private decryption', {
     await mkdir(checkout);
     const binding = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
       GITHUB_JOB: 'f-http-proof', EKY_EVIDENCE_JOB_KEY: 'f-http-proof-0', GITHUB_SHA: 'a'.repeat(40) };
-    const worker = await runFWorker(fixture.root, 'http-worker', { binding });
+    const worker = await runFWorker(fixture.root, 'http-worker', { binding, mode });
     assertFOriginalProof(worker);
     const collected = await collectJobFailureEvidence({
       ...binding, RUNNER_TEMP: worker.temp, GITHUB_WORKSPACE: checkout,
@@ -65,3 +66,4 @@ test('F HTTP evidence survives OpenPGP encryption and private decryption', {
     await fixture.finish({ completed, failed: !completed });
   }
 });
+}

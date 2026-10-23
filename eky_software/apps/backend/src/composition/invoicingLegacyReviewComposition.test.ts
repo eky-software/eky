@@ -109,7 +109,7 @@ describe('legacy approved invoice review hold in production composition', () => 
       expect((await app.request(`/invoices/${f.scope.invoiceId}/${route}`, legacyReviewRequest(body))).status).toBe(409);
     }
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const events = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(20);
+    const { diagnosticEvents: events } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(20);
     expect(events).toHaveLength(legacyReviewCommands.length);
     for (const event of events) expect(event).toMatchObject(blockedEvent);
     const support = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot).readSupportBundleDiagnosticEvents(period);

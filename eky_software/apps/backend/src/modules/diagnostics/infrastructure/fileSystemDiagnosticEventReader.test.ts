@@ -47,7 +47,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       fingerprint: `desktop.bootstrapFailed:${errorCode}`,
     })}\n`);
     const range = { earliestTimestamp: '2026-07-01T00:00:00.000Z', latestTimestamp: '2026-07-28T00:00:00.000Z' };
-    const diagnostic = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents: diagnostic } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
     const support = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot).readSupportBundleDiagnosticEvents(range);
     for (const events of [diagnostic, support.diagnosticEvents]) {
       expect(events).toEqual([expect.objectContaining({
@@ -113,7 +113,7 @@ describe('FileSystemDiagnosticEventReader', () => {
 
     const reader = new FileSystemDiagnosticEventReader(logsRoot);
 
-    await expect(reader.listRecentDiagnosticEvents(10)).resolves.toEqual([
+    await expect(reader.listRecentDiagnosticEvents(10).then(result => result.diagnosticEvents)).resolves.toEqual([
       {
         appVersion: '1.0.0',
         buildRevision: '123456789abc',
@@ -187,7 +187,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       ],
     );
 
-    const events =
+    const { diagnosticEvents: events } =
       await new FileSystemDiagnosticEventReader(
         logsRoot,
       ).listRecentDiagnosticEvents(10);
@@ -229,7 +229,9 @@ describe('FileSystemDiagnosticEventReader', () => {
     );
     const reader = new FileSystemDiagnosticEventReader(logsRoot);
 
-    await expect(reader.listRecentDiagnosticEvents(10)).resolves.toEqual([]);
+    await expect(reader.listRecentDiagnosticEvents(10)).resolves.toEqual({
+      diagnosticEvents: [], readState: { status: 'partial', reasons: ['invalidEntries'] },
+    });
   });
 
   it('projects the packaged startup and retention event contract while ignoring an old unknown line', async () => {
@@ -314,7 +316,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       ],
     );
 
-    const events =
+    const { diagnosticEvents: events } =
       await new FileSystemDiagnosticEventReader(
         logsRoot,
       ).listRecentDiagnosticEvents(20);
@@ -407,7 +409,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       ],
     );
 
-    const events =
+    const { diagnosticEvents: events } =
       await new FileSystemDiagnosticEventReader(
         logsRoot,
       ).listRecentDiagnosticEvents(10);
@@ -457,7 +459,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       ],
     );
 
-    const events =
+    const { diagnosticEvents: events } =
       await new FileSystemDiagnosticEventReader(
         logsRoot,
       ).listRecentDiagnosticEvents(10);

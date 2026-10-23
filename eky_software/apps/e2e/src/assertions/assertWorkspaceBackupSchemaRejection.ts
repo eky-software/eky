@@ -60,7 +60,7 @@ export async function assertWorkspaceBackupSchemaRejection(input: {
 
   const response = await input.harness.api.get('/diagnostics/events');
   expect(response.status()).toBe(200);
-  const diagnostics = readDiagnosticsResponse(await response.json());
+  const { diagnosticEvents: diagnostics } = readDiagnosticsResponse(await response.json());
   const diagnosticFailure = diagnostics.filter((event) => event.eventName === 'workspaceBackup.operationFailed');
   expect(diagnosticFailure).toHaveLength(1);
   expect(diagnosticFailure[0]).toMatchObject({

@@ -20,7 +20,9 @@ describe('strict workspace management response projection', () => {
       operationId: `workspace.${entry.operation}`, errorCode: entry.errorCode,
       stage: entry.stage, retryable: entry.retryable, sideEffectState: 'unknown',
     };
-    const read = (value: unknown) => readDiagnosticsResponse({ diagnosticEvents: [value] });
+    const read = (value: unknown) => readDiagnosticsResponse({
+      diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
+    }).diagnosticEvents;
     expect(read(event)).toEqual([event]);
     expect(read({ ...event, sideEffectState: 'none' })).toEqual([{ ...event, sideEffectState: 'none' }]);
     for (const change of [

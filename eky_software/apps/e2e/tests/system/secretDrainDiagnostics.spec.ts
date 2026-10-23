@@ -48,7 +48,7 @@ test('OBS-SECRET-DRAIN-001 @critical @security @recovery retains the first drain
         status: response.status(), headers: { 'content-type': 'application/json' },
       });
     }, e2eBackend.backend.backendOrigin);
-    const events = await api.listDiagnosticEvents({ limit: 200 });
+    const { diagnosticEvents: events } = await api.listDiagnosticEvents({ limit: 200 });
     expect(events.filter(event => event.eventName === 'desktop.shutdownFailed'))
       .toEqual(expect.arrayContaining(expectedEvents));
     expect(events.filter(event => event.eventName === 'desktop.shutdownFailed')).toHaveLength(4);

@@ -29,6 +29,7 @@ import { test, expect, vi } from ${JSON.stringify(moduleUrl('../../node_modules/
 import { Hono } from ${JSON.stringify(moduleUrl('../../apps/backend/node_modules/hono/dist/index.js'))};
 import { handleUnexpectedHttpError } from ${JSON.stringify(moduleUrl('../../apps/backend/src/http/handleUnexpectedHttpError.ts'))};
 import { createOperationalLoggingMiddleware } from ${JSON.stringify(moduleUrl('../../apps/backend/src/http/operationalLogging.ts'))};
+import { listDiagnosticEvents } from ${JSON.stringify(moduleUrl('../../apps/backend/src/modules/diagnostics/application/listDiagnosticEvents.ts'))};
 import { createRunnerFailureSink } from ${JSON.stringify(moduleUrl('../runnerFailureEvidence.mjs'))};
 import { createHttpRequestFailureCapture } from ${JSON.stringify(moduleUrl('../httpRequestFailureCapture.mjs'))};
 
@@ -56,11 +57,27 @@ test(${JSON.stringify(TEST_NAME)}, { fails: ${mode === 'expected-failure'} }, as
       runtimeInstanceId: '11111111-1111-4111-8111-111111111111' },
     operationalLogger: { write }, httpRequestFailureObserver: selected,
   }));
-  app.get('/synthetic', context => {
+  app.get('/synthetic', async context => {
+    if (${mode === 'diagnostic-read'}) {
+      const result = await listDiagnosticEvents({ actorContext: {
+        actorId: 'synthetic-actor', authenticationMode: 'local', companyId: 'synthetic-company',
+        permissions: ['viewDiagnostics'],
+      } }, { async listRecentDiagnosticEvents() { throw original; } }, selected);
+      return context.json(result);
+    }
     if (${mode === 'success'}) return context.json({ ok: true });
     throw original;
   });
   const response = await app.request('/synthetic');
+  if (${mode === 'diagnostic-read'}) {
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body).toEqual({ diagnosticEvents: [], readState: { status: 'unavailable', reasons: ['sourceUnavailable'] } });
+    expect(order).toEqual(${JSON.stringify(observe ? ['original'] : [])});
+    expect(write).not.toHaveBeenCalled();
+    expect(body.readState.status, 'H4_EXPECTED_COMPLETE_READ').toBe('complete');
+    return;
+  }
   if (${mode === 'success'}) {
     expect(response.status).toBe(200);
     expect(write).not.toHaveBeenCalled();

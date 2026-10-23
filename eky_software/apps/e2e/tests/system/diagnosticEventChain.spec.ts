@@ -1,5 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
+import { writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 import { createDiagnosticsApi } from '../../../../packages/api-client/src/diagnostics/diagnosticsClient.js';
 import { readDiagnosticsResponse } from '../../../../packages/api-client/src/diagnostics/diagnosticsResponse.js';
@@ -12,6 +14,7 @@ import { DesktopIncidentIndexingOperationalLogger } from '../../../desktop/src/o
 import { JsonLineDesktopOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopOperationalLogger.js';
 import { createSupportBundleArchive } from '../../../desktop/src/supportBundle/supportBundleArchive.js';
 import { readSupportBundleBackendData } from '../../../desktop/src/supportBundle/supportBundleBackendData.js';
+import { inspectSupportBundle } from '../../../desktop/scripts/inspect-support-bundle.mjs';
 import { expectSafeHttpError } from '../../src/assertions/expectSafeHttpError.js';
 import { expect, test } from '../../src/fixtures/isolatedBackendTest.js';
 
@@ -101,7 +104,10 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
       status: response.status(), headers: { 'content-type': 'application/json' },
     });
   }, e2eBackend.backend.backendOrigin);
-  const events = await api.listDiagnosticEvents({ limit: 200 });
+  const { diagnosticEvents: events, readState } = await api.listDiagnosticEvents({ limit: 200 });
+  expect(readState).toEqual({ status: 'complete', reasons: [] });
+  expect((await api.getDiagnosticSummary()).operationalLogReadState)
+    .toEqual({ status: 'complete', reasons: [] });
   const selectedEvents = events.filter(event => names.has(event.eventName));
   expect(selectedEvents).toHaveLength(written.length + 1);
   expect(selectedEvents).toEqual(expect.arrayContaining([...expectedSupportEvents, ...expectedInfoEvents]));
@@ -145,10 +151,11 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   const document = JSON.parse(gunzipSync(archive.compressed).toString('utf8')) as {
     diagnosticEvents: unknown[];
     incidentSummaries: unknown[];
+    runtimeSummary: Record<string, unknown>;
     manifest: {
       supportBundleFormatVersion: number;
       truncatedSections: string[];
-      sectionChecksums: { diagnosticEvents: string; incidentSummaries: string };
+      sectionChecksums: { diagnosticEvents: string; incidentSummaries: string; runtimeSummary: string };
     };
   };
   expect(archive.fileName).toMatch(/\.json\.gz$/);
@@ -157,10 +164,17 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   expect(document.diagnosticEvents).toEqual(support.diagnosticEvents);
   expect(document.diagnosticEvents).toContainEqual(expectedQueueFailure);
   expect(document.incidentSummaries).toEqual(support.incidentSummaries);
-  for (const section of ['diagnosticEvents', 'incidentSummaries'] as const) {
+  expect(document.runtimeSummary).not.toHaveProperty('operationalLogReadState');
+  expect(support.runtimeSummary).not.toHaveProperty('operationalLogReadState');
+  for (const section of ['diagnosticEvents', 'incidentSummaries', 'runtimeSummary'] as const) {
     expect(document.manifest.sectionChecksums[section]).toBe(
       createHash('sha256').update(JSON.stringify(document[section]), 'utf8').digest('hex'),
     );
+  }
+  for (const name of [archive.fileName, 'synthetic-legacy.ekysupport']) {
+    const path = join(e2eBackend.paths.supportBundlesRoot, name);
+    await writeFile(path, archive.compressed, { flag: 'wx', mode: 0o600 });
+    expect(inspectSupportBundle(path).summary.formatVersion).toBe(2);
   }
   for (const event of expectedInfoEvents) {
     expect(event).toMatchObject({ level: 'info', outcome: 'success', errorCode: null });
@@ -174,13 +188,14 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
   for (const event of supportEvents.filter(event => event.eventName !== legacyFailure.eventName)) {
     for (const change of [{ recoveryPointKind: 'preUpdate' }, { durationMs: 'invalid' }]) {
       const invalid = { ...event, ...change };
-      expect(() => readDiagnosticsResponse({ diagnosticEvents: [invalid] })).toThrow();
+      expect(() => readDiagnosticsResponse({ diagnosticEvents: [invalid], readState })).toThrow();
       expect(() => readSupportBundleBackendData({ ...support, diagnosticEvents: [invalid] }))
         .toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
     }
   }
   expect(() => readDiagnosticsResponse({
     diagnosticEvents: [{ ...expectedSupportEvents[0], eventName: 'invoicePdfArchive.unknown' }],
+    readState,
   })).toThrow();
 
   const published = JSON.stringify({ events, document });
@@ -208,7 +223,7 @@ test('OBS-DIAGNOSTIC-CHAIN-001 @critical @security carries G events through HTTP
       e2eBackend.backend.sessionSecret,
     ]);
   }
-  expect(await api.listDiagnosticEvents({ limit: 200 })).toEqual(expect.arrayContaining(expectedSupportEvents));
+  expect((await api.listDiagnosticEvents({ limit: 200 })).diagnosticEvents).toEqual(expect.arrayContaining(expectedSupportEvents));
   expect((await e2eBackend.api.get('/health')).status()).toBe(200);
 });
 

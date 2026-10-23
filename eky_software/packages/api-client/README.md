@@ -132,6 +132,15 @@ ei lisätä luonnoksen kirjoitus-DTO:hon, eikä lukukutsu anna lähetysvaltuutta
 
 Paketti käyttää selaimen tai ajonaikaisen ympäristön tarjoamaa `fetch`-rajapintaa. Testeissä `fetch` annetaan sisään fake-toteutuksena.
 
+Diagnostiikan `listDiagnosticEvents` palauttaa koko `DiagnosticEventReadResult`-
+olion (`diagnosticEvents` ja pakollinen `readState`), ei pelkkää listaa.
+Runtime-yhteenvedon pakollinen `operationalLogReadState` käyttää samaa suljettua
+`complete|partial|unavailable`-sopimusta. Parseri hylkää tuntemattomat kentät,
+syyt ja ristiriitaiset tila-/mittariyhdistelmät. `operationalLogsAvailable`
+kuvaa vain lukuhavaintoa, ei writerin terveyttä. Täydellinen tyhjä luku on
+sallittu; puuttuvaa havaintoa ei tulkita tyhjäksi onnistumiseksi. Tukipaketin
+formaatti 2 on tästä erillinen, eikä se saa näitä uusia tilakenttiä.
+
 Ensimmäisen web customer UI -palan rajaus on kuvattu dokumentissa `docs/architecture/web-customer-ui-plan.md`.
 
 Laskuluonnos-client välittää backendille vain käyttäjän syöttämät kentät. Se ei lähetä `companyId`-arvoa, palvelimen omistamia tunnisteita, laskettuja summia tai teknisiä aikaleimoja eikä suorita auktoritatiivista laskentalogiikkaa.

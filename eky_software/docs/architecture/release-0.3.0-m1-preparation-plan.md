@@ -20,12 +20,15 @@ niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 | PR #314 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39860418986/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39860418852) läpäisi ensimmäisellä suoritusyrityksellä. |
 | Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39887988572/attempts/2): 38 onnistunutta työtä ja samat kuusi valitsematonta diagnostiikkatyötä. [Mainin oma riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39888226627) läpäisi ensimmäisellä suoritusyrityksellä. Ohituksia ei lasketa läpäisyiksi. |
 
-**Nykyinen työ:** H:n hyväksytyn rajauksen toteutusvalmistelu
+**Nykyinen työ:** H:n hyväksytyn rajauksen toteutus
 [alla olevan valmistelun mukaan](#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma).
 Omistaja hyväksyi 23.10.2026 H-P1:n kolmen lukutilan suunnan sekä H-P2:n
 ei-estävän, deduplikoidun häiriöpalautteen ja koko H:n loppuunviennin Goalina.
-Seuraava askel on täsmällisten DTO-/ilmoitussopimusten kirjaus nykyisiin
-omistajiin ja H1-H5:n pienet regressiot. Uudet käyttäytymis-, turvallisuus-
+H1-H3:n paikallinen korjauscheckpoint on tallennettu. H4:n lukutila kulkee
+nykyisistä lukijoista HTTP:n ja strict-clientin kautta käyttöliittymään;
+kohde-, selain- ja tukipakettiketjun näyttö on alla. Seuraavaksi viimeistellään
+H4:n katselmus ja H5:n näkyvän ilmoituksen toimitus omistajan valinnan jälkeen.
+Uudet käyttäytymis-, turvallisuus-
 tai muut erilliset päätökset ratkaistaan ennen niiden vaikutusalueen kytkentää;
 samoja H-P1/H-P2-periaatteita ei kysytä uudelleen. Toteutus ja sen portit
 ovat vielä avoimia.
@@ -51,10 +54,11 @@ korjatuksi.
 ### H / Diagnostiikan saatavuuden ja oikeellisuuden suunnitelma
 
 **Tila 23.10.2026:** H-P1/H-P2:n suositukset ja H:n toteutus Goalina hyväksytty.
-Tarkka kytkentäsopimus, tuotantokorjaus ja runtime-todennus ovat vielä kesken.
+H1-H4:n korjaukset ovat paikallisesti toteutettuja ja rajatusti todennettuja;
+H5:n ilmoitusvalinta, loppukatselmus ja paketti-/PR-/main-portit ovat avoimia.
 Alkuperäiset R21/R22/R24/R25/R26
-on verrattu hyväksytyn G-mainin lähteeseen; H:n puutteet ovat edelleen
-nähtävissä alla nimetyissä kohdissa. R24/R25/R26 vastaavat D029-03/04/05:tä,
+on verrattu hyväksytyn G-mainin lähteeseen; taulukko kuvaa lähtöpuutteet,
+korjausvastuut ja niiden todistusvaatimukset. R24/R25/R26 vastaavat D029-03/04/05:tä,
 eivät erillisiä toteutusjonoja. [Roadmap](release-0.3.0-plan.md#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys)
 omistaa rajauksen ja [diagnostiikan täydennyssuunnitelma](diagnostics-0.2.9-completion-plan.md#korjauskohteet)
 sen aiemmat synteettiset havainnot. Historiallista vikaprobea ei lasketa
@@ -85,8 +89,8 @@ mukaan lukien ristiriitaisen saman tunnisteen valinta ja saman luetun
 aineiston uudelleenlaskennan sekä incidentin täsmällisen aikaleimaformaatin
 säilymisen todistus. Riippumaton H1-H3:n adapteri- ja
 lukijakatselmus ei löytänyt korjattavaa; viimeiset käynnistystestit eivät
-kuuluneet sen tarkistushetkeen. H4/H5, loppukatselmus, ketju-/pakettinäyttö
-ja H:n integraatiohyväksyntä ovat edelleen kesken.
+kuuluneet sen tarkistushetkeen. H4:n näyttö on alla; H5, loppukatselmus,
+pakettinäyttö ja H:n integraatiohyväksyntä ovat edelleen kesken.
 H3 hyödyntää nykyistä `boundedJsonlSourceReader`-primitiiviä; projektio,
 incident-ryhmittely ja budjetit säilyvät omissa adaptereissaan. Lopullinen
 tapahtumajärjestys ja incident-ryhmän päivittyvä koko tarkistetaan myös
@@ -107,13 +111,13 @@ erotetaan todellisesta lukuvirheestä; tarkoituksella tyhjä browser-profiili
 ei esitä lokihäiriötä. Kelvolliset rivit ja niiden osittaisuus voidaan
 näyttää yhdessä. Tiedostoja löytyi -boolean ei korvaa tätä sopimusta.
 
-Ennen toteutusta hyväksytään täsmällinen events-/summary-vastaus ja
-yhdistelmäsäännöt, puuttuvan hakemiston tulkinta sekä UI-tekstit.
+Täsmällinen events-/summary-vastaus, yhdistelmäsäännöt ja puuttuvan
+hakemiston tulkinta omistetaan [Diagnosticsin lukutilan sopimuksessa](../modules/diagnostics.md#lukutilan-sopimus).
 Strict-client hylkää väärät kentät, arvot ja ristiriitaiset yhdistelmät.
 Tässä on myös erillinen tukipakettiraja: `prepareSupportBundleDiagnosticData.ts`
-liittää nykyisen `runtimeSummary`-olion vastaukseen sellaisenaan, mutta
-mainin `supportBundleBackendData.ts` hylkää sen lisäkentät omalla strict-
-validaattorillaan. Pelkkä julkisen API-clientin päivitys ei riitä.
+liitti aiemmin `runtimeSummary`-olion vastaukseen sellaisenaan, mutta
+mainin `supportBundleBackendData.ts` hylkää lisäkentät omalla strict-
+validaattorillaan. Pelkkä julkisen API-clientin päivitys ei siis riittänyt.
 H-P1:ssä hyväksytään siksi samalla uuden summaryn eksplisiittinen projektio
 nykyiseen formaatti-2-yhteenvetoon ja olemassa oleviin katkaisulippuihin.
 Nimetyt kentät mapataan erikseen; uusi lukutila ei valu artifactiin
@@ -127,7 +131,7 @@ Rajattu riippumaton H3/H4-suunnitelmakatselmus tunnisti tämän erillisen
 summary-vastaanottorajan; yllä oleva täsmennys kuuluu samaan H-P1-päätökseen,
 ei uuteen tukipakettiformaattiin tai toteutuksen hyväksyntään.
 
-**H4:n kytkentäsopimuksen valmistelu (ei vielä toteutettu):**
+**H4:n toteutettu kytkentäsopimus (paikallinen näyttö, ei integraatiohyväksyntä):**
 
 - Events-vastaus sisältää `diagnosticEvents`-listan ja `readState`-olion;
   summary saa erillisen `operationalLogReadState`-olion. Portti palauttaa
@@ -165,11 +169,30 @@ ei uuteen tukipakettiformaattiin tai toteutuksen hyväksyntään.
   omista 30 päivän lukijoistaan, ei eri haun summary-tilasta. Epävarmaa
   summarya ei väitetä näillä lipuilla tarkasti mitatuksi tukipakettikatkaisuksi.
 
-Ennen H4:n kytkentää tarkistetaan yllä olevan sopimuksen lukija- ja
-kuluttajamatriisi. Regressiot kattavat tyhjän lähteen, osittaisen onnistumisen,
-kokonaan puuttuvan havainnon, malformed/unknown-erottelun, rajat, strict-
-validaattorin väärät yhdistelmät, erilliset UI-tulokset ja nykyisen
-tukipaketin aidon gzip-/checksum-/tarkastinketjun.
+H4:n lukija- ja kuluttajamatriisi on päivitetty samassa muutoksessa.
+Diagnostiikan ja todellisen HTTP-koostamisen 233 kohdetestin sarja sekä
+laajempi 383 testin sarja nykyisine laskutuskuluttajineen läpäisivät.
+API-clientin 555 testiä ja koko webin 966 testiä läpäisivät. Seitsemän
+selainruntimen tapausta todensi osittaiset rivit, riippumattoman summary-
+virheen, kaksi unavailable-syytä sekä komponentin molemmat valmistumis-
+järjestykset ja myöhäisten virheiden torjunnan clientin vaihdossa/remountissa.
+Kahden system-testin sarja todensi
+HTTP/strict-clientin, generoidun gzipin/checksumit sekä nykyisen tarkastimen
+`.json.gz`- ja `.ekysupport`-luvut. Määrät ovat eri rajojen näyttöjä, eivät
+koko H:n tai saman revision kaikkien porttien yhteistulos.
+
+Nykyisen yksityisen virheketjun kaksi salaus-/purkukoetta läpäisivät:
+synteettisen lukijan alkuperäinen poikkeus, pino ja syyketju säilyivät ennen
+turvallista muunnosta. Malformed-rivin sisältöä ei kerätä. Tavallinen
+runtime ei kytke testihavaitsijaa. Ensimmäisten testiodotusten hylkäykset
+säilytetään; korjaukset koskivat puuttuvaa lukutuloskuluttajaa, tarkkaa
+nykyistä esitysmuotoa ja uuden testin yksiselitteistä otsikkovalitsinta.
+Backendin, API-clientin ja E2E:n tyypitykset sekä web-build läpäisivät;
+buildin nykyinen kokovaroitus ei ole poistunut. Tarkastimen 11 vanhan
+formaatin regressiota läpäisivät. Riippumaton H4-katselmus löysi summaryn
+puuttuvan latauspalautteen: oma palaute lisättiin ja yllä mainittu
+viivästettyjen lukujen näyttö todensi korjauksen. Koko H:n loppukatselmus,
+paketti- ja PR/main-portit ovat edelleen avoimia.
 
 #### H-P2: Hyväksytty writer-häiriön palaute
 

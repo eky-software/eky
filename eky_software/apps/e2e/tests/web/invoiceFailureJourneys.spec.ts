@@ -377,7 +377,7 @@ test.describe('operational log writer fault', () => {
     const support = await readJsonResponse(
       await e2eWeb.api.get('/diagnostics/support-bundle-data'),
     );
-    expect(diagnostics).toEqual({ diagnosticEvents: [] });
+    expect(diagnostics).toEqual({ diagnosticEvents: [], readState: { status: 'complete', reasons: [] } });
     expect(support).toEqual(
       expect.objectContaining({
         diagnosticEvents: [],

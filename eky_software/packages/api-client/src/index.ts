@@ -26,6 +26,12 @@ export type {
   RuntimeDiagnosticSummary,
 } from './diagnostics/index.js';
 export type {
+  DiagnosticEventReadResult,
+  DiagnosticReadReason,
+  DiagnosticReadState,
+  DiagnosticReadStatus,
+} from './diagnostics/diagnosticsTypes.js';
+export type {
   ApprovedInvoiceDocumentMetadata,
   ApprovedInvoiceDocumentType,
   ApprovedInvoiceEmailAttachmentPreview,

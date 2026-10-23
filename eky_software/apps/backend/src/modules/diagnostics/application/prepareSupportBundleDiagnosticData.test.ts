@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { prepareSupportBundleDiagnosticData } from './prepareSupportBundleDiagnosticData.js';
+import { unavailableDiagnosticReadState } from '../domain/diagnosticReadState.js';
 
 describe('prepareSupportBundleDiagnosticData', () => {
   it('requires permission and includes only recent warning, error and security projections', async () => {
@@ -63,6 +64,7 @@ describe('prepareSupportBundleDiagnosticData', () => {
     expect(result.incidentSummariesTruncated).toBe(false);
     expect(result).not.toHaveProperty('companyId');
     expect(result.runtimeSummary.appVersion).toBe('1.2.3');
+    expect(result.runtimeSummary).not.toHaveProperty('operationalLogReadState');
     expect(
       supportBundleDiagnosticEventReader.readSupportBundleDiagnosticEvents,
     ).toHaveBeenCalledWith({
@@ -147,6 +149,7 @@ function createRuntimeSummary() {
     operationalLogNewestMonth: null,
     operationalLogOldestMonth: null,
     operationalLogsAvailable: false,
+    operationalLogReadState: unavailableDiagnosticReadState,
     operationalLogTotalBytes: 0,
     platform: 'win32',
     runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',

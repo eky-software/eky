@@ -44,6 +44,16 @@ incident-index-yhteenvedot omiksi checksum-osioikseen. Osioiden SHA-256-
 checksumit havaitsevat tahattoman sisältömuutoksen, mutta ne eivät ole
 digitaalinen allekirjoitus eivätkä todista artifactin alkuperää.
 
+Diagnosticsin HTTP-yhteenvedon `operationalLogReadState` ei kuulu formaattiin
+2. Backend projisoi tukipaketin `runtimeSummary`-kentät eksplisiittisesti
+nykyiseen kenttäjoukkoon ennen mainin strict-validointia. Mainin tarkistinta
+ei löysennetä lisäkentille. Vanhat yhteenvedon ajat ja määrät kuvaavat
+havaittua aineistoa, eivät todista täydellistä historiaa tai writerin terveyttä.
+Events-/incident-katkaisuliput syntyvät edelleen omista 30 päivän lukijoista,
+eivät eri haun runtime-yhteenvedon tilasta. JSONL-, HTTP-, gzip- ja
+checksum-ketju sekä nykyinen tarkastin todennetaan samalla generoituun
+pakettiin; `.ekysupport`-lukuyhteensopivuus säilyy ilman uudelleenkirjoitusta.
+
 ## Sallittu sisältö
 
 - manifest ja creation correlation ID

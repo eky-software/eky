@@ -178,7 +178,7 @@ describe('first delivery from a migrated approved invoice', () => {
     const earliestTimestamp = new Date().toISOString();
     expect((await app.request(`/invoices/${f.scope.invoiceId}/email/dry-run`, { method: 'POST' })).status).toBe(500);
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const events = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents: events } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
     expect(events).toEqual([expect.objectContaining({
       eventName: 'http.requestFailed', errorCode: 'HTTP_REQUEST_FAILED', stage: 'response',
     })]);

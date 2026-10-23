@@ -281,6 +281,13 @@ ensimmäisen rivin poiston sekä tavu- ja truncation-tiedot. Tiedostonimimallit,
 hakemistovalinta, tapahtumavalidointi, ryhmittely, deduplikointi ja
 osabudjetit säilyvät erillisissä read model -adaptereissa.
 
+Diagnostiikan tapahtumalista ja runtime-yhteenveto käyttävät samaa
+rajattua tiedostolukuprimitiiviä. Tiedostotason I/O-, puuttuvan loppurivin
+ja tavukatkaisun havainnot erotetaan toisistaan; avatut tiedostot ja
+hakemistot suljetaan myös virheessä. Turvallisen lukutilan sekä tarkoituksellisen
+unknown-poissulun omistaa [Diagnostics-moduuli](../modules/diagnostics.md#lukutilan-sopimus),
+ei operational-writer tai business audit.
+
 Seuraava observabilityn testausvaihe on dokumentoitu Playwright/E2E-kokonaisuus.
 Playwrightia tai muuta uutta riippuvuutta ei lisätä ilman erillistä
 riippuvuuspäätöstä.

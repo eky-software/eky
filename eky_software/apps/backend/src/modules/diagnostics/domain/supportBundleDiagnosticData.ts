@@ -15,6 +15,6 @@ export interface SupportBundleDiagnosticData {
   diagnosticPeriodDays: number;
   incidentSummaries: SupportBundleIncidentSummary[];
   incidentSummariesTruncated: boolean;
-  runtimeSummary: RuntimeDiagnosticSummary;
+  runtimeSummary: Omit<RuntimeDiagnosticSummary, 'operationalLogReadState'>;
   truncated: boolean;
 }

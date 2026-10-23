@@ -40,7 +40,9 @@ describe('strict update response projection', () => {
       ...(entry.duration ? { durationMs: 2 } : {}),
       ...(entry.failure ? { retryable: false, sideEffectState: 'unknown' } : {}),
     };
-    const read = (value: unknown) => readDiagnosticsResponse({ diagnosticEvents: [value] });
+    const read = (value: unknown) => readDiagnosticsResponse({
+      diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
+    }).diagnosticEvents;
     expect(read(event)).toEqual([event]);
     for (const change of [
       { component: 'backend' }, { category: 'restore' }, { level: entry.level === 'info' ? 'warn' : 'info' },

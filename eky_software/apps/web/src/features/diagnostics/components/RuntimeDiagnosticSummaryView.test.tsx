@@ -28,15 +28,39 @@ describe('RuntimeDiagnosticSummaryView', () => {
           operationalLogNewestMonth: null,
           operationalLogOldestMonth: null,
           operationalLogsAvailable: false,
+          operationalLogReadState: { status: 'unavailable', reasons: ['notConfigured'] },
           operationalLogTotalBytes: 0,
         }}
       />,
     );
 
     expect(html).toContain(
-      'Tekniset tiedostolokit ovat käytettävissä paketoidussa desktopissa.',
+      'Tässä ajotilassa ei ole määritetty teknisten lokien lähdettä.',
     );
     expect(html).not.toContain('role="alert"');
+  });
+
+  it('marks observed metrics partial while keeping database and log data visible', () => {
+    const html = renderToStaticMarkup(<RuntimeDiagnosticSummaryView summary={{
+      ...createSummary(), operationalLogReadState: { status: 'partial', reasons: ['limitReached'] },
+    }} />);
+    expect(html).toContain('Lokiyhteenveto on osittainen');
+    expect(html).toContain('42 migraatiota');
+    expect(html).toContain('2026-06');
+    expect(html).toContain('4 kt');
+  });
+
+  it('does not mislabel a configured source failure as browser-only logs', () => {
+    const html = renderToStaticMarkup(<RuntimeDiagnosticSummaryView summary={{
+      ...createSummary(), operationalLogsAvailable: false, operationalLogTotalBytes: 0,
+      operationalLogReadState: { status: 'unavailable', reasons: ['sourceUnavailable'] },
+      latestErrorAt: null, latestWarningAt: null, latestSecurityEventAt: null,
+      operationalLogNewestMonth: null, operationalLogOldestMonth: null,
+    }} />);
+    expect(html).toContain('Teknisten lokien yhteenvetoa ei voitu lukea');
+    expect(html).toContain('role="alert"');
+    expect(html).toContain('42 migraatiota');
+    expect(html).not.toContain('ei ole määritetty');
   });
 });
 
@@ -58,6 +82,7 @@ function createSummary() {
     operationalLogNewestMonth: '2026-07',
     operationalLogOldestMonth: '2026-06',
     operationalLogsAvailable: true,
+    operationalLogReadState: { status: 'complete' as const, reasons: [] as [] },
     operationalLogTotalBytes: 4_096,
     platform: 'win32',
     runtimeInstanceId: 'runtime-instance-1',

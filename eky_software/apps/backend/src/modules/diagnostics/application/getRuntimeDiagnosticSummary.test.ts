@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { getRuntimeDiagnosticSummary } from './getRuntimeDiagnosticSummary.js';
+import { completeDiagnosticReadState } from '../domain/diagnosticReadState.js';
 
 describe('getRuntimeDiagnosticSummary', () => {
   it('combines only safe runtime, database and log summaries', async () => {
@@ -24,6 +25,7 @@ describe('getRuntimeDiagnosticSummary', () => {
               operationalLogNewestMonth: '2026-07',
               operationalLogOldestMonth: '2026-07',
               operationalLogsAvailable: true,
+              operationalLogReadState: completeDiagnosticReadState,
               operationalLogTotalBytes: 1_024,
             };
           },

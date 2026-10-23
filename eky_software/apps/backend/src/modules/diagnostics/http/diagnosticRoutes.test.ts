@@ -5,14 +5,15 @@ import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { ListDiagnosticEventsInput } from '../application/listDiagnosticEvents.js';
 import type { GetRuntimeDiagnosticSummaryInput } from '../application/getRuntimeDiagnosticSummary.js';
 import type { PrepareSupportBundleDiagnosticDataInput } from '../application/prepareSupportBundleDiagnosticData.js';
-import type { DiagnosticEventItem } from '../domain/diagnosticEventItem.js';
+import type { DiagnosticEventReadResult } from '../domain/diagnosticEventReadResult.js';
+import { completeDiagnosticReadState, unavailableDiagnosticReadState } from '../domain/diagnosticReadState.js';
 import type { RuntimeDiagnosticSummary } from '../domain/runtimeDiagnosticSummary.js';
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
 import { createDiagnosticRoutes } from './diagnosticRoutes.js';
 
 type ListDiagnosticEvents = (
   input: ListDiagnosticEventsInput,
-) => Promise<DiagnosticEventItem[]>;
+) => Promise<DiagnosticEventReadResult>;
 type GetRuntimeDiagnosticSummary = (
   input: GetRuntimeDiagnosticSummaryInput,
 ) => Promise<RuntimeDiagnosticSummary>;
@@ -58,7 +59,8 @@ describe('diagnostic routes', () => {
   });
 
   it('takes trust context from the backend and returns only the projection', async () => {
-    const listDiagnosticEvents = vi.fn<ListDiagnosticEvents>().mockResolvedValue([
+    const listDiagnosticEvents = vi.fn<ListDiagnosticEvents>().mockResolvedValue({
+      readState: completeDiagnosticReadState, diagnosticEvents: [
       {
         category: 'smtp',
         component: 'backend',
@@ -69,7 +71,7 @@ describe('diagnostic routes', () => {
         occurredAt: '2026-07-27T12:00:00.000Z',
         outcome: 'failure',
       },
-    ]);
+    ] });
     const app = createTestApp(listDiagnosticEvents);
 
     const response = await app.request('/diagnostics/events?limit=20');
@@ -83,6 +85,7 @@ describe('diagnostic routes', () => {
     });
     const responseBody = await response.json();
     expect(responseBody).toEqual({
+      readState: completeDiagnosticReadState,
       diagnosticEvents: [
         expect.not.objectContaining({
           companyId: expect.anything(),
@@ -189,6 +192,7 @@ function createRuntimeSummary(): RuntimeDiagnosticSummary {
     operationalLogNewestMonth: null,
     operationalLogOldestMonth: null,
     operationalLogsAvailable: false,
+    operationalLogReadState: unavailableDiagnosticReadState,
     operationalLogTotalBytes: 0,
     platform: 'win32',
     runtimeInstanceId: 'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',

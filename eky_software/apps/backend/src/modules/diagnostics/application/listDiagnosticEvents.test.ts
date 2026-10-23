@@ -5,6 +5,7 @@ import {
   DiagnosticEventValidationError,
   listDiagnosticEvents,
 } from './listDiagnosticEvents.js';
+import { completeDiagnosticReadState, unavailableDiagnosticReadState } from '../domain/diagnosticReadState.js';
 
 describe('listDiagnosticEvents', () => {
   it('requires the dedicated permission before reading logs', async () => {
@@ -28,7 +29,7 @@ describe('listDiagnosticEvents', () => {
 
   it('uses the bounded public limit', async () => {
     const reader = {
-      listRecentDiagnosticEvents: vi.fn().mockResolvedValue([]),
+      listRecentDiagnosticEvents: vi.fn().mockResolvedValue({ diagnosticEvents: [], readState: completeDiagnosticReadState }),
     };
 
     await listDiagnosticEvents(
@@ -65,6 +66,20 @@ describe('listDiagnosticEvents', () => {
       ),
     ).rejects.toBeInstanceOf(DiagnosticEventValidationError);
     expect(reader.listRecentDiagnosticEvents).not.toHaveBeenCalled();
+  });
+
+  it('preserves partial results and safely classifies an unexpected source failure', async () => {
+    const input = { actorContext: { actorId: 'actor-1', authenticationMode: 'local' as const,
+      companyId: 'company-1', permissions: ['viewDiagnostics'] as const } };
+    const partial = { diagnosticEvents: [], readState: {
+      status: 'partial' as const, reasons: ['invalidEntries'] as const,
+    } };
+    const reader = { listRecentDiagnosticEvents: vi.fn().mockResolvedValueOnce(partial)
+      .mockRejectedValueOnce(new Error('synthetic private original source error')) };
+    await expect(listDiagnosticEvents(input, reader)).resolves.toBe(partial);
+    await expect(listDiagnosticEvents(input, reader)).resolves.toEqual({
+      diagnosticEvents: [], readState: unavailableDiagnosticReadState,
+    });
   });
 });
 

@@ -145,7 +145,7 @@ describe('draft delivery history production composition', () => {
       ? 'Stored invoice delivery history is inconsistent.' : 'Invoice delivery history could not be read.' });
     const errorCode = failure === 'integrity' ? 'INVOICE_DRAFT_DELIVERY_HISTORY_INTEGRITY_FAILED' : 'INVOICE_DRAFT_DELIVERY_HISTORY_READ_FAILED';
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const events = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents: events } = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
     expect(events).toHaveLength(2);
     expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ eventName: 'http.requestFailed', errorCode,
       operationId: 'invoiceDraft.deliveryHistory', stage: 'read', sideEffectState: 'none', retryable: false,

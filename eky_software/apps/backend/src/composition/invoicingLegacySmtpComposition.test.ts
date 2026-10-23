@@ -261,7 +261,7 @@ describe('customer SMTP preserved legacy production composition', () => {
     writeFileSync(join(f.root, f.selected.preserved!.storagePath), '%PDF-synthetic-corruption');
     expect((await f.post('send', f.sendFields(preparation))).status).toBe(500);
     const period = { earliestTimestamp, latestTimestamp: new Date().toISOString() };
-    const diagnosticEvents = await new FileSystemDiagnosticEventReader(f.logsRoot).listRecentDiagnosticEvents(10);
+    const { diagnosticEvents } = await new FileSystemDiagnosticEventReader(f.logsRoot).listRecentDiagnosticEvents(10);
     expect(diagnosticEvents).toEqual([expect.objectContaining({ eventName: 'invoicePdf.storageFailed',
       errorCode: 'INVOICE_PDF_INTEGRITY_FAILED', stage: 'read', retryable: false, sideEffectState: 'none' })]);
     const support = await new FileSystemSupportBundleDiagnosticEventReader(f.logsRoot).readSupportBundleDiagnosticEvents(period);
