@@ -28,9 +28,9 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Suunniteltu; nimen lähde ja turvallinen nimeämissääntö päätettävä. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
-| D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3:n korjaus paikallisesti todennettu; H:n paketti-/integraatioportit avoinna M1:n mukaan. |
-| D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | H-P1:n sopimus hyväksytty ja H4:n lukuketju paikallisesti todennettu; H:n integraatio avoinna. |
-| D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H-P2:n sovellusilmoitus hyväksytty; toteutuksen ja integraation näyttö M1:ssä. |
+| D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3 hyväksytty PR #315:n ja uuden mainin omilla porteilla; loppuhyväksyntä M1:n kautta. |
+| D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | H4:n lukutilat ja todellinen lukuketju hyväksytty H:n PR/main-porteilla. Rajatun luvun kattavuutta ei väitetä koko historian terveydeksi. |
+| D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H5:n ei-estävä ilmoitus, incident-yritys ja todellinen main/preload/UI-ketju hyväksytty H:n PR/main-porteilla. |
 | R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | Tarkistettava ja rajattava; saman version torjunta ei itsessään ole vika. |
 | R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Suunniteltu; tarkistetaan toteutusten yhteydessä. |
 | R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | Mukaan sovittu 2026-09-22; sivutuksen käyttöliittymä ja turvallinen lukusopimus suunniteltava ennen toteutusta. |
@@ -230,12 +230,14 @@ ja K [PR #305:n mainissa](https://github.com/eky-software/eky/pull/305#issuecomm
 I:n aikaistettu dokumentaatio-osuus sekä D ja E ovat myös hyväksyttyjä;
 F/R15 on hyväksytty PR #313:n omilla PR/main-porteilla. Myös G/R20/R23 ja
 D029-01/02 on hyväksytty PR #314:n omilla PR/main-porteilla.
-Nykyinen työ on H/R21/R22/R24/R25/R26:n rajattu toteutus;
-H-P1:n lukutilan ja H-P2:n häiriöpalautteen periaatteet sekä H:n toteutus
-Goalina on hyväksytty 23.10.2026; täsmällinen kytkentä ja sen näyttö ovat kesken.
+Myös H/R21/R22/R24/R25/R26 ja D029-03/04/05 on hyväksytty
+[PR #315:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
+Nykyinen työ on I/R30/R31:n hyväksytyn rajauksen toteutus ja todennus.
+Omistaja hyväksyi neljän nimetyn asiakasselaintestin CI-erottelun Goalina;
+muut politiikka- tai turvallisuusmuutokset tarvitsevat edelleen oman päätöksen.
 Täsmällinen näyttö ja nykytila ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
-T/A/B/C/K/D/E/F/G:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
+T/A/B/C/K/D/E/F/G/H:ta ei avata uudelleen ilman niiden omaa todennettua regressiota.
 Vanhat sulkuaikakatkaisut eivät
 muutu korjatuiksi tämän integraation perusteella. B0:ssa tarkistettiin alkuperäiset
 turvallisuushavainnot, B1-B5-toteutusjärjestys ja
@@ -309,7 +311,8 @@ pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
 ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
 F/R15 on hyväksytty [PR #313:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977).
 G on hyväksytty [PR #314:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094).
-H ja I:n jäljellä oleva osuus ovat edelleen avoimia.
+H on hyväksytty [PR #315:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
+I:n jäljellä oleva osuus on edelleen avoin.
 D1-D3 ja niiden rajattu HTTP-sulun jatkokorjaus on hyväksytty PR #308:n
 ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
 [D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
@@ -320,10 +323,9 @@ Vitest-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta;
 erottaa korjatun revision PR/main-portit avoimista historiallisista syistä.
 [Asiakasinvarianttien suunnitelma](release-0.3.0-customer-invariants-plan.md)
 säilyttää E:n sopimukset. Nykyinen työ on
-[H:n rajattu suunnittelu](release-0.3.0-m1-preparation-plan.md#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma).
-H-P1/H-P2:n hyväksytyt periaatteet täsmennetään ennen tuotantokytkentää;
-uudet erilliset päätökset tuodaan omistajalle. H ei toteuta M4:n historian
-selausta tai avaa I:tä.
+[I:n rajattu toteutus](release-0.3.0-m1-preparation-plan.md#i--ci-politiikan-ja-ajantasaisten-sopimusten-valmistelu).
+H:n hyväksytyt lukutila- ja häiriöpalautesopimukset säilyvät; H ei toteuttanut
+M4:n historian selausta. I ei muuta testisisältöä tai mainin täysiä vaatimuksia.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
 erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
 17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.
@@ -340,9 +342,11 @@ moduulivastuut, ADR:t sekä testaus-/diagnostiikka-/turvallisuusohjeet
 muodostavat ehjän lukureitin. Aliagentit voivat tarkistaa eri alueet;
 pääagentti kokoaa havaitut linkki-, ankkuri-, päällekkäisyys- ja
 ajantasaisuuspuutteet sekä varmentaa korjaukset. Tämä dokumentaatio-osuus
-tehdään ennen D:tä omine lukureitti-, katselmus- ja integraatioportteineen;
-sen nykytila luetaan M1:n jatkamiskohdasta. Se ei hyväksy I:n erillisiä
-CI-politiikkamuutoksia. Se täydentää jokaisen tehtävän pysyvää
+tehtiin ennen D:tä omine lukureitti-, katselmus- ja integraatioportteineen;
+se ei hyväksynyt koko I:tä tai sen erillisiä CI-politiikkamuutoksia.
+Nykyinen I-valmistelu tarkistaa muuttuneiden alueiden sopimusten vastaavuuden
+ja R30:n täsmällisen jäljellä olevan rajauksen, ei aloita ohjehuoltoa alusta.
+Se täydentää jokaisen tehtävän pysyvää
 [ohjeiden tarkistusvelvoitetta](../ai/workflow.md#työn-aloitusjärjestys),
 ei siirrä sitä myöhemmäksi tai rajoita sitä 0.3.0-julkaisuun.
 
@@ -401,8 +405,9 @@ riippuvuustiedot kuuluvat loppukatselmuksen kattavuuslistaan.
 ### Päätökset ennen niiden vaikutusalueen toteutusta
 
 K:n ja B:n alla luetellut päätökset ovat hyväksyttyjä, säilyviä sopimuksia,
-eivät uusi valmistelujono. D/E:n päätökset säilyvät niiden hyväksytyissä
-sopimuksissa; G/H/W7:n avoimet päätökset ratkaistaan ennen niiden toteutusta.
+eivät uusi valmistelujono. D/E/G/H:n päätökset säilyvät niiden hyväksytyissä
+sopimuksissa; I:n mahdollinen politiikkamuutos ja W7:n avoimet päätökset
+ratkaistaan ennen niiden toteutusta.
 Uusi sopimusmuutos tarvitsee oman vaikutusarvionsa.
 
 - K: versionmukaisen schema-attestoinnin omistaja ja kanonisointi,

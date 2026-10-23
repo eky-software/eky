@@ -18,6 +18,11 @@ const DESKTOP_COMPATIBILITY_ROOTS = [
 const POLICY_FILES = new Set([
   `${ROOT}docs/ai/testing-rules.md`, `${ROOT}docs/architecture/windows-installer-acceptance-harness-v2.md`,
 ]);
+// Only reviewed browser scenarios qualify; shared E2E support keeps compatibility coverage.
+const FAST_BROWSER_SCENARIO_PATHS = new Set([
+  'customerAndCompanyJourneys.spec.ts', 'customerOverviewJourneys.spec.ts',
+  'customerRelationshipJourneys.spec.ts', 'customerInvariantJourneys.spec.ts',
+].map((name) => `${ROOT}apps/e2e/tests/web/${name}`));
 
 export function isCiRecord(value, keys) {
   return value !== null && typeof value === 'object' && Object.getPrototypeOf(value) === Object.prototype &&
@@ -39,6 +44,7 @@ function pathRisk(path) {
     const relative = path.slice(`${ROOT}apps/desktop/`.length);
     return DESKTOP_COMPATIBILITY_ROOTS.some((root) => relative.startsWith(root)) ? 'compatibility' : 'installer';
   }
+  if (FAST_BROWSER_SCENARIO_PATHS.has(path)) return 'fast';
   if (path.startsWith(`${ROOT}apps/e2e/`) || path.startsWith(`${ROOT}apps/web/src/desktop/`)) return 'compatibility';
   if (path.startsWith(`${ROOT}apps/backend/src/`)) {
     return path.startsWith(`${ROOT}apps/backend/src/modules/`) &&

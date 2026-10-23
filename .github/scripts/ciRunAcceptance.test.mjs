@@ -10,6 +10,7 @@ import { summarizeLegacyCapture } from './legacyCaptureObservation.mjs';
 import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
 
 const fast = 'eky_software/apps/web/src/features/customers/CustomerList.tsx';
+const customerBrowser = 'eky_software/apps/e2e/tests/web/customerInvariantJourneys.spec.ts';
 const critical = 'eky_software/apps/desktop/src/profileBackup/restore/profileRestoreStartupRecovery.ts';
 const planFor = (paths, eventName = 'pull_request') => classifyCiRisk({ eventName,
   ref: eventName === 'pull_request' ? 'refs/pull/1/merge' : 'refs/heads/main',
@@ -42,7 +43,10 @@ function evidence(plan) {
 test('light, lifecycle, mixed and full-event changes select exact coverage and complete', () => {
   for (const [paths, event, count] of [
     [[fast], 'pull_request', 5], [[critical], 'pull_request', 25],
+    [[customerBrowser], 'pull_request', 5], [[customerBrowser, critical], 'pull_request', 25],
     [[fast, critical], 'pull_request', 25], [[fast], 'push', 36],
+    [[customerBrowser], 'push', 36], [[customerBrowser], 'schedule', 36],
+    [[customerBrowser], 'workflow_dispatch', 36],
     [[fast], 'schedule', 36], [[fast], 'workflow_dispatch', 36],
   ]) {
     const plan = planFor(paths, event);
