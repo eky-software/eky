@@ -499,7 +499,7 @@ test('manual diagnostics select independent existing jobs without changing reusa
 const linuxConsumers = [
   { job: 'e2e-system-security', scope: 'system', consumer: 'system-api', timeout: 10,
     normal: 'Run isolated system security E2E tests' },
-  { job: 'e2e-web-critical', scope: 'web', consumer: 'web-chromium', timeout: 15,
+  { job: 'e2e-web-critical', scope: 'web', consumer: 'web-chromium', timeout: 20,
     normal: 'Run critical web E2E journeys' },
 ];
 
@@ -523,12 +523,12 @@ function workflowStep(source, name) {
   return section.trimEnd();
 }
 
-test('only the Windows Electron job has the approved 35-minute preparation and execution budget', async () => {
+test('core jobs preserve their exact approved preparation and execution budgets', async () => {
   const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
   const budgets = {
     verify: 15,
     'e2e-system-security': 10,
-    'e2e-web-critical': 15,
+    'e2e-web-critical': 20,
     'e2e-electron-windows-critical': 35,
     'windows-contracts': 15,
   };
@@ -540,6 +540,11 @@ test('only the Windows Electron job has the approved 35-minute preparation and e
   assert.equal(workflowStep(electron, 'Run critical Electron E2E journeys'),
     '        run: pnpm test:e2e:electron:critical');
   assert.match(workflowStep(electron, 'Preserve encrypted CI failure evidence'),
+    /^        timeout-minutes: 3$/mu);
+  const web = workflowJob(core, 'e2e-web-critical');
+  assert.match(workflowStep(web, 'Run critical web E2E journeys'),
+    /^          pnpm --filter @eky\/e2e e2e:web:critical$/mu);
+  assert.match(workflowStep(web, 'Preserve encrypted CI failure evidence'),
     /^        timeout-minutes: 3$/mu);
 });
 

@@ -85,6 +85,21 @@ pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäa
 pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
 syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
 
+## Web-CI:n kokonaisbudjetti
+
+Omistajan 23.10.2026 hyväksymä `Web critical E2E` -työn kokonaisaikaraja
+on 20 minuuttia. Sama raja kattaa selainympäristön valmistelun, nykyisen
+kriittisen testijoukon ja työn loppuvaiheet. Muutos koskee vain
+repositoryjuuren `.github/workflows/ci.yml`:n `e2e-web-critical`-työtä.
+
+Testien, Playwrightin, käynnistyksen, prosessisiivouksen ja salatun
+virhekeräyksen omat aikarajat, uusintaehdot ja pakolliset tulokset säilyvät.
+`failOnFlakyTests` säilyy: yhteysvirheen jälkeinen läpäisy ei muutu
+hyväksynnäksi pidemmän kokonaisbudjetin vuoksi. Aiemmat katkaisut,
+ensivirheet ja puuttuvat siivoustodisteet jäävät erillisiksi havainnoiksi.
+Kokonaisrajan ja muuttumattoman testikomennon tarkistaa nykyinen
+`ciRunAcceptance.test.mjs`; Linuxin valmistelukytkentä vaatii saman rajan.
+
 ## Desktopin Vitest-rinnakkaisuus
 
 Desktopin tavallisen `vitest run` -ajon enimmäistyöntekijämäärä on neljä.

@@ -26,8 +26,24 @@ niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 Omistaja hyväksyi 23.10.2026 esitetyn rajatun jatkon Goalina: neljän
 nimetyn asiakasselaintestin CI-erottelu ja osoitettujen ohjevirheiden korjaus.
 Kohderegressiot, nykyinen 425 testin CI-sopimussarja, riippuvuusauditointi
-ja rajattu riippumaton katselmus ovat läpäisseet. Seuraavaksi jäädytetyn
-PR-revision normaalit portit; myös uuden mainin omat portit vaaditaan.
+ja rajattu riippumaton katselmus ovat läpäisseet. [PR #316](https://github.com/eky-software/eky/pull/316)
+ei ole vielä hyväksytty: ensimmäinen kierros ja sen yksi rajattu
+kohdeuusinta säilyvät [integraatiocheckpointissa](https://github.com/eky-software/eky/pull/316#issuecomment-6366351666).
+Supervisor ja Electron läpäisivät kohdeuusinnan, mutta web-työ katkaistiin
+kokonaisaikarajaan. Erillinen laskun jälkiluvun yhteysvirhe ja ensimmäisten
+yritysten aineisto-/siivouspuutteet jäävät avoimiksi, eivät korjatuiksi.
+
+**Omistajan jatkopäätös 23.10.2026:** vain web-työn kokonaisraja nostetaan
+15 minuutista 20 minuuttiin. Talteen saatu yhteysvirhe tutkitaan rajatusti
+ennen yhtä uutta normaalia PR/CI-kierrosta. Testikohtaiset, runtime- ja
+siivousrajat, flaky-hylkäys ja muut hyväksyntäehdot säilyvät
+[testausohjeen rajauksen mukaan](../ai/testing-rules.md#web-cin-kokonaisbudjetti).
+Mahdollinen sovelluskoodin muutos vaatii erillisen päätöksen. Jäädytetyn
+uuden PR-headin ja uuden mainin omat portit vaaditaan edelleen.
+Rajatussa lähdekatselmuksessa ei osoitettu yhteyskatkon korjattavaa syytä.
+Nykyisen laskun elinkaaritestin yksi kohdeajo läpäisi ilman uusintaa ja
+varmensi siivouksen. Tämä ei selitä alkuperäistä yhteysvirhettä eikä muuta
+sitä korjatuksi; testiin tai sen kuljetuskerrokseen ei lisätty uusintaa.
 I:n aiemmin hyväksyttyä ohjeverkon huoltoa ei tehdä uudelleen.
 
 **Avoimet havainnot:** PR #315:n ensimmäisen kiintiö-/flush-testin
