@@ -10,6 +10,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createBackendOperationalEvent } from '../../../observability/createOperationalEvent.js';
+import { projectDiagnosticOperationalEvent } from './diagnosticOperationalEventProjector.js';
 import { FileSystemSupportBundleDiagnosticEventReader } from './fileSystemSupportBundleDiagnosticEventReader.js';
 
 const roots: string[] = [];
@@ -130,6 +131,96 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     expect(result.diagnosticEvents).toEqual([
       expect.objectContaining({ id: 'backend:newer' }),
     ]);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('selects the newest event across streams before applying the event limit', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(logsRoot, 'security', 'desktop-security-2026-07-001.jsonl', [
+      desktopSecurity('older-desktop', '2026-07-27T10:00:00.000Z'),
+    ]);
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-001.jsonl', [
+      backendFailure('newer-backend', '2026-07-27T11:00:00.000Z'),
+    ]);
+
+    const result = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot, {
+      maximumDiagnosticEvents: 1,
+    }).readSupportBundleDiagnosticEvents(julyPeriod);
+
+    expect(result.diagnosticEvents.map(event => event.id)).toEqual(['backend:newer-backend']);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('applies the byte budget to the global newest prefix including array bytes', async () => {
+    const logsRoot = createLogsRoot();
+    const newest = backendFailure('newer-backend', '2026-07-27T11:00:00.000Z');
+    writeLines(logsRoot, 'security', 'desktop-security-2026-07-001.jsonl', [
+      desktopSecurity('older-desktop', '2026-07-27T10:00:00.000Z'),
+    ]);
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-001.jsonl', [newest]);
+    const expected = projectDiagnosticOperationalEvent(newest);
+    expect(expected).not.toBeNull();
+    const budget = Buffer.byteLength(JSON.stringify([expected]), 'utf8');
+
+    const result = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot, {
+      maximumProjectedEventBytes: budget,
+    }).readSupportBundleDiagnosticEvents(julyPeriod);
+
+    expect(result.diagnosticEvents).toEqual([expected]);
+    expect(Buffer.byteLength(JSON.stringify(result.diagnosticEvents), 'utf8')).toBe(budget);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('keeps a stable timestamp tie and deduplicates across segments before limiting', async () => {
+    const logsRoot = createLogsRoot();
+    const timestamp = '2026-07-27T10:00:00.000Z';
+    const duplicate = backendFailure('same-backend', timestamp);
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-001.jsonl', [duplicate]);
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-002.jsonl', [duplicate]);
+    writeLines(logsRoot, 'security', 'desktop-security-2026-07-001.jsonl', [
+      desktopSecurity('same-desktop', timestamp),
+    ]);
+
+    const result = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot, {
+      maximumDiagnosticEvents: 2,
+    }).readSupportBundleDiagnosticEvents(julyPeriod);
+
+    expect(result.diagnosticEvents.map(event => event.id)).toEqual([
+      'desktop:same-desktop', 'backend:same-backend',
+    ]);
+    expect(result.sourceTruncated).toBe(false);
+  });
+
+  it('marks conflicting projections of one ID as partial and retains the observed newest', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-002.jsonl', [
+      backendFailure('conflicting-id', '2026-07-27T10:00:00.000Z'),
+    ]);
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-001.jsonl', [
+      backendFailure('conflicting-id', '2026-07-27T11:00:00.000Z'),
+    ]);
+
+    const result = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot)
+      .readSupportBundleDiagnosticEvents(julyPeriod);
+
+    expect(result.diagnosticEvents).toEqual([expect.objectContaining({
+      id: 'backend:conflicting-id', occurredAt: '2026-07-27T11:00:00.000Z',
+    })]);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('retains the newest event after multiple bounded candidate batches', async () => {
+    const logsRoot = createLogsRoot();
+    writeLines(logsRoot, 'backend', 'backend-warning-error-2026-07-001.jsonl',
+      Array.from({ length: 9 }, (_, index) => backendFailure(
+        `batch-${index}`, `2026-07-27T10:00:0${index}.000Z`,
+      )).reverse());
+
+    const result = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot, {
+      maximumDiagnosticEvents: 1,
+    }).readSupportBundleDiagnosticEvents(julyPeriod);
+
+    expect(result.diagnosticEvents.map(event => event.id)).toEqual(['backend:batch-8']);
     expect(result.sourceTruncated).toBe(true);
   });
 
@@ -430,6 +521,11 @@ describe('FileSystemSupportBundleDiagnosticEventReader', () => {
     ).rejects.toThrow('Support bundle diagnostic period is invalid.');
   });
 });
+
+const julyPeriod = {
+  earliestTimestamp: '2026-06-28T12:00:00.000Z',
+  latestTimestamp: '2026-07-28T12:00:00.000Z',
+};
 
 function createLogsRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'eky-support-diagnostics-'));

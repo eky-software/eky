@@ -1,7 +1,7 @@
 import {
+  type Dirent,
   lstatSync,
   readdirSync,
-  statSync,
   unlinkSync,
 } from 'node:fs';
 import { join, resolve } from 'node:path';
@@ -25,9 +25,12 @@ export function maintainIncidentIndex(options: {
 }): {
   deletedByteCount: number;
   deletedFileCount: number;
+  // Includes future files; an unknown census is saturated to block writes.
   totalByteCount: number;
 } {
-  const candidates = listIncidentIndexCandidates(options.logsRoot);
+  const { candidates, capacityUnknown } = listIncidentIndexCandidates(
+    options.logsRoot,
+  );
   const currentYear = (options.now ?? new Date()).getUTCFullYear();
   let deletedByteCount = 0;
   let deletedFileCount = 0;
@@ -46,27 +49,43 @@ export function maintainIncidentIndex(options: {
   let totalByteCount = candidates
     .filter((candidate) => candidate.exists)
     .reduce((total, candidate) => total + candidate.byteCount, 0);
+  // The writer's capacity total still includes future files; deletion does not.
+  let retentionByteCount = candidates
+    .filter((candidate) => candidate.exists && candidate.year <= currentYear)
+    .reduce((total, candidate) => total + candidate.byteCount, 0);
 
   for (const candidate of candidates.sort(
     (left, right) => left.year - right.year,
   )) {
-    if (totalByteCount <= incidentIndexBudgetBytes) {
+    if (retentionByteCount <= incidentIndexBudgetBytes) {
       break;
     }
     if (
+      candidate.year <= currentYear &&
       candidate.year !== options.activeYear &&
       removeCandidate(candidate)
     ) {
       totalByteCount -= candidate.byteCount;
+      retentionByteCount -= candidate.byteCount;
       deletedByteCount += candidate.byteCount;
       deletedFileCount += 1;
     }
   }
 
-  return { deletedByteCount, deletedFileCount, totalByteCount };
+  return {
+    deletedByteCount,
+    deletedFileCount,
+    // An incomplete census must not admit an index write.
+    totalByteCount: capacityUnknown
+      ? Math.max(totalByteCount, incidentIndexBudgetBytes)
+      : totalByteCount,
+  };
 }
 
-function listIncidentIndexCandidates(logsRoot: string): IncidentIndexCandidate[] {
+function listIncidentIndexCandidates(logsRoot: string): {
+  candidates: IncidentIndexCandidate[];
+  capacityUnknown: boolean;
+} {
   const root = resolve(logsRoot);
   if (root !== logsRoot) {
     throw new Error('Incident index root must be absolute and normalized.');
@@ -77,16 +96,24 @@ function listIncidentIndexCandidates(logsRoot: string): IncidentIndexCandidate[]
 
   try {
     directoryStats = lstatSync(directory);
-  } catch {
-    return [];
+  } catch (error) {
+    return { candidates: [], capacityUnknown: !isMissingFile(error) };
   }
 
   if (!directoryStats.isDirectory() || directoryStats.isSymbolicLink()) {
-    return [];
+    return { candidates: [], capacityUnknown: true };
   }
 
   const candidates: IncidentIndexCandidate[] = [];
-  for (const entry of readdirSync(directory, { withFileTypes: true })) {
+  let capacityUnknown = false;
+  let entries: Dirent[];
+  try {
+    entries = readdirSync(directory, { withFileTypes: true });
+  } catch {
+    return { candidates, capacityUnknown: true };
+  }
+
+  for (const entry of entries) {
     const match = filePattern.exec(entry.name);
     const year = Number(match?.[1]);
     if (
@@ -98,15 +125,30 @@ function listIncidentIndexCandidates(logsRoot: string): IncidentIndexCandidate[]
     }
 
     const filePath = join(directory, entry.name);
+    let stats: ReturnType<typeof lstatSync>;
+    try {
+      stats = lstatSync(filePath);
+    } catch (error) {
+      capacityUnknown ||= !isMissingFile(error);
+      continue;
+    }
+    if (!stats.isFile() || stats.isSymbolicLink()) {
+      capacityUnknown = true;
+      continue;
+    }
     candidates.push({
-      byteCount: statSync(filePath).size,
+      byteCount: stats.size,
       exists: true,
       filePath,
       year,
     });
   }
 
-  return candidates;
+  return { candidates, capacityUnknown };
+}
+
+function isMissingFile(error: unknown): boolean {
+  return error instanceof Error && 'code' in error && error.code === 'ENOENT';
 }
 
 function removeCandidate(candidate: IncidentIndexCandidate): boolean {

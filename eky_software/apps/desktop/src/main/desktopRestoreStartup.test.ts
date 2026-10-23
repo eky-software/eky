@@ -77,6 +77,21 @@ const electronBoundary = vi.hoisted(() => ({
   reservationAcquired: vi.fn(),
 }));
 
+const logMaintenanceIo = vi.hoisted(() => ({ deniedDirectory: '', observed: false }));
+vi.mock('node:fs', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs')>();
+  return {
+    ...actual,
+    readdirSync: (...args: Parameters<typeof actual.readdirSync>) => {
+      if (String(args[0]) === logMaintenanceIo.deniedDirectory) {
+        logMaintenanceIo.observed = true;
+        throw Object.assign(new Error('Synthetic log directory failure.'), { code: 'EACCES' });
+      }
+      return actual.readdirSync(...args);
+    },
+  };
+});
+
 vi.mock('electron', async () => {
   const { EventEmitter } = await import('node:events');
   class Port extends EventEmitter {
@@ -145,6 +160,8 @@ beforeEach(() => {
   // Do not reset shared spies while a timed-out tracked body can still use them.
   trackedStartupTest?.assertSharedStateReleased();
   trackedStartupTest = undefined;
+  logMaintenanceIo.deniedDirectory = '';
+  logMaintenanceIo.observed = false;
   // Update fixtures must provide their own Windows boundary on every host.
   vi.stubEnv('SystemRoot', undefined);
   const ownedClients: ProfileSnapshotBrokerClient[] = [];
@@ -196,6 +213,21 @@ function beginTrackedStartupTest(context: TestContext) {
 }
 
 describe('desktop restore startup composition', () => {
+  it.each(['desktop', 'incident-index'])('preserves ordinary startup when %s log listing fails', async directory => {
+    const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
+    const logsRoot = join(createDesktopProfilePaths(fixture.root).runtimeRoot, 'logs');
+    await mkdir(join(logsRoot, directory), { recursive: true });
+    logMaintenanceIo.deniedDirectory = join(logsRoot, directory);
+    const lifecycle = await fixture.start();
+    try {
+      expect(logMaintenanceIo.observed).toBe(true);
+      expect(lifecycle).toBeDefined();
+      expect(electronBoundary.loadWindow).toHaveBeenCalledOnce();
+    } finally {
+      await lifecycle?.shutdown();
+    }
+  });
+
   it.each([false, true])('uses fresh isolated first-start validation after ordinary startup validation (reject: %s)', async reject => {
     const fixture = await createFixture(originalProfileId, {
       update: true, firstStartUpgrade: true, skipRestore: true, completeStartup: true,

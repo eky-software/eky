@@ -71,6 +71,22 @@ nykyisen revision korjaustestiksi.
 | H5 / R26, D029-05 | `desktopComposition.ts` ei anna `JsonLineDesktopOperationalLogger`:lle failure sinkiä; backendin `IncidentIndexOperationalLogFailureSink` toimii nykyisenä vertailuna. Ulompi incident-adapteri ei havaitse sisemmän info-kirjoituksen häiriötä. | Kytke nykyinen failure-sink-portti vasta H-P2:n jälkeen. Deduplikoi rajattu syy/virta prosessin sisällä, käytä olemassa olevaa minimoitua incident-indeksiä best effort -yritykseen ja testaa myös sen epäonnistuminen. Kirjoitus-/kapasiteettihäiriö ei muuta business-tulosta, toista business-operaatiota tai kutsu rikkoutunutta writeriä rekursiivisesti. |
 
 H1/H2 ovat saman retention-vastuun korjauksia, eivät uusi huoltopalvelu.
+H1/H2:n neljä adapteria läpäisivät 104 kohdetestiä. Oikean backendin
+koostamisen kolme regressiota ja nykyisen desktop-koostamisen kaksi
+käynnistysregressiota läpäisivät; writerin ja fallbackin kuusi viereistä
+regressiota sekä backendin ja desktopin tyypitys läpäisivät. Desktopin koko
+nykyinen käynnistys-/palautustiedosto ja kaksi writer-tiedostoa läpäisivät
+myös 163 testin sarjana. Määrät ovat osittain päällekkäisiä, eivät erillinen
+yhteistulos. Paketoitu näyttö on edelleen avoin.
+
+H3:n uudet regressiot toistivat seitsemän odotettua valinta-/laskuripuutetta
+ennen korjausta. Kahden lukijan viimeisin rajattu sarja läpäisi 31 testiä,
+mukaan lukien ristiriitaisen saman tunnisteen valinta ja saman luetun
+aineiston uudelleenlaskennan sekä incidentin täsmällisen aikaleimaformaatin
+säilymisen todistus. Riippumaton H1-H3:n adapteri- ja
+lukijakatselmus ei löytänyt korjattavaa; viimeiset käynnistystestit eivät
+kuuluneet sen tarkistushetkeen. H4/H5, loppukatselmus, ketju-/pakettinäyttö
+ja H:n integraatiohyväksyntä ovat edelleen kesken.
 H3 hyödyntää nykyistä `boundedJsonlSourceReader`-primitiiviä; projektio,
 incident-ryhmittely ja budjetit säilyvät omissa adaptereissaan. Lopullinen
 tapahtumajärjestys ja incident-ryhmän päivittyvä koko tarkistetaan myös
@@ -111,6 +127,50 @@ Rajattu riippumaton H3/H4-suunnitelmakatselmus tunnisti tämän erillisen
 summary-vastaanottorajan; yllä oleva täsmennys kuuluu samaan H-P1-päätökseen,
 ei uuteen tukipakettiformaattiin tai toteutuksen hyväksyntään.
 
+**H4:n kytkentäsopimuksen valmistelu (ei vielä toteutettu):**
+
+- Events-vastaus sisältää `diagnosticEvents`-listan ja `readState`-olion;
+  summary saa erillisen `operationalLogReadState`-olion. Portti palauttaa
+  saman lukutuloksen kuin application/HTTP/client, ei rinnakkaista
+  yhteensopivuuslukijaa. Nykyiset kuluttajat päivitetään samassa palassa.
+- Tilakentät ovat `status` ja `reasons`. Sallitut syyt ovat
+  `notConfigured`, `sourceUnavailable`, `invalidEntries` ja `limitReached`.
+  Syyt ovat yksilöllisiä ja rajattuja, eivät raakavirheitä. `complete`
+  vaatii tyhjän syylistan. `partial` vaatii vähintään yhden muun syyn kuin
+  `notConfigured`. `unavailable` käyttää vain syytä `notConfigured` tai
+  `sourceUnavailable`, eikä palauta tapahtumia tai havaituiksi väitettyjä
+  lokimittareita. Strict-client hylkää ristiriitaiset yhdistelmät.
+- Konfiguroimaton browser-runtime on `unavailable/notConfigured`;
+  puuttuva tai turvaton konfiguroitu juuri on
+  `unavailable/sourceUnavailable`. Varmennetun lokijuuren puuttuva
+  valinnainen virtakansio on tunnettu tyhjä lähde, ei itsessään virhe.
+  Koko haun lukematta jääminen on `unavailable`; kelvollisten osatulosten
+  rinnalla oleva lukuvirhe on `partial`. Luettava mutta rikkinäinen aineisto
+  on `partial/invalidEntries`, ei onnistunut tyhjä historia.
+- Tiedosto-, tavu- tai tulosrajan havaittu katkaisu on `limitReached`.
+  Tuntemattoman tapahtumaperheen tarkoituksellinen poissulku erotetaan
+  tunnetun perheen virheellisestä rivistä nykyisen katalogin omistajassa.
+  Kelvollinen aineisto säilytetään muun lähteen hajotessa. Summaryn ajat ja
+  tavumäärä kuvaavat havaittua aineistoa, eivät puuttuvan osan arvausta.
+- UI erottaa tekstit "Diagnostiikkatapahtumia ei ole vielä.",
+  "Diagnostiikkatiedot ovat osittaiset." ja
+  "Diagnostiikkatietoja ei voitu lukea." Konfiguroimaton browser-lähde
+  kerrotaan saatavuusrajoitteena, ei lokituksen toimivuuden väitteenä.
+  Partial-lista näkyy ilmoituksen rinnalla; epäonnistunut summary ei muuta
+  onnistunutta tapahtumahakua tyhjäksi. Tyhjyys ei osoita writerin terveyttä.
+- Tukipaketin `runtimeSummary` saa vain nykyisen formaatin nimetyt kentät
+  eksplisiittisestä projektiosta. Uutta lukutilaa ei serialisoida siihen.
+  Vanhojen kenttien havaintoluonne dokumentoidaan; niiden tyhjyydestä ei
+  päätellä täydellistä historiaa. Nykyiset `truncated`-liput johdetaan edelleen
+  omista 30 päivän lukijoistaan, ei eri haun summary-tilasta. Epävarmaa
+  summarya ei väitetä näillä lipuilla tarkasti mitatuksi tukipakettikatkaisuksi.
+
+Ennen H4:n kytkentää tarkistetaan yllä olevan sopimuksen lukija- ja
+kuluttajamatriisi. Regressiot kattavat tyhjän lähteen, osittaisen onnistumisen,
+kokonaan puuttuvan havainnon, malformed/unknown-erottelun, rajat, strict-
+validaattorin väärät yhdistelmät, erilliset UI-tulokset ja nykyisen
+tukipaketin aidon gzip-/checksum-/tarkastinketjun.
+
 #### H-P2: Hyväksytty writer-häiriön palaute
 
 Omistajan hyväksymä suunta on ei-estävä, deduplikoitu turvallinen häiriöilmoitus desktopin
@@ -123,6 +183,12 @@ päätetään ennen kytkentää; uutta yleistä tilapalvelua ei hyväksytä täl
 suunnitelmalla. Myös varailmoituksen oma virhe käsitellään ilman rekursiota,
 odotussilmukkaa tai varmaa toimitusväitettä. Backendin nykyinen fallback
 säilyy, eikä permission-rajaa ohiteta mainin ilmoituksen vuoksi.
+
+Näyttötavan täsmennys on omistajalla: suositus on nykyiseen desktop-siltaan
+rajattu sovelluksen ei-estävä ilmoituspalkki, ei käyttöjärjestelmän
+ilmoitusasetuksista riippuva popup. Palkki säilyttäisi vain tiedon tässä
+käynnistyksessä havaitusta lokitushäiriöstä, ei raakaa syytä, polkua tai
+yritystietoa. Tätä UI-/välityskytkentää ei vielä toteuteta ennen valintaa.
 
 #### H:n säilyvät rajat ja valmistumisportti
 

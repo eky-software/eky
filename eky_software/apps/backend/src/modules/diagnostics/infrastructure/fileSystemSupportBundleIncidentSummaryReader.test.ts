@@ -7,14 +7,21 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { readNewestJsonlLines } from './boundedJsonlSourceReader.js';
 import { FileSystemSupportBundleIncidentSummaryReader } from './fileSystemSupportBundleIncidentSummaryReader.js';
 
 const roots: string[] = [];
 
+vi.mock('./boundedJsonlSourceReader.js', async importOriginal => {
+  const actual = await importOriginal<typeof import('./boundedJsonlSourceReader.js')>();
+  return { ...actual, readNewestJsonlLines: vi.fn(actual.readNewestJsonlLines) };
+});
+
 describe('FileSystemSupportBundleIncidentSummaryReader', () => {
   afterEach(() => {
+    vi.clearAllMocks();
     for (const root of roots.splice(0)) {
       rmSync(root, { force: true, recursive: true });
     }
@@ -284,6 +291,126 @@ describe('FileSystemSupportBundleIncidentSummaryReader', () => {
     expect(sourceLimited.sourceTruncated).toBe(true);
   });
 
+  it('selects the newest group across files before applying the group limit', async () => {
+    const logsRoot = createLogsRoot();
+    writeIncidentLines(logsRoot, 'desktop-incident-index-2026.jsonl', [
+      incident({ component: 'desktop', errorCode: 'OLDER', timestamp: '2026-07-27T10:00:00.000Z' }),
+    ]);
+    writeIncidentLines(logsRoot, 'backend-incident-index-2026.jsonl', [
+      incident({ component: 'backend', errorCode: 'NEWER', timestamp: '2026-07-27T11:00:00.000Z' }),
+    ]);
+
+    const result = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot, {
+      maximumIncidentSummaries: 1,
+    }).readSupportBundleIncidentSummaries(julyPeriod);
+
+    expect(result.incidentSummaries.map(summary => summary.errorCode)).toEqual(['NEWER']);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('counts every observed row of a retained group after other groups exceed the limit', async () => {
+    const logsRoot = createLogsRoot();
+    writeIncidentLines(logsRoot, 'desktop-incident-index-2026.jsonl', [
+      incident({ component: 'desktop', errorCode: 'KEEP', timestamp: '2026-07-27T12:00:00.000Z' }),
+    ]);
+    writeIncidentLines(logsRoot, 'backend-incident-index-2026.jsonl', [
+      incident({ component: 'backend', errorCode: 'KEEP', timestamp: '2026-07-26T09:00:00.000Z' }),
+      ...Array.from({ length: 5 }, (_, index) => incident({
+        component: 'backend', errorCode: `OLDER_${index}`, timestamp: '2026-07-27T10:00:00.000Z',
+      })),
+      incident({ component: 'backend', errorCode: 'KEEP', timestamp: '2026-07-27T11:00:00.000Z' }),
+    ]);
+
+    const result = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot, {
+      maximumIncidentSummaries: 1,
+    }).readSupportBundleIncidentSummaries(julyPeriod);
+
+    expect(result.incidentSummaries).toEqual([expect.objectContaining({
+      errorCode: 'KEEP', count: 3,
+      firstOccurredAt: '2026-07-26T09:00:00.000Z', lastOccurredAt: '2026-07-27T12:00:00.000Z',
+    })]);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('recounts the same observed bytes even if the file changes after its only read', async () => {
+    const logsRoot = createLogsRoot();
+    writeIncidentLines(logsRoot, 'backend-incident-index-2026.jsonl', [
+      incident({ component: 'backend', timestamp: '2026-07-26T10:00:00.000Z' }),
+      incident({ component: 'backend', timestamp: '2026-07-27T10:00:00.000Z' }),
+    ]);
+    const read = vi.mocked(readNewestJsonlLines);
+    const actualRead = read.getMockImplementation()!;
+    read.mockImplementationOnce((filePath, maximumBytes) => {
+      const observed = actualRead(filePath, maximumBytes);
+      writeFileSync(filePath, `${JSON.stringify(incident({
+        component: 'backend', errorCode: 'REPLACED_AFTER_READ', timestamp: '2026-07-27T11:00:00.000Z',
+      }))}\n`, 'utf8');
+      return observed;
+    });
+
+    const result = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot)
+      .readSupportBundleIncidentSummaries(julyPeriod);
+
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(result.incidentSummaries).toEqual([expect.objectContaining({
+      errorCode: 'DATABASE_OPEN_FAILED', count: 2,
+      firstOccurredAt: '2026-07-26T10:00:00.000Z', lastOccurredAt: '2026-07-27T10:00:00.000Z',
+    })]);
+    expect(result.sourceTruncated).toBe(false);
+  });
+
+  it('resolves equal timestamps by the complete stable group key', async () => {
+    const logsRoot = createLogsRoot();
+    const timestamp = '2026-07-27T10:00:00.000Z';
+    writeIncidentLines(logsRoot, 'desktop-incident-index-2026.jsonl', [
+      incident({ component: 'desktop', errorCode: 'Z_FAILURE', timestamp }),
+    ]);
+    writeIncidentLines(logsRoot, 'backend-incident-index-2026.jsonl', [
+      incident({ component: 'backend', errorCode: 'A_FAILURE', timestamp }),
+    ]);
+
+    const result = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot, {
+      maximumIncidentSummaries: 1,
+    }).readSupportBundleIncidentSummaries(julyPeriod);
+
+    expect(result.incidentSummaries.map(summary => summary.errorCode)).toEqual(['A_FAILURE']);
+  });
+
+  it('rejects noncanonical timestamp precision without dropping the canonical group', async () => {
+    const logsRoot = createLogsRoot();
+    writeIncidentLines(logsRoot, 'backend-incident-index-2026.jsonl', [
+      incident({ component: 'backend', errorCode: 'KEEP', timestamp: '2026-07-27T10:00:00Z' }),
+      incident({ component: 'backend', errorCode: 'KEEP', timestamp: '2026-07-27T10:00:00.500Z' }),
+      incident({ component: 'backend', errorCode: 'OLDER', timestamp: '2026-07-27T10:00:00Z' }),
+    ]);
+    const result = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot, {
+      maximumIncidentSummaries: 1,
+    }).readSupportBundleIncidentSummaries(julyPeriod);
+
+    expect(result.incidentSummaries).toEqual([expect.objectContaining({
+      errorCode: 'KEEP', count: 1,
+      firstOccurredAt: '2026-07-27T10:00:00.500Z', lastOccurredAt: '2026-07-27T10:00:00.500Z',
+    })]);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
+  it('checks the final grouped count against the serialized byte budget', async () => {
+    const logsRoot = createLogsRoot();
+    writeIncidentLines(logsRoot, 'backend-incident-index-2026.jsonl', Array.from({ length: 10 }, () =>
+      incident({ component: 'backend', timestamp: '2026-07-27T10:00:00.000Z' })));
+    const full = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot)
+      .readSupportBundleIncidentSummaries(julyPeriod);
+    expect(full.incidentSummaries[0]?.count).toBe(10);
+    const budget = Buffer.byteLength(JSON.stringify(full.incidentSummaries), 'utf8') - 1;
+
+    const result = await new FileSystemSupportBundleIncidentSummaryReader(logsRoot, {
+      maximumProjectedBytes: budget,
+    }).readSupportBundleIncidentSummaries(julyPeriod);
+
+    expect(result.incidentSummaries).toEqual([]);
+    expect(result.sourceTruncated).toBe(true);
+  });
+
   it('returns an empty complete result when the incident directory is absent', async () => {
     const root = mkdtempSync(join(tmpdir(), 'eky-support-incidents-'));
     const logsRoot = join(root, 'logs');
@@ -303,6 +430,11 @@ describe('FileSystemSupportBundleIncidentSummaryReader', () => {
     });
   });
 });
+
+const julyPeriod = {
+  earliestTimestamp: '2026-06-28T12:00:00.000Z',
+  latestTimestamp: '2026-07-28T12:00:00.000Z',
+};
 
 function createLogsRoot(): string {
   const root = mkdtempSync(join(tmpdir(), 'eky-support-incidents-'));

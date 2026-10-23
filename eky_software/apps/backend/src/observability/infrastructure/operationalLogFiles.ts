@@ -1,4 +1,5 @@
 import {
+  type Dirent,
   lstatSync,
   mkdirSync,
   readdirSync,
@@ -70,7 +71,14 @@ export function listKnownOperationalLogFiles(logsRoot: string): string[] {
       continue;
     }
 
-    for (const entry of readdirSync(directory, { withFileTypes: true })) {
+    let entries: Dirent[];
+    try {
+      entries = readdirSync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
       if (
         entry.isFile() &&
         !entry.isSymbolicLink() &&

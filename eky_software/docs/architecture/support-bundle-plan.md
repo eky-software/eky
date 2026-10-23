@@ -70,6 +70,24 @@ vaikka info-event olisi virheellisesti päätynyt warning/error-tiedostoon.
 Reader rajaa lähteet täsmällisesti viimeiseen 30 päivään ja käsittelee
 segmentit uusimmasta vanhimpaan.
 
+Tapahtuma- tai ryhmäraja ei lopeta muiden valittujen lähteiden lukua.
+Lähdetavu- ja tiedostobudjetti säilyy erillisenä: vain todella luetusta
+aineistosta valitaan yhteisen aikajärjestyksen uusin prefiksi.
+Tapahtuman tasatilanteen ratkaisee sen nykyinen projektiotunniste;
+incident-ryhmän tasatilanteen tapahtumanimi ja koko nykyinen ryhmäavain.
+Tapahtumat deduplikoidaan tunnisteella. Ristiriitaiset saman tunnisteen
+projektiot ilmoitetaan osittaisuutena; niistä valitaan havaittu uusin,
+ei väitetä rekonstruoiduksi muuttumattomaksi historiaksi.
+
+Ehdokkaita karsitaan erissä: väliaikainen joukko on enintään kaksi kertaa
+nykyinen tulosmääräraja ja yksi käsiteltävä alkio. Incidentien rajatut
+lähderivit säilytetään vain nykyisen lähdetavubudjetin sisällä. Valittujen
+ryhmien laskurit ja ensimmäinen/viimeinen aika lasketaan uudelleen juuri
+näistä samoista riveistä, ei toisella muuttuvan tiedoston lukukerralla.
+Lähdekatkaisussa luvut kattavat vain havaitut rivit, eivät varmasti koko
+30 päivän historiaa. Lopullinen tavuraja tarkistetaan valmiista
+projektiosta myös laskurin numeromäärän ja JSON-taulukon erotinmerkkien osalta.
+
 `sourceTruncated` välittyy manifestin `truncatedSections`-tiedoksi. Katkaisu
 ilmoitetaan, jos tapahtuma-, tavu-, tiedosto- tai pakettibudjetti täyttyy,
 relevantti lähde on rikkoutunut tai osittain luettu tai reader ei muuten voi
