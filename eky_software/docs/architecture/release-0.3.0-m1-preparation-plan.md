@@ -29,8 +29,8 @@ nykyisistä lukijoista HTTP:n ja strict-clientin kautta käyttöliittymään;
 kohde-, selain- ja tukipakettiketjun näyttö on alla. H4:n katselmushavainto
 on korjattu ja H5:n hyväksytty sovellusilmoitus on paikallisesti todennettu
 main/preload/UI-ketjussa. Vaikutusalueen paikalliset loppusarjat, tyypitys,
-auditointi ja katselmus ovat läpäisseet. Seuraavaksi tehdään puhdas
-pakettitodistus ja H:n integraatio.
+auditointi ja katselmus ovat läpäisseet. Korjatun puhtaan revision
+pakettitodistus on läpäissyt; seuraavaksi tehdään H:n PR/main-integraatio.
 Uudet käyttäytymis-, turvallisuus-
 tai muut erilliset päätökset ratkaistaan ennen niiden vaikutusalueen kytkentää;
 samoja H-P1/H-P2-periaatteita ei kysytä uudelleen. Toteutus ja sen portit
@@ -58,7 +58,7 @@ korjatuksi.
 
 **Tila 23.10.2026:** H-P1/H-P2:n suositukset ja H:n toteutus Goalina hyväksytty.
 H1-H5:n korjaukset ovat paikallisesti toteutettuja ja rajatusti todennettuja;
-pakettinäyttö ja PR-/main-portit ovat avoimia.
+PR-/main-portit ovat avoimia. Paikallinen puhdas pakettinäyttö on alla.
 Alkuperäiset R21/R22/R24/R25/R26
 on verrattu hyväksytyn G-mainin lähteeseen; taulukko kuvaa lähtöpuutteet,
 korjausvastuut ja niiden todistusvaatimukset. R24/R25/R26 vastaavat D029-03/04/05:tä,
@@ -297,6 +297,17 @@ täsmälleen 25 avainta; jokaisen metodin puuttuminen, väärä tyyppi ja vieras
 lisämetodi hylätään. Rajattu kolmen tiedoston sarja läpäisi 64 testiä eikä
 uudelleenkatselmukseen jäänyt havaintoja. Ensihylkäyksen paketti ja aineisto
 säilyvät; korjattu revisio tarvitsee uuden puhtaan paketti-/palautustodisteen.
+
+Korjattu puhdas revisio `1b9423e4a0da2a469ef8b4819d34bb23c30101d0`
+läpäisi Windows-paketoinnin, nykyisen runtime-/fuse-/sisältöinventaarion ja
+hardened backup -> inspect -> restore -> restart -> compare -smoken.
+Sama ajo tarkisti nykyisen paketoidun Diagnostiikka-käyttöliittymän ja
+tukipaketin. Paketin koko inventaario ja ASAR-sisältö varmennettiin samoiksi
+ennen ajoa ja sen jälkeen. Testien välissä ei tehty uutta buildiä.
+Ensimmäinen hylätty paketti ja sen aineisto säilyvät erillisinä.
+Tätä lähdettä seuraava checkpoint-muutos on vain dokumentaatiota; normaalit
+PR-portit vaaditaan silti täsmälliselle PR-headille ja mergen jälkeiselle
+mainille. H ei ole vielä integraatiohyväksytty.
 
 #### H:n säilyvät rajat ja valmistumisportti
 
