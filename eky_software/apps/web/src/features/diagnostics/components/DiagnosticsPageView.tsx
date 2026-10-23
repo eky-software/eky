@@ -14,6 +14,7 @@ import type {
 import { formatFinnishDateTime } from '../../../shared/date/formatFinnishDateTime.js';
 import styles from './DiagnosticsPageView.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import { DiagnosticEventDetail } from './DiagnosticEventDetail.js';
 import { DiagnosticReadNotice } from './DiagnosticReadNotice.js';
 import { RuntimeDiagnosticSummaryView } from './RuntimeDiagnosticSummaryView.js';
@@ -121,6 +122,11 @@ export function DiagnosticsPageView({
         )}
       </header>
 
+      {createSupportBundle === undefined ? null : (
+        <LoadingStatus active={isCreatingSupportBundle} className={styles.operationStatus}>
+          {uiText.diagnostics.creatingSupportBundle}
+        </LoadingStatus>
+      )}
       {supportBundleCreated ? (
         <p className={`${styles.message} ${styles.success}`} role="status">
           {uiText.diagnostics.supportBundleCreated}
@@ -132,7 +138,7 @@ export function DiagnosticsPageView({
         </p>
       ) : null}
       {isLoading ? (
-        <p className={styles.message}>{uiText.diagnostics.loading}</p>
+        <LoadingStatus className={styles.message}>{uiText.diagnostics.loading}</LoadingStatus>
       ) : null}
       {errorMessage !== null ? (
         <p className={`${styles.message} ${styles.error}`} role="alert">
@@ -143,9 +149,9 @@ export function DiagnosticsPageView({
         <p className={`${styles.message} ${styles.error}`} role="alert">{summaryErrorMessage}</p>
       ) : null}
       {isSummaryLoading ? (
-        <p className={styles.message} role="status">
+        <LoadingStatus className={styles.message}>
           {uiText.diagnostics.summaryLoading}
-        </p>
+        </LoadingStatus>
       ) : null}
       {!isSummaryLoading && summary !== null ? (
         <RuntimeDiagnosticSummaryView summary={summary} />

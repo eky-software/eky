@@ -23,7 +23,7 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 
 | Tunnus | Tehtävä ja tavoite | Tila |
 | --- | --- | --- |
-| R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4-valmistelussa: edustavat nykytilat kartoitettu, lopullinen käyttökohdelista ja esityssopimus avoinna. Ei toteutushyväksyntää. |
+| R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1:n suunnitelma ja toteutus testeineen hyväksytty 23.10.2026. Paikallinen toteutus ja kohdetodennus valmiit; 24.10.2026 jatketaan PR/main-portteihin, joiden hyväksyntä on avoin. Käyttökohdelista ja rajat M1:n M4.1-osiossa. |
 | R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; valmistelu ja päätösjono kirjattu. Sopimusten hyväksyntä ja toteutus avoinna. |
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Omistaja hyväksyi 23.10.2026 yritysvalitsimen nimen ja päivämäärän; turvallinen nimeämissääntö ja toteutus vielä täsmennettävä. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |

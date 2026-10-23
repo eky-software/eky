@@ -11,6 +11,7 @@ import type {
 import type { InvoiceCustomerListState } from '../hooks/useInvoiceCustomers.js';
 import styles from './InvoiceBasicInfoSection.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 
 interface InvoiceBasicInfoSectionProps {
   customerListState: InvoiceCustomerListState;
@@ -48,6 +49,9 @@ export function InvoiceBasicInfoSection({
         <p>{uiText.invoicing.basicInformationHelp}</p>
       </header>
 
+      {customerListState.isLoading ? (
+        <LoadingStatus>{uiText.invoicing.customerLoading}</LoadingStatus>
+      ) : null}
       <div className={styles.grid}>
         <CustomerPicker
           {...customerListState}

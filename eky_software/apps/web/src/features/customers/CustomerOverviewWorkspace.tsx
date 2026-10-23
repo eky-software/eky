@@ -12,7 +12,7 @@ import type { BillingRecipientInvoiceOverviewState } from './hooks/useBillingRec
 import type { CustomerInvoiceOverviewState } from './hooks/useCustomerInvoices.js';
 import styles from './CustomerOverviewWorkspace.module.css';
 import { uiText } from '../../i18n/fi.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 
 interface CustomerOverviewWorkspaceProps {
   activityState: CustomerActivityState;
@@ -61,7 +61,7 @@ export function CustomerOverviewWorkspace({
       <div className={styles.workspace}>
         {navigation}
         <section className="panel">
-          <p className="message">{uiText.customers.customerLoading}</p>
+          <LoadingStatus>{uiText.customers.customerLoading}</LoadingStatus>
         </section>
       </div>
     );

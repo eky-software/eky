@@ -251,3 +251,8 @@
     grid-column: 1;
   }
 }
+
+.operationStatus {
+  margin: 0;
+  min-block-size: 3em;
+}

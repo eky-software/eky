@@ -8,6 +8,7 @@ import {
 } from './invoiceNumberingSettingsFormModel.js';
 import styles from './InvoiceNumberingSettingsForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoiceNumberingSettingsFormProps {
   errorMessage: string | null;
@@ -189,6 +190,9 @@ export function InvoiceNumberingSettingsForm({
                 : uiText.companySettings.invoiceNumberingSave}
           </button>
         </div>
+        <LoadingStatus active={isSaving} className="">
+          {uiText.companySettings.saving}
+        </LoadingStatus>
       </form>
     </section>
   );

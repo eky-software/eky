@@ -20,12 +20,15 @@ niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 | PR #316 | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/39970413784) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39970413684) läpäisivät hyväksytyllä headilla. |
 | Mainin omat portit | [V2, suoritusyritys 3](https://github.com/eky-software/eky/actions/runs/39975808892/attempts/3) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/39975808891) läpäisivät. PR ja main kumpikin: 38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä; kaikki 11 perhettä, viisi fault-skenaariota, molemmat toistot ja pakolliset askeleet varmennettu. |
 
-**Nykyinen työ:** omistajan hyväksymä M4:n suunnittelu ja nykykoodin
-rajattu kartoitus. Tuotantototeutusta, uusia riippuvuuksia, muuttuvia
-API-/poistosopimuksia tai uutta Goalia ei ole tällä valmistelulla hyväksytty.
-Seuraava päätös on [koottu toteutusjärjestys](#koottu-toteutusjärjestys) ja
-siinä nimettyjen teknisten sopimusten täsmennys,
-ei jo hyväksytyn I:n uusi CI-kierros. Koko `0.3.0` ei ole valmis.
+**Nykyinen työ:** M4.1/R030-01:n suunnitelma, rajattu toteutus ja testit on
+hyväksytty 23.10.2026; 24.10.2026 jatketaan PR/main-integraatioon. Katso
+[toteutussopimus ja puuttuva hyväksyntänäyttö](#m41-odotustilojen-toteutussopimus).
+M4.2/M4.3/W7:n tekninen valmistelu säilyy erillään; niille ei ole tämän
+päätöksen perusteella tuotantokytkentää, uusia riippuvuuksia tai
+API-/poistoformaatteja hyväksytty. I:tä ei avata uudelleen.
+Omistaja hyväksyi aiempien M4/W7-suunnitelmadokumenttien mukaan ottamisen
+omana valmistelucommitinaan; tämä ei hyväksy W7:n tuotantototeutusta.
+Koko `0.3.0` ei ole valmis.
 
 **Avoimet havainnot:** I:n ensimmäisen native-valmistelun viiveen tarkka
 syy jää avoimeksi. Sen omistettu käännösprosessipuu todettiin poistuneeksi,
@@ -44,7 +47,8 @@ sekä H:n aiemmat kierrokset säilyvät historiassa.
 
 ### M4 / Käyttäjäkokemuksen valmistelu
 
-**Tila 23.10.2026:** suunnittelu, ei toteutushyväksyntä. Roadmap omistaa
+**Tila 23.10.2026:** M4.1:n toteutus hyväksytty ja työn alla; muut palat
+teknisessä valmistelussa, eivät tuotantohyväksyttyjä. Roadmap omistaa
 julkaisuun sovitut R030-01, R030-02/W7, R030-03 ja R030-08.
 R030-04/R030-05:n palaute ja käyttöohjeet kulkevat jokaisen palan mukana.
 Alla oleva ositus on suositus hyväksyttäväksi, ei uusi rinnakkainen roadmap.
@@ -149,8 +153,9 @@ ovat tämän jälkeen erikseen; laaja rakennesiivous ei kuulu M4:ään.
 
 #### Koottu toteutusjärjestys
 
-**Ehdotus 23.10.2026:** hyväksytyt käyttäytymisvalinnat eivät vielä ole
-tuotantototeutuksen tai uusien formaattien lupa. Etene rajattuihin paloihin
+**Järjestys 23.10.2026:** M4.1:n rajattu toteutus ja testit on hyväksytty.
+Muiden palojen käyttäytymisvalinnat eivät vielä ole tuotantototeutuksen
+tai uusien formaattien lupa. Etene rajattuihin paloihin
 sidotuin checkpointtein yllä olevan taulukon järjestyksessä:
 
 1. **M4.1:** lukitse odotustilojen käyttökohdelista ja pieni saavutettava
@@ -170,7 +175,50 @@ sidotuin checkpointtein yllä olevan taulukon järjestyksessä:
    ohjeet ja korvattujen polkujen poisto samassa checkpointissa. Käytä
    nykyisen riskipolitiikan PR-portteja ja vaikutusalueen paketoituja
    todisteita. Suojattu merge ja mainin omat portit vasta valtuutetussa
-   toteutusvaiheessa; nykyinen dokumentointilupa ei käynnistä niitä.
+   toteutusvaiheessa. M4.1:n Goal kattaa sen normaalin PR/main-integraation;
+   muiden palojen valmistelulupa ei käynnistä niiden toteutusta.
+
+#### M4.1: Odotustilojen toteutussopimus
+
+Omistaja hyväksyi 23.10.2026 R030-01:n toteutuksen ja testit. Yhteinen
+[esityssopimus](ui-design-system-roadmap.md#odotustilan-esitys) on webin
+sisäinen ja tilaton. Nykyiset hookit, API-/native-capabilityt, virhekoodit,
+salaisuuksien säilytys, business-päätökset ja elinkaaren sulut säilyvät.
+
+| Käyttökohde | Nykyinen tilan omistaja ja palaute |
+| --- | --- |
+| Customers | Listan, yksittäisen asiakkaan, historian, laskujen ja tuntihinnan alkuluvut; nykyinen tallennustila ja peruutus/virhe säilyvät. |
+| Company Settings | Perustietojen, SMTP-tilan, numeroinnin, maksuehdon ja ALV:n luku/tallennus; D:n alkuluvun portti ja CS-2:n odotusaikaiset muokkaukset säilyvät. |
+| Backup | Nykyinen panelin busy-tila erotellaan vain esitystä varten status/backup/inspection/recoveryPoint-arvoihin. Main omistaa edelleen native-dialogin, salauksen ja palautuspisteet. |
+| Paikallispäivitys ja PDF-arkisto | Nykyiset luku-/operaatiotilat, ei uutta päivitys-, kopiointi- tai retry-logiikkaa. Ilmaisin ei väitä taustajonon valmistuneen. |
+| Invoicing | Nykyiset lista-/detail-/toimitus-/hyvitysluvut, tallennus, hyväksyntä, PDF, sähköpostin valmistelu/lähetys, maksu, mitätöinti ja luonnoksen poisto. Autosaven debouncesta ei tehdä aktiivista kirjoitusta. |
+| Workspaces | Nykyinen brand-, lista-, toiminto- ja relaunch-tila; mainin vahvistukset ja prosessiomistajuus eivät siirry käyttöliittymään. |
+| Activity ja Diagnostics | Nykyiset luvut; Diagnosticsin lista ja yhteenveto pysyvät erillisinä. Tukipaketin luominen käyttää nykyistä pending-lippua. Historian sivutusta ei toteuteta tässä. |
+
+Nykyiset käyttäjän virhe-/onnistumisviestit säilyvät. Esitysmuutos ei lisää
+audit- tai teknistä lokitapahtumaa: onnistumisen, hylkäyksen ja epäselvän
+tuloksen nykyinen omistava tapahtuma ja lukuketju säilyvät. Uutta
+turvalliseksi koodiksi muuttavaa virherajaa ei lisätä. Testit käyttävät
+nykyistä alkuperäisen virheen ja salatun aineiston ketjua, eivät uutta loggeria.
+Välitön, nopeasti päättyvä työ ei saa keinotekoista vähimmäisodotusta.
+Natiivin lokikansion avaukseen ei lisätä keinotekoista pitkäkestoista tilaa.
+
+**CI:tä edeltävä checkpoint 24.10.2026:** paikallinen toteutus,
+webin komponenttisarja, työtilan
+tyyppitarkistus ja 14 kohdistettua selainkoetta läpäisivät.
+Selainkokeissa tarkistettiin nykyiset COMPANY-LOAD/SAVE-polut ja
+UI-WAIT-001/002/003. Backup-panelin desktop/mobile-kuvat ja tekstiskaalaus
+125/150 prosenttiin tarkistettiin; tämä ei ole kaikkien näkymien tai
+oikean ruudunlukijaohjelman kattava hyväksyntä. Rajattu riippumaton
+koodikatselmus ei löytänyt toteutusvirhettä.
+Ensimmäisen uuden selainkokeen liian väljä status-valitsin korjattiin;
+alkuperäinen hylkäys ja aineisto säilyvät erillään korjatusta kokeesta.
+Koko pakettien testisarja ja web-build läpäisivät. Ei vielä PR-/main-
+hyväksyntää: julkaisutarkistus sekä täsmällisen PR-revision ja uuden mainin
+nykyiset pakolliset portit ovat avoinna.
+Selainkomponentin hallittu native-vastaus ei ole varmuuskopion
+palautettavuuden tai SMTP-verkkotoimituksen todiste. Uusia backend-,
+profiili-, native-, salaisuus- tai lifecycle-polkuja ei tässä muuteta.
 
 ### I / CI-politiikan ja ajantasaisten sopimusten valmistelu
 

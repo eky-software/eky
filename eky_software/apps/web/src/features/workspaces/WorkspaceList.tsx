@@ -1,5 +1,6 @@
 import type { WorkspaceManagementEntry } from '../../app/desktopWorkspaceManagement.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 import type { WorkspaceSelectorMode } from './workspaceSelectorState.js';
 import styles from './WorkspaceSelector.module.css';
 
@@ -32,11 +33,9 @@ export function WorkspaceList({
 
   return (
     <>
-      {isBusy ? (
-        <p aria-live="polite" className={styles.statusMessage}>
+      <LoadingStatus active={isBusy} className={styles.statusMessage}>
           {uiText.workspaces.processing}
-        </p>
-      ) : null}
+      </LoadingStatus>
       {isRecoveryRequired ? (
         <p className={styles.warning} role="alert">
           {uiText.workspaces.recoveryRequired}

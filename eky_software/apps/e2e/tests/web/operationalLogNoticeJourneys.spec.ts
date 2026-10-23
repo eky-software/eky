@@ -51,7 +51,7 @@ async function installBridge(page: Page, subscriptionFails: boolean): Promise<vo
     const pending: Array<(value: { failureObserved: boolean }) => void> = [];
     const calls: string[] = [];
     let queries = 0;
-    const target = window as typeof window & {
+    const target = window as Omit<typeof window, 'ekyDesktop'> & {
       ekyDesktop: unknown;
       __ekyH5NoticeProbe: NoticeProbe;
     };

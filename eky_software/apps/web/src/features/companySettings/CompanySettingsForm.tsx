@@ -1,6 +1,7 @@
 import type { CompanySettingsForm as CompanySettingsFormModel } from './companySettingsFormModel.js';
 import styles from './CompanySettingsForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface CompanySettingsFormProps {
   errorMessage: string | null;
@@ -317,6 +318,9 @@ export function CompanySettingsForm({
             {isSaving ? uiText.companySettings.saving : uiText.companySettings.save}
           </button>
         </div>
+        <LoadingStatus active={isSaving} className="">
+          {uiText.companySettings.saving}
+        </LoadingStatus>
       </form>
     </section>
   );

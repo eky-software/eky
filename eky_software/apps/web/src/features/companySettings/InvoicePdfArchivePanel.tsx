@@ -6,7 +6,7 @@ import type {
 } from '../../app/desktopBridge.js';
 import { uiText } from '../../i18n/fi.js';
 import { formatFinnishDateTime } from '../../shared/date/formatFinnishDateTime.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 import styles from './InvoicePdfArchivePanel.module.css';
 
 interface InvoicePdfArchivePanelProps {
@@ -149,10 +149,12 @@ export function InvoicePdfArchivePanelView({
       {errorMessage ? (
         <MessageBanner variant="error">{errorMessage}</MessageBanner>
       ) : null}
-      {capabilityAvailable && status === null && isBusy ? (
-        <MessageBanner variant="info">
-          {uiText.companySettings.invoicePdfArchiveLoading}
-        </MessageBanner>
+      {capabilityAvailable ? (
+        <LoadingStatus active={isBusy} className={styles.operationStatus}>
+          {status === null
+            ? uiText.companySettings.invoicePdfArchiveLoading
+            : uiText.companySettings.invoicePdfArchiveWorking}
+        </LoadingStatus>
       ) : null}
 
       {status !== null ? (

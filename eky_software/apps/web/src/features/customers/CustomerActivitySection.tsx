@@ -4,7 +4,7 @@ import type { CustomerActivityState } from './hooks/useCustomerActivity.js';
 import { formatCustomerTimestamp } from './customerDisplay.js';
 import styles from './CustomerActivitySection.module.css';
 import { uiText } from '../../i18n/fi.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 
 interface CustomerActivitySectionProps {
   activityState: CustomerActivityState;
@@ -28,7 +28,7 @@ export function CustomerActivitySection({
       </div>
 
       {activityState.isLoading ? (
-        <p className="message">{uiText.customers.activityLoading}</p>
+        <LoadingStatus>{uiText.customers.activityLoading}</LoadingStatus>
       ) : null}
       {activityState.errorMessage !== null ? (
         <MessageBanner variant="error">

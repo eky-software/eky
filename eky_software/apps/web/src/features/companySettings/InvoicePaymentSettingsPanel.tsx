@@ -13,6 +13,7 @@ import {
 } from './invoicePaymentSettingsFormModel.js';
 import { useInvoicePaymentSettings } from './hooks/useInvoicePaymentSettings.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoicePaymentSettingsPanelProps {
   apiClient: Pick<
@@ -75,7 +76,7 @@ export function InvoicePaymentSettingsPanel({
   }
 
   if (paymentSettingsState.isLoading) {
-    return <p className="message">{uiText.companySettings.invoicePaymentLoading}</p>;
+    return <LoadingStatus>{uiText.companySettings.invoicePaymentLoading}</LoadingStatus>;
   }
 
   if (paymentSettingsState.errorMessage) {

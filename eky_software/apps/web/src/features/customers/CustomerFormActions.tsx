@@ -1,5 +1,6 @@
 import styles from './CustomerForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface CustomerFormActionsProps {
   isSaving: boolean;
@@ -18,18 +19,23 @@ export function CustomerFormActions({
     mode === 'create' ? uiText.customers.add : uiText.customers.saveChanges;
 
   return (
-    <div className={styles.actions}>
-      <button
-        className="ghost-button"
-        disabled={isSaving}
-        onClick={onCancel}
-        type="button"
-      >
-        {uiText.customers.cancel}
-      </button>
-      <button disabled={isSubmitDisabled} type="submit">
-        {isSaving ? uiText.customers.saving : submitLabel}
-      </button>
-    </div>
+    <>
+      <div className={styles.actions}>
+        <button
+          className="ghost-button"
+          disabled={isSaving}
+          onClick={onCancel}
+          type="button"
+        >
+          {uiText.customers.cancel}
+        </button>
+        <button disabled={isSubmitDisabled} type="submit">
+          {isSaving ? uiText.customers.saving : submitLabel}
+        </button>
+      </div>
+      <LoadingStatus active={isSaving} className="">
+        {uiText.customers.saving}
+      </LoadingStatus>
+    </>
   );
 }

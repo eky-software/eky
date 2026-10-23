@@ -11,7 +11,7 @@ import {
 } from '../approved/approvedInvoiceFormatting.js';
 import styles from './InvoicePaymentPanel.module.css';
 import { uiText } from '../../../i18n/fi.js';
-import { MessageBanner } from '../../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../../shared/ui/index.js';
 
 interface InvoicePaymentPanelProps {
   creditContext: InvoiceCreditContext | null;
@@ -117,10 +117,13 @@ export function InvoicePaymentPanel({
       </div>
 
       {isLoadingCreditContext && !isPaid ? (
-        <p className={styles.muted}>
+        <LoadingStatus className={styles.muted}>
           {uiText.invoicing.invoicePaymentEligibilityLoading}
-        </p>
+        </LoadingStatus>
       ) : null}
+      <LoadingStatus active={isUpdating} className="">
+        {uiText.invoicing.updatingInvoicePayment}
+      </LoadingStatus>
       {creditContextErrorMessage !== null && !isPaid ? (
         <MessageBanner variant="error">
           {creditContextErrorMessage}

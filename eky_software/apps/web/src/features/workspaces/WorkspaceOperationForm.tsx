@@ -1,5 +1,6 @@
 import type { WorkspaceManagementEntry } from '../../app/desktopWorkspaceManagement.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 import type {
   WorkspaceSelectorMode,
   WorkspaceSelectorState,
@@ -78,13 +79,11 @@ export function WorkspaceOperationForm({
           {state.errorMessage}
         </p>
       ) : null}
-      {isBusy ? (
-        <p aria-live="polite" className={styles.statusMessage}>
+      <LoadingStatus active={isBusy} className={styles.statusMessage}>
           {state.isRelaunching
             ? uiText.workspaces.relaunching
             : uiText.workspaces.processing}
-        </p>
-      ) : null}
+      </LoadingStatus>
       <div className={styles.formActions}>
         <button
           {...(mode === 'confirmReplace' ? { 'data-autofocus': 'true' } : {})}

@@ -21,6 +21,7 @@ import type { SendApprovedInvoiceEmailDryRunState } from '../hooks/useSendApprov
 import type { SendApprovedInvoiceEmailSmtpState } from '../hooks/useSendApprovedInvoiceEmailSmtp.js';
 import type { SendApprovedInvoiceEmailSmtpTestState } from '../hooks/useSendApprovedInvoiceEmailSmtpTest.js';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import type { OpenPreservedInvoicePdf } from '../approved/openPreservedInvoicePdf.js';
 import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 
@@ -162,9 +163,9 @@ export function ApprovedInvoiceDetailView({
   if (invoiceState.isLoading) {
     return (
       <section className={`panel ${styles.editorState}`}>
-        <p className={styles.state}>
+        <LoadingStatus className={styles.state}>
           {uiText.invoicing.approvedInvoiceLoading}
-        </p>
+        </LoadingStatus>
       </section>
     );
   }

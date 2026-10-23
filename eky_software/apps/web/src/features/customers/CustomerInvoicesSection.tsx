@@ -13,7 +13,7 @@ import {
   InvoiceListSortSelect,
   type InvoiceListSortOption,
 } from '../../shared/invoiceList/index.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 import {
   customerInvoicePageSizes,
   isCustomerInvoiceListPageSize,
@@ -66,7 +66,7 @@ export function CustomerInvoicesSection({
       </div>
 
       {invoiceState.isLoading ? (
-        <p className="message">{uiText.customers.invoiceLoading}</p>
+        <LoadingStatus>{uiText.customers.invoiceLoading}</LoadingStatus>
       ) : null}
       {invoiceState.errorMessage !== null ? (
         <MessageBanner variant="error">

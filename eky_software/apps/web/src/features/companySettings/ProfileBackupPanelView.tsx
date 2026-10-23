@@ -3,16 +3,18 @@ import type {
   ProfileProtectionStatus,
 } from '../../app/desktopBridge.js';
 import { uiText } from '../../i18n/fi.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 import { ProfileBackupSummary } from './ProfileBackupSummary.js';
 import { formatProfileBackupTimestamp } from './profileBackupFormatting.js';
 import styles from './ProfileBackupPanel.module.css';
+
+export type ProfileBackupOperation = 'status' | 'backup' | 'inspection' | 'recoveryPoint';
 
 export interface ProfileBackupPanelViewProps {
   capabilityAvailable: boolean;
   errorMessage: string | null;
   inspection: ProfileBackupInspectionSummary | null;
-  isBusy: boolean;
+  operation: ProfileBackupOperation | null;
   onCreateBackup(): Promise<void>;
   onCreateRecoveryPoint(): Promise<void>;
   onInspectBackup(): Promise<void>;
@@ -24,13 +26,20 @@ export function ProfileBackupPanelView({
   capabilityAvailable,
   errorMessage,
   inspection,
-  isBusy,
+  operation,
   onCreateBackup,
   onCreateRecoveryPoint,
   onInspectBackup,
   status,
   successMessage,
 }: ProfileBackupPanelViewProps): React.JSX.Element {
+  const isBusy = operation !== null;
+  const operationMessage = {
+    status: uiText.companySettings.profileBackupLoading,
+    backup: uiText.companySettings.profileBackupCreating,
+    inspection: uiText.companySettings.profileBackupInspecting,
+    recoveryPoint: uiText.companySettings.profileRecoveryPointCreating,
+  };
   return (
     <section className={`panel ${styles.panel}`}>
       <div>
@@ -59,10 +68,10 @@ export function ProfileBackupPanelView({
       {successMessage ? (
         <MessageBanner variant="success">{successMessage}</MessageBanner>
       ) : null}
-      {capabilityAvailable && status === null && isBusy ? (
-        <MessageBanner variant="info">
-          {uiText.companySettings.profileBackupLoading}
-        </MessageBanner>
+      {capabilityAvailable ? (
+        <LoadingStatus active={isBusy} className={styles.operationStatus}>
+          {operation === null ? null : operationMessage[operation]}
+        </LoadingStatus>
       ) : null}
 
       {capabilityAvailable ? (

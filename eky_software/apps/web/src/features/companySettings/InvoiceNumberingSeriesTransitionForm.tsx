@@ -14,6 +14,7 @@ import {
 } from './invoiceNumberingSeriesTransitionFormModel.js';
 import styles from './InvoiceNumberingSeriesTransitionForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoiceNumberingSeriesTransitionFormProps {
   activationErrorMessage: string | null;
@@ -201,6 +202,11 @@ export function InvoiceNumberingSeriesTransitionForm({
       {previewErrorMessage ? (
         <p className="message error-message">{previewErrorMessage}</p>
       ) : null}
+      <LoadingStatus active={isPreviewLoading || isActivating} className="">
+        {isActivating
+          ? uiText.companySettings.saving
+          : uiText.companySettings.invoiceNumberingSeriesPreviewLoading}
+      </LoadingStatus>
       {preview ? (
         preview.capacity === 'available' ? (
           <div className={styles.previewResult}>

@@ -17,7 +17,7 @@ import {
   InvoiceListSortSelect,
   type InvoiceListSortOption,
 } from '../../shared/invoiceList/index.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 
 interface BillingRecipientInvoicesSectionProps {
   invoiceState: BillingRecipientInvoiceOverviewState;
@@ -63,9 +63,9 @@ export function BillingRecipientInvoicesSection({
       </div>
 
       {invoiceState.isLoading ? (
-        <p className="message">
+        <LoadingStatus>
           {uiText.customers.billingRecipientInvoiceLoading}
-        </p>
+        </LoadingStatus>
       ) : null}
       {invoiceState.errorMessage !== null ? (
         <MessageBanner variant="error">

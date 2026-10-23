@@ -22,7 +22,7 @@ import {
 } from './companySettingsFormModel.js';
 import styles from './CompanySettingsPageView.module.css';
 import { getFinnishApiErrorMessage, uiText } from '../../i18n/fi.js';
-import { MessageBanner } from '../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../shared/ui/index.js';
 
 type CompanySettingsPageClient = Pick<
   EkyApiClient,
@@ -227,9 +227,9 @@ export function CompanySettingsPage({
         <MessageBanner variant="success">{successMessage}</MessageBanner>
       ) : null}
       {loadStatus === 'loading' ? (
-        <MessageBanner variant="info">
+        <LoadingStatus>
           {uiText.companySettings.loading}
-        </MessageBanner>
+        </LoadingStatus>
       ) : null}
 
       {loadStatus === 'failed' ? (

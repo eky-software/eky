@@ -7,6 +7,7 @@ import type {
 import { useEffect, useState } from 'react';
 
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import {
   type InvoiceEmailFormErrors,
   validateInvoiceEmailForm,
@@ -230,6 +231,16 @@ export function ApprovedInvoiceEmailPreview({
               : uiText.invoicing.invoiceEmailSmtpSend}
         </button>
       </div>
+      <LoadingStatus
+        active={isSending || isSendingSmtp || isSendingSmtpTest}
+        className={styles.operationStatus}
+      >
+        {isSendingSmtp
+          ? uiText.invoicing.invoiceEmailSmtpSending
+          : isSendingSmtpTest
+            ? uiText.invoicing.invoiceEmailSmtpTestSending
+            : uiText.invoicing.invoiceEmailDryRunSending}
+      </LoadingStatus>
       {smtpUnavailableMessage !== null ? (
         <p className="message info-message" role="status">
           {smtpUnavailableMessage}

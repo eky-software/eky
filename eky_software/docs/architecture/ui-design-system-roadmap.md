@@ -62,6 +62,40 @@ lomakevirhe, Company Settingsin sivuviestit ja Invoicingin hyväksytyn laskun
 toimintovirheet. Featuret omistavat edelleen viestien tekstit ja sen, milloin
 viesti näytetään. Tämä ei aktivoi `packages/ui`-skeletonia.
 
+### Odotustilan esitys
+
+M4.1 lisää webin sisäiset `LoadingStatus`- ja `LoadingMark`-primitiivit
+[`shared/ui`-hakemistoon](../../apps/web/src/shared/ui/LoadingStatus.tsx).
+Todelliset käyttäjät ovat Customers, Company Settings, Invoicing,
+Workspaces, Activity ja Diagnostics. Toteutuksen ja hyväksynnän nykytila
+löytyy [M1:n M4.1-jatkamiskohdasta](release-0.3.0-m1-preparation-plan.md#m41-odotustilojen-toteutussopimus).
+
+- `LoadingStatus` näyttää featuren antaman tekstin ja koristeellisen
+  latausmerkin. Sen `role=status`, `aria-live=polite` ja `aria-atomic=true`
+  välittävät tilan ilman fokuksen siirtoa. Merkki ei ole saavutettava nimi.
+- `active=false` säilyttää tyhjän tilarivin, mutta poistaa tekstin ja merkin.
+  Feature varaa omassa asettelussaan tilan tarvittavalle rivimäärälle.
+  Jo olemassa olevan alkulatauksen korvaaminen ei edellytä tyhjää sivua
+  tai lomakkeen piilottamista toiminnon aikana.
+- `LoadingMark` on vain painikkeen tai muun olemassa olevan tilatekstin
+  koriste. Sen paikka säilyy myös levossa. Painike omistaa edelleen
+  nimensä, mahdollisen `aria-busy`-tiedon ja disabled-ehdon.
+- Vähennetty liike pysäyttää animaation, ei työtä tai tilatekstiä.
+  Sisältö rivittyy; merkki ei muuta kokoa animaation aikana.
+- Feature omistaa nykyisen pending-tilan, suomenkielisen tekstin,
+  kaksoiskäynnistyksen eston, virheen, peruutuksen ja session rajauksen.
+  Primitiivi ei käynnistä työtä, ajastinta, uudelleenyritystä, API-kutsua
+  tai lokitapahtumaa eikä päättele toiminnon onnistumista.
+- Älä johda työssä-tilaa pelkästä pois käytöstä olevasta painikkeesta,
+  debouncen odotuksesta tai business-tilan nimestä. Älä lisää prosenttia,
+  uutta operaatiorekisteriä tai peittävää koko sovelluksen lukkoa.
+
+Uusi käyttökohde testaa ensin nykyisen tilan renderöinnin ja valitsee
+edustavan selainpolun [testinkirjoittajan pikaoppaan](../ai/e2e-test-authoring-guide.md)
+mukaan. M4.1:n selainkomponenttikokeet ovat
+[`loadingFeedbackJourneys.spec.ts`](../../apps/e2e/tests/web/loadingFeedbackJourneys.spec.ts);
+ne eivät korvaa native-backupin tai SMTP-toimituksen hyväksyntää.
+
 ## Havaittu Toisto
 
 Toistoa näkyy erityisesti:

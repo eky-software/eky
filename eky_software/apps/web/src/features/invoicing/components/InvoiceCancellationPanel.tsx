@@ -3,7 +3,7 @@ import { useState } from 'react';
 
 import styles from './InvoiceCancellationPanel.module.css';
 import { uiText } from '../../../i18n/fi.js';
-import { MessageBanner } from '../../../shared/ui/index.js';
+import { LoadingStatus, MessageBanner } from '../../../shared/ui/index.js';
 
 interface InvoiceCancellationPanelProps {
   errorMessage: string | null;
@@ -87,6 +87,9 @@ export function InvoiceCancellationPanel({
           />
         </label>
 
+        <LoadingStatus active={isCancelling} className="">
+          {uiText.invoicing.cancellingApprovedInvoice}
+        </LoadingStatus>
         {errorMessage !== null ? (
           <MessageBanner variant="error">{errorMessage}</MessageBanner>
         ) : null}

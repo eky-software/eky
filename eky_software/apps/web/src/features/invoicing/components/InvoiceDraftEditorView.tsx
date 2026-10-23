@@ -16,6 +16,7 @@ import type { InvoiceDraftDeliveryHistoryClient } from '../hooks/useInvoiceDraft
 import type { OpenInvoiceDeliveryEventPdf } from '../approved/openInvoiceDeliveryEventPdf.js';
 import { InvoiceDraftDeliveryHistory } from './InvoiceDraftDeliveryHistory.js';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 
 interface InvoiceDraftEditorViewProps {
   apiClient: NewInvoiceFormClient & InvoiceDraftDeliveryHistoryClient;
@@ -57,7 +58,7 @@ export function InvoiceDraftEditorView({
   if (editorMode === 'edit' && isDraftLoading) {
     return (
       <section className={`panel ${styles.editorState}`}>
-        <p className={styles.state}>{uiText.invoicing.openingDraft}</p>
+        <LoadingStatus className={styles.state}>{uiText.invoicing.openingDraft}</LoadingStatus>
       </section>
     );
   }

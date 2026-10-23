@@ -2,6 +2,7 @@ import type { ApprovedInvoiceSummary } from '@eky/api-client';
 
 import styles from './InvoiceDraftList.module.css';
 import { uiText } from '../../../i18n/fi.js';
+import { LoadingStatus } from '../../../shared/ui/index.js';
 import {
   InvoiceListTable,
   type InvoiceListTableLabels,
@@ -27,7 +28,7 @@ export function ApprovedInvoiceList({
   onOpenApprovedInvoice,
 }: ApprovedInvoiceListProps): React.JSX.Element {
   if (isLoading) {
-    return <p className={styles.state}>{loadingMessage}</p>;
+    return <LoadingStatus className={styles.state}>{loadingMessage}</LoadingStatus>;
   }
 
   if (errorMessage) {

@@ -6,6 +6,7 @@ import type {
 } from './invoiceVatRatesFormModel.js';
 import styles from './InvoiceVatRatesForm.module.css';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface InvoiceVatRatesFormProps {
   errorMessage: string | null;
@@ -160,6 +161,9 @@ export function InvoiceVatRatesForm({
             {isSaving ? uiText.companySettings.saving : uiText.companySettings.invoiceVatRatesSave}
           </button>
         </div>
+        <LoadingStatus active={isSaving} className="">
+          {uiText.companySettings.saving}
+        </LoadingStatus>
       </form>
     </section>
   );

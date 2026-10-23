@@ -12,6 +12,7 @@ import styles from './CustomerList.module.css';
 import { CustomerTable } from './CustomerTable.js';
 import { CustomerTypeFilter } from './CustomerTypeFilter.js';
 import { uiText } from '../../i18n/fi.js';
+import { LoadingStatus } from '../../shared/ui/index.js';
 
 interface CustomerListProps {
   activeFilter: CustomerListFilter;
@@ -64,7 +65,7 @@ export function CustomerList({
       </div>
 
       {errorMessage ? <p className="message error-message">{errorMessage}</p> : null}
-      {isLoading ? <p className="message">{uiText.customers.loading}</p> : null}
+      {isLoading ? <LoadingStatus>{uiText.customers.loading}</LoadingStatus> : null}
       {!isLoading && customers.length === 0 ? (
         <p className="message">{uiText.customers.empty}</p>
       ) : null}
