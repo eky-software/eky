@@ -7,79 +7,159 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (22.10.2026):** F/R15 on hyväksytty PR #313:n kautta
-mainiin `96b62944087bec64970e6233e57a730ab31ec1ea`.
-[F:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977)
-erottaa korjatun PR-headin, yhden hyväksytyn valmistelun kohdeuusinnan ja
-uuden mainin omat portit. Mainin puu vastaa hyväksyttyä PR-headia
-`04f7a0f6d5ed56cca9cc95ba6e7f788c723f6d26`.
+**Hyväksytty lähtö (23.10.2026):** G/R20/R23 ja D029-01/02 on hyväksytty
+PR #314:n kautta mainiin `80139f6dffc01f7df2ed0ef8779636d67c4ee23d`.
+[G:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094)
+erottaa hyväksytyn PR-headin `9c5d3ffe08046c6be81e5e61de7852731ee22c98`,
+uuden mainin omat portit ja ensihylkäysten avoimet havainnot. Mainin puu
+vastaa hyväksyttyä PR-headia. T/A/B/C/K/D/E/F/G säilyvät hyväksyttyinä;
+niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR #313 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39739184364/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39739184332) läpäisi. |
-| Mainin omat portit | [V2](https://github.com/eky-software/eky/actions/runs/39761715390): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39761715368) läpäisi. Molemmat ensimmäisellä suoritusyrityksellä. |
+| PR #314 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39860418986/attempts/2): 38 onnistunutta työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä. [Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39860418852) läpäisi ensimmäisellä suoritusyrityksellä. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/39887988572/attempts/2): 38 onnistunutta työtä ja samat kuusi valitsematonta diagnostiikkatyötä. [Mainin oma riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39888226627) läpäisi ensimmäisellä suoritusyrityksellä. Ohituksia ei lasketa läpäisyiksi. |
 
-**Nykyinen työ:** G/R20/R23:n rajattu toteutus
-[alla olevan sopimuksen mukaan](#g--diagnostiikan-tapahtumaketjun-suunnitelma).
-Omistaja hyväksyi G-P1/G-P2:n rajauksen, toteutuksen ja testit 22.10.2026.
-G1-G3:n paikalliset projektiot ja kohdetestit ovat työpuussa. G4:n
-writer -> HTTP -> strict-client -> tuotettu tukipaketti -system-testi
-läpäisi. Packaged-smoken G-fixture, UI:n onnistumistilan tarkistus ja
-kaikkien G-rivien semanttinen tarkistus ovat toteutettuina; niiden
-kohderegressiot ja tyypitys läpäisivät. Alkuperäisen synteettisen
-smoke-virheen säilyminen nykyisessä salaus/purku-ketjussa on todennettu.
-Normaali desktop-sarja ja vaikutusalueen neljän paketin tyypitys läpäisivät.
-Puhtaan revision `ab53bf706db75351eb21cdc22a74487cfc94fd50` Windows-paketin
-käyttöliittymä-, tukipaketti- ja backup -> inspect -> restore -> restart ->
-compare -todennus läpäisi. Rajattu riippumaton loppukatselmus ei löytänyt
-korjattavaa ja riippuvuusauditointi läpäisi. Seuraava portti on jäädytetyn
-PR-headin normaalit tarkistukset ja niiden jälkeen uuden mainin omat portit.
-Tämä paikallinen näyttö ei vielä ole G:n integraatiohyväksyntä.
-Sitä edeltävä rajattu palautustestin aikabudjettimuutos on hyväksytty
-ja paikallisesti todennettu alla kuvatulla rajauksella.
-Backendin ja API-clientin laajat sarjat läpäisivät. Desktopin
-muuttumattomassa `desktopRestoreStartup.test.ts`:ssä yksi aikakatkaisu
-johti seuraavien tapausten `PREVIOUS_WORK_UNSETTLED`-suojaestoihin.
-Yksi sallittu kohdeuusinta aikakatkaisi saman palautusketjun toisen
-tapauksen. Ensivirheet, osittaiseksi rajautunut raportointi ja epävarma
-siivoustila säilytetään; niitä ei merkitä korjatuiksi tai läpäisyiksi.
-Juurisyytä tai yhteyttä G-muutokseen ei ole vielä todistettu.
-Omistajan hyväksymä kolmen tapauksen rajattu aikarajakoe läpäisi.
-Sen jälkeen omistaja hyväksyi pysyvän, vain näihin kolmeen testiin
-rajatun kymmenen sekunnin testirajan sekä yhden normaalin desktop-sarjan.
-Ennen migraatiota tehtävän tapauksen erillinen valmisteluraja säilyy
-viidessä sekunnissa. Tarkka rajaus on
-[testausohjeessa](../ai/testing-rules.md#palautustestin-erillinen-valmistelu).
-Muutos on paikallisessa työpuussa. Yksi normaali desktop-sarja läpäisi
-molemmat osansa: Vitest 282 tiedostoa ja 4 378 testiä, Node-testit 412 testiä.
-Erikseen ohitetut 5 ja 12 tapausta eivät ole läpäisyjä.
-Sarjan jälkeen tyypitys osoitti parametrisoidun testin aikarajakutsussa
-tyyppivirheen. Kutsu korjattiin nykyisen rajapinnan asetusobjektimuotoon;
-lopullisen muodon desktop-tyypitys ja kaikki kolme kohdetapausta läpäisivät.
-G4:n toteutuksen jälkeen normaali desktop-sarja läpäisi myös tällä
-kutsumuodolla: 283 tiedostoa ja 4 402 Vitest-testiä sekä 412 Node-testiä;
-erikseen ohitetut 5 ja 12 tapausta eivät ole läpäisyjä.
-Tämä näyttö ei korvaa aiempia hylkäyksiä eikä todista vanhan viiveen syytä
-korjatuksi. Sovelluskoodi ja CI:n kokonaisrajat eivät muuttuneet tässä korjauksessa.
-G:lle ei vielä ole toteutus- tai
-PR/main-hyväksyntää. T/A/B/C/K/D/E/F säilyvät hyväksyttyinä;
-H/I:n loppuosa ja M4/M5 odottavat.
+**Nykyinen työ:** H:n hyväksytyn rajauksen toteutusvalmistelu
+[alla olevan valmistelun mukaan](#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma).
+Omistaja hyväksyi 23.10.2026 H-P1:n kolmen lukutilan suunnan sekä H-P2:n
+ei-estävän, deduplikoidun häiriöpalautteen ja koko H:n loppuunviennin Goalina.
+Seuraava askel on täsmällisten DTO-/ilmoitussopimusten kirjaus nykyisiin
+omistajiin ja H1-H5:n pienet regressiot. Uudet käyttäytymis-, turvallisuus-
+tai muut erilliset päätökset ratkaistaan ennen niiden vaikutusalueen kytkentää;
+samoja H-P1/H-P2-periaatteita ei kysytä uudelleen. Toteutus ja sen portit
+ovat vielä avoimia.
+I:n loppuosa ja M4/M5 odottavat; tämä ei ole koko 0.3.0:n hyväksyntä.
 
-**Avoimet havainnot:** PR #312:n ensimmäisen MSI-ikkunan luetteloluennan
-viiveen syy ja sitä edeltävän mainin supervisor-havainnon puute jäävät
-avoimiksi. Alkuperäinen virheaineisto säilytetään; hyväksytty uusinta tai
-Vitest-päivitys ei todista niiden korjausta. Myös aikaisemmat MSI-odotukset,
-sulkuviiveet, puuttuvat aineistot ja tuntemattomat siivoustilat säilyvät
-historiallisissa rajauksissaan. PR #313:n ensimmäisen valmisteluhylkäyksen
-alkuperäinen npm-alisyy jää myös tuntemattomaksi; onnistunut kohdeuusinta
-ei todista sen korjausta. E:n hälytystilan loppulukeminen on päivätty
-historiatieto, ei G-revision auditointitodiste. Edeltävä jatkamiskohta on
-[integraatiohistoriassa](release-0.3.0-integration-history.md#fn-valmistelua-edeltävä-jatkamiskohta-22102026).
+**Avoimet havainnot:** PR #314:n ensimmäinen legacy-ajo päättyi työn
+37 minuutin kokonaisrajaan ilman saatavaa testilokia tai siivoustodistetta.
+Omistaja hyväksyi rajatun etenemisen yhden samoilla paketeilla läpäisseen
+kohdeuusinnan jälkeen; ensimmäinen syy ja siivoustila jäävät tuntemattomiksi.
+Mainin ensimmäinen native-ikkunatestin valmistelu ylitti nykyisen
+käännösrajan; alkuperäiset virheet säilyivät salatussa paketissa ja
+prosessipuun poistuminen todennettiin. Viiveen tarkka syy jäi avoimeksi.
+Mainin ensimmäinen web-ajo katkesi kokonaisrajaan ulkoisen
+riippuvuusvalmistelun viivyttyä; osittainen testitulos ja puuttuva lopullinen
+siivoustodiste eivät muutu läpäisyksi. Yksi kohdeuusinta läpäisi molemmat
+työt ja niiden pakolliset seuraajat samalla lähteellä. Aiempien
+palautustestien, PR #312/313:n ja vanhempien ajojen syyepävarmuudet sekä
+aineiston säilytysrajat pysyvät avoimina.
+G:n [edeltävä jatkamiskohta ja toteutuscheckpoint](release-0.3.0-integration-history.md#gn-integraatiota-edeltävä-jatkamiskohta-23102026)
+säilyvät historiassa; yksittäinen onnistunut uusinta ei todista vikaa
+korjatuksi.
+
+### H / Diagnostiikan saatavuuden ja oikeellisuuden suunnitelma
+
+**Tila 23.10.2026:** H-P1/H-P2:n suositukset ja H:n toteutus Goalina hyväksytty.
+Tarkka kytkentäsopimus, tuotantokorjaus ja runtime-todennus ovat vielä kesken.
+Alkuperäiset R21/R22/R24/R25/R26
+on verrattu hyväksytyn G-mainin lähteeseen; H:n puutteet ovat edelleen
+nähtävissä alla nimetyissä kohdissa. R24/R25/R26 vastaavat D029-03/04/05:tä,
+eivät erillisiä toteutusjonoja. [Roadmap](release-0.3.0-plan.md#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys)
+omistaa rajauksen ja [diagnostiikan täydennyssuunnitelma](diagnostics-0.2.9-completion-plan.md#korjauskohteet)
+sen aiemmat synteettiset havainnot. Historiallista vikaprobea ei lasketa
+nykyisen revision korjaustestiksi.
+
+#### H:n omistajat ja etenemisjärjestys
+
+| Pala / havainto | Nykyinen omistaja ja lähdehavainto | Rajattu suunniteltu korjaus ja todistus |
+| --- | --- | --- |
+| H1 / R21 | Backendin `operationalLogRetention.ts` ja `incidentIndexRetention.ts`, desktopin vastaavat `desktopOperationalLogRetention.ts` ja `desktopIncidentIndexRetention.ts`; `createBackendOperationalLogger.ts`, `http/app.ts` ja `desktopComposition.ts` kutsuvat huoltoa käynnistyksessä. Listaus- ja stat-poikkeuksia voi nousta ennen best-effort-rajaa. | Rajaa tunnetun lokijuuren I/O-virheet nykyiseen huoltovastuuseen, jatka muita turvallisesti tarkistettavia kohteita äläkä merkitse epäonnistunutta poistoa tehdyksi. Testaa EACCES, listauksen jälkeinen ENOENT ja muu stat-/readdir-/unlink-virhe kaikissa neljässä adapterissa sekä todellinen backend-/main-koostaminen. Väärä luotettu konfiguraatio, DB-/omistajuusvirhe tai epävarma palautus ei muutu onnistumiseksi tämän catchin kautta. |
+| H2 / R22 | Molempien runtimejen detailed- ja incident-retention laskee tulevat kuukaudet/vuodet kokonaisbudjettiin ennen vanhimpien poistoa. Nykyinen tulevaisuustesti ei kata kiintiopainetta. | Tuleva tiedosto ei osallistu kelvollisen historian poistoperusteeseen eikä saa muuttua automaattiseksi poistokohteeksi. Testaa todellinen kiintiopaine, nykyinen aktiivisen tiedoston suoja, epäonnistuneen poiston laskurit ja vuosiraja. Retention-ajat ja kapasiteettirajat eivät muutu; tulevaisuusaineisto ei todista vanhan historian kattavuutta. |
+| H3 / R24, D029-03 | Diagnosticsin `fileSystemSupportBundleDiagnosticEventReader.ts` ja `fileSystemSupportBundleIncidentSummaryReader.ts` katkaisevat valinnan tiedostojärjestyksessä ja lajittelevat vasta valitut rivit/ryhmät. | Valitse ajan ja vakaan tasatilanteen mukaan uusimmat tapahtumat/ryhmät luetusta, validoidusta aineistosta eri virtojen yli. Rajaa lähdeluku, ehdokkaat, muisti ja ulostulo erikseen; incidentin laskuri ja ensimmäinen/viimeinen aika kattavat vain todella käsitellyn aineiston. Testaa limit=1, lomittuvat ajat, tasatilanteet, duplikaatit, ryhmän myöhemmät rivit, lukumäärä-/tavu-/lähderajat ja rikkinäinen lähde. |
+| H4 / R25, D029-04 | `fileSystemDiagnosticEventReader.ts` hukkaa rivin/lähteen lukuvirheen tyhjään listaan; `fileSystemOperationalLogDiagnosticSummaryReader.ts` päättelee saatavuuden tiedostoista. Portti, `listDiagnosticEvents.ts`, HTTP, strict API-client ja `useDiagnostics`/`DiagnosticsPageView` eivät välitä kattavuustilaa. | Hyväksy H-P1 ennen yhteistä reader -> application -> HTTP -> strict-client -> UI -muutosta. Tyhjä tulos, osittainen luku ja puuttuva tieto erotetaan. Kelvolliset rivit säilyvät muun lähteen hajotessa. Summaryn viimeisin virheaika ei lupaa rajattoman historian kattavuutta tai toimivaa writeriä. |
+| H5 / R26, D029-05 | `desktopComposition.ts` ei anna `JsonLineDesktopOperationalLogger`:lle failure sinkiä; backendin `IncidentIndexOperationalLogFailureSink` toimii nykyisenä vertailuna. Ulompi incident-adapteri ei havaitse sisemmän info-kirjoituksen häiriötä. | Kytke nykyinen failure-sink-portti vasta H-P2:n jälkeen. Deduplikoi rajattu syy/virta prosessin sisällä, käytä olemassa olevaa minimoitua incident-indeksiä best effort -yritykseen ja testaa myös sen epäonnistuminen. Kirjoitus-/kapasiteettihäiriö ei muuta business-tulosta, toista business-operaatiota tai kutsu rikkoutunutta writeriä rekursiivisesti. |
+
+H1/H2 ovat saman retention-vastuun korjauksia, eivät uusi huoltopalvelu.
+H3 hyödyntää nykyistä `boundedJsonlSourceReader`-primitiiviä; projektio,
+incident-ryhmittely ja budjetit säilyvät omissa adaptereissaan. Lopullinen
+tapahtumajärjestys ja incident-ryhmän päivittyvä koko tarkistetaan myös
+budjetin jälkeen. Kaikkia lähteitä ei lueta rajatta uusimman etsimiseksi:
+lähdekatkaisu ilmoitetaan, eikä luetun otoksen uusinta väitetä koko
+historian uusimmaksi. Tuntemattoman eventin tarkoituksellinen poissulku
+erotetaan todetusta luku-/rakenneviasta ilman katalogin löysennystä.
+
+#### H-P1: Hyväksytty lukutilan suunta
+
+Omistajan hyväksymä suunta on pieni, suljettu lukutulos: tapahtumat sekä kattavuustila
+`complete|partial|unavailable` ja vain tarpeelliset sallitut tekniset syyt.
+Tyhjyys johdetaan tapahtumista, ei neljänneksi terveysväitteeksi.
+`complete` tarkoittaa vain sovitun rajatun haun kattavuutta, ei koko
+retention-historian tai writerin terveyden todistusta. Tulos-/lähderajan
+tuleminen vastaan on `partial`, ei historian loppu. Puuttuva konfiguraatio
+erotetaan todellisesta lukuvirheestä; tarkoituksella tyhjä browser-profiili
+ei esitä lokihäiriötä. Kelvolliset rivit ja niiden osittaisuus voidaan
+näyttää yhdessä. Tiedostoja löytyi -boolean ei korvaa tätä sopimusta.
+
+Ennen toteutusta hyväksytään täsmällinen events-/summary-vastaus ja
+yhdistelmäsäännöt, puuttuvan hakemiston tulkinta sekä UI-tekstit.
+Strict-client hylkää väärät kentät, arvot ja ristiriitaiset yhdistelmät.
+Tässä on myös erillinen tukipakettiraja: `prepareSupportBundleDiagnosticData.ts`
+liittää nykyisen `runtimeSummary`-olion vastaukseen sellaisenaan, mutta
+mainin `supportBundleBackendData.ts` hylkää sen lisäkentät omalla strict-
+validaattorillaan. Pelkkä julkisen API-clientin päivitys ei riitä.
+H-P1:ssä hyväksytään siksi samalla uuden summaryn eksplisiittinen projektio
+nykyiseen formaatti-2-yhteenvetoon ja olemassa oleviin katkaisulippuihin.
+Nimetyt kentät mapataan erikseen; uusi lukutila ei valu artifactiin
+spreadillä tai validaattorin yleisellä löysennyksellä. Pysyvä regressio
+todistaa uuden summaryn -> tuotetun paketin -> nykyisen tarkastimen ketjun,
+uuden lukutilan poissulun ja vanhan formaatin lukuyhteensopivuuden.
+Jo käytössä oleva tukipaketin `sourceTruncated` ja formaatti 2 säilyvät.
+Vanhoja `.json.gz`-/`.ekysupport`-paketteja ei kirjoiteta uudelleen.
+Summary ja lista kuvaavat omia lukutuloksiaan, eivät atomista yhteissnapshotia.
+Rajattu riippumaton H3/H4-suunnitelmakatselmus tunnisti tämän erillisen
+summary-vastaanottorajan; yllä oleva täsmennys kuuluu samaan H-P1-päätökseen,
+ei uuteen tukipakettiformaattiin tai toteutuksen hyväksyntään.
+
+#### H-P2: Hyväksytty writer-häiriön palaute
+
+Omistajan hyväksymä suunta on ei-estävä, deduplikoitu turvallinen häiriöilmoitus desktopin
+nykyisessä main/UI-vastuussa sekä nykyinen minimoitu incident-yritys.
+Saman levyn incident-kirjoitus voi epäonnistua yhdessä detailed-writerin
+kanssa. Siksi pelkkä incident-tiedosto ei riitä näkyvyyden takeeksi, eikä
+puuttuvista riveistä saa päätellä writerin toimivan. Ilmoituksen tarkka
+näyttötapa, välitysketju, enimmäistiheys ja runtime-kohtaisen tilan elinkaari
+päätetään ennen kytkentää; uutta yleistä tilapalvelua ei hyväksytä tällä
+suunnitelmalla. Myös varailmoituksen oma virhe käsitellään ilman rekursiota,
+odotussilmukkaa tai varmaa toimitusväitettä. Backendin nykyinen fallback
+säilyy, eikä permission-rajaa ohiteta mainin ilmoituksen vuoksi.
+
+#### H:n säilyvät rajat ja valmistumisportti
+
+Diagnostics säilyy read-only-projektiona. Kiinteä lokijuuri, backendin
+`viewDiagnostics`-/`createSupportBundle`-oikeudet, uudelleenvalidointi,
+G:n perhekohtaiset kentät ja poissulut, incidentin minimointi sekä
+tukipaketin 30 päivän raja säilyvät. Ei uusia riippuvuuksia, yleistä
+loggeria/manageria, telemetriaa, raakavirheitä tuotannon lokiin,
+business-/DB-migraatiota tai salattujen CI-pakettien sisältörajan muutosta.
+Lokihuolto ei käsittele yritysprofiileja, backupeja tai business-artifacteja.
+
+Todennus etenee pienistä deterministisistä kohdetesteistä oikeaan
+backend-/main-koostamiseen ja HTTP-/client-/UI-ketjuun. H3:n tuotetusta
+gzip-tukipaketista tarkistetaan aidot uusimmat rivit, ryhmien laskurit,
+budjetit, manifestin katkaisut ja checksumit. H4/H5:n tyhjä/partial/unavailable-
+ja fallback-failure-tapaukset todistetaan myös tarkoitetussa
+käyttöliittymässä, ei vain testiin injektoidulla no-op-loggerilla.
+Hylätty testi tarjoaa alkuperäisen virheen nykyiseen salattuun
+keräykseen ennen yleistä koodimuunnosta; tämä varmennetaan nykyisellä
+salaus/purku-kokeella, ei uudella keräysjärjestelmällä.
+
+Lopuksi vaikutusalueen normaalit sarjat, tyypitys/build, riippumaton rajattu
+katselmus ja julkaisuyksityisyys. Desktop-startup-/lifecycle-rajaan
+koskettaessa vaaditaan sama puhdas hardened Windows
+backup -> inspect -> restore -> restart -> compare -paketti; installer on
+erillinen portti. Jäädytetty PR-head ja mergen jälkeinen main tarvitsevat
+omat nykyiset hyväksyntäporttinsa ja auditoinnin. Paikallinen koe ei sulje
+H:ta. Tuotantokytkentä odottaa sovittua hyväksyntää.
+
+R030-08:n historian selaus, D029-06:n erikseen päätettävä päivitystoiminto,
+W7, I, M5:n syväkatselmus/Deep Scan sekä pilvi/mobiili jäävät erilleen.
+H:n tilasopimus valmistelee myöhempää selausta mutta ei toteuta sitä.
 
 ### G / Diagnostiikan tapahtumaketjun suunnitelma
 
-**Tila:** G-P1/G-P2:n rajaus ja toteutus hyväksytty 22.10.2026;
-toteutus ja sen hyväksyntänäyttö kesken.
+**Tila:** G-P1/G-P2 ja G0-G4 hyväksytty PR #314:n ja uuden mainin
+omilla porteilla 23.10.2026. Alla säilyy toteutuksen omistava sopimus.
 [Roadmapin G](release-0.3.0-plan.md#m3-muut-invariantit-diagnostiikka-ja-ylläpidettävyys)
 omistaa R20/R23:n ja D029-01/02:n rajauksen. Tavoite on täydentää nykyinen
 turvallinen lukuketju, ei muuttaa laskutusta, päivitystä tai palautusta.
@@ -92,13 +172,13 @@ ja G-eventtien/incidentien läsnäolon sekä semantiikan packaged-todistus.
 Korjatuissa kohdissa ei jäänyt suunnitelmaestettä. Tämä on lähde- ja
 suunnitelmakatselmus, ei omistajapäätös tai toteutuksen hyväksyntä.
 
-Käänteinen katselmus etenee UI:sta ja tukipaketista strict-clientin,
-HTTP:n ja tiedostolukijan kautta todelliseen writeriin/compositioniin.
-R20:n archive/update-katalogierot ovat nykyisessä lähteessä edelleen.
-R23:n observer on jo kytketty K:ssa; sitä ei toteuteta uudelleen.
-Lineage-hylkäyksen tarkka luokka ei kuulu nykyiseen candidate-syylistaan,
-ja nykyinen observer rajaa muut kuin import/replace-virheet pois.
-Lähdehavainto ei vielä ole korjauksen runtime-hyväksyntä.
+Suunnittelun lähtökatselmus 22.10.2026 eteni UI:sta ja tukipaketista
+strict-clientin, HTTP:n ja tiedostolukijan kautta todelliseen
+writeriin/compositioniin. Tuolloin R20:n archive/update-katalogierot olivat
+vielä lähteessä. K:n observer oli jo kytketty, mutta lineage-hylkäyksen
+tarkka luokka ja muut kuin import/replace-virheet puuttuivat nimetystä
+ketjusta. G korjasi nämä rajatussa sopimuksessaan; lähtöhavainto ei ole
+nykyinen avoin toteutusjono eikä yksin korjauksen hyväksyntänäyttö.
 
 #### G-P1: Hyväksytty projektiorajaus
 
@@ -184,25 +264,13 @@ tehdään nykyisen omistajan sisällä vasta korvaavan kattavuuden kanssa.
 
 #### G:n tiedostot ja toteutusjärjestys
 
-**Toteutuscheckpoint (22.10.2026):** G1:n archive-projektio on paikallisessa
-työpuussa. Backendin, strict-clientin ja mainin kohderegressiot sekä kolmen
-paketin tyyppitarkistus läpäisivät. Oikea laskutoimitus -> queue-failure-
-writer -> tiedostolukija -> Diagnostics-/tukipaketti-HTTP todennettiin myös
-loggerin virheessä; toimitustulos säilyi. Rajattu riippumaton G1-katselmus
-ei löytänyt korjattavaa. Myös G2:n update-projektio, kenttämatriisit,
-tyypitys ja rajattu katselmus läpäisivät paikallisesti. G3:n haaravalinta,
-kolmen vastaanottorajan kenttämatriisit, management-/K-regressiot ja tyypitys
-läpäisivät; myös rajattu G3-katselmus päättyi ilman korjattavaa. Oikean replacement-coordinatorin
-lineage-hylkäys tuottaa yhden tapahtuman lokitiedostoon ennen leasea,
-sulkua tai profiilimuutosta. G4:n system-lukuketju, tuotetun artifactin
-tiukka semantiikka ja alkuperäisen synteettisen smoke-virheen salaus/purku
-läpäisivät kohdetodennuksen 23.10.2026. Rajattu katselmus havaitsi yhden
-info-poissulun testidatan puutteen; muuten kelvollinen info-rivi korvasi sen
-ja regressio läpäisi. Myös paketoidun käyttöliittymän ja palautuksen
-todennus sekä rajattu loppukatselmus läpäisivät yllä nimetyllä revisiolla.
-Nämä eivät vielä ole G:n PR/main-hyväksyntä.
-Edeltävien palautustestien aikakatkaisujen syyt ja epävarma siivoustila
-säilyvät avoimina; hyväksytyn rajatun testibudjetin näyttö on yllä.
+**Hyväksytty 23.10.2026:** G0-G4:n toteutus, paikallinen ketju- ja
+pakettinäyttö sekä riippumaton katselmus ovat mukana PR #314:n
+[loppuhyväksynnässä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094).
+PR:n ja uuden mainin omat portit ovat yllä. Alla oleva taulukko säilyttää
+toteutuksen omistajat ja todennussopimukset; se ei ole avoin toteutusjono.
+Päivätty paikallinen [toteutuscheckpoint](release-0.3.0-integration-history.md#aiempi-g-toteutuscheckpoint)
+ja ensihylkäykset säilyvät erillisinä historiatietoina.
 
 | Pala | Nykyiset omistajat / suunniteltu muutos | Todennus |
 | --- | --- | --- |

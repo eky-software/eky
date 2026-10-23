@@ -26,8 +26,8 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | Suunniteltu; käyttökohteiden kartoitus tekemättä. |
 | R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; valmistelu ja päätösjono kirjattu. Sopimusten hyväksyntä ja toteutus avoinna. |
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Suunniteltu; nimen lähde ja turvallinen nimeämissääntö päätettävä. |
-| D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n nimetyt palautuksen syy- ja lukuketjukorjaukset hyväksytty. G:n jäljellä oleva tapahtumakohtainen kattavuus tarkistettava; K ei sulje koko D029-01:tä. |
-| D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | Puute todettu; korjaus tekemättä. |
+| D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
+| D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
 | D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | Puute todettu; korjaus tekemättä. |
 | D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | Puute todettu; tila- ja kattavuussopimus päätettävä ennen korjausta. |
 | D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | Puute todettu; häiriöilmoituksen sopimus päätettävä ennen korjausta. |
@@ -228,12 +228,14 @@ Myös B3-B5 on hyväksytty [PR #298:n mainissa](https://github.com/eky-software/
 Myös C on hyväksytty [PR #299:n mainissa](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779)
 ja K [PR #305:n mainissa](https://github.com/eky-software/eky/pull/305#issuecomment-6181885500).
 I:n aikaistettu dokumentaatio-osuus sekä D ja E ovat myös hyväksyttyjä;
-F/R15 on hyväksytty PR #313:n omilla PR/main-porteilla. Nykyinen työ on
-G/R20/R23:n rajattu toteutus. Omistaja hyväksyi G-P1/G-P2:n rajauksen,
-toteutuksen ja testit 22.10.2026; integraatiohyväksyntä on vielä avoin.
+F/R15 on hyväksytty PR #313:n omilla PR/main-porteilla. Myös G/R20/R23 ja
+D029-01/02 on hyväksytty PR #314:n omilla PR/main-porteilla.
+Nykyinen työ on H/R21/R22/R24/R25/R26:n rajattu suunnittelu;
+H-P1:n lukutilan ja H-P2:n häiriöpalautteen periaatteet sekä H:n toteutus
+Goalina on hyväksytty 23.10.2026; täsmällinen kytkentä ja sen näyttö ovat kesken.
 Täsmällinen näyttö ja nykytila ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
-T/A/B/C/K/D/E:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
+T/A/B/C/K/D/E/F/G:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
 Vanhat sulkuaikakatkaisut eivät
 muutu korjatuiksi tämän integraation perusteella. B0:ssa tarkistettiin alkuperäiset
 turvallisuushavainnot, B1-B5-toteutusjärjestys ja
@@ -306,7 +308,8 @@ integraatioiden näytöllä; [T3:n integraatiohyväksyntä](e2e-test-environment
 pelkkään historialliseen T3c-W:n 4/4-koetulokseen. A-paketin A1/R01, A2/R05
 ja A3/R06 ovat hyväksyttyjä; viimeisin hyväksyntä on PR #294:n mainissa.
 F/R15 on hyväksytty [PR #313:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977).
-G/H/I:n kokonaishyväksyntä on edelleen avoin.
+G on hyväksytty [PR #314:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094).
+H ja I:n jäljellä oleva osuus ovat edelleen avoimia.
 D1-D3 ja niiden rajattu HTTP-sulun jatkokorjaus on hyväksytty PR #308:n
 ja PR #309:n kautta mainissa `286cc3227ffe37dd44417750636ec30d460a61e1`.
 [D:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
@@ -317,9 +320,10 @@ Vitest-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta;
 erottaa korjatun revision PR/main-portit avoimista historiallisista syistä.
 [Asiakasinvarianttien suunnitelma](release-0.3.0-customer-invariants-plan.md)
 säilyttää E:n sopimukset. Nykyinen työ on
-[G:n rajattu suunnittelu](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
-G:n uudet tapahtumaprojektiopäätökset hyväksytään ennen tuotantokytkentää;
-sen valmistelu ei avaa H/I:n tai M4:n työtä.
+[H:n rajattu suunnittelu](release-0.3.0-m1-preparation-plan.md#h--diagnostiikan-saatavuuden-ja-oikeellisuuden-suunnitelma).
+H-P1/H-P2:n hyväksytyt periaatteet täsmennetään ennen tuotantokytkentää;
+uudet erilliset päätökset tuodaan omistajalle. H ei toteuta M4:n historian
+selausta tai avaa I:tä.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
 erottaa säilytettävät CS-1/CS-2-sopimukset, alkuluvun tallennuseston ja
 17.10.2026 hyväksytyt D-P1:n salaisuusoperaation sekä D-P2/A:n saatavuuden ehdot.

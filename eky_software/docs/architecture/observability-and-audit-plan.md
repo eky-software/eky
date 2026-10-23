@@ -364,8 +364,10 @@ runtime-rajoissa. C2:n `operationStarted|operationCompleted|operationFailed`
 ja C3C:n nimetyt tapahtumaperheet ovat määriteltyjä nykyisiä sopimuksia,
 eivät yleisesti varattu tuleva event-perhe.
 [Update-katalogi](r0-observability-event-catalog.md#local-update) erottaa
-niiden runtime-statuksen, suppeat kentät ja vielä toteuttamattoman
-Diagnostics-/tukipakettilukuketjun. Update ei kirjoita business auditia
+niiden runtime-statuksen ja suppeat kentät. G:n hyväksytty
+Diagnostics-/tukipakettilukuketju ja sen tarkoitukselliset poissulut ovat
+[M1:n G-sopimuksessa](release-0.3.0-m1-preparation-plan.md#g--diagnostiikan-tapahtumaketjun-suunnitelma).
+Update ei kirjoita business auditia
 tai Activity-tapahtumia.
 
 Nykyisen C3C-tapahtuman payload on suljettu: `correlationId`, allowlistattu
