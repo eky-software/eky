@@ -230,8 +230,10 @@ Reader/application/HTTP, nimetty sulkukytkentä, strict-client ja web ovat
 työpuussa pysyvine regressioineen. Oikea HTTP-/selainketju ja katkenneen
 pyynnön tiedostoluvun sulku on todennettu. Alkuperäinen lukuvirhe löytyy
 purettavasta salatusta testipaketista nykyisellä keräysketjulla.
-Paketoitu Windows-ketju, loppukatselmus ja normaalit PR/main-portit ovat
-vielä kesken. M4.3 ei ole vielä hyväksytty.
+Puhtaan Windows-paketin todellinen selaus-/tukipaketti-/palautusketju ja
+rajattu loppukatselmus ovat läpäisseet. Normaalit täsmärevision PR/main-portit
+ovat vielä kesken. Tarkka lähde ja näytön rajat ovat M1:n jatkamiskohdassa.
+M4.3 ei ole vielä hyväksytty.
 
 **Hyväksytty käyttötapa:** näkymä avautuu uusimpiin tapahtumiin, 100 tapahtumaa
 kerrallaan. API:n nykyinen enimmäistulos 200 säilyy. Käyttäjä siirtyy

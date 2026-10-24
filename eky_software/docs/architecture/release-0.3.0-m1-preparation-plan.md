@@ -44,8 +44,21 @@ HTTP-/selainketju todentaa molemmat suunnat, vanhan erän säilymisen,
 muuttuneen lähteen vanhenemisen ja StrictMode-kaksoiskäynnistyksen eston.
 Katkenneen HTTP-pyynnön todellinen tiedosto-I/O odotetaan sulussa loppuun;
 alkuperäinen lukuvirhe on todennettu puretusta salatusta testipaketista.
-Seuraavaksi loppukatselmus, normaalit vaikutusalueen testit ja saman
-puhtaan Windows-paketin selaus-/palautusketju ennen PR/main-portteja.
+**Paikallinen toteutuscheckpoint:** puhdas lähde
+`3ff0bdd347915f4a5efb860d1bec3ff9e84e028f` läpäisi Windows-paketoinnin,
+todellisen selaamisen vanhempaan erään ja takaisin, tukipaketin sekä
+hardened backup -> inspect -> restore -> restart -> compare -ketjun.
+Sama paketti ja build-identiteetti varmennettiin ennen ja jälkeen;
+inventaario ei muuttunut. Riippumaton rajattu loppukatselmus on tehty.
+Vanhentuneen selauksen virhetilan korjaus, tiukka syötevalidointi ja
+testin omien rinnakkaisten lukujen odotusjärjestys on todennettu erikseen:
+301 backend-kohdetestiä ja 12 selainpolkua läpäisivät. Normaali työtilan
+testikierros ja tyyppitarkistus sekä tuotanto-/kehitysriippuvuuksien audit
+läpäisivät; viimeisen kapean deltan tarkistukset on erotettu aiemmista
+laajoista sarjoista. Laajan kriittisen ajon ensimmäinen hylkäys ja sen
+aineisto säilyvät, eikä korjattu kohdeajo muuta sitä onnistuneeksi.
+Seuraavaksi tämän lähteen dokumentointideltan sisältävän täsmä-PR-headin
+normaalit portit ja auditointi, suojattu merge sekä uuden mainin omat portit.
 Kohdenäyttö ei ole maksimikuorman tai koko integraation hyväksyntä.
 M4.3:n toteutus ja integraatio ovat kesken. W7 sekä koko `0.3.0`:n
 M5-hyväksyntä ovat erikseen avoimia.
