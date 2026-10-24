@@ -4,7 +4,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { createBackendOperationalEvent } from '../../../observability/createOperationalEvent.js';
-import { emptyDiagnosticEventReader, FileSystemDiagnosticEventReader } from './fileSystemDiagnosticEventReader.js';
+import { emptyDiagnosticEventReader, FileSystemDiagnosticEventReader } from './diagnosticEventRead.fixture.js';
 import { FileSystemOperationalLogDiagnosticSummaryReader } from './fileSystemOperationalLogDiagnosticSummaryReader.js';
 
 const faults = vi.hoisted(() => ({ denied: new Set<string>(), closeAfterRelease: false,
@@ -40,6 +40,23 @@ vi.mock('node:fs', async importOriginal => {
       actual.closeSync(fd);
       faults.handles.delete(fd);
       if (faults.closeAfterRelease) throw new Error('synthetic private close detail');
+    },
+  };
+});
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual,
+    lstat: (...args: Parameters<typeof actual.lstat>) => {
+      if (faults.metadataDenied.has(String(args[0]))) throw new Error('synthetic metadata failure');
+      return actual.lstat(...args);
+    },
+    open: async (...args: Parameters<typeof actual.open>) => {
+      if (faults.denied.has(String(args[0]))) throw Object.assign(new Error('synthetic private open detail'), { code: 'EACCES' });
+      return actual.open(...args);
+    },
+    opendir: async (...args: Parameters<typeof actual.opendir>) => {
+      if (faults.denied.has(String(args[0]))) throw Object.assign(new Error('synthetic private listing detail'), { code: 'EACCES' });
+      return actual.opendir(...args);
     },
   };
 });
@@ -126,32 +143,31 @@ describe('diagnostic read coverage', () => {
         operationalLogReadState: unavailable.readState });
   });
 
-  it('contains one directory failure and also contains close failures after release', async () => {
+  it('contains one directory failure while retaining a healthy source', async () => {
     const root = createRoot();
     write(root, 'backend', 'backend-warning-error-2026-07-001.jsonl', [sourceEvent('denied')]);
     write(root, 'security', 'backend-security-2026-07-001.jsonl', [sourceEvent('healthy')]);
     faults.denied.add(join(root, 'backend'));
-    faults.closeAfterRelease = true;
     const result = await new FileSystemDiagnosticEventReader(root).listRecentDiagnosticEvents(10);
     expect(result.readState).toEqual({ status: 'partial', reasons: ['sourceUnavailable'] });
     expect(result.diagnosticEvents.map(event => event.id)).toEqual(['backend:healthy']);
     expect(faults.handles.size).toBe(0);
   });
 
-  it('marks source and result limits without claiming the end of history', async () => {
+  it('uses a page boundary instead of the former tail or result cutoff', async () => {
     const root = createRoot();
     const file = write(root, 'backend', 'backend-warning-error-2026-07-001.jsonl', [
       sourceEvent('older', '2026-07-27T09:00:00.000Z'), sourceEvent('newest'),
     ]);
     const result = await new FileSystemDiagnosticEventReader(root).listRecentDiagnosticEvents(1);
     expect(result.diagnosticEvents.map(event => event.id)).toEqual(['backend:newest']);
-    expect(result.readState).toEqual({ status: 'partial', reasons: ['limitReached'] });
+    expect(result.readState).toEqual({ status: 'complete', reasons: [] });
     writeFileSync(file, `${' '.repeat(256 * 1024)}\n${JSON.stringify(sourceEvent('tail'))}\n`);
     expect((await new FileSystemDiagnosticEventReader(root).listRecentDiagnosticEvents(10)).readState)
-      .toEqual({ status: 'partial', reasons: ['limitReached'] });
+      .toEqual({ status: 'partial', reasons: ['invalidEntries'] });
   });
 
-  it('enforces the existing file budget and does not follow arbitrary filenames', async () => {
+  it('reads beyond the former file window and does not follow arbitrary filenames', async () => {
     const root = createRoot();
     for (let month = 1; month <= 9; month++) {
       for (let segment = 1; segment <= 4; segment++) {
@@ -161,9 +177,8 @@ describe('diagnostic read coverage', () => {
     }
     write(root, 'backend', 'arbitrary.jsonl', ['{private broken unowned file']);
     const result = await new FileSystemDiagnosticEventReader(root).listRecentDiagnosticEvents(100);
-    expect(result.diagnosticEvents).toHaveLength(32);
-    expect(faults.metadataReads).toBe(64);
-    expect(result.readState).toEqual({ status: 'partial', reasons: ['limitReached'] });
+    expect(result.diagnosticEvents).toHaveLength(36);
+    expect(result.readState).toEqual({ status: 'complete', reasons: [] });
   });
 });
 

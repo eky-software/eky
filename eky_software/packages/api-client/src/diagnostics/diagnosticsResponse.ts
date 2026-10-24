@@ -1,4 +1,5 @@
 import { EkyApiError, isRecord } from '../http.js';
+import { isDiagnosticCursor } from './diagnosticsCursor.js';
 import { isProfileRecoveryProjection } from './diagnosticRecoveryProjection.js';
 import { isInvoiceArchiveProjection } from './diagnosticInvoiceArchiveProjection.js';
 import { isUpdateProjection } from './diagnosticUpdateProjection.js';
@@ -6,7 +7,9 @@ import { isWorkspaceManagementProjection } from './diagnosticWorkspaceManagement
 import { isDiagnosticReadState } from './diagnosticsReadState.js';
 import {
   diagnosticEventNames,
+  maximumDiagnosticEventLimit,
   type DiagnosticEventComponent,
+  type DiagnosticEventDirection,
   type DiagnosticEventItem,
   type DiagnosticEventLevel,
   type DiagnosticEventName,
@@ -54,20 +57,76 @@ const workspaceBackupFailureCauses = new Set([
 export function readDiagnosticsResponse(
   value: unknown,
 ): DiagnosticEventReadResult {
+  if (!isRecord(value)) {
+    throw invalidResponse(value);
+  }
+  if (value.state === 'scanning') {
+    if (!hasOnlyKeys(value, ['state', 'cursor']) || !isDiagnosticCursor(value.cursor)) {
+      throw invalidResponse(value);
+    }
+    return { state: 'scanning', cursor: value.cursor };
+  }
   if (
-    !isRecord(value) ||
-    !hasOnlyKeys(value, ['diagnosticEvents', 'readState']) ||
-    !Array.isArray(value.diagnosticEvents) ||
-    !isDiagnosticReadState(value.readState) ||
-    (value.readState.status === 'unavailable' && value.diagnosticEvents.length !== 0)
+    !Array.isArray(value.diagnosticEvents) || value.diagnosticEvents.length > maximumDiagnosticEventLimit ||
+    !isDiagnosticReadState(value.readState)
   ) {
     throw invalidResponse(value);
   }
+  if (value.state === 'ready') {
+    if (
+      !hasOnlyKeys(value, ['state', 'diagnosticEvents', 'readState', 'older', 'newer']) ||
+      value.readState.status === 'unavailable'
+    ) {
+      throw invalidResponse(value);
+    }
+    return {
+      state: 'ready',
+      diagnosticEvents: value.diagnosticEvents.map(readDiagnosticEvent),
+      readState: value.readState,
+      older: readDiagnosticDirection(value.older),
+      newer: readDiagnosticDirection(value.newer),
+    };
+  }
+  if (
+    !hasOnlyKeys(value, ['state', 'diagnosticEvents', 'readState']) ||
+    value.diagnosticEvents.length !== 0
+  ) {
+    throw invalidResponse(value);
+  }
+  if (
+    value.state === 'limited' &&
+    value.readState.status === 'partial' &&
+    value.readState.reasons.length === 1 &&
+    value.readState.reasons[0] === 'limitReached'
+  ) {
+    return {
+      state: 'limited', diagnosticEvents: [],
+      readState: { status: 'partial', reasons: ['limitReached'] },
+    };
+  }
+  if (value.state === 'unavailable' && value.readState.status === 'unavailable') {
+    return { state: 'unavailable', diagnosticEvents: [], readState: value.readState };
+  }
+  throw invalidResponse(value);
+}
 
-  return {
-    diagnosticEvents: value.diagnosticEvents.map(readDiagnosticEvent),
-    readState: value.readState,
-  };
+function readDiagnosticDirection(value: unknown): DiagnosticEventDirection {
+  if (isRecord(value)) {
+    if (
+      value.state === 'available' &&
+      hasOnlyKeys(value, ['state', 'cursor']) &&
+      isDiagnosticCursor(value.cursor)
+    ) {
+      return { state: 'available', cursor: value.cursor };
+    }
+    if (
+      (value.state === 'end' || value.state === 'unknown') &&
+      hasOnlyKeys(value, ['state'])
+    ) {
+      return { state: value.state };
+    }
+  }
+  throw invalidResponse(value);
 }
 
 export function readDiagnosticSummaryResponse(

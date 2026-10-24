@@ -11,7 +11,8 @@ import {
 import { isDiagnosticReadState } from './diagnosticsReadState.js';
 
 const complete: DiagnosticReadState = { status: 'complete', reasons: [] };
-const availableStates: DiagnosticReadState[] = [
+const readyDirections = { state: 'ready', older: { state: 'end' }, newer: { state: 'end' } } as const;
+const availableStates: Exclude<DiagnosticReadState, { status: 'unavailable' }>[] = [
   complete,
   { status: 'partial', reasons: ['sourceUnavailable'] },
   { status: 'partial', reasons: ['invalidEntries'] },
@@ -22,7 +23,7 @@ const availableStates: DiagnosticReadState[] = [
   { status: 'partial', reasons: ['sourceUnavailable', 'invalidEntries', 'limitReached'] },
   { status: 'partial', reasons: ['limitReached', 'invalidEntries', 'sourceUnavailable'] },
 ];
-const unavailableStates: DiagnosticReadState[] = [
+const unavailableStates: Extract<DiagnosticReadState, { status: 'unavailable' }>[] = [
   { status: 'unavailable', reasons: ['notConfigured'] },
   { status: 'unavailable', reasons: ['sourceUnavailable'] },
 ];
@@ -82,20 +83,26 @@ describe('diagnostics HTTP read state contract', () => {
 
   it.each(availableStates)('retains $status/$reasons with empty or observed events', async readState => {
     for (const diagnosticEvents of [[], [event]]) {
-      const result: DiagnosticEventReadResult = { diagnosticEvents, readState };
+      const result: DiagnosticEventReadResult = {
+        state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
+        diagnosticEvents, readState,
+      };
       await expect(clientFor(result).listDiagnosticEvents()).resolves.toEqual(result);
     }
   });
 
   it.each(unavailableStates)('accepts unavailable/$reasons only without events', async readState => {
-    const result: DiagnosticEventReadResult = { diagnosticEvents: [], readState };
+    const result: DiagnosticEventReadResult = { state: 'unavailable', diagnosticEvents: [], readState };
     await expect(clientFor(result).listDiagnosticEvents()).resolves.toEqual(result);
     await expect(clientFor({ ...result, diagnosticEvents: [event] }).listDiagnosticEvents())
       .rejects.toBeInstanceOf(EkyApiError);
   });
 
   it.each(invalidReadStates)('rejects %s on both HTTP read boundaries', async (_label, readState) => {
-    await expect(clientFor({ diagnosticEvents: [], readState }).listDiagnosticEvents())
+    await expect(clientFor({
+      state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
+      diagnosticEvents: [], readState,
+    }).listDiagnosticEvents())
       .rejects.toBeInstanceOf(EkyApiError);
     await expect(clientFor({ ...createSummary(complete), operationalLogReadState: readState }).getDiagnosticSummary())
       .rejects.toBeInstanceOf(EkyApiError);
@@ -105,12 +112,13 @@ describe('diagnostics HTTP read state contract', () => {
     {},
     [],
     null,
-    { diagnosticEvents: [] },
-    { readState: complete },
-    { diagnosticEvents: null, readState: complete },
-    { diagnosticEvents: {}, readState: complete },
-    { diagnosticEvents: 'synthetic', readState: complete },
-    { diagnosticEvents: [], readState: complete, rawError: 'synthetic-private-detail' },
+    { ...readyDirections, diagnosticEvents: [] },
+    { ...readyDirections, readState: complete },
+    { diagnosticEvents: [], readState: complete },
+    { ...readyDirections, diagnosticEvents: null, readState: complete },
+    { ...readyDirections, diagnosticEvents: {}, readState: complete },
+    { ...readyDirections, diagnosticEvents: 'synthetic', readState: complete },
+    { ...readyDirections, diagnosticEvents: [], readState: complete, rawError: 'synthetic-private-detail' },
   ].map(body => ({ body })))('rejects malformed or legacy event envelopes %#', async ({ body }) => {
     await expect(clientFor(body).listDiagnosticEvents()).rejects.toBeInstanceOf(EkyApiError);
   });
@@ -124,7 +132,10 @@ describe('diagnostics HTTP read state contract', () => {
       { ...event, errorCode: undefined },
       null,
     ]) {
-      await expect(clientFor({ diagnosticEvents: [event, invalidEvent], readState }).listDiagnosticEvents())
+      await expect(clientFor({
+        state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
+        diagnosticEvents: [event, invalidEvent], readState,
+      }).listDiagnosticEvents())
         .rejects.toBeInstanceOf(EkyApiError);
     }
   });
@@ -159,10 +170,12 @@ describe('runtime summary operational log read state', () => {
     }
   });
 
-  it('rejects unknown summary fields', async () => {
-    await expect(clientFor({ ...createSummary(complete), unknown: true }).getDiagnosticSummary())
-      .rejects.toBeInstanceOf(EkyApiError);
-  });
+  it.each(['unknown', 'state', 'cursor', 'older', 'newer', 'diagnosticEvents'])(
+    'rejects browsing and unknown summary field %s', async field => {
+      await expect(clientFor({ ...createSummary(complete), [field]: true }).getDiagnosticSummary())
+        .rejects.toBeInstanceOf(EkyApiError);
+    },
+  );
 
   it.each([...availableStates, ...unavailableStates])('does not infer database health from $status/$reasons', async readState => {
     for (const databaseHealth of ['ok', 'failed', 'unavailable'] as const) {

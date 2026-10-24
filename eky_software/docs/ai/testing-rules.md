@@ -216,6 +216,12 @@ puretut alkuperäiset tavut sekä testin ja suoritusyrityksen sidonnan.
 Heitetyn merkkijonon sisältö kulkee nykyisessä rajatussa viestikentässä;
 puuttuvaa pinoa tai syyketjua ei keksitä. Tuotanto ei kytke tätä fixtureä.
 
+Diagnosticsin `diagnostic-read`-variantti käyttää oikeaa tiedostolukijaa ja
+sen nykyistä lukuvirheen havaitsijaa ennen turvallista vastausmuunnosta.
+OpenPGP-koe varmentaa alkuperäisen viestin, pinon ja syyketjun puretusta
+paketista; pelkkä `unavailable`-vastaus ei ole keräyksen todiste. Sivutuksen
+jatkotila ei laajenna kerättävän aineiston tai julkaisun rajoja.
+
 Julkisen testiraportoinnin hyväksyttyä sisältöä ei laajenneta.
 Käyttöliittymä ja tuotannon diagnostiikka käyttävät edelleen turvallisia
 koodeja. Tämä oletus ei hyväksy kokonaisten

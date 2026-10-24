@@ -35,6 +35,22 @@
   gap: 8px;
 }
 
+.browseToolbar {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+  justify-content: space-between;
+  min-block-size: 42px;
+}
+
+.range {
+  color: var(--color-text-muted);
+  font-size: 12px;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
 .kicker {
   color: var(--color-primary);
   font-size: 12px;

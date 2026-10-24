@@ -5,7 +5,7 @@ import type { DatabaseConnection } from '../database/connection/createDatabaseCo
 import { removeDirectories, snapshots, temporaryDirectory } from '../database/migration/invoiceContentRevisionMigration.fixture.js';
 import { createOperationalLoggingMiddleware } from '../http/operationalLogging.js';
 import type { BackendEnvironment } from '../http/runtimeTrust.js';
-import { FileSystemDiagnosticEventReader } from '../modules/diagnostics/infrastructure/fileSystemDiagnosticEventReader.js';
+import { FileSystemDiagnosticEventReader } from '../modules/diagnostics/infrastructure/diagnosticEventRead.fixture.js';
 import { FileSystemSupportBundleDiagnosticEventReader } from '../modules/diagnostics/infrastructure/fileSystemSupportBundleDiagnosticEventReader.js';
 import { FileSystemSupportBundleIncidentSummaryReader } from '../modules/diagnostics/infrastructure/fileSystemSupportBundleIncidentSummaryReader.js';
 import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';

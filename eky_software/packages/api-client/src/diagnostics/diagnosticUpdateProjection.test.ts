@@ -40,9 +40,15 @@ describe('strict update response projection', () => {
       ...(entry.duration ? { durationMs: 2 } : {}),
       ...(entry.failure ? { retryable: false, sideEffectState: 'unknown' } : {}),
     };
-    const read = (value: unknown) => readDiagnosticsResponse({
-      diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
-    }).diagnosticEvents;
+    const read = (value: unknown) => {
+      const result = readDiagnosticsResponse({
+        state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
+        diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
+      });
+      expect(result.state).toBe('ready');
+      if (result.state !== 'ready') throw new Error('Expected a ready page.');
+      return result.diagnosticEvents;
+    };
     expect(read(event)).toEqual([event]);
     for (const change of [
       { component: 'backend' }, { category: 'restore' }, { level: entry.level === 'info' ? 'warn' : 'info' },

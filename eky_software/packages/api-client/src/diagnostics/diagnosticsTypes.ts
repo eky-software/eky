@@ -1,6 +1,8 @@
 import { diagnosticUpdateEventNames } from './diagnosticUpdateProjection.js';
 import type { DiagnosticReadState } from './diagnosticsReadState.js';
 
+export const maximumDiagnosticEventLimit = 200;
+
 export type {
   DiagnosticReadReason,
   DiagnosticReadState,
@@ -154,14 +156,33 @@ export interface DiagnosticEventItem {
   tlsVersion?: 'TLSv1.2' | 'TLSv1.3';
 }
 
-export interface DiagnosticEventListQuery {
-  limit?: number;
-}
+export type DiagnosticEventListQuery =
+  | { limit?: number; cursor?: never }
+  | { cursor: string; limit?: never };
 
-export interface DiagnosticEventReadResult {
-  diagnosticEvents: DiagnosticEventItem[];
-  readState: DiagnosticReadState;
-}
+export type DiagnosticEventDirection =
+  | { state: 'available'; cursor: string }
+  | { state: 'end' | 'unknown' };
+
+export type DiagnosticEventReadResult =
+  | { state: 'scanning'; cursor: string }
+  | {
+      state: 'ready';
+      diagnosticEvents: DiagnosticEventItem[];
+      readState: Exclude<DiagnosticReadState, { status: 'unavailable' }>;
+      older: DiagnosticEventDirection;
+      newer: DiagnosticEventDirection;
+    }
+  | {
+      state: 'limited';
+      diagnosticEvents: [];
+      readState: { status: 'partial'; reasons: ['limitReached'] };
+    }
+  | {
+      state: 'unavailable';
+      diagnosticEvents: [];
+      readState: Extract<DiagnosticReadState, { status: 'unavailable' }>;
+    };
 
 export interface RuntimeDiagnosticSummary {
   appVersion: string;
@@ -190,5 +211,6 @@ export interface DiagnosticsApi {
   getDiagnosticSummary(): Promise<RuntimeDiagnosticSummary>;
   listDiagnosticEvents(
     query?: DiagnosticEventListQuery,
+    signal?: AbortSignal,
   ): Promise<DiagnosticEventReadResult>;
 }

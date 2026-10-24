@@ -8,13 +8,13 @@ export type DiagnosticReadState =
   | Readonly<{ status: 'partial'; reasons: readonly DiagnosticReadIssue[] }>
   | Readonly<{ status: 'unavailable'; reasons: readonly ['notConfigured'] | readonly ['sourceUnavailable'] }>;
 
-export const completeDiagnosticReadState: DiagnosticReadState = Object.freeze({
+export const completeDiagnosticReadState: Extract<DiagnosticReadState, { status: 'complete' }> = Object.freeze({
   status: 'complete', reasons: Object.freeze([] as const),
 });
-export const unavailableDiagnosticReadState: DiagnosticReadState = Object.freeze({
+export const unavailableDiagnosticReadState: Extract<DiagnosticReadState, { status: 'unavailable' }> = Object.freeze({
   status: 'unavailable', reasons: Object.freeze(['sourceUnavailable'] as const),
 });
-export const notConfiguredDiagnosticReadState: DiagnosticReadState = Object.freeze({
+export const notConfiguredDiagnosticReadState: Extract<DiagnosticReadState, { status: 'unavailable' }> = Object.freeze({
   status: 'unavailable', reasons: Object.freeze(['notConfigured'] as const),
 });
 

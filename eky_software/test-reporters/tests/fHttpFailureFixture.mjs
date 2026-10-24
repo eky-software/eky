@@ -34,17 +34,26 @@ export async function runFWorker(parent, name, {
     retry: 0, testTimeout: 5000, hookTimeout: 2000, includeTaskLocation: true,
   } };`, { flag: 'wx', mode: 0o600 });
   await writeFile(file, `import { join } from 'node:path';
-import { writeFileSync } from 'node:fs';
-import { test, expect, vi } from ${JSON.stringify(moduleUrl('../../node_modules/vitest/dist/index.js'))};
+import { mkdirSync, writeFileSync } from 'node:fs';
+import { test, expect, vi } from 'vitest';
 import { Hono } from ${JSON.stringify(moduleUrl('../../apps/backend/node_modules/hono/dist/index.js'))};
 import { handleUnexpectedHttpError } from ${JSON.stringify(moduleUrl('../../apps/backend/src/http/handleUnexpectedHttpError.ts'))};
 import { createOperationalLoggingMiddleware } from ${JSON.stringify(moduleUrl('../../apps/backend/src/http/operationalLogging.ts'))};
 import { listDiagnosticEvents } from ${JSON.stringify(moduleUrl('../../apps/backend/src/modules/diagnostics/application/listDiagnosticEvents.ts'))};
+import { FileSystemDiagnosticEventReader } from ${JSON.stringify(moduleUrl('../../apps/backend/src/modules/diagnostics/infrastructure/fileSystemDiagnosticEventReader.ts'))};
 import { JsonLineDesktopOperationalLogger } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/observability/infrastructure/jsonLineDesktopOperationalLogger.ts'))};
 import { IncidentIndexDesktopLogFailureSink } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/observability/infrastructure/incidentIndexDesktopLogFailureSink.ts'))};
 import { createDesktopOperationalEvent } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/observability/createDesktopOperationalEvent.ts'))};
 import { createRunnerFailureSink } from ${JSON.stringify(moduleUrl('../runnerFailureEvidence.mjs'))};
 import { createHttpRequestFailureCapture } from ${JSON.stringify(moduleUrl('../httpRequestFailureCapture.mjs'))};
+
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, open: async (...args) => {
+    if (${mode === 'diagnostic-read'}) throw createOriginalFailure();
+    return actual.open(...args);
+  } };
+});
 
 function createOriginalFailure() {
   return new Error(${JSON.stringify(F_ORIGINAL_MARKER)}, {
@@ -83,11 +92,17 @@ test(${JSON.stringify(TEST_NAME)}, { fails: ${mode === 'expected-failure'} }, as
       return context.json({ failureObserved: failureSink.failureObserved });
     }
     if (${mode === 'diagnostic-read'}) {
-      const result = await listDiagnosticEvents({ actorContext: {
-        actorId: 'synthetic-actor', authenticationMode: 'local', companyId: 'synthetic-company',
-        permissions: ['viewDiagnostics'],
-      } }, { async listRecentDiagnosticEvents() { throw original; } }, selected);
-      return context.json(result);
+      const logsRoot = join(process.env.TMPDIR, 'synthetic-diagnostic-source');
+      mkdirSync(join(logsRoot, 'backend'), { recursive: true });
+      writeFileSync(join(logsRoot, 'backend', 'backend-info-2026-10-001.jsonl'), '{}\\n');
+      const reader = new FileSystemDiagnosticEventReader(logsRoot, selected);
+      try {
+        const result = await listDiagnosticEvents({ actorContext: {
+          actorId: 'synthetic-actor', authenticationMode: 'local', companyId: 'synthetic-company',
+          permissions: ['viewDiagnostics'],
+        } }, reader, selected);
+        return context.json(result);
+      } finally { await reader.close(); }
     }
     if (${mode === 'success'}) return context.json({ ok: true });
     throw original;
@@ -105,7 +120,7 @@ test(${JSON.stringify(TEST_NAME)}, { fails: ${mode === 'expected-failure'} }, as
   if (${mode === 'diagnostic-read'}) {
     expect(response.status).toBe(200);
     const body = await response.json();
-    expect(body).toEqual({ diagnosticEvents: [], readState: { status: 'unavailable', reasons: ['sourceUnavailable'] } });
+    expect(body).toEqual({ state: 'unavailable', diagnosticEvents: [], readState: { status: 'unavailable', reasons: ['sourceUnavailable'] } });
     expect(order).toEqual(${JSON.stringify(observe ? ['original'] : [])});
     expect(write).not.toHaveBeenCalled();
     expect(body.readState.status, 'H4_EXPECTED_COMPLETE_READ').toBe('complete');

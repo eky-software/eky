@@ -1,8 +1,94 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createEkyApiClient, EkyApiError } from '../index.js';
+import type { DiagnosticEventListQuery } from './diagnosticsTypes.js';
 
-const completeReadState = { status: 'complete', reasons: [] } as const;
+const readyPageFields = {
+  state: 'ready',
+  readState: { status: 'complete', reasons: [] },
+  older: { state: 'end' },
+  newer: { state: 'end' },
+} as const;
+
+const browseCursor = '0123456789abcdefghijklmnopqrst_-';
+
+describe('diagnostic browsing requests', () => {
+  it.each([
+    [undefined, ''], [{}, ''], [{ limit: 1 }, '?limit=1'],
+    [{ limit: 200 }, '?limit=200'], [{ cursor: browseCursor }, `?cursor=${browseCursor}`],
+  ] as const)('serializes only the selected query %#', async (query, suffix) => {
+    const response = { state: 'scanning', cursor: browseCursor };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(response));
+    const client = createEkyApiClient({ baseUrl: '', fetch });
+    await expect(client.listDiagnosticEvents(query)).resolves.toEqual(response);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(`/diagnostics/events${suffix}`, {
+      headers: { Accept: 'application/json' },
+    });
+  });
+
+  it.each([
+    null, [], 'limit=1', 1, { limit: 0 }, { limit: -1 }, { limit: 201 },
+    { limit: 1.5 }, { limit: Number.NaN }, { limit: Number.POSITIVE_INFINITY },
+    { limit: '10' }, { limit: null }, { limit: [1] },
+    { cursor: browseCursor, limit: 1 }, { cursor: '' }, { cursor: null },
+    { cursor: 1 }, { cursor: [] }, { cursor: {} },
+    { cursor: 'a'.repeat(31) }, { cursor: 'a'.repeat(33) },
+    { cursor: `${browseCursor}\n` }, { cursor: `${'a'.repeat(31)}+` },
+    { cursor: `${'a'.repeat(31)}/` }, { cursor: `${'a'.repeat(31)}=` },
+    { cursor: `${'a'.repeat(31)}&` }, { cursor: `${'a'.repeat(31)} ` },
+    { unknown: true }, { limit: 1, path: '/synthetic/private' },
+    { cursor: browseCursor, companyId: 'synthetic-company' },
+  ].map(query => ({ query })))('rejects malformed or combined queries before fetch %#', async ({ query }) => {
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const client = createEkyApiClient({ baseUrl: '', fetch });
+    await expect(client.listDiagnosticEvents(query as DiagnosticEventListQuery)).rejects.toThrow('Invalid diagnostics query.');
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('passes the caller signal without serializing it or fetching another step', async () => {
+    const controller = new AbortController();
+    const response = { state: 'scanning', cursor: browseCursor };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(jsonResponse(response));
+    const client = createEkyApiClient({ baseUrl: '', fetch });
+    await expect(client.listDiagnosticEvents({ cursor: browseCursor }, controller.signal)).resolves.toEqual(response);
+    expect(fetch).toHaveBeenCalledExactlyOnceWith(`/diagnostics/events?cursor=${browseCursor}`, {
+      signal: controller.signal, headers: { Accept: 'application/json' },
+    });
+  });
+
+  it('propagates cancellation without wrapping it or retrying', async () => {
+    const controller = new AbortController();
+    const aborted = new DOMException('Synthetic cancellation.', 'AbortError');
+    const fetch = vi.fn<typeof globalThis.fetch>().mockImplementation(async (_input, init) => {
+      expect(init?.signal).toBe(controller.signal);
+      return new Promise<Response>((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(aborted), { once: true });
+      });
+    });
+    const client = createEkyApiClient({ baseUrl: '', fetch });
+    const request = client.listDiagnosticEvents({}, controller.signal);
+    const rejection = expect(request).rejects.toBe(aborted);
+    controller.abort();
+    await rejection;
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([
+    [409, 'diagnostic_browse_stale'], [429, 'diagnostic_browse_busy'],
+  ])('preserves HTTP %s through the normal API error without retrying', async (status, code) => {
+    const responseBody = { error: 'Diagnostic browsing is unavailable.', code };
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(new Response(JSON.stringify(responseBody), {
+      status: status as number, headers: { 'Content-Type': 'application/json' },
+    }));
+    const client = createEkyApiClient({ baseUrl: '', fetch });
+    const request = client.listDiagnosticEvents({ cursor: browseCursor });
+    await expect(request).rejects.toBeInstanceOf(EkyApiError);
+    await expect(request).rejects.toMatchObject({
+      message: responseBody.error, status, responseBody,
+    });
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe('diagnostics API client', () => {
   it.each([
@@ -16,9 +102,9 @@ describe('diagnostics API client', () => {
   ])('reads the closed $eventName projection', async payload => {
     const event = { category: 'invoicePdfArchive', id: 'synthetic-archive', occurredAt: '2026-10-22T10:00:00.000Z', ...payload };
     const read = (value: unknown) => createEkyApiClient({
-      baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [value], readState: completeReadState }),
+      baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [value], ...readyPageFields }),
     }).listDiagnosticEvents();
-    await expect(read(event)).resolves.toEqual({ diagnosticEvents: [event], readState: completeReadState });
+    await expect(read(event)).resolves.toEqual({ diagnosticEvents: [event], ...readyPageFields });
     for (const change of [
       { category: 'smtp' }, { component: event.component === 'backend' ? 'desktop' : 'backend' },
       { level: 'error' }, { outcome: 'unknown' }, { eventName: 'invoicePdfArchive.unknown' },
@@ -39,7 +125,7 @@ describe('diagnostics API client', () => {
     }
     if (payload.eventName === 'invoicePdfArchive.configurationChanged') {
       await expect(read({ ...event, stage: 'disabled' })).resolves.toEqual({
-        diagnosticEvents: [{ ...event, stage: 'disabled' }], readState: completeReadState,
+        diagnosticEvents: [{ ...event, stage: 'disabled' }], ...readyPageFields,
       });
       await expect(read({ ...event, stage: 'privateDirectory' })).rejects.toBeInstanceOf(EkyApiError);
     }
@@ -54,8 +140,8 @@ describe('diagnostics API client', () => {
         level: 'error', occurredAt: '2026-10-09T10:00:00.000Z', outcome: 'failure',
         retryable: false, sideEffectState: 'unknown', stage: 'import',
       };
-      const client = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [event], readState: completeReadState }) });
-      await expect(client.listDiagnosticEvents()).resolves.toEqual({ diagnosticEvents: [event], readState: completeReadState });
+      const client = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({ diagnosticEvents: [event], ...readyPageFields }) });
+      await expect(client.listDiagnosticEvents()).resolves.toEqual({ diagnosticEvents: [event], ...readyPageFields });
       for (const errorCode of [
         'unknown', 'PROFILE_SCHEMA_UNSUPPORTED', 'MIGRATION_HISTORY_INVALID',
         'PROFILE_INSPECTION_LIMIT_EXCEEDED', 'PROFILE_INSPECTION_TIMEOUT',
@@ -67,10 +153,10 @@ describe('diagnostics API client', () => {
       ]) {
         const knownCause = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
           diagnosticEvents: [{ ...event, errorCode }],
-          readState: completeReadState,
+          ...readyPageFields,
         }) });
         await expect(knownCause.listDiagnosticEvents()).resolves.toEqual({
-          diagnosticEvents: [{ ...event, errorCode }], readState: completeReadState,
+          diagnosticEvents: [{ ...event, errorCode }], ...readyPageFields,
         });
       }
       for (const change of [
@@ -93,17 +179,17 @@ describe('diagnostics API client', () => {
       ]) {
         const invalid = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
           diagnosticEvents: [{ ...event, ...change }],
-          readState: completeReadState,
+          ...readyPageFields,
         }) });
         await expect(invalid.listDiagnosticEvents()).rejects.toBeInstanceOf(EkyApiError);
       }
       const unknown = createEkyApiClient({ baseUrl: '', fetch: async () => jsonResponse({
         diagnosticEvents: [{ ...event, errorCode: 'unknown', stage: 'replace' }],
-        readState: completeReadState,
+        ...readyPageFields,
       }) });
       await expect(unknown.listDiagnosticEvents()).resolves.toEqual({
         diagnosticEvents: [{ ...event, errorCode: 'unknown', stage: 'replace' }],
-        readState: completeReadState,
+        ...readyPageFields,
       });
     },
   );
@@ -148,7 +234,7 @@ describe('diagnostics API client', () => {
       fetch: async (input) => {
         requests.push(input.toString());
         return jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               appVersion: '0.1.0-alpha.1',
@@ -184,7 +270,7 @@ describe('diagnostics API client', () => {
         retryable: true,
         stage: 'tlsHandshake',
       })],
-      readState: completeReadState,
+      ...readyPageFields,
     });
     expect(requests).toEqual([
       'http://127.0.0.1:3000/diagnostics/events?limit=20',
@@ -207,7 +293,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'recoveryPoint',
@@ -233,7 +319,7 @@ describe('diagnostics API client', () => {
         eventName: 'recoveryPoint.failed',
         recoveryPointKind: 'daily',
       })],
-      readState: completeReadState,
+      ...readyPageFields,
     });
   });
 
@@ -251,7 +337,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: eventNames.map((eventName, index) => {
             const failed =
               eventName === 'backup.failed' ||
@@ -291,7 +377,7 @@ describe('diagnostics API client', () => {
       diagnosticEvents: eventNames.map((eventName) =>
         expect.objectContaining({ eventName }),
       ),
-      readState: completeReadState,
+      ...readyPageFields,
     });
   });
 
@@ -305,7 +391,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -335,7 +421,7 @@ describe('diagnostics API client', () => {
         smtpProfile: 'dnaSmtp',
         tlsVersion: 'TLSv1.3',
       })],
-      readState: completeReadState,
+      ...readyPageFields,
     });
   });
 
@@ -350,7 +436,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -387,7 +473,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: eventNames.map((eventName, index) => ({
             category: diagnosticCategory(eventName),
             component: eventName === 'desktop.started' ? 'desktop' : 'backend',
@@ -412,7 +498,7 @@ describe('diagnostics API client', () => {
       diagnosticEvents: eventNames.map((eventName) =>
         expect.objectContaining({ eventName }),
       ),
-      readState: completeReadState,
+      ...readyPageFields,
     });
   });
 
@@ -421,7 +507,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -455,7 +541,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'smtp',
@@ -482,7 +568,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             'operationalLogFolder.opened',
             'operationalLogFolder.openFailed',
@@ -516,7 +602,9 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    expect((await client.listDiagnosticEvents()).diagnosticEvents).toHaveLength(3);
+    expect(await client.listDiagnosticEvents()).toMatchObject({
+      state: 'ready', diagnosticEvents: [expect.any(Object), expect.any(Object), expect.any(Object)],
+    });
   });
 
   it('accepts the classified desktop permission request event', async () => {
@@ -524,7 +612,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'security',
@@ -540,7 +628,9 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    expect((await client.listDiagnosticEvents()).diagnosticEvents).toHaveLength(1);
+    expect(await client.listDiagnosticEvents()).toMatchObject({
+      state: 'ready', diagnosticEvents: [expect.any(Object)],
+    });
   });
 
   it('accepts the safe desktop bootstrap failure projection', async () => {
@@ -548,7 +638,7 @@ describe('diagnostics API client', () => {
       baseUrl: '',
       fetch: async () =>
         jsonResponse({
-          readState: completeReadState,
+          ...readyPageFields,
           diagnosticEvents: [
             {
               category: 'runtime',
@@ -564,7 +654,9 @@ describe('diagnostics API client', () => {
         }),
     });
 
-    expect((await client.listDiagnosticEvents()).diagnosticEvents).toHaveLength(1);
+    expect(await client.listDiagnosticEvents()).toMatchObject({
+      state: 'ready', diagnosticEvents: [expect.any(Object)],
+    });
   });
 });
 

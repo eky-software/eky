@@ -3,6 +3,7 @@ import type {
   DiagnosticEventLevel,
   DiagnosticEventOutcome,
   DiagnosticReadState,
+  DiagnosticEventReadResult,
   RuntimeDiagnosticSummary,
 } from '@eky/api-client';
 import { useState } from 'react';
@@ -29,6 +30,13 @@ interface DiagnosticsPageViewProps {
   openOperationalLogFolder?: OpenOperationalLogFolder;
   summary: RuntimeDiagnosticSummary | null;
   summaryErrorMessage: string | null;
+  page?: Extract<DiagnosticEventReadResult, { state: 'ready' }> | null;
+  isStale?: boolean;
+  canRetry?: boolean;
+  loadOlder?: () => void;
+  loadNewer?: () => void;
+  loadNewest?: () => void;
+  retry?: () => void;
 }
 
 export function DiagnosticsPageView({
@@ -41,6 +49,13 @@ export function DiagnosticsPageView({
   openOperationalLogFolder,
   summary,
   summaryErrorMessage,
+  page,
+  isStale = false,
+  canRetry = false,
+  loadOlder,
+  loadNewer,
+  loadNewest,
+  retry,
 }: DiagnosticsPageViewProps): React.JSX.Element {
   const [desktopErrorMessage, setDesktopErrorMessage] = useState<
     string | null
@@ -156,12 +171,27 @@ export function DiagnosticsPageView({
       {!isSummaryLoading && summary !== null ? (
         <RuntimeDiagnosticSummaryView summary={summary} />
       ) : null}
-      {!isLoading && readState !== null ? <DiagnosticReadNotice readState={readState} className={styles.message!} /> : null}
+      {loadNewest === undefined ? null : (
+        <nav className={styles.browseToolbar} aria-label={uiText.diagnostics.browseLabel}>
+          <div className={styles.actions}>
+            <button type="button" disabled={isLoading} onClick={loadNewest}>{uiText.diagnostics.browseNewest}</button>
+            <button type="button" disabled={isLoading || isStale || page?.newer.state !== 'available'} onClick={loadNewer}>{uiText.diagnostics.browseNewer}</button>
+            <button type="button" disabled={isLoading || isStale || page?.older.state !== 'available'} onClick={loadOlder}>{uiText.diagnostics.browseOlder}</button>
+            {canRetry ? <button type="button" disabled={isLoading} onClick={retry}>{uiText.diagnostics.browseRetry}</button> : null}
+          </div>
+          {page == null ? null : <p className={styles.range}>
+            {uiText.diagnostics.browseCount(events.length)}
+            {events[0] === undefined ? null : <>: <time dateTime={events.at(-1)!.occurredAt}>{formatTimestamp(events.at(-1)!.occurredAt)}</time>
+              {' - '}<time dateTime={events[0].occurredAt}>{formatTimestamp(events[0].occurredAt)}</time></>}
+          </p>}
+        </nav>
+      )}
+      {readState !== null ? <DiagnosticReadNotice readState={readState} className={styles.message!} /> : null}
       {!isLoading && errorMessage === null && readState?.status === 'complete' && events.length === 0 ? (
-        <p className={styles.message}>{uiText.diagnostics.empty}</p>
+        <p className={styles.message}>{page?.older.state === 'available' || page?.newer.state === 'available' ? uiText.diagnostics.browseEmptyPage : uiText.diagnostics.empty}</p>
       ) : null}
-      {!isLoading && errorMessage === null && events.length > 0 ? (
-        <div className={styles.tableFrame}>
+      {events.length > 0 ? (
+        <div className={styles.tableFrame} aria-busy={isLoading}>
           <table className={styles.table}>
             <thead>
               <tr>

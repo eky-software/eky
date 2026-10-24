@@ -41,6 +41,14 @@ export async function writePackagedDiagnosticFixture(options: {
   for (const event of events) {
     options.logger.write(createDesktopOperationalEvent<DesktopOperationalEventInput>(event, options.identity));
   }
+  // Older informational rows force real HTTP and renderer pagination without
+  // changing the existing incidents or required newest-page fixtures.
+  for (let index = 0; index < 220; index++) {
+    options.logger.write(createDesktopOperationalEvent({ eventName: 'desktop.started' }, {
+      ...options.identity,
+      timestamp: new Date(Date.now() - 60_000 - index * 1_000).toISOString(),
+    }));
+  }
 
   // Main does not import backend infrastructure. A fixed backend-source
   // fixture exercises the packaged reader; the system test uses its writer.

@@ -10,7 +10,7 @@ import { tmpdir } from 'node:os';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createBackendOperationalEvent } from '../../../observability/createOperationalEvent.js';
-import { FileSystemDiagnosticEventReader } from './fileSystemDiagnosticEventReader.js';
+import { FileSystemDiagnosticEventReader } from './diagnosticEventRead.fixture.js';
 import { FileSystemSupportBundleDiagnosticEventReader } from './fileSystemSupportBundleDiagnosticEventReader.js';
 import { FileSystemSupportBundleIncidentSummaryReader } from './fileSystemSupportBundleIncidentSummaryReader.js';
 

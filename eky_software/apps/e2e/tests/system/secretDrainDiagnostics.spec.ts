@@ -1,12 +1,12 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { gunzipSync } from 'node:zlib';
 
-import { createDiagnosticsApi } from '../../../../packages/api-client/src/diagnostics/diagnosticsClient.js';
 import { createDesktopOperationalEvent } from '../../../desktop/src/observability/createDesktopOperationalEvent.js';
 import { DesktopIncidentIndexingOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopIncidentIndex.js';
 import { JsonLineDesktopOperationalLogger } from '../../../desktop/src/observability/infrastructure/jsonLineDesktopOperationalLogger.js';
 import { createSupportBundleArchive } from '../../../desktop/src/supportBundle/supportBundleArchive.js';
 import { readSupportBundleBackendData } from '../../../desktop/src/supportBundle/supportBundleBackendData.js';
+import { readDiagnosticPage } from '../../src/assertions/readDiagnosticPage.js';
 import { expect, test } from '../../src/fixtures/isolatedBackendTest.js';
 
 // The desktop composition test proves the real drain observer emits this event.
@@ -40,15 +40,7 @@ test('OBS-SECRET-DRAIN-001 @critical @security @recovery retains the first drain
   }));
 
   async function readAndVerify() {
-    const api = createDiagnosticsApi(async input => {
-      const url = new URL(String(input));
-      expect(url.origin).toBe(e2eBackend.backend.backendOrigin);
-      const response = await e2eBackend.api.get(`${url.pathname}${url.search}`);
-      return new Response(await response.text(), {
-        status: response.status(), headers: { 'content-type': 'application/json' },
-      });
-    }, e2eBackend.backend.backendOrigin);
-    const { diagnosticEvents: events } = await api.listDiagnosticEvents({ limit: 200 });
+    const { diagnosticEvents: events } = await readDiagnosticPage(e2eBackend.api, { limit: 200 });
     expect(events.filter(event => event.eventName === 'desktop.shutdownFailed'))
       .toEqual(expect.arrayContaining(expectedEvents));
     expect(events.filter(event => event.eventName === 'desktop.shutdownFailed')).toHaveLength(4);

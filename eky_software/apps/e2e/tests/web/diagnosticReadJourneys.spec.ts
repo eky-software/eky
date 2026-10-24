@@ -2,6 +2,7 @@ import { appendFile, mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import type { Page } from '@playwright/test';
 
+import { readDiagnosticPage } from '../../src/assertions/readDiagnosticPage.js';
 import { expect, test } from '../../src/fixtures/isolatedWebTest.js';
 import { mountDiagnosticsReadProbe } from './diagnosticsReadMount.js';
 
@@ -16,9 +17,9 @@ test('OBS-DIAGNOSTIC-READ-UI-001 @critical @fault shows valid rows and partial c
       runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
       level: 'error', outcome: 'failure', errorCode: 'SYNTHETIC_H4_READ_FAILED',
     })}\n{synthetic malformed private line\n`);
-  const response = await e2eWeb.api.get('/diagnostics/events');
-  expect(response.status()).toBe(200);
-  expect(await response.json()).toMatchObject({ readState: { status: 'partial', reasons: ['invalidEntries'] } });
+  expect(await readDiagnosticPage(e2eWeb.api)).toMatchObject({
+    state: 'ready', readState: { status: 'partial', reasons: ['invalidEntries'] },
+  });
   await openDiagnostics(e2eWeb.page);
   await expect(e2eWeb.page.getByText('Diagnostiikkatiedot ovat osittaiset.', { exact: false })).toBeVisible();
   await expect(e2eWeb.page.getByText('SYNTHETIC_H4_READ_FAILED', { exact: true })).toBeVisible();
@@ -43,9 +44,9 @@ for (const [id, reason, message] of [
   ['004', 'notConfigured', 'Tässä ajotilassa ei ole määritetty diagnostiikan lokilähdettä.'],
 ] as const) {
   test(`OBS-DIAGNOSTIC-READ-UI-${id} @critical @fault distinguishes ${reason} from empty history at the HTTP/UI boundary`, async ({ e2eWeb }) => {
-    await e2eWeb.page.route('**/diagnostics/events', route => route.fulfill({
+    await e2eWeb.page.route(/\/diagnostics\/events(?:\?.*)?$/, route => route.fulfill({
       status: 200, contentType: 'application/json', body: JSON.stringify({
-        diagnosticEvents: [], readState: { status: 'unavailable', reasons: [reason] },
+        state: 'unavailable', diagnosticEvents: [], readState: { status: 'unavailable', reasons: [reason] },
       }),
     }));
     await openDiagnostics(e2eWeb.page);
@@ -113,3 +114,14 @@ async function openDiagnostics(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Diagnostiikka', exact: true }).click();
   await expect(page.getByRole('main').getByRole('heading', { name: 'Diagnostiikka', exact: true })).toBeVisible();
 }
+
+test('OBS-DIAGNOSTIC-READ-UI-008 @critical starts only the current StrictMode effect reads', async ({ e2eWeb }) => {
+  const probe = await mountDiagnosticsReadProbe(e2eWeb.page, true);
+  try {
+    expect(await probe.callCount()).toBe(2);
+    await probe.release(0);
+    await probe.release(1);
+    await expect(probe.view.getByRole('table')).toBeVisible();
+    await expect(probe.view.getByRole('alert')).toHaveCount(0);
+  } finally { await probe.close(); }
+});

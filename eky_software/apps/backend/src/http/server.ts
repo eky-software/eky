@@ -94,11 +94,16 @@ export async function startServer(
   }
 
   let assertEmailSecretOperationsSettled: (() => void) | undefined;
+  let closeDiagnosticReader: (() => Promise<void>) | undefined;
   const app = await createApp({
     ...appOptions,
     registerCompanyEmailSecretShutdown(assertSettled) {
       assertEmailSecretOperationsSettled = assertSettled;
       appOptions.registerCompanyEmailSecretShutdown?.(assertSettled);
+    },
+    registerDiagnosticShutdown(close) {
+      closeDiagnosticReader = close;
+      appOptions.registerDiagnosticShutdown?.(close);
     },
   });
 
@@ -131,11 +136,18 @@ export async function startServer(
               ),
             );
             closing = true;
-            const closed = closeServer(server);
+            const closed = Promise.allSettled([
+              closeServer(server),
+              Promise.resolve().then(() => {
+                if (closeDiagnosticReader === undefined) throw new Error('DIAGNOSTIC_READER_SHUTDOWN_UNAVAILABLE');
+                return closeDiagnosticReader();
+              }),
+            ]);
             // HTTP close does not release connections that have sent no request.
             // Accepted requests keep the normal graceful-drain behavior.
             for (const socket of unusedConnections) socket.destroy();
-            await closed;
+            const results = await closed;
+            for (const result of results) if (result.status === 'rejected') throw result.reason;
             if (assertEmailSecretOperationsSettled === undefined) {
               throw new Error('COMPANY_EMAIL_SECRET_SHUTDOWN_UNAVAILABLE');
             }

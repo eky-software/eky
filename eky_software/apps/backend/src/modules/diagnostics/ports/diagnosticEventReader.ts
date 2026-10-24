@@ -1,6 +1,7 @@
-import type { DiagnosticEventReadResult } from '../domain/diagnosticEventReadResult.js';
+import type { DiagnosticBrowseQuery, DiagnosticEventPage } from '../domain/diagnosticEventPage.js';
 
 export interface DiagnosticEventReader {
-  listRecentDiagnosticEvents(limit: number): Promise<DiagnosticEventReadResult>;
+  browseDiagnosticEvents(query: DiagnosticBrowseQuery, actor: string): Promise<DiagnosticEventPage>;
+  close(): Promise<void>;
 }
 

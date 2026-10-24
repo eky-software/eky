@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { createBackendOperationalEvent } from '../../../backend/src/observability/createOperationalEvent.js';
+import { readDiagnosticPage } from '../../src/assertions/readDiagnosticPage.js';
 import { readE2eSqliteRows } from '../../src/assertions/readE2eSqliteRows.js';
 import {
   createSyntheticCompanySettingsInput,
@@ -139,11 +140,7 @@ test('INV-DRAFT-DELETE-RESTART-001 @critical @recovery keeps a deleted autosaved
     ),
   ).toEqual([{ count: 0 }]);
 
-  const diagnosticsResponse = await restarted.api.get(
-    '/diagnostics/events?limit=200',
-  );
-  expect(diagnosticsResponse.status()).toBe(200);
-  const diagnostics = JSON.stringify(await diagnosticsResponse.json());
+  const diagnostics = JSON.stringify(await readDiagnosticPage(restarted.api, { limit: 200 }));
   expect(diagnostics).not.toContain(draftId);
   expect(diagnostics).not.toContain('invoiceDraft.deleteFailed');
 });
@@ -180,11 +177,7 @@ test('OBS-JSONL-001 @critical @fault @recovery ignores a truncated final JSONL r
     { encoding: 'utf8', mode: 0o600 },
   );
 
-  const diagnosticsResponse = await e2eBackend.api.get(
-    '/diagnostics/events?limit=200',
-  );
-  expect(diagnosticsResponse.status()).toBe(200);
-  const diagnosticsText = await diagnosticsResponse.text();
+  const diagnosticsText = JSON.stringify(await readDiagnosticPage(e2eBackend.api, { limit: 200 }));
   expect(diagnosticsText).toContain('E2E_SYNTHETIC_LOG_FAILURE');
   expect(diagnosticsText).not.toContain('truncated');
 

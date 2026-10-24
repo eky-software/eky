@@ -163,8 +163,8 @@ Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
 ### R030-08: Diagnostiikan historian selaus
 
 **Päätös 2026-09-22:** vanhempien tapahtumien selaus kuuluu `0.3.0`:aan.
-Tehtävä on yhteisessä julkaisulistassa tunnuksella `R030-08`; toteutus
-ja muuttuva API-sopimus ovat vielä suunnittelematta.
+Tehtävä on yhteisessä julkaisulistassa tunnuksella `R030-08`; hyväksytyn
+jatkohaku-/API-sopimuksen toteutus ja todennus ovat M4.3:ssa kesken.
 
 **Omistajan täsmennys 23.10.2026:** lajittelu ja rajattu sivutus tehdään
 backendissä, ja käyttöliittymä pyytää vain kulloisenkin erän. Koko historiaa
@@ -172,7 +172,7 @@ ei lähetetä selaimelle siellä pilkottavaksi. Tarkka jatkohaku ja sen
 työbudjetti määritellään lokilähteelle; nykyisten SQL-listojen offset-mallia
 ei kopioida sellaisenaan muuttuvien lokitiedostojen päälle.
 
-**Nykyinen raja:** `listDiagnosticEvents` palauttaa oletuksena 100
+**Hyväksytyn lähtöversion raja:** `listDiagnosticEvents` palauttaa oletuksena 100
 tapahtumaa, hyväksyy enintään 200 eikä tarjoa jatkohakua. Tiedostolukijalla
 on lisäksi lähdetiedosto- ja tavurajat. Nykyisen otoksen vierittäminen tai
 pelkkä suurempi `limit` ei anna pääsyä koko säilyneeseen historiaan.
@@ -204,6 +204,283 @@ pelkkä suurempi `limit` ei anna pääsyä koko säilyneeseen historiaan.
 Ei muutosta retention-aikoihin, tukipaketin aikarajaan, salaisuuksien
 poissulkuun tai business-auditiin. Aika-/virhesuodattimia tai automaattista
 päivitystä ei hyväksytä tämän selaustoiveen sivutyönä.
+
+#### M4.3: Suunnittelu ja toteutusjärjestys
+
+**Valmistelu 24.10.2026:** lähdekartoitus tehty hyväksytystä mainista
+`7d47bc9e1cf3482ae165c07f77a4919e4a5a29d1`. Omistaja hyväksyi jatkon
+Goalina ja hyväksyi myöhemmin jatkohakusopimuksen toteutuksen ja testit.
+Alla oleva sopimus ohjaa nyt tuotantototeutusta. Rajattu esikoe ei yksin
+ole toteutuksen, maksimikuorman tai integraation hyväksyntä.
+Nykytila ja edeltävän M4.2:n hyväksyntä ovat
+[M1:n alussa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+**Esikokeen tila:** nykyisen lukijan vanhaa aineistoa ohittava lukuikkuna
+toistettiin. Nykyistä projektoria käyttävät lukumalli ja jatkotilakoe
+läpäisivät 33 synteettistä tapausta sekä tiukan tyyppitarkistuksen. Näyttö
+kattaa myös erä-/kokonaistyön rajat, idempotentin jatkon, samanaikaisuuden,
+vanhenemisen, molemmat selaussuunnat ja viivästetyn todellisen tiedostoluvun
+sulun. Mukana on tutkimustesti, joka osoittaa, ettei luettelon tallennus
+kiinnitä sen hetkisiä sisältötavuja. Rajattu riippumaton sopimuskatselmus
+tarkensi navigointitokenien säilymisen ja HTTP:stä erillisen I/O-sulkuvastuun;
+niihin ei jäänyt sopimustason estettä. Alla oleva konkreettinen sopimus
+on hyväksytty toteutettavaksi. Koe ei todista suurimman
+aineiston suorituskykyä, koko HTTP-/UI-ketjua tai tuotantosulun kytkentää.
+Reader/application/HTTP, nimetty sulkukytkentä, strict-client ja web ovat
+työpuussa pysyvine regressioineen. Oikea HTTP-/selainketju ja katkenneen
+pyynnön tiedostoluvun sulku on todennettu. Alkuperäinen lukuvirhe löytyy
+purettavasta salatusta testipaketista nykyisellä keräysketjulla.
+Paketoitu Windows-ketju, loppukatselmus ja normaalit PR/main-portit ovat
+vielä kesken. M4.3 ei ole vielä hyväksytty.
+
+**Hyväksytty käyttötapa:** näkymä avautuu uusimpiin tapahtumiin, 100 tapahtumaa
+kerrallaan. API:n nykyinen enimmäistulos 200 säilyy. Käyttäjä siirtyy
+Vanhemmat-/Uudemmat-ohjaimilla ja aloittaa uuden selauksen Uusimmat-toiminnolla.
+Ohjaimet noudattavat nykyisten listojen saavutettavaa esitystapaa.
+Näkyvissä ovat erän aikaväli ja tapahtumamäärä; kokonaismäärää tai
+viimeistä sivunumeroa ei arvata. Uusi tapahtuma ei siirrä näkyvää erää.
+Haun aikana viimeinen onnistunut erä säilyy näkyvissä latauspalautteen kanssa.
+Epäonnistunut haku säilyttää selauskohdan ja tarjoaa saman haun hallitun
+uudelleenyrityksen. Vanhentunut selaus ilmoitetaan ja uusi aloitetaan
+käyttäjän valinnalla. Yhteenvedon nykyinen erillinen lataus ja virhetila säilyvät.
+
+| Vastuu | Hyväksytystä lähtökoodista varmennettu muutoskohta |
+| --- | --- |
+| Reader ja lähdeluku | `fileSystemDiagnosticEventReader.ts` valitsee uusimmat projektioista. `diagnosticLogSources.ts` rajaa listan 32 lähteeseen, ja `boundedJsonlSourceReader.ts` lukee kustakin enintään 256 KiB:n tailin. Vanhemmat tiedostot ja saman tiedoston vanhemmat tavut tarvitsevat jatkettavan lukutavan. Nykyinen lähdeluku on synkroninen; uuden työn rajaus ja backendin reagointi todennetaan. |
+| Application/HTTP | `diagnosticEventReader.ts`, `listDiagnosticEvents.ts` ja `diagnosticRoutes.ts` tuntevat vain `limit`-syötteen. Palvelu tarkistaa `viewDiagnostics`-oikeuden. Jatkohaku ja sen virhemuodot lisätään näihin nykyisiin vastuisiin. |
+| API-client | `diagnosticsTypes.ts`, `diagnosticsClient.ts` ja `diagnosticsResponse.ts` omistavat tyypit, queryn ja strict-validoinnin. Nykyinen DTO sallii vain `diagnosticEvents`- ja `readState`-avaimet. Kutsujat ja parseri päivitetään yhdessä. |
+| Web | `useDiagnostics.ts` tekee yhden listahaun; `DiagnosticsPageView.tsx` ei tarjoa selausta. Hookin nykyinen vanhojen sessionvastausten torjunta säilyy, ja saman session päällekkäiset sivuhaut sidotaan omiin latausyrityksiinsä. Näkymä ja suomenkieliset tekstit käyttävät uutta sivutilaa. |
+| Todellinen kytkentä | `diagnosticsComposition.ts` antaa lokijuuren ja yksityisen testihavaitsijan. Nykyinen `GET /diagnostics/events` on desktopin sallittu luku; privileged-IPC:tä ei tarvita selaamiseen. Paketoidun `packagedSmoke.ts`:n tapahtumavastausvalidaattori ja UI-polku päivitetään samaan sopimukseen. |
+
+Lähdehaku ja globaali aikajärjestys ratkaistaan ennen pelkän cursor-kentän
+lisäämistä. Nykyinen vertailu on `occurredAt` ja sitten projektion `id`,
+uusimmasta vanhimpaan. Tunnisteen tasajärjestys määritellään eksplisiittisesti
+niin, että se on sama kaikissa lukupaloissa. Tiedoston nimi, segmentti tai
+rivin sijainti eivät todista tapahtumien aikajärjestystä. Pelkkä
+aikaleimarajaus nykyisen tailin päällä ei kata säilynyttä historiaa.
+
+**Ensimmäisen lukumallikokeen valmistumisehdot:**
+
+- Usean tiedoston ja kaikkien kolmen lokihakemiston historia tavoitetaan
+  myös yli nykyisten 32 tiedoston ja 256 KiB:n tail-rajojen. Jokainen pyyntö
+  tekee rajatun työn; koko historiaa ei kerätä kasvavaksi muistitaulukoksi.
+- Kokeen tulos määrittää luetut tavut, tiedosto-/hakemistotyön, rivin
+  käsittelyn, muistissa säilyvät ehdokkaat ja keskeneräisen työn rajat.
+  Myös hakemiston läpikäynti ja kaikki välitilat kuuluvat arvioon.
+  Esikoe ei itsessään muuta nykyisiä turvallisuus- tai aikarajoja.
+- Tapahtumat voivat olla fyysisesti eri aikajärjestyksessä. Sivurajan samat
+  aikaleimat, UTF-8- ja rivirajat, deduplikointi sekä ristiriitainen sama
+  tunniste testataan. Väärää tai liian pitkää riviä ei tarvita raakaprojektioon.
+- Uusi append, rotaatio, tiedoston korvaus, lyheneminen ja retention-poisto
+  erotetaan. Näkyvä erä ei vaihdu huomaamatta. Jos luotettavaa jatkoa ei
+  voi todeta, tulos on vanhentunut tai osittainen, ei varma historian loppu.
+- Valitaan pienin nykyiseen readeriin sopiva jatkotila. Mahdollinen
+  backendissä säilyvä tila rajataan määrältään ja elinajaltaan; restart,
+  peruutus ja sulku käsitellään. Jatkohaku ei jätä avoimia tiedostokahvoja
+  tai rajaamattomia hakuja. Persistoitua loki-indeksiä tai uutta yleistä
+  manageria ei hyväksytä tämän suunnitelman perusteella.
+
+##### M4.3: Jatkohakusopimuksen ehdotus
+
+**Tila:** omistajan hyväksymä jatkohakusopimus; toteutus ja testit käynnissä.
+Writerit, retention, summary ja tukipaketti eivät muutu. Reader omistaa
+alla olevan määräaikaisen tilan; pysyvää indeksiä ei rakenneta.
+
+**Algoritmi ja lähteen muuttuminen:**
+
+1. Luetteloi nykyiset kolme sallittua hakemistoa rajatusti. Kiinnitä rootin,
+   hakemistojen ja sallittujen lähteiden identiteetit sekä lähteiden pituudet.
+   Symlinkkejä ei seurata. Puuttuva valinnainen hakemisto ei yksin ole virhe.
+   Epäonnistunut tai rajaan päättynyt luettelointi ei anna täydellistä listaa.
+2. Lue valitut prefiksit kahdesti. Ensimmäinen kierros säilyttää vain
+   `limit + 1` parasta erillisen tunnisteen ehdokasta. Toinen tarkistaa sivun
+   tunnisteiden konfliktit koko aineistosta. Järjestys on numeerinen aikaleima
+   ja sitten tunnisteen UTF-16-koodiyksikköjärjestys, laskevasti. Uudemmat-haku
+   valitsee rajaa lähimmät uudemmat ehdokkaat; lopputulos esitetään samassa
+   laskevassa järjestyksessä. Koko historian taulukkoa/joukkoa ei muodosteta.
+3. Ensimmäinen kierros muodostaa prefiksikohtaisen SHA-256:n; toinen ja
+   myöhemmät kierrokset vertaavat siihen. Sivu julkaistaan vasta molempien
+   kierrosten jälkeen. Tämä on lukemalla varmennettu prefiksivalinta,
+   **ei atominen hakemistotilannekuva**. Ennen ensimmäistä luentaa samalla
+   identiteetillä muuttunut sisältö voi muodostaa alkuperäisen valinnan.
+4. Append valitun pituuden jälkeen ja uusi rotaatiotiedosto näkyvät vasta
+   Uusimmat-haussa. Valitun lähteen katoaminen, lyheneminen, korvaus tai
+   poikkeava prefiksitiiviste vanhentaa selauksen. Vanhaa lähdettä ei korvata
+   uudella eikä alkuperäistä osittaista loppuriviä täydennetä appendista.
+5. Avaa tiedosto vain yhden lukupalan ajaksi, tarkista tyyppi/identiteetti
+   myös avatusta kahvasta ja sulje ennen jatkotulosta. Lyhyt luku on virhe,
+   ei loppumerkki. Tarkista lähteiden metadata myös kierrosten lopussa ennen
+   julkaisua. Tämä ei lupaa käyttöjärjestelmätason suojaa saman käyttäjän
+   vihamieliseltä kilpailulta tai havaita luennan jälkeistä muutosta takautuvasti.
+
+**Ehdotetut resurssirajat** keskitetään Diagnosticsin omistamaan sopimukseen.
+Ne eivät muuta nykyisiä sovellus-, testi- tai CI-aikarajoja.
+
+| Raja | Ehdotus ja peruste |
+| --- | --- |
+| Tulos | Oletus 100, enintään 200; nykyinen julkinen tulosraja säilyy. |
+| Luettelointi | Enintään 4 096 merkintää, myös ohitetut nimet, ja 1 024 lähdettä. Ylitys ei anna hiljaista otosta. Normaalin retentionin lähdemäärälle jää tilaa. |
+| Valittu sisältö | Enintään 500 MiB yhteensä, nykyisen detailed-log-retentionin kokonaisbudjetti. Reader ei poista tai lyhennä aineistoa. |
+| Koko sivuhaku | Kaksi kierrosta, enintään 1 000 MiB tavuluentaa. Tyhjä/konfliktinen sivu ei aloita kolmatta kierrosta. |
+| HTTP-askel | Enintään 8 MiB, 128 enintään 64 KiB:n lukupalaa ja 64 lähteen metatietovaihetta. Ensimmäisen pyynnön luettelointi rajataan erikseen yllä. Rivipuskuri enintään 16 KiB; ylipitkä rivi ohitetaan rajatusti. |
+| Ajoitus | Asynkroninen luku luovuttaa event loopille joka palan jälkeen. 50 ms:n yhteistyöbudjetti palauttaa jatkotilan turvallisessa rajassa, ei lupaa käyttöjärjestelmä-I/O:n pakkokeskeytystä. Sivun aktiivisen työn yhteisbudjetti 30 sekuntia ja enintään 4 096 askelta; ylitys päättää haun rajattuna. |
+| Jatkotila | Enintään neljä selausta/reader, yksi aktiivinen lukuaskel ilman pyyntöjonoa. Enintään kahdeksan token-/vastausviitettä/selaus, nykyinen ja yksi edellinen valmis sivu sekä keskeneräisen sivun rajatut ehdokkaat. |
+| Muisti | Enintään 16 MiB sarjoitettavaa tilaa/selaus: metadata, puskurit, ehdokkaat, vertailuesitykset ja säilyvät vastaukset mukana. Myös olio-/merkkijonomäärät rajataan. Tämä ei ole väite V8-keon tarkasta tavumäärästä. |
+| Elinaika | Viisi minuuttia käyttämättömänä, enintään 30 minuuttia alusta. Ajastin vapauttaa tilan eikä pidä prosessia käynnissä. Kapasiteetissa vanhin ei-parhaillaan-luettava selaus saa vanhentua; aktiivista I/O:ta ei irroteta omistajastaan. |
+
+Suurimman aineiston sivu voi yhä vaatia paljon I/O:ta. Rajattu jatkotila
+ei muuta lajittelemattoman historian lajittelua indeksihaun hintaiseksi.
+Maksimikuorman suorituskykyä ei päätellä pienestä kokeesta. Budjettiin
+päättynyttä hakua ei julkaista varmana uusimpana eränä.
+Hakemiston nimiluettelointi sulkee kahvansa samalla pyynnöllä: sen oma
+4 096 merkinnän raja ja sivuhaun 30 sekunnin yhteistyöbudjetti koskevat myös
+ensimmäistä pyyntöä. Se ei lupaa 50 ms:n HTTP-vastausta. Luetteloinnin
+jälkeinen lähteiden metatietojen kiinnitys ja sisältöluenta jatkuvat pieninä
+askelina. Kaikki aika mitataan monotonisella kellolla; HTTP-jatkojen välisiä
+käyttäjän/verkon odotuksia ei lasketa aktiiviseksi työksi, mutta ne kuluttavat
+tilan elinaikaa. I/O:n aloituksen jälkeen pelkkä kelloraja ei vapauta kahvaa.
+
+**HTTP ja jatkotilan elinkaari:**
+
+- Nykyinen `GET /diagnostics/events?limit=N` aloittaa selauksen.
+  `GET /diagnostics/events?cursor=T` jatkaa tokenin nimeämää askelta/suuntaa.
+  Yhdistelmä, tuntematon/toistuva avain, tyhjä arvo ja virheellinen raja
+  hylätään. Token on 24 satunnaisen tavun base64url (32 merkkiä), ei polku,
+  rajain tai käyttöoikeus. Vastaukset ovat `Cache-Control: no-store`.
+- `viewDiagnostics` tarkistetaan ennen tilan käsittelyä jokaisella pyynnöllä.
+  Sisäinen tila sidotaan backendin vahvistaman actor-kontekstin identiteettiin
+  ja reader-instanssiin. Identiteetti ei kuulu projektion tai tokenin sisältöön;
+  toisen kontekstin token ei toimi.
+- Yksi askel muuttaa tilaa kerrallaan. Samanaikainen pyyntö saa `busy`-vastauksen
+  ilman jonotusta. Viimeisen suoritetun askeleen token palauttaa saman
+  säilytetyn vastauksen ilman uutta luentaa; vanhemmat kulutetut tokenit
+  vanhenevat. Tämä koskee **askeltokeneita**, ei sivun navigointitokeneita.
+  Replay on aiemman tuloksen toisto, ei lähteiden uusi tuoreustarkistus.
+  Kadonnut vastaus ei ohita lukupalaa. Aloitusvastauksen katoaminen
+  voi jättää yhden määräaikaisen tilan, ei jatkuvaa taustatyötä.
+- Valmiin sivun vanhempi/uudempi-tokenit nimeävät readerin omistamat rajaimet.
+  Rajaimet ovat ennen konfliktien poistoa valitun erän ensimmäinen ja
+  viimeinen avain, myös tyhjällä sivulla. Näkyvän sivun navigointi säilyy
+  keskeneräisen haun yli. Sen saman navigointitokenin käyttö palauttaa
+  keskeneräisen työn nykyisen jatkon, ei aloita toista hakua. Onnistumisessa
+  säilytetään lisäksi yksi edellinen sivu ja sen onnistuneen suunnan
+  vastaus kadonneen vastauksen toistoon. Viitteitä on enintään kahdeksan:
+  neljä sivusuuntaa, nykyinen ja viimeinen askeltoken sekä enintään kaksi
+  suunnan tulosviitettä; samoja sivutavuja ei kopioida viitteisiin.
+  `busy` ei muuta tilaa. `limited`/tilapäinen lukuvirhe päättää keskeneräisen
+  työn ja sallii käyttäjän uuden yrityksen näkyvän sivun navigoinnista.
+  `stale`, expiry ja kapasiteettihäätö sen sijaan mitätöivät koko selauksen:
+  vanhat rivit säilyvät UI:ssa, mutta uusi haku alkaa Uusimmat-valinnasta.
+  Selain ei rakenna kasvavaa sivuhistoriaa eikä lähetä lähdepolkuja.
+
+| Vastaus | Täsmällinen merkitys |
+| --- | --- |
+| `scanning` | Vain jatkotoken; ei valmista tapahtumaerää tai `complete`-väitettä. |
+| `ready` | `diagnosticEvents`, H:n `readState` ja molempien suuntien tila: `available` + token, `end` tai `unknown`. `end` vaatii täydellisen luennan valitun aineiston kyseiseen rajaan; osittaisuuden vuoksi todistamaton raja on `unknown`. |
+| `limited` | Ei valmista sivua; `partial/limitReached`. Nykyinen näkyvä erä säilyy. |
+| `unavailable` | Ei valmista sivua; H:n nykyinen lukukelvottoman lähteen tila. |
+| `stale`, HTTP 409 | Tuntematon/vanhentunut token, väärä konteksti tai muuttunut lähde. Sama turvallinen palaute, ei lähteen yksityiskohtia. |
+| `busy`, HTTP 429 | Aktiivisen lukuaskeleen tai kapasiteetin esto, ei automaattinen uusintakehotus. |
+
+Syötevirhe on 400 ja oikeuden puute 403. Strict-client ja paketoidun testin
+oma parseri käyttävät samoja tarkkoja vaihtoehtoja; summary/support eivät
+peri uusia kenttiä. H:n lukukattavuus ei ole writerin terveystila.
+Wire-muoto on suljettu unioni (ylimääräiset kentät hylätään):
+
+```ts
+type Direction = { state: 'available'; cursor: string }
+  | { state: 'end' | 'unknown' };
+type EventPageResponse =
+  | { state: 'scanning'; cursor: string }
+  | { state: 'ready'; diagnosticEvents: DiagnosticEventItem[];
+      readState: DiagnosticReadState; older: Direction; newer: Direction }
+  | { state: 'limited'; diagnosticEvents: [];
+      readState: { status: 'partial'; reasons: ['limitReached'] } }
+  | { state: 'unavailable'; diagnosticEvents: [];
+      readState: { status: 'unavailable'; reasons: ['notConfigured'] | ['sourceUnavailable'] } };
+// 409/429: { error: 'Diagnostic browsing is unavailable.', code: 'diagnostic_browse_stale' | 'diagnostic_browse_busy' }
+```
+
+`ready` ei hyväksy `unavailable`-lukutilaa. `available` ei lupaa epätyhjää
+seuraavaa erää; `unknown` ei sisällä tokenia. Alkuhaussa käytettävissä olevat
+kelvolliset lähteet säilyvät, vaikka toinen lähde olisi lukukelvoton:
+H:n `partial/sourceUnavailable` estää silloin täydellisen kattavuusväitteen.
+Jo valitun lähteen katoamista jatkohaun aikana ei ohiteta uutena lähdevalintana.
+Konfliktiset tunnisteet jätetään pois ja merkitään `invalidEntries`.
+Rajain etenee viimeiseen tarkistettuun ehdokkaaseen, ei julkaistuun riviin:
+myös tyhjä `ready` + `available` on mahdollinen, eikä se tarkoita tyhjää
+historiaa tai lupaa seuraavan sivun olevan epätyhjä.
+
+**UI ja sulku:** yksi käyttäjän aloittama haku jatkaa `scanning`-vastauksia
+sarjassa saman lataussukupolven sisällä. Se ei ole ajastettu taustapäivitys
+tai virheen uusinta. Vanhat rivit säilyvät; muu lopputila pysäyttää ketjun
+ja antaa palautteen. Näkymästä poistuminen/clientin vaihto peruu HTTP:n ja
+estää vanhan vastauksen julkaisun. Reader ei lue ilman pyyntöä. Jo alkanut
+I/O suljetaan todellisen valmistumisensa jälkeen; käyttämätön tila vanhenee.
+HTTP:n katkeaminen ei todista kahvan sulkeutumista. Nykyinen HTTP-sulku
+ei yksin todista katkenneen yhteyden reader-työn loppua. Reader omistaa
+yhden aktiivisen lukuaskeleen valmistumisen ja idempotentin `close()`-lupauksen:
+uudet työt estetään heti, vanha työ lopetetaan seuraavassa turvallisessa
+rajassa, ja alkanut I/O sekä kahvan sulku odotetaan oikeasti loppuun ennen
+tilan/ajastimien vapauttamista. Timeout tai abort ei korvaa tätä todistetta.
+`diagnosticsComposition.ts` välittää tämän nykyisen `createApp`/`server.close`
+-omistajan rajatuksi sulkukutsuksi. HTTP:n ja readerin sulku käynnistetään
+molemmat ja kummankin lopputulos käsitellään, vaikka toinen epäonnistuisi;
+salaisuusoperaatioiden nykyinen sulkutarkistus säilyy. Uusi runtime ei peri
+tokeneita tai tilaa. Ei yleistä sulkurekisteriä, manageria tai sulkuohitusta.
+Muutos vaatii myös nykyisen backup -> inspect -> restore -> restart ->
+compare -portin, koska backendin sulkukytkentä kuuluu vaikutusalueeseen.
+
+**Rajattu sopimuskoe ennen kytkentää:** budjetit molemmilla kierroksilla,
+tyhjät tiedostot/luettelointirajat, kadonneen vastauksen idempotenssi,
+samanaikainen jatko, vanheneminen/kapasiteetti, väärä actor, muuttuminen
+kesken lukukierroksen ja sen jälkeen, append/rotaatio, konfliktin tyhjä sivu
+sekä molemmat suunnat. Pienet injektoidut rajat, oikeat tiedostotavut ja
+nykyinen projektori. Koe ei korvaa HTTP-/UI-/sulku- tai maksimikuorman
+todennusta; pysyvät regressiot ja oikeat kutsujat kuuluvat M4.3.1-3:een.
+
+| Toteutuspala | Valmistumisen näyttö |
+| --- | --- |
+| M4.3.0: lukumalli ja sopimus | Yllä oleva pieni synteettinen koe, mitatut resurssit, konkreettinen API-/UI-sopimus ja rajattu riippumaton katselmus. Avoimet turvallisuus- ja käyttäytymisvalinnat ratkaistaan ennen kytkentää. |
+| M4.3.1: reader -> application -> HTTP | Pysyvät resurssi-, järjestys-, cursor-, syöte- ja permission-regressiot. Olemassa oleva projektori ja virheen testihavaitsija käytössä. Todellinen luku etenee ensimmäisen erän ulkopuolelle. |
+| M4.3.2: strict-client -> web | Response-/query-testit sekä lataus-, virhe-, kaksoiskäynnistys-, vanha vastaus-, clientin vaihto- ja näkymästä poistumisen testit. Oikea selainpolku selaa vanhempiin ja takaisin, ja osittaisuus/vanhentuminen näkyvät oikein. |
+| M4.3.3: paketoitu ketju ja integraatio | Saman puhtaan paketin todellinen diagnostiikkaselauksen polku, nykyisen tukipaketin regressiot, muuttuneiden vastuiden testit ja ohjeet sekä täsmällisen PR-headin ja uuden mainin omat nykyiset portit. Korvattu listapolku poistetaan kattavuuden todennuksen jälkeen. |
+
+**Nykyisten kutsujien siirto:** uusi tapahtumavastaus ei koske vain
+Diagnostiikka-sivua. Samassa muutoksessa päivitetään alla olevat suorat
+lukijat. Valmis tapahtumaerä vaaditaan ennen sisältö- ja
+yksityisyysväitteitä: pelkkä `scanning` ei saa läpäistä testiä siksi, ettei
+vastauksessa vielä ole kiellettyä arvoa.
+
+| Kutsujaryhmä | Säilytettävä todiste |
+| --- | --- |
+| Backendin HTTP-/composition-testit | `appHttpErrorHandling`, `appOperationalLogMaintenance` ja `invoicingArchiveDiagnosticsComposition` todentavat valmiista tapahtumaerästä alkuperäiset tapahtuma- ja kenttäehdot. Samassa testissä luettu tukipaketti käyttää edelleen omaa vastaussopimustaan. |
+| API-client ja hallitut UI-kokeet | Lukutila-/projektiotestit päivittävät vain tapahtumavastauksen kehyksen; nykyiset kiellettyjen kenttien hylkäykset säilyvät. `diagnosticsReadMount.ts` valmistelee valmiin erän ennen hallittuja vastausviiveitä, jotta vanhan session torjuntaa ei sekoiteta jatkohaun askeliin. Reittimokit kattavat myös queryn sisältävän jatkon. |
+| Todelliset web-/system-/Electron-polut | `diagnosticReadJourneys`, `invoiceFailureJourneys`, `customerAndCompanyJourneys`, `secretDrainDiagnostics`, `diagnosticEventChain`, `restartAndRecovery` ja `assertWorkspaceBackupSchemaRejection` kuluttavat rajatun jatkoketjun ennen nykyisiä väitteitä. Tiedosto-, tukipaketti-, palautus- ja native-todisteita ei korvata API-vastauksella. |
+| Paketoidun sovelluksen lukija | `packagedSmoke.ts` odottaa ja validoi saman valmiin tapahtumavastauksen. Nykyinen luotettu sessionvälitys ja `GET`-reittirajaus säilyvät; uutta IPC-oikeutta ei lisätä. |
+
+Testien yhteinen tapahtumahaun apuri kuuluu nykyisiin API-/fixture-vastuisiin:
+vain validoitu `scanning` jatkaa samaa hakua, muu lopputila pysäyttää sen.
+Askelmäärä ja nykyinen testiaika rajaavat ketjun. Odotettua tapahtumaa ei
+etsitä uusilla aloitushauilla tai virheiden uusintasilmukalla. Tällä ei
+rakenneta yleistä odotuskehystä eikä kirjoiteta muita testiperheitä uudelleen.
+
+Nykyinen moduuli omistaa turvallisen teknisen lukuprojektion; business-audit,
+writerit, lokiretention ja tukipaketin 30 päivän lähdevalinta säilyvät omissa
+vastuissaan. Lokit ovat nykyisinkin asennuskohtaisia, eivät aktiivisen
+yrityksen business-historiaa. Yritys- tai henkilötunnisteita ei lisätä.
+Selaus ei tarvitse audit-eventtiä tai rekursiivista virhelokitusta.
+Testin alkuperäinen I/O-virhe toimitetaan nykyiselle yksityiselle havaitsijalle
+ennen turvallista muunnosta, ja nykyinen salattu toimitus todennetaan
+vaikutusalueen testissä. Raakoja lokitiedostoja ei lisätä keräykseen.
+
+Tuotantototeutuksen lukureitti kattaa Diagnosticsin moduuli-/turvallisuus-/
+observability-/retention-/tukipakettiohjeet, API-clientin ja webin vastuut sekä
+E2E-/desktop-ohjeet paketoidun todennuksen rajalla. Muuttuvat vastuut päivittävät
+niiden nykyiset sopimukset, R0-testimatriisin ja käyttäjäohjeen samassa työssä.
+Uutta riippuvuutta, tietokantamigraatiota, backup-artifactia tai yleistä
+testijärjestelmää ei tarvita tähän rajaukseen. Pysyvä selausindeksi,
+aika-/virhesuodatin ja automaattinen päivitys vaativat oman päätöksensä.
 
 ### Muut käytettävyystoiveet
 

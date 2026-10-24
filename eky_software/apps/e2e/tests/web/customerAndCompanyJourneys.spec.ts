@@ -1,5 +1,6 @@
 import type { Page } from '@playwright/test';
 
+import { readDiagnosticPage } from '../../src/assertions/readDiagnosticPage.js';
 import { readE2eOperationalLogs } from '../../src/assertions/readE2eOperationalLogs.js';
 import { readE2eSqliteRows } from '../../src/assertions/readE2eSqliteRows.js';
 import { securityPayloadCorpus } from '../../src/data/securityPayloadCorpus.js';
@@ -384,9 +385,10 @@ test('COMPANY-UI-001 COMPANY-AUDIT-001 @critical updates settings without exposi
       .getByRole('main')
       .getByRole('heading', { name: 'Diagnostiikka' }),
   ).toBeVisible();
-  const diagnosticsResponse = await e2eWeb.api.get('/diagnostics/events');
-  expect(diagnosticsResponse.status()).toBe(200);
-  const diagnosticsText = JSON.stringify(await diagnosticsResponse.json());
+  await expect(e2eWeb.page.getByRole('table')).toBeVisible();
+  // Let the actual renderer finish before this independent API read. The
+  // bounded reader deliberately rejects concurrent steps instead of queuing.
+  const diagnosticsText = JSON.stringify(await readDiagnosticPage(e2eWeb.api));
   const diagnosticHtml = await e2eWeb.page.content();
   const logs = readE2eOperationalLogs(e2eWeb.paths.logsRoot);
 

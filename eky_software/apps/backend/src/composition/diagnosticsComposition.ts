@@ -37,6 +37,7 @@ export function createDiagnosticsComposition(
     operationalIdentity: Readonly<OperationalRuntimeIdentity>;
     operationalLogsRoot: string | undefined;
     failureObserver?: DiagnosticReadFailureObserver;
+    registerDiagnosticShutdown?: (close: () => Promise<void>) => void;
     runtimeArchitecture: string;
     runtimeNodeVersion: string;
     runtimePlatform: string;
@@ -92,6 +93,7 @@ export function createDiagnosticsComposition(
       },
     );
 
+  options.registerDiagnosticShutdown?.(() => reader.close());
   return createDiagnosticRoutes({
     getRuntimeDiagnosticSummary: (input) =>
       readRuntimeSummary(input.actorContext),

@@ -7,6 +7,7 @@ import { createHttpRequestFailureCapture } from '../../../../test-reporters/http
 import * as connections from '../database/connection/createDatabaseConnection.js';
 import type { BackendOperationalEvent } from '../observability/operationalEvent.js';
 import { createApp } from './app.js';
+import { readDiagnosticHttpPageForTest } from '../modules/diagnostics/diagnosticHttpRead.fixture.js';
 import { setHttpRequestOperation } from './httpRequestOperationalContext.js';
 import { correlationIdHeaderName } from './operationalLogging.js';
 import { localRuntimeSessionHeaderName } from './runtimeTrust.js';
@@ -45,9 +46,7 @@ it.for(['error', 'nonError', 'unfinalized'])('wires the %s boundary into createA
     expect(observer.captureOriginalException.mock.calls[0]?.[0] === error).toBe(true);
   }
 
-  const diagnosticResponse = await app.request('/diagnostics/events');
-  expect(diagnosticResponse.status).toBe(200);
-  const diagnosticData = await diagnosticResponse.json();
+  const diagnosticData = await readDiagnosticHttpPageForTest(app);
   const bundleResponse = await app.request('/diagnostics/support-bundle-data');
   expect(bundleResponse.status).toBe(200);
   const bundleData = await bundleResponse.json();
