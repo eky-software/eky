@@ -5,7 +5,8 @@ import type { BackendEnvironment } from '../../../http/runtimeTrust.js';
 import type { ListDiagnosticEventsInput } from '../application/listDiagnosticEvents.js';
 import type { GetRuntimeDiagnosticSummaryInput } from '../application/getRuntimeDiagnosticSummary.js';
 import type { PrepareSupportBundleDiagnosticDataInput } from '../application/prepareSupportBundleDiagnosticData.js';
-import type { DiagnosticEventReadResult } from '../domain/diagnosticEventReadResult.js';
+import type { DiagnosticEventPage } from '../domain/diagnosticEventPage.js';
+import { DiagnosticBrowseError } from '../domain/diagnosticBrowsePolicy.js';
 import { completeDiagnosticReadState, unavailableDiagnosticReadState } from '../domain/diagnosticReadState.js';
 import type { RuntimeDiagnosticSummary } from '../domain/runtimeDiagnosticSummary.js';
 import type { SupportBundleDiagnosticData } from '../domain/supportBundleDiagnosticData.js';
@@ -13,7 +14,7 @@ import { createDiagnosticRoutes } from './diagnosticRoutes.js';
 
 type ListDiagnosticEvents = (
   input: ListDiagnosticEventsInput,
-) => Promise<DiagnosticEventReadResult>;
+) => Promise<DiagnosticEventPage>;
 type GetRuntimeDiagnosticSummary = (
   input: GetRuntimeDiagnosticSummaryInput,
 ) => Promise<RuntimeDiagnosticSummary>;
@@ -60,6 +61,7 @@ describe('diagnostic routes', () => {
 
   it('takes trust context from the backend and returns only the projection', async () => {
     const listDiagnosticEvents = vi.fn<ListDiagnosticEvents>().mockResolvedValue({
+      state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
       readState: completeDiagnosticReadState, diagnosticEvents: [
       {
         category: 'smtp',
@@ -85,6 +87,7 @@ describe('diagnostic routes', () => {
     });
     const responseBody = await response.json();
     expect(responseBody).toEqual({
+      state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
       readState: completeDiagnosticReadState,
       diagnosticEvents: [
         expect.not.objectContaining({
@@ -143,6 +146,37 @@ describe('diagnostic routes', () => {
       }),
     });
   });
+
+  it.each(['limit=1&limit=2', 'limit=1%0A', 'limit=', 'cursor=', 'cursor=private/path',
+    'cursor=' + 'a'.repeat(32) + '%0A', 'cursor=' + 'a'.repeat(31), 'cursor=' + 'a'.repeat(33),
+    'limit=1&cursor=' + 'a'.repeat(32), 'cursor=' + 'a'.repeat(32) + '&cursor=' + 'b'.repeat(32)])(
+    'rejects the ambiguous or malformed query %s before reader admission', async query => {
+      const list = vi.fn<ListDiagnosticEvents>();
+      const response = await createTestApp(list).request(`/diagnostics/events?${query}`);
+      expect(response.status).toBe(400);
+      expect(response.headers.get('Cache-Control')).toBe('no-store');
+      expect(list).not.toHaveBeenCalled();
+    },
+  );
+
+  it('forwards an opaque continuation and its scanning response without caching', async () => {
+    const cursor = 'a'.repeat(32);
+    const reply = { state: 'scanning' as const, cursor: 'b'.repeat(32) };
+    const list = vi.fn<ListDiagnosticEvents>().mockResolvedValue(reply);
+    const response = await createTestApp(list).request(`/diagnostics/events?cursor=${cursor}`);
+    expect(response.headers.get('Cache-Control')).toBe('no-store');
+    expect(await response.json()).toEqual(reply);
+    expect(list).toHaveBeenCalledWith({ actorContext: expect.objectContaining({ companyId: 'trusted-company' }), cursor });
+  });
+
+  it.each([['diagnostic_browse_stale', 409], ['diagnostic_browse_busy', 429]] as const)(
+    'preserves the closed %s error without source details', async (code, status) => {
+      const list = vi.fn<ListDiagnosticEvents>().mockRejectedValue(new DiagnosticBrowseError(code));
+      const response = await createTestApp(list).request('/diagnostics/events');
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual({ error: 'Diagnostic browsing is unavailable.', code });
+    },
+  );
 });
 
 function createTestApp(

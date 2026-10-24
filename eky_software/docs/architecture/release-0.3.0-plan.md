@@ -25,7 +25,7 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | --- | --- | --- |
 | R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1 hyväksytty PR #317:n ja uuden mainin omilla porteilla 24.10.2026. Tarkka näyttö ja avoimeksi jäänyt ensimmäinen Electron-timeout ovat M1:n jatkamiskohdassa. |
 | R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; valmistelu ja päätösjono kirjattu. Sopimusten hyväksyntä ja toteutus avoinna. |
-| R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | M4.2:n rajattu toteutus ja kohdetodennus työn alla 24.10.2026; omistava nimeämissopimus backup-suunnitelmassa. PR/main- ja palautushyväksyntä ovat avoimia. |
+| R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | M4.2 hyväksytty PR #318:n ja uuden mainin omilla porteilla 24.10.2026. Nimeämis- ja palautusnäyttö sekä rajatun runtime-tietoturvapäivityksen hyväksyntä ovat M1:n jatkamiskohdassa. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
 | D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3 hyväksytty PR #315:n ja uuden mainin omilla porteilla; loppuhyväksyntä M1:n kautta. |
@@ -33,7 +33,7 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H5:n ei-estävä ilmoitus, incident-yritys ja todellinen main/preload/UI-ketju hyväksytty H:n PR/main-porteilla. |
 | R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | Tarkistettava ja rajattava; saman version torjunta ei itsessään ole vika. |
 | R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Suunniteltu; tarkistetaan toteutusten yhteydessä. |
-| R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | M4-valmistelussa: nykyinen 100/200-otos ja jatkohaun puuttuminen varmennettu; sivutuksen lukusopimus hyväksyttävä ennen toteutusta. |
+| R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | M4.3:n konkreettinen työbudjetti-, aineisto- ja jatkohakusopimus on hyväksytty toteutettavaksi. Reader/API/UI, pysyvät regressiot ja todelliset HTTP-/selainpolut ovat työpuussa; paketoitu todennus ja PR/main-integraatio ovat kesken. Esikoe ei sulje koko M4.3:a. |
 
 Diagnostiikan `D029-*`-tunnukset ja sen vanha tiedostonimi säilytetään
 jäljitettävyyden vuoksi. Niiden tavoitejulkaisu on nyt `0.3.0`.
@@ -477,9 +477,13 @@ luottamusrajavalidoinnin poistamiseksi.
 
 ### M4: Sovittu 0.3.0-käyttäjäkokemus
 
-**Tila 23.10.2026:** nykykoodin rajattu kartoitus ja suunnittelu aloitettu
-hyväksytystä I-mainista. [Omistava valmistelukohta](release-0.3.0-m1-preparation-plan.md#m4--käyttäjäkokemuksen-valmistelu)
-erottaa lähdehavainnot, suositellun osituksen ja vielä hyväksyttävät sopimukset.
+**Tila 24.10.2026:** M4.1 ja M4.2 hyväksytty omine PR/main-portteineen.
+M4.3:n konkreettinen API-/jatkotilasopimus ja työbudjetti on hyväksytty
+toteutettavaksi esikokeen ja rajatun katselmuksen jälkeen. Reader/API/UI
+ja nykyiset kutsujat ovat siirrossa. Pieni koe ei todista maksimikuorman
+suorituskykyä; toteutuksen omat portit ovat vielä kesken.
+[Omistava valmistelukohta](release-0.3.0-m1-preparation-plan.md#m4--käyttäjäkokemuksen-valmistelu)
+erottaa hyväksytyt palat ja vielä täsmennettävät sopimukset.
 Suositeltu toteutusjärjestys on odotuspalaute, backup-nimi, diagnostiikan
 selaus ja W7; W7:n päätökset valmistellaan ajoissa, eivät vasta lopuksi.
 Tämä ei hyväksy tuotantokytkentää tai muuta julkaisuun sovittua sisältöä.

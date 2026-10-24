@@ -31,6 +31,18 @@ vi.mock('node:fs', async importOriginal => {
     },
   };
 });
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, opendir: (...args: Parameters<typeof actual.opendir>) => {
+    if (String(args[0]) === io.deniedReadDirectory) {
+      io.originalReadFailure = Object.assign(new Error('H4_PRIVATE_ORIGINAL_READ_FAILURE', {
+        cause: new Error('H4_PRIVATE_READ_CAUSE'),
+      }), { code: 'EACCES' });
+      throw io.originalReadFailure;
+    }
+    return actual.opendir(...args);
+  } };
+});
 
 const roots: string[] = [];
 const databases: connections.DatabaseConnection[] = [];
@@ -89,7 +101,7 @@ describe('backend operational-log maintenance startup wiring', () => {
     io.deniedReadDirectory = join(logsRoot, 'backend');
     const events = await app.request('/diagnostics/events');
     expect(events.status).toBe(200);
-    expect(await events.json()).toEqual({ diagnosticEvents: [],
+    expect(await events.json()).toEqual({ state: 'unavailable', diagnosticEvents: [],
       readState: { status: 'unavailable', reasons: ['sourceUnavailable'] } });
     expect(observed).toHaveBeenCalledOnce();
     expect(observed.mock.calls[0]?.[0] === io.originalReadFailure).toBe(true);

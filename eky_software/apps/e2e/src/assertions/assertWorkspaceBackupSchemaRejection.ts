@@ -5,8 +5,8 @@ import { join, resolve } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 
 import { supportBundleFormatVersion } from '../../../desktop/src/supportBundle/supportBundleArchive.js';
-import { readDiagnosticsResponse } from '../../../../packages/api-client/src/diagnostics/diagnosticsResponse.js';
 import { expect, type IsolatedElectronHarness } from '../fixtures/isolatedElectronTest.js';
+import { readDiagnosticPage } from './readDiagnosticPage.js';
 import { readElectronOperationalEvents, type ElectronOperationalEvent } from './readElectronOperationalEvents.js';
 
 interface SupportBundleEvidence {
@@ -58,9 +58,7 @@ export async function assertWorkspaceBackupSchemaRejection(input: {
     'appVersion', 'buildRevision', 'component', 'errorCode', 'eventName', 'fingerprint', 'outcome', 'schemaVersion', 'timestamp',
   ].sort());
 
-  const response = await input.harness.api.get('/diagnostics/events');
-  expect(response.status()).toBe(200);
-  const { diagnosticEvents: diagnostics } = readDiagnosticsResponse(await response.json());
+  const { diagnosticEvents: diagnostics } = await readDiagnosticPage(input.harness.api);
   const diagnosticFailure = diagnostics.filter((event) => event.eventName === 'workspaceBackup.operationFailed');
   expect(diagnosticFailure).toHaveLength(1);
   expect(diagnosticFailure[0]).toMatchObject({

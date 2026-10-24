@@ -11,6 +11,7 @@ import {
   createPackagedSmokeProgressReporter,
   createPackagedSmokeTimeoutMessage,
   packagedSmokeStages,
+  readPackagedDiagnosticEvents,
   readPackagedSmokeResult,
   resolvePackagedSmokeTempPath,
 } from './packagedSmoke.js';
@@ -22,6 +23,51 @@ const acceptedBuild = {
   formatVersion: 1 as const,
   releaseChannel: 'pilot' as const,
 };
+
+describe('packaged diagnostic continuation', () => {
+  it('consumes only validated continuation tokens before reading the ready page', async () => {
+    const queries: string[] = [];
+    const names = await readPackagedDiagnosticEvents(async query => {
+      queries.push(query.toString());
+      return queries.length === 1 ? { state: 'scanning', cursor: 'a'.repeat(32) }
+        : { state: 'ready', readState: { status: 'complete', reasons: [] },
+          older: { state: 'available', cursor: 'b'.repeat(32) }, newer: { state: 'end' },
+          diagnosticEvents: [{ eventName: 'backend.started' }] };
+    });
+    expect(names).toEqual(['backend.started']);
+    expect(queries).toEqual(['limit=200', `cursor=${'a'.repeat(32)}`]);
+  });
+
+  it.each([
+    { state: 'scanning', cursor: '../private' },
+    { state: 'scanning', cursor: `${'a'.repeat(32)}\n` },
+    { state: 'scanning', cursor: 'a'.repeat(32), path: 'synthetic' },
+    { state: 'limited', diagnosticEvents: [] },
+    { state: 'unavailable', diagnosticEvents: [] },
+    { diagnosticEvents: [{ eventName: 'backend.started' }] },
+    { state: 'ready', readState: { status: 'partial' }, diagnosticEvents: [] },
+    { state: 'ready', readState: { status: 'complete' }, diagnosticEvents: [{}] },
+  ])('rejects incomplete or invalid smoke evidence: %j', async body => {
+    await expect(readPackagedDiagnosticEvents(async () => body))
+      .rejects.toThrow('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+  });
+
+  it('propagates the original request failure without retrying it', async () => {
+    const failure = new Error('synthetic transport failure');
+    let calls = 0;
+    await expect(readPackagedDiagnosticEvents(async () => { calls++; throw failure; })).rejects.toBe(failure);
+    expect(calls).toBe(1);
+  });
+
+  it('ends a continuation chain at the existing step bound', async () => {
+    let calls = 0;
+    await expect(readPackagedDiagnosticEvents(async () => {
+      calls++;
+      return { state: 'scanning', cursor: 'a'.repeat(32) };
+    })).rejects.toThrow('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+    expect(calls).toBe(4_096);
+  });
+});
 
 describe('packaged smoke progress', () => {
   const temporaryDirectories: string[] = [];

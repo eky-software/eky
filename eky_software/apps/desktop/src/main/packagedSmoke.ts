@@ -632,17 +632,14 @@ async function assertPackagedDiagnostics(
     throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_IDENTITY_FAILED');
   }
 
-  const response = await fetch(
-    `http://127.0.0.1:${backendPort}/diagnostics/events?limit=200`,
-    requestOptions,
-  );
-
-  if (!response.ok) {
-    throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
-  }
-
-  const body: unknown = await response.json();
-  const diagnosticEvents = readDiagnosticEvents(body);
+  const diagnosticEvents = await readPackagedDiagnosticEvents(async query => {
+    const response = await fetch(
+      `http://127.0.0.1:${backendPort}/diagnostics/events?${query}`,
+      requestOptions,
+    );
+    if (!response.ok) throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+    return response.json();
+  });
 
   if (
     !diagnosticEvents.some(
@@ -692,11 +689,26 @@ async function assertPackagedDiagnostics(
       const succeededUpdateVisible = ['update.accepted', 'update.businessRollbackSucceeded'].every(name =>
         [...document.querySelectorAll('tbody tr')].some(row =>
           row.querySelector('code')?.textContent === name && row.children[3]?.textContent === 'Onnistui'));
+      const rows = () => [...document.querySelectorAll('tbody tr')].map(row => row.textContent);
+      const initialRows = JSON.stringify(rows());
+      const olderButton = findButton('Vanhemmat');
+      const olderEnabled = olderButton && !olderButton.disabled;
+      if (olderEnabled) olderButton.click();
+      const olderVisible = olderEnabled && await waitFor(() =>
+        document.querySelector('[aria-busy="true"]') === null &&
+        rows().length > 0 && JSON.stringify(rows()) !== initialRows);
+      const newerButton = findButton('Uudemmat');
+      const newerEnabled = newerButton && !newerButton.disabled;
+      if (olderVisible && newerEnabled) newerButton.click();
+      const returnedToNewest = olderVisible && newerEnabled && await waitFor(() =>
+        document.querySelector('[aria-busy="true"]') === null && JSON.stringify(rows()) === initialRows);
       return {
         eventVisible: Boolean(eventVisible),
         heading,
         loadError,
         succeededUpdateVisible,
+        olderVisible: Boolean(olderVisible),
+        returnedToNewest: Boolean(returnedToNewest),
         revisionVisible: text.includes(${JSON.stringify(expectedIdentity.buildRevision)}),
         versionVisible: text.includes(${JSON.stringify(expectedIdentity.appVersion)}),
       };
@@ -710,6 +722,8 @@ async function assertPackagedDiagnostics(
     uiResult.eventVisible !== true ||
     uiResult.loadError !== false ||
     uiResult.succeededUpdateVisible !== true ||
+    uiResult.olderVisible !== true ||
+    uiResult.returnedToNewest !== true ||
     uiResult.revisionVisible !== true ||
     uiResult.versionVisible !== true
   ) {
@@ -742,10 +756,38 @@ function readDiagnosticSummary(value: unknown): {
   };
 }
 
+// This existing isolated smoke owns its transport and shared five-second
+// abort signal; continuation never creates a fresh request deadline.
+export async function readPackagedDiagnosticEvents(
+  request: (query: URLSearchParams) => Promise<unknown>,
+): Promise<string[]> {
+  let query = new URLSearchParams({ limit: '200' });
+  for (let step = 0; step < 4_096; step++) {
+    const body = await request(query);
+    if (!isRecord(body)) throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+    if (body.state === 'scanning') {
+      if (!hasExactKeys(body, ['state', 'cursor']) ||
+        typeof body.cursor !== 'string' || body.cursor.length !== 32 || !/^[A-Za-z0-9_-]{32}$/.test(body.cursor)) {
+        throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+      }
+      query = new URLSearchParams({ cursor: body.cursor });
+      continue;
+    }
+    return readDiagnosticEvents(body);
+  }
+  throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
+}
+
 function readDiagnosticEvents(value: unknown): string[] {
   if (
     !isRecord(value) ||
-    !Array.isArray(value.diagnosticEvents)
+    !hasExactKeys(value, ['state', 'diagnosticEvents', 'readState', 'older', 'newer']) ||
+    value.state !== 'ready' ||
+    !isRecord(value.readState) || !hasExactKeys(value.readState, ['status', 'reasons']) ||
+    value.readState.status !== 'complete' ||
+    !Array.isArray(value.readState.reasons) || value.readState.reasons.length !== 0 ||
+    !isPackagedDiagnosticDirection(value.older) || !isPackagedDiagnosticDirection(value.newer) ||
+    !Array.isArray(value.diagnosticEvents) || value.diagnosticEvents.length > 200
   ) {
     throw new Error('DESKTOP_SMOKE_DIAGNOSTICS_HTTP_FAILED');
   }
@@ -759,6 +801,19 @@ function readDiagnosticEvents(value: unknown): string[] {
     }
     return event.eventName;
   });
+}
+
+function isPackagedDiagnosticDirection(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (value.state === 'available') {
+    return hasExactKeys(value, ['state', 'cursor']) && typeof value.cursor === 'string' && value.cursor.length === 32 &&
+      /^[A-Za-z0-9_-]{32}$/.test(value.cursor);
+  }
+  return hasExactKeys(value, ['state']) && (value.state === 'end' || value.state === 'unknown');
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: string[]): boolean {
+  return Object.keys(value).length === expected.length && expected.every(key => Object.hasOwn(value, key));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

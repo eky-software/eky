@@ -9,7 +9,7 @@ import { observeDiagnosticReadFailure } from '../application/observeDiagnosticRe
 import type { DiagnosticReadFailureObserver } from '../ports/diagnosticReadFailureObserver.js';
 
 const maximumTailBytesPerFile = 256 * 1024;
-const fileNamePattern =
+export const diagnosticLogFileNamePattern =
   /^(backend-info|backend-warning-error|backend-security|desktop-info|desktop-warning-error|desktop-security)-(\d{4}-(?:0[1-9]|1[0-2]))-(00[1-4])\.jsonl$/;
 
 interface DiagnosticLogFile {
@@ -21,7 +21,7 @@ interface DiagnosticLogFile {
   security: boolean;
 }
 
-// Only the two diagnostic read models share discovery and bounded source facts.
+// Summary retains this bounded source scan; browsing shares only filename admission.
 export function readDiagnosticLogSources(options: {
   logsRoot: string;
   maximumCandidateFiles: number;
@@ -63,8 +63,8 @@ export function readDiagnosticLogSources(options: {
     try {
       directoryHandle = opendirSync(directoryPath);
       for (let entry = directoryHandle.readSync(); entry !== null; entry = directoryHandle.readSync()) {
-        const match = fileNamePattern.exec(entry.name);
-        if (match === null || !belongsToDirectory(entry.name, directory)) continue;
+        const match = diagnosticLogFileNamePattern.exec(entry.name);
+        if (match === null || !diagnosticLogBelongsToDirectory(entry.name, directory)) continue;
         if (!entry.isFile() || entry.isSymbolicLink()) {
           issues.add('sourceUnavailable');
           continue;
@@ -143,7 +143,7 @@ function compareFilesNewestFirst(left: DiagnosticLogFile, right: DiagnosticLogFi
     right.fileName.localeCompare(left.fileName);
 }
 
-function belongsToDirectory(fileName: string, directory: string): boolean {
+export function diagnosticLogBelongsToDirectory(fileName: string, directory: string): boolean {
   return directory === 'security'
     ? fileName.startsWith('backend-security-') || fileName.startsWith('desktop-security-')
     : fileName.startsWith(`${directory}-`);

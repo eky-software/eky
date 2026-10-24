@@ -5,6 +5,52 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## M4.2:n integraatiota edeltävä jatkamiskohta 24.10.2026
+
+Seuraavan M1-jatkamiskohdan asiasisältö säilytettiin; sen sisäinen
+M4.2-sopimuslinkki kohdistettiin takaisin M1:een.
+[PR #318:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/318#issuecomment-6381002283)
+omistaa toteutuneen M4.2- ja runtime-päivityksen hyväksynnän. Alla olevat
+odottavat portit ovat historiaa, eivät uusi työjono. Avoimia aiempia syitä
+tai siivousepävarmuuksia ei merkitä tämän vuoksi korjatuiksi.
+
+**Hyväksytty lähtö (24.10.2026):** M4.1/R030-01 on hyväksytty
+[PR #317:n loppupäätöksellä](https://github.com/eky-software/eky/pull/317#issuecomment-6376623066)
+mainiin `00764a41fb5043aa4822998561f1150ff2e28528`.
+Mainin puu vastaa katselmoitua toteutusrevisiota
+`f245aec8f5a02b3402b18e1841de9a2f4a167e0d`.
+T/A/B/C/K/D/E/F/G/H/I ja M4.1 säilyvät hyväksyttyinä omissa rajauksissaan;
+niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #317 | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40027303028) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40027302511) läpäisivät. PR:n valitut 27 työtä ja yksi toisto hyväksyttiin nykyisen riskisuunnitelman mukaan; kuusi diagnostiikkatyötä jätettiin tarkoituksella valitsematta. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/40031305853/attempts/2) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40031398176) läpäisivät. Kaikki 38 valittua työtä, 11 perhettä, viisi fault-skenaariota, molemmat toistot ja pakolliset askeleet varmennettiin; kuusi diagnostiikkatyötä olivat tarkoituksella valitsematta. |
+
+**Nykyinen työ:** M4.2/R030-03:n tiedostonimiehdotus nykyisessä backup-polussa
+[alla olevan sopimuksen mukaan](release-0.3.0-m1-preparation-plan.md#m42-varmuuskopion-tiedostonimisopimus).
+PR #318:n `7c5316dc` läpäisi valitut V2-portit, mutta riippuvuusauditointi
+hylkäsi Electronin yhden High- ja Undicin kaksi Moderate-havaintoa.
+Omistaja hyväksyi 24.10.2026 niiden täsmäpäivitykset `43.8.1` / `7.30.1`.
+[Riippuvuusarvio](local-desktop-dependency-review.md#electron-4381-ja-undici-7301)
+omistaa muuttumattoman SQLite-sopimuksen ja uuden runtime-todennuksen.
+Päivitys ja sen PR/main-portit ovat kesken; vanha V2-läpäisy ei hyväksy
+muuttunutta runtimea. M4.2:ta ei ole vielä yhdistetty tai hyväksytty.
+Päivityksen frozen-asennus, molemmat auditoinnit, rekisteriallekirjoitukset,
+työtilan testit ja tyyppitarkistus sekä koko Electron-kehitystestisarja
+läpäisivät. Erillinen oikean Electronin SQLite-koe todensi nykyiset ja
+historialliset rakenteet, tarkistusajurin muistirajan sekä väärän ajurin
+hylkäyksen. Paketoitu palautus, endurance ja uuden revision PR/main-portit
+ovat vielä erillisiä avoimia hyväksyntöjä.
+Omistaja valtuutti 24.10.2026 hyväksytyn roadmapin jatkamisen normaaleine
+tarkistuksineen ja integraatioineen ilman toistuvia ajo-/jatkokysymyksiä.
+Tämä ei poista turvallisuus-, riippuvuus-, yksityisyys- tai hyväksyntäportteja.
+M4.3 ja W7 säilyvät erillisinä; niiden tekniset sopimukset täsmennetään
+ennen toteutusta. I:tä ja M4.1:tä ei avata uudelleen.
+Omistaja hyväksyi aiempien M4/W7-suunnitelmadokumenttien mukaan ottamisen
+omana valmistelucommitinaan; tämä ei hyväksy W7:n tuotantototeutusta.
+Koko `0.3.0` ei ole valmis.
+
 ## M4.1:n CI:tä edeltävä checkpoint 24.10.2026
 
 Seuraava checkpoint siirrettiin M1:stä muuttamatta alkuperäistä tekstiä.

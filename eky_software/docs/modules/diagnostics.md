@@ -60,7 +60,11 @@ diagnostiikkalista voi olla tyhjä, jos backendille ei ole annettu logs-rootia.
 
 ### Lukutilan sopimus
 
-Tapahtumahaku palauttaa `diagnosticEvents`-listan ja `readState`-olion.
+M4.3:n toteutettava tapahtumahaku käyttää suljettua `state`-unionia:
+`scanning` palauttaa jatkotokenin, `ready` valmiin `diagnosticEvents`-erän,
+`readState`-olion ja molempien selaussuuntien tilan. `limited` ja `unavailable`
+eivät julkaise valmista erää. Toteutus- ja integraationäyttö luetaan
+[M1:n jatkamiskohdasta](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Runtime-yhteenvedon erillinen tila on `operationalLogReadState`. Molemmissa
 on vain `status` ja yksilöllinen, enintään kolmen sallitun syyn `reasons`:
 
@@ -79,13 +83,36 @@ JSONL-aineisto on partial, ei terve tyhjä lista. Tuntematon tapahtumaperhe
 voidaan tarkoituksella sulkea pois, mutta tunnetun perheen virheellinen
 rivi merkitsee osittaisuutta. Kenttiä tai raakavirheitä ei löysennetä.
 
-Tapahtumien lähderaja on edelleen 32 tiedostoa, yhteenvedon 96 tiedostoa ja
-yhden tiedoston tail enintään 256 KiB. Nimet luetellaan virtaavasti; vain
-rajatut uusimmat nimiehdokkaat etenevät metatieto- ja sisältölukuun.
-Hakemiston nimiluettelo käydään edelleen läpi uusimpien löytämiseksi:
-tämä ei ole koko pyynnön kova aika- tai muistikatto. Yhteenvedon lokikuukaudet
-ja tavumäärä kuvaavat valittua, varmennettua metatietoa. Rajan ulkopuolista
-historiaa ei lasketa mukaan tai päätellä puuttuvaksi.
+M4.3 korvaa tapahtumien vanhan 32 tiedoston / 256 KiB:n tail-ikkunan
+rajatulla jatkohaulla. Reader kiinnittää lähdevalinnan, lukee prefiksit
+kahdesti ja valitsee sivun tapahtuma-ajan sekä tunnisteen täsmällisellä
+järjestyksellä. Ristiriitainen tunniste jätetään pois; tyhjälläkin erällä
+voi olla jatko. Uusi append/rotaatio odottaa Uusimmat-hakua. Havaittu
+valitun prefiksin muutos tai lähteen katoaminen vanhentaa selauksen.
+Luettelointi ei ole atominen tiedostotilannekuva.
+
+Tuloksia on oletuksena 100, enintään 200. Lähteitä on enintään 1 024,
+luettelomerkintöjä 4 096 ja valittuja tavuja 500 MiB. Koko sivun kahdella
+kierroksella luetaan enintään 1 000 MiB ja aktiiviseen työhön käytetään
+enintään 30 sekuntia. Askeleen tavu-, metadata-, ajoitus- ja muistirajat sekä
+neljän määräaikaisen selauksen elinkaari keskitetään Diagnosticsin
+`diagnosticBrowsePolicy.ts`-sopimukseen. Yhteistyöbudjetti ei pakkokeskeytä
+käyttöjärjestelmän I/O:ta. Budjettiin päättynyt haku ei ole valmis sivu.
+
+`GET /diagnostics/events` hyväksyy vain `limit`-aloituksen tai yhden
+opaakin `cursor`-jatkon. Oikeus tarkistetaan ennen tilan käsittelyä joka
+pyynnöllä; token sidotaan vahvistettuun actor-kontekstiin ja readeriin.
+Token ei sisällä lähdepolkua tai identiteettiä eikä anna käyttöoikeutta.
+Navigointitoken säilyy keskeneräisen haun yli. Viimeisen askeleen toisto
+palauttaa saman vastauksen. Vanhentunut selaus palauttaa 409:n ja
+samanaikainen työ 429:n; vastauksia ei tallenneta HTTP-välimuistiin.
+Käyttöliittymä jatkaa vain `scanning`-vastauksia saman käyttäjän aloittaman
+haun sisällä. Virhe vaatii käyttäjän valinnan ja säilyttää edelliset rivit.
+
+Yhteenvedon erillinen 96 tiedoston / 256 KiB:n tail-luku säilyy. Sen
+lokikuukaudet ja tavumäärä kuvaavat valittua, varmennettua metatietoa;
+rajan ulkopuolista historiaa ei lasketa mukaan tai päätellä puuttuvaksi.
+Tukipaketin lähdevalinta ja formaatti säilyvät erillisinä.
 
 Lista ja yhteenveto ovat erillisiä lukuja, eivät atominen snapshot. Niiden
 lataukset, virheet ja tulokset esitetään itsenäisesti; toisen haun virhe ei

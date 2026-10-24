@@ -99,9 +99,21 @@ kesken käsittelyn. Desktopin hyväksymä hallittu sammutus edellyttää edellee
 backend-prosessin onnistunutta poistumista nykyisessä aikarajassa;
 HTTP-yhteyden sulku ei yksin ole prosessin poissaolon todiste.
 
+M4.3:n diagnostiikkaselauksen reader omistaa lisäksi keskeneräisen
+tiedosto-I/O:n. `diagnosticsComposition` rekisteröi nimetyn sulkukutsun
+nykyiselle HTTP-palvelimelle. HTTP- ja reader-sulku suoritetaan loppuun
+myös toisen epäonnistuessa; onnistunutta sammutusta ei kirjata ennen
+molempien valmistumista ja nykyistä salaisuusoperaatioiden sulkutarkistusta.
+Katkennut asiakasyhteys ei vapauta readerin omistamaa kahvaa. Uudet haut
+estetään, alkanut I/O ja sen sulku odotetaan ja määräaikainen selaustila
+vapautetaan. Epävarma kahvan sulku estää lisähaut ja vaatii omistetun
+siivouksen todennuksen. Tämä ei muuta desktopin prosessipoissaolon porttia.
+
 Oikeaa HTTP-palvelinta käyttävät regressiot ovat
 `apps/backend/src/http/serverShutdown.integration.test.ts`-tiedostossa.
 Ne täydentävät nykyisiä backend-prosessin ja paketoidun palautuksen testejä.
+`diagnosticShutdown.integration.test.ts` todentaa lisäksi oikean
+compositionin, katkaistun HTTP-yhteyden ja viivästetyn tiedostoluvun rajan.
 
 ## Tavoite
 

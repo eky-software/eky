@@ -1,10 +1,11 @@
 import type { Page } from '@playwright/test';
 
 import type { EkyApiClient } from '../../../../packages/api-client/src/index.js';
+import { maximumDiagnosticPageRequests } from '../../src/assertions/readDiagnosticPage.js';
 
 // Uses the existing fixture's Vite/React component-test route, not a new runtime.
-export async function mountDiagnosticsReadProbe(page: Page) {
-  const handle = await page.evaluateHandle(async () => {
+export async function mountDiagnosticsReadProbe(page: Page, strictMode = false) {
+  const handle = await page.evaluateHandle(async ({ maximumRequests, strictMode }) => {
     function loadedModule(name: string): string {
       const resource = performance.getEntriesByType('resource').find(entry =>
         new URL(entry.name).origin === location.origin &&
@@ -13,7 +14,8 @@ export async function mountDiagnosticsReadProbe(page: Page) {
       return resource.name;
     }
     const { default: react } = await import(loadedModule('react.js')) as {
-      default: { createElement(component: unknown, props: unknown): unknown;
+      default: { createElement(component: unknown, props: unknown, ...children: unknown[]): unknown;
+        StrictMode: unknown;
         act(callback: () => void | Promise<void>): Promise<void> };
     };
     const { default: reactDom } = await import(loadedModule('react-dom_client.js')) as {
@@ -28,8 +30,20 @@ export async function mountDiagnosticsReadProbe(page: Page) {
       createWebAppComposition(): { apiClient: EkyApiClient };
     };
     const client = createWebAppComposition().apiClient;
+    async function readReadyPage() {
+      let query: Parameters<EkyApiClient['listDiagnosticEvents']>[0] = {};
+      for (let request = 0; request < maximumRequests; request++) {
+        const result = await client.listDiagnosticEvents(query);
+        if (result.state === 'ready') return result;
+        if (result.state !== 'scanning') {
+          throw new Error(`Diagnostic probe page did not become ready: ${result.state}.`);
+        }
+        query = { cursor: result.cursor };
+      }
+      throw new Error('Diagnostic probe exceeded the continuation request limit.');
+    }
     const [summary, events] = await Promise.all([
-      client.getDiagnosticSummary(), client.listDiagnosticEvents(),
+      client.getDiagnosticSummary(), readReadyPage(),
     ]);
     const environment = globalThis as typeof globalThis & { IS_REACT_ACT_ENVIRONMENT?: boolean };
     async function flush(callback: () => void | Promise<void>): Promise<void> {
@@ -58,10 +72,11 @@ export async function mountDiagnosticsReadProbe(page: Page) {
     }
     async function startSession(unmount: boolean): Promise<void> {
       if (unmount) await flush(() => root.render(null));
-      await flush(() => root.render(react.createElement(DiagnosticsPage, { apiClient: {
+      const element = react.createElement(DiagnosticsPage, { apiClient: {
         getDiagnosticSummary: () => hold(summary),
         listDiagnosticEvents: () => hold(events),
-      } })));
+      } });
+      await flush(() => root.render(strictMode ? react.createElement(react.StrictMode, null, element) : element));
     }
     await startSession(false);
     return {
@@ -85,7 +100,7 @@ export async function mountDiagnosticsReadProbe(page: Page) {
         }
       },
     };
-  });
+  }, { maximumRequests: maximumDiagnosticPageRequests, strictMode });
   return {
     view: page.getByRole('region', { name: 'Diagnostics read probe' }),
     callCount: () => handle.evaluate(probe => probe.callCount()),

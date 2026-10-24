@@ -9,13 +9,16 @@ import { startServer } from './server.js';
 const boundary = vi.hoisted(() => ({
   fetch: vi.fn<(request: Request) => Response | Promise<Response>>(),
   assertSecretsSettled: vi.fn<() => void>(),
+  closeDiagnostics: vi.fn<() => Promise<void>>(),
   server: undefined as Server | undefined,
   sockets: new Set<Socket>(),
 }));
 
 vi.mock('./app.js', () => ({
-  createApp: async (options: { registerCompanyEmailSecretShutdown?: (assertSettled: () => void) => void }) => {
+  createApp: async (options: { registerCompanyEmailSecretShutdown?: (assertSettled: () => void) => void;
+    registerDiagnosticShutdown?: (close: () => Promise<void>) => void }) => {
     options.registerCompanyEmailSecretShutdown?.(boundary.assertSecretsSettled);
+    options.registerDiagnosticShutdown?.(boundary.closeDiagnostics);
     return { fetch: boundary.fetch };
   },
 }));
@@ -46,6 +49,7 @@ afterEach(async () => {
   boundary.server = undefined;
   boundary.fetch.mockReset();
   boundary.assertSecretsSettled.mockReset();
+  boundary.closeDiagnostics.mockReset();
 });
 
 async function connect(port: number): Promise<Socket> {
@@ -77,6 +81,39 @@ function deferred<T>() {
 }
 
 describe('backend HTTP graceful shutdown', () => {
+  it('waits for the diagnostic reader after HTTP has drained', async () => {
+    const release = deferred<void>();
+    const entered = deferred<void>();
+    boundary.closeDiagnostics.mockImplementation(async () => { entered.resolve(); await release.promise; });
+    const server = await startServer({ port: 0 });
+    let completed = false;
+    const closing = server.close().then(() => { completed = true; });
+    try {
+      await entered.promise;
+      expect(completed).toBe(false);
+      expect(boundary.assertSecretsSettled).not.toHaveBeenCalled();
+    } finally { release.resolve(); }
+    await closing;
+    expect(boundary.assertSecretsSettled).toHaveBeenCalledOnce();
+  });
+
+  it('still settles diagnostic work when HTTP close fails', async () => {
+    const release = deferred<void>();
+    const entered = deferred<void>();
+    boundary.closeDiagnostics.mockImplementation(async () => { entered.resolve(); await release.promise; });
+    const server = await startServer({ port: 0 });
+    const failure = new Error('synthetic HTTP close failure');
+    const close = vi.spyOn(boundary.server!, 'close').mockImplementation(() => { throw failure; });
+    let completed = false;
+    const closing = server.close().finally(() => { completed = true; });
+    const rejected = expect(closing).rejects.toBe(failure);
+    try {
+      await entered.promise;
+      expect(completed).toBe(false);
+    } finally { release.resolve(); close.mockRestore(); }
+    await rejected;
+  });
+
   it('does not treat a disconnected request as settled application work', async () => {
     const entered = deferred<void>();
     const response = deferred<Response>();

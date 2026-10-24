@@ -1,4 +1,5 @@
-import { EkyApiError, requestJson } from '../http.js';
+import { EkyApiError, isRecord, requestJson } from '../http.js';
+import { isDiagnosticCursor } from './diagnosticsCursor.js';
 import {
   readDiagnosticSummaryResponse,
   readDiagnosticsResponse,
@@ -7,8 +8,7 @@ import type {
   DiagnosticEventListQuery,
   DiagnosticsApi,
 } from './diagnosticsTypes.js';
-
-const maximumDiagnosticEventLimit = 200;
+import { maximumDiagnosticEventLimit } from './diagnosticsTypes.js';
 
 export function createDiagnosticsApi(
   fetchImplementation: typeof fetch,
@@ -24,12 +24,13 @@ export function createDiagnosticsApi(
         ),
       );
     },
-    async listDiagnosticEvents(query: DiagnosticEventListQuery = {}) {
+    async listDiagnosticEvents(query: DiagnosticEventListQuery = {}, signal?: AbortSignal) {
       return readDiagnosticsResponse(
         await requestJson(
           fetchImplementation,
           baseUrl,
           createDiagnosticsPath(query),
+          signal === undefined ? undefined : { signal },
         ),
       );
     },
@@ -37,6 +38,19 @@ export function createDiagnosticsApi(
 }
 
 function createDiagnosticsPath(query: DiagnosticEventListQuery): string {
+  if (
+    !isRecord(query) ||
+    Object.keys(query).some((key) => key !== 'limit' && key !== 'cursor') ||
+    (query.limit !== undefined && query.cursor !== undefined)
+  ) {
+    throw new EkyApiError('Invalid diagnostics query.');
+  }
+  if (query.cursor !== undefined) {
+    if (!isDiagnosticCursor(query.cursor)) {
+      throw new EkyApiError('Invalid diagnostics query.');
+    }
+    return `/diagnostics/events?cursor=${query.cursor}`;
+  }
   if (query.limit === undefined) {
     return '/diagnostics/events';
   }

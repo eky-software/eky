@@ -7,6 +7,7 @@ import type { BackendEnvironment } from '../http/runtimeTrust.js';
 import { closePublicationDatabases, publicationState } from '../modules/invoicing/infrastructure/sqliteInvoiceDocumentPublication.fixture.js';
 import { createBackendOperationalLogger } from '../observability/infrastructure/createBackendOperationalLogger.js';
 import { createDiagnosticsComposition } from './diagnosticsComposition.js';
+import { readDiagnosticHttpPageForTest } from '../modules/diagnostics/diagnosticHttpRead.fixture.js';
 import { createPdfCompositionFixture } from './invoicingPdfComposition.fixture.js';
 
 afterEach(() => { vi.restoreAllMocks(); closePublicationDatabases(); });
@@ -50,9 +51,12 @@ it.each([false, true])('preserves delivery and its queue failure read chain when
     runtimeArchitecture: 'x64', runtimeNodeVersion: '24.0.0', runtimePlatform: 'win32',
   }));
   for (const route of ['/diagnostics/events', '/diagnostics/support-bundle-data']) {
-    const result = await diagnosticsApp.request(route);
-    expect(result.status).toBe(200);
-    const body = await result.json();
+    const body = route === '/diagnostics/events' ? await readDiagnosticHttpPageForTest(diagnosticsApp)
+      : await (async () => {
+        const result = await diagnosticsApp.request(route);
+        expect(result.status).toBe(200);
+        return result.json();
+      })();
     const archive = body.diagnosticEvents.filter((event: { eventName: string }) =>
       event.eventName === 'invoicePdfArchive.queueFailed');
     expect(archive).toEqual(loggerFails ? [] : [expect.objectContaining({

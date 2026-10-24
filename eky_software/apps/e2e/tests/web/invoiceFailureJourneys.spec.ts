@@ -1,5 +1,6 @@
 import type { APIResponse, Page, Response } from '@playwright/test';
 
+import { readDiagnosticPage } from '../../src/assertions/readDiagnosticPage.js';
 import { readE2eOperationalLogs } from '../../src/assertions/readE2eOperationalLogs.js';
 import { readE2eSqliteRows } from '../../src/assertions/readE2eSqliteRows.js';
 import { releaseE2eDatabaseFault } from '../../src/environment/releaseE2eDatabaseFault.js';
@@ -371,13 +372,14 @@ test.describe('operational log writer fault', () => {
     ).toEqual([{ action: 'invoice.approved', status: 'approved' }]);
     await expectInvoicingActivity(e2eWeb, 'invoice.approved');
 
-    const diagnostics = await readJsonResponse(
-      await e2eWeb.api.get('/diagnostics/events'),
-    );
+    const diagnostics = await readDiagnosticPage(e2eWeb.api);
     const support = await readJsonResponse(
       await e2eWeb.api.get('/diagnostics/support-bundle-data'),
     );
-    expect(diagnostics).toEqual({ diagnosticEvents: [], readState: { status: 'complete', reasons: [] } });
+    expect(diagnostics).toEqual({
+      state: 'ready', diagnosticEvents: [], readState: { status: 'complete', reasons: [] },
+      older: { state: 'end' }, newer: { state: 'end' },
+    });
     expect(support).toEqual(
       expect.objectContaining({
         diagnosticEvents: [],
@@ -470,9 +472,7 @@ async function expectSafeDiagnosticEvidence(
   e2eWeb: IsolatedWebHarness,
   eventNames: readonly string[],
 ): Promise<void> {
-  const diagnostics = await readJsonResponse(
-    await e2eWeb.api.get('/diagnostics/events?limit=200'),
-  );
+  const diagnostics = await readDiagnosticPage(e2eWeb.api, { limit: 200 });
   const support = await readJsonResponse(
     await e2eWeb.api.get('/diagnostics/support-bundle-data'),
   );

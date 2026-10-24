@@ -32,9 +32,10 @@ it('writes the packaged G source fixtures and minimized incidents using the exis
     return result;
   };
   const desktop = await rows('desktop');
-  expect(desktop).toHaveLength(9);
+  expect(desktop).toHaveLength(229);
   desktop.forEach(row => expect(() => validateDesktopOperationalEvent(row)).not.toThrow());
-  expect(desktop.filter(row => row.level === 'info')).toHaveLength(5);
+  expect(desktop.filter(row => row.level === 'info')).toHaveLength(225);
+  expect(desktop.filter(row => row.eventName === 'desktop.started')).toHaveLength(220);
   expect(desktop.find(row => row.eventName === 'update.businessRollbackSucceeded'))
     .toMatchObject({ level: 'warn', outcome: 'success' });
   expect(await rows('backend')).toEqual([{

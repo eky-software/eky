@@ -83,6 +83,7 @@ export interface CreateAppOptions {
   companyEmailSecretStore?: CompanyEmailSecretStore;
   sealCompanyEmailSecretAdmission?: () => void;
   registerCompanyEmailSecretShutdown?: (assertSettled: () => void) => void;
+  registerDiagnosticShutdown?: (close: () => Promise<void>) => void;
   deliveredInvoiceArchiveTaskSink?: DeliveredInvoiceArchiveTaskSink;
   databaseFilePath?: string;
   httpRequestFailureObserver?: HttpRequestFailureObserver;
@@ -464,6 +465,7 @@ export async function createApp(
       electronVersion: options.electronVersion ?? null,
       operationalIdentity,
       operationalLogsRoot: options.operationalLogsRoot,
+      ...(options.registerDiagnosticShutdown === undefined ? {} : { registerDiagnosticShutdown: options.registerDiagnosticShutdown }),
       ...(options.httpRequestFailureObserver === undefined ? {} : { failureObserver: options.httpRequestFailureObserver }),
       runtimeArchitecture: options.architecture ?? process.arch,
       runtimeNodeVersion: process.version,

@@ -18,6 +18,7 @@ export type {
 } from './activity/index.js';
 export type {
   DiagnosticEventComponent,
+  DiagnosticEventDirection,
   DiagnosticEventItem,
   DiagnosticEventLevel,
   DiagnosticEventListQuery,

@@ -1,18 +1,20 @@
 import type { ActorContext } from '@eky/auth';
 import { requirePermission } from '@eky/permissions';
 
-import type { DiagnosticEventReadResult } from '../domain/diagnosticEventReadResult.js';
+import type { DiagnosticEventPage } from '../domain/diagnosticEventPage.js';
+import { DiagnosticBrowseError, isDiagnosticBrowseCursor, diagnosticBrowsePolicy } from '../domain/diagnosticBrowsePolicy.js';
 import { unavailableDiagnosticReadState } from '../domain/diagnosticReadState.js';
 import type { DiagnosticEventReader } from '../ports/diagnosticEventReader.js';
 import type { DiagnosticReadFailureObserver } from '../ports/diagnosticReadFailureObserver.js';
 import { observeDiagnosticReadFailure } from './observeDiagnosticReadFailure.js';
 
-export const defaultDiagnosticEventLimit = 100;
-export const maximumDiagnosticEventLimit = 200;
+export const defaultDiagnosticEventLimit = diagnosticBrowsePolicy.defaultLimit;
+export const maximumDiagnosticEventLimit = diagnosticBrowsePolicy.maximumLimit;
 
 export interface ListDiagnosticEventsInput {
   actorContext: ActorContext;
   limit?: number;
+  cursor?: string;
 }
 
 export class DiagnosticEventValidationError extends Error {
@@ -28,14 +30,19 @@ export async function listDiagnosticEvents(
   input: ListDiagnosticEventsInput,
   reader: DiagnosticEventReader,
   failureObserver?: DiagnosticReadFailureObserver,
-): Promise<DiagnosticEventReadResult> {
+): Promise<DiagnosticEventPage> {
   requirePermission(input.actorContext, 'viewDiagnostics');
+  if (input.cursor !== undefined && (input.limit !== undefined || !isDiagnosticBrowseCursor(input.cursor))) {
+    throw new DiagnosticEventValidationError('Diagnostic cursor is invalid.');
+  }
   const limit = validateLimit(input.limit);
   try {
-    return await reader.listRecentDiagnosticEvents(limit);
+    const actor = JSON.stringify([input.actorContext.authenticationMode, input.actorContext.actorId, input.actorContext.companyId]);
+    return await reader.browseDiagnosticEvents(input.cursor === undefined ? { limit } : { cursor: input.cursor }, actor);
   } catch (error) {
+    if (error instanceof DiagnosticBrowseError) throw error;
     observeDiagnosticReadFailure(failureObserver, error);
-    return { diagnosticEvents: [], readState: unavailableDiagnosticReadState };
+    return { state: 'unavailable', diagnosticEvents: [], readState: unavailableDiagnosticReadState };
   }
 }
 

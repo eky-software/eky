@@ -20,9 +20,15 @@ describe('strict workspace management response projection', () => {
       operationId: `workspace.${entry.operation}`, errorCode: entry.errorCode,
       stage: entry.stage, retryable: entry.retryable, sideEffectState: 'unknown',
     };
-    const read = (value: unknown) => readDiagnosticsResponse({
-      diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
-    }).diagnosticEvents;
+    const read = (value: unknown) => {
+      const result = readDiagnosticsResponse({
+        state: 'ready', older: { state: 'end' }, newer: { state: 'end' },
+        diagnosticEvents: [value], readState: { status: 'complete', reasons: [] },
+      });
+      expect(result.state).toBe('ready');
+      if (result.state !== 'ready') throw new Error('Expected a ready page.');
+      return result.diagnosticEvents;
+    };
     expect(read(event)).toEqual([event]);
     expect(read({ ...event, sideEffectState: 'none' })).toEqual([{ ...event, sideEffectState: 'none' }]);
     for (const change of [
