@@ -5,7 +5,8 @@ riippuvuuspäätöksen 14.7.2026, Electron 43 / better-sqlite3 13
 -yhteensopivuuden varmennuksen 3.8.2026, Electron 43.3.0 -patch-päivityksen
 17.8.2026, transitiivisen XML-kirjaston tietoturvakorjauksen 2.9.2026
 sekä `undici`-korjauspäivityksen ja Electron `43.7.6` -päivityksen
-hyväksynnän 29.9.2026 sekä ASAR-testityökalun hyväksynnän 8.10.2026.
+hyväksynnän 29.9.2026, ASAR-testityökalun hyväksynnän 8.10.2026 sekä
+Electron `43.8.1` / Undici `7.30.1` -päivityksen rajauksen 24.10.2026.
 Versiot tarkistetaan uudelleen ennen
 tuotantojulkaisua, allekirjoitusta tai automaattipäivityksen toteutusta.
 
@@ -42,7 +43,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `43.7.6` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
+| `electron` | `43.8.1` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 | `@electron/asar` | `4.2.1` | asennetun ASAR-paketin rajattu testiluku ja aidon arkiston testiaineisto |
@@ -83,6 +84,49 @@ alkuperäisen paketin static-lukutodisteen sekä yhden nimetyn Windows-
 legacy-ajon. Staattinen luku tai alemmat testit eivät korvaa asennuksen,
 migraation, toisen käynnistyksen ja siivouksen hyväksyntää. Tämän työn
 ajantasainen näyttö on [M1:n checkpointissa](release-0.3.0-m1-preparation-plan.md#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
+
+### Electron 43.8.1 ja Undici 7.30.1
+
+Omistaja hyväksyi 24.10.2026 PR #318:n auditointiesteen rajatun korjauksen:
+Electron `43.7.6 -> 43.8.1` ja nykyisen `@electron/get@5.1.0`-ketjun
+Undici `7.29.1 -> 7.30.1`. Uusia paketteja tai muita versiopäivityksiä ei
+lisätä. `better-sqlite3 13.0.2`, tavallinen N-API-esikäännös, erillinen
+inspection-only MEMSTATUS -ajuri ja sen käännössopimus säilyvät.
+Historiallisen asentimen Electron `43.3.0` ei muutu.
+
+- [GHSA-jr5w-w6x2-84p9](https://github.com/advisories/GHSA-jr5w-w6x2-84p9)
+  koskee vaarantuneen varmenteen luottamusta. Electron on jaeltava runtime,
+  vaikka npm-manifesti luokittelee sen development-riippuvuudeksi.
+- [GHSA-4qv8-2p9j-2685](https://github.com/advisories/GHSA-4qv8-2p9j-2685)
+  koskee Undicin EventSource-parserin rajatonta kertymistä.
+- [GHSA-f72v-6w45-q472](https://github.com/advisories/GHSA-f72v-6w45-q472)
+  koskee Fetchin integrity-tarkistuksen ohitusta algoritmin kirjainkoolla.
+
+Nykyinen Electron-lataaja käyttää globaalia Fetchiä ja valinnaisesti
+Undicin proxy-dispatcheria. Sovellus ei tuo tätä npm-Undicia. Tämä rajaa
+osoitettua käyttöpolkua, mutta ei oikeuta jättämään korjattavaa pakettia
+haavoittuvaksi. npm-paketin päivitys ei päivitä Noden tai Electronin sisäistä
+Undici-toteutusta eikä ratkaise sitä koskevia erillisiä hälytyksiä.
+
+[Electronin julkaisu](https://github.com/electron/electron/releases/tag/v43.8.1)
+ja virallinen runtime-metadata määrittävät Node `24.22.0`, Chromium
+`150.0.7871.250`, V8 `15.0.245.31` ja moduuli-ABI:n `148`.
+Chromium, V8 ja ABI säilyvät; N-API `10` ja molemmat SQLite-käyttöpolut
+todennetaan silti oikeassa Electronissa. Kehitys-Nodea ei päivitetä.
+[Undicin julkaisu](https://github.com/nodejs/undici/releases/tag/v7.30.1)
+säilyttää Node-alarajan `20.18.1`; paketilla ei ole omia runtime-riippuvuuksia.
+Molempien MIT-lisenssi ja Electronin nykyiset riippuvuusrajat säilyvät.
+Korjaukset ovat yli vuorokauden vanhoja. Vanha vain `43.7.6`:ta koskenut
+varoaikapoikkeus poistetaan; uutta poikkeusta ei tarvita.
+
+Hyväksyntä vaatii rajatun lockfile-diffin, frozen-asennuksen, production-
+ja full-auditin sekä rekisteriallekirjoitukset. Sen lisäksi vaaditaan
+nykyiset native-/runtime-/turvaraja-/Electron-polut, stress ja täysi
+30 minuutin soak, saman puhtaan Windows-paketin palautus ja uudelleenkäynnistys,
+Linux-tarkistusajurin nykyinen CI-todistus sekä täsmällisen PR- ja uuden
+main-revision omat portit. Host-Noden ajurilataus ei yksin todista Electronia.
+Vanhojen onnistuneiden ajojen tai ABI-tiedon perusteella ei hyväksytä uutta
+runtimea. Nykyinen näyttö pidetään M1:n jatkamiskohdassa, ei tässä historiassa.
 
 ### Electron 43.7.6 -turvallisuuspäivitys
 

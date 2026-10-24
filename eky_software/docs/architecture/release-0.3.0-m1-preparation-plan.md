@@ -22,6 +22,19 @@ niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 
 **Nykyinen työ:** M4.2/R030-03:n tiedostonimiehdotus nykyisessä backup-polussa
 [alla olevan sopimuksen mukaan](#m42-varmuuskopion-tiedostonimisopimus).
+PR #318:n `7c5316dc` läpäisi valitut V2-portit, mutta riippuvuusauditointi
+hylkäsi Electronin yhden High- ja Undicin kaksi Moderate-havaintoa.
+Omistaja hyväksyi 24.10.2026 niiden täsmäpäivitykset `43.8.1` / `7.30.1`.
+[Riippuvuusarvio](local-desktop-dependency-review.md#electron-4381-ja-undici-7301)
+omistaa muuttumattoman SQLite-sopimuksen ja uuden runtime-todennuksen.
+Päivitys ja sen PR/main-portit ovat kesken; vanha V2-läpäisy ei hyväksy
+muuttunutta runtimea. M4.2:ta ei ole vielä yhdistetty tai hyväksytty.
+Päivityksen frozen-asennus, molemmat auditoinnit, rekisteriallekirjoitukset,
+työtilan testit ja tyyppitarkistus sekä koko Electron-kehitystestisarja
+läpäisivät. Erillinen oikean Electronin SQLite-koe todensi nykyiset ja
+historialliset rakenteet, tarkistusajurin muistirajan sekä väärän ajurin
+hylkäyksen. Paketoitu palautus, endurance ja uuden revision PR/main-portit
+ovat vielä erillisiä avoimia hyväksyntöjä.
 Omistaja valtuutti 24.10.2026 hyväksytyn roadmapin jatkamisen normaaleine
 tarkistuksineen ja integraatioineen ilman toistuvia ajo-/jatkokysymyksiä.
 Tämä ei poista turvallisuus-, riippuvuus-, yksityisyys- tai hyväksyntäportteja.

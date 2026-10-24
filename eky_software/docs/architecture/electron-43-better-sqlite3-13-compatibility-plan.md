@@ -2,9 +2,9 @@
 
 ## Nykyinen patch-päivitys
 
-Omistajan 29.9.2026 hyväksymän Electron `43.3.0 -> 43.7.6` -päivityksen
+Omistajan 24.10.2026 hyväksymän Electron `43.7.6 -> 43.8.1` -päivityksen
 rajaus ja avoimet hyväksyntäportit ovat
-[riippuvuusarviossa](local-desktop-dependency-review.md#electron-4376--turvallisuuspäivitys).
+[riippuvuusarviossa](local-desktop-dependency-review.md#electron-4381-ja-undici-7301).
 `better-sqlite3 13.0.2`, tietokantaskeema ja testien hyväksyntäehdot säilyvät.
 Päivityksen nykyinen hyväksyntätila on
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).

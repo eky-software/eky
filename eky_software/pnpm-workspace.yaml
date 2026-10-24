@@ -11,6 +11,3 @@ overrides:
   "vite@8.2.4>rolldown": "1.2.4"
 patchedDependencies:
   playwright-core@1.62.1: patches/playwright-core@1.62.1.patch
-minimumReleaseAgeExclude:
-  # Approved security update on 2026-09-29; no exclusion for future versions.
-  - electron@43.7.6

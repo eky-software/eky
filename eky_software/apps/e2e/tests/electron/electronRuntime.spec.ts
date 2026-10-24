@@ -115,9 +115,9 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
 
   expect(runtimeVersions).toEqual({
     chrome: '150.0.7871.250',
-    electron: '43.7.6',
+    electron: '43.8.1',
     napi: '10',
-    node: '24.21.0',
+    node: '24.22.0',
     v8: '15.0.245.31-electron.0',
   });
 
@@ -130,7 +130,7 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
       appliedMigrationCount: 39,
       databaseHealth: 'ok',
       electronVersion: null,
-      nodeVersion: 'v24.21.0',
+      nodeVersion: 'v24.22.0',
     }),
   );
 });
