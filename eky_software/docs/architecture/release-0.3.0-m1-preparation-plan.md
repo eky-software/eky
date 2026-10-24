@@ -7,30 +7,52 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (23.10.2026):** I0-I3/R30/R31 on hyväksytty
-[PR #316:n loppupäätöksellä](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644)
-mainiin `267bf6f2a1fc142d61308c7c2e730d2c0870eb11`.
-Mainin puu vastaa katselmoitua PR-headia
-`a0bae6cea3f34f4c295903ce8ab7460da1becbd4`.
-T/A/B/C/K/D/E/F/G/H/I säilyvät hyväksyttyinä omissa rajauksissaan;
+**Hyväksytty lähtö (24.10.2026):** M4.1/R030-01 on hyväksytty
+[PR #317:n loppupäätöksellä](https://github.com/eky-software/eky/pull/317#issuecomment-6376623066)
+mainiin `00764a41fb5043aa4822998561f1150ff2e28528`.
+Mainin puu vastaa katselmoitua toteutusrevisiota
+`f245aec8f5a02b3402b18e1841de9a2f4a167e0d`.
+T/A/B/C/K/D/E/F/G/H/I ja M4.1 säilyvät hyväksyttyinä omissa rajauksissaan;
 niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
 
 | Tarkistus | Hyväksytty näyttö |
 | --- | --- |
-| PR #316 | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/39970413784) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/39970413684) läpäisivät hyväksytyllä headilla. |
-| Mainin omat portit | [V2, suoritusyritys 3](https://github.com/eky-software/eky/actions/runs/39975808892/attempts/3) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/39975808891) läpäisivät. PR ja main kumpikin: 38 onnistunutta työtä, kuusi tarkoituksella valitsematonta diagnostiikkatyötä; kaikki 11 perhettä, viisi fault-skenaariota, molemmat toistot ja pakolliset askeleet varmennettu. |
+| PR #317 | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40027303028) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40027302511) läpäisivät. PR:n valitut 27 työtä ja yksi toisto hyväksyttiin nykyisen riskisuunnitelman mukaan; kuusi diagnostiikkatyötä jätettiin tarkoituksella valitsematta. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/40031305853/attempts/2) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40031398176) läpäisivät. Kaikki 38 valittua työtä, 11 perhettä, viisi fault-skenaariota, molemmat toistot ja pakolliset askeleet varmennettiin; kuusi diagnostiikkatyötä olivat tarkoituksella valitsematta. |
 
-**Nykyinen työ:** M4.1/R030-01:n suunnitelma, rajattu toteutus ja testit on
-hyväksytty 23.10.2026; 24.10.2026 jatketaan PR/main-integraatioon. Katso
-[toteutussopimus ja puuttuva hyväksyntänäyttö](#m41-odotustilojen-toteutussopimus).
-M4.2/M4.3/W7:n tekninen valmistelu säilyy erillään; niille ei ole tämän
-päätöksen perusteella tuotantokytkentää, uusia riippuvuuksia tai
-API-/poistoformaatteja hyväksytty. I:tä ei avata uudelleen.
+**Nykyinen työ:** M4.2/R030-03:n tiedostonimiehdotus nykyisessä backup-polussa
+[alla olevan sopimuksen mukaan](#m42-varmuuskopion-tiedostonimisopimus).
+PR #318:n `7c5316dc` läpäisi valitut V2-portit, mutta riippuvuusauditointi
+hylkäsi Electronin yhden High- ja Undicin kaksi Moderate-havaintoa.
+Omistaja hyväksyi 24.10.2026 niiden täsmäpäivitykset `43.8.1` / `7.30.1`.
+[Riippuvuusarvio](local-desktop-dependency-review.md#electron-4381-ja-undici-7301)
+omistaa muuttumattoman SQLite-sopimuksen ja uuden runtime-todennuksen.
+Päivitys ja sen PR/main-portit ovat kesken; vanha V2-läpäisy ei hyväksy
+muuttunutta runtimea. M4.2:ta ei ole vielä yhdistetty tai hyväksytty.
+Päivityksen frozen-asennus, molemmat auditoinnit, rekisteriallekirjoitukset,
+työtilan testit ja tyyppitarkistus sekä koko Electron-kehitystestisarja
+läpäisivät. Erillinen oikean Electronin SQLite-koe todensi nykyiset ja
+historialliset rakenteet, tarkistusajurin muistirajan sekä väärän ajurin
+hylkäyksen. Paketoitu palautus, endurance ja uuden revision PR/main-portit
+ovat vielä erillisiä avoimia hyväksyntöjä.
+Omistaja valtuutti 24.10.2026 hyväksytyn roadmapin jatkamisen normaaleine
+tarkistuksineen ja integraatioineen ilman toistuvia ajo-/jatkokysymyksiä.
+Tämä ei poista turvallisuus-, riippuvuus-, yksityisyys- tai hyväksyntäportteja.
+M4.3 ja W7 säilyvät erillisinä; niiden tekniset sopimukset täsmennetään
+ennen toteutusta. I:tä ja M4.1:tä ei avata uudelleen.
 Omistaja hyväksyi aiempien M4/W7-suunnitelmadokumenttien mukaan ottamisen
 omana valmistelucommitinaan; tämä ei hyväksy W7:n tuotantototeutusta.
 Koko `0.3.0` ei ole valmis.
 
-**Avoimet havainnot:** I:n ensimmäisen native-valmistelun viiveen tarkka
+**Avoimet havainnot:** M4.1:n mainin ensimmäinen Electron-yritys aikakatkaisi
+ennen ensimmäistä ikkunaa. Sen automaattinen uusinta läpäisi, mutta ajo jäi
+oikein flaky-hylkäykseksi. Ensivirheen salattu aineisto säilyi ja siivous
+varmennettiin; viimeinen migraatiovaihe ei osoita juurisyytä.
+Omistajan erikseen hyväksymä yksi Electron-/koontiuusinta läpäisi samalla
+lähteellä. Muut 36 onnistunutta suoritusta ja neljä valmista producer-
+artifactia säilyivät; Electron valmisteli oman saman lähteen pakettinsa,
+ei todistetusti ensimmäisen Electron-yrityksen samoja tavuja.
+Alkuperäinen syy jää avoimeksi, ei korjatuksi. I:n ensimmäisen native-valmistelun viiveen tarkka
 syy jää avoimeksi. Sen omistettu käännösprosessipuu todettiin poistuneeksi,
 mutta myöhemmin katkaistun koko työn loppusiivousta ei varmennettu.
 Ensimmäinen legacy-pakettirakennus hylättiin ilman talteen jäänyttä
@@ -47,8 +69,9 @@ sekä H:n aiemmat kierrokset säilyvät historiassa.
 
 ### M4 / Käyttäjäkokemuksen valmistelu
 
-**Tila 23.10.2026:** M4.1:n toteutus hyväksytty ja työn alla; muut palat
-teknisessä valmistelussa, eivät tuotantohyväksyttyjä. Roadmap omistaa
+**Tila 24.10.2026:** M4.1 hyväksytty omine PR/main-portteineen. M4.2:n
+rajattu toteutus ja kohdetodennus ovat työn alla; sen integraatio ei ole
+vielä hyväksytty. Muut palat ovat teknisessä valmistelussa. Roadmap omistaa
 julkaisuun sovitut R030-01, R030-02/W7, R030-03 ja R030-08.
 R030-04/R030-05:n palaute ja käyttöohjeet kulkevat jokaisen palan mukana.
 Alla oleva ositus on suositus hyväksyttäväksi, ei uusi rinnakkainen roadmap.
@@ -153,13 +176,14 @@ ovat tämän jälkeen erikseen; laaja rakennesiivous ei kuulu M4:ään.
 
 #### Koottu toteutusjärjestys
 
-**Järjestys 23.10.2026:** M4.1:n rajattu toteutus ja testit on hyväksytty.
-Muiden palojen käyttäytymisvalinnat eivät vielä ole tuotantototeutuksen
-tai uusien formaattien lupa. Etene rajattuihin paloihin
-sidotuin checkpointtein yllä olevan taulukon järjestyksessä:
+**Järjestys, päivitetty 24.10.2026:** M4.1 on hyväksytty. Jatka M4.2:sta
+omistajan roadmap-jatkovaltuudella ja rajattuihin paloihin sidotuin
+checkpointtein. M4.3:n ja W7:n yksityiskohtaiset sopimukset katselmoidaan
+ennen vaikutusalueen toteutusta; uusia formaatteja tai turvarajojen
+lievennyksiä ei johdeta pelkästä jatkovaltuudesta.
 
-1. **M4.1:** lukitse odotustilojen käyttökohdelista ja pieni saavutettava
-   esityssopimus, sitten toteuta nykyisten feature-tilojen päälle. Ei uutta
+1. **M4.1, valmis:** säilytä hyväksytty odotustilojen käyttökohdelista ja
+   saavutettava esityssopimus nykyisten feature-tilojen päällä. Ei uutta
    työnohjausta eikä jo toimivien PDF-/SMTP-tilakoneiden uudistusta.
 2. **M4.2:** nimeä backup nykyisessä mainin tallennuspolussa validoidusta
    työtilan nimestä ja päivämäärästä. Todista turvalliset tiedostonimet,
@@ -175,8 +199,8 @@ sidotuin checkpointtein yllä olevan taulukon järjestyksessä:
    ohjeet ja korvattujen polkujen poisto samassa checkpointissa. Käytä
    nykyisen riskipolitiikan PR-portteja ja vaikutusalueen paketoituja
    todisteita. Suojattu merge ja mainin omat portit vasta valtuutetussa
-   toteutusvaiheessa. M4.1:n Goal kattaa sen normaalin PR/main-integraation;
-   muiden palojen valmistelulupa ei käynnistä niiden toteutusta.
+   toteutusvaiheessa omistajan jatkovaltuudella. Uusi estävä havainto
+   käsitellään nykyisten turva- ja hyväksyntärajojen mukaan.
 
 #### M4.1: Odotustilojen toteutussopimus
 
@@ -203,22 +227,36 @@ nykyistä alkuperäisen virheen ja salatun aineiston ketjua, eivät uutta logger
 Välitön, nopeasti päättyvä työ ei saa keinotekoista vähimmäisodotusta.
 Natiivin lokikansion avaukseen ei lisätä keinotekoista pitkäkestoista tilaa.
 
-**CI:tä edeltävä checkpoint 24.10.2026:** paikallinen toteutus,
-webin komponenttisarja, työtilan
-tyyppitarkistus ja 14 kohdistettua selainkoetta läpäisivät.
-Selainkokeissa tarkistettiin nykyiset COMPANY-LOAD/SAVE-polut ja
-UI-WAIT-001/002/003. Backup-panelin desktop/mobile-kuvat ja tekstiskaalaus
-125/150 prosenttiin tarkistettiin; tämä ei ole kaikkien näkymien tai
-oikean ruudunlukijaohjelman kattava hyväksyntä. Rajattu riippumaton
-koodikatselmus ei löytänyt toteutusvirhettä.
-Ensimmäisen uuden selainkokeen liian väljä status-valitsin korjattiin;
-alkuperäinen hylkäys ja aineisto säilyvät erillään korjatusta kokeesta.
-Koko pakettien testisarja ja web-build läpäisivät. Ei vielä PR-/main-
-hyväksyntää: julkaisutarkistus sekä täsmällisen PR-revision ja uuden mainin
-nykyiset pakolliset portit ovat avoinna.
-Selainkomponentin hallittu native-vastaus ei ole varmuuskopion
-palautettavuuden tai SMTP-verkkotoimituksen todiste. Uusia backend-,
-profiili-, native-, salaisuus- tai lifecycle-polkuja ei tässä muuteta.
+**Hyväksyntä 24.10.2026:** M4.1:n omat PR/main-portit ja loppupäätös ovat
+[jatkamiskohdan taulukossa](#jatka-tästä). Paikallinen CI:tä edeltävä näyttö
+ja sen rajat säilyvät [integraatiohistoriassa](release-0.3.0-integration-history.md#m41n-citä-edeltävä-checkpoint-24102026).
+Hyväksyntä ei väitä kaikkien näkymien manuaalista ruudunlukijakatsausta,
+uutta native-palautustodistusta tai historiallisten timeoutien korjausta.
+
+#### M4.2: Varmuuskopion tiedostonimisopimus
+
+Omistajan hyväksymä yritysvalitsimen nimi ja päivämäärä muodostavat vain
+mainin native Save -dialogin ehdotuksen. Nykyinen backup-maintenance-lease
+hankitaan ennen tuoretta validoitua, sivuvaikutuksetonta rekisterilukua.
+Sen aktiivisen workspaceId:n
+on vastattava tämän runtimen työtilaa; ristiriitaa tai rekisterin lukuvirhettä
+ei muuteta toisen yrityksen nimeksi. Luonti, nimenmuutos ja yrityksen vaihto
+käyttävät samaa leasea. Renderer ei anna nimeä eikä polkua.
+
+Nimen teknisen muunnoksen ja käyttöohjeen omistaa
+[backup-suunnitelma](local-backup-and-restore-plan.md#siirrettävän-varmuuskopion-tiedostonimi).
+Kohdetestit kattavat Unicode-/polkumerkit, puuttuvan nimen, saman päivän
+törmäyksen nykyisen no-overwrite-suojan kautta, peruutuksen, lukuhäiriön,
+huoltovarauksen ja myöhäisen sulun sekä todellisen compositionin tuoreen
+nimen. Nykyinen kontti, salaus, lineage, sisältö ja vanhojen kopioiden
+palautus pysyvät muuttumattomina. Uutta audit-tapahtumaa ei tarvita;
+luonti käyttää nykyistä backup-tapahtumaa ja nimiluvun virhe turvallista
+backup.failed-tapahtumaa ilman nimeä tai polkua.
+
+**Avoin hyväksyntä:** vaikutusalueen testit, tarkistukset, rajattu riippumaton
+katselmus, puhtaan paketin hardened backup -> inspect -> restore -> restart
+-> compare sekä täsmällisen revision PR/main-portit. Valmistelu tai
+yksittäinen kohdeajo eivät sulje M4.2:ta.
 
 ### I / CI-politiikan ja ajantasaisten sopimusten valmistelu
 

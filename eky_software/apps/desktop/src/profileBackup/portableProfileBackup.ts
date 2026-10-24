@@ -23,6 +23,7 @@ import type {
 
 const portableBackupExtension = '.ekybackup';
 const temporaryFileSuffix = '.partial';
+const backupFileNameLabelMaxBytes = 120;
 
 interface PortableProfileBackupDependencies {
   appVersion: string;
@@ -286,11 +287,28 @@ export class PortableProfileBackupService {
   }
 }
 
-export function createPortableProfileBackupFileName(now: Date): string {
+export function createPortableProfileBackupFileName(
+  now: Date,
+  workspaceLabel?: string,
+): string {
   const year = now.getFullYear().toString().padStart(4, '0');
   const month = (now.getMonth() + 1).toString().padStart(2, '0');
   const day = now.getDate().toString().padStart(2, '0');
-  return `Eky-varmuuskopio-${year}-${month}-${day}${portableBackupExtension}`;
+  const label = createBackupFileNameLabel(workspaceLabel);
+  return `Eky-varmuuskopio-${label === '' ? '' : `${label}-`}${year}-${month}-${day}${portableBackupExtension}`;
+}
+
+function createBackupFileNameLabel(workspaceLabel: string | undefined): string {
+  const safeLabel = (workspaceLabel ?? '').normalize('NFC')
+    .replace(/[<>:"/\\|?*\u0000-\u001f\u007f-\u009f\u2028\u2029\u202a-\u202e\u2066-\u2069]/gu, '-')
+    .replace(/\s+/gu, ' ')
+    .trim();
+  let label = '';
+  for (const character of safeLabel) {
+    if (Buffer.byteLength(label + character, 'utf8') > backupFileNameLabelMaxBytes) break;
+    label += character;
+  }
+  return label.replace(/[. ]+$/gu, '');
 }
 
 export function ensurePortableProfileBackupExtension(path: string): string {

@@ -1516,6 +1516,39 @@ Renderer ei saa:
 - palautuspisteen tiedostonimeä
 - raw inspector-, SQLite- tai filesystem-virhettä
 
+### Siirrettävän varmuuskopion tiedostonimi
+
+Luo varmuuskopio ehdottaa mainin tallennusikkunassa nimeä
+`Eky-varmuuskopio-<yritysvalitsimen nimi>-YYYY-MM-DD.ekybackup`.
+Päivämäärä käyttää nykyiseen tapaan paikallista kalenteripäivää.
+Yritysvalitsimen nimi näkyy tiedostonimestä, vaikka sisältö on salattu.
+Käyttäjä saa vaihtaa tiedostonimen ja tallennuskohteen native-ikkunassa.
+Puuttuva tai muunnoksessa tyhjäksi jäävä nimi käyttää vanhaa päivämääränimeä.
+Nimi ei ole yritysidentiteetti tai palautuksen alkuperäketjun todiste.
+
+Main lukee tuoreen validoidun `workspaceLabel`-arvon saman aktiivisen
+runtimen rekisteristä omistajan sivuvaikutuksettomalla `inspect`-luvulla
+backup-maintenance-leasen sisällä ennen dialogia. Haku ei korjaa rekisterislotteja.
+Vaihtunut aktiivinen tunniste tai epäonnistunut luku keskeyttää valinnan
+turvallisesti. Nimenmuutos ja vaihto eivät pääse rinnalle samalla leasella.
+Rendereriltä ei hyväksytä nimeä tai polkua; virheeseen ei liitetä yritystietoa.
+
+Tiedostonimen ehdotus normalisoidaan NFC:ksi, Windowsin kielletyt
+tiedostonimimerkit, polkuerottimet sekä control-/bidi-ohjaimet korvataan
+viivalla ja ylimääräinen tyhjätila yhdistetään. Nimen osa katkaistaan
+enintään 120 UTF-8-tavuun katkaisematta koodipistettä; loppupisteet ja
+-välilyönnit poistetaan. Kiinteä `Eky-varmuuskopio-`-alku estää Windowsin
+varatut laitenimet koko basenimessä. Koko ehdotus on enintään 158 tavua.
+Tämä on käyttöliittymäehdotuksen raja, ei backupin sisältö-/kokoraja tai
+käyttäjän itse valitseman polun uusi hyväksymisraja.
+
+Samana päivänä samalla nimellä tehty kopio voi ehdottaa samaa tiedostonimeä.
+Nykyinen no-overwrite-tarkistus estää aiemman kopion korvaamisen; valitse
+toinen tiedostonimi. Muunnos ei tee nimistä yksilöllisiä eikä luo automaattista
+kopio- tai uudelleennimeämisketjua. Kontti, self-inspection, lineage-tarkistus
+ja vanhojen kopioiden yhteensopivuus eivät riipu tiedostonimestä.
+Nimeä tai kokonaista polkua ei lisätä statusstoreen, lokeihin tai tukipakettiin.
+
 ## Observability ja audit
 
 Tekniset tapahtumaperheet ovat:

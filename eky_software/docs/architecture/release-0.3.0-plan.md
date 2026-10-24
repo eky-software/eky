@@ -23,9 +23,9 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 
 | Tunnus | Tehtävä ja tavoite | Tila |
 | --- | --- | --- |
-| R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1:n suunnitelma ja toteutus testeineen hyväksytty 23.10.2026. Paikallinen toteutus ja kohdetodennus valmiit; 24.10.2026 jatketaan PR/main-portteihin, joiden hyväksyntä on avoin. Käyttökohdelista ja rajat M1:n M4.1-osiossa. |
+| R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1 hyväksytty PR #317:n ja uuden mainin omilla porteilla 24.10.2026. Tarkka näyttö ja avoimeksi jäänyt ensimmäinen Electron-timeout ovat M1:n jatkamiskohdassa. |
 | R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | Mukaan sovittu; valmistelu ja päätösjono kirjattu. Sopimusten hyväksyntä ja toteutus avoinna. |
-| R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | Omistaja hyväksyi 23.10.2026 yritysvalitsimen nimen ja päivämäärän; turvallinen nimeämissääntö ja toteutus vielä täsmennettävä. |
+| R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | M4.2:n rajattu toteutus ja kohdetodennus työn alla 24.10.2026; omistava nimeämissopimus backup-suunnitelmassa. PR/main- ja palautushyväksyntä ovat avoimia. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
 | D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3 hyväksytty PR #315:n ja uuden mainin omilla porteilla; loppuhyväksyntä M1:n kautta. |

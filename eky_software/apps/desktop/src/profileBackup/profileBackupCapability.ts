@@ -46,6 +46,7 @@ interface ProfileBackupCapabilityOptions {
     RecoveryPointService,
     'createManual' | 'getStatus'
   >;
+  readActiveWorkspaceLabel(): Promise<string | undefined>;
   selectBackupSource(): Promise<string | null>;
   selectBackupTarget(defaultFileName: string): Promise<string | null>;
   showSafeError(
@@ -82,9 +83,27 @@ export function createProfileBackupCapability(
     createProfileBackupIpcChannel,
     () =>
       runExclusive('backup', async (): Promise<CreateProfileBackupResult> => {
+        let workspaceLabel: string | undefined;
+        try {
+          workspaceLabel = await options.readActiveWorkspaceLabel();
+        } catch (error) {
+          assertAvailable();
+          operationalObserver.observe({
+            correlationId: randomUUID(),
+            errorCode: 'PROFILE_BACKUP_CREATE_FAILED',
+            eventName: 'backup.failed',
+            retryable: true,
+            sideEffectState: 'none',
+            stage: 'portable',
+          });
+          options.showSafeError('create');
+          throw new Error('PROFILE_BACKUP_CREATE_FAILED', { cause: error });
+        }
+        assertAvailable();
         const targetPath = await options.selectBackupTarget(
           createPortableProfileBackupFileName(
             options.now?.() ?? new Date(),
+            workspaceLabel,
           ),
         );
         assertAvailable();

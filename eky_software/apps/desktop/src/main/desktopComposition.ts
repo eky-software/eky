@@ -2333,6 +2333,7 @@ async function startDesktopCompositionRuntime({
       profileRecoveryOperationalObserver,
       portableSnapshotClient: profileSnapshotInspectionClient,
       recoveryPointService,
+      readActiveWorkspaceLabel: () => workspaceManagementComposition.readActiveWorkspaceLabel(),
       relaunchApplication: options.relaunchApplication,
       restoreActivationTransaction: profileRestoreActivationTransaction,
       showOpenDialog: dependencies.showOpenDialog,

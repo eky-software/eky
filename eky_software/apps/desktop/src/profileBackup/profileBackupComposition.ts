@@ -41,6 +41,7 @@ interface ProfileBackupCompositionOptions {
   profileRecoveryOperationalObserver: ProfileRecoveryOperationalObserver;
   portableSnapshotClient: ProfileSnapshotInspectionPort & ProfileRestoreSnapshotInspectionPort;
   recoveryPointService: RecoveryPointService;
+  readActiveWorkspaceLabel(): Promise<string | undefined>;
   relaunchApplication(): void;
   showOpenDialog(
     owner: BrowserWindow,
@@ -119,6 +120,7 @@ export async function createProfileBackupComposition(
     operationalLogger: options.operationalLogger,
     passwordWindow,
     recoveryPointService: options.recoveryPointService,
+    readActiveWorkspaceLabel: options.readActiveWorkspaceLabel,
     selectBackupSource: () => selectBackupSource(options),
     selectBackupTarget: (defaultFileName) =>
       selectBackupTarget(options, defaultFileName),

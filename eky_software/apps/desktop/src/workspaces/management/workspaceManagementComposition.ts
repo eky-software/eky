@@ -52,6 +52,7 @@ import {
 } from './mainOwnedWorkspaceManagementOperationGuard.js';
 import { WorkspaceLabelRename } from './workspaceLabelRename.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
+import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
 import type { DesktopOperationalIdentity } from '../../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../../observability/desktopOperationalLogger.js';
@@ -91,6 +92,7 @@ export interface WorkspaceManagementCompositionOptions {
 
 export interface WorkspaceManagementComposition {
   readonly service: WorkspaceManagementService;
+  readActiveWorkspaceLabel(): Promise<string>;
   dispose(): void;
 }
 
@@ -291,6 +293,15 @@ export async function createWorkspaceManagementComposition(
 
   return Object.freeze({
     service,
+    async readActiveWorkspaceLabel() {
+      const current = await registry.inspect();
+      const workspace = current?.workspaces.find(entry => entry.workspaceId === options.activeWorkspaceId);
+      if (current?.activeWorkspaceId !== options.activeWorkspaceId ||
+        workspace?.lifecycleState !== 'ready') {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+      return workspace.workspaceLabel;
+    },
     dispose() {
       operationGuard.dispose();
     },
