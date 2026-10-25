@@ -147,6 +147,38 @@ export class AcceptedBuildMetadataStore {
     });
   }
 
+  confirmAbsent(authority: () => void): Promise<void> {
+    const { assertAuthority } = captureSelection({ expectedBytes: undefined, assertAuthority: authority });
+    const absent: SelectedSlots = { current: undefined, next: undefined, backup: undefined };
+    return this.runExclusive(async () => {
+      try {
+        await this.assertSelectedSlots(absent, assertAuthority);
+        if (await optionalFileStat(dirname(this.filePath)) !== undefined) {
+          assertAuthority();
+          await assertPrivateDirectory(dirname(this.filePath));
+          assertAuthority();
+          await syncDirectory(dirname(this.filePath), true);
+        }
+        await this.assertSelectedSlots(absent, assertAuthority);
+      } catch (error) { throw selectedMutationError(error); }
+    });
+  }
+
+  async confirmSelected(selection: AcceptedBuildMetadataSelection): Promise<void> {
+    const captured = captureSelection(selection);
+    if (captured.expectedBytes === undefined) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+    const selected: SelectedSlots = { current: captured.expectedBytes, next: undefined, backup: undefined };
+    return this.runExclusive(async () => {
+      try {
+        await this.assertSelectedSlots(selected, captured.assertAuthority);
+        await assertPrivateDirectory(dirname(this.filePath));
+        captured.assertAuthority();
+        await syncDirectory(dirname(this.filePath), true);
+        await this.assertSelectedSlots(selected, captured.assertAuthority);
+      } catch (error) { throw selectedMutationError(error); }
+    });
+  }
+
   private async writeSelected(
     validated: VersionedAcceptedBuildMetadata,
     selection: ReturnType<typeof captureSelection>,

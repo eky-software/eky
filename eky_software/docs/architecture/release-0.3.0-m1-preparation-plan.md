@@ -93,10 +93,21 @@ katselmuksen jälkitarkistus läpäisivät. Päällekkäisiä kohdesarjoja ei la
 yhteen. Tämä ei vielä ole oikean SQLite/Electron-käynnistyksen tai paketoidun
 palautuksen näyttö.
 
-**Seuraava työ:** yhteinen metadata-/journal-/registry-admission ja
-suojattujen muutosten kutsujakytkentä
-ennen korjaavia lukuja;
-sitten W6:n nimetty jatko sekä valitsimen
+**Tilavalmistelun seuraava osaraja:** nykyisen sijaintimuunnoksen omistajan
+nimetty valitsinhaara tarkistaa kaikki metadata-/journal-/registry-slotit
+ennen muutoksia. Legacy-kopio ja sen synkronointi varmennetaan ennen lähteen
+poistoa, myös kadonneen kuittauksen jälkeen. Journalin terminalit sidotaan
+sovellushyväksyntään, eivät business-baselineen. Vanhat korjaavat lukupolut
+säilyvät erillään. Vaikutusalueen sarja läpäisi 677 testiä 24 tiedostossa;
+yksi alustakohtainen tapaus jäi ajamatta. Rajatun katselmuksen havaitsemat
+kopion synkronointi-, duplikaattiavain- ja poistovaltuuspuutteet korjattiin
+regressioineen; jälkitarkistukseen ei jäänyt avoimia löydöksiä.
+Desktopin ja E2E:n tyyppitarkistukset läpäisivät. Tämä on oikeiden
+tiedostotavujen ja injektoidun valtuuden näyttö, ei native-prosessin tai
+paketoidun palautuksen todiste. Työ ei ole vielä startupin käyttämä haara.
+
+**Seuraava työ:** valitsimen tilavalmistelun tuotantokutsuja ja sen tuore
+installation-/recovery-valtuus ennen korjaavia lukuja; sitten W6:n nimetty jatko sekä valitsimen
 ja ensimmäisen yritysavauksen kytkentä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.

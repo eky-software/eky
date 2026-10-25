@@ -33,6 +33,43 @@ afterEach(async (context) => {
 });
 
 describe('workspace registry store', () => {
+  it('inspects all slot bytes without selecting or repairing them', async () => {
+    const fixture = await createFixture();
+    const current = createRegistry('Current');
+    const next = { ...createRegistry('Next'), formatVersion: 2, activeWorkspaceId: null };
+    const backup = createRegistry('Backup');
+    await writeSlot(fixture.currentPath, current);
+    await writeSlot(fixture.nextPath, next);
+    await writeSlot(fixture.backupPath, backup);
+    const paths = [fixture.currentPath, fixture.nextPath, fixture.backupPath];
+    const before = await Promise.all(paths.map(path => readFile(path)));
+
+    const slots = await fixture.store.inspectSlots();
+
+    expect([slots.current?.value, slots.next?.value, slots.backup?.value]).toEqual([current, next, backup]);
+    expect([slots.current, slots.next, slots.backup].map(slot => Buffer.from(slot!.bytes))).toEqual(before);
+    expect(await Promise.all(paths.map(path => readFile(path)))).toEqual(before);
+  });
+
+  it.each(['next', 'backup'] as const)('validates %s even when current is valid without weakening the byte parser', async slot => {
+    const fixture = await createFixture();
+    await writeSlot(fixture.currentPath, createRegistry('Current'));
+    const path = slot === 'next' ? fixture.nextPath : fixture.backupPath;
+    const current = await readFile(fixture.currentPath);
+    for (const invalid of [Buffer.from([0xff]), Buffer.from('{"formatVersion":1,"formatVersion":1}'), Buffer.from('{}')]) {
+      await writeFile(path, invalid);
+      await expect(fixture.store.inspectSlots()).rejects.toThrow(WORKSPACE_REGISTRY_INVALID);
+      expect(await readFile(fixture.currentPath)).toEqual(current);
+      expect(await readFile(path)).toEqual(invalid);
+    }
+  });
+
+  it('reports absent slots without creating a registry directory', async () => {
+    const fixture = await createFixture();
+    await expect(fixture.store.inspectSlots()).resolves.toEqual({ current: undefined, next: undefined, backup: undefined });
+    expect(await pathExists(fixture.installationRoot)).toBe(false);
+  });
+
   it.each(['current', 'backup', 'next'] as const)(
     'keeps the v2 null selection when inspecting and recovering %s', async (slot) => {
       const fixture = await createFixture();

@@ -10,6 +10,8 @@ import {
   unlink,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import type { Stats } from 'node:fs';
+import type { FileHandle } from 'node:fs/promises';
 import { isDeepStrictEqual } from 'node:util';
 
 import { readOnlyJournalSlots, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
@@ -102,6 +104,131 @@ export class UpdateJournalStore {
     });
   }
 
+  createSelected(journal: Readonly<UpdateJournal>, authority: () => void): Promise<void> {
+    const validated = parseUpdateJournal(journal);
+    const content = Buffer.from(`${JSON.stringify(validated)}\n`, 'utf8');
+    const assertAuthority = () => assertUpdateJournalAuthority(authority);
+    if (typeof authority !== 'function' || content.byteLength > maximumUpdateJournalBytes) {
+      return Promise.reject(new Error('UPDATE_JOURNAL_CONFLICT'));
+    }
+    return this.runExclusive(async () => {
+      try {
+        await this.assertInitialSelection(undefined, undefined, assertAuthority);
+        assertAuthority();
+        await mkdir(dirname(this.filePath), { recursive: true, mode: 0o700 });
+        assertAuthority();
+        await chmod(dirname(this.filePath), 0o700);
+        await assertPrivateDirectory(dirname(this.filePath));
+        await this.assertInitialSelection(undefined, undefined, assertAuthority);
+        assertAuthority();
+        const file = await open(this.nextPath, 'wx', 0o600);
+        let written: Stats | undefined;
+        await settleOwnedFile(file, async () => {
+          assertAuthority();
+          await file.writeFile(content);
+          assertAuthority();
+          await file.sync();
+          written = await file.stat();
+          assertAuthority();
+        });
+        await this.assertInitialSelection(content, written, assertAuthority);
+        assertAuthority();
+        await rename(this.nextPath, this.filePath);
+        assertAuthority();
+        await syncDirectory(dirname(this.filePath), true);
+        const actual = await this.inspectStoredSlots();
+        assertAuthority();
+        if (actual.current === undefined || !content.equals(actual.current.bytes) ||
+            actual.next !== undefined || actual.backup !== undefined) {
+          throw new Error('UPDATE_JOURNAL_CONFLICT');
+        }
+      } catch (error) {
+        // Admission owns interrupted slots. Never undo a possibly published copy.
+        if (error instanceof Error && error.message === 'UPDATE_JOURNAL_CONFLICT') throw error;
+        throw new Error('UPDATE_JOURNAL_UNAVAILABLE', { cause: error });
+      }
+    });
+  }
+
+  confirmAbsent(authority: () => void): Promise<void> {
+    const assertAuthority = () => assertUpdateJournalAuthority(authority);
+    if (typeof authority !== 'function') return Promise.reject(new Error('UPDATE_JOURNAL_CONFLICT'));
+    return this.runExclusive(async () => {
+      await this.assertInitialSelection(undefined, undefined, assertAuthority);
+      try {
+        await lstat(dirname(this.filePath));
+      } catch (error) {
+        if (!isNodeError(error) || error.code !== 'ENOENT') throw error;
+        await this.assertInitialSelection(undefined, undefined, assertAuthority);
+        return;
+      }
+      assertAuthority();
+      await assertPrivateDirectory(dirname(this.filePath));
+      assertAuthority();
+      await syncDirectory(dirname(this.filePath), true);
+      await this.assertInitialSelection(undefined, undefined, assertAuthority);
+    }).catch(error => { throw selectedMutationError(error); });
+  }
+
+  confirmSelected(selection: UpdateJournalClearSelection): Promise<void> {
+    if (!(selection.expectedBytes instanceof Uint8Array) ||
+        selection.expectedBytes.byteLength < 1 || selection.expectedBytes.byteLength > maximumUpdateJournalBytes ||
+        typeof selection.assertAuthority !== 'function') {
+      return Promise.reject(new Error('UPDATE_JOURNAL_CONFLICT'));
+    }
+    const expected = Buffer.from(selection.expectedBytes);
+    const authority = selection.assertAuthority;
+    const assertAuthority = () => assertUpdateJournalAuthority(authority);
+    return this.runExclusive(async () => {
+      await this.assertCurrentSelection(expected, assertAuthority);
+      await assertPrivateDirectory(dirname(this.filePath));
+      assertAuthority();
+      await syncDirectory(dirname(this.filePath), true);
+      await this.assertCurrentSelection(expected, assertAuthority);
+    }).catch(error => { throw selectedMutationError(error); });
+  }
+
+  private async assertCurrentSelection(expected: Buffer, assertAuthority: () => void): Promise<void> {
+    assertAuthority();
+    const before = await lstat(this.filePath);
+    assertAuthority();
+    const slots = await this.inspectStoredSlots();
+    assertAuthority();
+    if (slots.current === undefined || slots.next !== undefined || slots.backup !== undefined ||
+        !expected.equals(slots.current.bytes)) {
+      throw new Error('UPDATE_JOURNAL_CONFLICT');
+    }
+    const after = await lstat(this.filePath);
+    if (!after.isFile() || after.isSymbolicLink() || after.nlink !== 1 ||
+        before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
+        before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+      throw new Error('UPDATE_JOURNAL_CONFLICT');
+    }
+    assertAuthority();
+  }
+
+  private async assertInitialSelection(
+    next: Buffer | undefined, identity: Stats | undefined, assertAuthority: () => void,
+  ): Promise<void> {
+    assertAuthority();
+    const slots = await this.inspectStoredSlots();
+    assertAuthority();
+    if (slots.current !== undefined || slots.backup !== undefined ||
+        (next === undefined ? slots.next !== undefined :
+          slots.next === undefined || !next.equals(slots.next.bytes))) {
+      throw new Error('UPDATE_JOURNAL_CONFLICT');
+    }
+    if (next !== undefined) {
+      const actual = await lstat(this.nextPath);
+      assertAuthority();
+      if (identity === undefined || !actual.isFile() || actual.isSymbolicLink() || actual.nlink !== 1 ||
+          identity.dev !== actual.dev || identity.ino !== actual.ino || identity.size !== actual.size ||
+          identity.mtimeMs !== actual.mtimeMs || identity.ctimeMs !== actual.ctimeMs) {
+        throw new Error('UPDATE_JOURNAL_CONFLICT');
+      }
+    }
+  }
+
   clear(): Promise<void> {
     return this.runExclusive(async () => {
       const results = await Promise.allSettled([
@@ -128,26 +255,12 @@ export class UpdateJournalStore {
     const assertAuthority = () => assertUpdateJournalAuthority(authority);
     return this.runExclusive(async () => {
       try {
-        assertAuthority();
-        const before = await lstat(this.filePath);
-        assertAuthority();
-        const slots = await this.inspectStoredSlots();
-        assertAuthority();
-        if (slots.current === undefined || slots.next !== undefined || slots.backup !== undefined ||
-            !expected.equals(slots.current.bytes)) {
-          throw new Error('UPDATE_JOURNAL_CONFLICT');
-        }
-        const after = await lstat(this.filePath);
-        if (!after.isFile() || after.isSymbolicLink() || after.nlink !== 1 ||
-            before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
-            before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
-          throw new Error('UPDATE_JOURNAL_CONFLICT');
-        }
+        await this.assertCurrentSelection(expected, assertAuthority);
         assertAuthority();
         // Only the selected current is owned here. Never force-remove siblings.
         await unlink(this.filePath);
         assertAuthority();
-        await syncDirectory(dirname(this.filePath));
+        await syncDirectory(dirname(this.filePath), true);
         assertAuthority();
         const remaining = await this.inspectStoredSlots();
         if (remaining.current !== undefined || remaining.next !== undefined || remaining.backup !== undefined) {
@@ -311,10 +424,23 @@ async function assertPrivateDirectory(path: string): Promise<void> {
   }
 }
 
-async function syncDirectory(path: string): Promise<void> {
+async function syncDirectory(path: string, preserveFirstFailure = false): Promise<void> {
   if (process.platform === 'win32') return;
   const directory = await open(path, 'r');
+  if (preserveFirstFailure) return settleOwnedFile(directory, () => directory.sync());
   try { await directory.sync(); } finally { await directory.close(); }
+}
+
+async function settleOwnedFile(file: FileHandle, operation: () => Promise<void>): Promise<void> {
+  let failure: { error: unknown } | undefined;
+  try { await operation(); } catch (error) { failure = { error }; }
+  try { await file.close(); } catch (error) {
+    if (failure !== undefined) {
+      throw new AggregateError([failure.error, error], 'UPDATE_JOURNAL_UNAVAILABLE', { cause: failure.error });
+    }
+    throw error;
+  }
+  if (failure !== undefined) throw failure.error;
 }
 
 function pathsAreEqual(first: string, second: string): boolean {
@@ -325,4 +451,9 @@ function pathsAreEqual(first: string, second: string): boolean {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+function selectedMutationError(error: unknown): Error {
+  return error instanceof Error && (error.message === 'UPDATE_JOURNAL_CONFLICT' || error.message === 'UPDATE_JOURNAL_BUSY')
+    ? error : new Error('UPDATE_JOURNAL_UNAVAILABLE', { cause: error });
 }

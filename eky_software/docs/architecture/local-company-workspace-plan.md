@@ -350,7 +350,33 @@ Linux-käyttöjärjestelmän tai sähkökatkon todiste. Vaikutusalueen 587 testi
 28 tiedostossa, desktop/E2E-tyypit ja rajattu katselmus jälkitarkistuksineen
 läpäisivät. Tämä rajapinta ei vielä
 kytke suojattua julkaisua FirstStartiin, legacy-siirtoon tai valitsimeen;
-yhteinen admission ja sen jälkeinen tuore kutsujavaltuus ovat seuraava työ.
+yhteinen admission ja sen jälkeinen tuore kutsujavaltuus olivat seuraava työ.
+
+**Valitsimen tilavalmistelun osaraja:** nykyinen sijaintimuunnoksen omistaja
+sisältää nimetyn `prepareSelectorLocalUpdateState`-haaran. Se tarkastaa
+nykyisen ja legacy-sijainnin metadata-/C-journal-slotit sekä registryn ennen
+muutoksia. Vain todellinen null-valinta, yhtäläiset kokonaiset arvot ja alla
+hyväksytyt terminalit sallivat jatkon. Päällekkäisiä JSON-avaimia ei hyväksytä
+pelkän parsitun arvon perusteella. Tarkistus ei ole atominen tiedostokuva:
+kutsujan jatkuva installation-omistajuus, kirjoittajien poissaolo ja muiden
+palautusomistajien konfliktittomuus ovat edelleen välttämättömiä.
+
+Legacy-kopio julkaistaan nykyisillä tallentimilla, luetaan takaisin ja sen
+synkronointiraja varmennetaan ennen lähteen poistoa. Tämä tehdään myös silloin,
+kun molemmissa sijainneissa on jo yhtäläinen arvo aiemman kadonneen kuittauksen
+jäljiltä. C-journalin ensimmäinen valintaan sidottu kopio vaatii kaikkien
+kohdeslottien poissaolon ja säilyttää keskeytyneet tavut. Terminalien poistossa
+valtuus tarkistetaan välittömästi ennen tiedostomuutosta. Lopullinen poissaolon
+varmennus synkronoi olemassa olevat hakemistot mutta ei luo puuttuvaa legacy-
+hakemistoa. Palautuspisteitä, pakettivälimuistia tai registryä ei poisteta.
+
+Vanha `migrateLegacyLocalUpdateState`-polku säilyy: kelvollinen current tai
+backup voi edelleen palautua, vaikka käyttämätön next olisi osittainen.
+Uuden haaran hylkäys ei anna lupaa siirtyä vanhaan korjaavaan lukuun.
+Valmistelu ei tarkoita selector-readinessia tai business-hyväksyntää.
+Tuotannon startupin haaravalinta, oikea varaus-/recovery-kytkentä ja
+SQLite/Electron/paketoitu näyttö ovat edelleen tekemättä. Tämän osarajan
+testien ja katselmuksen lopputila kirjataan M1:n jatkamiskohtaan.
 
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 

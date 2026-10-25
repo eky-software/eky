@@ -35,7 +35,7 @@ describe('update journal store', () => {
     const selected = (await store.inspectSlots()).current!;
     let calls = 0;
     await store.clearSelected({ expectedBytes: selected.bytes, assertAuthority() { calls++; } });
-    expect(calls).toBe(7);
+    expect(calls).toBe(8);
     expect(await store.inspectSlots()).toEqual({ current: undefined, next: undefined, backup: undefined });
   });
 

@@ -15,6 +15,7 @@ import {
   CrashSafeByteSlotStoreError,
 } from '../persistence/crashSafeByteSlotStore.js';
 import { CrashSafeFileSlotError } from '../persistence/crashSafeFileSlot.js';
+import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { parseWorkspaceRegistryBytes } from './workspaceRegistryBytes.js';
 import { serializeWorkspaceRegistry } from './workspaceRegistrySerializer.js';
 import {
@@ -33,6 +34,7 @@ export interface WorkspaceRegistryStoreOptions {
 
 export class WorkspaceRegistryStore {
   private readonly byteStore: CrashSafeByteSlotStore;
+  private readonly fileSystem: WorkspaceRegistryFileSystem;
   private activeOperation = false;
 
   constructor(options: Readonly<WorkspaceRegistryStoreOptions>) {
@@ -42,6 +44,7 @@ export class WorkspaceRegistryStore {
     );
     const fileSystem = options.fileSystem ??
       createNodeWorkspaceRegistryFileSystem(paths);
+    this.fileSystem = fileSystem;
     this.byteStore = new CrashSafeByteSlotStore(fileSystem);
   }
 
@@ -54,6 +57,26 @@ export class WorkspaceRegistryStore {
       try {
         const selected = await this.byteStore.inspect(parseWorkspaceRegistryBytes);
         return selected?.value;
+      } catch (error) {
+        throw this.mapStoreError(error);
+      }
+    });
+  }
+
+  inspectSlots(): Promise<ReadOnlyJournalSlots<LocalWorkspaceRegistry>> {
+    return this.runExclusive(async () => {
+      try {
+        const result: Record<'current' | 'next' | 'backup',
+          ReadOnlyJournalSlots<LocalWorkspaceRegistry>['current']> = {
+          current: undefined, next: undefined, backup: undefined,
+        };
+        for (const slot of ['current', 'next', 'backup'] as const) {
+          const bytes = await this.fileSystem.readSlot(slot);
+          if (bytes !== undefined) {
+            result[slot] = Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes) });
+          }
+        }
+        return Object.freeze(result);
       } catch (error) {
         throw this.mapStoreError(error);
       }
