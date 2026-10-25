@@ -4,12 +4,48 @@ import { dirname, isAbsolute, resolve } from 'node:path';
 import {
   CrashSafeFileSlotError,
   createNodeCrashSafeFileSlotFileSystem,
+  type CrashSafeFileSlot,
 } from './crashSafeFileSlot.js';
 
 export interface ReadOnlyJournalSlotPaths {
   readonly backupPath: string;
   readonly currentPath: string;
   readonly nextPath: string;
+}
+
+export interface ReadOnlyJournalSlotRecord<T> {
+  readonly bytes: Uint8Array;
+  readonly value: Readonly<T>;
+}
+
+export type ReadOnlyJournalSlots<T> = Readonly<Record<
+  CrashSafeFileSlot, ReadOnlyJournalSlotRecord<T> | undefined
+>>;
+
+// A non-repairing observation, not an atomic snapshot or mutation authority.
+// The installation owner must bind and revalidate it before changing files.
+export async function readOnlyJournalSlots<T>(
+  paths: Readonly<ReadOnlyJournalSlotPaths>,
+  maximumBytes: number,
+  parse: (value: unknown) => Readonly<T>,
+): Promise<ReadOnlyJournalSlots<T>> {
+  const fileSystem = createNodeCrashSafeFileSlotFileSystem({
+    ...paths, directoryPath: dirname(paths.currentPath),
+  }, maximumBytes);
+  const result: Record<CrashSafeFileSlot, ReadOnlyJournalSlotRecord<T> | undefined> = {
+    current: undefined, next: undefined, backup: undefined,
+  };
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const existed = await inspectSlotPresence(paths[`${slot}Path`]);
+    const bytes = await fileSystem.readSlot(slot);
+    if (bytes === undefined) {
+      if (existed) throw new CrashSafeFileSlotError('invalid');
+      continue;
+    }
+    const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+    result[slot] = Object.freeze({ bytes, value: parse(JSON.parse(source)) });
+  }
+  return Object.freeze(result);
 }
 
 export async function hasAnyJournalSlot(

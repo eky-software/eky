@@ -81,8 +81,15 @@ profiili-, salaisuus- ja valtuusportteja: käynnistysketjun kytkentä ja
 SQLite/Electron/paketoitu näyttö ovat yhä tekemättä. Aiempi 146 testin
 codec-todiste ei ole erillinen lisäkattavuus.
 
+Tallentimien seuraava osaraja on paikallisesti todennettu: metadatan ja
+C-journalin kaikkien slottien sivuvaikutukseton tarkastus sekä C-journalin
+täsmälliseen tiedostovalintaan sidottu poisto. Sen 219 testin vaikutusalueen
+sarja, desktop/E2E-tyypit ja rajattu riippumaton katselmus läpäisivät. Rajapintoja ei
+vielä käytetä startupissa, eikä slottihavainto yksin anna muutosvaltuutta.
+
 **Seuraava työ:** yhteinen metadata-/journal-/registry-admission ja suojattu
-julkaisu ennen korjaavia lukuja; sitten W6:n nimetty jatko sekä valitsimen
+julkaisu sekä metadatan valintaan sidottu siivous ennen korjaavia lukuja;
+sitten W6:n nimetty jatko sekä valitsimen
 ja ensimmäisen yritysavauksen kytkentä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.

@@ -1,6 +1,7 @@
 import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 
+import { readOnlyJournalSlots, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
 import { parseVersionedAcceptedBuildMetadata, type VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 export const acceptedBuildMetadataFileName = 'accepted-build-v1.json';
@@ -17,6 +18,16 @@ export class AcceptedBuildMetadataStore {
     }
     this.backupPath = `${filePath}.backup`;
     this.nextPath = `${filePath}.next`;
+  }
+
+  async inspectSlots(): Promise<ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>> {
+    try {
+      return await readOnlyJournalSlots<VersionedAcceptedBuildMetadata>({
+        currentPath: this.filePath, nextPath: this.nextPath, backupPath: this.backupPath,
+      }, maximumBytes, parseVersionedAcceptedBuildMetadata);
+    } catch (error) {
+      throw new Error('ACCEPTED_BUILD_METADATA_INVALID', { cause: error });
+    }
   }
 
   async read(): Promise<VersionedAcceptedBuildMetadata | undefined> {

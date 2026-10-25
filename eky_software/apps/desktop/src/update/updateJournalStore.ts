@@ -7,10 +7,12 @@ import {
   realpath,
   rename,
   rm,
+  unlink,
 } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
+import { readOnlyJournalSlots, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
 import { parseUpdateJournal, type UpdateJournal } from './updateJournal.js';
 
 export const updateJournalFileName = 'local-update-journal-v1.json';
@@ -19,6 +21,11 @@ export const maximumUpdateJournalBytes = 32 * 1024;
 export interface UpdateJournalWriteSelection {
   expectedJournal: Readonly<UpdateJournal>;
   assertAuthority?(): void;
+}
+
+export interface UpdateJournalClearSelection {
+  readonly expectedBytes: Uint8Array;
+  assertAuthority(): void;
 }
 
 export class UpdateJournalStore {
@@ -33,6 +40,10 @@ export class UpdateJournalStore {
     }
     this.backupPath = `${filePath}.backup`;
     this.nextPath = `${filePath}.next`;
+  }
+
+  inspectSlots(): Promise<ReadOnlyJournalSlots<UpdateJournal>> {
+    return this.runExclusive(() => this.inspectStoredSlots());
   }
 
   read(): Promise<Readonly<UpdateJournal> | undefined> {
@@ -103,6 +114,61 @@ export class UpdateJournalStore {
       }
       await syncDirectory(dirname(this.filePath));
     });
+  }
+
+  clearSelected(selection: UpdateJournalClearSelection): Promise<void> {
+    if (!(selection.expectedBytes instanceof Uint8Array) ||
+        selection.expectedBytes.byteLength < 1 ||
+        selection.expectedBytes.byteLength > maximumUpdateJournalBytes ||
+        typeof selection.assertAuthority !== 'function') {
+      return Promise.reject(new Error('UPDATE_JOURNAL_CONFLICT'));
+    }
+    const expected = Buffer.from(selection.expectedBytes);
+    const authority = selection.assertAuthority;
+    const assertAuthority = () => assertUpdateJournalAuthority(authority);
+    return this.runExclusive(async () => {
+      try {
+        assertAuthority();
+        const before = await lstat(this.filePath);
+        assertAuthority();
+        const slots = await this.inspectStoredSlots();
+        assertAuthority();
+        if (slots.current === undefined || slots.next !== undefined || slots.backup !== undefined ||
+            !expected.equals(slots.current.bytes)) {
+          throw new Error('UPDATE_JOURNAL_CONFLICT');
+        }
+        const after = await lstat(this.filePath);
+        if (!after.isFile() || after.isSymbolicLink() || after.nlink !== 1 ||
+            before.dev !== after.dev || before.ino !== after.ino || before.size !== after.size ||
+            before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
+          throw new Error('UPDATE_JOURNAL_CONFLICT');
+        }
+        assertAuthority();
+        // Only the selected current is owned here. Never force-remove siblings.
+        await unlink(this.filePath);
+        assertAuthority();
+        await syncDirectory(dirname(this.filePath));
+        assertAuthority();
+        const remaining = await this.inspectStoredSlots();
+        if (remaining.current !== undefined || remaining.next !== undefined || remaining.backup !== undefined) {
+          throw new Error('UPDATE_JOURNAL_CONFLICT');
+        }
+        assertAuthority();
+      } catch (error) {
+        if (error instanceof Error && error.message === 'UPDATE_JOURNAL_CONFLICT') throw error;
+        throw new Error('UPDATE_JOURNAL_UNAVAILABLE', { cause: error });
+      }
+    });
+  }
+
+  private async inspectStoredSlots(): Promise<ReadOnlyJournalSlots<UpdateJournal>> {
+    try {
+      return await readOnlyJournalSlots({
+        currentPath: this.filePath, nextPath: this.nextPath, backupPath: this.backupPath,
+      }, maximumUpdateJournalBytes, parseUpdateJournal);
+    } catch (error) {
+      throw new Error('UPDATE_JOURNAL_INVALID', { cause: error });
+    }
   }
 
   private async removeRecoverySlots(): Promise<void> {

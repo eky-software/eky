@@ -316,6 +316,19 @@ W6:n nimetty deferred-jatko sekä todellinen startup/composition ja paketoitu
 todistus jäävät seuraaviin osiin. Korjaava store-luku ei edelleenkään ole
 admission; uusi FirstStart-tila ei vielä ole startupin käyttämä haara.
 
+Tallentimien `inspectSlots()` käyttää nykyistä rajattua tiedostolukijaa ja
+palauttaa current/next/backup-tavut ja validoidut arvot siivoamatta niitä.
+Se ei valitse hyväksyttyä palautushaaraa eikä lupaa atomista snapshotia.
+`UpdateJournalStore.clearSelected()` toimii nykyisessä serialisoidussa
+operaatiossa: täsmälliset valitut tavut, sivuslottien poissaolo, tiedoston
+identiteetti ja tuore synkroninen valtuus tarkistetaan ennen vain currentin
+poistoa. Synkronointi ja takaisinluku kuuluvat kuittaukseen. Epäonnistunut
+kuittaus ei todista vanhan journalin säilymistä eikä onnistunutta siivousta;
+uutta aineistoa ei poisteta samalla valtuudella. Näiden 219 testin vaikutusalueen
+sarja, tyypit ja rajattu riippumaton katselmus läpäisivät. Startup- ja legacy-kytkentä,
+metadatan vastaava suoja sekä yhteinen admission ovat vielä tekemättä.
+Nykyisiä ehdottomia store-kutsuja ei nimetä uuden haaran poistovaltuudeksi.
+
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 
 `A` tarkoittaa hyväksyttyä sovellusbuildia ja `B` viimeistä business-
