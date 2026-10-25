@@ -169,8 +169,9 @@ import {
 } from '../update/localUpdateFoundationComposition.js';
 import type { LocalUpdateSelectionCapability } from '../update/localUpdateSelectionCapability.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
-import { DirectSetupMigrationRecoveryStore } from '../update/directSetupMigrationRecoveryStore.js';
-import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
+import { DirectSetupMigrationRecoveryStore, maximumDirectSetupMigrationRecoveryBytes } from '../update/directSetupMigrationRecoveryStore.js';
+import { parseDirectSetupMigrationRecovery } from '../update/directSetupMigrationRecovery.js';
+import { migrateLegacyLocalUpdateState, prepareSelectorLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import { readAcceptedApplicationBuild } from '../update/acceptedBuildMetadata.js';
 import {
@@ -208,7 +209,13 @@ import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/repl
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import { createWorkspaceManagementComposition, recoverWorkspaceManagementBeforeRuntime } from '../workspaces/management/workspaceManagementComposition.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../workspaces/management/workspaceManagementOperationGuard.js';
-import { readColdWorkspaceRecoveryAdmissionFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
+import { assertNoSelectorWorkspaceRecoveryFromRoot, readColdWorkspaceRecoveryAdmissionFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
+import type { WorkspaceColdRecoveryAdmission } from '../workspaces/runtime/workspaceColdRecoveryAdmission.js';
+import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistryStore.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../workspaces/registry/workspaceRegistryPaths.js';
+import { createWorkspaceLegacyAdoptionJournalPaths } from '../workspaces/adoption/workspaceLegacyAdoptionJournal.js';
+import { hasAnyJournalSlot, readOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
+import { createReadOnlyJournalSlotPaths } from '../workspaces/management/mainOwnedWorkspaceManagementOperationGuard.js';
 import {
   createWorkspaceManagementCapability,
   type WorkspaceManagementCapability,
@@ -584,9 +591,19 @@ export async function startDesktopComposition(
       ),
     );
     const coldRecoveryAdmission = await readColdWorkspaceRecoveryAdmissionFromRoot(options.userDataPath);
-    const installationUpdateState = await createInstallationUpdateState({
+    const installationStateInput = {
       installationRuntimeRoot,
       userDataPath: options.userDataPath,
+      buildInfo: options.buildInfo,
+      releaseInfo: options.releaseInfo,
+      assertAuthority() {
+        assertStartupAuthority();
+        workspaceReservation.assertMainCurrent();
+      },
+      assertMainOwned: workspaceReservation.assertMainOwned,
+    };
+    let installationUpdateState = await createInstallationUpdateState({
+      ...installationStateInput, coldRecoveryAdmission,
     });
     const rollbackStartupAdmission = options.releaseInfo === undefined ? undefined
       : await prepareUpdateBusinessRollbackStartupAdmission({
@@ -595,7 +612,7 @@ export async function startDesktopComposition(
         selectedJournal: await installationUpdateState.updateJournalStore.readForLiveOwner(),
         assertAuthority: assertStartupAuthority,
       });
-    const preWorkspaceBuildAdmission = await requirePreWorkspaceBuildAdmission({
+    let preWorkspaceBuildAdmission = await requirePreWorkspaceBuildAdmission({
       buildInfo: options.buildInfo,
       releaseInfo: options.releaseInfo,
       stores: {
@@ -637,6 +654,19 @@ export async function startDesktopComposition(
         },
       },
     });
+    if (coldRecoveryAdmission !== 'none') {
+      // Recovery may publish a first v1 selection, or retain v2 null. Do not
+      // carry the earlier registry observation into the selector branch.
+      installationUpdateState = await createInstallationUpdateState({
+        ...installationStateInput, coldRecoveryAdmission: 'none',
+      });
+      preWorkspaceBuildAdmission = await requirePreWorkspaceBuildAdmission({
+        buildInfo: options.buildInfo, releaseInfo: options.releaseInfo,
+        stores: { acceptedBuild: installationUpdateState.acceptedBuildMetadataStore,
+          directSetupRecovery: installationUpdateState.directSetupMigrationRecoveryStore,
+          journal: installationUpdateState.updateJournalStore },
+      });
+    }
     const workspaceFirstStartMigration =
       createWorkspaceFirstStartMigrationComposition({
         acceptedBuildStore:
@@ -817,6 +847,11 @@ interface InstallationUpdateState {
 async function createInstallationUpdateState(input: {
   installationRuntimeRoot: string;
   userDataPath: string;
+  coldRecoveryAdmission: WorkspaceColdRecoveryAdmission;
+  buildInfo: Readonly<DesktopBuildInfo>;
+  releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
+  assertAuthority(): void;
+  assertMainOwned(): Promise<void>;
 }): Promise<InstallationUpdateState> {
   const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
     legacyRuntimeRoot: input.installationRuntimeRoot,
@@ -832,7 +867,7 @@ async function createInstallationUpdateState(input: {
     new DirectSetupMigrationRecoveryStore(
       localUpdateRuntimePaths.directSetupMigrationRecoveryPath,
     );
-  await migrateLegacyLocalUpdateState({
+  const stores = {
     acceptedBuild: {
       current: acceptedBuildMetadataStore,
       legacy: new AcceptedBuildMetadataStore(
@@ -845,7 +880,70 @@ async function createInstallationUpdateState(input: {
         localUpdateRuntimePaths.legacyJournalPath,
       ),
     },
+  };
+  const registry = new WorkspaceRegistryStore({
+    installationRoot: input.userDataPath,
+    filePath: join(input.userDataPath, WORKSPACE_REGISTRY_FILE_NAME),
   });
+  input.assertAuthority();
+  await input.assertMainOwned();
+  const selection = await registry.inspect();
+  input.assertAuthority();
+  // The existing cold create/import and adoption owners keep their recovery
+  // route. A rejected selector preparation never falls back to repairing reads.
+  const adoptionPending = selection?.activeWorkspaceId === null &&
+    await hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath));
+  input.assertAuthority();
+  if (selection?.activeWorkspaceId === null && input.coldRecoveryAdmission === 'none' && !adoptionPending) {
+    let directSetupObserved = false;
+    let directSetupBytes: Buffer | undefined;
+    await prepareSelectorLocalUpdateState({
+      ...stores, registry,
+      assertAuthority: input.assertAuthority,
+      async assertBuildAdmission(metadata) {
+        input.assertAuthority();
+        const slots = await readOnlyJournalSlots(
+          createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.directSetupMigrationRecoveryPath),
+          maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery,
+        );
+        input.assertAuthority();
+        if (slots.next !== undefined || slots.backup !== undefined ||
+            (directSetupObserved && (directSetupBytes === undefined
+              ? slots.current !== undefined
+              : slots.current === undefined || !directSetupBytes.equals(slots.current.bytes)))) {
+          throw new WorkspaceManagementRecoveryRequiredError();
+        }
+        // The preparer has already validated A=T / A=S for a terminal C journal.
+        // It is no longer an outstanding target; DSR retains its existing policy.
+        await requirePreWorkspaceBuildAdmission({
+          buildInfo: input.buildInfo, releaseInfo: input.releaseInfo,
+          stores: {
+            acceptedBuild: { async read() { return metadata; } },
+            journal: { async read() { return undefined; } },
+            directSetupRecovery: { async read() { return slots.current?.value; } },
+          },
+        });
+        input.assertAuthority();
+        if (!directSetupObserved) {
+          directSetupBytes = slots.current === undefined ? undefined : Buffer.from(slots.current.bytes);
+          directSetupObserved = true;
+        }
+      },
+      async assertRecoveryAuthority() {
+        input.assertAuthority();
+        await input.assertMainOwned();
+        const current = await registry.inspect();
+        input.assertAuthority();
+        if (!isDeepStrictEqual(current, selection)) throw new WorkspaceManagementRecoveryRequiredError();
+        await assertNoSelectorWorkspaceRecoveryFromRoot(input.userDataPath, selection);
+        await input.assertMainOwned();
+        input.assertAuthority();
+      },
+    });
+  } else {
+    await migrateLegacyLocalUpdateState(stores);
+  }
+  input.assertAuthority();
   return {
     acceptedBuildMetadataStore,
     directSetupMigrationRecoveryStore,

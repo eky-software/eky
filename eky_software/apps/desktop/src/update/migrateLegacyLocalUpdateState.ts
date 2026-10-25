@@ -85,6 +85,8 @@ export interface SelectorLocalUpdateStateContext {
   assertAuthority(): void;
   // The installation owner proves writer absence and the other recovery owners.
   assertRecoveryAuthority(): Promise<void>;
+  // Admission uses the exact metadata captured after terminal-journal validation.
+  assertBuildAdmission(metadata: Readonly<VersionedAcceptedBuildMetadata>): Promise<void>;
 }
 
 interface SelectorStateSelection {
@@ -206,6 +208,7 @@ async function inspectSelectorSelection(context: SelectorLocalUpdateStateContext
       throw new Error('LOCAL_UPDATE_STATE_MIGRATION_CONFLICT');
     }
   }
+  await context.assertBuildAdmission(metadata.value);
   await context.assertRecoveryAuthority();
   assertAuthority();
   return selection;

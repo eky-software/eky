@@ -3,6 +3,8 @@ import { join } from 'node:path';
 import { createProfileSnapshotRuntimePaths } from '../../profileBackup/profileSnapshotRuntimePaths.js';
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
 import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
+import { parseDirectSetupMigrationRecovery } from '../../update/directSetupMigrationRecovery.js';
+import { maximumDirectSetupMigrationRecoveryBytes } from '../../update/directSetupMigrationRecoveryStore.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import {
   parseWorkspaceCreationJournalBytes,
@@ -24,7 +26,7 @@ import { createReadOnlyJournalSlotPaths } from '../management/mainOwnedWorkspace
 import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import { CrashSafeByteSlotStore } from '../persistence/crashSafeByteSlotStore.js';
 import { createNodeCrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
-import { hasAnyJournalSlot } from '../persistence/readOnlyJournalSlots.js';
+import { hasAnyJournalSlot, hasTerminalJournalConflict } from '../persistence/readOnlyJournalSlots.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { parseWorkspaceRegistryBytes } from '../registry/workspaceRegistryBytes.js';
 import { createNodeWorkspaceRegistryFileSystem } from '../registry/workspaceRegistryFileSystem.js';
@@ -32,7 +34,8 @@ import {
   createWorkspaceRegistryPaths,
   WORKSPACE_REGISTRY_FILE_NAME,
 } from '../registry/workspaceRegistryPaths.js';
-import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceSwitchJournalPaths } from '../switch/workspaceSwitchJournal.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
@@ -46,6 +49,52 @@ export async function assertColdWorkspaceRecoveryAdmissionFromRoot(
   expectedOwner: Exclude<WorkspaceColdRecoveryAdmission, 'none'>,
 ): Promise<void> {
   if (await readColdWorkspaceRecoveryAdmissionFromRoot(userDataRoot) !== expectedOwner) {
+    throw new WorkspaceManagementRecoveryRequiredError();
+  }
+}
+
+// This census is only the recovery-conflict part of selector preparation.
+// The caller retains the installation reservation and rechecks the registry.
+export async function assertNoSelectorWorkspaceRecoveryFromRoot(
+  userDataRoot: string,
+  registry: Readonly<LocalWorkspaceRegistry>,
+): Promise<void> {
+  try {
+    const selected = validateWorkspaceRegistry(registry);
+    if (selected.activeWorkspaceId !== null) throw new WorkspaceManagementRecoveryRequiredError();
+    const legacyRuntimeRoot = createDesktopProfilePaths(userDataRoot).runtimeRoot;
+    const updatePaths = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot, legacyRuntimeRoot });
+    const pending = [
+      createWorkspaceLegacyAdoptionJournalPaths(userDataRoot),
+      createWorkspaceCreationJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME)),
+      createWorkspaceBackupImportJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME)),
+      createWorkspaceSwitchJournalPaths(userDataRoot),
+      createWorkspaceFirstStartMigrationJournalPaths(userDataRoot),
+      createReadOnlyJournalSlotPaths(createProfileSnapshotRuntimePaths(legacyRuntimeRoot).restoreActivationJournalPath),
+      ...selected.workspaces.flatMap(entry => {
+        const runtimeRoot = createDesktopProfilePaths(
+          deriveWorkspaceRoot(userDataRoot, entry.workspaceId, entry.layoutVersion).workspaceRoot,
+        ).runtimeRoot;
+        return [
+          createReadOnlyJournalSlotPaths(createProfileSnapshotRuntimePaths(runtimeRoot).restoreActivationJournalPath),
+          createReadOnlyJournalSlotPaths(
+            deriveWorkspaceBackupReplacementRuntimePaths(userDataRoot, entry.workspaceId).activationJournalPath,
+          ),
+        ];
+      }),
+    ];
+    // Preserve the existing accepted Direct Setup terminal, without clearing it
+    // or treating it as authority for a new business acceptance.
+    if (await hasTerminalJournalConflict(
+      createReadOnlyJournalSlotPaths(updatePaths.directSetupMigrationRecoveryPath),
+      maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery,
+      record => record.state === 'accepted',
+    )) throw new WorkspaceManagementRecoveryRequiredError();
+    for (const paths of pending) {
+      if (await hasAnyJournalSlot(paths)) throw new WorkspaceManagementRecoveryRequiredError();
+    }
+  } catch (error) {
+    if (error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
     throw new WorkspaceManagementRecoveryRequiredError();
   }
 }

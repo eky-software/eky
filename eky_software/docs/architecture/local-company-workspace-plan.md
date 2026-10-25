@@ -374,9 +374,32 @@ Vanha `migrateLegacyLocalUpdateState`-polku säilyy: kelvollinen current tai
 backup voi edelleen palautua, vaikka käyttämätön next olisi osittainen.
 Uuden haaran hylkäys ei anna lupaa siirtyä vanhaan korjaavaan lukuun.
 Valmistelu ei tarkoita selector-readinessia tai business-hyväksyntää.
-Tuotannon startupin haaravalinta, oikea varaus-/recovery-kytkentä ja
-SQLite/Electron/paketoitu näyttö ovat edelleen tekemättä. Tämän osarajan
-testien ja katselmuksen lopputila kirjataan M1:n jatkamiskohtaan.
+
+**Käynnistyskytkentä 25.10.2026:** `desktopComposition` valitsee nimetyn
+valmistelun todelliselle null-rekisterille ennen korjaavia tilalukuja.
+Nykyinen installation-varaus ja käynnistyksen synkroninen valtuus säilyvät
+koko operaation ajan. Palautusristiriitojen tarkistus kattaa myös passiivisten
+ja recovery-yritysten juuret, legacy-palautuksen sekä W6:n ja muut
+hallintajournalit. Se on havainto, ei itsenäinen palautus- tai poistovaltuus.
+
+Build-admission saa valmistelun juuri tarkistaman metadatan vasta terminalin
+A=T/A=S-sidonnan jälkeen. Valmis terminal ei enää ole keskeneräisen
+päivityksen kohde. DSR:n nykyinen build-sääntö säilyy ja sen täsmälliset tavut
+tai puuttuminen sidotaan peräkkäisten tarkistusten yli. Sallittua hyväksyttyä
+DSR:ää ei poisteta tässä haarassa. Muuttunut aineisto tai menetetty
+omistajuus estää jatkon ennen seuraavaa muutosta.
+
+Keskeytynyt create/import ja vanha adoptio pysyvät nykyisillä palautuksen
+omistajillaan; pelkkä journalin olemassaolo ei anna palautuslupaa.
+Create/import-palautuksen jälkeen rekisteri, tilavalmistelu ja build-admission
+luetaan uudelleen. V1:n ensimmäinen yritysvalinta ja v2:n pysyvä null eivät
+sekoitu. Ei-null-yrityksen vanha korjaava tilaluku säilyy.
+
+Composition-regressiot käyttävät oikeaa käynnistysfunktiota ja tiedostotavuja,
+mutta Electron- ja native-rajat ovat ohjattuja. Valitsimen julkaisu,
+source-null-avaus sekä SQLite/Electron/paketoitu näyttö ovat edelleen
+tekemättä. Tämän osarajan testien ja katselmuksen lopputila on M1:n
+jatkamiskohdassa; yksittäinen osaraja ei sulje W7.2:ta.
 
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 

@@ -84,8 +84,9 @@ codec-todiste ei ole erillinen lisäkattavuus.
 Tallentimien seuraava osaraja on paikallisesti todennettu: metadatan ja
 C-journalin kaikkien slottien sivuvaikutukseton tarkastus sekä C-journalin
 täsmälliseen tiedostovalintaan sidottu poisto. Sen 219 testin vaikutusalueen
-sarja, desktop/E2E-tyypit ja rajattu riippumaton katselmus läpäisivät. Rajapintoja ei
-vielä käytetä startupissa, eikä slottihavainto yksin anna muutosvaltuutta.
+sarja, desktop/E2E-tyypit ja rajattu riippumaton katselmus läpäisivät. Tässä
+aiemmassa osarajassa rajapintoja ei vielä käytetty startupissa;
+slottihavainto yksin ei anna muutosvaltuutta.
 Metadatan vastaava valintaan sidottu kirjoitus ja poisto ovat nyt toteutettuina:
 ne säilyttävät keskeytyneet tavut ja alkuperäisen syyn myös sulkuvirheessä.
 Vaikutusalueen 587 testiä 28 tiedostossa, desktop/E2E-tyypit ja rajatun
@@ -104,11 +105,20 @@ kopion synkronointi-, duplikaattiavain- ja poistovaltuuspuutteet korjattiin
 regressioineen; jälkitarkistukseen ei jäänyt avoimia löydöksiä.
 Desktopin ja E2E:n tyyppitarkistukset läpäisivät. Tämä on oikeiden
 tiedostotavujen ja injektoidun valtuuden näyttö, ei native-prosessin tai
-paketoidun palautuksen todiste. Työ ei ole vielä startupin käyttämä haara.
+paketoidun palautuksen todiste. Tämä aiempi osaraja ei vielä kytkenyt startupia.
 
-**Seuraava työ:** valitsimen tilavalmistelun tuotantokutsuja ja sen tuore
-installation-/recovery-valtuus ennen korjaavia lukuja; sitten W6:n nimetty jatko sekä valitsimen
-ja ensimmäisen yritysavauksen kytkentä.
+**Käynnistyskytkennän osaraja:** nykyinen startup käyttää nyt nimettyä
+tilavalmistelua ja tuoretta installation-/recovery-valtuutta ennen
+valitsinhaaran korjaavia lukuja. Build-admission sidotaan saman tarkistuksen
+metadataan ja DSR-tavuihin. Vanha adoptio sekä create/import-palautus säilyvät;
+palautuksen jälkeinen valinta ja build-admission luetaan uudelleen.
+Vaikutusalueen 710 testiä 14 tiedostossa sekä desktop/E2E-tyypit läpäisivät.
+Rajattu riippumaton lähdekatselmus korjauksineen on valmis.
+Todiste kattaa oikean compositionin ja tiedostotavut ohjatuilla native- ja
+Electron-rajoilla, ei valitsimen käyttöliittymää tai paketoitua ketjua.
+
+**Seuraava työ:** W6:n nimetty lykätyn business-hyväksynnän jatko sekä
+valitsimen ja ensimmäisen yritysavauksen kytkentä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.
 W6 tarvitsee oman nimetyn lykätyn business-hyväksynnän jatkonsa, ei yleistä

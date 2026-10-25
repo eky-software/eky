@@ -45,21 +45,21 @@ describe('restore startup test evidence ownership', () => {
     expect(console.error).not.toHaveBeenCalled();
   });
 
-  it('preserves the primary failure and last completed phase even after a later pass notification', async context => {
+  it.for(['startup', 'startupRollback'] as const)('preserves the primary %s failure and last completed phase even after a later pass notification', async (phase, context) => {
     const completion = captureCompletion(context);
     const lifetime = createRestoreStartupTestLifetime(completion.context, vi.fn());
     const original = new Error('synthetic original failure');
     const root = await createRoot();
     await expect(lifetime.run(async () => {
       await lifetime.step('fixturePreparation', async () => { lifetime.roots.push(root); });
-      await lifetime.step('startupRollback', async () => { throw original; });
+      await lifetime.step(phase, async () => { throw original; });
     })).rejects.toBe(original);
     lifetime.releaseWhenSettled();
     await completion.finish('fail');
     await completion.finish('pass');
     await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
     expect(JSON.parse(vi.mocked(console.error).mock.calls[0]![0] as string)).toEqual({
-      diagnostic: 'desktopRestoreStartupTest', phase: 'startupRollback', lastCompletedPhase: 'fixturePreparation',
+      diagnostic: 'desktopRestoreStartupTest', phase, lastCompletedPhase: 'fixturePreparation',
       bodySettled: true, resourceCleanup: 'completed', rootsRetained: true,
       resourceCleanupFailureCode: null, resourceCleanupFailureStages: [],
     });

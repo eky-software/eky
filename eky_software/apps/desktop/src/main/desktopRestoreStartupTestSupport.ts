@@ -2,7 +2,7 @@ import { rm } from 'node:fs/promises';
 
 import type { TestContext } from 'vitest';
 
-type RestoreStartupTestPhase = 'fixturePreparation' | 'startupRollback' | 'restoredContentCheck';
+type RestoreStartupTestPhase = 'fixturePreparation' | 'startup' | 'startupRollback' | 'restoredContentCheck';
 type ResourceCleanupStage = 'clientClose' | 'mockRestore' | 'environmentRestore';
 
 class RestoreStartupResourceCleanupError extends AggregateError {

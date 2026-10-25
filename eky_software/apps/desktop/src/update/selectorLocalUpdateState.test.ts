@@ -70,6 +70,7 @@ async function fixture(context: TestContext, options: {
     journal: { current: new UpdateJournalStore(paths.journalPath), legacy: new UpdateJournalStore(paths.legacyJournalPath) },
     registry: new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath }),
     assertAuthority: vi.fn(() => {}), assertRecoveryAuthority: vi.fn(async () => {}),
+    assertBuildAdmission: vi.fn(async () => {}),
   };
   const allPaths = [paths.acceptedBuildMetadataPath, paths.legacyAcceptedBuildMetadataPath,
     paths.journalPath, paths.legacyJournalPath, registryPath].flatMap(path => slots.map(slot => `${path}${slot}`));
@@ -111,6 +112,29 @@ describe('selector installation-state preparation', () => {
     await f.put(f.paths.legacyAcceptedBuildMetadataPath, scoped);
     await prepareSelectorLocalUpdateState(f.stores);
     expect((await f.stores.acceptedBuild.current.inspectSlots()).current?.value).toEqual(scoped);
+    expect(f.stores.assertBuildAdmission).toHaveBeenCalledWith(scoped);
+  });
+
+  it.for([1, 2])('preserves selected bytes when build admission fails on inspection %s', async (inspection, context) => {
+    const f = await fixture(context);
+    const before = await f.contents();
+    const failure = new Error('synthetic build admission rejected');
+    let calls = 0;
+    f.stores.assertBuildAdmission.mockImplementation(async () => {
+      if (++calls === inspection) throw failure;
+    });
+    await expect(prepareSelectorLocalUpdateState(f.stores)).rejects.toBe(failure);
+    expect(f.stores.assertBuildAdmission).toHaveBeenCalledWith(f.accepted);
+    expect(await f.contents()).toEqual(before);
+  });
+
+  it('does not grant running-build admission from an unvalidated terminal relationship', async context => {
+    const f = await fixture(context);
+    await f.put(f.paths.legacyAcceptedBuildMetadataPath, source);
+    const before = await f.contents();
+    await expect(prepareSelectorLocalUpdateState(f.stores)).rejects.toThrow(conflict);
+    expect(f.stores.assertBuildAdmission).not.toHaveBeenCalled();
+    expect(await f.contents()).toEqual(before);
   });
 
   it.for(['metadata', 'journal', 'registry'] as const)('preserves all files when %s has recovery slots', async (kind, context) => {
