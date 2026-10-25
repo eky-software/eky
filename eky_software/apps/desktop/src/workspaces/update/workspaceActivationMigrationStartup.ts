@@ -43,7 +43,7 @@ interface WorkspaceActivationMigrationStartupOptions {
     WorkspaceActivationMigrationCoordinator,
     'migrateAndActivate'
   >;
-  readonly guard: Pick<WorkspaceActivationMigrationGuard, 'prove'>;
+  readonly guard: Pick<WorkspaceActivationMigrationGuard, 'prove' | 'reprove'>;
   readonly historicalValidation: HistoricalPublishedWorkspaceValidationPort;
   readonly inspector: Pick<WorkspaceActivationMigrationInspector, 'inspect'>;
   readonly markTargetRuntimeStopped: () => void;
@@ -66,6 +66,8 @@ export class WorkspaceActivationMigrationStartup {
   private migrationStarted = false;
   private pending: PendingActivationMigration | undefined;
   private prepared = false;
+  private selectorRequired = false;
+  private selectorProof: Readonly<WorkspaceActivationMigrationProof> | undefined;
 
   constructor(
     private readonly options: Readonly<WorkspaceActivationMigrationStartupOptions>,
@@ -93,30 +95,39 @@ export class WorkspaceActivationMigrationStartup {
       );
     }
 
-    const inspection = await this.options.inspector.inspect({
+    const guardInput = {
       expectedProfileId: context.targetProfileId,
       operationId: context.operationId,
+      sourceWorkspaceId: context.sourceWorkspaceId,
+      targetWorkspaceId: context.targetWorkspaceId,
+    };
+    this.selectorRequired = context.sourceWorkspaceId === null;
+    const selectorProof = this.selectorRequired
+      ? await this.options.guard.prove(guardInput) : undefined;
+    const inspection = await this.options.inspector.inspect({
+      expectedProfileId: guardInput.expectedProfileId,
+      operationId: guardInput.operationId,
       userDataRoot: this.options.userDataRoot,
-      workspaceId: context.targetWorkspaceId,
+      workspaceId: guardInput.targetWorkspaceId,
     });
-    if (inspection.status === 'current') return notRequiredPreparation;
+    if (selectorProof !== undefined) await this.options.guard.reprove(selectorProof);
+    if (inspection.status === 'current') {
+      this.selectorProof = selectorProof;
+      return notRequiredPreparation;
+    }
     if (inspection.status === 'invalidHistory') {
       await this.rejectInvalidTarget();
       return Object.freeze({ status: 'relaunchRequired' });
     }
 
-    const proof = await this.options.guard.prove({
-      expectedProfileId: context.targetProfileId,
-      operationId: context.operationId,
-      sourceWorkspaceId: context.sourceWorkspaceId,
-      targetWorkspaceId: context.targetWorkspaceId,
-    });
+    const proof = selectorProof ?? await this.options.guard.prove(guardInput);
     const readiness = await this.options.historicalValidation
       .validateHistoricalPublished({
         ...this.options.publishedValidationInput,
         operationId: proof.operationId,
         workspaceId: proof.targetWorkspaceId,
       });
+    if (selectorProof !== undefined) await this.options.guard.reprove(selectorProof);
     if (
       readiness.handlesClosed !== true ||
       readiness.lineageIdentity.profileId !== proof.profileId ||
@@ -127,6 +138,7 @@ export class WorkspaceActivationMigrationStartup {
       );
     }
 
+    this.selectorProof = selectorProof;
     this.pending = Object.freeze({
       appliedMigrationCount: inspection.appliedMigrationCount,
       expectedSourceMigrationChainIdentity:
@@ -144,6 +156,12 @@ export class WorkspaceActivationMigrationStartup {
     inspection: Readonly<BackendMigrationInspection>,
     control: DesktopBackendStartupControl,
   ): Promise<'notRequired' | 'relaunchRequired'> {
+    if (this.selectorRequired) {
+      if (this.selectorProof === undefined) {
+        throw new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
+      }
+      await this.options.guard.reprove(this.selectorProof);
+    }
     const pending = this.pending;
     if (pending === undefined) return 'notRequired';
     if (this.migrationStarted || !inspectionMatches(inspection, pending)) {

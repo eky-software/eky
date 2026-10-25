@@ -91,6 +91,7 @@ export class WorkspaceActivationMigrationCoordinator {
     try {
       await this.options.guard.reprove(input.proof);
       await this.assertActivationIdle(authority);
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       const staged = await this.options.recoveryPoint.createAndStage({
         expectedMigrationChainIdentity:
           input.expectedSourceMigrationChainIdentity,
@@ -102,7 +103,9 @@ export class WorkspaceActivationMigrationCoordinator {
       await input.stopTargetStartupRuntime();
       runtimeStopped = true;
       await this.assertRuntimeAbsent();
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       await this.options.rootStore.prepareCandidate(paths);
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
 
       const migration = await this.options.backupCandidate.migrate({
         artifactRoot: paths.candidateArtifactRoot,
@@ -119,6 +122,7 @@ export class WorkspaceActivationMigrationCoordinator {
       if (migration.profileId !== input.proof.profileId) {
         throw new Error('migration-profile-mismatch');
       }
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
 
       const readiness = validateWorkspaceBackupCandidateReadiness(
         await this.options.backupCandidate.validateAndMaterialize({
@@ -139,11 +143,15 @@ export class WorkspaceActivationMigrationCoordinator {
         throw new Error('candidate-readiness-mismatch');
       }
 
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       await this.options.recoveryPoint.removeStaging(input.proof.operationId);
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       await this.options.rootStore.inspectCandidate(paths);
       await this.options.guard.reprove(input.proof);
       await authority.transaction.prepare(operationId);
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       await authority.transaction.advanceToValidation();
+      if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       outcome = 'relaunchRequired';
     } catch (error) {
       outcome = await this.recoverFailure(
@@ -163,7 +171,7 @@ export class WorkspaceActivationMigrationCoordinator {
     try {
       await lease.release();
     } catch {
-      await this.requireRecovery().catch(() => undefined);
+      await this.requireRecovery(input.proof).catch(() => undefined);
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
       );
@@ -173,7 +181,7 @@ export class WorkspaceActivationMigrationCoordinator {
       this.options.requestRelaunch();
       return outcome;
     } catch {
-      await this.requireRecovery().catch(() => undefined);
+      await this.requireRecovery(input.proof).catch(() => undefined);
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
       );
@@ -195,6 +203,9 @@ export class WorkspaceActivationMigrationCoordinator {
       }
       await this.assertRuntimeAbsent();
 
+      // Runtime shutdown is still allowed, but a stale selector cannot grant
+      // repairing reads, rollback, removal or another persistent selection.
+      if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       const journal = await context.authority.journalStore.read();
       if (
         journal !== undefined &&
@@ -203,18 +214,21 @@ export class WorkspaceActivationMigrationCoordinator {
         throw new Error('foreign-activation-journal');
       }
 
+      if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       if (journal === undefined) {
         await this.options.rootStore.discardBeforeActivation(context.paths);
       } else {
         await this.rollbackTarget(context.authority, journal);
       }
+      if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       await this.options.recoveryPoint
         .removeStaging(context.proof.operationId)
         .catch(() => undefined);
+      if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       await this.recoverSource();
       return 'relaunchRequired';
     } catch {
-      await this.requireRecovery();
+      await this.requireRecovery(context.proof);
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
       );
@@ -238,7 +252,8 @@ export class WorkspaceActivationMigrationCoordinator {
     }
   }
 
-  private async requireRecovery(): Promise<void> {
+  private async requireRecovery(proof: Readonly<WorkspaceActivationMigrationProof>): Promise<void> {
+    if (proof.sourceWorkspaceId === null) await this.options.guard.reprove(proof);
     const outcome = await this.options.sourceRecovery
       .requireRecovery()
       .catch(() => 'recoveryRequired' as const);

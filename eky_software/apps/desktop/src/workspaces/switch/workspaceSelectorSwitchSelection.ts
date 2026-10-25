@@ -43,21 +43,31 @@ export function captureWorkspaceSelectorSwitchSelection(selection: WorkspaceSele
       assertAuthority();
       const actual = await readRegistrySlots();
       assertAuthority();
-      for (const slot of ['current', 'next', 'backup'] as const) {
-        const expected = registrySlots[slot]?.bytes;
-        const bytes = actual[slot]?.bytes;
-        if (expected === undefined ? bytes !== undefined : bytes === undefined ||
-          expected.byteLength !== bytes.byteLength || !expected.every((value, index) => value === bytes[index])) {
-          throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-        }
-        const identity = registrySlots[slot]?.identity;
-        const actualIdentity = actual[slot]?.identity;
-        if (expected !== undefined && (identity === undefined || actualIdentity === undefined ||
-          !sameCrashSafeFileSlotIdentity(identity, actualIdentity))) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-      }
+      assertSameSlots(registrySlots, actual);
     },
   };
-  return { journalSlots, registrySlots, guard };
+  return {
+    journalSlots, registrySlots, guard,
+    assertJournalSelection(actual: ReadOnlyJournalSlots<WorkspaceSwitchJournal>) {
+      assertAuthority();
+      assertSameSlots(journalSlots, actual);
+    },
+  };
+}
+
+function assertSameSlots<T>(expectedSlots: ReadOnlyJournalSlots<T>, actual: ReadOnlyJournalSlots<T>): void {
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const expected = expectedSlots[slot]?.bytes;
+    const bytes = actual[slot]?.bytes;
+    if (expected === undefined ? bytes !== undefined : bytes === undefined ||
+      expected.byteLength !== bytes.byteLength || !expected.every((value, index) => value === bytes[index])) {
+      throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+    }
+    const identity = expectedSlots[slot]?.identity;
+    const actualIdentity = actual[slot]?.identity;
+    if (expected !== undefined && (identity === undefined || actualIdentity === undefined ||
+      !sameCrashSafeFileSlotIdentity(identity, actualIdentity))) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+  }
 }
 
 function captureSlots<T>(values: ReadOnlyJournalSlots<T>, parse: (bytes: Uint8Array) => Readonly<T>): ReadOnlyJournalSlots<T> {

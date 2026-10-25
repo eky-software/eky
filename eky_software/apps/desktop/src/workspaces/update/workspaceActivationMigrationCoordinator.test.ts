@@ -11,6 +11,7 @@ import { validateWorkspaceBackupReplacementOperationId } from '../replacement/wo
 import { deriveWorkspaceBackupReplacementPaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
 import { WorkspaceActivationMigrationCoordinator } from './workspaceActivationMigrationCoordinator.js';
+import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
 import type { WorkspaceActivationMigrationProof } from './workspaceActivationMigrationGuard.js';
 
 const operationId = validateWorkspaceBackupImportOperationId(
@@ -221,6 +222,42 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     expect(fixture.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
     expect(fixture.requestRelaunch).not.toHaveBeenCalled();
   });
+
+  it.each([
+    { expireAt: 'lease.acquire' }, { expireAt: 'activation.read' },
+    { expireAt: 'recovery.createAndStage' }, { expireAt: 'candidate.prepareRoot' },
+    { expireAt: 'candidate.migrate' }, { expireAt: 'candidate.validate' },
+    { expireAt: 'recovery.removeStaging' }, { expireAt: 'candidate.inspect' },
+    { expireAt: 'activation.prepare' }, { expireAt: 'activation.advance' },
+    { expireAt: 'activation.read', expireOccurrence: 2, failCandidateMigration: true },
+    { expireAt: 'candidate.discard', failCandidateMigration: true },
+    { expireAt: 'activation.rollback', failActivationAdvance: true },
+    { expireAt: 'recovery.removeStaging', failCandidateMigration: true },
+  ])('stops selector mutations after authority expires at $expireAt ($expireOccurrence)', async scenario => {
+    const f = createFixture({ ...scenario, selector: true });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+    });
+    const expiry = f.events.indexOf('selector.expired');
+    expect(expiry).toBeGreaterThan(-1);
+    expect(f.events.slice(expiry + 1).every(event =>
+      ['guard.reprove', 'runtime.stop', 'runtime.absent'].includes(event))).toBe(true);
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {}, { failCandidateMigration: true }, { failActivationAdvance: true },
+    { failCandidateMigration: true, expireAt: 'source.recover' },
+  ])(
+    'preserves successful selector activation or owned recovery %#', async failure => {
+      const f = createFixture({ ...failure, selector: true });
+      await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+      expect(f.requestRelaunch).toHaveBeenCalledOnce();
+      expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    },
+  );
 });
 
 interface FixtureOptions {
@@ -231,11 +268,23 @@ interface FixtureOptions {
   readonly failRuntimeStop?: boolean;
   readonly foreignActivationJournal?: boolean;
   readonly userDataRoot?: string;
+  readonly selector?: boolean;
+  readonly expireAt?: string;
+  readonly expireOccurrence?: number;
 }
 
 function createFixture(options: FixtureOptions = {}) {
   const userDataRoot = options.userDataRoot ?? testUserDataRoot;
   const events: string[] = [];
+  let selectorCurrent = true;
+  let expiryOccurrences = 0;
+  const record = (event: string) => {
+    events.push(event);
+    if (event === options.expireAt && ++expiryOccurrences === (options.expireOccurrence ?? 1)) {
+      selectorCurrent = false;
+      events.push('selector.expired');
+    }
+  };
   let activationJournal: ProfileRestoreActivationJournal | undefined =
     options.foreignActivationJournal
       ? createActivationJournal(
@@ -247,29 +296,29 @@ function createFixture(options: FixtureOptions = {}) {
     operationId,
     profileId,
     registrySnapshot: new Uint8Array([1]),
-    sourceWorkspaceId,
+    sourceWorkspaceId: options.selector ? null : sourceWorkspaceId,
     switchJournalSnapshot: new Uint8Array([2]),
     targetWorkspaceId,
   });
-  const requestRelaunch = vi.fn(() => events.push('runtime.relaunch'));
+  const requestRelaunch = vi.fn(() => record('runtime.relaunch'));
   const stopTargetStartupRuntime = vi.fn(async () => {
-    events.push('runtime.stop');
+    record('runtime.stop');
     if (options.failRuntimeStop) throw new Error('stop-failed');
   });
   const sourceRecovery = {
     recoverFromFailure: vi.fn(async () => {
-      events.push('source.recover');
+      record('source.recover');
       return 'relaunchRequired' as const;
     }),
     requireRecovery: vi.fn(async () => {
-      events.push('source.requireRecovery');
+      record('source.requireRecovery');
       return 'recoveryRequired' as const;
     }),
   };
   const activation = {
     journalStore: {
       read: vi.fn(async () => {
-        events.push('activation.read');
+        record('activation.read');
         return activationJournal;
       }),
     },
@@ -282,7 +331,7 @@ function createFixture(options: FixtureOptions = {}) {
       }),
       accept: vi.fn(async () => undefined),
       advanceToValidation: vi.fn(async () => {
-        events.push('activation.advance');
+        record('activation.advance');
         if (options.failActivationAdvance) {
           throw new Error('swap-failed');
         }
@@ -294,7 +343,7 @@ function createFixture(options: FixtureOptions = {}) {
       }),
       clearRolledBack: vi.fn(async () => undefined),
       prepare: vi.fn(async () => {
-        events.push('activation.prepare');
+        record('activation.prepare');
         activationJournal = createActivationJournal(
           operationId,
           'prepared',
@@ -303,7 +352,7 @@ function createFixture(options: FixtureOptions = {}) {
       commitAcceptance: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTANCE_PUBLICATION'); }),
       clearAccepted: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTED_CLEANUP'); }),
       rollback: vi.fn(async () => {
-        events.push('activation.rollback');
+        record('activation.rollback');
         activationJournal = createActivationJournal(
           operationId,
           'rolledBack',
@@ -314,13 +363,13 @@ function createFixture(options: FixtureOptions = {}) {
   };
   const rootStore = {
     discardBeforeActivation: vi.fn(async () => {
-      events.push('candidate.discard');
+      record('candidate.discard');
     }),
     inspectCandidate: vi.fn(async () => {
-      events.push('candidate.inspect');
+      record('candidate.inspect');
     }),
     prepareCandidate: vi.fn(async () => {
-      events.push('candidate.prepareRoot');
+      record('candidate.prepareRoot');
     }),
     removeImportStaging: vi.fn(async () => undefined),
   };
@@ -330,7 +379,7 @@ function createFixture(options: FixtureOptions = {}) {
     },
     backupCandidate: {
       migrate: vi.fn(async () => {
-        events.push('candidate.migrate');
+        record('candidate.migrate');
         if (options.failCandidateMigration) {
           throw new Error('migration-failed');
         }
@@ -341,22 +390,23 @@ function createFixture(options: FixtureOptions = {}) {
         } as const;
       }),
       validateAndMaterialize: vi.fn(async () => {
-        events.push('candidate.validate');
+        record('candidate.validate');
         return createCandidateReadiness();
       }),
       validatePublished: vi.fn(async () => createCandidateReadiness()),
     },
     guard: {
       reprove: vi.fn(async () => {
-        events.push('guard.reprove');
+        record('guard.reprove');
+        if (!selectorCurrent) throw new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
       }),
     },
     maintenanceLease: {
       acquire: vi.fn(async () => {
-        events.push('lease.acquire');
+        record('lease.acquire');
         return {
           release: vi.fn(async () => {
-            events.push('lease.release');
+            record('lease.release');
             if (options.failLeaseRelease) {
               throw new Error('release-failed');
             }
@@ -366,7 +416,7 @@ function createFixture(options: FixtureOptions = {}) {
     },
     recoveryPoint: {
       createAndStage: vi.fn(async () => {
-        events.push('recovery.createAndStage');
+        record('recovery.createAndStage');
         if (options.failRecoveryPoint) {
           throw new Error('recovery-point-failed');
         }
@@ -381,7 +431,7 @@ function createFixture(options: FixtureOptions = {}) {
         };
       }),
       removeStaging: vi.fn(async () => {
-        events.push('recovery.removeStaging');
+        record('recovery.removeStaging');
       }),
     },
     requestRelaunch,
@@ -390,7 +440,7 @@ function createFixture(options: FixtureOptions = {}) {
     userDataRoot,
     workspaceRuntimeAbsence: {
       assertNoActiveWorkspaceRuntime: vi.fn(async () => {
-        events.push('runtime.absent');
+        record('runtime.absent');
       }),
     },
   });

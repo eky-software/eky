@@ -1809,12 +1809,13 @@ async function startDesktopCompositionRuntime({
       beforeMigrations: createSecretSafeMigrationGate(secretBrokerHandle, async (inspection, control) => {
         backendStartupControl = control;
         await profileSnapshotBrokerClient.waitUntilReady();
-        if (workspaceActivationMigrationAuthorized) {
-          await workspaceActivationMigration!.beforeMigrations(
+        if (workspaceActivationMigrationAuthorized ||
+            (activeWorkspace.switchContext?.sourceWorkspaceId === null && workspaceActivationMigration !== undefined)) {
+          const activationOutcome = await workspaceActivationMigration!.beforeMigrations(
             inspection,
             control,
           );
-          return;
+          if (activationOutcome === 'relaunchRequired') return;
         }
         if (startupRecoveryAuthority === 'updateBusinessRollback') {
           if (updateBusinessRollbackCoordinator === undefined) {

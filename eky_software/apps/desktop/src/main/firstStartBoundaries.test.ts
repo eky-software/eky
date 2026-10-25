@@ -50,6 +50,20 @@ describe('desktop first-start boundaries', () => {
     expect(workspaceStartup).toBeGreaterThan(admission);
   });
 
+  it('rechecks a current selector target and continues to FirstStart unless activation relaunches', async () => {
+    const source = await readFile(join(sourceRoot, 'main', 'desktopComposition.ts'), 'utf8');
+    const gate = source.indexOf('beforeMigrations: createSecretSafeMigrationGate');
+    const branch = source.indexOf('if (workspaceActivationMigrationAuthorized ||', gate);
+    const end = source.indexOf("if (startupRecoveryAuthority === 'updateBusinessRollback')", branch);
+    expect(branch).toBeGreaterThan(gate);
+    expect(end).toBeGreaterThan(branch);
+    const activation = source.slice(branch, end);
+    expect(activation).toContain('activeWorkspace.switchContext?.sourceWorkspaceId === null');
+    expect(activation).toContain('workspaceActivationMigration !== undefined');
+    expect(activation).toContain("if (activationOutcome === 'relaunchRequired') return;");
+    expect(source.indexOf('await firstStartUpdateCoordinator.beforeMigrations(', end)).toBeGreaterThan(end);
+  });
+
   it('recovers workspace first-start state before workspace recovery and plans before backend startup', async () => {
     const source = await readFile(
       join(sourceRoot, 'main', 'desktopComposition.ts'),

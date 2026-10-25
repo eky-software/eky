@@ -51,7 +51,9 @@ export async function createWorkspaceActivationMigrationComposition(
     options.activeWorkspace.mode !== 'targetValidation' ||
     options.activeWorkspace.switchContext === undefined ||
     options.activeWorkspace.rejectInvalidTarget === undefined ||
-    options.activeWorkspace.requireRecovery === undefined
+    options.activeWorkspace.requireRecovery === undefined ||
+    (options.activeWorkspace.switchContext.sourceWorkspaceId === null) !==
+      (options.activeWorkspace.selectorActivationAuthority !== undefined)
   ) {
     throw new WorkspaceActivationMigrationError(
       'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
@@ -88,6 +90,7 @@ export async function createWorkspaceActivationMigrationComposition(
   const guard = new WorkspaceActivationMigrationGuard(
     registry,
     switchJournal,
+    options.activeWorkspace.selectorActivationAuthority,
   );
   const runtimeAbsence = new StartupWorkspaceRuntimeAbsence(options.assertMainReservationOwned);
   const recoveryPoint = new WorkspaceActivationMigrationRecoveryPoint(

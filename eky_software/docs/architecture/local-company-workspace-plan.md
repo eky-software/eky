@@ -513,6 +513,28 @@ palautetun historiallisen prefixin terminal-kytkentä tarvitsevat pysyvät
 regressiot ja oikean prosessi-/pakettiketjun näytön ennen W7.2:n hyväksyntää.
 Jo hyväksyttyjä W7.0:n codec-/slot-kokeita ei lasketa tämän näytöksi uudelleen.
 
+**Aktivoinnin valintaraja:** nykyinen `WorkspaceActivationMigrationGuard`
+ottaa source-null-avaukselle erikseen sidotun startup-valtuuden. Se vaatii
+valmiiksi julkaistun v2/targetSelected-parin, koko rekisterin sidonnan,
+lineagen ja nykyiset tiedostoidentiteetit. Kesken jääneiden slottien
+palautus kuuluu startup-omistajalle ennen tätä rajaa; guard ei korjaa niitä.
+Tarkistuskuittia ei hyväksytä toisessa guard-instanssissa tai käynnistyksessä.
+Valinta tarkistetaan ennen tarkastusprosessia, tarkastuksen ja historiallisen
+sisältövalidoinnin jälkeen sekä backendin migraatiorajalla. Current-kohde
+jatkaa FirstStartiin ilman candidatea, pending-kohde käyttää yhtä nykyistä
+kopioaktivointia. Nykyinen aktivointikoordinaattori uusii source-null-
+valtuuden myös ennen seuraavaa tiedostotoimintoa ja palautuksen korjaavia
+lukuja, poistoja tai valinnan muutosta. Menetetty valtuus sallii omistetun
+runtimen sulkemisen, mutta ei anna uutta palautus- tai siivousvaltaa;
+aineisto säilyy selvitykseen. Vanha ei-null-polku säilyy.
+
+Valtuuden välitys on nimetty nykyisessä aktivointicompositionissa, mutta
+varsinainen valitsimen startup ei vielä muodosta sitä. Tiedostotallentimien,
+guardin, startup-luokan ja inspectorin yhteiset regressiot käyttävät
+ohjattuja prosessi- ja sisältöportteja; ne eivät korvaa SQLite-/Electron-
+tai paketoitua todistusta. Mainin todellisen startup-sukupolven, A/B-tilan,
+W6:n ja palautuksen terminal-valtuuden liitos on edelleen W7.2:n portti.
+
 **Nimetty W6-jatko:** nykyinen W6-composition voi ottaa mainin erikseen
 sitoman `deferredBusiness`-valtuuden. Sovellusadmission säilyy
 `exactAcceptedBuild`-arvona; vain W6:n suunnittelija käyttää nimettyä

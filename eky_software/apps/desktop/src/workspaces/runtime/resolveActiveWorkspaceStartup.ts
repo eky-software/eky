@@ -15,6 +15,7 @@ import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
 import { resolveWorkspaceSwitchStartup } from '../switch/workspaceSwitchStartup.js';
 import type { WorkspaceSwitchFailureRecoveryOutcome } from '../switch/workspaceSwitchStartup.js';
 import type { WorkspaceSwitchStartupContext } from '../switch/workspaceSwitchStartup.js';
+import type { WorkspaceSelectorActivationAuthority } from '../update/workspaceActivationMigrationGuard.js';
 
 export const ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED =
   'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED';
@@ -47,7 +48,8 @@ export interface ActiveWorkspaceStartupProgress {
 }
 
 export interface ActiveWorkspaceSwitchContext
-  extends WorkspaceSwitchStartupContext {
+  extends Omit<WorkspaceSwitchStartupContext, 'sourceWorkspaceId'> {
+  readonly sourceWorkspaceId: WorkspaceId | null;
   readonly targetProfileId: string;
 }
 
@@ -59,6 +61,7 @@ export interface ActiveWorkspaceStartupOptions {
 
 export interface ActiveWorkspaceStartupSelection {
   readonly mode: ActiveWorkspaceStartupMode;
+  readonly selectorActivationAuthority?: WorkspaceSelectorActivationAuthority;
   readonly switchContext?: Readonly<ActiveWorkspaceSwitchContext>;
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;

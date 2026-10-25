@@ -187,6 +187,80 @@ describe('workspace activation migration startup', () => {
       code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
     });
   });
+
+  it.each(['current', 'compatiblePending', 'invalidHistory'] as const)(
+    'guards selector %s inspection before any candidate process', async inspectionStatus => {
+      const f = createFixture({ selector: true, inspectionStatus });
+      f.prove.mockRejectedValueOnce(new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED'));
+      await expect(f.startup.prepareBeforeBackend()).rejects.toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' });
+      expect(f.inspect).not.toHaveBeenCalled();
+      expect(f.validateHistorical).not.toHaveBeenCalled();
+      expect(f.rejectInvalidTarget).not.toHaveBeenCalled();
+      expect(f.migrateAndActivate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['current', 'compatiblePending', 'invalidHistory'] as const)(
+    'rejects lost selector authority after %s inspection without publication', async inspectionStatus => {
+      const f = createFixture({ selector: true, inspectionStatus });
+      f.reprove.mockRejectedValueOnce(new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED'));
+      await expect(f.startup.prepareBeforeBackend()).rejects.toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' });
+      expect(f.prove.mock.invocationCallOrder[0]).toBeLessThan(f.inspect.mock.invocationCallOrder[0]!);
+      expect(f.validateHistorical).not.toHaveBeenCalled();
+      expect(f.rejectInvalidTarget).not.toHaveBeenCalled();
+      expect(f.migrateAndActivate).not.toHaveBeenCalled();
+    },
+  );
+
+  it('reproves historical selector validation before accepting pending migration', async () => {
+    const f = createFixture({ selector: true });
+    f.reprove.mockResolvedValueOnce(undefined).mockRejectedValueOnce(
+      new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED'),
+    );
+    await expect(f.startup.prepareBeforeBackend()).rejects.toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' });
+    expect(f.validateHistorical).toHaveBeenCalledOnce();
+    expect(f.migrateAndActivate).not.toHaveBeenCalled();
+    await expect(f.startup.beforeMigrations(createBackendInspection(), {
+      stopStartupRuntime: f.stopStartupRuntime,
+    })).rejects.toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' });
+  });
+
+  it('keeps a current selector target on exact manifest without a migration copy', async () => {
+    const f = createFixture({ selector: true, inspectionStatus: 'current' });
+    await expect(f.startup.prepareBeforeBackend()).resolves.toEqual({
+      migrationStartupPolicy: 'exactCurrentManifest', status: 'notRequired',
+    });
+    expect(f.prove).toHaveBeenCalledOnce();
+    expect(f.reprove).toHaveBeenCalledOnce();
+    expect(f.validateHistorical).not.toHaveBeenCalled();
+    expect(f.migrateAndActivate).not.toHaveBeenCalled();
+  });
+
+  it('uses one copy activation for selector pending migration and proves target exit', async () => {
+    const f = createFixture({ selector: true });
+    await expect(f.startup.prepareBeforeBackend()).resolves.toEqual({
+      migrationStartupPolicy: 'restoreCompatible', status: 'migrationRequired',
+    });
+    await expect(f.startup.beforeMigrations(createBackendInspection(), {
+      stopStartupRuntime: f.stopStartupRuntime,
+    })).resolves.toBe('relaunchRequired');
+    expect(f.prove).toHaveBeenCalledOnce();
+    expect(f.reprove).toHaveBeenCalledTimes(3);
+    expect(f.migrateAndActivate).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      proof: expect.objectContaining({ sourceWorkspaceId: null, targetWorkspaceId }),
+    }));
+    expect(f.stopStartupRuntime.mock.invocationCallOrder[0]).toBeLessThan(f.markTargetRuntimeStopped.mock.invocationCallOrder[0]!);
+  });
+
+  it('rejects stale current selector selection at the backend migration boundary', async () => {
+    const f = createFixture({ selector: true, inspectionStatus: 'current' });
+    await f.startup.prepareBeforeBackend();
+    f.reprove.mockRejectedValueOnce(new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED'));
+    await expect(f.startup.beforeMigrations({ ...createBackendInspection(), pendingMigrationCount: 0 }, {
+      stopStartupRuntime: f.stopStartupRuntime,
+    })).rejects.toMatchObject({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' });
+    expect(f.migrateAndActivate).not.toHaveBeenCalled();
+  });
 });
 
 function createFixture(options: {
@@ -195,6 +269,7 @@ function createFixture(options: {
   mode?: 'normal' | 'targetValidation';
   rejectOutcome?: 'recoveryRequired' | 'relaunchRequired';
   userDataRoot?: string;
+  selector?: boolean;
 } = {}) {
   const inspectionStatus = options.inspectionStatus ?? 'compatiblePending';
   const inspect = vi.fn(async () => ({
@@ -210,10 +285,11 @@ function createFixture(options: {
     operationId,
     profileId,
     registrySnapshot: new Uint8Array([1]),
-    sourceWorkspaceId,
+    sourceWorkspaceId: options.selector ? null : sourceWorkspaceId,
     switchJournalSnapshot: new Uint8Array([2]),
     targetWorkspaceId,
   }));
+  const reprove = vi.fn(async () => undefined);
   const validateHistorical = vi.fn(async () => ({
     actorId: 'local-owner' as const,
     artifactRootHealth: 'ready' as const,
@@ -240,7 +316,7 @@ function createFixture(options: {
         : {
             switchContext: {
               operationId,
-              sourceWorkspaceId,
+              sourceWorkspaceId: options.selector ? null : sourceWorkspaceId,
               targetProfileId: profileId,
               targetWorkspaceId,
             },
@@ -250,7 +326,7 @@ function createFixture(options: {
       workspaceRoot: 'C:\\private\\workspace',
     },
     coordinator: { migrateAndActivate },
-    guard: { prove },
+    guard: { prove, reprove },
     historicalValidation: {
       validateHistoricalPublished: validateHistorical,
     },
@@ -271,6 +347,7 @@ function createFixture(options: {
     markTargetRuntimeStopped,
     migrateAndActivate,
     prove,
+    reprove,
     rejectInvalidTarget,
     requestRelaunch,
     startup,

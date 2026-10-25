@@ -147,6 +147,21 @@ Alkuperäisen viiveen syy on edelleen avoin eikä yhdistettyjä hylkäyksiä
 muuteta onnistumisiksi. Tämä ei ole koko startupin tai paketoidun ketjun
 hyväksyntä.
 
+**Kopioaktivoinnin valintaraja:** nykyiseen migraatiosuojaan on lisätty
+source-null-avauksen täsmällinen rekisteri-/journal-/lineage-/valtuussidonta.
+Tarkastus ei korjaa sivuslotteja tai käytä vanhan käynnistyksen kuittia.
+Current-kohteen tarkistus jatkaa FirstStartiin; pending-kohde käyttää
+nykyistä yhtä kopioaktivointia. Katselmuksessa havaittu vanhentuneen
+valtuuden siivouspolku toistettiin ja suojattiin nykyisessä koordinaattorissa.
+Päivitys- ja switch-kuluttajien lopullinen 376 testin sarja 21 tiedostossa
+läpäisi. Mukana on oikeiden tallentimien, guardin ja startup-/inspector-
+luokkien yhteinen koe ohjatuilla prosessi- ja sisältöporteilla sekä
+koordinaattorin valtuudenmenetysten regressiot. Aiemmat osajoukot eivät ole
+lisänä tähän testimäärään.
+Rajattu riippumaton jälkikatselmus ei jättänyt avoimia P1/P2-havaintoja.
+Varsinainen valitsin-startup ei vielä muodosta tätä valtuutta. Tämä ei ole
+SQLiten, Electronin tai koko W7.2:n integraatiohyväksyntä.
+
 **Seuraava työ:** ensimmäisen yritysavauksen kytkentä
 nykyisiin FirstStart- ja W6-valtuuksiin.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
