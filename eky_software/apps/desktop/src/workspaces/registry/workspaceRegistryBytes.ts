@@ -3,14 +3,14 @@ import {
   workspaceRegistryInvalid,
 } from './workspaceRegistryError.js';
 import { assertNoDuplicateWorkspaceRegistryKeys } from './workspaceRegistryDuplicateKeys.js';
-import type { LocalWorkspaceRegistryV1 } from './workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from './workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from './workspaceRegistryValidation.js';
 
 export const WORKSPACE_REGISTRY_MAX_BYTES = 64 * 1024;
 
 export function parseWorkspaceRegistryBytes(
   bytes: Uint8Array,
-): Readonly<LocalWorkspaceRegistryV1> {
+): Readonly<LocalWorkspaceRegistry> {
   try {
     if (
       !(bytes instanceof Uint8Array) ||

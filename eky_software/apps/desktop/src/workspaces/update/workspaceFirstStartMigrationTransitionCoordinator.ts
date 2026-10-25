@@ -1,6 +1,6 @@
 import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
-import type { LocalWorkspaceRegistryV1 } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import {
   validateWorkspaceFirstStartBuildIdentity,
@@ -249,7 +249,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
   }
 
   private async restoreSourceRegistry(
-    registry: Readonly<LocalWorkspaceRegistryV1>,
+    registry: Readonly<LocalWorkspaceRegistry>,
     journal: Readonly<WorkspaceFirstStartMigrationJournalV1>,
   ): Promise<void> {
     const restored = restoreJournaledPassiveWorkspacesReady({
@@ -268,7 +268,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
   }
 
   private async readRequiredRegistry(): Promise<
-    Readonly<LocalWorkspaceRegistryV1>
+    Readonly<LocalWorkspaceRegistry>
   > {
     const value = await this.options.registry.read();
     if (value === undefined) return invalidTransition();

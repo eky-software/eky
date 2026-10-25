@@ -8,6 +8,7 @@ import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildA
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
+  LocalWorkspaceRegistry,
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
@@ -429,7 +430,7 @@ function createFixture(
     readonly acceptedBuild?: Readonly<AcceptedBuildMetadata>;
     readonly admission?: PreWorkspaceBuildAdmission;
     readonly failureResult?: PreBackendFirstStartFailureResult;
-    readonly initialRegistry?: Readonly<LocalWorkspaceRegistryV1>;
+    readonly initialRegistry?: Readonly<LocalWorkspaceRegistry>;
     readonly inventory?: Readonly<WorkspaceMigrationInventory>;
     readonly registryMissing?: boolean;
     readonly runningBuild?: Readonly<WorkspaceFirstStartBuildIdentity>;
@@ -447,7 +448,7 @@ function createFixture(
     get value() {
       return registryValue;
     },
-    writes: [] as Readonly<LocalWorkspaceRegistryV1>[],
+    writes: [] as Readonly<LocalWorkspaceRegistry>[],
     read: readRegistry,
     inspect: inspectRegistry,
     async write(value: unknown) {

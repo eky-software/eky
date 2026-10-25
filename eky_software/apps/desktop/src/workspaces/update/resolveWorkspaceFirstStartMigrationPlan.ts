@@ -2,7 +2,7 @@ import { isSemVer } from '../../release/desktopBuildInfo.js';
 import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildAdmission.js';
 import { compareSemanticVersions } from '../../update/semanticVersionComparison.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
-import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import {
   hasExactDataKeys,
@@ -84,7 +84,7 @@ export function resolveWorkspaceFirstStartMigrationPlan(
 }
 
 function createUpdatePlan(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   inventory: Readonly<WorkspaceMigrationInventory>,
 ): Readonly<WorkspaceFirstStartMigrationPlan> {
   const readyWorkspaceIds = registry.workspaces

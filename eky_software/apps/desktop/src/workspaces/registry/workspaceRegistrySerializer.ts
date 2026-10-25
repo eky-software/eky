@@ -3,7 +3,7 @@ import {
   WORKSPACE_REGISTRY_MAX_BYTES,
   parseWorkspaceRegistryBytes,
 } from './workspaceRegistryBytes.js';
-import type { LocalWorkspaceRegistryV1 } from './workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from './workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from './workspaceRegistryValidation.js';
 
 export function serializeWorkspaceRegistry(
@@ -11,7 +11,7 @@ export function serializeWorkspaceRegistry(
 ): Uint8Array {
   const registry = validateWorkspaceRegistry(value);
   const canonical = {
-    formatVersion: 1,
+    formatVersion: registry.formatVersion,
     activeWorkspaceId: registry.activeWorkspaceId,
     workspaces: registry.workspaces.map((entry) => ({
       workspaceId: entry.workspaceId,
@@ -34,7 +34,7 @@ export function serializeWorkspaceRegistry(
 
 export function assertCanonicalWorkspaceRegistryRoundTrip(
   bytes: Uint8Array,
-): Readonly<LocalWorkspaceRegistryV1> {
+): Readonly<LocalWorkspaceRegistry> {
   const parsed = parseWorkspaceRegistryBytes(bytes);
   const serialized = serializeWorkspaceRegistry(parsed);
   if (!bytesAreEqual(bytes, serialized)) {

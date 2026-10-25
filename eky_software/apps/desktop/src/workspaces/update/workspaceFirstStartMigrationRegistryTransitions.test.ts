@@ -18,6 +18,34 @@ const passiveWorkspaceId = workspaceId('2');
 const anotherPassiveWorkspaceId = workspaceId('3');
 
 describe('workspace first-start registry transitions', () => {
+  it.each([1, 2] as const)('preserves v%i through transition and exact-hash restoration', (formatVersion) => {
+    const source = { ...registry(), formatVersion };
+    const transitioned = markPassiveWorkspacesRecoveryRequired(source, activeWorkspaceId, [passiveWorkspaceId]);
+    expect(transitioned.formatVersion).toBe(formatVersion);
+    const binding = {
+      registry: transitioned,
+      expectedActiveWorkspaceId: activeWorkspaceId,
+      passiveRecoveryWorkspaceIds: [passiveWorkspaceId],
+      sourceRegistrySha256: calculateWorkspaceRegistrySha256(source),
+      transitionedRegistrySha256: calculateWorkspaceRegistrySha256(transitioned),
+    };
+    expect(restoreJournaledPassiveWorkspacesReady(binding)).toEqual(source);
+    expect(() => restoreJournaledPassiveWorkspacesReady({
+      ...binding,
+      sourceRegistrySha256: calculateWorkspaceRegistrySha256({ ...source, formatVersion: formatVersion === 1 ? 2 : 1 }),
+    })).toThrow(WorkspaceFirstStartMigrationTransitionError);
+    expect(() => restoreJournaledPassiveWorkspacesReady({
+      ...binding,
+      registry: { ...transitioned, formatVersion: formatVersion === 1 ? 2 : 1 },
+    })).toThrow(WorkspaceFirstStartMigrationTransitionError);
+  });
+
+  it('does not treat a v2 selector as an active business migration', () => {
+    const source = { ...registry(), formatVersion: 2 as const, activeWorkspaceId: null };
+    expect(() => markPassiveWorkspacesRecoveryRequired(source, activeWorkspaceId, [passiveWorkspaceId]))
+      .toThrow(WorkspaceFirstStartMigrationTransitionError);
+  });
+
   it('marks one or many exact passive ready workspaces without changing other fields', () => {
     const source = registry();
     const transitioned = markPassiveWorkspacesRecoveryRequired(

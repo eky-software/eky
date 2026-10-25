@@ -1,6 +1,6 @@
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
   WorkspaceLineageIdentityV1,
 } from '../registry/workspaceRegistryTypes.js';
@@ -18,13 +18,13 @@ import {
 import { EmptyWorkspaceCreationError } from './emptyWorkspaceCreationError.js';
 
 export function readCreationRegistry(
-  value: Readonly<LocalWorkspaceRegistryV1> | undefined,
-): Readonly<LocalWorkspaceRegistryV1> {
+  value: Readonly<LocalWorkspaceRegistry> | undefined,
+): Readonly<LocalWorkspaceRegistry> {
   return readWorkspaceRegistry(value);
 }
 
 export function assertWorkspaceIdAvailable(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   workspaceId: WorkspaceId,
 ): void {
   try {
@@ -47,7 +47,7 @@ export function assertWorkspaceIdAvailable(
 }
 
 export function assertLineageAvailable(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   lineageIdentity: Readonly<WorkspaceLineageIdentityV1>,
 ): void {
   try {
@@ -61,9 +61,9 @@ export function assertLineageAvailable(
 }
 
 export function publishWorkspaceEntry(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   entry: Readonly<LocalWorkspaceRegistryEntryV1>,
-): Readonly<LocalWorkspaceRegistryV1> {
+): Readonly<LocalWorkspaceRegistry> {
   try {
     return appendReadyWorkspaceEntry(registry, entry);
   } catch (error) {
@@ -87,7 +87,7 @@ export function publishWorkspaceEntry(
 }
 
 export function assertCreationWorkspaceLabelAvailable(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   workspaceLabel: string,
   stage: 'inputValidation' | 'registryPublish',
 ): void {
@@ -111,14 +111,14 @@ export function createReadyWorkspaceEntry(input: {
 }
 
 export function findWorkspaceEntry(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   workspaceId: WorkspaceId,
 ): Readonly<LocalWorkspaceRegistryEntryV1> | undefined {
   return findRegistryWorkspaceEntry(registry, workspaceId);
 }
 
 export function assertRegistryStillAtPreviousActive(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   previousActiveWorkspaceId: WorkspaceId | null,
 ): void {
   try {

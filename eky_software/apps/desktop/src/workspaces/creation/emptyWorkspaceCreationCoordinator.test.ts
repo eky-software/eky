@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type {
+  LocalWorkspaceRegistry,
   LocalWorkspaceRegistryEntryV1,
   LocalWorkspaceRegistryV1,
   WorkspaceId,
@@ -37,7 +38,7 @@ interface CoordinatorFixture {
 
 function createFixture(input: {
   readonly generateWorkspaceId?: () => WorkspaceId;
-  readonly registry?: Readonly<LocalWorkspaceRegistryV1>;
+  readonly registry?: Readonly<LocalWorkspaceRegistry>;
   readonly workspaceId?: WorkspaceId;
 } = {}): CoordinatorFixture {
   const events: string[] = [];
@@ -152,6 +153,22 @@ describe('empty workspace creation coordinator', () => {
     expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
     expect(fixture.lifecycle.maxRunningRuntimeOwners).toBe(1);
     expect(fixture.lifecycle.maxOpenDatabaseHandleOwners).toBe(1);
+  });
+
+  it('publishes into a v2 selector without assigning its active workspace', async () => {
+    const fixture = createFixture({ registry: { ...createTestRegistry(), formatVersion: 2 } });
+
+    await fixture.coordinator.create('New workspace');
+
+    expect(fixture.registry.value).toMatchObject({
+      formatVersion: 2,
+      activeWorkspaceId: null,
+      workspaces: [{ workspaceId: TEST_WORKSPACE_ID, lifecycleState: 'ready' }],
+    });
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.lease.held).toBe(false);
+    // The injected lifecycle proves publication only, not backendless composition.
+    expect(fixture.events.indexOf('lifecycle.ensure')).toBeLessThan(fixture.events.indexOf('journal.remove'));
   });
 
   it('keeps the previous active workspace when a second workspace is published', async () => {

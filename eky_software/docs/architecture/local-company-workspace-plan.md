@@ -255,7 +255,7 @@ pidetään erillään. Pelkkä nykyisten v1-testien läpäisy ei todista näitä
 v2-kutsujia; tuotantokytkentä kattaa myös niiden omat versionmukaiset kontrollit.
 
 Ensimmäinen lähdevertailu vahvisti, että registry-codec ja kirjoittajat
-ovat vielä v1-only, switch-startup vaatii aktiivisen yrityksen ja nykyinen
+olivat aloituksessa v1-only, switch-startup vaatii aktiivisen yrityksen ja nykyinen
 management-composition tarvitsee aktiivisen profiilin palautuspalvelut.
 Accepted-buildin nykyinen v1 tarkoittaa business-hyväksyntää. W6 ei tee
 uutta inventaariota `exactAcceptedBuild`-haarassa. Tämä ei ole nykyisen
@@ -264,10 +264,25 @@ samaksi hyväksynnäksi.
 
 **Rajattu lähde- ja kutsujakatselmus 25.10.2026:** hyväksynnän lukijat on
 eroteltu alla. Katselmus tarkensi uuden kytkennän todistettavat rajat,
-ei nykyisen v1-normaalipolun uutta vikaväitettä. Tuotantokoodi, formaatit,
-aikarajat ja CI-kytkentä eivät ole muuttuneet. Jo katselmoituja W7.0-kokeita
+ei nykyisen v1-normaalipolun uutta vikaväitettä. Tämä kartoitus ei muuttanut
+tuotantokoodia, formaatteja, aikarajoja tai CI-kytkentää. Jo katselmoituja W7.0-kokeita
 ei ajeta uudelleen ilman omaa havaintoa. Täsmällinen hyväksyntätila säilyy
 [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+**Rekisteriperustan toteutus 25.10.2026:** sama parseri, validaattori ja
+tallennin tukevat nyt v1/v2-arvoja. Entry-, lineage-, koko- ja tiedostorajat
+säilyvät; version muutos ei muuta v1:n kanonisia tavuja. Mutaatiot ja W6:n
+rekisterisiirtymät säilyttävät version. Luonti/tuonti jakavat yhteisen
+versionmukaisen julkaisun jälkeisen valinnan: v1 säilyttää vanhan ensimmäisen
+yrityksen valinnan, v2 säilyttää aiemman valinnan myös sen ollessa null.
+Kylmäpalautuksen null-jatko vaatii todellisen v2-rekisterin, sen koko sisällön
+muuttumattomuuden ja kutsujan nykyisen runtime-poissaolotodisteen ennen
+journalin poistoa. Puuttuva rekisteri ei ole tämä jatko.
+Rajattu riippumaton katselmus ei jättänyt löydöksiä osarajaan; kohdesarja
+läpäisi 810 testiä, kaksi alustakohtaista tapausta jäi ajamatta ja
+tyyppitarkistus läpäisi. Koko slot-admission, v1 -> v2 -muunnosvaltuus,
+source-null-switch ja tuotannon valitsin/FirstStart-kytkentä ovat edelleen
+erilliset toteutettavat osat. Näyttö ei sulje niitä tai koko W7.2:ta.
 
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 

@@ -2,7 +2,7 @@ import type { WorkspaceMaintenanceState } from '../maintenance/workspaceMaintena
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { findDuplicateWorkspaceLabelIds } from '../registry/workspaceLabelComparison.js';
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
-import type { LocalWorkspaceRegistryV1 } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import {
   hasExactDataKeys,
   isPlainDataRecord,
@@ -42,7 +42,7 @@ const availabilityStates = new Set<WorkspaceManagementAvailability>([
 export function createWorkspaceManagementStatus(input: {
   readonly maintenanceState: WorkspaceMaintenanceState;
   readonly operationRecoveryRequired: boolean;
-  readonly registry: Readonly<LocalWorkspaceRegistryV1>;
+  readonly registry: Readonly<LocalWorkspaceRegistry>;
 }): Readonly<WorkspaceManagementStatusV1> {
   const operationState: WorkspaceManagementOperationState =
     input.operationRecoveryRequired

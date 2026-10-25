@@ -5,6 +5,7 @@ import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
+  LocalWorkspaceRegistry,
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
@@ -243,7 +244,7 @@ describe('WorkspaceFirstStartMigrationTransitionCoordinator', () => {
 
   it('fails closed on mixed builds or a changed registry without clearing evidence', async () => {
     const foundation = createFoundation({ state: 'registryTransitioned' });
-    const changedRegistry: LocalWorkspaceRegistryV1 = {
+    const changedRegistry: LocalWorkspaceRegistry = {
       ...foundation.transitioned,
       workspaces: foundation.transitioned.workspaces.map((entry) =>
         entry.workspaceId === passiveWorkspaceId
@@ -426,11 +427,11 @@ class MemoryJournal implements WorkspaceFirstStartMigrationJournalPort {
 }
 
 class MemoryRegistry implements Pick<WorkspaceRegistryPort, 'read' | 'write'> {
-  readonly writes: Readonly<LocalWorkspaceRegistryV1>[] = [];
+  readonly writes: Readonly<LocalWorkspaceRegistry>[] = [];
 
   constructor(
     readonly events: string[],
-    public value: Readonly<LocalWorkspaceRegistryV1> | undefined,
+    public value: Readonly<LocalWorkspaceRegistry> | undefined,
   ) {}
 
   async read() {
@@ -438,7 +439,7 @@ class MemoryRegistry implements Pick<WorkspaceRegistryPort, 'read' | 'write'> {
   }
 
   async write(value: unknown) {
-    this.value = value as Readonly<LocalWorkspaceRegistryV1>;
+    this.value = value as Readonly<LocalWorkspaceRegistry>;
     this.writes.push(this.value);
     this.events.push('registry.write');
   }
@@ -455,7 +456,7 @@ class MemoryAcceptedBuild implements WorkspaceFirstStartAcceptedBuildReader {
 function createPorts(options: {
   acceptedBuild?: Readonly<AcceptedBuildMetadata>;
   journal?: Readonly<WorkspaceFirstStartMigrationJournalV1>;
-  registry?: Readonly<LocalWorkspaceRegistryV1>;
+  registry?: Readonly<LocalWorkspaceRegistry>;
 }): TestPorts {
   const events: string[] = [];
   return {

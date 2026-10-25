@@ -22,7 +22,8 @@ import {
   WORKSPACE_REGISTRY_UNAVAILABLE,
   WorkspaceRegistryStoreError,
 } from './workspaceRegistryStoreError.js';
-import type { LocalWorkspaceRegistryV1 } from './workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from './workspaceRegistryTypes.js';
+import { validateWorkspaceRegistry } from './workspaceRegistryValidation.js';
 
 export interface WorkspaceRegistryStoreOptions {
   readonly installationRoot: string;
@@ -44,11 +45,11 @@ export class WorkspaceRegistryStore {
     this.byteStore = new CrashSafeByteSlotStore(fileSystem);
   }
 
-  read(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined> {
+  read(): Promise<Readonly<LocalWorkspaceRegistry> | undefined> {
     return this.runExclusive(() => this.recoverAndRead());
   }
 
-  inspect(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined> {
+  inspect(): Promise<Readonly<LocalWorkspaceRegistry> | undefined> {
     return this.runExclusive(async () => {
       try {
         const selected = await this.byteStore.inspect(parseWorkspaceRegistryBytes);
@@ -61,8 +62,12 @@ export class WorkspaceRegistryStore {
 
   write(value: unknown): Promise<void> {
     return this.runExclusive(async () => {
-      const bytes = serializeWorkspaceRegistry(value);
+      const registry = validateWorkspaceRegistry(value);
+      const bytes = serializeWorkspaceRegistry(registry);
       const current = await this.recoverAndRead();
+      if (current?.formatVersion === 2 && registry.formatVersion === 1) {
+        throw new WorkspaceRegistryValidationError();
+      }
       try {
         await this.byteStore.replace(bytes, current !== undefined);
       } catch (error) {
@@ -72,7 +77,7 @@ export class WorkspaceRegistryStore {
   }
 
   private async recoverAndRead(): Promise<
-    Readonly<LocalWorkspaceRegistryV1> | undefined
+    Readonly<LocalWorkspaceRegistry> | undefined
   > {
     try {
       return await this.byteStore.recoverAndRead(parseWorkspaceRegistryBytes);

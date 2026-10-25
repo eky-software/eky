@@ -7,6 +7,7 @@ import type {
 } from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
+  LocalWorkspaceRegistry,
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
@@ -313,14 +314,14 @@ export class MemoryWorkspaceBackupImportRegistry
   failRead = false;
   failWriteBefore = false;
   failWriteAfter = false;
-  readonly writes: Readonly<LocalWorkspaceRegistryV1>[] = [];
+  readonly writes: Readonly<LocalWorkspaceRegistry>[] = [];
 
   constructor(
     private readonly events: string[],
-    public value: Readonly<LocalWorkspaceRegistryV1> | undefined,
+    public value: Readonly<LocalWorkspaceRegistry> | undefined,
   ) {}
 
-  async read(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined> {
+  async read(): Promise<Readonly<LocalWorkspaceRegistry> | undefined> {
     this.events.push('registry.read');
     if (this.failRead) throw new Error('registry');
     return this.value;
@@ -329,7 +330,7 @@ export class MemoryWorkspaceBackupImportRegistry
   async write(value: unknown): Promise<void> {
     this.events.push('registry.write');
     if (this.failWriteBefore) throw new Error('registry');
-    this.value = value as Readonly<LocalWorkspaceRegistryV1>;
+    this.value = value as Readonly<LocalWorkspaceRegistry>;
     this.writes.push(this.value);
     if (this.failWriteAfter) throw new Error('registry');
   }

@@ -1,7 +1,7 @@
 import { workspaceRegistryInvalid } from './workspaceRegistryError.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
   WorkspaceLifecycleState,
 } from './workspaceRegistryTypes.js';
@@ -25,11 +25,11 @@ const entryKeys = [
 
 export function validateWorkspaceRegistry(
   value: unknown,
-): Readonly<LocalWorkspaceRegistryV1> {
+): Readonly<LocalWorkspaceRegistry> {
   if (
     !isPlainDataRecord(value) ||
     !hasExactDataKeys(value, registryKeys) ||
-    value.formatVersion !== 1 ||
+    (value.formatVersion !== 1 && value.formatVersion !== 2) ||
     !Array.isArray(value.workspaces) ||
     value.workspaces.length > WORKSPACE_REGISTRY_MAX_ENTRIES
   ) {
@@ -47,10 +47,11 @@ export function validateWorkspaceRegistry(
   const activeWorkspaceId = validateActiveWorkspaceId(
     value.activeWorkspaceId,
     readyIds,
+    value.formatVersion,
   );
 
   return Object.freeze({
-    formatVersion: 1,
+    formatVersion: value.formatVersion,
     activeWorkspaceId,
     workspaces: Object.freeze(entries),
   });
@@ -80,7 +81,9 @@ function validateWorkspaceRegistryEntry(
 function validateActiveWorkspaceId(
   value: unknown,
   readyIds: ReadonlySet<WorkspaceId>,
+  formatVersion: LocalWorkspaceRegistry['formatVersion'],
 ): WorkspaceId | null {
+  if (formatVersion === 2 && value === null) return null;
   if (readyIds.size === 0) {
     if (value !== null) {
       return workspaceRegistryInvalid();

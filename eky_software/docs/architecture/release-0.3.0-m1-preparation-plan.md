@@ -47,8 +47,8 @@ C/K/W6:n sisältö-, sulku- ja palautusportit säilyvät.
 
 **Valmisteltu 25.10.2026:** hyväksytty kopioon perustuvan ensimmäisen
 yritysavauksen suunnittelu ja keskeytyskoe läpäisivät 28 sopimuskoetta,
-tyyppitarkistuksen ja rajatun riippumattoman katselmuksen. Tuotantokoodi ei
-ole muuttunut. [Täsmällinen toteutussopimus ja kokeen rajat](local-company-workspace-plan.md#rajatun-kokeen-mukainen-toteutussopimus)
+tyyppitarkistuksen ja rajatun riippumattoman katselmuksen. Tämä valmistelukoe ei
+muuttanut tuotantokoodia. [Täsmällinen toteutussopimus ja kokeen rajat](local-company-workspace-plan.md#rajatun-kokeen-mukainen-toteutussopimus)
 erottavat oikeat nykyiset journal-/tiedosto-omistajat injektoiduista
 SQLite-, prosessi-, health- ja v2-metadataosuuksista. Katselmuksen koemallin
 valinta- ja sukupolvisidonnan puutteet korjattiin vastatesteineen; niitä ei
@@ -59,10 +59,20 @@ ensimmäisen yritysavauksen kytkennän sekä pysyvät regressiot, oikean
 SQLite/Electron-ketjun, paketoidun palautuksen todennuksen ja katselmuksen.
 Hyväksyntä ei ole toteutuksen tai koko W7.2:n läpäisynäyttö.
 
-**Seuraava työ:** W7.2:n suunniteltu rekisteri-/kirjoittaja-/käynnistysketjun
-toteutus nykyisiin omistajiin. Ensin yhteinen versionmukainen esitys ja
-kirjoittajien version säilyminen, sitten valitsimen ja ensimmäisen
-yritysavauksen kytkentä. Osittainen rekisterituki ei anna muunnosvaltuutta.
+**Toteutettu osaraja 25.10.2026:** rekisterin v1/v2-esitys ja version säilyttävät
+kirjoittajat sekä luonnin/tuonnin kylmäpalautuksen v2/null-jatko on toteutettu.
+V1:n kanoniset tavut ja vanha valintakäyttäytyminen säilyvät. V2:n julkaisu
+ei valitse yritystä; downgrade estetään. Rajattu sarja läpäisi 810 testiä
+43 tiedostossa; kaksi alustakohtaista tapausta jäi ajamatta. Desktopin
+tyyppitarkistus ja rajattu riippumaton lähdekatselmus läpäisivät.
+Näyttö ei ole backendittoman compositionin, SQLite/Electron-ketjun,
+paketoidun palautuksen tai W7.2:n PR/main-hyväksyntä. Vanhojen ja uusien
+päällekkäisten kohdesarjojen määriä ei lasketa yhteen.
+
+**Seuraava työ:** hyväksytyn sovellusbuildin ja viimeisen business-hyväksynnän
+versionmukainen esitys nykyisissä metadataomistajissa ja niiden lukijoissa,
+sitten valitsimen ja ensimmäisen yritysavauksen kytkentä.
+Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStart ja W6 tarvitsevat nimetyt lykätyn business-hyväksynnän haarat,
 eivät yleistä B-baselinen store-adapteria tai teeskenneltyä uutta päivitystä.
 Todellinen v2-julkaisu, historiallisen palautuksen terminal-kytkentä ja

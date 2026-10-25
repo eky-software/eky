@@ -9,7 +9,7 @@ import type {
 import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildAdmission.js';
 import type { WorkspaceRegistryInspectionPort } from '../registry/workspaceRegistryPort.js';
 import type {
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
@@ -306,7 +306,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   }
 
   private async readRequiredRegistry(): Promise<
-    Readonly<LocalWorkspaceRegistryV1>
+    Readonly<LocalWorkspaceRegistry>
   > {
     const registry = await this.options.registry.inspect();
     if (registry === undefined) return invalidOrchestration();
@@ -333,7 +333,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   private assertResumedPlan(
     journal: Readonly<WorkspaceFirstStartMigrationJournalV1>,
     plan: Readonly<WorkspaceFirstStartMigrationPlan>,
-    registry: Readonly<LocalWorkspaceRegistryV1>,
+    registry: Readonly<LocalWorkspaceRegistry>,
     sourceBuild: Readonly<WorkspaceFirstStartBuildIdentity> | null,
   ): void {
     if (
