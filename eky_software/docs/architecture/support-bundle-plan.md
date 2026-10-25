@@ -23,6 +23,135 @@ ole API-clientin julkinen endpoint eikä Electron-rendererin yleisen
 `eky://app`-transportin allowlistissa. Renderer ei voi antaa reitille polkua,
 querya, `companyId`:tä tai runtime-sessionia.
 
+## W7:n hyväksytty jatkosuunta
+
+Omistaja hyväksyi 24.10.2026 yritysvalintaan rajatun desktop-tukipaketin
+nykyisen keräyksen pohjalta myös ilman business-backendia.
+[W7:n sopimus](local-company-workspace-plan.md#palaute-vastuut-ja-todennus)
+omistaa tämän vielä toteuttamattoman suunnan ja kytkentäportin. Ennen
+kytkentää tähän ohjeeseen täsmennetään sallittu sisältö, puuttuvien
+backend-/DB-tietojen esitys, mainin capability- ja vahvistusraja sekä
+formaatin luku ja testit. Puuttuvaa tietoa ei esitetä terveenä eikä yritystä
+avata vain paketin muodostamiseksi. Nykyisen täyden tukipaketin
+backend-permissionia, sisältöä tai formaattia ei tällä kirjauksella muuteta.
+
+### W7.0:n rajattu tukisopimusehdotus
+
+Tämä on toteutusta edeltävä ehdotus, ei käytössä oleva formaatti tai
+valmis keräysketju. Nykyinen `supportBundleBackendData` vaatii backend-version
+ja onnistuneen tietokantayhteenvedon. `supportBundleArchive` tuottaa formaatin
+2, jonka virallinen tarkastin vaatii kaikki kuusi dataosiota. Näitä ei
+korvata tyhjällä, nollalla tai `health: ok` -oletuksella yritysvalinnassa.
+Update-recovery-ikkunan nykyinen pieni `formatVersion: 1` -tiedosto on eri
+formaatti; se ei ole täyden tukipaketin formaattiversio 1 eikä nykyinen
+`support:inspect` lue sitä. Sitä ei nimetä toimivaksi yhteiseksi lukuketjuksi.
+
+Pienin W7-polku käyttää nykyisiä `supportBundleCapability`-,
+`supportBundleArchive`- ja `supportBundleFileStore`-omistajia. Backendin
+Diagnostics-readeria ei tuoda desktopiin moduulirajan yli, eikä rakenneta
+rinnakkaista JSONL-lukijaa, tapahtumapuskuria tai lokituspalvelua.
+Rajatun paketin sisältö on **nykyisen hallinta-/recovery-operaation havainto**,
+ei koko käynnistyksen virhehistoria tai 30 päivän tapahtumakeräys.
+
+| Osa | Ehdotettu täsmäsopimus |
+| --- | --- |
+| Formaattierottelu | Rajattu paketti käyttää `supportBundleFormatVersion: 3` ja `kind: desktopOnly`. Täysi paketti pysyy versiossa 2. Suljetut erilliset skeemat, ei v2:n valinnaistettuja pakollisia kenttiä. Sama gzip, `.json.gz` ja nykyinen tiedostokirjoittaja. |
+| Manifest | Versio, kind, luontiaika, satunnainen creation correlation ID ja täsmällisten dataosioiden SHA-256-checksumit. Ei backendin 30 päivän periodia tai tyhjiä history-osioita, joita voisi tulkita onnistuneeksi luvuksi. |
+| `system` | Käynnissä olevan runtimen validoitu appVersion, buildRevision, Electron-versio, platform ja architecture. Lähde on mainin nykyinen runtime-/build-identiteetti, ei accepted-build-metadatan mahdollinen vanhempi versio; hyväksyntätila ei vaihda suorittajan identiteettiä. Ei backendVersionia, tietokanta-/yritystunnisteita, koneinventaarioa tai polkuja. Arvot validoidaan nykyisten omistajien säännöillä. |
+| `availability` | Backend `notRunning` vain todistetun poissaolon perusteella, muuten `exitUnconfirmed`; database `notInspected`; diagnostic history ja incident history `notCollected`. Paketin valmistuminen ei todista prosessin poistumista, tietokannan terveyttä tai lokituksen onnistumista. |
+| `observation` | Scope `currentOperation`; saatavuus `available` tai `unavailable`. Nykyisen käyttötapausomistajan ensimmäinen turvallinen virhe ja erillinen siivoushavainto vain, jos ne todella on havaittu. Puuttuva ei ole onnistunut, eikä aiemman käynnistyksen syytä rekonstruoida journalista. Enintään nämä kaksi tapahtumaprojektiota, ei kasvavaa tapahtumajoukkoa. |
+| Virheprojektio | Nykyinen katalogi ja tukipaketin tapahtumakohtaiset tarkistukset omistavat sallitut kentät, koodit ja vaiheet. W7-delete/resume laajentaa samaa katalogia ennen kytkentää. Raaka Error, viesti, stack, journal, company/workspace/lineage-ID, polku ja salaisuus ovat kiellettyjä. Vapaata merkkijonoa ei muuteta turvalliseksi vain katkaisemalla tai isolla kirjainkoolla. |
+| Puuttuva syy | Sallittu `unavailable`-havainto voi tuottaa rajatun tukipaketin, mutta käyttöliittymä ja tarkastin ilmoittavat sen puuttuvaksi. Historiallinen vika ei muutu selitetyksi eikä paketin luonti ratkaise recovery-tilaa. |
+
+Main valitsee polun luotetusta runtime-/selector-tilasta, ei rendererin
+parametrista. Nykyinen argumentiton `createSupportBundle()` ja mainin
+native-vahvistus/Save-dialogi säilyvät. Vain nykyinen sallittu ikkuna,
+pääframe ja sen hallintasessio voivat käyttää rajattua kyvykkyyttä.
+Session/generation tarkistetaan myös vahvistuksen ja tiedostovalinnan
+jälkeen ennen lukua ja julkaisua. Lopetettu kyvykkyys tai muuttunut tila
+estää vanhan pyynnön jatkon; epävarmaa business-exitiä ei tulkita uudeksi
+business-sessioniksi. Vienti lukee vain mainin nykyisen turvallisen
+hallintahavainnon ja kirjoittaa native-valittuun kohteeseen.
+
+Jatkosidonta sisältää myös nykyisen hallintaoperaation sukupolven ja
+backendin havaitun saatavuustilan. Paluu samannäköiseen valitsimeen ei
+palauta vanhan pyynnön valtuutta: nykyinen omistaja vaihtaa sukupolvea
+siirtymässä. Rinnakkainen vienti estetään nykyisen kyvykkyyden sisällä.
+Peruutus ei lue havaintoa eikä kirjoita tiedostoa. Viimeinen tuoreustarkistus
+tehdään ennen nykyistä synkronista tiedostokirjoittajaa; väliin ei lisätä
+uutta odotusta tai yleistä elinkaaripalvelua.
+
+Täyden paketin backend-permissionin hylkäys, yhteysvirhe tai virheellinen
+vastaus **ei** käynnistä rajattua vientiä fallbackina. Rajattu vienti ei
+anna `viewDiagnostics`-/`createSupportBundle`-backend-oikeutta eikä
+käynnistä backendia tai lue SQLitea. Business-tilan nykyinen täysi polku
+ja selainkehityksen vientikielto säilyvät. Vahvistusteksti kertoo kumpi
+paketti on kyseessä ja ettei rajattu paketti sisällä lokihistoriaa.
+
+Väliaineisto käyttää installation-scopeen johdettua nykyistä runtime-juurta,
+ei poistettavaa workspacea. Pakatun/puretun tiedoston nykyiset 25 MiB:n
+rajat, yksityiset väliaikaistiedostot, kohteen polku-/tyyppitarkistukset ja
+30 päivän temp-retention säilyvät. Kahden tapahtuman projektio tarkistetaan
+ennen pakkausta; paketille ei tehdä automaattista lähettämistä. Tämä on
+edelleen **salaamaton sanitoitu tukipaketti**, ei CI:n salattu raakavirhepaketti.
+
+Virallinen `scripts/inspect-support-bundle.mjs` tarvitsee erillisen tiukan
+v3-haaran ja turvallisen yhteenvedon, joka ei tulosta puuttuvia DB-/historia-
+tietoja nollina. Nykyinen v2 ja `.ekysupport`-lukuyhteensopivuus säilyvät.
+Tarkistin, runtime-projektio ja packaged smoke saavat samat hylkäys- ja
+checksum-vektorit; tuotanto ei importoi kehittäjän tarkastinskriptiä.
+Update-recoveryn erillistä vanhaa formaattia ei muuteta W7:n sivutyönä.
+
+Kytkentäportti vaatii ensin nykyisen formaattirajan tiedostokokeen, sitten
+ehdotetun v3:n todellisen gzip -> tiedostokirjoittaja -> tarkastin -kokeen,
+väärän sessionin/ylimääräisten kenttien ja full-permission-fallbackin eston,
+puuttuvan/virheellisen havainnon sekä lokitusvirheen regressiot. Varsinainen
+W7-hallinta -> observer -> paketti -ketju ja headless packaged smoke
+todennetaan tuotantokytkennässä. Pelkkä ehdokas- tai serializer-testi ei
+todista käyttöoikeutta, havaintoa tai Electron-mainin kytkentää.
+
+**W7.0:n nykyrajat todennettu:** 12 synteettistä kohdekoetta läpäisivät
+nykyisillä tuotantokomponenteilla. Täysi v2-paketti kulki oikean gzipin,
+tiedostokirjoittajan ja virallisen tarkastimen läpi; legacy-pääte säilyi.
+Puuttuvat backend-/DB-tiedot, v2:n puuttuva osio, pelkkä version muutos ja
+update-recoveryn erillinen formaatti hylättiin. Backend-loaderin virhe ei
+kirjoittanut varapakettia; naapuritiedostojen tavut säilyivät. Loader-kokeessa
+ei ajettu oikeaa backend-permissionia tai Electronia. Tämä on nykyisen rajan
+karakterisointi, ei yllä ehdotetun v3:n tai W7-kytkennän hyväksyntä.
+
+**W7.0:n erillinen ehdokasnäyttö (25.10.2026):** v3-ehdokkaan 29 ja
+jatkorajaehdokkaan 31 tapausta sekä yhteinen tiukka tyyppitarkistus
+läpäisivät erillisinä kohdennettuina tarkistuksina. Yksityinen v3-ehdokas
+kulkee todellisen gzipin ja nykyisen tiedostokirjoittajan kautta rajattuun
+ehdokastarkastimeen. Suljetut kentät, checksumit, pakatut/puretut kokorajat,
+ensivirheen ja siivoushavainnon erottelu sekä puuttuva havainto tarkistetaan.
+Nykyinen virallinen tarkastin hylkää edelleen v3:n; sitä ei ole muutettu.
+Koe käyttää nykyisiä import/replace-virhetapahtumia, ei vielä W7-delete-
+tapahtumia. Lokikirjoittajan todellinen tiedostovirhe ei poista omistajalla
+jo olevaa turvallista havaintoa paketista. Tämä ei todista, että tulevan
+W7-omistajan havainto on kytketty kerääjään.
+Rajatussa katselmuksessa havaittu parserin avainjärjestys-/checksum-
+ristiriita toistettiin regressiolla ja korjattiin ehdokkaaseen. Palautettu
+validoitu dokumentti säilyttää tarkistetun esityksen; uudelleenvalidointi
+ei saa muuttaa kelvollista pakettia checksum-virheeksi.
+Ehdokkaiden rajattu riippumaton katselmus ja korjauksen jälkitarkistus
+eivät jättäneet tämän kokeen avoimia löydöksiä; ne eivät ole koko W7:n
+toteutuksen tai tuotantokytkennän katselmuksia.
+
+Erillinen jatkorajakoe kattaa peruutukset, päällekkäisen pyynnön, dialogien
+virheet sekä sessionin, operaation, lähettäjän, framen, saatavuustilan ja
+kyvykkyyden päättymisen kesken vahvistuksen tai kohdevalinnan. Se vertaa
+myös syntymättä jäävää kohdetta ja naapuritiedoston säilyneitä tavuja.
+Tilat ja dialogit ovat injektoituja: tämä ei ole oikean Electron-IPC:n,
+backend-permissionin tai käyttöliittymän hyväksyntätodiste.
+
+Tuotantokytkennässä pitää vielä todentaa todellinen tilanomistaja ja
+sukupolvien vaihto, W7-observerin tapahtuma ja lukuketju, virallisen
+tarkastimen v3-haara sekä molemmat packaged-vientipolut. Ehdokas käyttää
+paketoitua build-identiteettiä ja rajattua platform/architecture-joukkoa;
+tuotannon tarkat sallitut arvot sidotaan omistavan runtimen sopimukseen,
+eikä kokeen arvojoukko muuta täyden v2-paketin hyväksyntää.
+
 ## Formaatti
 
 - uusien pakettien tiedostopääte `.json.gz`

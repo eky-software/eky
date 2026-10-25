@@ -164,7 +164,8 @@ Ei ilmoitustulvaa tai salaisia tiedostopolkuja.
 
 **Päätös 2026-09-22:** vanhempien tapahtumien selaus kuuluu `0.3.0`:aan.
 Tehtävä on yhteisessä julkaisulistassa tunnuksella `R030-08`; hyväksytyn
-jatkohaku-/API-sopimuksen toteutus ja todennus ovat M4.3:ssa kesken.
+jatkohaku-/API-sopimuksen toteutus ja todennus on hyväksytty M4.3:ssa
+[PR #319:n loppupäätöksellä](https://github.com/eky-software/eky/pull/319#issuecomment-6385011410).
 
 **Omistajan täsmennys 23.10.2026:** lajittelu ja rajattu sivutus tehdään
 backendissä, ja käyttöliittymä pyytää vain kulloisenkin erän. Koko historiaa
@@ -226,14 +227,15 @@ tarkensi navigointitokenien säilymisen ja HTTP:stä erillisen I/O-sulkuvastuun;
 niihin ei jäänyt sopimustason estettä. Alla oleva konkreettinen sopimus
 on hyväksytty toteutettavaksi. Koe ei todista suurimman
 aineiston suorituskykyä, koko HTTP-/UI-ketjua tai tuotantosulun kytkentää.
-Reader/application/HTTP, nimetty sulkukytkentä, strict-client ja web ovat
-työpuussa pysyvine regressioineen. Oikea HTTP-/selainketju ja katkenneen
+Reader/application/HTTP, nimetty sulkukytkentä, strict-client ja web on
+yhdistetty pysyvine regressioineen. Oikea HTTP-/selainketju ja katkenneen
 pyynnön tiedostoluvun sulku on todennettu. Alkuperäinen lukuvirhe löytyy
 purettavasta salatusta testipaketista nykyisellä keräysketjulla.
 Puhtaan Windows-paketin todellinen selaus-/tukipaketti-/palautusketju ja
 rajattu loppukatselmus ovat läpäisseet. Normaalit täsmärevision PR/main-portit
-ovat vielä kesken. Tarkka lähde ja näytön rajat ovat M1:n jatkamiskohdassa.
-M4.3 ei ole vielä hyväksytty.
+on hyväksytty [PR #319:n loppupäätöksellä](https://github.com/eky-software/eky/pull/319#issuecomment-6385011410).
+M4.3 on hyväksytty; tarkka lähde, säilyvät avoimet ensihylkäykset ja näytön
+rajat ovat M1:n jatkamiskohdassa. Tämä ei hyväksy maksimikuorman suorituskykyä.
 
 **Hyväksytty käyttötapa:** näkymä avautuu uusimpiin tapahtumiin, 100 tapahtumaa
 kerrallaan. API:n nykyinen enimmäistulos 200 säilyy. Käyttäjä siirtyy
@@ -284,7 +286,8 @@ aikaleimarajaus nykyisen tailin päällä ei kata säilynyttä historiaa.
 
 ##### M4.3: Jatkohakusopimuksen ehdotus
 
-**Tila:** omistajan hyväksymä jatkohakusopimus; toteutus ja testit käynnissä.
+**Tila:** hyväksytty toteutus ja testit PR #319:n rajauksessa; historiallinen
+otsikko säilyy lukureittinä. Tarkka integraationäyttö on M1:n jatkamiskohdassa.
 Writerit, retention, summary ja tukipaketti eivät muutu. Reader omistaa
 alla olevan määräaikaisen tilan; pysyvää indeksiä ei rakenneta.
 
