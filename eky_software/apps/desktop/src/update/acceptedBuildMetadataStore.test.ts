@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
-import { createSelectorAcceptedBuildMetadata, parseAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadata, parseAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 import {
   acceptedBuildMetadataFileName,
@@ -116,6 +116,105 @@ describe('accepted build metadata store', () => {
 
     await expect(store.read()).resolves.toBeUndefined();
   });
+
+  it('publishes from the original selected identity and returns the writer identity', async () => {
+    const filePath = await createPath();
+    const store = new AcceptedBuildMetadataStore(filePath);
+    const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await store.write(selector);
+    const selected = (await store.inspectSlots()).current!;
+    const published = createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild);
+    const identity = await store.publishSelected(published, {
+      selected, assertAuthority() {}, async assertExternalSelection() {},
+    });
+    const slots = await store.inspectSlots();
+    expect(slots.current?.identity).toEqual(identity);
+    expect(identity.ino).not.toBe(selected.identity?.ino);
+    expect(slots.current?.value).toEqual(published);
+    expect(slots.next).toBeUndefined();
+    expect(slots.backup).toBeUndefined();
+  });
+
+  it.each(['missingIdentity', 'mismatchedValue', 'downgrade', 'authority'] as const)(
+    'preserves the selected bytes when publication rejects %s', async fault => {
+      const filePath = await createPath();
+      const store = new AcceptedBuildMetadataStore(filePath);
+      const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+      await store.write(selector);
+      const original = (await store.inspectSlots()).current!;
+      const selected = fault === 'missingIdentity' ? { bytes: original.bytes, value: original.value }
+        : fault === 'mismatchedValue' ? { ...original, value: metadata } : original;
+      await expect(store.publishSelected(fault === 'downgrade' ? metadata
+        : createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild), {
+        selected,
+        assertAuthority() { if (fault === 'authority') throw new Error('SYNTHETIC_AUTHORITY_LOST'); },
+        async assertExternalSelection() {},
+      })).rejects.toThrow();
+      const retained = await store.inspectSlots();
+      expect(retained.current).toEqual(original);
+      expect(retained.next).toBeUndefined();
+      expect(retained.backup).toBeUndefined();
+    },
+  );
+
+  it('retains published current and original backup when external authority expires before cleanup', async () => {
+    const filePath = await createPath();
+    const store = new AcceptedBuildMetadataStore(filePath);
+    const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await store.write(selector);
+    const selected = (await store.inspectSlots()).current!;
+    const business = createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild);
+    let expired = false;
+    await expect(store.publishSelected(business, {
+      selected,
+      assertAuthority() { if (expired) throw new Error('SYNTHETIC_AUTHORITY_LOST'); },
+      async assertExternalSelection() {
+        const current = await readFile(filePath).catch(error => {
+          if (error.code === 'ENOENT') return undefined;
+          throw error;
+        });
+        if (current !== undefined && JSON.parse(current.toString()).acceptanceScope === 'business') {
+          expired = true;
+          throw new Error('SYNTHETIC_AUTHORITY_LOST');
+        }
+      },
+    })).rejects.toThrow('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
+    expect(expired).toBe(true);
+    expect(JSON.parse((await readFile(filePath)).toString())).toEqual(business);
+    expect(await readFile(`${filePath}.backup`)).toEqual(Buffer.from(selected.bytes));
+    await expect(readFile(`${filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['synchronous', 'external'] as const)(
+    'does not replace the captured %s authority during a publication', async kind => {
+      const filePath = await createPath();
+      const store = new AcceptedBuildMetadataStore(filePath);
+      const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+      await store.write(selector);
+      const selected = (await store.inspectSlots()).current!;
+      let current = true;
+      const publication = {
+        selected,
+        assertAuthority() {
+          if (kind === 'synchronous' && !current) throw new Error('SYNTHETIC_AUTHORITY_LOST');
+        },
+        async assertExternalSelection() {
+          if (kind === 'external' && !current) throw new Error('SYNTHETIC_AUTHORITY_LOST');
+          await Promise.resolve();
+          current = false;
+          if (kind === 'synchronous') publication.assertAuthority = () => {};
+          else publication.assertExternalSelection = async () => {};
+        },
+      };
+      await expect(store.publishSelected(
+        createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild), publication,
+      )).rejects.toThrow('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
+      expect(current).toBe(false);
+      expect((await store.inspectSlots()).current).toEqual(selected);
+      await expect(readFile(`${filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(readFile(`${filePath}.backup`)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
 });
 
 async function createPath(): Promise<string> {

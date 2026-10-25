@@ -464,6 +464,10 @@ function createFixture(
     async read() {
       return this.value;
     },
+    async inspect() {
+      return this.value === undefined ? undefined : { value: this.value,
+        bytes: new TextEncoder().encode(JSON.stringify(this.value)) };
+    },
     async write(value: unknown) {
       this.value = validateWorkspaceFirstStartMigrationJournal(value);
       events.push(`journal.${this.value.state}`);

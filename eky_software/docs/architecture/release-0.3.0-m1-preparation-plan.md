@@ -181,6 +181,20 @@ Tämän osarajan testit käyttävät oikeita tiedostoja ja ohjattuja terminal-
 portteja. Main ei vielä toimita lopullista valtuutta: valitsimen ikkuna,
 FirstStart/W6-kytkentä ja native-/paketoitu näyttö ovat edelleen avoinna.
 
+**Peruutuksen ja julkaisun osaraja (26.10.2026):** W6:n valmistelu voidaan
+perua vain tuoreen terminal-valtuuden sekä täsmällisten journal-tavujen ja
+tiedostoidentiteetin perusteella. FirstStartin deferred-haara käyttää
+korjaamattomia metadatalukuja ja alkuperäiseen tiedostoidentiteettiin sidottua
+julkaisua nykyisen tallentimen kautta. Takaisinluku vaatii kirjoittajan
+seuraaman identiteetin. Kummankaan rajan valtuusfunktioita ei vaihdeta kesken
+operaation. Katselmuksen tiedosto- ja callback-vaihdot toistettiin ja
+korjattiin vastatesteineen. Lopullinen kuluttajasarja läpäisi 1 194 testiä
+65 tiedostossa; desktopin ja E2E:n tyyppitarkistukset sekä ohjeiden linkit
+läpäisivät. Rajattu riippumaton jälkikatselmus ei jättänyt tähän osarajaan
+avoimia P1/P2-havaintoja. Päällekkäisiä kohdesarjoja ei lasketa määrään
+lisänä. Tämä ei vielä kytke mainin todellista terminal-valtuutta eikä hyväksy
+native-/paketoitua ketjua.
+
 **Seuraava työ:** ensimmäisen yritysavauksen kytkentä
 nykyisiin FirstStart- ja W6-valtuuksiin.
 Osittainen rekisterituki ei anna muunnosvaltuutta.

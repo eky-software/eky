@@ -495,6 +495,33 @@ eteenpäinmigraatiota; sen tarkistus on nimetty palautustarkistus, ei
 business-readiness. Jos turvallista loppua ei voida todistaa, journalit ja
 aineisto säilyvät recovery-tilassa eikä valitsimeen paluuta luvata.
 
+Nykyisen W6-orchestraattorin `cancelBeforeSelectorReturn` toteuttaa tämän
+peruutusrajan nimetylle deferred-avaukselle. Kutsuja toimittaa elävän
+käynnistysvaltuuden ja todellisen töiden päättymistarkistuksen; metodi ei
+päättele prosessin poissaoloa. Vain kuitattu oma `prepared`-journal tai
+täsmällisesti jatkettava valmistelu voidaan poistaa. Tarkistuksessa
+kaapatut tavut ja tiedostoidentiteetti kulkevat nykyisen slot-tallentimen
+poistovartijaan asti. Lukutarkistus ei korjaa sivuslotteja. Keskeneräinen
+valmistelu, alkanut rekisterisiirtymä, muuttunut valinta tai kadonnut
+kuittaus estää saman instanssin jatkon. A/B-metadataa ja rekisteriä ei
+muuteta peruutuksessa. Tämä osaraja ei vielä todista mainin terminal-
+kytkentää tai oikean prosessin päättymistä.
+
+FirstStartin nimetyn deferred-haaran metadataluvut eivät korjaa tai poista
+keskeytysslotteja. Alkuperäisen havainnon tavut ja tiedostoidentiteetti
+säilyvät sisältö- ja salaisuusvalidoinnin yli nykyisen tallentimen
+`publishSelected`-kutsuun. Se käyttää yhteistä valitun slotin kirjoitusta,
+ei uutta tallennusjärjestelmää. Takaisinluku vaatii kirjoittajan seuraaman
+julkaisuidentiteetin: samantavuinen vieras tiedosto ei ole hyväksyntä.
+Keskeytynyt julkaisu säilyttää todelliset slotit eikä alenna A:ta tai B:tä.
+Mainin ulkoinen guard tarkistaa elävän sukupolven ja sallitun rekisteri-/W6-
+valinnan myös kirjoituksen sisällä; se ei lue uudelleen metadatatallentimen
+omia keskeneräisiä slotteja. Metadatan tarkistus ja julkaisu kuuluvat
+tallentimelle. Peruutus- ja julkaisuvaltuuden alkuperäiset funktiot
+kaapataan ennen ensimmäistä asynkronista rajaa; niiden vaihtaminen kesken
+operaation ei anna uutta valtuutta. Vanhat C-/Direct Setup -kirjoittajat säilyttävät sopimuksensa.
+Tämäkään osaraja ei vielä todista mainin ulkoisen valtuuden kytkentää.
+
 Palautuksen `unverified`/`committed`-hyväksyntä tai jo päätetty switch ei
 anna enää uutta rollback- tai null-paluuvaltuutta. Kadonnut hyväksyntäkuittaus
 ratkaistaan pysyvästä valinnasta: B on voinut jo muuttua T:ksi. A:ta ei

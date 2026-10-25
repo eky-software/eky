@@ -30,6 +30,7 @@ export async function readOnlyJournalSlots<T>(
   paths: Readonly<ReadOnlyJournalSlotPaths>,
   maximumBytes: number,
   parse: (value: unknown) => Readonly<T>,
+  options: Readonly<{ includeIdentity?: boolean }> = {},
 ): Promise<ReadOnlyJournalSlots<T>> {
   const fileSystem = createNodeCrashSafeFileSlotFileSystem({
     ...paths, directoryPath: dirname(paths.currentPath),
@@ -39,13 +40,17 @@ export async function readOnlyJournalSlots<T>(
   };
   for (const slot of ['current', 'next', 'backup'] as const) {
     const existed = await inspectSlotPresence(paths[`${slot}Path`]);
-    const bytes = await fileSystem.readSlot(slot);
+    let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+    const bytes = await fileSystem.readSlot(slot, options.includeIdentity
+      ? value => { identity = Object.freeze({ ...value }); } : undefined);
     if (bytes === undefined) {
       if (existed) throw new CrashSafeFileSlotError('invalid');
       continue;
     }
     const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    result[slot] = Object.freeze({ bytes, value: parse(JSON.parse(source)) });
+    if (options.includeIdentity && identity === undefined) throw new CrashSafeFileSlotError('invalid');
+    result[slot] = Object.freeze({ bytes, value: parse(JSON.parse(source)),
+      ...(identity === undefined ? {} : { identity }) });
   }
   return Object.freeze(result);
 }

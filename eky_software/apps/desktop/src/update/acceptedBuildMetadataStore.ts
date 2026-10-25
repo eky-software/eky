@@ -1,8 +1,11 @@
 import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm, unlink } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
-import { readOnlyJournalSlots, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
+import { readOnlyJournalSlots, type ReadOnlyJournalSlotRecord, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
+import { CrashSafeByteSlotStore } from '../workspaces/persistence/crashSafeByteSlotStore.js';
+import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotIdentity } from '../workspaces/persistence/crashSafeFileSlot.js';
 import { parseVersionedAcceptedBuildMetadata, type VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 export const acceptedBuildMetadataFileName = 'accepted-build-v1.json';
@@ -11,6 +14,12 @@ const maximumBytes = 4 * 1024;
 export interface AcceptedBuildMetadataSelection {
   readonly expectedBytes: Uint8Array | undefined;
   assertAuthority(): void;
+}
+
+export interface AcceptedBuildMetadataPublication {
+  readonly selected: ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>;
+  assertAuthority(): void;
+  assertExternalSelection(): Promise<void>;
 }
 
 type SelectedSlots = Record<'current' | 'next' | 'backup', Buffer | undefined>;
@@ -37,7 +46,7 @@ export class AcceptedBuildMetadataStore {
     try {
       return await readOnlyJournalSlots<VersionedAcceptedBuildMetadata>({
         currentPath: this.filePath, nextPath: this.nextPath, backupPath: this.backupPath,
-      }, maximumBytes, parseVersionedAcceptedBuildMetadata);
+      }, maximumBytes, parseVersionedAcceptedBuildMetadata, { includeIdentity: true });
     } catch (error) {
       throw new Error('ACCEPTED_BUILD_METADATA_INVALID', { cause: error });
     }
@@ -75,6 +84,42 @@ export class AcceptedBuildMetadataStore {
     return this.runExclusive(() => captured === undefined
       ? this.writeStored(validated)
       : this.writeSelected(validated, captured));
+  }
+
+  async publishSelected(
+    metadata: VersionedAcceptedBuildMetadata,
+    publication: AcceptedBuildMetadataPublication,
+  ): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    const validated = parseVersionedAcceptedBuildMetadata(metadata);
+    const assertExternalSelection = publication.assertExternalSelection.bind(publication);
+    const { expectedBytes, assertAuthority } = captureSelection({
+      expectedBytes: publication.selected.bytes,
+      assertAuthority: publication.assertAuthority.bind(publication),
+    });
+    const identity = publication.selected.identity;
+    if (expectedBytes === undefined || identity === undefined) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+    const selected = parseVersionedAcceptedBuildMetadata(JSON.parse(
+      new TextDecoder('utf-8', { fatal: true }).decode(expectedBytes)));
+    if (!isDeepStrictEqual(selected, publication.selected.value) ||
+      (selected.formatVersion === 2 && validated.formatVersion === 1)) {
+      throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+    }
+    const bytes = Buffer.from(`${JSON.stringify(validated)}\n`, 'utf8');
+    if (bytes.byteLength > maximumBytes) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+    const byteStore = new CrashSafeByteSlotStore(createNodeCrashSafeFileSlotFileSystem({
+      directoryPath: dirname(this.filePath), currentPath: this.filePath,
+      nextPath: this.nextPath, backupPath: this.backupPath,
+    }, maximumBytes));
+    return this.runExclusive(async () => {
+      try {
+        return await byteStore.replaceSelected(bytes, {
+          expectedSlots: { current: expectedBytes, next: undefined, backup: undefined },
+          expectedIdentities: { current: identity, next: undefined, backup: undefined },
+          assertAuthority,
+          assertExternalSelection,
+        });
+      } catch (error) { throw selectedMutationError(error); }
+    });
   }
 
   private async writeStored(validated: VersionedAcceptedBuildMetadata): Promise<void> {

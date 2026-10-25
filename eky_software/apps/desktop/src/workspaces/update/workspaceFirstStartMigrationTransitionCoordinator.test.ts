@@ -416,6 +416,11 @@ class MemoryJournal implements WorkspaceFirstStartMigrationJournalPort {
     return this.value;
   }
 
+  async inspect() {
+    return this.value === undefined ? undefined : { value: this.value,
+      bytes: new TextEncoder().encode(JSON.stringify(this.value)) };
+  }
+
   async write(value: unknown) {
     const next = validateWorkspaceFirstStartMigrationJournal(value);
     assertWorkspaceFirstStartMigrationJournalTransition(this.value, next);

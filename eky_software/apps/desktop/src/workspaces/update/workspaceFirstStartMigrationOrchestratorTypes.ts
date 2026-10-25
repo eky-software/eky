@@ -30,4 +30,10 @@ export interface WorkspaceFirstStartMigrationOrchestration {
   ): Promise<WorkspaceFirstStartPreparationOutcome>;
   transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void>;
   completeAfterTargetAcceptance(): Promise<void>;
+  cancelBeforeSelectorReturn(authority: WorkspaceFirstStartSelectorReturnAuthority): Promise<void>;
+}
+
+export interface WorkspaceFirstStartSelectorReturnAuthority {
+  assertCurrent(): void;
+  assertTerminal(): Promise<void>;
 }

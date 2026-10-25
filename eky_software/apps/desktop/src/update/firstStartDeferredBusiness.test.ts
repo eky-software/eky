@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi, type TestContext } from 'vitest';
@@ -9,7 +9,7 @@ import {
   type AcceptedBuildMetadata,
   type VersionedAcceptedBuildMetadata,
 } from './acceptedBuildMetadata.js';
-import { AcceptedBuildMetadataStore, acceptedBuildMetadataFileName } from './acceptedBuildMetadataStore.js';
+import { AcceptedBuildMetadataStore, acceptedBuildMetadataFileName, type AcceptedBuildMetadataPublication } from './acceptedBuildMetadataStore.js';
 import { FirstStartUpdateCoordinator, FirstStartUpdateError, type MigrationStartupInspection } from './firstStartUpdateCoordinator.js';
 import { createDirectSetupMigrationRecovery, type DirectSetupMigrationRecovery } from './directSetupMigrationRecovery.js';
 import { parseUpdateJournal, type UpdateJournal } from './updateJournal.js';
@@ -28,12 +28,12 @@ it('publishes business-v2 only after fresh content, secret and authority checks'
   const f = await fixture(context);
   await f.start();
   expect(await f.store.read()).toEqual(selector);
-  expect(f.write).not.toHaveBeenCalled();
+  expect(f.publish).not.toHaveBeenCalled();
   await f.subject.acceptAfterBackendReady();
   expect(await f.store.read()).toEqual(createBusinessAcceptedBuildMetadata(selector, target));
   expect(f.validate).toHaveBeenCalledOnce();
   expect(f.secret).toHaveBeenCalledTimes(2);
-  expect(f.write).toHaveBeenCalledOnce();
+  expect(f.publish).toHaveBeenCalledOnce();
   expect(f.noOtherOwner).not.toHaveBeenCalled();
   expect(f.observer).not.toHaveBeenCalled();
   await expect(f.subject.recoverFromStartupFailure()).resolves.toBe(false);
@@ -55,10 +55,10 @@ it.for(['pending', 'empty', 'prefix', 'wrongTarget', 'wrongMetadata', 'missingMe
       case 'directSetup': f.state.direct = foreignRecovery(); break;
     }
     const before = await f.store.read();
-    f.write.mockClear();
+    f.publish.mockClear();
     await expect(f.start(observed)).rejects.toBeInstanceOf(FirstStartUpdateError);
     expect(await f.store.read()).toEqual(before);
-    expect(f.write).not.toHaveBeenCalled();
+    expect(f.publish).not.toHaveBeenCalled();
     expect(f.validate).not.toHaveBeenCalled();
     expect(f.noOtherOwner).not.toHaveBeenCalled();
   },
@@ -67,7 +67,7 @@ it.for(['pending', 'empty', 'prefix', 'wrongTarget', 'wrongMetadata', 'missingMe
 it.for(['update', 'profileRestore'] as const)('does not accept selector state through the old %s path', async (authority, context) => {
   const f = await fixture(context);
   await expect(f.subject.beforeMigrations(inspection, { migrationAuthority: authority })).rejects.toBeInstanceOf(FirstStartUpdateError);
-  expect(f.write).not.toHaveBeenCalled();
+  expect(f.publish).not.toHaveBeenCalled();
   expect(f.noOtherOwner).not.toHaveBeenCalled();
 });
 
@@ -87,7 +87,7 @@ it.for(['beforeStart', 'secretRead', 'beforeAccept', 'contentRead', 'finalSecret
       await expect(f.subject.acceptAfterBackendReady()).rejects.toBeInstanceOf(FirstStartUpdateError);
     }
     expect(await readFile(f.path)).toEqual(original);
-    expect(f.write).not.toHaveBeenCalled();
+    expect(f.publish).not.toHaveBeenCalled();
     expect(f.noOtherOwner).not.toHaveBeenCalled();
   },
 );
@@ -102,10 +102,10 @@ it.for(['secret', 'profileChain', 'metadata', 'journal', 'directSetup'] as const
     if (variant === 'journal') f.state.journal = foreignJournal('accepted');
     if (variant === 'directSetup') f.state.direct = foreignRecovery();
     const before = await readFile(f.path);
-    f.write.mockClear();
+    f.publish.mockClear();
     await expect(f.subject.acceptAfterBackendReady()).rejects.toBeInstanceOf(FirstStartUpdateError);
     expect(await readFile(f.path)).toEqual(before);
-    expect(f.write).not.toHaveBeenCalled();
+    expect(f.publish).not.toHaveBeenCalled();
     expect(f.noOtherOwner).not.toHaveBeenCalled();
   },
 );
@@ -115,18 +115,20 @@ it.for(['beforePublication', 'lostAcknowledgement', 'readback', 'authorityAfterP
     const f = await fixture(context);
     await f.start();
     const original = new Error('synthetic acceptance failure', { cause: new Error('synthetic root') });
-    const persist = f.store.write.bind(f.store);
-    if (stage === 'beforePublication') f.write.mockRejectedValueOnce(original);
-    if (stage === 'lostAcknowledgement') f.write.mockImplementationOnce(async value => {
-      await persist(value); throw original;
+    const persist = f.store.publishSelected.bind(f.store);
+    if (stage === 'beforePublication') f.publish.mockRejectedValueOnce(original);
+    if (stage === 'lostAcknowledgement') f.publish.mockImplementationOnce(async (...args) => {
+      await persist(...args); throw original;
     });
-    if (stage === 'readback') f.write.mockImplementationOnce(async value => {
-      await persist(value);
-      vi.spyOn(f.store, 'read').mockRejectedValueOnce(original);
+    if (stage === 'readback') f.publish.mockImplementationOnce(async (...args) => {
+      const published = await persist(...args);
+      vi.spyOn(f.store, 'inspectSlots').mockRejectedValueOnce(original);
+      return published;
     });
-    if (stage === 'authorityAfterPublication') f.write.mockImplementationOnce(async value => {
-      await persist(value);
+    if (stage === 'authorityAfterPublication') f.publish.mockImplementationOnce(async (...args) => {
+      const published = await persist(...args);
       f.assertCurrent.mockRejectedValueOnce(original);
+      return published;
     });
     const failure = await f.subject.acceptAfterBackendReady().then(() => undefined, error => error);
     expect(failure).toBeInstanceOf(FirstStartUpdateError);
@@ -134,7 +136,7 @@ it.for(['beforePublication', 'lostAcknowledgement', 'readback', 'authorityAfterP
     expect(f.observer).toHaveBeenCalledExactlyOnceWith(original);
     expect(await f.store.read()).toEqual(stage === 'beforePublication'
       ? selector : createBusinessAcceptedBuildMetadata(selector, target));
-    expect(f.write).toHaveBeenCalledOnce();
+    expect(f.publish).toHaveBeenCalledOnce();
     expect(f.noOtherOwner).not.toHaveBeenCalled();
     await expect(f.subject.recoverFromStartupFailure()).resolves.toBe(false);
   },
@@ -143,7 +145,7 @@ it.for(['beforePublication', 'lostAcknowledgement', 'readback', 'authorityAfterP
 it('does not treat a successful write with mismatched readback as acceptance', async context => {
   const f = await fixture(context);
   await f.start();
-  f.write.mockResolvedValueOnce(undefined);
+  f.publish.mockResolvedValueOnce((await f.store.inspectSlots()).current!.identity!);
   await expect(f.subject.acceptAfterBackendReady()).rejects.toBeInstanceOf(FirstStartUpdateError);
   expect(await f.store.read()).toEqual(selector);
   expect(f.noOtherOwner).not.toHaveBeenCalled();
@@ -153,11 +155,11 @@ it('normal business-v2 startup remains a no-write path', async context => {
   const f = await fixture(context);
   const business = createBusinessAcceptedBuildMetadata(selector, target);
   await f.store.write(business);
-  f.write.mockClear();
+  f.publish.mockClear();
   await f.subject.beforeMigrations(inspection);
   await f.subject.acceptAfterBackendReady();
   expect(await f.store.read()).toEqual(business);
-  expect(f.write).not.toHaveBeenCalled();
+  expect(f.publish).not.toHaveBeenCalled();
   expect(f.validate).not.toHaveBeenCalled();
   expect(f.noOtherOwner).not.toHaveBeenCalled();
 });
@@ -169,7 +171,7 @@ it('rejects a pending unrelated recovery without changing its journal', async co
   await expect(f.start()).rejects.toBeInstanceOf(FirstStartUpdateError);
   expect(f.state.direct).toBe(recovery);
   expect(f.noOtherOwner).not.toHaveBeenCalled();
-  expect(f.write).not.toHaveBeenCalled();
+  expect(f.publish).not.toHaveBeenCalled();
 });
 
 it('does not acquire a late update recovery after deferred admission was rejected', async context => {
@@ -179,8 +181,115 @@ it('does not acquire a late update recovery after deferred admission was rejecte
   f.state.journal = foreignJournal('rollbackRequired');
   await expect(f.subject.recoverFromStartupFailure()).resolves.toBe(false);
   expect(f.noOtherOwner).not.toHaveBeenCalled();
-  expect(f.write).not.toHaveBeenCalled();
+  expect(f.publish).not.toHaveBeenCalled();
 });
+
+it.for(['start', 'accept', 'readback'] as const)(
+  'preserves metadata recovery slots without repairing them during deferred %s', async (stage, context) => {
+    const f = await fixture(context);
+    if (stage !== 'start') await f.start();
+    const original = await readFile(f.path);
+    const persist = f.store.publishSelected.bind(f.store);
+    const addSlots = async () => {
+      await writeFile(`${f.path}.next`, original);
+      await writeFile(`${f.path}.backup`, original);
+    };
+    if (stage === 'readback') {
+      f.publish.mockImplementationOnce(async (...args) => { const published = await persist(...args); await addSlots(); return published; });
+    } else await addSlots();
+    const read = vi.spyOn(f.store, 'read');
+    await expect(stage === 'start' ? f.start() : f.subject.acceptAfterBackendReady()).rejects.toBeInstanceOf(FirstStartUpdateError);
+    expect(read).not.toHaveBeenCalled();
+    expect((await readFile(`${f.path}.next`)).equals(original)).toBe(true);
+    expect((await readFile(`${f.path}.backup`)).equals(original)).toBe(true);
+    const current = JSON.parse((await readFile(f.path)).toString());
+    expect(current).toEqual(stage === 'readback' ? createBusinessAcceptedBuildMetadata(selector, target) : selector);
+    expect(f.noOtherOwner).not.toHaveBeenCalled();
+  },
+);
+
+it.for(['generation', 'metadata', 'equivalentBytes', 'sideSlot'] as const)(
+  'rejects %s changed between final validation and the selected write', async (fault, context) => {
+    const f = await fixture(context);
+    await f.start();
+    const original = await readFile(f.path);
+    let expected = original;
+    const persist = f.store.publishSelected.bind(f.store);
+    f.publish.mockImplementationOnce(async (value, selection) => {
+      expect(selection).toBeDefined();
+      expect(Buffer.from(selection!.selected.bytes).equals(original)).toBe(true);
+      if (fault === 'generation') f.state.current = false;
+      if (fault === 'metadata' || fault === 'equivalentBytes') {
+        expected = Buffer.from(JSON.stringify(fault === 'metadata'
+          ? createSelectorAcceptedBuildMetadata(selector, { ...target, appVersion: '0.4.0' })
+          : selector, null, 2));
+        await writeFile(f.path, expected);
+      }
+      if (fault === 'sideSlot') await writeFile(`${f.path}.next`, original);
+      return persist(value, selection);
+    });
+    await expect(f.subject.acceptAfterBackendReady()).rejects.toBeInstanceOf(FirstStartUpdateError);
+    expect((await readFile(f.path)).equals(expected)).toBe(true);
+    if (fault === 'sideSlot') expect((await readFile(`${f.path}.next`)).equals(original)).toBe(true);
+    expect(f.noOtherOwner).not.toHaveBeenCalled();
+  },
+);
+
+it('never uses repairing metadata reads in the deferred acceptance path', async context => {
+  const f = await fixture(context);
+  const read = vi.spyOn(f.store, 'read').mockRejectedValue(new Error('SYNTHETIC_REPAIR_FORBIDDEN'));
+  await f.start();
+  await f.subject.acceptAfterBackendReady();
+  expect(read).not.toHaveBeenCalled();
+  expect(JSON.parse((await readFile(f.path)).toString())).toEqual(createBusinessAcceptedBuildMetadata(selector, target));
+});
+
+it.for(['synchronous', 'external'] as const)(
+  'keeps the initially admitted %s authority across the secret read', async (kind, context) => {
+    const f = await fixture(context);
+    const original = await readFile(f.path);
+    let expired = false;
+    if (kind === 'synchronous') f.authority.assertGenerationCurrent = vi.fn(() => {
+      if (expired) throw new Error('SYNTHETIC_GENERATION_LOST');
+    });
+    else f.authority.assertCurrent = vi.fn(async () => {
+      if (expired) throw new Error('SYNTHETIC_AUTHORITY_LOST');
+    });
+    f.secret.mockImplementationOnce(async () => {
+      expired = true;
+      if (kind === 'synchronous') f.authority.assertGenerationCurrent = vi.fn(() => {});
+      else f.authority.assertCurrent = vi.fn(async () => {});
+      return null;
+    });
+    await expect(f.start()).rejects.toBeInstanceOf(FirstStartUpdateError);
+    expect(expired).toBe(true);
+    expect(await readFile(f.path)).toEqual(original);
+    expect(f.publish).not.toHaveBeenCalled();
+  },
+);
+
+it.for(['beforeWrite', 'afterWrite'] as const)(
+  'rejects a same-byte foreign metadata file at %s', async (stage, context) => {
+    const f = await fixture(context);
+    await f.start();
+    const original = await readFile(f.path);
+    const retained = `${f.path}.retained`;
+    const persist = f.store.publishSelected.bind(f.store);
+    f.publish.mockImplementationOnce(async (...args) => {
+      const published = stage === 'afterWrite' ? await persist(...args) : undefined;
+      const bytes = await readFile(f.path);
+      await rename(f.path, retained);
+      await writeFile(f.path, bytes, { flag: 'wx' });
+      return stage === 'beforeWrite' ? persist(...args) : published!;
+    });
+    await expect(f.subject.acceptAfterBackendReady()).rejects.toBeInstanceOf(FirstStartUpdateError);
+    const expected = stage === 'beforeWrite' ? original
+      : Buffer.from(`${JSON.stringify(createBusinessAcceptedBuildMetadata(selector, target))}\n`);
+    expect(await readFile(f.path)).toEqual(expected);
+    expect(await readFile(retained)).toEqual(expected);
+    expect(f.noOtherOwner).not.toHaveBeenCalled();
+  },
+);
 
 function foreignRecovery() {
   return createDirectSetupMigrationRecovery({
@@ -228,12 +337,13 @@ async function fixture(context: TestContext) {
   const path = join(root, acceptedBuildMetadataFileName);
   const store = new AcceptedBuildMetadataStore(path);
   await store.write(selector);
-  const persist = store.write.bind(store);
+  const persist = store.publishSelected.bind(store);
   // A separate port spy allows injecting a lost acknowledgement after real persistence.
-  const write = vi.fn((value: VersionedAcceptedBuildMetadata) => persist(value));
+  const publish = vi.fn((value: VersionedAcceptedBuildMetadata, publication: AcceptedBuildMetadataPublication) => persist(value, publication));
   const state = { current: true, journal: undefined as UpdateJournal | undefined,
     direct: undefined as DirectSetupMigrationRecovery | undefined };
   const assertCurrent = vi.fn(async () => { if (!state.current) throw new Error('SYNTHETIC_AUTHORITY_LOST'); });
+  const assertGenerationCurrent = vi.fn(() => { if (!state.current) throw new Error('SYNTHETIC_GENERATION_LOST'); });
   const noOtherOwner = vi.fn(async (): Promise<never> => { throw new Error('SYNTHETIC_SECOND_OWNER_FORBIDDEN'); });
   const validate = vi.fn(async () => validProfile());
   const secret = vi.fn(async (): Promise<string | null> => null);
@@ -242,7 +352,7 @@ async function fixture(context: TestContext) {
     buildRevision: target.buildRevision, msiProductVersion: target.appVersion, releaseChannel: 'pilot' as const,
     platform: 'win32' as const, architecture: 'x64' as const, upgradeCode: '11111111-1111-4111-8111-111111111111' };
   const subject = new FirstStartUpdateCoordinator({
-    acceptedBuildStore: { read: () => store.read(), write },
+    acceptedBuildStore: { read: () => store.read(), inspectSlots: () => store.inspectSlots(), write: store.write.bind(store), publishSelected: publish },
     buildInfo: { buildDirty: false, buildRevision: target.buildRevision },
     releaseInfo: release, now: () => new Date(at), observeStartupException: observer,
     journalStore: { read: async () => state.journal, write: noOtherOwner },
@@ -251,10 +361,11 @@ async function fixture(context: TestContext) {
     profileProtection: { createValidatedPreMigrationPoint: noOtherOwner, releaseProtectedPoint: noOtherOwner, validateActiveProfile: validate },
     readSecretStorageIdentity: secret,
   });
+  const authority = { acceptedBuild: selector, migrationChainIdentity: chain, assertCurrent, assertGenerationCurrent };
   const start = (value: MigrationStartupInspection = inspection) => subject.beforeMigrations(value, {
-    migrationAuthority: 'deferredBusiness', authority: { acceptedBuild: selector, migrationChainIdentity: chain, assertCurrent },
+    migrationAuthority: 'deferredBusiness', authority,
   });
-  return { path, store, subject, state, write, start, validate, secret, observer, release, noOtherOwner, assertCurrent };
+  return { path, store, subject, state, publish, start, validate, secret, observer, release, noOtherOwner, assertCurrent, authority };
 }
 
 function validProfile() {

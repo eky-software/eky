@@ -37,6 +37,7 @@ import type {
   WorkspaceFirstStartPreparationContext,
   WorkspaceFirstStartPreparationOutcome,
   WorkspaceFirstStartRecoveryOutcome,
+  WorkspaceFirstStartSelectorReturnAuthority,
 } from './workspaceFirstStartMigrationOrchestratorTypes.js';
 import type { WorkspaceMigrationInventoryCoordinator } from './workspaceMigrationInventoryCoordinator.js';
 import {
@@ -58,7 +59,7 @@ interface WorkspaceFirstStartMigrationOrchestratorOptions {
     'recordFailure'
   >;
   readonly inventory: Pick<WorkspaceMigrationInventoryCoordinator, 'inspect'>;
-  readonly journal: Pick<WorkspaceFirstStartMigrationJournalPort, 'read'>;
+  readonly journal: Pick<WorkspaceFirstStartMigrationJournalPort, 'read' | 'inspect' | 'discardPrepared'>;
   readonly now?: () => Date;
   readonly operationIdFactory?: () => string;
   readonly registry: WorkspaceRegistryInspectionPort;
@@ -91,6 +92,9 @@ export class WorkspaceFirstStartMigrationOrchestrator
     | Readonly<{ kind: 'required'; operation: PreparedOperation }>
     | undefined;
   private completed = false;
+  private selectorReturnStarted = false;
+  private preparationPending = false;
+  private registryTransitionStarted = false;
 
   constructor(
     private readonly options: Readonly<
@@ -166,9 +170,15 @@ export class WorkspaceFirstStartMigrationOrchestrator
   async prepareBeforeBackend(
     context: Readonly<WorkspaceFirstStartPreparationContext>,
   ): Promise<WorkspaceFirstStartPreparationOutcome> {
-    if (!this.recoveryCompleted || this.preparation !== undefined) {
+    if (!this.recoveryCompleted || this.preparation !== undefined || this.preparationPending || this.selectorReturnStarted) {
       return invalidOrchestration();
     }
+    this.preparationPending = true;
+    try { return await this.prepare(context); }
+    finally { this.preparationPending = false; }
+  }
+
+  private async prepare(context: Readonly<WorkspaceFirstStartPreparationContext>): Promise<WorkspaceFirstStartPreparationOutcome> {
 
     if (context.rollbackOnly !== undefined) {
       if (this.options.deferredBusiness !== undefined) return invalidOrchestration();
@@ -276,6 +286,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   async transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void> {
     const preparation = this.requirePreparation();
     if (preparation.kind === 'rollbackOnly') return invalidOrchestration();
+    this.registryTransitionStarted = true;
     if (this.options.deferredBusiness !== undefined) await this.assertDeferredAcceptance('source');
     if (preparation.kind === 'notRequired') return;
     if (preparation.operation.registryTransitioned) {
@@ -315,6 +326,41 @@ export class WorkspaceFirstStartMigrationOrchestrator
       sourceBuild: journal.sourceBuild,
       targetBuild: journal.targetBuild,
     });
+    this.completed = true;
+  }
+
+  async cancelBeforeSelectorReturn(authority: WorkspaceFirstStartSelectorReturnAuthority): Promise<void> {
+    if (this.options.deferredBusiness === undefined || !this.recoveryCompleted || this.preparationPending ||
+        this.registryTransitionStarted || this.completed || this.selectorReturnStarted ||
+        this.preparation?.kind === 'rollbackOnly') return invalidOrchestration();
+    // Even a lost cancellation reply seals this instance. Restart rereads durable state.
+    this.selectorReturnStarted = true;
+    const assertCurrent = authority.assertCurrent.bind(authority);
+    const assertTerminal = authority.assertTerminal.bind(authority);
+    const expected = this.preparation?.kind === 'required'
+      ? this.preparation.operation.journal : this.resumedJournal;
+    const assertExternalSelection = async () => {
+      assertCurrent();
+      await assertTerminal();
+      await this.assertDeferredAcceptance('source');
+      const registry = await this.readRequiredRegistry();
+      if (expected !== undefined && (expected.state !== 'prepared' ||
+          calculateWorkspaceRegistrySha256(registry) !== expected.sourceRegistrySha256)) return recoveryRequired();
+      await assertTerminal();
+      assertCurrent();
+    };
+    await assertExternalSelection();
+    const actual = await this.options.journal.inspect();
+    await assertExternalSelection();
+    if (!isDeepStrictEqual(actual?.value, expected)) return recoveryRequired();
+    if (expected !== undefined && actual !== undefined) {
+      await this.options.journal.discardPrepared(expected.operationId, {
+        selected: actual, assertCurrent, assertExternalSelection,
+      });
+    }
+    await assertExternalSelection();
+    if (await this.options.journal.inspect() !== undefined) return recoveryRequired();
+    await assertExternalSelection();
     this.completed = true;
   }
 
@@ -400,7 +446,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   private requirePreparation(): NonNullable<
     WorkspaceFirstStartMigrationOrchestrator['preparation']
   > {
-    if (this.preparation === undefined) return invalidOrchestration();
+    if (this.preparation === undefined || this.selectorReturnStarted) return invalidOrchestration();
     return this.preparation;
   }
 

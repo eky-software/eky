@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { expect, it, vi, type TestContext } from 'vitest';
@@ -16,6 +16,8 @@ import { createWorkspaceFirstStartMigrationJournalPaths } from './workspaceFirst
 import { WorkspaceFirstStartMigrationOrchestrator } from './workspaceFirstStartMigrationOrchestrator.js';
 import { WorkspaceFirstStartMigrationTransitionCoordinator } from './workspaceFirstStartMigrationTransitionCoordinator.js';
 import type { WorkspaceMigrationInventory } from './workspaceMigrationInventoryTypes.js';
+import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
+import { WORKSPACE_FIRST_START_MIGRATION_JOURNAL_MAX_BYTES } from './workspaceFirstStartMigrationJournalCodec.js';
 
 const at = '2026-10-25T12:00:00.000Z';
 const source = { formatVersion: 1 as const, releaseChannel: 'pilot' as const,
@@ -248,7 +250,204 @@ it.for(['cancel', 'recover'] as const)(
   },
 );
 
-async function fixture(test: TestContext, version: 1 | 2 = 2) {
+it.for(['prepared', 'resumed', 'notRequired', 'inventoryFailed'] as const)(
+  'cancels only the deferred preparation after terminal proof (%s)', async (stage, test) => {
+    const f = await fixture(test);
+    let subject = f.subject();
+    await subject.recoverBeforeWorkspaceResolution();
+    if (stage === 'notRequired') f.state.pending = false;
+    if (stage === 'inventoryFailed') f.inspect.mockRejectedValueOnce(new Error('SYNTHETIC_INVENTORY_FAILED'));
+    if (stage === 'inventoryFailed') await expect(subject.prepareBeforeBackend(context)).rejects.toThrow();
+    else await subject.prepareBeforeBackend(context);
+    if (stage === 'resumed') {
+      subject = f.subject();
+      await subject.recoverBeforeWorkspaceResolution();
+      // A failure before repeated inventory must still cancel the exact resumed preparation.
+    }
+    const registry = await readFile(f.registryPath);
+    const assertTerminal = vi.fn(async () => undefined);
+    await subject.cancelBeforeSelectorReturn({ assertCurrent() {}, assertTerminal });
+    expect(assertTerminal).toHaveBeenCalled();
+    expect(await f.journal.inspect()).toBeUndefined();
+    expect((await readFile(f.registryPath)).equals(registry)).toBe(true);
+    expect(await f.accepted.read()).toEqual(selector);
+    await expect(subject.transitionRegistryAfterActiveWorkspaceAcceptance()).rejects.toThrow();
+    await expect(subject.completeAfterTargetAcceptance()).rejects.toThrow();
+    await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, assertTerminal })).rejects.toThrow();
+    expect(f.recordFailure).not.toHaveBeenCalled();
+  },
+);
+
+it.for(['terminal', 'authority', 'metadata', 'registry', 'journal', 'next', 'backup'] as const)(
+  'preserves deferred state on rejected selector return (%s)', async (fault, test) => {
+    const f = await fixture(test);
+    const subject = f.subject();
+    await subject.recoverBeforeWorkspaceResolution();
+    await subject.prepareBeforeBackend(context);
+    if (fault === 'authority') f.state.current = false;
+    if (fault === 'metadata') await f.accepted.write(createBusinessAcceptedBuildMetadata(selector, target));
+    if (fault === 'registry') await f.registry.write({ ...(await f.registry.read())!, activeWorkspaceId: passiveId });
+    if (fault === 'journal') await writeFile(f.journalPath, JSON.stringify({ ...(await f.journal.read())!, updatedAt: '2026-10-25T13:00:00.000Z' }));
+    if (fault === 'next' || fault === 'backup') await writeFile(`${f.journalPath}.${fault}`, await readFile(f.journalPath));
+    const journal = await readFile(f.journalPath);
+    const registry = await readFile(f.registryPath);
+    await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, async assertTerminal() {
+      if (fault === 'terminal') throw new Error('SYNTHETIC_RUNTIME_UNRESOLVED');
+    } })).rejects.toThrow();
+    expect((await readFile(f.journalPath)).equals(journal)).toBe(true);
+    expect((await readFile(f.registryPath)).equals(registry)).toBe(true);
+    if (fault === 'next' || fault === 'backup') expect((await readFile(`${f.journalPath}.${fault}`)).equals(journal)).toBe(true);
+  },
+);
+
+it('retains an unacknowledged preparation instead of adopting it for cancellation', async test => {
+  const f = await fixture(test);
+  const prepare = f.transitions.prepare.bind(f.transitions);
+  vi.spyOn(f.transitions, 'prepare').mockImplementationOnce(async input => {
+    await prepare(input);
+    throw new Error('SYNTHETIC_PREPARE_ACK_LOST');
+  });
+  const subject = f.subject();
+  await subject.recoverBeforeWorkspaceResolution();
+  await expect(subject.prepareBeforeBackend(context)).rejects.toThrow();
+  const before = await readFile(f.journalPath);
+  await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, async assertTerminal() {} })).rejects.toThrow();
+  expect((await readFile(f.journalPath)).equals(before)).toBe(true);
+});
+
+it.for(['transition', 'complete'] as const)('never cancels after %s starts', async (stage, test) => {
+  const f = await fixture(test);
+  const subject = f.subject();
+  await subject.recoverBeforeWorkspaceResolution();
+  await subject.prepareBeforeBackend(context);
+  await subject.transitionRegistryAfterActiveWorkspaceAcceptance();
+  if (stage === 'complete') {
+    await f.accepted.write(createBusinessAcceptedBuildMetadata(selector, target));
+    await subject.completeAfterTargetAcceptance();
+  }
+  const journal = await f.journal.inspect();
+  const terminal = vi.fn(async () => undefined);
+  await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, assertTerminal: terminal })).rejects.toThrow();
+  expect(terminal).not.toHaveBeenCalled();
+  expect(await f.journal.inspect()).toEqual(journal);
+});
+
+it('does not race cancellation against an unfinished inventory', async test => {
+  const f = await fixture(test);
+  const inspect = f.inspect.getMockImplementation()!;
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  f.inspect.mockImplementationOnce(async () => {
+    entered();
+    await new Promise<void>(resolve => { release = resolve; });
+    return inspect();
+  });
+  const subject = f.subject();
+  await subject.recoverBeforeWorkspaceResolution();
+  const preparing = subject.prepareBeforeBackend(context);
+  await started;
+  try {
+    await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, async assertTerminal() {} })).rejects.toThrow();
+  } finally { release(); }
+  expect(await preparing).toBe('prepared');
+  expect((await f.journal.inspect())?.value.state).toBe('prepared');
+});
+
+it('retains the journal when terminal authority expires at the actual unlink', async test => {
+  let cancellation = false;
+  let current = true;
+  const f = await fixture(test, 2, base => {
+    const remove = base.removeSlot.bind(base);
+    vi.spyOn(base, 'removeSlot').mockImplementation(async (slot, guard) => {
+      if (cancellation && slot === 'current') current = false;
+      return remove(slot, guard);
+    });
+    return base;
+  });
+  const subject = f.subject();
+  await subject.recoverBeforeWorkspaceResolution();
+  await subject.prepareBeforeBackend(context);
+  const journal = await readFile(f.journalPath);
+  cancellation = true;
+  await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {
+    if (!current) throw new Error('SYNTHETIC_TERMINAL_EXPIRED');
+  }, async assertTerminal() {} })).rejects.toMatchObject({ failure: 'unavailable' });
+  expect(current).toBe(false);
+  expect((await readFile(f.journalPath)).equals(journal)).toBe(true);
+});
+
+it('seals a cancellation with a lost acknowledgement and lets fresh startup inspect the durable result', async test => {
+  const f = await fixture(test);
+  const subject = f.subject();
+  await subject.recoverBeforeWorkspaceResolution();
+  await subject.prepareBeforeBackend(context);
+  const discard = f.journal.discardPrepared.bind(f.journal);
+  vi.spyOn(f.journal, 'discardPrepared').mockImplementationOnce(async (...args) => {
+    await discard(...args);
+    throw new Error('SYNTHETIC_CANCEL_ACK_LOST');
+  });
+  await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, async assertTerminal() {} })).rejects.toThrow('SYNTHETIC_CANCEL_ACK_LOST');
+  await expect(subject.transitionRegistryAfterActiveWorkspaceAcceptance()).rejects.toThrow();
+  expect(await f.subject().recoverBeforeWorkspaceResolution()).toBe('noJournal');
+  expect(await f.accepted.read()).toEqual(selector);
+});
+
+it.for(['sameBytes', 'equivalentJson'] as const)(
+  'preserves a replacement made between cancellation inspection and discard (%s)', async (fault, test) => {
+    const f = await fixture(test);
+    const subject = f.subject();
+    await subject.recoverBeforeWorkspaceResolution();
+    await subject.prepareBeforeBackend(context);
+    const original = await readFile(f.journalPath);
+    const replacement = fault === 'sameBytes' ? original : Buffer.from(JSON.stringify(JSON.parse(original.toString()), null, 2));
+    const discard = f.journal.discardPrepared.bind(f.journal);
+    vi.spyOn(f.journal, 'discardPrepared').mockImplementationOnce(async (...args) => {
+      await rename(f.journalPath, `${f.journalPath}.retained-test-original`);
+      await writeFile(f.journalPath, replacement);
+      return discard(...args);
+    });
+    await expect(subject.cancelBeforeSelectorReturn({ assertCurrent() {}, async assertTerminal() {} })).rejects.toThrow();
+    expect((await readFile(f.journalPath)).equals(replacement)).toBe(true);
+    expect((await readFile(`${f.journalPath}.retained-test-original`)).equals(original)).toBe(true);
+  },
+);
+
+it.for((['orchestrator', 'store'] as const).flatMap(layer =>
+  (['current', 'terminal'] as const).map(kind => ({ layer, kind }))))(
+  'preserves the journal when the $layer $kind callback is replaced', async ({ layer, kind }, test) => {
+    const f = await fixture(test);
+    const subject = f.subject();
+    await subject.recoverBeforeWorkspaceResolution();
+    await subject.prepareBeforeBackend(context);
+    const selected = (await f.journal.inspect())!;
+    const registry = await readFile(f.registryPath);
+    let current = true;
+    const asyncKey = layer === 'store' ? 'assertExternalSelection' : 'assertTerminal';
+    const guard = {
+      selected,
+      assertCurrent() { if (kind === 'current' && !current) throw new Error('SYNTHETIC_AUTHORITY_LOST'); },
+      async assertTerminal() { await check(); },
+      async assertExternalSelection() { await check(); },
+    };
+    async function check() {
+      if (kind === 'terminal' && !current) throw new Error('SYNTHETIC_TERMINAL_LOST');
+      await Promise.resolve();
+      current = false;
+      if (kind === 'current') guard.assertCurrent = () => {};
+      else guard[asyncKey] = async () => {};
+    }
+    await expect(layer === 'store' ? f.journal.discardPrepared(operationId, guard)
+      : subject.cancelBeforeSelectorReturn(guard)).rejects.toThrow();
+    expect(current).toBe(false);
+    expect(await readFile(f.journalPath)).toEqual(Buffer.from(selected.bytes));
+    expect(await readFile(f.registryPath)).toEqual(registry);
+    expect(await f.accepted.read()).toEqual(selector);
+  },
+);
+
+async function fixture(test: TestContext, version: 1 | 2 = 2,
+  wrapFileSystem?: (base: CrashSafeFileSlotFileSystem) => CrashSafeFileSlotFileSystem) {
   const root = await mkdtemp(join(tmpdir(), 'eky-w6-deferred-'));
   test.onTestFinished(async () => { if (test.task.result?.state === 'pass') await rm(root, { recursive: true, force: true }); });
   const registryPath = join(root, WORKSPACE_REGISTRY_FILE_NAME);
@@ -264,7 +463,9 @@ async function fixture(test: TestContext, version: 1 | 2 = 2) {
   const state = { current: true, pending: true, passiveInvalid: false };
   const assertCurrent = vi.fn(async () => { if (!state.current) throw new Error('SYNTHETIC_AUTHORITY_EXPIRED'); });
   const authority = { acceptedBuild: selector, assertCurrent };
-  const journal = new WorkspaceFirstStartMigrationJournalStore({ userDataPath: root });
+  const journal = new WorkspaceFirstStartMigrationJournalStore({ userDataPath: root,
+    ...(wrapFileSystem === undefined ? {} : { fileSystem: wrapFileSystem(createNodeCrashSafeFileSlotFileSystem(
+      createWorkspaceFirstStartMigrationJournalPaths(root), WORKSPACE_FIRST_START_MIGRATION_JOURNAL_MAX_BYTES)) }) });
   const transitions = new WorkspaceFirstStartMigrationTransitionCoordinator({ acceptedBuild: accepted, journal, registry, deferredBusiness: authority });
   const inspect = vi.fn(async (): Promise<WorkspaceMigrationInventory> => ({ activeWorkspaceId: activeId,
     entries: [{ workspaceId: activeId, isActive: true, appliedMigrationCount: state.pending ? 38 : 39,
