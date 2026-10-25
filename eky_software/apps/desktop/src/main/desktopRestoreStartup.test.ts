@@ -445,7 +445,9 @@ describe('desktop restore startup composition', () => {
           const paths = createLocalUpdateRuntimePaths({ userDataPath: fixture.root,
             legacyRuntimeRoot: createDesktopProfilePaths(fixture.root).runtimeRoot });
           const accepted = new AcceptedBuildMetadataStore(paths.acceptedBuildMetadataPath);
-          await accepted.write({ ...(await accepted.read())!, appVersion: '0.2.6' });
+          const previous = await accepted.read();
+          if (previous?.formatVersion !== 1) throw new Error('SYNTHETIC_V1_ACCEPTANCE_REQUIRED');
+          await accepted.write({ ...previous, appVersion: '0.2.6' });
         });
       },
     });

@@ -120,6 +120,17 @@ describe('packaged smoke progress', () => {
     ).toThrow('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
   });
 
+  it('requires business scope even when the accepted selector version and revision match', () => {
+    const scoped = { formatVersion: 2 as const, acceptanceScope: 'selector' as const,
+      acceptedBuild, businessBaseline: { ...acceptedBuild, appVersion: '0.1.0' } };
+    const input = { acceptedBuild: scoped, appVersion: acceptedBuild.appVersion,
+      buildRevision: acceptedBuild.buildRevision, requiresPilotAcceptance: true };
+    expect(() => assertPackagedSmokeBuildAcceptance(input)).toThrow('DESKTOP_SMOKE_FIRST_START_ACCEPTANCE_FAILED');
+    expect(() => assertPackagedSmokeBuildAcceptance({ ...input, acceptedBuild: {
+      ...scoped, acceptanceScope: 'business', businessBaseline: acceptedBuild,
+    } })).not.toThrow();
+  });
+
   it('writes every allowlisted stage in the required order', async () => {
     const temporaryDirectory = await mkdtemp(
       join(tmpdir(), 'eky-packaged-smoke-test-'),

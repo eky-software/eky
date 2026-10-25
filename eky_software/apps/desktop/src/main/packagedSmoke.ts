@@ -9,7 +9,10 @@ import { createInvoicePdfPreviewSmokeFixture } from '../pdf/invoicePdfPreviewSmo
 import type { InvoicePdfPreviewWindowController } from '../pdf/invoicePdfPreviewWindow.js';
 import type { InvoicePdfArchiveService } from '../invoicePdfArchive/invoicePdfArchiveService.js';
 import type { DesktopBackendHandle } from '../runtime/backendProcess.js';
-import type { AcceptedBuildMetadata } from '../update/acceptedBuildMetadata.js';
+import {
+  readAcceptedBusinessBuild,
+  type VersionedAcceptedBuildMetadata,
+} from '../update/acceptedBuildMetadata.js';
 import {
   EncryptedSecretFile,
   type EncryptedSecretFileStore,
@@ -420,16 +423,18 @@ export async function runPackagedSmokeCheck(
 }
 
 export function assertPackagedSmokeBuildAcceptance(input: {
-  acceptedBuild: Readonly<AcceptedBuildMetadata> | undefined;
+  acceptedBuild: VersionedAcceptedBuildMetadata | undefined;
   appVersion: string;
   buildRevision: string;
   requiresPilotAcceptance: boolean;
 }): void {
+  const businessBuild = input.acceptedBuild === undefined
+    ? undefined : readAcceptedBusinessBuild(input.acceptedBuild);
   const acceptedBuildMatches =
-    input.acceptedBuild !== undefined &&
-    input.acceptedBuild.appVersion === input.appVersion &&
-    input.acceptedBuild.buildRevision === input.buildRevision &&
-    input.acceptedBuild.releaseChannel === 'pilot';
+    businessBuild !== undefined &&
+    businessBuild.appVersion === input.appVersion &&
+    businessBuild.buildRevision === input.buildRevision &&
+    businessBuild.releaseChannel === 'pilot';
   if (
     (input.requiresPilotAcceptance && !acceptedBuildMatches) ||
     (!input.requiresPilotAcceptance && input.acceptedBuild !== undefined)

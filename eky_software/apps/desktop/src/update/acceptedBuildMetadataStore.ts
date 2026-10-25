@@ -1,7 +1,7 @@
 import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 
-import { parseAcceptedBuildMetadata, type AcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import { parseVersionedAcceptedBuildMetadata, type VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 export const acceptedBuildMetadataFileName = 'accepted-build-v1.json';
 const maximumBytes = 4 * 1024;
@@ -19,7 +19,7 @@ export class AcceptedBuildMetadataStore {
     this.nextPath = `${filePath}.next`;
   }
 
-  async read(): Promise<Readonly<AcceptedBuildMetadata> | undefined> {
+  async read(): Promise<VersionedAcceptedBuildMetadata | undefined> {
     const current = await readMetadata(this.filePath);
     if (current !== undefined) {
       await this.removeRecoverySlots();
@@ -41,8 +41,16 @@ export class AcceptedBuildMetadataStore {
     return undefined;
   }
 
-  async write(metadata: Readonly<AcceptedBuildMetadata>): Promise<void> {
-    const validated = parseAcceptedBuildMetadata(metadata);
+  async write(metadata: VersionedAcceptedBuildMetadata): Promise<void> {
+    const validated = parseVersionedAcceptedBuildMetadata(metadata);
+    // Check before any repair or cleanup: a version downgrade must preserve all slots.
+    if (validated.formatVersion === 1) {
+      for (const path of [this.filePath, this.backupPath, this.nextPath]) {
+        if ((await readMetadata(path))?.formatVersion === 2) {
+          throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+        }
+      }
+    }
     const directory = dirname(this.filePath);
     let moved = false;
     try {
@@ -92,14 +100,14 @@ export class AcceptedBuildMetadataStore {
   }
 }
 
-async function readMetadata(path: string): Promise<Readonly<AcceptedBuildMetadata> | undefined> {
+async function readMetadata(path: string): Promise<VersionedAcceptedBuildMetadata | undefined> {
   try {
     const metadata = await lstat(path);
     if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1 ||
       metadata.size < 1 || metadata.size > maximumBytes) {
       throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
     }
-    return parseAcceptedBuildMetadata(JSON.parse(await readFile(path, 'utf8')));
+    return parseVersionedAcceptedBuildMetadata(JSON.parse(await readFile(path, 'utf8')));
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') return undefined;
     throw new Error('ACCEPTED_BUILD_METADATA_INVALID');

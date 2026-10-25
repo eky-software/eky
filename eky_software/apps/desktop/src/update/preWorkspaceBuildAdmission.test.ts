@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import { createSelectorAcceptedBuildMetadata, type AcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 import {
   createDirectSetupMigrationRecovery,
   transitionDirectSetupMigrationRecovery,
@@ -41,6 +41,37 @@ const buildInfo = {
 };
 
 describe('pre-workspace build admission', () => {
+  it('uses application acceptance for version admission, never the older business baseline', () => {
+    const selector = createSelectorAcceptedBuildMetadata(acceptedBuild, {
+      ...acceptedBuild, appVersion: releaseInfo.appVersion, buildRevision: releaseInfo.buildRevision,
+    });
+    expect(classify({ acceptedBuild: selector })).toEqual({ admission: 'exactAcceptedBuild', status: 'allowed' });
+    expect(classify({ acceptedBuild: selector,
+      buildInfo: { ...buildInfo, appVersion: acceptedBuild.appVersion, buildRevision: acceptedRevision },
+      releaseInfo: { ...releaseInfo, appVersion: acceptedBuild.appVersion, buildRevision: acceptedRevision },
+    })).toEqual({ reason: 'downgrade', status: 'rejected' });
+    expect(classify({ acceptedBuild: selector,
+      journal: createJournal('accepted'),
+    })).toEqual({ admission: 'exactAcceptedBuild', status: 'allowed' });
+  });
+
+  it('does not use selector acceptance to complete an accepted direct Setup recovery', () => {
+    const selector = createSelectorAcceptedBuildMetadata(acceptedBuild, {
+      ...acceptedBuild, appVersion: releaseInfo.appVersion, buildRevision: releaseInfo.buildRevision,
+    });
+    const recovery = createDirectSetupMigrationRecovery({
+      appliedMigrationCount: 38, at: '2026-08-20T12:00:00.000Z',
+      correlationId: '11111111-1111-4111-8111-111111111111',
+      migrationPrefixIdentity: 'a'.repeat(64),
+      previousAcceptedBuildIdentity: { appVersion: acceptedBuild.appVersion, buildRevision: acceptedRevision },
+      runningTargetBuildIdentity: { appVersion: releaseInfo.appVersion, buildRevision: runningRevision },
+      recoveryPointReference: '22222222-2222-4222-8222-222222222222',
+    });
+    const running = transitionDirectSetupMigrationRecovery(recovery, { at: '2026-08-20T12:00:01.000Z', state: 'migrationRunning' });
+    const completed = transitionDirectSetupMigrationRecovery(running, { at: '2026-08-20T12:00:02.000Z', state: 'accepted' });
+    expect(classify({ acceptedBuild: selector, directSetupRecovery: completed }))
+      .toEqual({ reason: 'mixedOrUnknownUpdateIdentity', status: 'rejected' });
+  });
   it('allows an initial install without installation-scoped state', () => {
     expect(classify({ acceptedBuild: undefined })).toEqual({
       admission: 'initialInstall',

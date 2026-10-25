@@ -1,4 +1,7 @@
-import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import {
+  readAcceptedBusinessBuild,
+  type VersionedAcceptedBuildMetadata,
+} from '../../update/acceptedBuildMetadata.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
@@ -153,7 +156,8 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     ) {
       return recoveryRequired();
     }
-    const acceptedBuild = await this.options.acceptedBuild.read();
+    const metadata = await this.options.acceptedBuild.read();
+    const acceptedBuild = metadata === undefined ? undefined : readAcceptedBusinessBuild(metadata);
     if (
       acceptedBuild === undefined ||
       !buildsAreEqual(acceptedBuild, journal.targetBuild)
@@ -291,9 +295,10 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
 }
 
 function classifyAcceptedBuild(
-  acceptedBuild: Readonly<AcceptedBuildMetadata> | undefined,
+  metadata: VersionedAcceptedBuildMetadata | undefined,
   journal: Readonly<WorkspaceFirstStartMigrationJournalV1>,
 ): 'source' | 'target' | 'other' {
+  const acceptedBuild = metadata === undefined ? undefined : readAcceptedBusinessBuild(metadata);
   if (acceptedBuild === undefined) return 'other';
   if (buildsAreEqual(acceptedBuild, journal.sourceBuild)) return 'source';
   if (buildsAreEqual(acceptedBuild, journal.targetBuild)) return 'target';

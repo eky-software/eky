@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { createSelectorAcceptedBuildMetadata, parseAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 import {
   acceptedBuildMetadataFileName,
@@ -18,13 +19,45 @@ const metadata = {
   releaseChannel: 'pilot' as const,
 };
 
-afterEach(async () => {
+afterEach(async context => {
+  const completedRoots = roots.splice(0);
+  if (context.task.result?.state !== 'pass') return;
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+    completedRoots.map((root) => rm(root, { force: true, recursive: true })),
   );
 });
 
 describe('accepted build metadata store', () => {
+  it('preserves canonical v1 bytes and reads scoped metadata from the same slots', async () => {
+    const filePath = await createPath();
+    const store = new AcceptedBuildMetadataStore(filePath);
+    await store.write(metadata);
+    expect(await readFile(filePath, 'utf8')).toBe(`${JSON.stringify(parseAcceptedBuildMetadata(metadata))}\n`);
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await store.write(scoped);
+    expect(await store.read()).toEqual(scoped);
+    expect(await readFile(filePath, 'utf8')).toBe(`${JSON.stringify(scoped)}\n`);
+  });
+
+  it.each(['', '.backup', '.next'])('rejects a format downgrade with v2 in %s without deleting evidence', async suffix => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    for (const slot of ['', '.backup', '.next']) await writeSlot(`${filePath}${slot}`, slot === suffix ? scoped : metadata);
+    const before = await Promise.all(['', '.backup', '.next'].map(slot => readFile(`${filePath}${slot}`)));
+    await expect(new AcceptedBuildMetadataStore(filePath).write(metadata)).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    expect(await Promise.all(['', '.backup', '.next'].map(slot => readFile(`${filePath}${slot}`)))).toEqual(before);
+  });
+
+  it('recovers the scoped baseline from backup without claiming pending next as accepted', async () => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    const pending = createSelectorAcceptedBuildMetadata(scoped, { ...metadata, appVersion: '0.4.0' });
+    await writeSlot(`${filePath}.backup`, scoped);
+    await writeSlot(`${filePath}.next`, pending);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    expect(await store.read()).toEqual(scoped);
+    expect(await store.read()).toEqual(scoped);
+  });
   it('writes and reads only the bounded installation identity', async () => {
     const filePath = await createPath();
     const store = new AcceptedBuildMetadataStore(filePath);

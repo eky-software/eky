@@ -1,7 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 
-import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import {
+  readAcceptedBusinessBaseline,
+  type AcceptedBuildMetadata,
+} from '../../update/acceptedBuildMetadata.js';
 import type {
   PreBackendFirstStartFailureAuthority,
   PreBackendFirstStartFailureResult,
@@ -302,7 +305,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
     }
     const acceptedBuild = await this.options.acceptedBuild.read();
     if (acceptedBuild === undefined) return invalidOrchestration();
-    return toBuildIdentity(acceptedBuild);
+    return toBuildIdentity(readAcceptedBusinessBaseline(acceptedBuild));
   }
 
   private async readRequiredRegistry(): Promise<

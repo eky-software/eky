@@ -6,6 +6,14 @@ import type {
   LocalUpdatePackageCache,
 } from './localUpdatePackageCache.js';
 import type { AcceptedBuildMetadataStore } from './acceptedBuildMetadataStore.js';
+import {
+  createBusinessAcceptedBuildMetadata,
+  parseVersionedAcceptedBuildMetadata,
+  readAcceptedApplicationBuild,
+  readAcceptedBusinessBuild,
+  type ScopedAcceptedBuildMetadata,
+  type VersionedAcceptedBuildMetadata,
+} from './acceptedBuildMetadata.js';
 import { compareSemanticVersions } from './semanticVersionComparison.js';
 import {
   transitionUpdateJournal,
@@ -29,6 +37,21 @@ export interface MigrationStartupInspection {
   pendingMigrationCount: number;
   profileState: 'empty' | 'existing';
 }
+
+// The startup owner binds this authority to the operation, generation, selected
+// workspace and allowed W6 transition. It is not a substitute for profile health.
+export interface DeferredBusinessFirstStartAuthority {
+  readonly acceptedBuild: Readonly<ScopedAcceptedBuildMetadata>;
+  readonly migrationChainIdentity: string;
+  assertCurrent(): Promise<void>;
+}
+
+type FirstStartMigrationContext =
+  | Readonly<{ migrationAuthority: 'profileRestore' | 'update' }>
+  | Readonly<{
+      migrationAuthority: 'deferredBusiness';
+      authority: DeferredBusinessFirstStartAuthority;
+    }>;
 
 interface FirstStartProfileProtection {
   createValidatedPreMigrationPoint(): Promise<string>;
@@ -68,6 +91,12 @@ interface FirstStartUpdateCoordinatorDependencies {
 }
 
 type FirstStartMode =
+  | {
+      kind: 'deferredBusiness';
+      authority: DeferredBusinessFirstStartAuthority;
+      acceptedBuild: Readonly<ScopedAcceptedBuildMetadata>;
+      migrationChainIdentity: string;
+    }
   | { kind: 'coordinated'; journal: Readonly<UpdateJournal>; rotated: boolean }
   | { kind: 'installerNotApplied'; journal: Readonly<UpdateJournal> }
   | { kind: 'rollback'; journal: Readonly<UpdateJournal> }
@@ -85,6 +114,8 @@ export class FirstStartUpdateError extends Error {
 }
 
 export class FirstStartUpdateCoordinator {
+  private acceptedMetadata: VersionedAcceptedBuildMetadata | undefined;
+  private deferredBusinessAttempt = false;
   private migrationGateCompleted = false;
   private mode: FirstStartMode | undefined;
   private operationCorrelationId: string | undefined;
@@ -98,24 +129,31 @@ export class FirstStartUpdateCoordinator {
 
   async beforeMigrations(
     inspection: Readonly<MigrationStartupInspection>,
-    context: Readonly<{
-      migrationAuthority: 'profileRestore' | 'update';
-    }> = { migrationAuthority: 'update' },
+    context: FirstStartMigrationContext = { migrationAuthority: 'update' },
   ): Promise<void> {
     if (this.migrationGateCompleted) {
       throw new FirstStartUpdateError();
     }
+    this.deferredBusinessAttempt = context.migrationAuthority === 'deferredBusiness';
 
     let coordinatedJournal: Readonly<UpdateJournal> | undefined;
     let installerNotAppliedJournal: Readonly<UpdateJournal> | undefined;
     let rollbackJournal: Readonly<UpdateJournal> | undefined;
     let directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
     try {
-      const [journal, acceptedBuild, storedDirectSetupRecovery] = await Promise.all([
+      if (context.migrationAuthority === 'deferredBusiness') {
+        await context.authority.assertCurrent();
+      }
+      const [journal, acceptedMetadata, storedDirectSetupRecovery] = await Promise.all([
         this.dependencies.journalStore.read(),
         this.dependencies.acceptedBuildStore.read(),
         this.dependencies.directSetupRecoveryStore.read(),
       ]);
+      this.acceptedMetadata = acceptedMetadata;
+      const acceptedBuild = acceptedMetadata === undefined
+        ? undefined : readAcceptedApplicationBuild(acceptedMetadata);
+      const acceptedBusiness = acceptedMetadata === undefined
+        ? undefined : readAcceptedBusinessBuild(acceptedMetadata);
       directSetupRecovery = storedDirectSetupRecovery;
       this.operationCorrelationId =
         directSetupRecovery !== undefined
@@ -133,9 +171,9 @@ export class FirstStartUpdateCoordinator {
         context.migrationAuthority === 'profileRestore' &&
         (directSetupRecovery !== undefined ||
           (journal !== undefined && journal.state !== 'accepted') ||
-          acceptedBuild?.appVersion !==
+          acceptedBusiness?.appVersion !==
             this.dependencies.releaseInfo.appVersion ||
-          acceptedBuild.buildRevision !==
+          acceptedBusiness.buildRevision !==
             this.dependencies.releaseInfo.buildRevision)
       ) {
         throw new FirstStartUpdateError();
@@ -149,7 +187,28 @@ export class FirstStartUpdateCoordinator {
         throw new FirstStartUpdateError();
       }
 
-      if (journal !== undefined && journal.state !== 'accepted') {
+      if (context.migrationAuthority === 'deferredBusiness') {
+        const expected = parseVersionedAcceptedBuildMetadata(context.authority.acceptedBuild);
+        if (expected.formatVersion !== 2 || expected.acceptanceScope !== 'selector' ||
+          JSON.stringify(expected) !== JSON.stringify(acceptedMetadata) ||
+          acceptedBuild?.appVersion !== this.dependencies.releaseInfo.appVersion ||
+          acceptedBuild.buildRevision !== this.dependencies.releaseInfo.buildRevision ||
+          journal !== undefined || directSetupRecovery !== undefined ||
+          inspection.profileState !== 'existing' || inspection.pendingMigrationCount !== 0 ||
+          !/^[0-9a-f]{64}$/.test(context.authority.migrationChainIdentity) ||
+          inspection.migrationChainIdentity !== context.authority.migrationChainIdentity) {
+          throw new FirstStartUpdateError();
+        }
+        await context.authority.assertCurrent();
+        this.mode = {
+          kind: 'deferredBusiness', authority: context.authority,
+          acceptedBuild: expected, migrationChainIdentity: inspection.migrationChainIdentity,
+        };
+        await this.assertDeferredBusinessCurrent(this.mode);
+      } else if (acceptedMetadata?.formatVersion === 2 && acceptedMetadata.acceptanceScope === 'selector') {
+        // Never turn application admission into business admission or a second migration.
+        throw new FirstStartUpdateError();
+      } else if (journal !== undefined && journal.state !== 'accepted') {
         installerNotAppliedJournal = journal;
         const runningJournalBuild = this.classifyRunningJournalBuild(journal);
         if (runningJournalBuild === 'target') {
@@ -222,7 +281,9 @@ export class FirstStartUpdateCoordinator {
         installerNotAppliedJournal,
       );
       await this.markRollbackRecoveryRequired(rollbackJournal);
-      await this.markDirectSetupRecoveryRequired(directSetupRecovery);
+      if (!this.deferredBusinessAttempt) {
+        await this.markDirectSetupRecoveryRequired(directSetupRecovery);
+      }
       this.notifyOperationFailed();
       throw new FirstStartUpdateError({ cause: error });
     }
@@ -241,8 +302,15 @@ export class FirstStartUpdateCoordinator {
     const coordinatedJournal =
       mode.kind === 'coordinated' ? mode.journal : undefined;
     try {
+      if (mode.kind === 'deferredBusiness') await this.assertDeferredBusinessCurrent(mode);
       const activeProfile =
         await this.dependencies.profileProtection.validateActiveProfile();
+      if (mode.kind === 'deferredBusiness') {
+        if (activeProfile.migrationChainIdentity !== mode.migrationChainIdentity) {
+          throw new FirstStartUpdateError();
+        }
+        await this.assertDeferredBusinessCurrent(mode);
+      }
       if (
         (mode.kind === 'installerNotApplied' || mode.kind === 'rollback') &&
         activeProfile.migrationChainIdentity !==
@@ -293,13 +361,21 @@ export class FirstStartUpdateCoordinator {
       }
 
       if (mode.kind !== 'installerNotApplied') {
-        await this.dependencies.acceptedBuildStore.write({
+        const published = createBusinessAcceptedBuildMetadata(this.acceptedMetadata, {
           acceptedAt: this.now(),
           appVersion: this.dependencies.releaseInfo.appVersion,
           buildRevision: this.dependencies.releaseInfo.buildRevision,
           formatVersion: 1,
           releaseChannel: 'pilot',
         });
+        if (mode.kind === 'deferredBusiness') await this.assertDeferredBusinessCurrent(mode);
+        await this.dependencies.acceptedBuildStore.write(published);
+        if (mode.kind === 'deferredBusiness') {
+          if (JSON.stringify(await this.dependencies.acceptedBuildStore.read()) !== JSON.stringify(published)) {
+            throw new FirstStartUpdateError();
+          }
+          await mode.authority.assertCurrent();
+        }
       }
 
       if (mode.kind === 'coordinated') {
@@ -349,6 +425,8 @@ export class FirstStartUpdateCoordinator {
   }
 
   async recoverFromStartupFailure(): Promise<boolean> {
+    // A rejected deferred admission never acquires an unrelated recovery owner.
+    if (this.deferredBusinessAttempt) return false;
     const mode = this.mode;
     if (mode?.kind === 'coordinated') {
       await this.markRollbackRequired(mode.journal);
@@ -365,6 +443,22 @@ export class FirstStartUpdateCoordinator {
       journal.candidatePackageIdentity.buildRevision ===
         this.dependencies.releaseInfo.buildRevision
     );
+  }
+
+  private async assertDeferredBusinessCurrent(
+    mode: Extract<FirstStartMode, { kind: 'deferredBusiness' }>,
+  ): Promise<void> {
+    await mode.authority.assertCurrent();
+    const [accepted, journal, directSetup] = await Promise.all([
+      this.dependencies.acceptedBuildStore.read(),
+      this.dependencies.journalStore.read(),
+      this.dependencies.directSetupRecoveryStore.read(),
+    ]);
+    if (JSON.stringify(accepted) !== JSON.stringify(mode.acceptedBuild) ||
+      journal !== undefined || directSetup !== undefined) {
+      throw new FirstStartUpdateError();
+    }
+    await mode.authority.assertCurrent();
   }
 
   private classifyRunningJournalBuild(

@@ -36,6 +36,7 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspa
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
+  LocalWorkspaceRegistry,
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../src/workspaces/registry/workspaceRegistryTypes.js';
@@ -857,9 +858,9 @@ function requireSnapshot(
 }
 
 function requireRegistry(
-  registry: Readonly<LocalWorkspaceRegistryV1> | undefined,
+  registry: Readonly<LocalWorkspaceRegistry> | undefined,
 ): Readonly<LocalWorkspaceRegistryV1> {
-  if (registry === undefined) {
+  if (registry === undefined || registry.formatVersion !== 1) {
     throw new Error('WORKSPACE_ACTIVATION_PROOF_REGISTRY_MISSING');
   }
   return registry;

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
-import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadata,
+  type AcceptedBuildMetadata, type VersionedAcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
@@ -169,6 +170,22 @@ describe('WorkspaceFirstStartMigrationTransitionCoordinator', () => {
     });
     expect(ports.registry.writes).toHaveLength(0);
     expect(ports.journal.value).toBeUndefined();
+  });
+
+  it('keeps the W6 journal until business acceptance, not selector target acceptance', async () => {
+    const foundation = createFoundation({ state: 'registryTransitioned' });
+    const scoped = createSelectorAcceptedBuildMetadata(accepted(sourceBuild), accepted(targetBuild));
+    const ports = createPorts({ acceptedBuild: scoped, journal: foundation.journal, registry: foundation.transitioned });
+    const subject = coordinator(ports);
+    await expect(subject.recover(targetBuild)).resolves.toEqual({ kind: 'recoveryRequired', operationId });
+    await expect(subject.completeAcceptedTarget({ operationId, sourceBuild, targetBuild })).rejects.toThrow();
+    expect(ports.journal.value).toEqual(foundation.journal);
+    expect(ports.registry.value).toEqual(foundation.transitioned);
+    expect(ports.events).toEqual([]);
+    ports.acceptedBuild.value = createBusinessAcceptedBuildMetadata(scoped, accepted(targetBuild));
+    await subject.completeAcceptedTarget({ operationId, sourceBuild, targetBuild });
+    expect(ports.journal.value).toBeUndefined();
+    expect(ports.events).toEqual(['journal.removeTransitioned']);
   });
 
   it('does not accept a target build journal while the source build is running', async () => {
@@ -446,7 +463,7 @@ class MemoryRegistry implements Pick<WorkspaceRegistryPort, 'read' | 'write'> {
 }
 
 class MemoryAcceptedBuild implements WorkspaceFirstStartAcceptedBuildReader {
-  constructor(public value?: Readonly<AcceptedBuildMetadata>) {}
+  constructor(public value?: VersionedAcceptedBuildMetadata) {}
 
   async read() {
     return this.value;
@@ -454,7 +471,7 @@ class MemoryAcceptedBuild implements WorkspaceFirstStartAcceptedBuildReader {
 }
 
 function createPorts(options: {
-  acceptedBuild?: Readonly<AcceptedBuildMetadata>;
+  acceptedBuild?: VersionedAcceptedBuildMetadata;
   journal?: Readonly<WorkspaceFirstStartMigrationJournalV1>;
   registry?: Readonly<LocalWorkspaceRegistry>;
 }): TestPorts {

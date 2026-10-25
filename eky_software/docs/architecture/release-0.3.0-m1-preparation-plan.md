@@ -69,18 +69,25 @@ Näyttö ei ole backendittoman compositionin, SQLite/Electron-ketjun,
 paketoidun palautuksen tai W7.2:n PR/main-hyväksyntä. Vanhojen ja uusien
 päällekkäisten kohdesarjojen määriä ei lasketa yhteen.
 
-**Metadatan osaraja:** versionmukainen arvo ja erilliset sovellus-/business-/
-baseline-lukutulkinnat on toteutettu nykyiseen omistajaan. Uusi selector-arvo
-säilyttää business-baselinen eikä ole yrityskäytön hyväksyntä. Rajatut
-146 testiä, tyyppitarkistus ja rajattu riippumaton katselmus läpäisivät;
-vanha strict-v1-tallennus ei vielä julkaise uutta arvoa.
+**Hyväksyntäketjun osaraja:** nykyinen tallennin ja lukijat säilyttävät
+versionmukaisen arvon. Sovellusadmission käyttää sovellushyväksyntää,
+palautuksen business-lähde baselinea ja valmistumistodisteet oikeaa
+business-hyväksyntää. FirstStartin nimetty `deferredBusiness`-tila tarkistaa
+tuoreen valtuuden ja sisällön ennen business-hyväksyntää; hylätty avaus ei
+muuta vierasta palautusjournalia. Rajattu sarja läpäisi 515 testiä 26
+tiedostossa, desktopin ja E2E:n tyyppitarkistukset sekä rajattu riippumaton
+katselmus läpäisivät. Todiste käyttää oikeita metadatatavuja mutta injektoituja
+profiili-, salaisuus- ja valtuusportteja: käynnistysketjun kytkentä ja
+SQLite/Electron/paketoitu näyttö ovat yhä tekemättä. Aiempi 146 testin
+codec-todiste ei ole erillinen lisäkattavuus.
 
-**Seuraava työ:** hyväksynnän nykyisten kutsujien versionmukainen kytkentä,
-yhteinen metadata-/journal-/registry-admission ja suojattu julkaisu;
-sitten valitsimen ja ensimmäisen yritysavauksen kytkentä.
+**Seuraava työ:** yhteinen metadata-/journal-/registry-admission ja suojattu
+julkaisu ennen korjaavia lukuja; sitten W6:n nimetty jatko sekä valitsimen
+ja ensimmäisen yritysavauksen kytkentä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
-FirstStart ja W6 tarvitsevat nimetyt lykätyn business-hyväksynnän haarat,
-eivät yleistä B-baselinen store-adapteria tai teeskenneltyä uutta päivitystä.
+FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.
+W6 tarvitsee oman nimetyn lykätyn business-hyväksynnän jatkonsa, ei yleistä
+B-baselinen store-adapteria tai teeskenneltyä uutta päivitystä.
 Todellinen v2-julkaisu, historiallisen palautuksen terminal-kytkentä ja
 source-null-composition jäävät pysyvien regressioiden ja integraation porteiksi.
 Valitsimen readiness ei ole business-hyväksyntä, null-valinta ei luo

@@ -385,7 +385,7 @@ export function createWorkspaceFirstStartProofRegistry(
   fixtures: readonly Readonly<WorkspaceFirstStartProofFixture>[],
   activeWorkspaceId: WorkspaceId,
 ): Readonly<LocalWorkspaceRegistryV1> {
-  return validateWorkspaceRegistry({
+  const registry = validateWorkspaceRegistry({
     activeWorkspaceId,
     formatVersion: 1,
     workspaces: fixtures.map((fixture, index) => ({
@@ -400,6 +400,10 @@ export function createWorkspaceFirstStartProofRegistry(
       workspaceLabel: `First-start workspace ${index + 1}`,
     })),
   });
+  if (registry.formatVersion !== 1) {
+    throw new Error('WORKSPACE_FIRST_START_PROOF_REGISTRY_INVALID');
+  }
+  return registry;
 }
 
 export async function inspectWorkspaceFirstStartProofFixture(

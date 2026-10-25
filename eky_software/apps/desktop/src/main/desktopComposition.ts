@@ -172,6 +172,7 @@ import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths
 import { DirectSetupMigrationRecoveryStore } from '../update/directSetupMigrationRecoveryStore.js';
 import { migrateLegacyLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
+import { readAcceptedApplicationBuild } from '../update/acceptedBuildMetadata.js';
 import {
   PreWorkspaceBuildAdmissionError,
   requirePreWorkspaceBuildAdmission,
@@ -676,7 +677,9 @@ export async function startDesktopComposition(
         resolveStartupRecoveryAuthority({ profileRestoreJournal,
           updateJournal: rollbackStartupAdmission.selectedJournal,
           workspaceReplacementRecoveryPending: replacementJournal !== undefined });
-        const acceptedSource = await installationUpdateState.acceptedBuildMetadataStore.read();
+        const acceptedMetadata = await installationUpdateState.acceptedBuildMetadataStore.read();
+        const acceptedSource = acceptedMetadata === undefined
+          ? undefined : readAcceptedApplicationBuild(acceptedMetadata);
         await rollbackStartupAdmission.assertCurrent();
         if (acceptedSource?.appVersion !== rollbackStartupAdmission.selectedJournal.currentVersion ||
             acceptedSource.buildRevision !== rollbackStartupAdmission.selectedJournal.currentPackageIdentity.buildRevision ||

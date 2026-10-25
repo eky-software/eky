@@ -1,4 +1,5 @@
 import type { AcceptedBuildMetadataStore } from './acceptedBuildMetadataStore.js';
+import type { VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 import type { UpdateJournalStore } from './updateJournalStore.js';
 
 interface StateStore<T> {
@@ -21,7 +22,7 @@ export interface LegacyLocalUpdateStateStores {
 export async function migrateLegacyLocalUpdateState(
   stores: LegacyLocalUpdateStateStores,
 ): Promise<void> {
-  await migrateStateValue(
+  await migrateStateValue<VersionedAcceptedBuildMetadata>(
     stores.acceptedBuild.current,
     stores.acceptedBuild.legacy,
   );

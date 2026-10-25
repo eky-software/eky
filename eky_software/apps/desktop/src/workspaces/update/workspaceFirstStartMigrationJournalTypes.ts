@@ -1,4 +1,4 @@
-import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import type { VersionedAcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceFirstStartBuildIdentity } from './workspaceFirstStartMigrationPlanTypes.js';
 
@@ -28,7 +28,7 @@ export interface WorkspaceFirstStartMigrationJournalPort {
 }
 
 export interface WorkspaceFirstStartAcceptedBuildReader {
-  read(): Promise<Readonly<AcceptedBuildMetadata> | undefined>;
+  read(): Promise<VersionedAcceptedBuildMetadata | undefined>;
 }
 
 export type WorkspaceFirstStartMigrationRecoveryResult = Readonly<

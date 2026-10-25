@@ -93,6 +93,16 @@ export function readAcceptedBusinessBuild(value: VersionedAcceptedBuildMetadata)
     : value.acceptanceScope === 'business' ? value.acceptedBuild : undefined;
 }
 
+export function createBusinessAcceptedBuildMetadata(
+  previous: VersionedAcceptedBuildMetadata | undefined,
+  target: Readonly<AcceptedBuildMetadata>,
+): VersionedAcceptedBuildMetadata {
+  const acceptedBuild = parseAcceptedBuildMetadata(target);
+  return previous?.formatVersion === 2
+    ? Object.freeze({ formatVersion: 2, acceptanceScope: 'business', acceptedBuild, businessBaseline: acceptedBuild })
+    : acceptedBuild;
+}
+
 // This only constructs validated metadata; publication still requires the owning startup gates.
 export function createSelectorAcceptedBuildMetadata(
   previous: VersionedAcceptedBuildMetadata,

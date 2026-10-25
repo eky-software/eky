@@ -284,18 +284,37 @@ tyyppitarkistus läpäisi. Koko slot-admission, v1 -> v2 -muunnosvaltuus,
 source-null-switch ja tuotannon valitsin/FirstStart-kytkentä ovat edelleen
 erilliset toteutettavat osat. Näyttö ei sulje niitä tai koko W7.2:ta.
 
-**Hyväksyntäesityksen osaraja 25.10.2026:** nykyinen
+**Hyväksyntäesityksen ensimmäinen osaraja 25.10.2026:** nykyinen
 `acceptedBuildMetadata.ts` sisältää v1:n säilyttävän versionmukaisen parserin
 sekä erilliset sovellus-, business- ja baseline-lukuarvot. Selector ei anna
 business-hyväksyntää. Uuden selector-arvon puhdas muodostus säilyttää B:n
 toistuvissa päivityksissä ja torjuu saman tai vanhemman sovellusversion;
-se ei anna tiedoston kirjoitusvaltuutta. Nykyinen strict-v1-parseri ja
-tuotantotallennus pysyvät vielä muuttumattomina. Niiden portteja ei laajenneta
-ennen lukijoiden ja yhteisen julkaisu-/admission-järjestyksen kytkentää.
+se ei anna tiedoston kirjoitusvaltuutta. Tässä codec-osassa strict-v1-parseri
+ja tuotantotallennus säilyivät muuttumattomina.
 Rajatut metadata- ja vanhojen hyväksyntäpolkujen regressiot läpäisivät
 146 testiä kahdeksassa tiedostossa. Tyyppitarkistus ja rajattu riippumaton
 lähdekatselmus läpäisivät. Tämä ei ole uuden metadataformaatin
 tuotantojulkaisun tai ensimmäisen yritysavauksen todiste.
+
+**Lukijoiden ja FirstStartin osaraja:** tallennin tukee nyt versionmukaista
+arvoa samoissa sloteissa ja estää v2 -> v1 -kirjoituksen ennen siivousta.
+Strict-v1-parseri säilyy historiallisille kuluttajille. Alla nimetyt nykyiset
+lukijat käyttävät omia sovellus-/business-/baseline-tulkintojaan; vanhan
+sijainnin siirto säilyttää koko arvon hyväksymisaikoineen. FirstStartin uusi
+`deferredBusiness`-tila ei lainaa C:n tai Direct Setupin palautusvaltuutta,
+ei migroi itse eikä tulkitse selector-hyväksyntää yrityskäytön hyväksynnäksi.
+Se tarkistaa täsmällisen lähtömetadatan, profiilin, salaisuuden identiteetin
+ja kutsujan tuoreen valtuuden sekä julkaistun arvon takaisinluennan.
+Kadonnut kuittaus säilyttää todellisen kirjoitustilan, ei palauta metadataa
+arvaamalla. Virhepolun vieraan journalin kirjoitusyritys toistettiin ja
+estettiin regressioineen. Vanhojen business-v2:n asennuspäivitys- ja
+rollback-polkujen kontrollit säilyttävät v2-esityksen.
+Rajattu 515 testin sarja, desktop/E2E-tyypit ja lähdekatselmus läpäisivät.
+Oikea metadatatallennus on mukana, mutta profiili-, salaisuus- ja valtuusportit
+ovat injektoituja. Yhteinen slot-admission, suojattu julkaisu ja terminal-clear,
+W6:n nimetty deferred-jatko sekä todellinen startup/composition ja paketoitu
+todistus jäävät seuraaviin osiin. Korjaava store-luku ei edelleenkään ole
+admission; uusi FirstStart-tila ei vielä ole startupin käyttämä haara.
 
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 
@@ -313,8 +332,9 @@ se tarkistetaan aina yrityksen omista tavuista nykyisillä tarkistimilla.
 | W6-orchestraattori ja transition/recovery | Inventaarion lähde on B; valmistuminen vaatii business-T:n, ei pelkkää selector-A:n vastaavuutta. Registry-transitionit säilyttävät todellisen formaattiversion ja koko rekisterin tiivisteet. |
 | Packaged smoke, workspace-success/fault ja niiden jälkitarkistimet | Skenaarion oikea business-hyväksyntä ja journalin lopputila. Historiallisten pakettien strict-v1-lukuraja säilyy erillisenä. |
 
-Nykyisessä FirstStartissa täsmäävä A valitsee `normal`-haaran, joka ei
-hyväksy uutta business-versiota. Toisaalta `targetValidation`-startup valitsee
+W7.2:n aloituksessa FirstStartin täsmäävä A valitsi `normal`-haaran, joka ei
+hyväksynyt uutta business-versiota. Uusi selector-arvo torjutaan nyt vanhasta
+haarasta; nimetty deferred-jatko odottaa startup-kytkentää. `targetValidation`-startup valitsee
 W6A.3:n aktivointimigraation, jolloin sen `beforeMigrations` ohittaa
 FirstStartin vastaavan kutsun. Molempien migraatio-omistajien käynnistäminen
 ei ratkaise tätä. Sovellusadmissionia ei myöskään saa esittää virheellisesti

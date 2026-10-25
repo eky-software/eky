@@ -1,5 +1,9 @@
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
-import type { AcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import {
+  readAcceptedApplicationBuild,
+  readAcceptedBusinessBaseline,
+  type VersionedAcceptedBuildMetadata,
+} from './acceptedBuildMetadata.js';
 import {
   transitionDirectSetupMigrationRecovery,
   type DirectSetupMigrationRecovery,
@@ -12,7 +16,7 @@ import {
 
 interface PreBackendFirstStartFailureAuthorityDependencies {
   acceptedBuildStore: {
-    read(): Promise<Readonly<AcceptedBuildMetadata> | undefined>;
+    read(): Promise<VersionedAcceptedBuildMetadata | undefined>;
   };
   directSetupRecoveryStore: {
     read(): Promise<Readonly<DirectSetupMigrationRecovery> | undefined>;
@@ -77,7 +81,7 @@ export class PreBackendFirstStartFailureAuthority {
       journal === undefined ||
       (journal.state !== 'awaitingFirstStart' &&
         journal.state !== 'firstStartValidating') ||
-      !matchesIdentity(acceptedBuild, {
+      !matchesIdentity(readAcceptedApplicationBuild(acceptedBuild), {
         appVersion: journal.currentVersion,
         buildRevision: journal.currentPackageIdentity.buildRevision,
       }) ||
@@ -111,7 +115,7 @@ export class PreBackendFirstStartFailureAuthority {
       acceptedBuild === undefined ||
       (journal !== undefined &&
         (journal.state !== 'accepted' ||
-          !matchesIdentity(acceptedBuild, {
+          !matchesIdentity(readAcceptedApplicationBuild(acceptedBuild), {
             appVersion: journal.targetVersion,
             buildRevision: journal.candidatePackageIdentity.buildRevision,
           })))
@@ -124,7 +128,7 @@ export class PreBackendFirstStartFailureAuthority {
     if (
       !matchesIdentity(
         directSetupRecovery.previousAcceptedBuildIdentity,
-        acceptedBuild,
+        readAcceptedBusinessBaseline(acceptedBuild),
       ) ||
       !matchesIdentity(
         directSetupRecovery.runningTargetBuildIdentity,
