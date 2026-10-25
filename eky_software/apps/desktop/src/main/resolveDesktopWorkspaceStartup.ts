@@ -14,6 +14,7 @@ export type DesktopWorkspaceStartupResolution =
   | Readonly<{ status: 'relaunching' }>;
 
 export interface ResolveDesktopWorkspaceStartupOptions {
+  readonly assertStartupCurrent: () => void;
   readonly createRuntimeSession: () => string;
   readonly relaunchApplication: () => void;
   readonly resolveActiveWorkspace: (
@@ -25,24 +26,32 @@ export interface ResolveDesktopWorkspaceStartupOptions {
 export async function resolveDesktopWorkspaceStartup(
   options: Readonly<ResolveDesktopWorkspaceStartupOptions>,
 ): Promise<DesktopWorkspaceStartupResolution> {
+  const assertStartupCurrent = options.assertStartupCurrent.bind(options);
+  const createRuntimeSession = options.createRuntimeSession.bind(options);
+  const relaunchApplication = options.relaunchApplication.bind(options);
+  assertStartupCurrent();
+  let activeWorkspace: Readonly<ActiveWorkspaceStartupSelection> | WorkspaceSelectorStartupSelection;
   try {
-    const activeWorkspace = await options.resolveActiveWorkspace(
+    activeWorkspace = await options.resolveActiveWorkspace(
       options.userDataRoot,
     );
-    if (activeWorkspace.mode === 'selector') {
-      await activeWorkspace.assertCurrent();
-      return Object.freeze({ status: 'selector', selection: activeWorkspace });
-    }
-    return Object.freeze({
-      status: 'ready',
-      activeWorkspace,
-      runtimeSessionSecret: options.createRuntimeSession(),
-    });
   } catch (error) {
     if (error instanceof ActiveWorkspaceStartupRelaunchRequiredError) {
-      options.relaunchApplication();
+      assertStartupCurrent();
+      relaunchApplication();
       return Object.freeze({ status: 'relaunching' });
     }
     throw error;
   }
+  assertStartupCurrent();
+  if (activeWorkspace.mode === 'selector') {
+    await activeWorkspace.assertCurrent();
+    assertStartupCurrent();
+    return Object.freeze({ status: 'selector', selection: activeWorkspace });
+  }
+  return Object.freeze({
+    status: 'ready',
+    activeWorkspace,
+    runtimeSessionSecret: createRuntimeSession(),
+  });
 }

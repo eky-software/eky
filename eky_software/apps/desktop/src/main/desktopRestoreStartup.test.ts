@@ -63,6 +63,7 @@ import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistry
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
+import { ActiveWorkspaceStartupRelaunchRequiredError, resolveActiveWorkspaceStartup } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceFirstStartMigrationOrchestrator } from '../workspaces/update/workspaceFirstStartMigrationOrchestrator.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
@@ -80,6 +81,7 @@ const electronBoundary = vi.hoisted(() => ({
   portClosed: vi.fn(),
   reservationReleased: vi.fn(),
   reservationAcquired: vi.fn(),
+  loseReservation: undefined as (() => void) | undefined,
 }));
 
 const logMaintenanceIo = vi.hoisted(() => ({ deniedDirectory: '', observed: false }));
@@ -143,6 +145,7 @@ vi.mock('../runtime/workspaceProcessReservation.js', async (importOriginal) => (
   ) {
     await electronBoundary.reservationAcquired(options);
     const released = new AbortController();
+    electronBoundary.loseReservation = () => released.abort();
     return {
       identity: 'a'.repeat(64), invalidated: released.signal,
       async assertOwned() { if (released.signal.aborted) throw new Error('synthetic reservation released'); },
@@ -172,6 +175,7 @@ beforeEach(() => {
   const ownedClients: ProfileSnapshotBrokerClient[] = [];
   clients = ownedClients;
   electronBoundary.reservationAcquired.mockReset();
+  electronBoundary.loseReservation = undefined;
   electronBoundary.reservationReleased.mockReset();
   electronBoundary.removeHandler.mockReset();
   electronBoundary.handle.mockReset();
@@ -219,6 +223,77 @@ function beginTrackedStartupTest(context: TestContext) {
 }
 
 describe('selector installation-state startup wiring', () => {
+  it('does not open runtime resources after installation authority expires during preparation', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true,
+      }));
+      const prepare = WorkspaceFirstStartMigrationOrchestrator.prototype.prepareBeforeBackend;
+      vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'prepareBeforeBackend')
+        .mockImplementation(async function (this: WorkspaceFirstStartMigrationOrchestrator, input) {
+          const preparation = await prepare.call(this, input);
+          expect(electronBoundary.loseReservation).toBeTypeOf('function');
+          electronBoundary.loseReservation!();
+          return preparation;
+        });
+      await lifetime.step('startup', async () => {
+        const observe = vi.fn();
+        await expect(fixture.start(observe)).rejects.toThrow();
+        expect(observe).toHaveBeenCalledWith(expect.objectContaining({ reason: 'lost' }), 'compositionStartup', [expect.any(String)]);
+      });
+      expect(fixture.createRuntimeSession).toHaveBeenCalledOnce();
+      expect(fixture.events).toEqual([]);
+      expect(fixture.relaunch).not.toHaveBeenCalled();
+      expect(electronBoundary.fork).not.toHaveBeenCalled();
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+      expect(electronBoundary.handle).not.toHaveBeenCalled();
+      await fixture.assertRegistryUnchanged();
+      await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
+    });
+  });
+
+  it.for((['ready', 'relaunching'] as const).flatMap(outcome =>
+    (['singleInstance', 'reservation'] as const).map(lostOwner => ({ outcome, lostOwner }))))(
+    'refuses an expired installation after a $outcome workspace result ($lostOwner)', async ({ outcome, lostOwner }, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const resolve = vi.fn(async (root: string) => {
+          const selection = await resolveActiveWorkspaceStartup(root);
+          if (lostOwner === 'singleInstance') {
+            fixture.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('synthetic ownership lost'); });
+          } else {
+            expect(electronBoundary.loseReservation).toBeTypeOf('function');
+            electronBoundary.loseReservation!();
+          }
+          if (outcome === 'relaunching') throw new ActiveWorkspaceStartupRelaunchRequiredError();
+          return selection;
+        });
+        const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, resolveActiveWorkspace: resolve,
+        }));
+        const metadata = await fixture.acceptedBuild.read();
+        await lifetime.step('startup', async () => {
+          const observe = vi.fn();
+          await expect(fixture.start(observe)).rejects.toThrow(lostOwner === 'singleInstance'
+            ? 'DESKTOP_START_FAILED' : 'WORKSPACE_PROCESS_RESERVATION_FAILED');
+          expect(observe).toHaveBeenCalledWith(expect.objectContaining({ message: lostOwner === 'singleInstance'
+            ? 'synthetic ownership lost' : 'WORKSPACE_PROCESS_RESERVATION_FAILED' }), 'compositionStartup', []);
+        });
+        expect(resolve).toHaveBeenCalledOnce();
+        expect(fixture.createRuntimeSession).not.toHaveBeenCalled();
+        expect(fixture.relaunch).not.toHaveBeenCalled();
+        expect(fixture.events).toEqual([]);
+        expect(electronBoundary.fork).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        await fixture.assertRegistryUnchanged();
+        await expect(fixture.acceptedBuild.read()).resolves.toEqual(metadata);
+        await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
+        await expect(readFile(fixture.pdfPath, 'utf8')).resolves.toBe('%PDF-1.7 original pdf');
+      });
+    },
+  );
+
   it.for(['accepted', 'installerNotApplied', 'rolledBack'] as const)(
     'prepares exact terminal $0 before workspace resolution without starting business', async (state, context) => {
       const lifetime = beginTrackedStartupTest(context);

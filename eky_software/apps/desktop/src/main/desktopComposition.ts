@@ -365,6 +365,8 @@ export async function acquireDesktopWorkspaceReservation(options: {
 
   return Object.freeze({
     assertMainOwned,
+    // Repeatable installation lifetime check, not main ownership or a child grant.
+    assertInstallationCurrent: assertMainInstance,
     assertMainCurrent() {
       assertMainInstance();
       if (active !== undefined || held === undefined) throw fail();
@@ -553,6 +555,7 @@ export async function startDesktopComposition(
   const assertStartupAuthority = () => {
     if (!startupActive) throw new WorkspaceProcessReservationError('lost');
     options.assertSingleInstanceOwnership();
+    reservation?.assertInstallationCurrent();
   };
   const workspaceMaintenanceLease = new InMemoryWorkspaceMaintenanceLease();
 
@@ -683,6 +686,7 @@ export async function startDesktopComposition(
       });
     await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution();
     const workspaceStartup = await resolveDesktopWorkspaceStartup({
+      assertStartupCurrent: assertStartupAuthority,
       createRuntimeSession: dependencies.createRuntimeSession,
       relaunchApplication: options.relaunchApplication,
       resolveActiveWorkspace: dependencies.resolveActiveWorkspace,
@@ -736,6 +740,7 @@ export async function startDesktopComposition(
       } }),
     });
     await rollbackAdmission?.assertCurrent();
+    assertStartupAuthority();
     const lifecycle = await startDesktopCompositionRuntime({
       activeWorkspace,
       backendRoot,

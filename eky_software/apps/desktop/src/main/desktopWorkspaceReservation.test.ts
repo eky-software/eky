@@ -77,6 +77,49 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); });
 
 describe('desktop composition workspace reservation owner', () => {
+  it('keeps installation validity repeatable without granting main ownership or consuming a child grant', async () => {
+    const f = await fixture();
+    const assertRepeatable = () => {
+      f.owner.assertInstallationCurrent();
+      f.owner.assertInstallationCurrent();
+    };
+    assertRepeatable();
+    expect(() => f.owner.assertMainCurrent()).toThrow();
+    await f.transfer.prepare(f.signal.signal);
+    assertRepeatable();
+    await f.transfer.assertGrant(f.signal.signal);
+    assertRepeatable();
+    f.transfer.assertCurrent();
+    assertRepeatable();
+    await expect(f.owner.assertMainOwned()).rejects.toThrow();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    assertRepeatable();
+    await f.owner.assertMainOwned();
+    const close = f.owner.close();
+    expect(() => f.owner.assertInstallationCurrent()).toThrow();
+    await close;
+    expect(() => f.owner.assertInstallationCurrent()).toThrow();
+  });
+
+  it.each(['heldLoss', 'invalidatedTransfer', 'singleInstance'] as const)(
+    'does not restore installation validity after %s', async mode => {
+      const f = await fixture();
+      if (mode === 'heldLoss') {
+        await f.transfer.reclaimAfterExit(f.signal.signal);
+        f.initial.loss.abort();
+      } else {
+        await f.transfer.prepare(f.signal.signal);
+        await f.transfer.assertGrant(f.signal.signal);
+        f.transfer.assertCurrent();
+        if (mode === 'invalidatedTransfer') f.transfer.invalidate();
+        else f.assertSingleInstanceOwnership.mockImplementationOnce(() => { throw new Error('lost'); });
+      }
+      expect(() => f.owner.assertInstallationCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => f.owner.assertInstallationCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(f.owner.assertMainOwned()).rejects.toThrow();
+    },
+  );
+
   it('prepares owned inspection work before releasing the existing reservation', async () => {
     let f!: Awaited<ReturnType<typeof fixture>>;
     const prepare = vi.fn(async (signal: AbortSignal) => {

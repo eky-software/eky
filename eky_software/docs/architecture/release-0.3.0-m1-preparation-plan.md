@@ -197,6 +197,17 @@ native-/paketoitua ketjua.
 
 **Seuraava työ:** ensimmäisen yritysavauksen kytkentä
 nykyisiin FirstStart- ja W6-valtuuksiin.
+Mainin käynnistyksen voimassaolo on nyt sidottu nykyisen varausomistajan
+elinkaareen myös hallitun lapsisiirron aikana. Yritysvalinnan myöhäinen
+tulos ei ohita tätä tarkistusta session, relaunchin tai runtime-resurssien
+avauksessa. Fyysinen varaus, kertakäyttöinen työlupa ja palautuksen
+päättymistodiste säilyvät erillisinä vaatimuksina
+[desktopin omistajasopimuksessa](local-desktop-implementation-plan.md#prosessivarauksen-adapteri-r18).
+Tämän kytkennän kuuden tiedoston kohdesarja läpäisi 323 testiä. Viimeisen
+testiadapterin paluuarvokorjauksen jälkeen kohdekoe sekä desktopin,
+Electron-koetoteutuksen ja E2E:n tyyppitarkistukset läpäisivät. Rajattu
+riippumaton katselmus ei jättänyt avoimia P1/P2-havaintoja. Tämä on
+käynnistysvaltuuden osatodiste, ei native- tai pakettihyväksyntä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.
 W6:n nimetty jatko tarvitsee vielä startup-omistajan todellisen kutsun,

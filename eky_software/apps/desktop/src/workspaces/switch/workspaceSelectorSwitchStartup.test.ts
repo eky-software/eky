@@ -114,6 +114,7 @@ it.for(['ready', 'empty', 'recoveryOnly'] as const)(
     const createRuntimeSession = vi.fn();
     const before = await f.snapshot();
     const startup = await resolveDesktopWorkspaceStartup({
+      assertStartupCurrent: f.assertCurrent,
       createRuntimeSession, relaunchApplication: vi.fn(), resolveActiveWorkspace: f.resolve, userDataRoot: f.root,
     });
     expect(startup).toMatchObject({ status: 'selector', selection: { registry } });
@@ -329,6 +330,7 @@ it('does not create a business session when a selector selection expires before 
   await f.setJournal({});
   const createRuntimeSession = vi.fn();
   await expect(resolveDesktopWorkspaceStartup({
+    assertStartupCurrent: f.assertCurrent,
     createRuntimeSession, relaunchApplication: vi.fn(), userDataRoot: f.root,
     async resolveActiveWorkspace() { const result = await f.resolve(); f.current = false; return result; },
   })).rejects.toThrow();
