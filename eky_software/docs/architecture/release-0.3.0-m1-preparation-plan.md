@@ -69,8 +69,14 @@ Näyttö ei ole backendittoman compositionin, SQLite/Electron-ketjun,
 paketoidun palautuksen tai W7.2:n PR/main-hyväksyntä. Vanhojen ja uusien
 päällekkäisten kohdesarjojen määriä ei lasketa yhteen.
 
-**Seuraava työ:** hyväksytyn sovellusbuildin ja viimeisen business-hyväksynnän
-versionmukainen esitys nykyisissä metadataomistajissa ja niiden lukijoissa,
+**Metadatan osaraja:** versionmukainen arvo ja erilliset sovellus-/business-/
+baseline-lukutulkinnat on toteutettu nykyiseen omistajaan. Uusi selector-arvo
+säilyttää business-baselinen eikä ole yrityskäytön hyväksyntä. Rajatut
+146 testiä, tyyppitarkistus ja rajattu riippumaton katselmus läpäisivät;
+vanha strict-v1-tallennus ei vielä julkaise uutta arvoa.
+
+**Seuraava työ:** hyväksynnän nykyisten kutsujien versionmukainen kytkentä,
+yhteinen metadata-/journal-/registry-admission ja suojattu julkaisu;
 sitten valitsimen ja ensimmäisen yritysavauksen kytkentä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStart ja W6 tarvitsevat nimetyt lykätyn business-hyväksynnän haarat,

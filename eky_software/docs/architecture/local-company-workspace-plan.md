@@ -284,6 +284,19 @@ tyyppitarkistus läpäisi. Koko slot-admission, v1 -> v2 -muunnosvaltuus,
 source-null-switch ja tuotannon valitsin/FirstStart-kytkentä ovat edelleen
 erilliset toteutettavat osat. Näyttö ei sulje niitä tai koko W7.2:ta.
 
+**Hyväksyntäesityksen osaraja 25.10.2026:** nykyinen
+`acceptedBuildMetadata.ts` sisältää v1:n säilyttävän versionmukaisen parserin
+sekä erilliset sovellus-, business- ja baseline-lukuarvot. Selector ei anna
+business-hyväksyntää. Uuden selector-arvon puhdas muodostus säilyttää B:n
+toistuvissa päivityksissä ja torjuu saman tai vanhemman sovellusversion;
+se ei anna tiedoston kirjoitusvaltuutta. Nykyinen strict-v1-parseri ja
+tuotantotallennus pysyvät vielä muuttumattomina. Niiden portteja ei laajenneta
+ennen lukijoiden ja yhteisen julkaisu-/admission-järjestyksen kytkentää.
+Rajatut metadata- ja vanhojen hyväksyntäpolkujen regressiot läpäisivät
+146 testiä kahdeksassa tiedostossa. Tyyppitarkistus ja rajattu riippumaton
+lähdekatselmus läpäisivät. Tämä ei ole uuden metadataformaatin
+tuotantojulkaisun tai ensimmäisen yritysavauksen todiste.
+
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 
 `A` tarkoittaa hyväksyttyä sovellusbuildia ja `B` viimeistä business-
