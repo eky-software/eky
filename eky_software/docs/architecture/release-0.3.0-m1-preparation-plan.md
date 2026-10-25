@@ -86,9 +86,16 @@ C-journalin kaikkien slottien sivuvaikutukseton tarkastus sekä C-journalin
 täsmälliseen tiedostovalintaan sidottu poisto. Sen 219 testin vaikutusalueen
 sarja, desktop/E2E-tyypit ja rajattu riippumaton katselmus läpäisivät. Rajapintoja ei
 vielä käytetä startupissa, eikä slottihavainto yksin anna muutosvaltuutta.
+Metadatan vastaava valintaan sidottu kirjoitus ja poisto ovat nyt toteutettuina:
+ne säilyttävät keskeytyneet tavut ja alkuperäisen syyn myös sulkuvirheessä.
+Vaikutusalueen 587 testiä 28 tiedostossa, desktop/E2E-tyypit ja rajatun
+katselmuksen jälkitarkistus läpäisivät. Päällekkäisiä kohdesarjoja ei lasketa
+yhteen. Tämä ei vielä ole oikean SQLite/Electron-käynnistyksen tai paketoidun
+palautuksen näyttö.
 
-**Seuraava työ:** yhteinen metadata-/journal-/registry-admission ja suojattu
-julkaisu sekä metadatan valintaan sidottu siivous ennen korjaavia lukuja;
+**Seuraava työ:** yhteinen metadata-/journal-/registry-admission ja
+suojattujen muutosten kutsujakytkentä
+ennen korjaavia lukuja;
 sitten W6:n nimetty jatko sekä valitsimen
 ja ensimmäisen yritysavauksen kytkentä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.

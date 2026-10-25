@@ -1,4 +1,5 @@
-import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm } from 'node:fs/promises';
+import { chmod, lstat, mkdir, open, readFile, realpath, rename, rm, unlink } from 'node:fs/promises';
+import type { FileHandle } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, resolve } from 'node:path';
 
 import { readOnlyJournalSlots, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
@@ -7,9 +8,17 @@ import { parseVersionedAcceptedBuildMetadata, type VersionedAcceptedBuildMetadat
 export const acceptedBuildMetadataFileName = 'accepted-build-v1.json';
 const maximumBytes = 4 * 1024;
 
+export interface AcceptedBuildMetadataSelection {
+  readonly expectedBytes: Uint8Array | undefined;
+  assertAuthority(): void;
+}
+
+type SelectedSlots = Record<'current' | 'next' | 'backup', Buffer | undefined>;
+
 export class AcceptedBuildMetadataStore {
   private readonly backupPath: string;
   private readonly nextPath: string;
+  private activeOperation = false;
 
   constructor(private readonly filePath: string) {
     if (!isAbsolute(filePath) || filePath.includes('\0') ||
@@ -20,7 +29,11 @@ export class AcceptedBuildMetadataStore {
     this.nextPath = `${filePath}.next`;
   }
 
-  async inspectSlots(): Promise<ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>> {
+  inspectSlots(): Promise<ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>> {
+    return this.runExclusive(() => this.inspectStoredSlots());
+  }
+
+  private async inspectStoredSlots(): Promise<ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>> {
     try {
       return await readOnlyJournalSlots<VersionedAcceptedBuildMetadata>({
         currentPath: this.filePath, nextPath: this.nextPath, backupPath: this.backupPath,
@@ -30,7 +43,11 @@ export class AcceptedBuildMetadataStore {
     }
   }
 
-  async read(): Promise<VersionedAcceptedBuildMetadata | undefined> {
+  read(): Promise<VersionedAcceptedBuildMetadata | undefined> {
+    return this.runExclusive(() => this.readStored());
+  }
+
+  private async readStored(): Promise<VersionedAcceptedBuildMetadata | undefined> {
     const current = await readMetadata(this.filePath);
     if (current !== undefined) {
       await this.removeRecoverySlots();
@@ -52,8 +69,15 @@ export class AcceptedBuildMetadataStore {
     return undefined;
   }
 
-  async write(metadata: VersionedAcceptedBuildMetadata): Promise<void> {
+  async write(metadata: VersionedAcceptedBuildMetadata, selection?: AcceptedBuildMetadataSelection): Promise<void> {
     const validated = parseVersionedAcceptedBuildMetadata(metadata);
+    const captured = selection === undefined ? undefined : captureSelection(selection);
+    return this.runExclusive(() => captured === undefined
+      ? this.writeStored(validated)
+      : this.writeSelected(validated, captured));
+  }
+
+  private async writeStored(validated: VersionedAcceptedBuildMetadata): Promise<void> {
     // Check before any repair or cleanup: a version downgrade must preserve all slots.
     if (validated.formatVersion === 1) {
       for (const path of [this.filePath, this.backupPath, this.nextPath]) {
@@ -89,7 +113,11 @@ export class AcceptedBuildMetadataStore {
     finally { await rm(this.nextPath, { force: true }).catch(() => undefined); }
   }
 
-  async clear(): Promise<void> {
+  clear(): Promise<void> {
+    return this.runExclusive(() => this.clearStored());
+  }
+
+  private async clearStored(): Promise<void> {
     const results = await Promise.allSettled([
       rm(this.filePath, { force: true }),
       rm(this.nextPath, { force: true }),
@@ -101,6 +129,126 @@ export class AcceptedBuildMetadataStore {
     await syncDirectory(dirname(this.filePath));
   }
 
+  async clearSelected(selection: AcceptedBuildMetadataSelection): Promise<void> {
+    const captured = captureSelection(selection);
+    if (captured.expectedBytes === undefined) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+    return this.runExclusive(async () => {
+      const selected: SelectedSlots = { current: captured.expectedBytes, next: undefined, backup: undefined };
+      try {
+        await this.assertSelectedSlots(selected, captured.assertAuthority);
+        captured.assertAuthority();
+        await unlink(this.filePath);
+        selected.current = undefined;
+        captured.assertAuthority();
+        await syncDirectory(dirname(this.filePath), true);
+        captured.assertAuthority();
+        await this.assertSelectedSlots(selected, captured.assertAuthority);
+      } catch (error) { throw selectedMutationError(error); }
+    });
+  }
+
+  private async writeSelected(
+    validated: VersionedAcceptedBuildMetadata,
+    selection: ReturnType<typeof captureSelection>,
+  ): Promise<void> {
+    const { assertAuthority } = selection;
+    const selected: SelectedSlots = { current: selection.expectedBytes, next: undefined, backup: undefined };
+    const content = Buffer.from(`${JSON.stringify(validated)}\n`, 'utf8');
+    if (content.byteLength > maximumBytes) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+    const directory = dirname(this.filePath);
+    try {
+      await this.assertSelectedSlots(selected, assertAuthority);
+      if (validated.formatVersion === 1 && selected.current !== undefined &&
+          parseVersionedAcceptedBuildMetadata(JSON.parse(new TextDecoder('utf-8', { fatal: true })
+            .decode(selected.current))).formatVersion === 2) {
+        throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+      }
+      assertAuthority();
+      await mkdir(directory, { mode: 0o700, recursive: true });
+      assertAuthority();
+      await chmod(directory, 0o700);
+      assertAuthority();
+      await assertPrivateDirectory(directory);
+      await this.assertSelectedSlots(selected, assertAuthority);
+      assertAuthority();
+      const file = await open(this.nextPath, 'wx', 0o600);
+      await settleOwnedFile(file, async () => {
+        assertAuthority();
+        await file.writeFile(content);
+        assertAuthority();
+        await file.sync();
+        assertAuthority();
+      });
+      selected.next = content;
+      await this.assertSelectedSlots(selected, assertAuthority);
+      if (selected.current !== undefined) {
+        assertAuthority();
+        await rename(this.filePath, this.backupPath);
+        selected.backup = selected.current;
+        selected.current = undefined;
+        await this.assertSelectedSlots(selected, assertAuthority);
+      }
+      assertAuthority();
+      await rename(this.nextPath, this.filePath);
+      selected.current = content;
+      selected.next = undefined;
+      assertAuthority();
+      await syncDirectory(directory, true);
+      await this.assertSelectedSlots(selected, assertAuthority);
+      if (selected.backup !== undefined) {
+        assertAuthority();
+        await unlink(this.backupPath);
+        selected.backup = undefined;
+        assertAuthority();
+        await syncDirectory(directory, true);
+      }
+      await this.assertSelectedSlots(selected, assertAuthority);
+    } catch (error) {
+      // Interrupted slots belong to admission/recovery. A lost acknowledgement
+      // must not restore an old acceptance or delete unexplained evidence.
+      throw selectedMutationError(error);
+    }
+  }
+
+  private async assertSelectedSlots(selected: SelectedSlots, assertAuthority: () => void): Promise<void> {
+    const paths = { current: this.filePath, next: this.nextPath, backup: this.backupPath };
+    const names = ['current', 'next', 'backup'] as const;
+    const before: Record<typeof names[number], Awaited<ReturnType<typeof lstat>> | undefined> = {
+      current: undefined, next: undefined, backup: undefined,
+    };
+    assertAuthority();
+    for (const slot of names) {
+      before[slot] = await optionalFileStat(paths[slot]);
+      assertAuthority();
+    }
+    const actual = await this.inspectStoredSlots();
+    assertAuthority();
+    for (const slot of names) {
+      const expected = selected[slot];
+      const bytes = actual[slot]?.bytes;
+      if (expected === undefined ? bytes !== undefined : bytes === undefined || !expected.equals(bytes)) {
+        throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+      }
+      const after = await optionalFileStat(paths[slot]);
+      assertAuthority();
+      const prior = before[slot];
+      if (expected === undefined ? prior !== undefined || after !== undefined :
+        prior === undefined || after === undefined || !after.isFile() || after.isSymbolicLink() || after.nlink !== 1 ||
+        prior.dev !== after.dev || prior.ino !== after.ino || prior.size !== after.size ||
+        prior.mtimeMs !== after.mtimeMs || prior.ctimeMs !== after.ctimeMs) {
+        throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+      }
+    }
+    assertAuthority();
+  }
+
+  private async runExclusive<T>(operation: () => Promise<T>): Promise<T> {
+    if (this.activeOperation) throw new Error('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
+    this.activeOperation = true;
+    try { return await operation(); }
+    finally { this.activeOperation = false; }
+  }
+
   private async removeRecoverySlots(): Promise<void> {
     const results = await Promise.allSettled([
       rm(this.nextPath, { force: true }), rm(this.backupPath, { force: true }),
@@ -108,6 +256,38 @@ export class AcceptedBuildMetadataStore {
     if (results.some((result) => result.status === 'rejected')) {
       throw new Error('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
     }
+  }
+}
+
+function captureSelection(selection: AcceptedBuildMetadataSelection) {
+  if ((selection.expectedBytes !== undefined && (!(selection.expectedBytes instanceof Uint8Array) ||
+      selection.expectedBytes.byteLength < 1 || selection.expectedBytes.byteLength > maximumBytes)) ||
+      typeof selection.assertAuthority !== 'function') {
+    throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+  }
+  const authority = selection.assertAuthority;
+  return {
+    expectedBytes: selection.expectedBytes === undefined ? undefined : Buffer.from(selection.expectedBytes),
+    assertAuthority() {
+      const result: unknown = authority();
+      if (result !== undefined) {
+        void Promise.resolve(result).catch(() => undefined);
+        throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+      }
+    },
+  };
+}
+
+function selectedMutationError(error: unknown): Error {
+  return error instanceof Error && error.message === 'ACCEPTED_BUILD_METADATA_INVALID'
+    ? error : new Error('ACCEPTED_BUILD_METADATA_UNAVAILABLE', { cause: error });
+}
+
+async function optionalFileStat(path: string): Promise<Awaited<ReturnType<typeof lstat>> | undefined> {
+  try { return await lstat(path); }
+  catch (error) {
+    if (isNodeError(error) && error.code === 'ENOENT') return undefined;
+    throw error;
   }
 }
 
@@ -138,10 +318,27 @@ async function assertPrivateDirectory(path: string): Promise<void> {
   }
 }
 
-async function syncDirectory(path: string): Promise<void> {
+async function syncDirectory(path: string, preserveFirstFailure = false): Promise<void> {
   if (process.platform === 'win32') return;
   const directory = await open(path, 'r');
+  if (preserveFirstFailure) return settleOwnedFile(directory, () => directory.sync());
   try { await directory.sync(); } finally { await directory.close(); }
+}
+
+async function settleOwnedFile(file: FileHandle, operation: () => Promise<void>): Promise<void> {
+  let firstFailure: { error: unknown } | undefined;
+  try { await operation(); }
+  catch (error) { firstFailure = { error }; }
+  try { await file.close(); }
+  catch (error) {
+    if (firstFailure !== undefined) {
+      throw new AggregateError([firstFailure.error, error], 'ACCEPTED_BUILD_METADATA_UNAVAILABLE', {
+        cause: firstFailure.error,
+      });
+    }
+    throw error;
+  }
+  if (firstFailure !== undefined) throw firstFailure.error;
 }
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {

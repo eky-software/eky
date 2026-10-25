@@ -325,9 +325,32 @@ identiteetti ja tuore synkroninen valtuus tarkistetaan ennen vain currentin
 poistoa. Synkronointi ja takaisinluku kuuluvat kuittaukseen. Epäonnistunut
 kuittaus ei todista vanhan journalin säilymistä eikä onnistunutta siivousta;
 uutta aineistoa ei poisteta samalla valtuudella. Näiden 219 testin vaikutusalueen
-sarja, tyypit ja rajattu riippumaton katselmus läpäisivät. Startup- ja legacy-kytkentä,
-metadatan vastaava suoja sekä yhteinen admission ovat vielä tekemättä.
+sarja, tyypit ja rajattu riippumaton katselmus läpäisivät. Startup- ja legacy-kytkentä
+sekä yhteinen admission ovat vielä tekemättä.
 Nykyisiä ehdottomia store-kutsuja ei nimetä uuden haaran poistovaltuudeksi.
+
+Metadatan `write(value, selection)` ja `clearSelected(selection)` sitovat
+muutoksen täsmällisiin valittuihin tavuihin ja tuoreeseen synkroniseen
+valtuuteen saman tallentimen sarjallistuksen sisällä. Kirjoituksen nimenomainen
+puuttuva lähtöarvo vaatii kaikkien slottien poissaolon; se ei todista tyhjää
+asennusta. Tiedostoidentiteetti, odotetut current/next/backup-tavut ja valtuus
+tarkistetaan ennen julkaisusiirtoja ja poistoja. Vanhojen kutsujen
+tiedostokäyttäytyminen säilyy, mutta saman tallentimen päällekkäiset operaatiot
+hylätään. Installation-varaus ja muiden kirjoittajien poissaolo kuuluvat
+edelleen kutsujalle, eivät tämän paikallisen sarjallistuksen lupaukseen.
+
+Valintaan sidottu kirjoitus säilyttää keskeytyneet slotit palautusadmissionille:
+virhekuittaus ei palauta vanhaa hyväksyntää tai poista epäselvää aineistoa.
+Tiedosto- ja hakemistosynkronoinnin alkuperäinen virhe säilyy myös sulun
+epäonnistuessa, ja omistetun kahvan sulun päättyminen odotetaan ennen
+tallenninoperaation vapautumista. Raakaa syyketjua ei julkaista.
+Kohderegressiot käyttävät oikeita synteettisiä metadatatavuja;
+hakemistosynkronoinnin kaksoisvirhe on mallinnettu, ei erillinen
+Linux-käyttöjärjestelmän tai sähkökatkon todiste. Vaikutusalueen 587 testiä
+28 tiedostossa, desktop/E2E-tyypit ja rajattu katselmus jälkitarkistuksineen
+läpäisivät. Tämä rajapinta ei vielä
+kytke suojattua julkaisua FirstStartiin, legacy-siirtoon tai valitsimeen;
+yhteinen admission ja sen jälkeinen tuore kutsujavaltuus ovat seuraava työ.
 
 #### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
 
