@@ -8,7 +8,14 @@ const cases = operations.flatMap(operation => [
   { operation, errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', stage: 'operation', retryable: false },
   { operation, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'operation', retryable: true },
   { operation, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'admission', retryable: true },
-]).concat([{ operation: 'replace', errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck', retryable: false }]);
+]).concat([
+  { operation: 'replace', errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck', retryable: false },
+  { operation: 'create', errorCode: 'WORKSPACE_CREATION_LABEL_EXISTS', stage: 'operation', retryable: false },
+  { operation: 'import', errorCode: 'WORKSPACE_IMPORT_LABEL_EXISTS', stage: 'operation', retryable: false },
+  ...['create', 'import', 'rename'].map(operation => ({
+    operation, errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS', stage: 'operation', retryable: false,
+  })),
+]);
 
 describe('strict workspace management response projection', () => {
   it.each(cases)('revalidates $operation $errorCode at $stage', entry => {
@@ -41,6 +48,13 @@ describe('strict workspace management response projection', () => {
       { fingerprint: 'synthetic-fingerprint' }, { cipherName: 'synthetic-cipher' },
       { recoveryPointKind: 'daily' }, { smtpProfile: 'dnaSmtp' }, { companyId: 'synthetic-company' },
       { rawError: 'synthetic-private' }, { path: '/synthetic/private' },
+      { workspaceLabel: 'Synthetic' }, { workspaceId: 'synthetic-workspace-id' },
+      { message: 'synthetic-private' }, { errorCode: 'WORKSPACE_LABEL_EXISTS' },
+      ...(entry.errorCode.endsWith('_LABEL_EXISTS')
+        ? [{ stage: 'admission' }, { stage: 'lineageCheck' },
+          ...operations.filter(operation => entry.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
+            ? operation === 'replace' || operation === 'switch' : operation !== entry.operation)
+            .map(operation => ({ operationId: `workspace.${operation}` }))] : []),
       ...(entry.errorCode.endsWith('_FAILED') || entry.stage === 'lineageCheck'
         ? [{ operationId: `workspace.${entry.operation === 'create' ? 'replace' : 'create'}` }, { stage: 'admission' }] : []),
     ]) expect(() => read({ ...event, ...change })).toThrow('Invalid diagnostics response.');

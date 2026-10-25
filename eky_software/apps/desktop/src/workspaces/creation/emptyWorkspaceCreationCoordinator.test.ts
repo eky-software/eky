@@ -124,6 +124,7 @@ describe('empty workspace creation coordinator', () => {
       'journal.write.bootstrapCompleted',
       'root.inspectCandidate',
       'journal.write.candidateValidated',
+      'registry.read',
       'root.publishCandidate',
       'journal.write.rootPublished',
       'root.cleanupPublishedOperation',
@@ -179,7 +180,7 @@ describe('empty workspace creation coordinator', () => {
     });
   });
 
-  it('allows duplicate labels while keeping workspace and lineage identities unique', async () => {
+  it('rejects duplicate labels before stopping the runtime or creating a candidate', async () => {
     const existing = createRegistryEntry(
       TEST_WORKSPACE_ID,
       'Sama nimi',
@@ -194,22 +195,39 @@ describe('empty workspace creation coordinator', () => {
     });
     fixture.bootstrap.result = createTestBootstrapResult('c', '2');
 
-    await expect(fixture.coordinator.create('Sama nimi')).resolves.toEqual({
-      workspaceId: TEST_SECOND_WORKSPACE_ID,
-      workspaceLabel: 'Sama nimi',
+    await expect(fixture.coordinator.create('SAMA\u00a0NIMI')).rejects.toMatchObject({
+      code: 'WORKSPACE_CREATION_LABEL_EXISTS',
+      stage: 'inputValidation',
     });
-    expect(
-      new Set(
-        fixture.registry.value?.workspaces.map((entry) => entry.workspaceId),
-      ).size,
-    ).toBe(2);
-    expect(
-      new Set(
-        fixture.registry.value?.workspaces.map(
-          (entry) => entry.lineageIdentity.profileId,
-        ),
-      ).size,
-    ).toBe(2);
+    expect(fixture.registry.value?.workspaces).toEqual([existing]);
+    expect(fixture.events).not.toContain('lifecycle.quiesce');
+    expect(fixture.events).not.toContain('bootstrap.run');
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.rootStore.candidateExists).toBe(false);
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it('rechecks the name against the fresh registry before root publication', async () => {
+    const existing = createRegistryEntry(TEST_WORKSPACE_ID, 'Previous', 'b');
+    const fixture = createFixture({
+      registry: createTestRegistry({ activeWorkspaceId: TEST_WORKSPACE_ID, workspaces: [existing] }),
+      workspaceId: TEST_SECOND_WORKSPACE_ID,
+    });
+    fixture.bootstrap.result = createTestBootstrapResult('c', '2');
+    const competing = createRegistryEntry('00000000-0000-4000-8000-000000000099' as WorkspaceId, 'NEW  NAME', 'd');
+    const inspect = fixture.rootStore.inspectCandidate.bind(fixture.rootStore);
+    vi.spyOn(fixture.rootStore, 'inspectCandidate').mockImplementationOnce(async (paths) => {
+      await inspect(paths);
+      fixture.registry.value = createTestRegistry({ activeWorkspaceId: TEST_WORKSPACE_ID, workspaces: [existing, competing] });
+    });
+
+    await expect(fixture.coordinator.create('New Name')).rejects.toMatchObject({ code: 'WORKSPACE_CREATION_LABEL_EXISTS' });
+    expect(fixture.registry.value?.workspaces).toEqual([existing, competing]);
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.events).not.toContain('root.publishCandidate');
+    expect(fixture.rootStore.candidateExists).toBe(false);
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
   });
 
   it('rejects an invalid label before acquiring the maintenance lease', async () => {

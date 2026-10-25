@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import type { EkyDesktopApi } from './desktopBridge.js';
-import { getDesktopWorkspaceManagement } from './desktopWorkspaceManagement.js';
+import {
+  getDesktopWorkspaceManagement,
+  isWorkspaceLabelExistsError,
+} from './desktopWorkspaceManagement.js';
 
 const activeWorkspaceId = '11111111-1111-4111-8111-111111111111';
 const otherWorkspaceId = '22222222-2222-4222-8222-222222222222';
@@ -275,6 +278,94 @@ describe('desktop workspace management bridge', () => {
     });
 
     await expect(capability?.getStatus()).resolves.toEqual(duplicateLabels);
+  });
+
+  it('accepts only referenced duplicate ids and freezes its own projection', async () => {
+    const ids = [activeWorkspaceId, otherWorkspaceId];
+    const capability = getDesktopWorkspaceManagement({
+      ekyDesktop: createDesktopApi({
+        getWorkspaceManagementStatus: async () => ({
+          ...status, duplicateWorkspaceLabelIds: ids,
+        }),
+      }),
+    })!;
+    const projected = await capability.getStatus();
+
+    expect(projected.duplicateWorkspaceLabelIds).toEqual(ids);
+    expect(Object.isFrozen(projected.duplicateWorkspaceLabelIds)).toBe(true);
+    ids.pop();
+    expect(projected.duplicateWorkspaceLabelIds).toEqual([activeWorkspaceId, otherWorkspaceId]);
+    expect(projected.workspaces).toEqual(status.workspaces);
+  });
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['not an array', activeWorkspaceId],
+    ['empty list', []],
+    ['single entry', [activeWorkspaceId]],
+    ['duplicate id', [activeWorkspaceId, activeWorkspaceId]],
+    ['unknown id', [activeWorkspaceId, '33333333-3333-4333-8333-333333333333']],
+    ['invalid id', [activeWorkspaceId, 'invalid']],
+    ['sparse list', new Array(2)],
+    ['over budget', new Array(65).fill(activeWorkspaceId)],
+  ])('rejects duplicate metadata: %s', async (_name, duplicateWorkspaceLabelIds) => {
+    const capability = getDesktopWorkspaceManagement({
+      ekyDesktop: createDesktopApi({
+        getWorkspaceManagementStatus: async () => ({
+          ...status, duplicateWorkspaceLabelIds,
+        }),
+      }),
+    })!;
+
+    await expect(capability.getStatus()).rejects.toThrow('Invalid workspace management status.');
+  });
+
+  it.each(['create', 'import', 'rename'] as const)(
+    'preserves the %s conflict for the safe error presenter', async (operation) => {
+      const conflict = new Error('WORKSPACE_MANAGEMENT_LABEL_EXISTS');
+      const fail = vi.fn(async () => { throw conflict; });
+      const capability = getDesktopWorkspaceManagement({
+        ekyDesktop: createDesktopApi({
+          createEmptyWorkspace: fail,
+          importWorkspaceBackupAsNew: fail,
+          renameWorkspace: fail,
+        }),
+      })!;
+      const result = operation === 'create'
+        ? capability.createEmpty('Yritys')
+        : operation === 'import'
+          ? capability.importBackupAsNew('Yritys')
+          : capability.rename(otherWorkspaceId, 'Yritys');
+
+      await expect(result).rejects.toBe(conflict);
+      expect(isWorkspaceLabelExistsError(conflict)).toBe(true);
+      expect(fail).toHaveBeenCalledOnce();
+    },
+  );
+});
+
+describe('isWorkspaceLabelExistsError', () => {
+  it.each(['create-empty', 'import-backup-as-new', 'rename'])(
+    'accepts the exact Electron %s wrapper', (operation) => {
+      expect(isWorkspaceLabelExistsError(new Error(
+        `Error invoking remote method 'eky:workspace-management:v1:${operation}': Error: WORKSPACE_MANAGEMENT_LABEL_EXISTS`,
+      ))).toBe(true);
+    },
+  );
+
+  it.each([
+    undefined,
+    'WORKSPACE_MANAGEMENT_LABEL_EXISTS',
+    { message: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' },
+    new Error('WORKSPACE_MANAGEMENT_LABEL_EXISTS details must not leak'),
+    new Error('prefix WORKSPACE_MANAGEMENT_LABEL_EXISTS'),
+    new Error('WORKSPACE_CREATION_LABEL_EXISTS'),
+    new Error("Error invoking remote method 'eky:workspace-management:v1:switch': Error: WORKSPACE_MANAGEMENT_LABEL_EXISTS"),
+    new Error("Error invoking remote method 'eky:workspace-management:v2:rename': Error: WORKSPACE_MANAGEMENT_LABEL_EXISTS"),
+    new Error('Unknown failure'),
+  ])('rejects an unrecognized error %#', (error) => {
+    expect(isWorkspaceLabelExistsError(error)).toBe(false);
   });
 });
 

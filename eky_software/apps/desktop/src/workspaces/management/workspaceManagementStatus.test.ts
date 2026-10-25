@@ -57,6 +57,78 @@ describe('workspace management status', () => {
     ).toBe('recoveryRequired');
   });
 
+  it('projects historical name conflicts across ready and recovery entries without changing labels', () => {
+    const original = createRegistry();
+    const labels = ['Yritys  A', 'yritys\u00a0a'];
+    const registry = {
+      ...original,
+      workspaces: original.workspaces.map((entry, index) => ({
+        ...entry,
+        workspaceLabel: labels[index]!,
+      })),
+    };
+    const before = JSON.stringify(registry);
+    const status = createWorkspaceManagementStatus({
+      maintenanceState: 'idle',
+      operationRecoveryRequired: false,
+      registry,
+    });
+
+    expect(status.duplicateWorkspaceLabelIds).toEqual([activeId, inactiveId]);
+    expect(Object.isFrozen(status.duplicateWorkspaceLabelIds)).toBe(true);
+    expect(status.workspaces.map((entry) => entry.workspaceLabel)).toEqual(labels);
+    expect(status.workspaces.map((entry) => entry.availability)).toEqual([
+      'ready', 'recoveryRequired',
+    ]);
+    expect(status.operationState).toBe('idle');
+    expect(JSON.stringify(registry)).toBe(before);
+  });
+
+  it('keeps a historical status without duplicate metadata readable', () => {
+    const value = createStatusInput();
+    (value.workspaces as Record<string, unknown>[])[1]!.workspaceLabel = 'Yritys A';
+    const status = parseWorkspaceManagementStatus(value);
+
+    expect(status.workspaces).toHaveLength(2);
+    expect(Object.hasOwn(status, 'duplicateWorkspaceLabelIds')).toBe(false);
+  });
+
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['not an array', activeId],
+    ['empty list', []],
+    ['single entry', [activeId]],
+    ['duplicate id', [activeId, activeId]],
+    ['unknown id', [activeId, workspaceId(3)]],
+    ['invalid id', [activeId, 'invalid']],
+    ['sparse list', new Array(2)],
+    ['over budget', new Array(65).fill(activeId)],
+  ])('rejects duplicate metadata: %s', (_name, duplicateWorkspaceLabelIds) => {
+    expectInvalid(() => parseWorkspaceManagementStatus({
+      ...createStatusInput(), duplicateWorkspaceLabelIds,
+    }));
+  });
+
+  it('accepts all 64 referenced ids and does not keep a mutable caller array', () => {
+    const ids = Array.from({ length: 64 }, (_, index) => workspaceId(index + 1));
+    const status = parseWorkspaceManagementStatus({
+      activeWorkspaceId: ids[0],
+      duplicateWorkspaceLabelIds: ids,
+      formatVersion: 1,
+      operationState: 'idle',
+      workspaces: ids.map((id, index) => ({
+        availability: 'ready',
+        isActive: index === 0,
+        workspaceId: id,
+        workspaceLabel: 'Sama nimi',
+      })),
+    });
+    expect(status.duplicateWorkspaceLabelIds).toEqual(ids);
+    ids.pop();
+    expect(status.duplicateWorkspaceLabelIds).toHaveLength(64);
+  });
+
   it('accepts exactly 64 valid entries', () => {
     const workspaces = Array.from({ length: 64 }, (_, index) => ({
       availability: 'ready',

@@ -84,6 +84,146 @@ kirjoituspolkua, kirjainkoko-/välilyöntivariantit, oman nimen säilyttämisen,
 kilpailevat operaatiot, tuonnin sisällön säilymisen sekä vanhan rekisterin
 luvun ja huomautuksen ilman nimien tai yritystietojen automaattista muutosta.
 
+### W7.0:n nimivertailun koesopimus
+
+Yksilöllisyys käyttää yhtä mainin registry-omistajan vertailuavainta:
+nykyinen `validateWorkspaceLabel` ensin, sitten NFC-normalisointi,
+ECMAScriptin `\s+`-välilyöntijaksojen korvaaminen yhdellä välilyönnillä,
+locale-riippumaton `toLowerCase().toUpperCase()` ja lopuksi NFC. Tämä on
+täsmällinen vertailusääntö, ei lupaus kaikkien samannäköisten merkkien tai
+kielikohtaisten nimivastineiden tunnistamisesta. NFKC:tä, aksenttien poistoa,
+välimerkkien poistoa tai sumeaa hakua ei käytetä. Kelvollisia merkkejä ei
+poisteta näkymättömyyden perusteella.
+
+Alkuperäinen 1-80 koodipisteen raja, kontrollimerkkien ja rikkinäisen
+Unicoden hylkäys sekä valmiiksi trimmatun arvon vaatimus säilyvät. Nykyinen
+UI trimmaa syötteen ennen pyyntöä; main ei hyväksy trimmauksetonta ohitusta.
+Validointi edeltää normalisointia, joten kielletty rivinvaihto tai tab ei
+muutu sallituksi välilyönniksi. Vertailuavaimen mahdollinen piteneminen
+kirjainkokomuunnoksessa ei muodosta uutta näyttönimen pituusrajaa.
+Näyttönimeä ei tallennettaessa korvata avaimella, eikä avainta tallenneta
+uutena tietokenttänä. Tulevat runtime-päivitykset toistavat vertailuvektorit;
+Unicode-toteutuksen muutosta ei tulkita luvaksi muuttaa vanhoja nimiä.
+
+| Esimerkit | Yksilöllisyysvertailu |
+| --- | --- |
+| `Malliyritys Oy`, `MALLIYRITYS  OY`, sanojen välissä NBSP tai kapea NBSP | Sama nimi. |
+| `Café` ja sama nimi hajotetulla e + yhdistävä aksentti -esityksellä | Sama nimi; `Cafe` ilman aksenttia on eri nimi. |
+| `Straße`, `STRAẞE`, `STRASSE` | Sama nimi kirjainkokomuunnoksen laajenemisen vuoksi. |
+| `AB`, `A B`, `A-B` | Eri nimiä; sanoja tai välimerkkejä ei poisteta. |
+| Latinalainen A, kyrillinen А ja täysleveä Ａ | Eri merkkejä. Nimi ei ole turvallisuusidentiteetti. |
+
+Luonti ja tuonti käyttävät samaa append-tarkistusta kaikkia rekisterin
+entryjä vastaan, myös passiivisia ja `recoveryRequired`-kohteita.
+Nimenmuutos ohittaa vain oman, workspaceId:llä löydetyn kohteensa.
+Täsmälleen vanhan labelin säilyttävä no-op on sallittu myös historialliselle
+nimikaksoiskappaleelle. Muutettu label, myös pelkkä kirjainkoko-/välimuutos,
+ei saa törmätä toiseen entryyn. Historialliset samannimiset eivät estä
+registry v1/v2:n lukemista; huomautus ryhmittelee niiden nykyiset
+workspaceId:t muuttamatta entryjä, lineagea tai aktiivivalintaa.
+
+Nykyiset `EmptyWorkspaceCreationCoordinator`, `WorkspaceBackupImportCoordinator`
+ja `WorkspaceLabelRename` säilyvät kutsujina. Nimitarkistus tehdään
+ensimmäisestä leasen alla luetusta registrystä ennen uuden yrityksen
+valmistelua sekä uudelleen lopullista julkaisua suojaavasta registry-
+valinnasta. Pelkkä ennen odotusta saatu "vapaa nimi" ei riitä. W7.1:n
+kytkentä todistaa nykyisillä omistajilla kilpailun, luonti-/tuontijournalin
+keskeytyksen ja turvallisen virhemuunnoksen; uusi nimipalvelu ei ole tarpeen.
+Vanhan journalin kohde ja jo julkaistu entry eivät muutu toiseksi yritykseksi
+nimiristiriidan vuoksi.
+
+**Poistovahvistus on eri vertailu:** molemmat labelit validoidaan nykyisellä
+säännöllä ja verrataan NFC-muodossa täsmälleen. Kirjainkokoa tai sisäisiä
+välilyöntejä ei yhdistetä. UI näyttää ja säilyttää vahvistettavan labelin
+täsmälliset välilyönnit. Vahvistus sitoutuu silti mainin valitsemaan
+workspaceId:hen, ajantasaiseen entryyn ja samaan sallittuun ikkunasukupolveen;
+nimitäsmäys ei myönnä poistolupaa tai erota vanhoja nimikaksoiskappaleita.
+Niille näytetään myös mainin antama turvallinen workspace-erotin.
+
+**Rajattu koesopimus katselmoitu, ei tuotantokytkentää:** puhdas vertailu-/mutation-ehdokas
+läpäisi 56 uutta tapausta, 58 nykyistä rekistericodecin regressiota ja
+tyyppitarkistuksen. Rajattu katselmus ja kolmen täydentävän virheellisen
+rekisterin tapauksen jälkitarkistus eivät jättäneet avoimia löydöksiä. Näyttö koskee
+syöterajoja, vertailuvektoreita, historiallisten tavujen säilymistä ja
+tuoreen registry-arvon vaatimusta. Se ei todista oikeaa IPC-/UI-kytkentää,
+kahden kirjoittajan poissulkua, journal-recoverya, Electron-runtimea tai
+fyysistä poistoa. Ne säilyvät W7.1-W7.5:n tuotantoporteissa.
+
+### W7.1:n toteutusraja
+
+**25.10.2026, toteutus hyväksytty ja käynnissä:** registry omistaa yhden
+vertailuavaimen sekä append-/rename-eston. Create ja import tarkistavat nimen
+ensimmäisestä leasen alla luetusta rekisteristä ja uudelleen juuri ennen
+root-julkaisua; creation käyttää myös tuoretta publication-registryä eikä
+kirjoita vanhaa jäsenjoukkoa myöhemmin havaitun tilan päälle. Jo julkaistun
+vanhan journalin kohdetta ei nimetä tai poisteta uudelleen nimiristiriidan
+vuoksi. Sen nykyinen omistaja säilyttää fail-closed-recoveryrajan.
+
+Nimiristiriidan sisäiset koodit ovat `WORKSPACE_CREATION_LABEL_EXISTS`,
+`WORKSPACE_IMPORT_LABEL_EXISTS` ja niiden yhteinen management-projektio
+`WORKSPACE_MANAGEMENT_LABEL_EXISTS`; labelia ei sisällytetä virheeseen.
+Nykyinen capability säilyttää turvallisen koodin. App-adapteri tunnistaa
+vain tarkan koodin tai kyseisen create/import/rename-kanavan Electron-
+kuljetuksen tarkan kääreen, ei vapaata virhetekstin osahakua. Web näyttää
+yllä sovitun suomenkielisen palautteen; muut virheet säilyttävät fallbackin.
+
+Vanhojen nimikaksoiskappaleiden huomautus johdetaan mainin samasta
+vertailuavaimesta. Nykyisen status v1:n rajattu lisäprojektiokenttä on
+valinnainen `duplicateWorkspaceLabelIds`: vain statuksessa jo olevia
+workspaceId-arvoja, kukin kerran, 2-64 tunnistetta. Main lisää sen vain
+ristiriidan löytyessä. Molemmat strict-lukijat tunnistavat tämän nimetyn
+kentän; muut lisäkentät, vieras tai toistettu ID, harva taulukko ja väärä
+tyyppi hylätään. Projektio kopioidaan ja jäädytetään vastaanottorajalla.
+32 KiB:n statusraja ja kaikki nykyiset entry-rajat säilyvät. Vanha kentätön
+status on edelleen luettavissa, mutta se ei ole todistus nimien
+yksilöllisyydestä. Tämä on saman asennusbuildin sisäinen luku-DTO, ei uusi
+registry-kenttä tai pysyvä formaatti. Vanhat labelit ja tavut eivät muutu.
+UI ei toteuta rinnakkaista vertailusääntöä, käytä nimeä identiteettinä tai
+estä avaamista pelkän nimihuomautuksen vuoksi. Ristiriitaisessa ryhmässä
+näytetään jo sallittu opaque workspaceId erottimena, ei business-companyId:tä.
+
+Ensimmäiset 228 kirjoittaja-/recovery-/codec-tapausta ja desktopin tyypit
+läpäisivät ennen UI-kytkentää. Katselmuksessa löytynyt vanhan julkaistun
+juuren palautumispuute toistettiin neljällä create/import-vastatapauksella.
+Rajattu korjaus erottaa uuden operaation nimirajan pysyvästi sidotun
+operaation täydentämisestä:
+
+- Uudet operaatiot käyttävät edelleen `appendReadyWorkspaceEntry`-polkua
+  ja nykyisiä nimirajatarkistuksia; yleistä ohitusvalintaa ei lisätä.
+- Vain create/import-recoveryn jo julkaistun juuren haara käyttää
+  `appendRecoveredWorkspaceEntry`-polkua. Se säilyttää ID-, lineage- ja
+  kapasiteettitarkistukset sekä alkuperäisen nimen ja aktiivisen valinnan.
+  `candidateValidated + finalExists` ja `rootPublished` vaativat edelleen
+  oman journalin, tarkan kohteen, sisältötarkistuksen, leasen, prosessien
+  poissaolon ja muuttumattoman rekisterin ennen julkaisua.
+- Julkaisematon candidate ei muutu nimiristiriidan perusteella valmiiksi
+  työtilaksi. Kylmäkäynnistyksen journal v1 -esto säilyy; tämä korjaus ei
+  laajenna vanhojen journal-formaattien hyväksyntää.
+- Kapasiteetin turvallinen alkuperäinen virhekoodi ja vaihe säilyvät.
+  Epävarma sisältö, omistajuus, rekisteri tai loppusiivous säilyttää
+  palautumisaineiston nykyisen sopimuksen mukaan.
+
+Pysyvät regressiot kattavat vastatapaukset, kielteiset turvarajat ja
+idempotentin jatkamisen. Nykyisen käynnistyscompositionin tiedostotestit
+tarkistavat nimikonfliktin jo ennen käynnistystä, tarkistusprosessin
+exit-rajan, journalin/rekisterin sekä DB-/PDF-tavujen säilymisen.
+Niiden native-/SQLite-tarkistusraja on ohjattu testiraja, ei oikean
+Electron-prosessin tai paketoidun palautuksen todiste. Ajantasainen
+kohdenäyttö on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+UI:n lisäprojektion, virhepalautteen ja historiallisen nimihuomautuksen
+kohdetestit on toteutettu. Oikea Electron-polku todentaa create/import/rename-
+eston, onnistuvan jatkon, yrityseristyksen ja turvallisen virheen nykyisestä
+lokituksesta Diagnosticsin HTTP-reittiin ja strict-clientiin. Nykyinen
+Electron-kylmäkäynnistyskoe todentaa myös jo julkaistun historiallisen
+samannimisen create/import-kohteen palautumisen oikealla tarkistusprosessilla.
+Se pysähtyy edelleen ennen business-backendia eikä ole packaged-todistus.
+Selainkoe käyttää injektoitua desktop-statussopimusta ja todentaa huomautuksen,
+tunnisteella tehtävän valinnan sekä leveän ja kapean näkymän; se ei todista
+IPC:tä tai oikeaa yritysvaihtoa. Diagnostiikan ja tukipaketin suljetut lukijat
+säilyttävät vain [tapahtumakatalogin](r0-observability-event-catalog.md)
+sallimat kentät. W7.1:n paketoitu palautustodennus ja PR/main-portit ovat
+edelleen avoinna.
+
 ## Muuttumattomat rajat W1-W6:ssa
 
 - Domain- ja application-logiikka eivät tunne Electron-polkuja.
@@ -1501,8 +1641,9 @@ erillisenä commitina vihreästä lähdepuusta.
 
 **Tila:** omistajan 2026-09-22 päätöksellä `0.3.0`-julkaisuun kuuluva
 vaadittu ominaisuus. M1:n valmistelussa keskustelun nimetyt
-käyttäytymisvalinnat on hyväksytty 23.10.2026; yksityiskohtainen tekninen
-turvallisuussopimus ja toteutus eivät ole hyväksyttyjä.
+käyttäytymisvalinnat on hyväksytty 23.10.2026. Omistaja hyväksyi 24.10.2026
+myös W7-P1-P3:n suunnat ja W7-P4:n ehdollisen toteutuksen. Tarkat tekniset
+sopimukset ja kokeet on vielä todennettava ennen tuotantokytkentää.
 Aiempi alustava tavoite `0.2.9` on korvattu
 [0.3.0-julkaisusuunnitelmalla](release-0.3.0-plan.md), tehtävä `R030-02`.
 
@@ -1522,8 +1663,10 @@ julkaisun valmistumiseksi.
 **2026-09-24: read-only-valmistelu, ei toteutuslupaa.**
 [M1-suunnitelma](release-0.3.0-m1-preparation-plan.md) omistaa etenemisjärjestyksen.
 Tämä osio omistaa W7:n päätöslistan; ehdotukset eivät muuta ADR:iä.
-**23.10.2026:** käyttäytymispäätökset ja koottu toteutusehdotus ovat alla;
-tekninen täsmennys, katselmus ja tuotantokytkennän hyväksyntä ovat avoimia.
+**24.10.2026:** hyväksytyt suunnat ja ehdollinen toteutusvaltuus ovat alla
+W7-P1-P4:ssä. M4.3 on hyväksytty; W7.0 jatkuu tarkkaan sopimukseen ja
+pieniin kokeisiin. Ehdotuskatselmus on tehty, mutta se ei korvaa tarkan
+toteutussopimuksen ja koetulosten katselmusta ennen tuotantokytkentää.
 
 Nykyinen pohja sisältää registry-/path-validoinnin, maintenance-leasen,
 quiescence-/shutdown-portit ja rajatut workspace-capabilityt. Poisto ei ole
@@ -1537,7 +1680,1409 @@ Create/import-recovery-luokkien olemassaolo ei todista tuotantokytkentää.
 W3:n import-plaintext-quarantine ei ole palautettava yrityspoisto. Uutta
 W7-journalia tai tilaa ei lisätä hiljaisesti registry v1 -formaattiin.
 
+#### W7.0:n lähtökartta 24.10.2026
+
+Kartoitus on tehty hyväksytystä mainista
+`f38c1f77e9d5db864a3624bc0a4e8277a446a02d`. Se on lähdeluku, ei
+poistotoiminnon, uuden keskeytysrecoveryn tai testien läpäisyn todistus.
+Alla olevat tekniset erot täsmennetään nykyisen W7.0-W7.5-jaon sisällä.
+
+| Raja | Nykykoodin näyttö | W7.0:ssa täsmennettävä |
+| --- | --- | --- |
+| Capability ja varaus | `workspaceManagementTypes.ts`, `workspaceManagementCapabilityProtocol.ts` ja `workspaceMaintenanceLease.ts` eivät sisällä poistoa. `WorkspaceManagementService` serialisoi nykyiset operaatiot ja tarkistaa avoimet journalit. | Poiston suljettu pyyntö-/tulosmalli ja nykyisen maintenance-omistajan laajennus. Sender/frame, kohde ja vahvistukset tarkistetaan mainissa; ei rendererin myöntämää poistolupaa tai polkua. |
+| Rekisteri ja yritysvalinta | `workspaceRegistryValidation.ts` sallii `activeWorkspaceId: null` vain, kun `ready`-entryjä ei ole. `workspaceSwitchStartup.ts` torjuu puuttuvan aktiivisen. | Aktiivisen poiston jälkeinen pysyvä yritysvalinta myös muiden `ready`-yritysten säilyessä. Valinta ja business-runtimen avaus erotetaan; mahdollista registry-/valintatilamuutosta ei hyväksytä tässä kartoituksessa. |
+| Hallinta ilman backendia | `workspaceManagementComposition.ts` tarvitsee aktiivisen ID:n, lifecycle-adapterin ja recovery-palvelun. `desktopComposition.ts` kytkee hallinnan vasta aktiivisen runtimen yhteyteen. | Sama rajattu hallintakyvykkyys ilman business-backendia, tyhjä rekisteri ja vain recovery-kohteita sisältävä rekisteri erikseen. Ei oletusyritystä tai tekaistua actor-/yrityskontekstia. |
+| Sulku ja cold admission | `mainOwnedActiveWorkspaceLifecycle.ts` omistaa kirjoitusten, secret-drainin, backendin ja brokerien sulun. `workspaceColdRecoveryAdmission.ts` valitsee nyt vain create/import-recoveryn. | Poistoon sidottu tuore varaus ja todellinen I/O-/prosessipoissaolo sekä poiston tarkka paikka nykyisessä startup-/recovery-ketjussa. Avoimen muun journalin estoa ei ohiteta yleisesti. |
+| Nimien yksilöllisyys | `workspaceLabelValidation.ts` vaatii valmiiksi trimmatun turvallisen nimen; web trimmaa syötteen. `workspaceRegistryMutations.ts` ei vertaa nimiä, ja `workspaceLabelRename.test.ts` hyväksyy nykyisin kaksoiskappaleet. | Yksi hyväksyttävä Unicode-/kirjainkoko-/välilyöntivertailu create/import/rename-poluissa saman varauksen sisällä. Vanhat kaksoiskappaleet pysyvät luettavina; vain uuden konfliktin synty estetään. |
+| Poistoinventaario | `desktopProfilePaths.ts` ja `profileSnapshotRuntimePaths.ts` johtavat DB/PDF-/palautusjuuret. `encryptedSecretFile.ts` tuntee nykyisen SMTP:n current/next/backup-slotit. `workspaceLegacyAdoptionPaths.ts` erottaa vanhan runtime-lähteen workspace-juuresta. | Todistettu yrityskohtainen inventaario ennen/jälkeen myös staging-/legacy-jäämistä. Pelkkä workspace-juuren rekursiivinen poisto ei täytä sopimusta; koko vanhaa runtime-juurta ei poisteta, koska siinä voi olla installation-tilaa. |
+| Palaute ja tuki | `supportBundleCapability.ts` vaatii `loadBackendData`-tuloksen; nykyinen composition hakee sen käynnissä olevasta backendistä. `WorkspaceList.tsx` ei sisällä poistotoimintoa. | Nimetty turvallinen palaute ja tukireitti myös ilman backendia. Puuttuvaa business-terveystietoa ei merkitä terveeksi eikä viimeisen yrityksen poisto jätä näkymää riippuvaiseksi poistetusta backendistä. |
+
+Taulukon tiedostonimet ovat `apps/desktop/src/`-juuren omistavissa
+`workspaces`, `runtime`, `profileBackup`, `secrets`, `supportBundle` ja
+`main`-hakemistoissa; `WorkspaceList.tsx` on webin nykyisessä workspace-featuressa.
+
+**Ennen toteutussopimuksen lukitsemista:**
+
+- Vertaa erikseen pysyvän yritysvalinnan ja registry-version vaihtoehdot.
+  Toisen yrityksen automaattinen avaus tai keinotekoinen `recoveryRequired`
+  ei ole hyväksytty tapa kiertää nykyistä null-aktiivisen ehtoa.
+- Nimeä mahdollisen operaatiokohtaisen poistojournalin formaatti, rajat,
+  slotit, backup-poissulku ja täsmällinen lopullisen poiston aloitustodiste.
+  Quarantine on omistettu siirto saman operaation sisällä, ei piilokopio;
+  sovellustason poisto ei lupaa fyysisten levysektorien ylikirjoitusta.
+- Sido backupin tuoreus samaan kirjoitus-/snapshot-rajaan tai vaadi
+  hyväksytty erillinen menetyssuostumus. Kirjoitettu nimi ja native-vahvistus
+  koskevat samaa uudelleenvalidoitua kohdetta; vanhan samannimisen erottelu
+  ei saa palauttaa yksityisiä polkuja tai business-tunnisteita.
+- Määritä tiedostosiirron, registry-julkaisun, salaisuus-/palautuspistepurgen
+  ja journalin poiston kaikki keskeytysvälitilat. Osittainen poisto ei avaa
+  business-runtimea tai vapauta lineagea uudelle tuonnille ennen todennettua
+  lopputilaa. Vanha journal ei yksin todista tuoretta muutosvaltuutta.
+
+Nykyinen `WORKSPACE-DELETE-001` on edelleen `deferred`, ei valmis
+poistotesti. W7 käyttää nykyisiä kohde-, capability-, selain-/Electron- ja
+packaged-fixturejä; yleistä testi- tai lokitusjärjestelmää ei rakenneta.
+Ennen pitkää ajoa uusi muunnosraja todistaa alkuperäisen synteettisen
+virheen säilymisen nykyisessä salatussa paketissa ja oikeassa purussa.
+Muiden yritysten DB-/PDF-/secret-/palautuspisteiden sekä ulkoisten kopioiden
+säilyminen todennetaan sisällöstä, ei vain onnistumiskoodista.
+Tarkka keskeytysmatriisi ja packaged-portit ovat alla nykyisessä
+[recovery- ja hyväksyntänäytössä](#recovery-ja-hyväksyntänäyttö).
+Tämä valmistelu ei muuta tuotantokoodia, riippuvuuksia, versioita tai
+aikarajoja eikä hyväksy uutta journalia tai rekisteriformaattia.
+
+#### W7.0:n turvallisuussopimusehdotus
+
+**24.10.2026, suunnat ja ehdollinen toteutus hyväksytty:** omistaja hyväksyi
+W7-P1:n rekisterisuunnan sekä jäljempänä W7-P2/P3:n poistojournalin,
+backendittoman hallinnan, passiivisen poiston käyttökatkon, kohteen oman
+keskeytyneen palautuksen korvaamisen ja rajatun desktop-tukipaketin.
+W7-P4 hyväksyy tuotantokytkennän vasta täsmennettyjen sopimusten, pienten
+keskeytys-/yhteensopivuuskokeiden ja katselmuksen jälkeen. Näihin kuuluvat
+rajatut kokeet saa tehdä; samoja käyttäytymispäätöksiä tai ehdollista
+toteutuslupaa ei kysytä uudelleen. Tämä ei ole vielä testinäyttöä tai W7:n
+loppuhyväksyntä.
+Tämä osio omistaa jatkon; lähtökartta yllä on havaintojen tausta, ei toinen
+työjono. Päätösten tila ja jäljellä olevat todennusportit ovat osion lopussa.
+Rajattu riippumaton suunnitelmakatselmus on tehty. Sen first-start-
+lähtötilaa koskeva täsmennys on lisätty alle. Inventaarion historiallinen
+sidonta, backenditon first-start ja tuen tarkka sisältö-/käyttöoikeussopimus
+ovat edelleen teknisiä todennusportteja ennen vaikutusalueen kytkentää.
+
+##### W7.0:n jäljellä olevat sopimustäsmennykset
+
+**Valmiuskatselmus 25.10.2026:** registry-, jäännössidonta-, tuki- ja
+first-start-kokeet ovat rajattua valmistelunäyttöä. Viidestä nimetystä
+sopimuksesta myös viimeiset journal-/kohdeluettelo- ja capability-rajat
+on nyt täsmennetty, kokeiltu ja katselmoitu. W7.0 on valmis rajattuna
+sopimus- ja koevaiheena; alla säilyvät tuotantokytkennän erilliset portit.
+Valmistunutta koetta ei uusita ilman sen sopimusta muuttavaa havaintoa.
+
+| Sopimus | Todennettu valmistelu ja seuraava toteutusraja |
+| --- | --- |
+| Poistojournal ja inventaario | [Täsmäformaatti ja julkaisu-/loppusiivoussopimus](#w70n-kohdeluettelon-täsmäsopimus): 44 tapausta ja tyypit läpäisivät; katselmuksen registry-race korjattu ja jälkitarkistettu. Täydellinen roolikohtainen inventaario, oikeat omistajat ja payload-purge todistetaan tuotantokytkennässä. |
+| Poiston management-capability | [Poistopyyntö ja vahvistus](#w70n-poistopyyntö--ja-vahvistussopimus): 42 uutta tapausta, 18 nykyistä regressiota ja tyypit läpäisivät. Kaksi koepuutetta toistettu, korjattu ja katselmoitu. Oikeat IPC-, native-, observer- ja lukijakytkennät todistetaan W7.3-W7.5:ssä. |
+| Nimivertailu | [Nimivertailun koesopimus](#w70n-nimivertailun-koesopimus): 56 uutta tapausta, 58 nykyistä codec-regressiota ja tyypit läpäisivät; rajattu katselmus valmis. Poistovahvistus on erillinen täsmällinen NFC-vertailu, vanhat nimet säilyvät. Oikeat kirjoittajat, recovery ja UI todistetaan W7.1-W7.5:ssä. |
+| Backup-todiste | [Sisältövastaavuuden ja kertakäytön ehdokas](#poiston-backup-todisteen-vastaavuus): 60 uutta tapausta, 10 nykyistä regressiota ja tyypit läpäisivät; rajattu katselmus valmis. Tuotantoketju kuuluu W7.3:een. Todistamaton vastaavuus ei korvaa menetyshyväksyntää. |
+| Valitsimesta avaus | [Tallennus- ja jatkosopimuksen](#valitsimesta-avauksen-pysyvä-jatko) yksityinen ehdokas, 47 uutta tapausta, 33 nykyistä v1-regressiota ja tyypit läpäisivät; rajattu katselmus valmis. Tuotantokytkentä kuuluu W7.1-W7.5:een. |
+
+Näiden sopimusten täsmennys ja rajattu katselmus kuuluvat W7.0:aan.
+Tuotantocodecit, todelliset capability-/observer-kytkennät, native-sulku,
+SQLite, fyysinen restart sekä MSI-/packaged-/PR-/main-portit kuuluvat
+myöhempään W7.1-W7.5-toteutukseen. Niiden puuttumista ei ratkaista
+kutsumalla synteettistä koetta tuotantotodisteeksi. Seuraava rajattu pala on
+W7.1:n yhteinen nimivertailu ja sen nykyiset kirjoittajat. Rekisterin v2,
+backenditon valinta ja first-start kytketään W7.2:n kanssa yllä olevan
+sopimuksen mukaan. Koko W7 ei ole vielä valmis.
+
+##### W7.0:n ensimmäinen sopimusnäyttö
+
+**24.10.2026, valmistelu käynnissä:** yksi W7.0-kokonaisuus sisältää
+täsmälliset sopimukset, pienet kokeet ja niiden rajatun katselmuksen.
+Se ei vielä kytke W7.1-W7.5:tä tuotantoon tai käynnistä integraatioajoa.
+
+Nykyisen `CrashSafeByteSlotStore`-tallentimen ja rekisterilukijan 18
+synteettistä tiedostokoetta läpäisivät. Näyttö koskee v1-tavujen säilymistä,
+vanhan lukijan v2-hylkäystä, next-/backup-valintaa, julkaisun eri kohdissa
+palautuvaa virhettä ja slottien loppusiivousta. Todellisia tiedostotavuja
+verrattiin ennen ja jälkeen; epäonnistunut kirjoituskutsu voi jättää uuden
+currentin julkaistuksi. Tällöin virhe ei tarkoita vaikutuksetonta toimintoa.
+
+Geneerinen lukija validoi ensimmäisen löytyvän slotin sisällön, ei kaikkia
+sisältöjä ennen muiden slottien siivousta. Tiedostotyyppi- ja polkutarkistukset
+säilyvät. W7 tarvitsee siksi oman kaikkien slottien **sisältö- ja
+operaatiosidonnan** tarkistuksen ennen nykyisen korjaavan lukijan käyttöä.
+Initial-next ei yksin ole aiemmin julkaistu poistolupa. Saman operaation
+backup/next-välitila ei anna lupaa ohittaa julkaisematonta vaihetta.
+Ristiriitaiset operaatiot, kohteet tai vaiheet säilytetään selvitykseen.
+
+Kokeet ovat nykykäyttäytymisen karakterisointi, eivät v2-kirjoittajan,
+poistojournalin, koko yrityksen purgen tai paketoidun restartin todiste.
+Uusi store-olio ja injektoitu poikkeus eivät ole käyttöjärjestelmän
+uudelleenkäynnistys tai sähkökatko. Nykyisen tiedostotallentimen
+`syncDirectory()` ei tee Windowsissa hakemistosynkronointia; kokeesta ei
+johdeta fyysisen sähkökatkokestävyyden lupausta. W7:n todennetut pysyvät
+tilat ja epävarmassa tilassa pysähtyminen on testattava erikseen ennen
+kytkentää. Kohteen ulkopuolinen vertailutiedosto ei korvaa muiden yritysten
+DB-/PDF-/secret-eristyksen myöhempää näyttöä.
+
+Rekisterimuutoksen tiedosto-/kutsujasopimus täsmentyy seuraavasti.
+Polut ovat `apps/desktop/src/workspaces/`-juuren alla; jaettu lukija tai
+kirjoittaja muuttuu vain kerran, ei omaksi kopioksi jokaiselle kutsujalle.
+
+| Omistaja | Vaadittu muutos ja säilyvä raja |
+| --- | --- |
+| `registry/workspaceRegistryTypes.ts`, `workspaceRegistryValidation.ts` ja `workspaceRegistryBytes.ts` | Versiot erotetaan täsmällisesti. V1:n hyväksyntä säilyy, v2 sallii null-valinnan myös ready-entryillä; muut entry-, identiteetti-, määrä- ja tavurajat säilyvät. |
+| `registry/workspaceRegistrySerializer.ts` ja `workspaceRegistryStore.ts` | Kanoninen serialisointi säilyttää valitun version ja v1:n nykyiset tavut/tiivisteet. Samat tiedostopolut ja slotit, ei rinnakkaista rekisteriä. |
+| `registry/workspaceRegistryMutations.ts` sekä create/import/rename/switch-kutsujat | Ei kovakoodattua paluuta v1:een tai v2:n null-valinnan korvaamista uuden entryn ID:llä sivuvaikutuksena. Puuttuva rekisteri käsitellään ennen sen nykyistä empty-oletusta. |
+| `update/workspaceFirstStartMigrationRegistryTransitions.ts` ja nykyiset recovery-/replacement-lukijat | Ennen/jälkeen-rekisterin versio ja tiiviste kuuluvat samaan hyväksyttyyn siirtymään. V1:n rollback-näyttö ja muiden entryjen säilyminen eivät katoa v2:n mukana. |
+| `runtime/workspaceColdRecoveryAdmissionComposition.ts` ja nykyinen käynnistyksen omistaja | Poiston slot-admission ennen business-avausta ja geneeristä registry-korjausta. Vanhat create/import- ja C/K-palautussopimukset säilyvät. |
+
+Inventaarion lähdekatselmus vahvisti erillisen kohdesidonnan tarpeen:
+onnistunut legacy-adoptio poistaa journalinsa mutta säilyttää alkuperäisen
+lähteen, ja palautuksen rollback voi säilyttää failed/staging-aineiston
+journalin poistuttua. Yhteinen sijainti tai operationId ei tämän jälkeen
+todista yritystä. **Omistaja hyväksyi 25.10.2026 nykyisen aineisto-omistajan
+pienen pysyvän kohdesidonnan suunnittelun ja synteettisen kokeen.**
+Sidonnan pitää säilyä aineiston eliniän ajan myös operaation journalin
+poistuttua. Tämä ei vielä hyväksy tuotantokytkentää tai vanhan
+tunnistamattoman aineiston jälkikäteistä kohdentamista. Kohteettoman tuonnin
+ennakkotarkistuksen väliaineistoa ei
+sidota aktiiviseen yritykseen arvaamalla. Vanhan tunnistamattoman jäännöksen
+poisto ei sisälly aiemmin sallittuun backup-yhteensopivuuden rajaukseen.
+
+##### Pysyvä yritysvalinta ja versioraja
+
+**W7-P1, suunta hyväksytty 24.10.2026:** rekisteri v2 nykyisen
+rekisteritallennuksen samoissa current/next/backup-sloteissa.
+`activeWorkspaceId: null` tarkoittaisi
+tarkoituksellista yritysvalintaa myös silloin, kun muita `ready`-yrityksiä
+on olemassa. Entryjen nykyiset identiteetit ja tilat, 64 entryn raja sekä
+64 KiB:n lukuraja säilyisivät. Erillistä valinta-asetusta ei lisätä:
+kahden tiedoston erilliset päätökset voisivat palautua keskenään ristiriitaan.
+Yrityksen `recoveryRequired` ei tarkoita käyttäjän valintatilaa.
+
+**V2:n rajattu tallennusesitys:** juuren ainoat kentät ovat edelleen
+`formatVersion`, `activeWorkspaceId` ja `workspaces`. Vain rekisterin
+formaattiversio muuttuu; entryjen `workspaceId`, `workspaceLabel`,
+`lineageIdentity`, `layoutVersion`, `lifecycleState` ja `createdAt` sekä
+lineagen formaatti 1 säilyvät nykyisten validoijien omistamina. V2:n
+ei-null-valinnan pitää edelleen osoittaa olemassa olevaan `ready`-entryyn.
+Duplikaatti-ID, duplikaattilineage, ylimääräinen kenttä, epäkelpo UTF-8 ja
+toistuva JSON-avain hylätään kuten nyt. Vanhat duplikaattinimet säilyvät
+luettavina; uusien nimikaksoiskappaleiden esto kuuluu luonti-/tuonti-/
+nimenmuutosomistajalle, ei historiallisen rekisterin hylkäykseksi.
+
+Kanoninen v1-serialisointi säilyy tavuilleen, myös kenttäjärjestys ja
+loppurivinvaihto. V2 käyttää samaa kenttäjärjestystä omalla versionumerollaan.
+Puhdas v1 -> v2 -esitysmuunnos ei vaihda aktiivista yritystä tai entryjen
+sisältöä. V2:n append ja rename säilyttävät null-valinnan; avaus on erillinen
+nimenomainen valinta. Muuttumaton nimi palauttaa nykyisen saman registry-
+olion, koska `WorkspaceLabelRename` käyttää tätä kirjoituksen ja `changed`-
+tuloksen ehtona. Lisäys säilyttää nykyisen `WorkspaceRegistryMutationError`-
+sopimuksen ja tarkistusjärjestyksen: `capacityExceeded`, `workspaceIdExists`,
+sitten `lineageExists`. Kelvollisen rekisterin odotettua lisäysestoa ei
+muuteta rekisterin rakennevirheeksi. Tuotannossa nämä vartijat sovitetaan
+nykyisessä omistajassa molemmille versioille, ei erillisiksi kopioiksi.
+Pelkkä `formatVersion: 1` -tekstihaku ei nimeä korvattavia
+rekisterikirjoittajia: esimerkiksi lineage- ja switch-journal-versiot ovat
+eri sopimuksia eikä niitä vaihdeta mekaanisesti.
+
+**Hyväksynnän yhteensopivuusraja:** yritysrekisterin versio, business-
+tietokannan schema ja siirrettävän `.ekybackup`-kopion formaatti ovat eri
+asioita. Rekisteri v2 tai tiedostonimen muutos ei itsessään edellytä
+backup-formaatin vaihtoa tai vanhojen kopioiden hylkäämistä.
+Nykyinen tuettujen kopioiden palautus säilyy suunnittelun lähtökohtana.
+Omistaja sallii tätä päätöstä edeltävän testivaiheen kopioiden tuen
+rajaamisen, jos sen säilyttäminen osoittautuu kohtuuttoman raskaaksi.
+Tämä ei ole yleinen lupa poistaa nykyistä tukea: konkreettinen poikkeus
+nimeää formaatti-/schema-/build-alueen, osoitetun ylläpitorasitteen,
+turvallisen käyttäjäpalautteen ja testit ennen vaikutusalueen toteutusta.
+Mitään tällaista poikkeusta tai pois jätettävää versiota ei ole nyt valittu.
+
+Tästä päätöksestä eteenpäin tuotettujen kelvollisten varmuuskopioiden
+palautettavuus myöhempiin sovellusversioihin on pysyvä vaatimus myös
+tietomallin muuttuessa. Raja ei ala vasta 0.3.0-julkaisusta. Yhteensopivuus
+toteutetaan versionmukaisella validoinnilla ja hallituilla migraatioilla,
+ei tuntemattoman tai vioittuneen sisällön hyväksymisellä. Päivityksen
+epäonnistumisen rollback-todennus säilyy erillisenä pakollisena porttina;
+historiallisten testikopioiden mahdollinen rajaus ei vapauta siitä.
+Pelkkä W7-P1 ei hyväksy tuotantokytkentää; sen ehdot ovat W7-P4:ssä.
+Historiallisten migraatioiden muuttamista tai testien poistamista ei hyväksytä.
+
+- V1 luetaan edelleen omilla ehdoillaan. V2:ta ei palauteta v1:ksi eikä
+  kirjoiteta erilliseen rinnakkaiseen rekisteriin, josta vanha ohjelma voisi
+  huomaamatta avata poistetun kohteen. Vanha v1-lukija hylkää v2:n.
+- Muunnos tehdään vain nykyisellä hyväksytyllä buildilla, tuoreen
+  installation-varauksen alla ja ilman ratkaisemattomia muita operaatioita.
+  Sitä ei tehdä uuden buildin hyväksymättömässä first-start-/rollback-vaiheessa.
+  Rekisterin kaikki palautusslotit sovitetaan ennen ensimmäistä W7-siirtoa;
+  vanha v1-backup ei saa palauttaa poistettua entryä.
+- Jokainen registry-kirjoittaja säilyttää valitun formaatin. Create/import,
+  rename, switch, recovery ja W6 käyvät läpi versionmukaisen portin; nykyistä
+  kovakoodattua `formatVersion: 1` -kirjoitusta ei jätetä rinnalle.
+- Puuttuva rekisteri ei tarkoita tyhjää rekisteriä. Löytyvät workspace-,
+  quarantine- tai operaatiotiedot estävät ensiasennuksen/adoption arvaamisen.
+  V2:n tarkoituksellinen tyhjä tila säilyy restartissa ilman oletusyritystä.
+  Aidon ensiasennuksen R030-06-päätöstä ei tehdä tämän kautta.
+
+**V2-esityksen pieni koe (25.10.2026):** 41 erillistä kohdetapausta ja
+tiukka tyyppitarkistus läpäisivät yksityisellä codec-/mutaationäytteellä.
+V1:n kanoniset tavut ja tiivisteet säilyivät; v2:n null-valinta, empty-tila,
+entryt ja aiemmat hylkäysrajat todennettiin. Nykyinen byte-slot-tallennus
+julkaisi eristettyyn samaan tiedostopolkuun versionmukaiset tavut, jotka
+uusi lukija tunnisti; vanha lukija hylkäsi ne muuttamatta sisältöä.
+Naapuritiedoston tavut säilyivät. Kutsujakartoituksessa havaittu ehdokkaan
+rename-no-op-puute toistettiin molemmille versioille ja korjattiin.
+Katselmuksessa havaittu lisäyksen syykoodipuute toistettiin ja korjattiin;
+v1/v2-vertailut säilyttävät myös törmäysvartijoiden järjestyksen.
+Tavurajan näyttö erottaa kelvollisen JSON:n täsmälleen 64 KiB:n kohdalla
+samasta kelvollisesta arvosta yhden tavun rajan yläpuolella.
+Rajattu riippumaton katselmus ja korjausten jälkitarkistus valmistuivat;
+tämän codec-/mutaationäytteen rajauksessa ei jäänyt avoimia löydöksiä.
+Tuotantokoodi ei muuttunut. Tuotannon yhteinen entry-validointi toteutetaan
+nykyisessä omistajassa kerran, ei erillisinä v1/v2-kopioina.
+
+Tämä koe ei anna muunnos- tai poistovaltuutta eikä todenna kaikkien
+slottien yhteistä admissionia, accepted-build/registry-siirtymää, oikeaa
+restartia tai create/import/switch/W6-koordinaattorien kytkentää.
+Rekisterin empty-arvon säilyminen ei yksin todista, ettei startup luo
+oletusyritystä. Samoin nimikaksoiskappaleen eston ja vanhojen backupien
+oikeat käyttäjäpolut sekä rollback tarvitsevat erilliset kytkentätestinsä.
+
+Nykyinen `resolveActiveWorkspaceStartup` palauttaa aktiivisen työtilan,
+ja `workspaceSwitchStartup` vaatii ei-null-lähteen. Ehdotettu tulos erottaa
+`business`, `selector` ja `recoveryRequired` -haarat. Selector ei luo
+backend-sessionia, actor-kontekstia, brokeria tai tietokantaa. Sama mainin
+hallintakyvykkyys näyttää luotettavan listan ja sallii erikseen validoidut
+luonnin, tuonnin, valinnan ja poiston. Puuttuvaa lifecycle-omistajaa ei
+korvata aina onnistuvalla mockilla tai no-op-sululla.
+
+Valitsimesta avaus tarvitsee nykyiseen switch-omistajaan versionmukaisen
+`source = null` -sopimuksen: epäonnistunut kohteen hyväksyntä palaa valitsimeen,
+ei toiseen yritykseen. Vanhojen switch-journalien lähdepalautus säilyy.
+Create/import ei valitsimessa valitse vanhaa yritystä sivuvaikutuksena;
+uuden kohteen avaus vaatii saman käyttäjätoimen nimenomaisen avausvalinnan.
+V1:n nykyinen käyttäytyminen ei muutu hiljaisesti.
+
+##### Valitsimesta avauksen pysyvä jatko
+
+**25.10.2026, rajattu sopimusehdokas:** nykyinen
+`workspaceSwitchJournal.ts` omistaa molemmat versiot samoissa
+`workspace-switch-v1.json`-sloteissa. V1:n ei-null-lähde, kanoniset tavut ja
+palautuminen säilyvät. V2 on vain valitsimesta aloitettu avaus; sen
+`sourceWorkspaceId` on aina null. Uutta aktivointijournalia ei lisätä.
+
+V2:n täsmälliset kentät ovat `formatVersion: 2`, `operationId`,
+`sourceWorkspaceId: null`, `targetWorkspaceId`, `state`, `createdAt`,
+`registryBeforeSha256`, `registrySelectedSha256` ja `registryRejectedSha256`.
+Nykyiset UUID-, aika-, UTF-8-, duplikaattiavain-, kanonisten tavujen ja
+4 KiB:n rajat säilyvät. Tiloina ovat nykyiset `prepared`, `targetSelected`,
+`rollbackSelected` ja `recoveryRequired`. Identiteetti ja tiivisteet ovat
+operaation aikana muuttumattomia; vain nykyinen monotoninen tilasiirtymä
+sallitaan. Versiota ei vaihdeta keskeneräisen operaation aikana.
+
+Kolme tiivistettä sitovat koko kanonisen v2-rekisterin: alkuperäinen
+null-valinta ja ready-kohde, saman kohteen valinta sekä null-valinta, jossa
+vain kohde on merkitty `recoveryRequired`-tilaan. Kaikkien muiden entryjen,
+nimien ja lineagejen on säilyttävä täsmälleen. Viimeinen muoto sallitaan
+vain todistetun kohdevirheen palautuksessa; tavallinen käynnistysvirhe ei
+yksin muuta yrityksen sisältötilaa. Tiiviste ei todista business-tavuja,
+runtime-sulkua tai käyttöoikeutta eikä korvaa C/K/W6-portteja.
+
+| Journal ja rekisterin valittu tila | Nykyisen switch-omistajan jatko |
+| --- | --- |
+| `prepared`, alkuperäinen null-valinta | Avausta ei ole julkaistu. Palaa valitsimeen; journal voidaan poistaa vasta tuoreen omistajuus- ja poissaolotodisteen jälkeen. |
+| `prepared`, kohde valittu | Viimeistele saman operaation `targetSelected`-kirjaus ja sen readback ennen kohteen tarkistusketjua. |
+| `targetSelected`, kohde valittu | Nykyiset build-, recovery-, schema-, migraatio-, lineage-, sisältö- ja health-portit; ei business-UI:ta ennen niiden hyväksyntää. |
+| `targetSelected`, null-valinta alkuperäisenä tai todistetulla kohdevirheellä | Keskeytynyt paluu: viimeistele `rollbackSelected`, älä aloita uutta kohdeavausta. |
+| `rollbackSelected`, vastaava null-valinta | Palaa valitsimeen ja päätä vain tämä operaatio nykyisten sulku-/slot-porttien jälkeen. Muita yrityksiä ei avata. |
+| `recoveryRequired` | Epäselvää sulkua, valintaa tai sisäkkäistä palautusta ei ratkaista avaamalla yritys. Aineisto säilyy nykyiselle recovery-omistajalle. |
+| Muu yhdistelmä tai muuttunut rekisterisisältö | Suljettu virhe; ei registry-kirjoitusta, journalin siivousta tai automaattivalintaa. |
+
+Kaikki journalin ja rekisterin slotit luetaan sivuvaikutuksitta ennen
+geneeristä korjaavaa lukijaa. Current on ensisijainen, muuten backup.
+Current+next vaatii sallitun etenevän siirtymän; current+backup vaatii
+backupista currentiin sallitun siirtymän. Backup+next palautuu backupiin
+vain saman operaation sallittuna välitilana. Kaikkien kolmen yhtäaikainen
+esiintyminen, ristiriitainen identiteetti, väärä järjestys tai tuntematon
+sisältö estää korjauksen. Rekisterislotit saavat vastata vain sidottuja
+alku-, valinta- ja hylkäysmuotoja; sallitut kirjoitussuunnat ovat alku ->
+valinta ja valinta -> alku/hylkäys sekä saman muodon toisto.
+
+Myös omistajien **yhteinen julkaisujärjestys** tarkistetaan: `targetSelected`
+ei saa olla edes nextissä ennen puhtaaksi todettua kohdevalintaa, eikä
+`rollbackSelected` ennen puhtaaksi todettua null-palautusta. Alku -> valinta
+-rekisterikirjoitus vaatii journalin `prepared`-tilan; valinta -> alku
+vaatii `prepared`- tai `targetSelected`-tilan ja valinta -> hylkäys vain
+`targetSelected`-tilan. Molempien omistajien keskeneräisiä slot-julkaisuja
+ei soviteta toisistaan riippumatta. Ristiriita säilytetään ennen yhtäkään
+geneerisen lukijan tekemää next-/backup-poistoa.
+
+Pelkkä journalin initial-next `prepared` ja muuttumaton current-rekisteri
+on **julkaisematon valmistelu**, ei avausvaltuus. Sitä ei syötetä lukijaan,
+joka nostaisi nextin currentiksi. Sen täsmällinen siivous vaatii saman
+operaation, tuoreen omistajuuden ja poissaolon. Registry-next yksin ei
+riitä tähän polkuun. Hyväksytyn slot-palautuksen jälkeen kummankin
+omistajan valitut tavut tarkistetaan uudelleen ennen seuraavaa vaikutusta.
+Näiden vartijoiden on tuotannossa oltava nykyisen tallennusomistajan
+kirjoitus-/poistorajoissa, ei kerran tehty ulkopuolinen ennakkotarkistus.
+
+`MainOwnedActiveWorkspaceLifecycle` hylkää nykyisin null-lähteen.
+Sen olemassa olevaa aktiivisen yrityksen instanssia ei kutsuta nullilla
+eikä korvata aina onnistuvalla adapterilla. Mainin nykyinen lifecycle-
+composition erottaa valitsimessa todistetusti puuttuvan runtimen
+epävarmasti suljetusta runtimesta. Valitsinavaus käyttää samaa installation-
+varausta sekä olemassa olevia prosessi-, secret-, arkisto- ja
+capability-omistajia poissaolon todentamiseen.
+
+Kohteen epäonnistuessa sen kaikki kirjoittajat ja tarkistusprosessit sekä
+sisäkkäinen C/K/W6-palautus päätetään ennen null-valinnan julkaisua.
+Julkaise null ensin, sitten `rollbackSelected`; kadonnut kuittaus ratkaistaan
+täsmällisistä säilyneistä tavuista. Epävarma exit ei anna valitsimen uusia
+kirjoituskyvykkyyksiä. Onnistuneessa avauksessa journal poistuu vasta saman
+generationin ja kohde-lineagen nykyisen business-valmiustodisteen jälkeen.
+Uudelleenkäynnistys ei peri muistissa ollutta health-tulosta.
+
+**Rajattu koe ja katselmus:** 47 yksityisen codec-/tilamallin tapausta sekä
+33 nykyistä v1-journalin ja startupin regressiota läpäisivät; tiukka
+tyyppitarkistus läpäisi. Oikea nykyinen byte-slot-tallennin ja eristetyt
+tiedostot todensivat valinta-/paluu-keskeytyksiä, kadonneen kuittauksen,
+tuoreen lukijan ja sallittujen journal-slottien palautuksen. Rekisterin
+slot-yhdistelmät ja business-/exit-portit olivat mallinnettuja, eivät
+todellisen käynnistysketjun todiste. Muuttuneet identiteetit ja ristiriitaiset
+slotit säilyivät hylkäyksessä. Katselmuksen yhteisen julkaisujärjestyksen
+aukko toistettiin kahdella epäonnistuvalla tapauksella ja korjattiin vain
+ehdokkaaseen; jälkikatselmus ei jättänyt tämän rajauksen löydöksiä.
+Tämä ei todenna native-exitiä, fyysistä restartia, sähkökatkokestävyyttä,
+todellista business-hyväksyntää tai kaikkien tuotantokutsujien kytkentää.
+Tuotannon kirjoitus-/clear-vartijat ja v2-registryä käyttävät vanhat
+ei-null-vaihdot tarvitsevat vielä W7.1-W7.5:n omat integraatiotestit.
+
+`FirstStartUpdateCoordinator` hyväksyy nykyisin buildin backendin ja
+aktiivisen profiilin tarkistuksen jälkeen. Valitsimen avaamista ei saa
+ilmoittaa onnistuneeksi business-health-tarkistukseksi. V2:n jälkeisen
+päivityksen ja nollan työtilan first-start tarvitsee saman omistajan
+nimenomaisen selector-haaran, tarkat build-/registry-/journal-tarkistukset
+ja oman installer-todennuksen. Mukaan kuuluu myös **ensimmäinen W7-päivitys
+v1-rekisteristä, jossa yrityksiä on mutta yhtään ei voida avata**.
+Buildin hyväksynnän ja rekisterimuunnoksen järjestys on ratkaistava myös
+siinä ilman business-DB:n avaamista: ne eivät saa jäädä odottamaan toisiaan
+tai vaatia DB:n korjaamista poiston edellytyksenä. Tämä on W7-P3:n avoin
+yhteensopivuusraja, ei lupa keventää C:n päivityksen hyväksyntää tai avata
+yritystä automaattisesti.
+
+**First-startin rajattu lähdekatselmus:** `preWorkspaceBuildAdmission`
+erottaa käynnistettäväksi sallitun uuden buildin jo hyväksytystä buildista.
+`FirstStartUpdateCoordinator.acceptAfterBackendReady` vaatii nykyisin
+migration-gaten ja aktiiviprofiilin tarkistuksen ennen accepted-buildin
+kirjoitusta. `WorkspaceFirstStartMigrationOrchestrator` ei tee uutta
+W6-inventaariota `exactAcceptedBuild`-haarassa. Nykyinen
+`AcceptedBuildMetadata` ei erottele selector- ja business-hyväksyntää.
+Pelkkä saman metadatan kirjoitus backendittomasta haarasta olisi siten
+liian laaja hyväksyntä, ei valmis W7-ratkaisu.
+
+Jatkosopimus erottaa käynnistysadmissionin, valitsimen valmiuden ja
+business-valmiuden samoissa nykyisissä omistajissa. Strictisti luettu v1
+voi palvella aluksi vain lukevaa, vielä hyväksymätöntä valitsinta ilman
+rekisterimuunnosta tai yritysavausta. Selector-hyväksynnän pysyvä esitys,
+sen kaikki lukijat ja myöhemmän yritysavauksen portit on täsmennettävä ja
+todennettava ennen accepted-build-kirjoituksen muutosta. Vasta hyväksytty
+haara voi siirtyä v2-muunnokseen; ehdotus ei vielä anna kirjoitusvaltuutta.
+
+**Vanhan avoimen päivitysoperaation raja säilyy:** nykyinen
+`UpdateBusinessRollbackCoordinator` vaatii tarkistetun business-tilan
+ennen `businessRollbackCompleted`-tilaa, ja binary-rollback vaatii tämän
+tilan. Vanhassa update-journalissa ei ole yleistä business-tavujen
+muuttumattomuustodistetta. Epäonnistuva C-/direct-Setup-/W6-palautus ei
+muutu selector-hyväksynnäksi tai automaattisesti valmiiksi rollbackiksi.
+Sen aineisto ja recovery-tila säilyvät. Jos tätä vanhaa operaatiota pitäisi
+päättää ilman nykyistä business-todistetta, tarvitaan nimetty vaihtoehtoinen
+sopimus ja omistajan päätös; sitä ei ole tällä suunnalla hyväksytty.
+
+**Nykyisten omistajien rajakoe:** 18 synteettistä tapausta ja niiden
+tyyppitarkistus läpäisivät. Kokeessa käytettiin nykyisiä admission-,
+first-start-, W6- ja switch-omistajia sekä oikeita eristettyjä accepted-build-,
+registry- ja update-journal-tiedostoja. Direct Setup ja koordinoitu
+`awaitingFirstStart` erotettiin toisistaan. Pelkät recovery-entryt eivät
+nykyisin avaudu switch-startupin kautta. Virheellinen aktiivisen työtilan
+inventaario tai profiilin hylkäys säilyttivät v1-rekisterin ja lähdebuildin
+hyväksynnän; koordinoitu virhe kirjasi nykyisen `rollbackRequired`-tilan.
+Vain hyväksynnän onnistunut kontrolli kirjoitti kohdebuildin metadatan.
+Uusi lukija havaitsi sen myös ennen mitään v2-rekisterimuunnosta.
+Onnistuvan W6-inventaarion vastakontrollit kulkivat samat kaksi reittiä;
+hylkäys vaati plannerin alkuperäisen syyn eikä mitä tahansa poikkeusta.
+Rajattu riippumaton katselmus ja huomautusten jälkitarkistus tehtiin.
+
+Erillinen kielteisen suunnitteluvaihtoehdon kontrolli kirjoitti nykyisen
+accepted-build-metadatan ilman business-tarkistusta ja osoitti, ettei W6
+sen jälkeen edes kutsunut virheellistä inventaariota palauttavaa testiporttia.
+Tämä ei ole korjaus tai nykyisen normaalipolun haavoittuvuuslöydös, vaan
+todiste siitä, ettei uutta selector-haaraa saa toteuttaa samalla merkinnällä.
+Vanha metadata-parseri torjui sekä uuden lisäkentän että pelkän
+formaattinumeron vaihdon. Nykyinen accepted-build-tallentimen `read()` voi
+myös siivota palautusslotteja: sitä ei nimetä sivuvaikutuksettomaksi
+tarkastusportiksi.
+
+Koe ei käynnistänyt Electronia, SQLitea tai asentajaa. Profiilin ja
+paketticachen tarkistukset olivat nimenomaisia testiportteja; tulos ei
+todista DB-terveyttä, cache-sisältöä tai runtime-sessionin puuttumista.
+Uusi omistaja samassa prosessissa ei ole oikea restart-/sähkökatkokoe.
+Kokeessa ei toteutettu uutta metadataa, selector-hyväksyntää tai v2-muunnosta.
+
+First-start-jatkon nykyisiin omistajiin rajattu lukija-/kirjoittajakartta:
+
+| Nykyinen omistaja | W7:n täsmennys ja säilyvä ehto |
+| --- | --- |
+| `update/preWorkspaceBuildAdmission.ts` | Käynnistyslupa erotetaan hyväksynnän laajuudesta. Samaversioisen eri revision, downgradin ja ristiriitaisen päivitysidentiteetin torjunta säilyy. |
+| `update/acceptedBuildMetadata.ts`, `acceptedBuildMetadataStore.ts` ja `migrateLegacyLocalUpdateState.ts` | Yksi versionmukainen auktoritatiivinen tallennus, ei rinnakkaista aina onnistuvaa selector-lippua. V1:n merkitys säilyy; uuden esityksen slot-admission, luku/kirjoitus, keskeytys ja legacy-siirto todennetaan erikseen. |
+| `update/firstStartUpdateCoordinator.ts` | Valitsimen hyväksyntä ei kutsu business-hyväksyntää tekaistulla profiililla. Myöhempi oikea yritysavaus säilyttää migration-, profiili-, secret-identity- ja palautuspisteportit. |
+| `workspaces/update/workspaceFirstStartMigrationOrchestrator.ts` ja `workspaceFirstStartMigrationTransitionCoordinator.ts` | Selector-merkintä ei saa ohittaa tarvittavaa inventaariota, päätellä W6:n kohdetta hyväksytyksi tai poistaa avointa W6-journalia. Viimeinen business-validoitu lähde on erotettava pelkästä käynnissä olevan binäärin identiteetistä. |
+| `update/preBackendFirstStartFailureAuthority.ts` ja nykyiset business-/binary-rollback-omistajat | Vanhat avoimet C- ja direct-Setup-operaatiot säilyttävät nykyisen palautusauktoriteetin. Tuntematonta business-vaikutusta ei nimetä muuttumattomaksi. |
+| `main/desktopComposition.ts` ja nykyinen workspace-startup/switch | Valitsin palautetaan ennen backend-sessionin ja business-runtimen luontia. Yritysavaus tarvitsee edelleen omat health-, identiteetti-, sisältö- ja session-tarkistuksensa. |
+| `main/packagedSmoke.ts` sekä nykyiset workspace-success/fault- ja legacy-hyväksyntälukijat | Valitsimen näyttö ei täytä niiden nykyistä business-hyväksyntää. Versio ja hyväksynnän laajuus tarkistetaan ennen success-luokitusta; historiallisten pakettien erilliset lukurajat säilyvät. |
+
+**Hyväksynnän laajuuden koeehdotus:** saman accepted-build-tallennuksen
+versionmukainen lukija erottaa `selector`- ja `business`-hyväksynnän.
+Ehdotettu v2 sisältää vain `formatVersion`, `acceptanceScope`,
+`acceptedBuild` ja `businessBaseline`. Kaksi viimeistä käyttävät nykyisen
+v1:n validoitua build-identiteetin, kanavan ja hyväksymisajan syntaksia;
+selectorin kohdalla tämä syntaksi ei itsessään todista business-terveyttä.
+V1 säilyy merkitykseltään business-hyväksyntänä. Business-v2:ssa molemmat
+arvot ovat samat; selector-v2:ssa baseline on aidosti vanhempi
+business-hyväksytty build. Useat selector-päivitykset säilyttävät tämän
+lähtöversion, eivät korvaa sitä viimeksi käynnistetyllä binäärillä.
+Samaversioinen eri revisio, taaksepäin siirtyminen, puuttuva baseline ja
+ristiriitainen laajuus hylätään. Hyväksymisaika säilyy historiatietona,
+ei kellonkorjauksille herkkänä version järjestysehtona. Ehdokas ei ratkaise
+R030-06:n ensiasennusta.
+
+Tämä on **koeehdotus, ei uusi tuotantoformaatti tai kirjoitusvaltuus**.
+Valitsimen hyväksyntää lukevat admission ja registry-muunnos erotetaan
+business-lukijoista. W6:n inventaario saa viimeisen business-lähteen;
+W6-journalin lopetus/recovery ja business-hyväksyntätestit vaativat nykyisen
+kohdebuildin nimenomaisen business-hyväksynnän. Pelkkä revision täsmääminen
+ei riitä. Myöhempi yritysavaus ei saa keksiä vanhan runtime-hyväksynnän
+perusteella migration-, profiili- tai secret-identity-todistetta.
+
+**Koenäyttö:** erilliset 22 tapausta ja tyyppitarkistus läpäisivät.
+Pieni lukuehdokas säilytti v1:n merkityksen ja baselinen kahden
+selector-päivityksen yli sekä torjui ristiriitaiset arvot ja liian laajan
+business-lukupyynnön. Nykyinen byte-slot-tallennus kirjoitti oikeaan
+eristettyyn tiedostoon ehdokkaan, jonka uusi lukija tunnisti ennen mitään
+registry-muutosta; alkuperäiset registry- ja sivukohteen tavut säilyivät.
+Julkaisematon `.next` ei laajentanut nykyisen slotin hyväksyntää.
+Nykyinen W6-omistaja kutsui inventaariota erillisen business-projektion
+kautta sekä hyväksyvässä että hylkäävässä kontrollissa. Väärä runtime-revisio
+ei saa tätä jatkohakuvaltuutta eikä putoa tarkistuksen ohittavaan haaraan.
+Rajattu riippumaton katselmus ei jättänyt ehdokkaaseen avoimia löydöksiä.
+
+Koe ei kytkenyt uutta admissionia, W6-recoverya tai metadata-kirjoittajaa
+tuotantoon. Se ei osoita kaikkien slottien yhteistä admissionia,
+rekisteri-v2:n muunnosta, rollbackia, oikeaa prosessin keskeytystä tai
+käynnistystä. W6:n kontrollit eivät vielä todista pending-migraation
+lähtöidentiteetin käyttöä tai business-hyväksynnän kirjoittamista.
+Ehdokkaan muodostus ei luokittele avoimia journaleja eikä
+anna ohittaa vanhaa palautusta. Varsinkin nykyinen updater luo
+palautuspisteen aktiivisesta yritysprofiilista; sitä ei voi käyttää
+backendittomaan päivitykseen tekaistulla profiililla.
+
+**Julkaisu- ja keskeytyssopimuksen täsmennys 25.10.2026:**
+metadata ja registry ovat erilliset tallennukset, eivät yhteinen atominen
+commit. Seuraava järjestys on W7.0:n koesopimus, ei tuotantovaltuus:
+
+1. Nykyinen installation-omistaja todistaa varauksen ja kirjoittajien
+   poissaolon. Versionmukainen tarkastus lukee molempien tallennusten kaikki
+   slotit sekä vanhat sijainnit ennen korjaavaa lukua tai legacy-siirtoa.
+   Myös nykyiset C-, Direct Setup-, W6- ja workspace-journalit luokitellaan
+   niiden omistajissa. Puuttuva tai ristiriitainen tila ei ole tyhjä asennus.
+2. Uusi build saa ensin nykyisen käynnistysadmissionin. Valitsimen readiness
+   todennetaan ilman yritys-DB:n avausta; v1-rekisteri voi tässä vaiheessa
+   palvella vain lukevaa, vielä hyväksymätöntä valitsinta. Muunnoksen
+   sisältö validoidaan etukäteen muuttamatta rekisteriä.
+3. First-start-omistaja julkaisee täsmällisen selector-hyväksynnän ja lukee
+   sen takaisin. Vanha business-baseline säilyy. Julkaisun jälkeinen
+   siivousvirhe ei tarkoita, ettei hyväksyntää olisi kirjoitettu.
+4. Vasta julkaistu hyväksyntä sallii v1 -> v2 -rekisterimuunnoksen. Entryt
+   ja nykyinen aktiivivalinta säilyvät; muunnos ei samalla poista yritystä,
+   valitse toista yritystä tai korjaa vikatilaista tietokantaa. Jo v2:ta
+   käyttävä selector-päivitys ei tarvitse uutta rekisterikirjoitusta.
+5. W7:n varsinaiset hallintamutaatiot avautuvat vasta yhteisen tilan
+   readbackin jälkeen. Yrityksen avaaminen kulkee edelleen omat W6-,
+   migration-, health-, sisältö- ja session-porttinsa.
+
+| Keskeytystila | Vaadittu käsittely |
+| --- | --- |
+| Lähdemetadata currentissa ja kohde vain nextissä | Kohdetta ei merkitä hyväksytyksi. Lähteen täsmälliset metadata- ja registry-tavut säilyvät palautusvertailuun. |
+| Current puuttuu, lähde backupissa; next on poissa tai täsmällinen kohde | Kaikki slotit validoidaan ennen lähteen palauttamista. Kiinni otetun kirjoitusvirheen `finally` voi poistaa nextin. Vierasta backupia ei hyväksytä lähteeksi eikä next yksin laajenna hyväksyntää. |
+| Kohdemetadata currentissa, registry vielä lähdeversiossa | Jo hyväksytyn kohteen jatkaminen rekisterimuunnokseen on erillinen palautumispiste. Vanhan binaarin lukukelpoisuutta ei luvata, koska jo metadata-v2 on vanhalle parserille tuntematon. |
+| Kohdemetadata ja registry-v2 julkaistu | Täsmällinen readback ja sallittu palautusslottien loppusiivous ennen hallintamutaatiota. Ei v2 -> v1 -muunnosta tai rinnakkaista vanhaa rekisteriä. |
+| Virheellinen, vieras tai selittämättömästi muuttunut slotti | Ei automaattista korjausta tai poistoa; aineisto ja turvallinen estotila säilyvät. |
+
+**Rollback-raja:** ennen selector-hyväksynnän julkaisua lähdetallennukset
+säilytetään; binaaripalautus kuuluu nykyiseen asenninporttiin. Julkaistun
+selector-hyväksynnän jälkeen tapahtuva registry-virhe on kohdebuildin
+kesken jäänyt jatko, ei todiste valmiista rollbackista. Paluu jo hyväksytyn
+buildin taakse olisi erillinen downgrade-sopimus, jota W7-P1 tai
+manual-installer-päätös eivät hyväksyneet. Uusi haara ei kirjoita
+olematonta business-palautuspistettä tai `businessRollbackCompleted`-tilaa.
+Tämä ei poista ennen hyväksyntää epäonnistuneen päivityksen nykyistä
+rollback-todennusvaatimusta.
+
+**Rajattu tiedostonäyttö:** 20 tapausta ja tyyppitarkistus läpäisivät.
+Oikeilla eristetyillä sloteilla muodostettiin nimetyt kirjoitusjärjestyksen
+keskeytyskohdat. Uusi lukija erotti julkaisemattoman lähteen, hyväksytyn
+selectorin keskeneräisen rekisterimuunnoksen ja valmiin tiedostoparin.
+Vieraan registryn, väärän julkaisujärjestyksen, virheellisen sivuslotin ja
+viimeisessä luvussa menetetyn valtuuden torjunta säilytti kaikki tavut.
+Toistuva selector-päivitys säilytti business-baselinen ja tyhjän v2-rekisterin;
+avaamattoman yrityksen sentineli ei muuttunut. Koe ei käynnistänyt uutta
+prosessia, toteuttanut palautustoimia tai todistanut sähkökatkokestävyyttä,
+asentajaa, journal-admissionia tai business-terveyttä.
+Riippumattoman katselmuksen löytämä liian aikaisen registry-valmistelun
+aukko toistettiin kahdella kielteisellä tapauksella ja korjattiin ehdokkaaseen.
+Myös next-kirjoitus ja currentin siirto ennen metadatahyväksyntää torjutaan;
+katselmuksen jälkitarkistukseen ei jäänyt avoimia löydöksiä tällä rajauksella.
+
+**Kirjoittajan jatkokoe:** 10 uutta tapausta ja yllä olevat 20 regressiota
+läpäisivät samassa ajossa; tyyppitarkistus läpäisi. Kokeessa ajettiin
+`AcceptedBuildMetadataStore`-omistajan oikeat kirjoitus-, virhe- ja
+palautushaarat. Vain sen v2-codec korvattiin yksityisellä ehdokkaalla;
+kirjoittajaa ei korvattu stubilla. Virhe aiheutettiin lähdesiirron ja
+julkaisusiirron ympärille, backupin poistoon ja lähteen palautusyritykseen.
+Uusi tallennin luki ja palautti todelliset tavut, ja toinen luku säilyi
+muuttumattomana. Vain currentissa hyväksytty selector salli registry-
+muunnoksen jatkamisen; business-baseline ja avaamattoman yrityksen tavut
+säilyivät. Erillinen byte-store-koe toisti backup-only-tilan ja sen
+palautuksen. Luokitteluehdokasta täydennettiin tälle täsmälliselle lähteelle;
+vieraan backupin torjunta säilyi. Ensimmäisten kokeiden tavuvertailun ja
+lähdemetadatan kenttäjärjestyksen virheet korjattiin fixtureihin.
+
+Kiinni otettu virhe suoritti nykyiset `catch/finally`-haarat. Tämä ei ole
+prosessin tappamisen, sähkökatkon, installerin tai Linux-hakemistosynkronoinnin
+todistus. Byte-store ja metadatatallennin eivät palauta backupia kaikissa
+samoissa virhekohdissa, joten heitetty poikkeus ei ole julkaisun tilatodiste.
+Yhteinen journal-admission ja valintaan sidottu clear eivät sisälly tähän
+kirjoittajakokeeseen, eivätkä v2-tuotantocodecit muutu tällä kokeella.
+Rajattu riippumaton katselmus ei jättänyt löydöksiä tähän deltaan;
+katselmus ei itse ajanut testejä tai laajentanut niiden näyttörajaa.
+
+**Terminal- ja legacy-admissionin lähteeseen perustuva sopimus:** nykyinen
+`migrateLegacyLocalUpdateState` kutsuu korjaavia lukuja ennen admissionia.
+`accepted`-C-journal puolestaan edellyttää metadatan vastaavan omaa
+kohdebuildiaan. Siksi vanha journal käsitellään **ennen** uuden selector-
+hyväksynnän kirjoitusta, ei vasta seuraavan sisäisen päivityksen alussa.
+Alla kuvattu rajattu admission-/clear-koe täydentää suunniteltua kytkentää;
+tuotannon kirjoittajia tai käynnistysjärjestystä se ei vielä muuta.
+
+Seuraavan taulukon A tarkoittaa ennen uutta julkaisua hyväksyttyä
+**sovellusbuildia**, ei selector-metadatan vanhempaa business-baselinea.
+S ja T ovat vanhan journalin lähde- ja kohdebuildit. Vastaavuus sisältää
+version, revision ja validoidun kanavan; pelkkä versionumero ei riitä.
+
+| Vanhan C-journalin tila | Ehto ennen terminal-journalin siistintää |
+| --- | --- |
+| `accepted` | A = T. Nykyinen FirstStart julkaisee tämän vasta cache-rotaation varmennuksen ja accepted-metadatan jälkeen. |
+| `installerNotApplied` | A = S. Nykyisen omistajan lähdebuildin, migration-prefixin ja profiilin hyväksyntää ei korvata selector-readinessilla. |
+| `rolledBack` | A = S. Pelkkä rollbackin aloitus tai aikaisempi T-metadatan hyväksyntä ei riitä; lähdemetadata kirjoitetaan ennen tätä terminalia. |
+| `failed`, muut avoimet tilat tai ristiriitaiset slotit | Nykyisen recovery-omistajan ratkaistavaksi. Handoffin korvattavien tilojen lista ei ole startupin terminal-lista. `handoffAttemptCount: 0` ei yksin todista valtuuden vapautumista. |
+
+Kaikissa kolmessa ratkaistussa tilassa vaaditaan tuore installation-
+valtuus, kirjoittajien poissaolo, täsmällinen journal-valinta ja muiden
+palautusomistajien konfliktittomuus. Avoimia C-/Direct Setup-/W6-operaatioita
+ei päätetä valitsimessa eikä niiden palautuspisteitä poisteta.
+
+1. `createInstallationUpdateState`-kytkentä tarkastaa nykyisen ja legacy-
+   sijainnin kaikki metadata-/journal-slotit sekä registryn ennen nykyisiä
+   korjaavia lukuja. `readOnlyJournalSlots` tarjoaa lukumallin, ei itsessään
+   yhteistä hyväksyntää tai identiteettitodistetta.
+2. `migrateLegacyLocalUpdateState` säilyy sijaintimuunnoksen omistajana.
+   Pelkkä legacy-arvo kopioidaan nykyiseen sijaintiin ja luetaan takaisin
+   ennen legacy-poistoa. Kahdessa sijainnissa olevien validoitujen arvojen
+   pitää vastata kokonaan, myös `acceptedAt`-kentän. Selector-baseline ei
+   tee eri metadata-arvoista yhtäläisiä. Epäselvä keskeytysyhdistelmä säilyy.
+   Myös legacy-metadatan clear tarvitsee valitun arvon ja tuoreen valtuuden
+   tarkistuksen; journalin suojattu clear ei yksin suojaa metadata-poistoa.
+3. `UpdateJournalStore` tarvitsee nykyisen valintaan sidotun kirjoituksen
+   tapaan täsmälliseen valintaan ja tuoreeseen valtuuteen sidotun clearin.
+   Nykyistä ehdotonta `clear()`-kutsua ei käytetä uuden haaran poistovaltuutena.
+   Molempien journal-sijaintien poissaolo ja lähdemetadatan säilyminen
+   todennetaan ennen selector-julkaisua. Osittainen clear ei anna lupaa
+   ohittaa uutta tai muuttunutta journalia. Legacy-arvon poisto vaatii
+   täsmällisen kopion nykyisessä sijainnissa; ainoaa lähdearvoa ei poisteta.
+   Epäonnistuneen siivouskuittauksen jälkeinen poissaolo ei yksin todista
+   valmistumista: nykyisen tiedosto-omistajan synkronointiraja ja yhteinen
+   readback tehdään ennen julkaisua. Varmasti puuttuvaa vanhaa hakemistoa
+   ei luoda synkronointia varten; olemassa olevan hakemiston virhettä ei
+   ohiteta. Näistä ei johdeta uutta fyysisen sähkökatkokestävyyden lupausta.
+4. Journalin siistintä ei poista palautuspisteitä tai cache-paketteja eikä
+   merkitse manuaalista pakettia cacheen hyväksytyksi. Kolmen ratkaistun
+   terminalin journal-perusteinen palautuspistesuoja on jo nykyisin päättynyt;
+   muiden omistajien suojat ja artifactien oma elinkaari säilyvät.
+
+Nykyiset FirstStart-, admission-, store- ja legacy-muunnosomistajat riittävät
+suunnitelluksi vastuujaoksi; uutta koordinaattoria tai journalia ei lisätä.
+Valintaan sidottu clear kuuluu nykyisen store-omistajan serialisoituun
+operaatioon ja installation-varaukseen, ei ulkoiseen ennakkotarkistukseen
+ja sen jälkeen kutsuttavaan ehdottomaan `clear()`-metodiin.
+
+**Rajattu terminal-/legacy-näyttö:** 53 tapausta ja tyyppitarkistus
+läpäisivät. Oikea
+`migrateLegacyLocalUpdateState` sekä nykyiset v1-metadata-/journal-tallentimet
+toimivat yksityisten admission- ja clear-ehdokkaiden takana. Nykyinen,
+legacy- ja kahden yhtäläisen sijainnin lähtö todennettiin kolmelle yllä
+nimetylle terminalille. Kaikki slotit tarkistettiin ennen korjaavia lukuja;
+sivuslotit, avoin tila, ristiriita, väärä hyväksytty build tai muuttunut
+`acceptedAt` estivät jatkon säilyttäen tavut. V2-metadatan lukukontrolli
+käytti sovellusbuildia, ei vanhempaa business-baselinea.
+
+Koe kattoi valinnan muutoksen, aikaisen ja viimeisen luvun yli menetetyn
+valtuuden, kopion kadonneen kuittauksen ja osittaisen legacy-siivouksen.
+Uusi admission saattoi jatkaa täsmällistä osittaista muunnosta; uusi journal
+tai jatkuva synkronointivirhe esti julkaisun esiportin. Registry ja rajatut
+säilytettävät koetavut eivät muuttuneet. Katselmuksen löytämä puuttuvan
+legacy-hakemiston yhteensopivuuspuute toistettiin ja korjattiin ehdokkaaseen.
+
+Varaus, kirjoittajien poissaolo ja muiden recovery-omistajien konfliktit
+olivat injektoituja ehtoja. Koe ei todista atomista tiedostojärjestelmän
+snapshotia, native-poistumista, v2:n varsinaista legacy-muunnosta, kaikkien
+recovery-slottien korjausta tai esiportin tuotantokytkentää selector-
+julkaisuun. Sivuslotit palautuvat nykyiselle recovery-omistajalle, eivät
+muutu hylättäviksi backup-formaateiksi. Synkronointivirhe oli injektoitu;
+hakemiston puuttumiskontrolli ei ole erillisen käyttöjärjestelmän ajotodiste.
+Asentajan ja tuotannon rollback-ketjun hyväksyntä säilyy erillisenä.
+Rajattu riippumaton katselmus ja korjauksen jälkitarkistus valmistuivat
+ilman tämän koedeltan avoimia löydöksiä; katselmointi ei itse ajanut testejä.
+
+**Omistajan hyväksymä rajaus 25.10.2026:** ensimmäisessä W7-toteutuksessa
+yrityksettömän tilan päivitys käyttää tavallista asennuspakettia. Nykyinen
+sovelluksen sisäinen päivitys säilyy avatun yrityksen kautta; valitsimesta
+ei käynnistetä uutta sisäistä päivitys-/rollback-haaraa ilman yrityksen
+palautuspistettä. Manuaalisen päivityksen hyväksynnän, vanhojen kopioiden
+ja rollback-yhteensopivuuden todennus säilyy pakollisena. Rajaus ei muuta
+muita W7-P3:n toimintoja eikä ole vielä toteutus- tai installer-näyttö.
+
+**Päivitys koskee koko EKY-asennusta:** yksi päivitys vaihtaa yhteisen
+sovellusversion ja ominaisuudet kaikille asennukseen rekisteröidyille
+yrityksille riippumatta siitä, mikä yritys oli avoinna. Yrityksiä ei
+päivitetä erillisiksi ohjelmaversioiksi, eikä tämä luo uutta käyttäjätiliin
+sidottua asennusmallia. Yrityskohtainen tietokantamuunnos on eri vaihe:
+nykyinen W6/W6A.3 inventoi historiat, muuntaa tarvittaessa aktiivisen
+työtilan ja käsittelee passiivisen `compatiblePending`-työtilan sen
+ensimmäisellä hallitulla avauksella ennen business-käyttöä. W7:n
+valitsinhyväksyntä ei saa ohittaa tätä myöhempää tarkistusta tai väittää
+avaamattomien yritysten tietokantoja jo muunnetuiksi. Sama raja on
+todennettava myös usean yrityksen ja toistuvien valitsintilassa tehtyjen
+päivitysten kokeissa.
+
+##### Vahvistus, sulku ja poistettava kokonaisuus
+
+Main omistaa kohteen: validoitu `workspaceId`, täsmällinen registry-entry,
+lineage, odotettu label, installation-juuri ja saman operaation varaus.
+Rendererin kirjoittama nimi tai polku ei ole poistolupa. Pyyntö hyväksytään
+vain nykyisen sallitun ikkunan/frame-generationin kautta. Native-vahvistus
+näyttää juuri tämän kohteen; vanhentunut nimi/entry/session hylkää pyynnön.
+Vanhojen nimikaksoiskappaleiden erotin on mainin antama turvallinen
+workspace-tunniste, ei polku, business-ID tai sähköpostiosoite.
+
+Backup-todiste kuuluu samaan pysäytettyyn kirjoitus-/snapshot-rajaan.
+Pelkkä tuoreen näköinen päivämäärä tai sama lineage ei riitä. Käyttäjän
+valitsema kopio tarkistetaan K:n kautta; jos vastaavuutta poistettavaan
+aineistoon ei voida todistaa, se ei korvaa erillistä menetyshyväksyntää.
+Vikatila ei pakota avaamaan SQLitea backupin tekemiseksi. Backupin
+peruutus/virhe ei muuta vahvistusvalintaa automaattisesti.
+
+Nykyiset maintenance-lease ja installation-reservation pysyvät omistajina.
+Uusi työ estetään ennen sulkua; backendin todellinen exit, brokerien,
+secret-I/O:n ja PDF-arkistoinnin päättyminen todistetaan erikseen. D2:n
+nykyinen sulkubudjetti ja epävarmuussääntö säilyvät. Vanhalla prosessilla
+oleva tai kadonnut varaus estää tiedostomuutokset, vaikka ikkuna olisi kiinni.
+Mainissa tapahtuva työ ei pääty backendin exitin perusteella.
+
+**W7-P3, passiivisen poiston käyttökatko hyväksytty 24.10.2026:** käytetään
+samaa nykyistä installation-varausta ja pysäytetään senhetkinen business-runtime
+tiedostovaiheen ajaksi. Vain sama aiempi yritys voidaan käynnistää uudelleen
+onnistuneen poiston ja normaalien startup-porttien jälkeen. Aktiivisen
+kohteen poisto päätyy aina valitsimeen. Virhe tai epävarma sulku ei anna
+lupaa palata business-käyttöön. Käyttäytyminen on hyväksytty, ei vielä toteutettu.
+
+| Omistettu aineisto | Poiston raja ja nykyinen omistaja |
+| --- | --- |
+| SQLiten tiedostot, auktoritatiiviset PDF:t ja business-audit | `desktopProfilePaths` ja workspace-polkuportti. Poisto ei suorita business-kyselyitä, korjaa skeemaa tai migroi vikatilaista tietokantaa. Omistetun juuren ja sen sisältötyyppien tarkistus säilyy. |
+| SMTP ja sisäinen PDF-arkistoinnin tila | `encryptedSecretFile` current/next/backup sekä nykyisen arkisto-omistajan asetus/journal. I/O päättyy ensin; mitään ei viedä talteen. Ulkoista PDF-kansiota tai sen yritysalikansiota ei poisteta. |
+| Palautuspisteet ja palautuksen väliaineisto | `profileSnapshotRuntimePaths`, `RecoveryPointStore` ja restore-omistaja. Myös ennen indeksijulkaisua syntyneet containerit/nextit, avainkuoret palautusslotteineen, rotation-journal ja clean-shutdown-tila kuuluvat inventaarioon. Nykyinen `list/remove` ei yksin riitä: indeksistä puuttuvan artifactin poisto voi palautua tekemättä mitään. |
+| Staging, quarantine ja rollback | Työtilan `private-backup-staging`, `private-backup-quarantine`, `profile-restore-rollback`, `failed-profile-restores` ja `profile-backup-state` ovat eri rooleja. Koko omistettu sisäinen PDF-juuri sisältää myös katalogittomat orvot; backup-katalogi ei ole täydellinen poistoluettelo. |
+| Työtilan ulkopuoliset operaatiokopiot | `workspaceBackupReplacementPaths` johtaa yhteiset import-/activation-staging-/rollback-/failed-juuret; import-quarantine on myös yhteinen. `resolveProfileInspectionCopyRoot` johtaa tarkistuskopion varausjuuren sisareksi. Nykyinen nimi/sijainti ei yksin todista kohdetta; koko yhteistä juurta tai `profile-inspection-*`-globin osumia ei poisteta. |
+| Adoption alkuperäinen lähde | `workspaceLegacyAdoptionRootStore` säilyttää vanhan runtime-lähteen ja startup poistaa onnistuneen adoption journalin. Vanhan ja nykyisen sisällön vertailu ei tavallisten muutosten jälkeen todista omistajaa. Koko vanhaa runtime-juurta ei poisteta, koska siinä voi olla installation-update-tilaa. |
+| Säilyvät kohteet | Muiden yritysten kaikki sisältö, käyttäjän vientibackupit ja ulkoiset PDF:t. Installation-lokit, tukipaketit ja update-paketit säilyvät omien retention-sopimustensa mukaan. |
+
+Pelkkä vikatila ei estä poistoa, mutta epäluotettava rekisteri tai
+moniselitteinen tiedosto-omistajuus estää arvaamisen. Käynnissä oleva muu
+operaatio estää kilpailevan poiston. Omistaja hyväksyi 24.10.2026 kohteen
+oman keskeytyneen palautuksen korvaamisen lopullisella poistolla vain
+todistetulle kohteelle ja kaikkien kirjoittajien päätyttyä. Tämä tarvitsee
+nykyiseen omistajaan erillisen, täsmällisen
+admission-haaran: kaikkien sen kirjoittajien poissaolo ja kaikkien
+omistettujen jäännösten kohdesidonta todennetaan ilman DB:n avaamista.
+Jaettua W6-/update-/adoption-journalia ei poisteta kohdekohtaisena sivutiedostona.
+
+**Inventaarion avoin toteutusportti:** vanhan adoption lähteelle sekä
+workspace-juuren ulkopuolisille keskeytyskopioille ei ole lähdeluvussa
+todistettu kaikissa historiallisissa tiloissa riittävää pysyvää sidontaa.
+Myöskään nykyinen `ProfileRestoreActivationJournal` ei sisällä workspaceId:tä
+tai lineagea; pelkkä operationId ei täytä rajaa. Näitä ei merkitä valmiiksi
+kirjoittamalla suunnitelmaan yleinen "siivoa jäämät". Pieni inventaariokoe
+selvittää nykyisten todisteiden riittävyyden ja 25.10.2026 hyväksytty
+suunnittelu-/koevaihe täsmentää uuden pysyvän sidonnan. Tuotantokytkentä
+odottaa katselmoitua sopimusta ja näyttöä; historiallista poikkeusta ei
+ole hyväksytty.
+Tuntemattoman omistajan tiedosto säilytetään näkyvänä keskeneräisen poiston
+esteenä, ei piilotettuna varmuuskopiona tai onnistuneen poiston jäännöksenä.
+
+##### Palautusjäännösten kohdesidonnan rajattu koesopimus
+
+**Suunnittelu ja koe hyväksytty 25.10.2026, ei tuotantokytkentää.**
+Ensimmäinen koe rajataan nykyisen same-lineage-korvauksen omistajaan.
+Muuttumaton tekninen kirjaus sisältää version, nimetyn omistajan,
+operaation tunnisteen, workspaceId:n ja nykyisen lineagen. Ei polkua,
+nimeä, salasanaa tai business-sisältöä. Tämä ei ole aktivoinnin toinen
+tilakone: nykyinen activation-journal ratkaisee edelleen palautuksen
+vaiheen ja W7:n oma journal lopullisen poiston valtuuden.
+
+| Raja | Suunniteltu vastuu |
+| --- | --- |
+| Julkaisu | `WorkspaceBackupReplacementCoordinator` johtaa kohteen uudelleen validoidusta registrystä ja autentikoidun backupin lineagesta saman leasen alla. Kohdesidonnan julkaisu ja täsmällinen readback edeltävät `prepareCandidate`- ja `stageBackup`-kirjoituksia. Puuttuva tai epävarma kuittaus estää jatkon. |
+| Tallennus | Nykyisen replacement-omistajan oma operaatiokohtainen pieni metadata, erillään poistettavista payload-juurista. Nykyinen `CrashSafeByteSlotStore`; ei globaalia jäännösrekisteriä. Uusi operaatio ei ylikirjoita vanhaa sidontaa. Kokeen formaatti ja tavuraja eivät vielä lukitse tuotantoesitystä. |
+| Lukeminen | Kaikki current/next/backup-slotit luetaan muuttamatta niitä ja verrataan täsmälliseen kohteeseen. Initial-next ei ole julkaistu sidonta. Ristiriita tai tuntematon muoto ei oikeuta siivoukseen. |
+| Elinikä | Sidonta ei katoa activation-journalin terminal-siistinnässä, jos staging/failed/rollback-aineistoa on vielä olemassa. Sitä saa poistaa vasta nykyisen omistajan todettua kaikki kyseisen operaation aineistot poissa oleviksi tuoreella valtuudella. Pelkkä indeksistä tai journalista puuttuminen ei riitä. |
+| Poistokuluttaja | Polut johdetaan `workspaceBackupReplacementPaths`-omistajalla. Sidonta rajaa kohteen, mutta ei korvaa tuoretta juuri-/tiedostoidentiteettiä, linkki-/containment-tarkistuksia, kaikkien kirjoittajien poistumistodistetta tai W7:n purge-valtuutta. Sidonnan lukutulos ei ole välimuistiin säilytettävä poistolupa. |
+| Backup ja yhteensopivuus | Konekohtainen metadata ei kuulu portable backupiin eikä sitä palauteta toisesta asennuksesta. Backup-formaatit ja sisältövalidoinnit säilyvät. Vanhaa tunnistamatonta aineistoa ei hyväksytä jälkikäteen uuden metadatan näköiseksi. |
+
+Pieni koe todentaa oikeilla slottitavuilla julkaisun ennen synteettistä
+payloadia, journalin poiston jälkeisen lukemisen, vieraan kohteen ja
+ristiriitaisten slottien hylkäyksen sekä katkenneen kirjoituksen ja
+menetetyn valtuuden käsittelyn. Kaikki koeaineisto säilytetään; mitään
+asennettua yritystä ei käsitellä. Koe ei vielä todista tuotannon
+recovery-kytkentää, todellista prosessivarausta, jäännösten poistamista tai
+fyysistä sähkökatkokestävyyttä.
+
+**Rajattu näyttö 25.10.2026:** 33 synteettistä tapausta ja tyyppitarkistus
+läpäisivät. Oikea activation-journalin tallennin tyhjennettiin ja sidonta
+luettiin uudella lukijaoliolla; failed-koetavut säilyivät. Väärä työtila,
+lineage ja operaatio, ristiriitaiset tai katkenneet slotit, julkaisematon
+next, menetetty kuittaus ja myöhäinen valtuuden menetys katettiin.
+Rajattu riippumaton katselmus ei jättänyt avoimia löydöksiä tässä kokeessa.
+Ensiajon kaksi tavusäiliöiden vertailuvirhettä korjattiin testiin; kyse ei
+ollut todetusta sovellusviasta. Näyttö ei laajenna yllä nimettyjä rajoja.
+
+Ennen W7.0:n sulkemista sama raja täsmennetään adoption alkuperäiselle
+lähteelle, aktivointimigraatiolle sekä import-/inspection-omistajille.
+Kohteeton tuonnin ennakkotarkistus pysyy kohteettomana. Vanhan runtime-
+juuren installation-update-tilaa ei muuteta yrityksen aineistoksi.
+Näitä muita omistajia tai kaikkien jäännösten inventaariota ei merkitä
+todennetuiksi ensimmäisen replacement-kokeen perusteella.
+
+Nykykoodin mukaiset seuraavat kytkentäkohdat pidetään erillään:
+
+| Omistaja | Sidonnan syntyhetki ja vielä todentamaton raja |
+| --- | --- |
+| Same-lineage-korvaus | Kohde ja autentikoitu lineage ovat tiedossa ennen `prepareCandidate`-kutsua. Ensimmäinen koe koskee tämän metadatan julkaisua ja säilymistä, ei tuotannon kutsukytkentää. |
+| `WorkspaceActivationMigrationCoordinator` | Guardin target-proof sisältää kohteen, profileId:n sekä registry-/switch-journal-tavut. Kohdesidonta julkaistaan tuoreen `reprove`-tarkistuksen ja leasen alla ennen `createAndStage`-vaihetta, ei vasta candidate-kirjoituksessa. Snapshot syntyy nykyisin ennen kohteen startup-runtimen pysäyttämistä; tätä järjestystä ei muuteta replacementin mukaiseksi. Candidate ja swap edellyttävät edelleen todettua pysähtymistä. PreMigration-piste ja sen staging pysyvät recovery-point-omistajalla. Epäselvä stop tai sidontakirjoitus estää cleanupin ja relaunchin. Rajattu kutsujakoe on tehty; oikeat recovery-point-/root-/prosessiportit eivät sisälly siihen. |
+| `resolveWorkspaceLegacyAdoptionStartup` | Alkujournal nimeää operaation ja workspaceId:n; hyväksytty lineage saadaan `accept(profileId)`-vaiheessa. Legacy-lähteen sidonta julkaistaan ja luetaan takaisin ennen candidate-loppusiivousta ja journalin poistoa. Keskeytyksen jälkeinen täsmälleen sama sidonta voidaan todentaa, ei korvata uudella. `fresh`-adoptio ei keksi vanhaa yrityslähdettä. Poiston laajuus on root-omistajan nykyinen yrityssisällön sallintalista, ei koko runtime-juuri. |
+| `WorkspaceBackupImportCoordinator` | Autentikoitu source-lineage tiedetään ennen uuden workspaceId:n varaamista. Vasta uuden kohteen varauksen jälkeen sen sidonta voidaan julkaista ennen `createCandidate`/`stageBackup`-vaiheita. Journalin `lineageIdentity: null` ei tarkoita aktiivisen yrityksen lineagea eikä vielä todista validoitua candidatea. Epävarman sidontatuloksen pitää estää myös `ensurePreviousWorkspaceRunning`, ei vain candidate-siistintä. Ennen kohteen varaamista syntyvä plaintext kuuluu `WorkspaceBackupPlaintextQuarantine`-omistajalle. Saman quarantine-omistajan myöhempi staging-käyttö ei oikeuta koko jaetun juuren siirtoa W7:lle. |
+| `runOwnedProfileInspection` | Kopio kuuluu generationiin sidottuun prosessivaraukseen. Kohteen tunteva kutsuja vahvistaa operaation, generationin ja täsmällisen työtilan ennen tyhjän kopiojuuren luontia. Muuttumaton pysyvä sidonta liittää tähän alkuperäisen juuri-identiteetin ennen lapsen tiedostokirjoituksia; session-salaisuutta ei tallenneta. Kohteeton tarkistus pysyy kohteettomana. Alla oleva rajattu koe käsittelee tämän sidonnan lukua, ei tuotannon kylmäpoistoa tai native-poistumistodistetta. |
+
+**Muiden omistajien osanäyttö:** yhdeksän uutta tapausta läpäisi samassa
+ajossa muuttuneen sidontaehdokkaan 33 regression kanssa; nämä eivät ole
+42 uutta tuotantotestiä. Adoptiokoe käytti oikeaa startup-, root-, registry-
+ja journal-toteutusta sekä erillistä tulevan kytkentäkohdan testiporttia.
+Sidonta säilyi journalin tyhjentämisen yli. Menetetty valtuus, väärä lineage,
+julkaisematon next ja vieras sidonta estivät loppusiivouksen; keskeytys
+julkaistun sidonnan jälkeen voitiin jatkaa samalla sidonnalla.
+Vanhan lähteen, installation-tilan ja ulkoisen kopion koetavut säilyivät.
+Tuonnin nykyinen koordinaattori erotti kohteettoman preflightin uudesta
+työtilasta ja hylkäsi virheellisen preflightin ilman uuden journalin kirjoitusta.
+Tyyppitarkistus läpäisi. Ensimmäisten koetarkistusten kenttänimivirheet
+korjattiin koetiedostoon, ei sovellukseen.
+Rajattu riippumaton katselmus ja kommentin täsmennyksen jälkitarkistus
+valmistuivat ilman avoimia löydöksiä kokeen rajauksessa. Tarkistus ennen
+terminal-clearia ei kata adoption `accept()`-kutsun aiempia korjaavia lukuja.
+
+Koe ei todista adoption koko lähdeinventaarion myöhempää omistajuutta,
+kaikkien registry-slottien admissionia, oikeaa SQLite-sisältöä, mainin
+I/O:n tai prosessien päättymistä, fyysistä restartia tai purgea.
+Tämän ensimmäisen import-kokeen testiadapterit eivät todistaneet uuden
+pysyvän sidonnan julkaisua; seuraava kutsujakoe täydentää tätä rajaa.
+Jaetun tarkistus-/quarantine-juuren tyhjentämistä ei korvata W7:n
+rekursiivisella poistolla: nykyinen omistaja sulkee työn ja käsittelee oman
+aineistonsa, tai epävarma aineisto estää valmistumisen. Historiallista
+sidontaa ei rakenneta jälkikäteen aktiivisen yrityksen tai samankaltaisten
+DB-/PDF-tavujen perusteella.
+
+**Migraation ja tuonnin kutsujakoe:** 14 uutta tapausta ja muuttuneen
+sidontaehdokkaan 42 aiempaa tapausta läpäisivät samassa ajossa. Tyyppitarkistus
+läpäisi. Oikeat koordinaattorit ja migraation guard sekä oikeat sidontatavut
+yhdistettiin rajattuihin testiportteihin. Kokeessa sidonta julkaistiin ennen
+migraation snapshotia ja tuonnin candidatea, ja uusi lukija löysi sen
+journalin poiston jälkeen. Menetetty kuittaus, menetetty valtuus, epäselvä
+stop sekä snapshotin jälkeen muuttunut kohde estivät vaarallisen jatkon.
+Tunnettu snapshot-/staging-virhe säilytti nykyisen palautumisreitin.
+Katselmuksessa havaittu binding-I/O:n yli jäänyt tuoreuskatkos toistettiin
+kahdella kielteisellä tapauksella ja korjattiin koeehdokkaaseen: varaus
+ja kohde tarkistetaan uudelleen myös sidontaluvun/-kirjoituksen jälkeen
+ennen seuraavaa vaikutusta. Tuonnin journal-epävarmuus johdetaan kokeessa
+kirjoituskutsun aloittamisesta ja kuittauksesta, ei testivariantin nimestä.
+Rajattu riippumaton katselmus ja näiden korjausten jälkitarkistus valmistuivat
+ilman kokeen rajaukseen jääneitä löydöksiä.
+
+Tuonnin kontrolli osoitti, että pelkkä `discardCandidate`-virhe ei nykyisin
+estä aiemman yrityksen uudelleenavausta. Tämä ei yksin ole nykyisen tuonnin
+vika: uusi epävarma sidontatulos tarvitsee oman haaransa **nykyiseen
+koordinaattoriin ja lifecycle-kutsuun**. Kokeen ehdokas esti avauksen tämän
+rajapinnan kohdalla. Binding-/journal-kirjoituksen epäselvyyttä ei päätellä
+vaikutuksettomaksi vain siksi, ettei candidate-kutsua ehditty aloittaa.
+Vaikutuksettomuus todennetaan sloteista, operaatiokohteesta ja aineiston
+poissaolosta; muuten journal ja sidonta säilyvät recoverya varten.
+
+Kokeen prosessi-, payload- ja recovery-portit olivat testikaksoisia;
+se ei todista niiden fyysistä siivousta, SQLitea, native-poistumista tai
+kylmäkäynnistystä. Sidonta- ja snapshot-sentinelien tavut todennettiin,
+eikä koetiedostoja poistettu virheissä. Tuotantoon ei lisätty uutta
+tilanomistajaa, manageria tai tallennusformaattia.
+
+**Tarkistuskopion sidontasopimus:** nykyinen
+`WorkspaceCandidateInspectionCopy` säilyttää luodun juuren ja sen vanhemman
+identiteetit vain muistissa. Uusi olio samassa polussa ei siksi saa poistaa
+kansiota. Tätä suojaa ei poisteta tai korvata pelkällä operationId:llä.
+
+1. Nimetty kutsuja vahvistaa kohteen nykyisellä varauksella.
+   `runOwnedProfileInspection` säilyttää nykyisen prepare/grant/exit-järjestyksen.
+   Sen valmistelukutsussa nykyinen kopio-omistaja luo tyhjän juuren ja antaa
+   **omista alkuperäisistä luontitiedoistaan** rajatun, muuttumattoman
+   juuri-/vanhempi-identiteetin. Myöhempi polun stat ei korvaa tätä todistetta.
+2. Operaation ja generationin oma metadata julkaistaan nykyisellä
+   byte-slot-mekanismilla kopiojuuren ulkopuolelle. Kentät ovat versio,
+   nimetty inspection-omistaja, operaatio, generation, workspaceId, lineage
+   sekä juuri- ja vanhempi-identiteetti. Polkua, runtimeSession-salaisuutta,
+   sisältöä tai purge-valtuutta ei tallenneta. Tallennus käyttää samaa
+   sidonnan rajattua metadataa, ei toista palautuksen tilakonetta.
+3. Julkaisu vaatii alkuperäisten identiteettien tuoreen vastaavuuden ja
+   tyhjän kopion. Onnistunut readback sekä tuore kohde-/varausvarmennus
+   edeltävät grantia ja lapsen ensimmäistä kopiotavua. Epävarma kuittaus
+   estää jatkon, vaikka current olisi ehtinyt syntyä. Tyhjän juuren luonnin
+   ja sidonnan julkaisun välinen katkos ei oikeuta myöhempää arvaavaa
+   omaksumista; tunnistamaton juuri säilyy näkyvänä selvitystarpeena.
+4. Kylmäluenta tarkistaa kaikki slotit muuttamatta niitä, täsmällisen
+   kohteen ja generationin sekä luotetusta omistajasta johdetun polun
+   nykyiset juuri-identiteetit. Pelkkä initial-next, vieras slotti,
+   vaihtunut juuri/vanhempi tai epävarma kirjoittajien poissaolo estää jatkon.
+   Tämä on inventaarion todiste, ei säilytettävä poistolupa. W7:n oma
+   purge-valtuus, tuore inventaario ja kaikkien kirjoittajien todettu
+   päättyminen vaaditaan edelleen ennen jokaista muuttavaa vaihetta.
+5. Nykyinen onnistuneen ajon siivous säilyy. Sidontaa ei poisteta ennen
+   kuin nykyinen omistaja on todentanut kopion ja sen töiden loppumisen.
+   Kohteetonta ennakkotarkistusta ei sidota aktiiviseen yritykseen.
+   Konekohtainen sidonta ei kuulu portable backupiin eikä tukipakettiin.
+
+**Rajattu inspection-näyttö:** 26 uutta tapausta ja yhteisen sidonta-apurin
+33 regressiota läpäisivät samassa ajossa; tyyppitarkistus läpäisi.
+Oikea kopio-omistaja ja tiedostoslotit yhdistettiin synteettiseen
+luontitodisteeseen sekä injektoituihin varaus-/poistumishavaintoihin.
+Uusi lukija varmisti sidonnan, mutta nykyisen kopio-luokan uusi olio ei
+saanut sen perusteella poistaa tiedostoja. Saman ajon nykyinen siivous
+toimi, ja muiden yritysten koetavut säilyivät. Koeehdokkaan luonti-/julkaisuvälin
+identiteettiaukko toistettiin ja korjattiin vaatimalla alkuperäinen
+luontitodiste. Ensimmäisen koefixture-valmistelun ja tyypityksen virheet
+korjattiin kokeeseen, ei sovelluksen turvarajoihin.
+Koe ei vielä toteuta luontitodisteen tuotantoporttia, native-sulkua,
+fyysistä uudelleenkäynnistystä tai W7:n kylmäpurgea. Niitä ei lasketa
+valmiiksi tämän osanäytön perusteella.
+Rajattu riippumaton katselmus ja luontikuitin täsmennyksen jälkitarkistus
+valmistuivat ilman tämän koerajauksen avoimia löydöksiä.
+
+##### Poiston backup-todisteen vastaavuus
+
+**25.10.2026, lähteeseen perustuva suunnitelma, pieni sopimuskoe ja rajattu katselmus valmis.**
+Nykyisen `PortableProfileBackupService.create()`-kutsun onnistuminen kertoo
+tarkistetusta snapshotista. Sen maintenance päättyy ennen paluuta, joten
+tulos tai `latestSuccessfulPortableBackupAt` ei todista myöhemmin
+poistettavan työtilan muuttumattomuutta. Vanha kelvollinen backup ei muutu
+virheelliseksi; siltä vain puuttuu tämä erillinen poistokohtainen todistus.
+
+Ehdotus käyttää kertakäyttöistä mainin muistikuittia nykyisten backup-,
+inspection- ja maintenance-omistajien välillä, ei uutta levyformaattia.
+Sama kohdetodiste kuin poistossa sitoo operationId:n, workspaceId:n,
+registry-entryn, lineagen ja omistetun juuren. Kuitti sitoo myös
+installation-leasen omistajan, runtime-generationin sekä snapshotin ja
+vientitarkistuksen nykyisen protokollan operation-/generation-/session-sidonnat.
+Tämä on mainin sisäinen sidonta; session-arvoja ei julkaista.
+
+Sisältö on nykyinen `ProfileInspectionReceipt`: profiili ja migration-chain,
+DB:n ja katalogin todelliset koot/tiivisteet, artifactIdentity sekä PDF:ien
+määrä/kokosumma ja terveystulos. Lähteen `exactCurrentManifest` ja puretun
+viennin `restoreCompatible` tarkistetaan erikseen; niiden eri policy-arvoja
+ei vaadita samoiksi. Kaikki varsinaiset sisältökentät täsmäävät. Vienti
+sidotaan lisäksi autentikoidun lopullisen containerin tiivisteeseen ja
+mainin yksityiseen native-tiedostovalintaan. Polkua tai kuittia ei anneta
+rendererille poistovaltuudeksi.
+
+`createProfileBackupSourceEntries` ja `assertProfileBackupSourceReceipt`
+säilyvät lähdetavujen tarkistajina. Nykyinen inspector säilyttäisi täydet
+vientisisällön kuitit vertailua varten ennen oman staginginsa siivousta;
+pelkkä sama profiili, documentCount tai yhteenveto ei riitä. Nykyisen
+portable-palvelun rajattu caller-owned-haara pitäisi saman kirjoitussuojan
+snapshotista loppusulkuun, kuten nykyiset suojatut recovery-point-kutsut
+käyttävät kutsujan varausta. Päivityksen valtuutta ei silti muuteta
+poistovaltuudeksi. Tavallinen vientipolku säilyy ennallaan.
+
+Secret-/business-työn ja sen DB-auditin on päätyttävä ennen snapshotia.
+Lopullisen vientitiedoston sama identiteetti ja tiiviste tarkistetaan vielä
+ennen kuitin kulutusta. Lease-/generation-/kohdemuutos, kirjoitussuojan
+katkeaminen tai epävarma jatkuvuus vanhentaa kuitin heti. Tavallisen
+snapshot-suojan timeout-vapautusta ei saa tulkita jatkuvuudeksi. Sulun
+onnistumisen jälkeen kuitti voidaan käyttää kerran juuri ennen poiston
+`authorized`-julkaisua. Restart ennen julkaisua menettää muistikuitin;
+sen jälkeen jo julkaistu poistojournal omistaa hyväksytyn jatkamisen.
+Kuitin myöntäminen varataan ennen ensimmäistä omistajakutsua ja
+kertakulutus ennen ensimmäistä asynkronista odotusta. Myös
+epäonnistunut tai kuittaamatta jäänyt kulutus mitätöi kuitin; journalin
+mahdollinen julkaisu selvitetään nykyisistä sloteista, ei toisteta kirjoitusta.
+Julkaisijan nykyiset valtuustarkistukset saavat saman tuoreen assertionin.
+Synkronisen tarkistuskutsun sisällä tapahtuva mitätöinti havaitaan ennen
+sen paluuta. Saman tunnisteen tai busy-tilan palautuminen ei korjaa kerran
+katkennutta kirjoitussuojan jatkuvuutta.
+
+Kuitin laajuus on **portable business snapshot**, ei koko poistoinventaario.
+DB:n business-audit ja auktoritatiiviset PDF:t sisältyvät nykyiseen backupiin.
+SMTP-salaisuus, konekohtaiset asetukset, palautuspisteet ja recovery-jäännökset
+eivät muutu palautettaviksi tämän kuitin kautta. Käyttäjän palaute kertoo
+nykyisen [backupin sisältörajauksen](local-backup-and-restore-plan.md#backupista-pois-jätettävä-sisältö).
+
+Historiallinen backup, peruutettu vienti, väärä salasana tai puuttuva
+kohteen snapshot-owner eivät anna kuittia. Passiivista/vikatilaista yritystä
+ei avata pakolla eikä korvata aktiivisen yrityksen snapshotilla. Jo
+hyväksytty erillinen menetyssuostumus ja kaksi poistovahvistusta säilyvät
+vaihtoehtona; ne eivät ohita epävarmaa sulkua tai omistajuutta.
+Yksityisen sopimusehdokkaan 60 tapausta, nykyisen lähdetarkistimen 10
+regressiota ja tyyppitarkistus läpäisivät. Koe käyttää nykyistä täsmällistä
+inspection-viestilukijaa ja backupin lähdetarkistinta. Todellisia synteettisiä
+tiedostotavuja verrattiin myös saman kokoisten PDF:ien vaihtuessa ja
+vientitiedoston vaihtuessa samansisältöiseen eri tiedostoon. Kohde-, lease-,
+generation-/session- ja sisältöpoikkeamat, myöntämisen ja kulutuksen kilpailu
+sekä synkroninen mitätöinti estivät luvattoman jatkon. Kadonnut julkaisukuittaus
+säilyi epävarmana lopputuloksena eikä sallinut uutta kulutusta.
+
+Kokeen export on salaamaton synteettinen tiedosto, ei oikea backup;
+SQLite-, container-autentikointi-, jatkuva kirjoitussuoja-, sulku- ja inspection-
+siivoustodisteet on injektoitu. Julkaisija on tallentava testiportti,
+ei tuotannon poistojournal. Koe ei todista fyysistä restartia tai
+ulkopuolisen kirjoittajan estämistä tiedostotarkistuksen jälkeen.
+Todellinen keskeytymätön snapshot -> vienti -> sulku -kytkentä sekä kaikki
+kirjoittajat todistetaan W7.3:ssa ennen tuotantohyväksyntää.
+
+##### Poistojournal ja peruuttamattomuuden raja
+
+**W7-P2 hyväksytty 24.10.2026:** rajattu `WorkspaceDeletionJournalV1`
+nykyisen workspace-state-omistajan alle, **poistettavan työtilan ulkopuolelle**.
+Nykyistä rajattua
+byte-slot-kirjoitusta, hakemistosynkronointia ja polkuvalidointia käytetään;
+uutta persistence-frameworkia ei luoda. Poistokohtainen lukija tarkistaa
+slotit ennen niiden korjaamista: geneerinen `recoverAndRead()` saa siivota
+next/backup-slotin vasta, kun W7 on osoittanut sen turvalliseksi.
+
+Journalin täsmällinen v1-kenttäjoukko on `formatVersion`, `target`, `phase`,
+`registryBeforeSha256`, `registryAfterSha256`, `previousActiveWorkspaceId`,
+`backupDisposition`, `inventory`, `inventoryFileIdentity`,
+`operationRootIdentity` ja `operationParentIdentity`. `target` on alla
+määritelty kohdeluettelon otsake, `inventory` sen sitoumus. Edellinen valinta
+on validoitu workspaceId tai null; backup-luokka on `verifiedBackup` tai
+`explicitDataLoss`. Tiivisteet ovat 64 pienaakkosista heksamerkkiä, ennen- ja
+jälkeen-rekisterit eroavat. Kaikki kentät ovat pakollisia jokaisessa vaiheessa;
+vain `phase` muuttuu saman operaation journal-versioissa. Luku-/kirjoitusraja
+on 16 KiB, ei yrityksen tiedosto- tai laskuhistorian määräraja. Ylimääräiset
+kentät, avaintoistot ja virheellinen UTF-8 hylätään. Journal ei luettele
+PDF:ien sisältöä, sisällä salaisuuksia tai anna mielivaltaista poistopolkua.
+
+**Kohdeluettelon suunnittelu ja koe hyväksytty 25.10.2026; ei tuotantokytkentää.** Lähdekartoitus
+vahvisti, ettei yhden yrityksen ulkopuolisten jäännösjuurten määrä ole
+kiinteä. `ProfileRestoreActivationTransaction.clearRolledBack()` siivoaa
+tyhjän rollback-rakenteen ja journalin mutta säilyttää `failed`-aineiston;
+uusi operaatio tarkistaa oman operationId:nsä polut, ei aiempien määrää.
+Activation-migraatio käyttää samoja polkuja. Yksi avoin journal ei siis
+tarkoita yhtä historiallista jäännöstä. Inspection-kopioiden muistissa olevat
+juurikuitit eivät myöskään todista pysyvää historiarajaa.
+
+Hyväksytyn pienen journalin ja saman poisto-operaation muuttumattoman
+teknisen kohdeluettelon formaatti sekä julkaisu-/loppusiivousrajat on
+kokeiltu alla. Tämä on W7.0:n sopimusnäyttö, ei tuotantokytkentä.
+Puuttuvaa kohdeomistajuutta tiedostomuoto ei korjaa.
+
+##### W7.0:n kohdeluettelon täsmäsopimus
+
+| Osa | Täsmällinen sopimus |
+| --- | --- |
+| Otsake | `formatVersion: 1`, validoitu poiston `operationId`, `workspaceId`, nykyisen validatorin `lineageIdentity` ja `registryEntrySha256`. |
+| Jokainen tietue | Vain `role`, `ownerOperationId`, `generationId`, `member`, `rootIdentity`, `parentIdentity`, `bindingSha256`. Identiteetit kuvaavat alkuperäistä omistettua juurta ja parentia, eivät polun tiivistettä. |
+| Suljetut roolit | `workspace`, `legacyEntry`, `replacementImport`, `activationStaging`, `activationRollback`, `activationFailed`, `importCandidate`, `adoptionCandidate`, `inspection`. |
+| Roolikohtaiset kentät | `workspace`/`legacyEntry`: operaation ja generationin arvot null. `legacyEntry.member` kuuluu nykyisen adoption-omistajan 13 merkinnän sallintalistaan; muilla member on null. Inspection käyttää nykyisiä operation-/generation-validatorien tunnisteita. Muilla operaatiokohtaisilla rooleilla operationId on UUID ja generation null. |
+| Kohdesidonta | `workspace.bindingSha256` on null, koska registry sitoo juuren. Muilla rooleilla vaaditaan nykyisen omistajan pysyvän kohdesidonnan 64-merkkinen tiiviste. Tämä ei korvaa sidonnan validointia. |
+| Tavumuoto | UTF-8 JSONL: otsake ensin, sitten tietueet, jokaisen lopussa LF. Kiinteä yllä mainittu avainjärjestys, `JSON.stringify`-esitys, ei BOMia, avaintoistoja, tyhjiä rivejä tai ylimääräisiä kenttiä. Tietueavain `role/ownerOperationId/generationId/member` kasvaa aidosti; null on tyhjä avainosa. Toisto tai epäjärjestys hylätään. |
+| Rajat ja sitoumus | Yksi rivi LF mukaan lukien enintään 2 048 tavua, lukupala enintään 4 096 tavua. Journal sitoo `{formatVersion: 1, byteLength, recordCount, sha256}`; byteLength on positiivinen ja recordCount ei-negatiivinen turvallinen kokonaisluku. Tarkka pituus, tietuemäärä, EOF ja koko tiedoston SHA-256 varmennetaan. Ei uutta jäännösmäärän kokonaisrajaa. |
+
+Luettelo kuuluu vain saman operaation todistetusti omistamaan tekniseen
+kansioon, kiinteään `inventory.jsonl`-tiedostoon. Nykyinen omistaja johtaa
+kansion validoidusta poisto-operaatiosta; renderer tai tiedosto ei anna
+absoluuttista juurta. Luettelo, sen välitiedosto, journal ja quarantine
+suljetaan backupista pois. Ne eivät ole palautuskopio tai tukipaketin sisältö.
+
+Kirjoittaja kerää täydellisen, fyysisesti erillisten juurten inventaarion
+nykyisiltä omistajilta saman jatkuvan varauksen ja kirjoittajien sulun alla.
+Työtilan sisäistä alijuurta ei lisätä ulkoisena roolina uudelleen. Alun
+todistettu poissaolo erotetaan puuttuvasta historiasta; tyhjän luettelon
+kelvollinen formaatti ei todista, ettei yrityksellä ole poistettavaa aineistoa.
+Omistajien sidonta-/journal-jäännösten täsmällinen cleanup tehdään niiden
+omistajien kautta ennen terminal-tilaa, kun luettelo on vielä saatavilla.
+
+Julkaisu käyttää nykyisiä tiedosto-/slot-mekanismeja: uuden next-tiedoston
+yksinomainen luonti, rajattu peräkkäinen kirjoitus, tiedoston sync ja close,
+tuore identiteetti-/varauskontrolli, next -> current, hakemiston sync ja
+todellisten tavujen takaisinluku. Vasta tämän jälkeen journal saa julkaista
+`authorized`-tilan. Nykyistä yhden puskurin next-writeria ei kutsuta
+toistuvasti nollaoffsetiin; tuotantokytkentä käyttää nykyistä tiedostokahvaa
+ja etenevää kirjoitusta. Luetteloa ei enää päivitetä. Partial-next,
+puuttuva tai vaihtunut tiedosto ei oikeuta siirtoa tai purgea.
+
+Lukija käyttää rajattua rivipuskuria ja yhtä edellisen tietueen avainta,
+ei koko luettelon muistitaulukkoa. Ennen tuhoavia kutsuja vaaditaan koko
+luettelon tarkistus; seuraava läpikäynti säilyttää saman varauksen ja
+tiedostoidentiteetin sekä tarkistaa jokaisen kohteen tuoreesti. Hash yksin
+ei todista juurten omistajuutta, täydellisyyttä tai muuttumattomuutta.
+Nykyiset operaation aika-/peruutusrajat säilyvät; rajaton aineistomäärä ei
+tarkoita rajatonta suoritusaikaa. Tuotannon luettelointi ja kaikkien
+roolien disjointness todennetaan W7.3:ssa, ei pelkällä codec-kokeella.
+
+**Rajattu näyttö:** 44 formaatti-, slot-, julkaisu- ja loppusiivouskoetta
+sekä tyyppitarkistus läpäisivät. Mukana on oikea journal-rajaa suurempi
+300 tietueen tiedosto, keskeytykset, muuttuneet tavut/identiteetit, vieras
+sitoumus, rikkinäiset sivuslotit ja muiden aineistojen säilyminen. Katselmuksen
+myöhäinen registry-muutos toistettiin kahdella hylkäävällä kokeella ja
+korjattiin myös yksittäisten tiedostomuutosten yhteiseen guardiin.
+Jälkikatselmus sulki havainnon. Täydellinen purge, oikea registry-julkaisu,
+native-exit ja valtuus ovat tässä kokeessa injektoituja. Nykyinen Windowsin
+hakemistosync ei anna fyysisen sähkökatkon kestävyystodistusta; sitä ei
+väitetä saaduksi synteettisestä I/O-katkosta.
+
+Lähteestä tarkistettu inventaarion vastuunjako ohjaa schemaa, ei anna vielä
+poistovaltuutta:
+
+| Aineistoryhmä | Nykyinen polku-/sisältöomistaja ja poiston raja |
+| --- | --- |
+| Rekisteröity työtila | `deriveWorkspaceRoot` johtaa vain validoidun workspaceId:n juuren. Sen sisällä DB/PDF-, secret-, asetus- ja palautusomistajien nykyiset rajat säilyvät; runtime- ja snapshot-polut tulevat `desktopProfilePaths`- ja `profileSnapshotRuntimePaths`-omistajilta. Sama juuri ei saa esiintyä inventaariossa uudelleen aliroolina. |
+| Adoption säilynyt legacy-lähde | `workspaceLegacyAdoptionRootStore` omistaa 13 nimetyn yrityssisältömerkinnän sallintalistan. Listaa käytetään samasta omistajasta; koko legacy-runtimea tai installation-update-tilaa ei siirretä. Alun poissaolo ja myöhemmin kadonnut merkintä erotetaan. |
+| Replacement ja activation-migraatio | `workspaceBackupReplacementPaths` johtaa yhteiset emohakemistot sekä operaatiokohtaiset import-/activation-staging-juuret. `ProfileRestoreActivationTransaction.operationPaths()` johtaa activationin operaatiokohtaiset staging-/rollback-/failed-juuret. Kertymä on operaatiokohtainen; yhteisiä emohakemistoja ei poisteta kohteen aineistona. |
+| Importin ja adoption candidate | `workspaceBackupImportPaths` / `workspaceLegacyAdoptionPaths` johtaa operationId:n ja workspaceId:n täsmällisen candidaten. Jaettu `workspace-operations` tai toisen operaation aineisto ei kuulu kohteeseen. |
+| Inspection-kopio | `resolveProfileInspectionCopyRoot` ja kopion oma omistaja johtavat generationiin sidotun juuren. Pysyvä luontisidonta ja tuore juuri-/parent-tarkistus vaaditaan; nimihaku tai nykyinen `stat` ei yksin korvaa niitä. |
+| Omistajien sidonnat ja journalit | Muuttumaton kohdesidonta säilyy payloadin poiston yli. Sen oma loppusiivous erotetaan payloadista. Jaetun recovery-/update-journalin ratkaisee sen nykyinen omistaja, ei yleinen poistoluettelo. |
+
+Tuntematon tai toiselle yritykselle sidottu juuri ei muutu poistettavaksi
+luettelon tiivisteen avulla. Jokainen mukana oleva rooli tarvitsee saman
+varauksen alla todennetun alkuperän, sallitun sijainnin, linkki-/tyyppirajat
+ja kaikkien kirjoittajien päättymisen. Näiden tarkistusten toteutus ja
+inventaarion täydellisyyden koe ovat vielä avoimia, eivät tämän lähdekartan
+perusteella läpäistyjä.
+
+Journal ja saman operaation quarantine suljetaan backupin ulkopuolelle.
+Niitä ei palauteta käyttäjän backupista eikä käytetä yleisenä palautuspisteenä.
+Quarantine on omistetun aineiston siirto, ei kopio, hardlink tai retention-
+arkisto. Eri levyille putoavaa siirtoa ei muuteta copy/delete-operaatioksi.
+
+**Peruuttamattomuuden raja on vahvistetun `authorized`-tilan onnistunut
+julkaisu current-slottiin, synkronointi ja takaisinluku ennen ensimmäistä
+siirtoa.** Tätä ennen peruuttaminen ei poista yritystä. Tätä myöhemmässä
+virheessä käyttöliittymä kertoo keskeneräisestä poistosta; se ei lupaa
+peruutusta eikä avaa osittain poistettua yritystä. Pelkkä initial-next,
+native-dialogin hyväksyminen, lokirivi tai suljettu ikkuna ei anna
+kylmäkäynnistykselle itsenäistä purkuvaltuutta. Epävarma julkaisutulos
+ratkaistaan pysyvistä sloteista, ei muistissa olevasta onnistumislipusta.
+
+Tilat ovat `authorized -> quarantined -> purgeAuthorized -> purged ->
+registryPublished`. Jokainen tiedostomuutos vaatii saman operaation tuoreen
+varauksen ja kohdetarkistuksen; journalin luku ei myönnä niitä. Rekisterin
+entry ja lineage-varaus pidetään siihen asti, että purgen lopputila on
+todennettu. Poiston admission estää entryn business-avauksen koko ajan.
+`purgeAuthorized` julkaistaan ennen ensimmäistä lopullista tiedostopoistoa.
+
+**Slot-admissionin kokeiltu periaate:** nykyisen tiedostolukijan avulla
+luetaan rajatusti current, backup ja next ennen yhtäkään korjausta tai
+slotin poistoa. Myös valitsematta jäänyt slotti validoidaan. Saman
+operaation ja muuttumattoman kohdesidonnan sekä sallitun vaihesuhteen pitää
+täsmätä; pelkkä validi current ei peitä ristiriitaista tai rikkinäistä nextiä.
+Nykyinen yleinen `inspect()` ei yksin täytä tätä, koska se palauttaa
+ensimmäisen löytyvän slotin.
+
+Eristetty kahden kentän ehdokas läpäisi kymmenen tiedostokoetta:
+ristiriitainen operaatio, eteen hypännyt next tai väärin järjestetty backup
+hylättiin säilyttäen kaikki tavut; pelkkä initial-next ei myöntänyt valtaa;
+current/backup pysyi vanhempana julkaistuna vaiheena nextin edellä;
+rikkinäinen next ja luvun yli menetetty valtuus estivät jatkon. Tyhjä tila
+ei antanut valtuutta; kolme samanaikaista slottia hylättiin säilyttäen tavut.
+Aiemmat 18 nykyisen tallentimen karakterisointikoetta läpäisivät samassa
+28 tapauksen ajossa. Luvut ovat osajoukkoja, eivät 18 + 28 erillistä testiä.
+
+Ehdokas ei korjaa slotteja, myönnä varsinaista poistolupaa tai toteuta
+lopullista W7-skeemaa. Ennen kytkentää tarvitaan vielä täydellisen
+inventaarion muuttumaton kohdesidonta, hyväksytyn slot-korjauksen sekä seuraavan
+tiedostomuutoksen tuore valtuus ja identiteettitarkistus. I/O-poikkeuksen
+injektointi ei todista prosessin äkkikatkaisua tai fyysistä sähkökatkoa.
+
+##### Keskeytyksen jatkaminen
+
+Startup tarkistaa poiston journal-slotit nykyisen reservation-/admission-
+ketjun sisällä ennen kohteen business-avausta tai rekisterin normaalia
+korjauslukua. Eri operaatioiden ristiriitaa ei ratkaista valitsemalla
+uusinta aikaleimaa tai sivuuttamalla toista journalia. Jatko ei tarvitse
+uutta käyttäjävahvistusta vain, jos aiempi vahvistettu aloitus voidaan
+todistaa samaksi operaatioksi ja nykyinen omistajuus on palautettu.
+
+| Pysyvä havainto | Sallittu jatko ja estävä ehto |
+| --- | --- |
+| Ei julkaistua aloitusta; vain alkuvaiheen next | Ei tiedostosiirtoa/purgea. Säilytä epävarma kirjaus ja selvitä tila; yleinen slot-recovery ei saa muuttaa nextiä vahvistetuksi poistoluvaksi. |
+| `authorized`, lähde paikallaan | Tarkista alkuperäinen root-identiteetti, registry-entry ja varaus; siirrä vain nimetyt omistetut roolit. |
+| Siirto ehti, checkpoint ei | Lähde puuttuu ja täsmällinen siirretty identiteetti löytyy saman operaation quarantinesta: hyväksy vain tämä ennalta sallittu välitila. Kaksi kopiota, väärä juuri tai tuntematon puuttuminen estää jatkon. Usean roolin osittainen siirto käsitellään roolikohtaisesti. |
+| `quarantined` | Varmenna kaikki roolit ennen `purgeAuthorized`-julkaisua. Vahvistettua lopullista poistoa ei vaihdeta automaattiseksi palautukseksi. |
+| `purgeAuthorized`, osa aineistosta jo poistunut | Jatka vain journalin ennakolta valtuuttaman omistetun quarantine-juuren jäljellä oleviin kohteisiin. Poissaolo sallitaan vain tälle ennalta nimetylle poistolle; vaihdettua/linkitettyä juurta ei seurata. Kaikki aloitetut I/O:t päätetään ennen jatkoa. |
+| `purged`, registry vielä ennen-tilassa | Todista poistettavien roolien poissaolo, julkaise vain täsmällinen jälkeen-rekisteri: kohde pois, aktiivisen poiston jälkeen null, muut entryt muuttumattomina. Jos muu entry muuttui, älä kirjoita vanhaa snapshotia sen päälle. |
+| Jälkeen-rekisteri julkaistu, journal jäljellä | Varmenna inventaarion kaikkien payload-/quarantine-juurten poissaolo, niiden omistajien metadata-cleanup ja kaikkien registry-slotien turvallinen jälkeen-tila ennen `registryPublished`-julkaisua. Vanhasta backup-slotista ei saa palautua poistettua entryä. |
+| Journalin loppusiivous keskeytyi | Vain yksin oleva `current = registryPublished` saa viimeistellä alla kuvatun teknisen metadatan siivouksen ilman jo poistettua kohdeluetteloa. Se ei myönnä uutta payload-poistoa. Tyhjä v2-rekisteri ei käynnistä adoptionia; epävarma slot-/registry-yhdistelmä säilytetään. |
+| Väärä kohde, ristiriitaiset slotit, elävä/epävarma omistaja tai muu avoin operaatio | Ei destructive-jatkoa, business-avausta tai automaattista lineage-vapautusta. Säilytä aineisto ja näytä keskeneräinen/selvitettävä tila. |
+
+Lopullinen onnistuminen vaatii kaikkien inventaarion kohteiden ja
+quarantine-jäännösten poissaolon, julkaistun oikean rekisterin, vanhojen
+palautusslottien sovituksen ja poistojournalin turvallisen loppusiivouksen.
+Yksittäisen `unlink`-kutsun onnistuminen tai prosessin exit ei riitä.
+Sovellustason poisto ei lupaa SSD-sektorien tai käyttöjärjestelmän muiden
+kopioiden fyysistä ylikirjoitusta.
+
+**Kohdeluettelon ja journalin loppujärjestys:** `registryPublished` on
+pysyvä todistus yllä vaaditusta payload-/registry-lopputilasta, ei oikotie
+sen tarkistuksiin. Ennen luettelon poistamista kaikki journal-slotit
+revalidoidaan: sallittu on vain terminal-current ilman backupia tai nextiä.
+`purged + next=registryPublished` ei vielä myönnä loppusiivousta, eikä
+`registryPublished + backup=purged` oikeuta luettelon hävittämistä ennen
+turvallista slottisovitusta. Jokainen slotti säilyttää saman muuttumattoman
+sidonnan; kahden slotin vaiheet ovat peräkkäiset ja kolme slottia hylätään.
+
+Luettelo poistetaan vasta täydellisen takaisinluvun ja uuden
+identiteettitarkistuksen jälkeen. Sen oma sync ja tyhjän, identiteetiltään
+saman operaatiokansion poisto sekä parent-sync tehdään journalin vielä
+ollessa olemassa. Yhteisiä emohakemistoja tai tuntematonta lisätiedostoa ei
+poisteta. Journal poistuu viimeisenä tuoreen terminal-/registry-/varausluvun
+jälkeen. Registry-ehto tarkistetaan myös jokaisen tiedostokutsun yhteydessä,
+ei vain ennen journalin asynkronista lukua.
+
+Keskeytyksen jälkeen puuttuva luettelo tai operaatiokansio on sallittu
+**vain tämän terminal-currentin teknisessä loppusiivouksessa**; jäljellä
+olevat identiteetit, tarkka jälkeen-rekisteri ja varaus tarkistetaan edelleen.
+Ennen terminalia puuttuva luettelo estää jatkon. Luettelo ilman journalia
+ei anna automaattista cleanup-valtaa. Epävarma viimeinen poisto/sync ei ole
+onnistumiskuittaus. Näin journal ei jää vaatimaan jo turvallisesti poistettua
+luetteloa, eikä luettelon poissaolosta päätellä yrityksen payloadia poistetuksi.
+
+**Rajattu tiedostokoe:** eristetty kiinteän testihakemiston ehdokas käyttää
+nykyistä byte-slot-tallenninta sekä todellisia siirto- ja poistokutsuja.
+Lopulliset 26 tapausta ja tiukka tyyppitarkistus läpäisivät: katkot julkaistun aloituksen, siirron,
+purge-valtuuden, osittaisen poiston, rekisterijulkaisun ja loppusiivouksen
+ympärillä; muuttunut juuri, tuntematon lisätiedosto, menetetty valtuus ja
+muuttunut muu rekisterientry estivät seuraavan vaarallisen muutoksen.
+Koko toisen synteettisen yrityshakemiston ja ulkoisten kopioiden tavut
+verrattiin, ei vain yhtä sentinel-tiedostoa. Katselmuksen kolme puutetta
+toistettiin viidellä hylkäävällä regressiolla ja korjattiin ehdokkaaseen:
+kaikki rekisterislotit tarkistetaan myös terminal-jatkossa ja viimeisen
+odotuksen jälkeen; kohteen hylkäys edeltää korjaavaa journal-lukua; varaus
+tarkistetaan myös tallentimen yksittäisten tiedostokutsujen ympärillä.
+Rekisterin julkaisun jälkeinen varaslotin siivousvirhe säilyttää epäselvän
+tilan, eikä sitä tulkita valmistumiseksi. Journalin poiston ennen-/jälkeen-
+virheet erotetaan jäljelle jäävistä tavuista. Rajattu riippumaton katselmus
+ei jättänyt tämän ehdokkaan sovitussa piirissä avoimia löydöksiä.
+Koe käyttää omaa pientä rekisterimallia ja kontrolloitua varausrajapintaa;
+se ei todista tuotannon v2-validointia, prosessien päättymistä, kaikkien
+sisäisten jäännösten inventaariota tai samanaikaisten slottikirjoittajien
+poissulkua. Uusi koordinaattoriolio ei ole oikea prosessikatkos. Tämä
+erillinen 26 tapauksen koe ei sisällä edellä kuvattua 28 tapauksen
+slot-karakterisointia; kumpikaan ei ole W7:n loppuhyväksyntä.
+
+##### W7.0:n poistopyyntö- ja vahvistussopimus
+
+Uusi rajattu kanava on `eky:workspace-management:v1:delete` nykyisessä
+`workspaceManagementCapabilityProtocol`-omistajassa. Nykyisten kuuden
+kanavan tulosunionia ei levennetä; poistolla on oma tarkka request/result.
+Preload lisää vain tämän nimetyn metodin nykyiseen jäädytettyyn siltaan.
+Web ilman desktop-capabilityä ei tarjoa poistoa eikä käytä HTTP-fallbackia.
+
+| Viesti | Sallitut kentät ja arvot |
+| --- | --- |
+| Pyyntö | Vain `formatVersion: 1`, validoitu `workspaceId`, nykyisen label-validatorin `typedLabel` ja `backupChoice: createBackup | explicitDataLoss`. Ei polkua, salasanaa, lineagea, journalia tai rendererin lähettämää `backupVerified`-väitettä. |
+| Peruutus | `{formatVersion: 1, status: cancelled}` vain ennen pysyvän aloituksen julkaisuyritystä. |
+| Valmis | `{formatVersion: 1, status: completed, navigation: selector | reopenPrevious}` vasta koko poiston ja metadatan siivouksen jälkeen. Reopen tarkoittaa vain samaa mainin tallettamaa aiempaa yritystä normaalien avausporttien kautta, ei jo todennettua business-terveyttä. |
+| Ei aloitettua poistoa | `{formatVersion: 1, status: failed, reason}`. Tämä ei lupaa jo pysäytettyä runtimea käynnissä olevaksi. Valmistelun purku/paluu tehdään nykyisen lifecycle-omistajan porteilla. |
+| Epävarma/keskeneräinen poisto | `{formatVersion: 1, status: recoveryRequired, reason}` heti, kun journalin julkaisuyrityksen vaikutus voi olla pysyvä. Epäselvää kirjoituskuittausta ei tulkita peruutukseksi tai vaikutuksettomaksi virheeksi. |
+
+`reason` on suljettu joukko: `busy`, `invalidRequest`, `staleConfirmation`,
+`backupUnavailable`, `ownershipUncertain`, `inventoryInvalid`,
+`journalConflict`, `ioFailed`, `cleanupFailed`, `unknown`. Tuntematonta
+syytä ei arvata. Molemmat päät hylkäävät ylimääräiset kentät, accessorit ja
+väärän version/tyypin. Käyttöliittymä ei johda onnistumista pelkästä
+poikkeuksen puuttumisesta. Request käyttää nykyisiä tunniste-/label-rajoja;
+kokonaisia käyttäjän objekteja tai prototyyppejä ei säilytetä.
+
+Nykyinen capability tarkistaa mainWindow/webContents/mainFrame-lähettäjän
+ja argumenttimäärän. Poiston jatko kaappaa lisäksi kyseisen dokumentin ja
+management-sukupolven; navigointi, disposal tai hallintaomistajan vaihto
+mitätöi valtuuden pysyvästi. Pelkkä paluu samaan ID-arvoon ei palauta sitä.
+Varataan nykyinen mutaatiogate ennen ensimmäistä awaitia. Tämän jälkeen
+main lukee ja kaappaa muuttumattomana kohde-ID:n, näkyvän nimen, registry-
+entryn ja koko registry-tilan tiivisteet sekä aiemman aktiivisen valinnan.
+Kirjoitettu nimi vertautuu erillisellä täsmällisellä NFC-vertailulla;
+nimien yksilöllisyysvertailu ei korvaa poistovahvistusta.
+
+Valmistelu käyttää nykyistä backup-/maintenance-/sulku-/inventory-ketjua,
+ei uutta manageria. Sen tulosluokka kaapataan kerran: `createBackup`
+vaatii `verifiedBackup`-kuitin, `explicitDataLoss` erillisen käyttäjän
+menetyssuostumuksen. Epäonnistunutta backupia ei vaihdeta huomaamatta
+menetysvalintaan. Sama kaapattu luokka näytetään native-vahvistuksessa ja
+sidotaan julkaisuun. Native-dialogi kuuluu samaan main-ikkunaan ja käyttää
+nykyistä cancel-oletusta. Vaihtunut nimi, valinta, entry, registry,
+dokumentti tai sukupolvi hylkää vanhan vahvistuksen myös awaitin jälkeen.
+
+Prepared-kuitin kertakulutus sekä requester-/target-/lease-guard ovat voimassa
+myös journalin yksittäisissä I/O-rajoissa. Julkaisucallbackin lupa suljetaan
+kulutusvaiheen päättyessä sekä onnistumisessa että virheessä; talteen jäänyt
+callback tai I/O-guard ei anna myöhempää valtuutta. Julkaisukuittaus vaaditaan
+ennen varsinaisen poiston jatkoa. Jo julkaistu journal siirtää jatkon
+pysyvän operaation nykyiselle omistajalle: rendererin katoaminen ei enää
+peru poistoa. Uusi pyyntö ei ohita keskeneräisen journalin admissionia.
+
+Nykyisen statusmallin `recoveryRequired` ei muutu yleiseksi ohitusluvaksi.
+Tuotantokytkentä erottaa täsmällisesti saman kohteen poiston sallivan
+recoveryn muun operaation estävästä epävarmuudesta. Vikatilaista DB:tä ei
+tarvitse avata; muun yrityksen, koko asennuksen updaterin tai elävän
+kirjoittajan recovery ei väisty tämän pyynnön nojalla.
+
+**Nykyiset omistajat ja lukuketju:**
+
+| Vastuu | Toteutuspaikka ja pysyvä raja |
+| --- | --- |
+| IPC ja native-vahvistus | `workspaceManagementCapabilityProtocol.ts`, `workspaceManagementCapability.ts`, nykyisen `workspaceReplacementConfirmation.ts`:n dialogimalli sekä preload. Poistolle oma teksti, kohde ja tulos, ei restore-vahvistuksen semantiikan uudelleenkäyttöä. |
+| Käyttötapaus ja cold-resume | `WorkspaceManagementService`, `workspaceManagementTypes.ts` ja nykyinen startup-/reservation-ketju. Delete ja resume ovat saman pysyvän operaation kaksi sisääntuloa, eivät kaksi poistoalgoritmia. |
+| Renderer | `desktopWorkspaceManagement.ts`, `workspaceManagementOperation.ts`, `useWorkspaceManagement.ts`. Oma tiukka poistotuloksen lukija, sessionin vanhentuneen vastauksen hylkäys ja turvalliset suomenkieliset syytekstit. |
+| Tekninen ensivirhe | Nykyinen `workspaceBackupOperationalObserver.ts` ja `workspaceManagementFailureContext.ts` laajenevat vain alla olevilla suljetuilla arvoilla. Ensivirhettä ei korvata siivousvirheellä. |
+| Sallitut lukijat | `diagnosticWorkspaceManagementProjection.ts`, backendin `diagnosticOperationalEventProjector.ts`, nykyinen desktop-event-validator sekä Diagnosticsin, täyden/rajatun tukipaketin ja incident-indeksin lukijat käyttävät samaa tarkkaa tapahtumasopimusta. Katalogi ja fixturematriisi päivitetään samassa kytkennässä. |
+
+Delete/resume käyttää nykyistä `workspaceManagement.operationFailed`-
+tapahtumaa, loogisia `operationId`-arvoja `workspace.delete` ja
+`workspace.deleteResume` sekä nykyisiä correlation/duration/sideEffect-
+kenttiä. Varsinainen poiston UUID, workspaceId, nimi, polku, inventory,
+lineage, raakavirhe tai salasana ei tule tapahtumaan. `stage` saa näille
+operaatioille vain `admission`, `deletePreparation`, `deleteAuthorization`,
+`deletePurge`, `deleteRegistry` tai `deleteCleanup`; muiden operaatioiden
+nykyinen joukko ei laajene. Turvallinen `errorCode` vastaa yllä olevaa syytä:
+`WORKSPACE_MANAGEMENT_BUSY`, `WORKSPACE_MANAGEMENT_INVALID` tai
+`WORKSPACE_DELETE_`-alkuinen `STALE_CONFIRMATION`, `BACKUP_UNAVAILABLE`,
+`OWNERSHIP_UNCERTAIN`, `INVENTORY_INVALID`, `JOURNAL_CONFLICT`, `IO_FAILED`,
+`CLEANUP_FAILED` tai `FAILED` (unknown). Nämä nimetään kerran omistavassa
+desktop-sopimuksessa ja lukijoiden yhteensopivuus testataan.
+
+Vain busy voi olla `retryable: true`; sekään ei käynnistä automaattista
+uusintaa. `sideEffectState: none` edellyttää todistettua vaikutuksettomuutta;
+muuten `unknown`. Julkaisuyritys tai journalista jatkaminen ei saa none-arvoa.
+Erillinen loppusiivousvirhe julkaisee saman correlationin toisen tapahtuman
+`stage: deleteCleanup` säilyttäen alkuperäisen tapahtuman ja syyn. Kummankin
+kirjoitus on erikseen best effort. Tavanomainen peruutus, statuspollaus ja
+onnistuminen eivät lisää virhetapahtumaa. Business-Activity/audit on pois
+tästä ketjusta; poistetun yrityksen historiaa ei kopioida tekniseen lokiin.
+Salattu testiaineisto säilyttää alkuperäisen synteettisen poikkeuksen nykyisellä
+keräyksellä, ei näitä julkisia syykoodeja korvaavalla raakaviestillä.
+
+**Rajattu näyttö:** yksityisen sopimusehdokkaan 42 tapausta, nykyisen
+capabilityn/protokollan 18 regressiota ja tyyppitarkistus läpäisivät.
+Mukana ovat muuttunut kohde/nimi/rekisteri/sukupolvi, vanha requester,
+peruutus, julkaisu ilman kuittausta, kertakulutus ja väärä viestimuoto.
+Katselmuksen myöhäinen callback ja muuttunut backup-luokka toistettiin
+kahdella hylkäävällä kokeella, korjattiin ja jälkikatselmoitiin.
+Lease, native-ikkuna, persistent-julkaisu ja purge ovat tässä kokeessa
+injektoituja portteja. Observer ja sen lukuketju eivät kuulu tähän kokeeseen.
+Nykyiset 18 testiä eivät todista uutta
+delete-handleria. Tuotannon tapahtuman alkuperä -> loki -> oikeat lukijat
+sekä salattu paketti -> purku todistetaan W7.3-W7.5:ssä ennen pitkää ajoa.
+
+##### Palaute, vastuut ja todennus
+
+Nykyinen `WorkspaceManagementService` ja sen observer pysyvät käyttötapauksen
+omistajina. Capability lisää rajatun delete-pyynnön ja turvalliset
+`cancelled`, `completed`, `failed` sekä `recoveryRequired`-tulokset; polut, lineage,
+salaisuudet ja journal eivät tule rendererille. Tarkat protokollaversiot ja
+sallitut kentät toteutetaan vain kerran omistavaan sopimukseen ja molemmat
+päät testataan. Mainin startup-haara yhdistää nykyiset omistajat, ei sisällä
+poistoinventaariota tai uutta yleistä tilakonetta.
+
+Ensivirhe, vaihe, muutoksen tila ja siivoustulos pidetään erillisinä
+nykyisessä suljetussa operational-katalogissa. Journal ratkaisee recovery-
+valtuuden, ei best-effort-loki. Delete ja cold-resume kytketään samaan
+nykyiseen observeriin sekä Diagnosticsin ja tukipaketin sallittuun
+projektioon; business-Activity/audit ei säilytä poistetun yrityksen historiaa.
+Backendittomassa tilassa main näyttää turvallisen tuloksen eikä sano
+puuttuvaa business-terveystietoa terveeksi. Omistaja hyväksyi 24.10.2026
+**rajatun desktop-tukipaketin nykyisen keräyksen pohjalta**. Nykyinen täysi
+tukipaketti tarvitsee edelleen backendin ja sen käyttöoikeustarkistuksen.
+Rajattu polku ei arvaa yritystietoja tai tietokannan terveyttä eikä avaa
+yritystä vain tukipakettia varten. Ennen kytkentää nimetään sallittu sisältö,
+puuttuvan tiedon esitys, mainin capability-/vahvistusraja, formaatin lukijat
+ja testit [tukipakettisopimukseen](support-bundle-plan.md).
+Hyväksyntä ei avaa yleistä tiedostolukua tai uutta lokitusjärjestelmää.
+[W7.0:n rajattu tukisopimusehdotus](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus)
+nimeää nykyiset capability-/archive-/file-store-omistajat, erillisen
+desktop-only-formaatin, keräämättömän historian ja puuttuvan DB-tiedon sekä
+virallisen tarkastimen muutoksen. Nykykomponenttien 12 rajakoetta läpäisivät;
+erillinen yksityinen v3- ja jatkorajaehdokas on kokeiltu nykyisellä
+tiedostokirjoittajalla. Se ei vielä todenna tuotannon W7-hallintaketjua,
+sukupolvien vaihtoa, käyttöoikeutta tai virallista v3-tarkastinta.
+Täsmällinen näyttö ja jäljellä olevat portit ovat tukipakettisopimuksessa.
+
+| Kohdenäyttö nykyisillä fixtureillä | Pakollinen sisältö |
+| --- | --- |
+| Registry ja valinta | V1-yhteensopivuus, v2-kirjoittajat, kaikki slot-välitilat, usea/viimeinen/pelkkä recovery-kohde, puuttuva registry vs tyhjä, restart sekä vanhan lukijan turvallinen hylkäys. |
+| Buildin hyväksyntä | Ensimmäinen W7-päivitys v1:stä ilman yhtään avattavaa yritystä; v2-valitsin/tyhjä tila ja myöhempi päivitys sekä epäonnistumisen rollback. Buildin hyväksyntä ja registry-muunnos eivät kierrä toisiaan tai business-/omistajuusportteja. |
+| Poistokirjaus ja tiedostot | Jokainen yllä oleva raja ja sen molemmat puolet; keskeytys usean roolin siirrossa/purgessa, levy-/julkaisuvirhe, toistettu restart, vaihtunut identiteetti/linkki, vanhentunut varaus ja ristiriitainen muu journal. Vertaa myös säilyneitä tavuja, ei vain virhekoodia. |
+| Sulku ja vahvistukset | Aktiivinen/passiivinen/vikatilainen kohde, viivästynyt secret-/arkisto-I/O, epävarma backend-exit, vanha frame/nimi/valinta, backupin peruutus ja puuttuva riskisuostumus. Ei aitoa SMTP:tä tai käyttäjädataa. |
+| Eristys ja historia | Kaikki kolme SMTP-slottia, palautuspisteet/avainkuoret, staging-/legacy-jäämät poistuvat vain todistetusta kohteesta; toisten yritysten ja ulkoisten tiedostojen tavut säilyvät. Vanhoja nimikaksoiskappaleita ei muuteta. |
+| Oikea käyttäjä- ja tukiketju | Nykyinen web/Electron-fixture, viimeinen poisto -> restart -> selector -> create/import/open; failure/cold-resume -> main-palaute/observer -> sallitut lukijat. Pakotettu alkuperäinen virhe löytyy puretusta nykyisestä salatusta testipaketista. |
+| Backenditon tuki | Rajattu vienti ilman business-runtimea, käyttäjän vahvistus ja mainin sender-/capability-tarkistus; sallittu sisältö ja todellinen lukija. Puuttuva backend-/DB-tieto ei muutu onnistuneeksi terveystulokseksi. Nykyisen täyden paketin permission- ja sisältöregressiot säilyvät. |
+| Paketoitu hyväksyntä | Sama puhdas Windows-paketti: backup -> inspect -> restore -> restart -> compare sekä poisto/restart ja muiden yritysten säilyminen. First-start-/update-muutos saa lisäksi omat installer-porttinsa. Nykyiset PR/main-portit, riippumaton katselmus ja yksityisyys pysyvät pakollisina. |
+
+Yksikkö-/tiedostokokeet tulevat ennen pitkää ajoa. Ensimmäinen pieni proof
+rajataan registry-valintaan ja journalin aloitus-/purge-/loppusiivouskatkoihin.
+Se ei käynnistä oikeaa MSI:tä eikä yksin täytä W7-P4:n kytkentäehtoja. Uutta
+testialustaa, aikarajaa, riippuvuutta tai raakavirheiden julkaisua ei lisätä.
+
+**Omistajan hyväksynnät ja jäljellä olevat todennusportit (25.10.2026):**
+
+1. **W7-P1, suunta hyväksytty 24.10.2026:** v2-rekisteri ja pysyvä null-valinta;
+   saman polun slottimuunnos, vanhan ohjelmaversion turvallinen hylkäys ja
+   versionmukaiset kirjoittajat. Yllä oleva yhteensopivuusraja ja
+   rollback-todennus säilyvät; konkreettista historiapoikkeusta ei ole valittu.
+2. **W7-P2, hyväksytty (keskustelun kohta 2):** rajattu poistojournal,
+   julkaistu aloitus ennen siirtoa,
+   erillinen purge-valtuus ja yllä kuvattu automaattisen jatkon sopimus.
+3. **W7-P3, suunnat hyväksytty (keskustelun kohdat 3-6):** nykyisen mainin
+   backenditon yrityshallinta ja source-null-avaus; passiivisen poiston
+   sulku/paluu; vain kohteen oman keskeytyneen palautuksen korvaaminen
+   todistetun sulun jälkeen; nykyiseen keräykseen perustuva rajattu
+   desktop-tukipaketti. Inventaarion pysyvä kohdesidonta, first-start myös
+   ensimmäisestä vikatilaisesta v1-lähdöstä sekä tuen tarkka sisältö ja
+   käyttöoikeus on täsmennetty W7.0:n sopimuksissa ja pienissä kokeissa;
+   niiden oikeat kytkennät ovat tulevaa toteutusnäyttöä, eivät uusia kysymyksiä
+   näiden hyväksyttyjen suuntien valinnasta.
+   Omistaja hyväksyi 25.10.2026 kohdesidonnan rajatun suunnittelun ja kokeen
+   sekä yrityksettömän tilan asennuspakettipäivityksen yllä kuvatuin rajoin.
+   Tämä ei vielä sulje inventaarion tai first-startin todennusportteja.
+4. **W7-P4, ehdollinen toteutus hyväksytty (keskustelun kohta 7):**
+   täsmällisen inventaarion ja sopimusten, version-/keskeytyskokeiden sekä
+   katselmoinnin jälkeen edetään rajattuun tuotantokytkentään W7.1-W7.5:n
+   nykyisessä jaossa ilman saman toteutusluvan toistamista. Ehtojen
+   täyttyminen kirjataan näyttöön ennen kytkentää. PR/main-portit ja koko
+   W7:n loppuhyväksyntä vaativat edelleen omat todisteensa.
+
+Samat jo hyväksytyt viimeisen/vikatilaisen yrityksen, backup-riskin,
+vahvistusten ja poistuvan/säilyvän sisällön päätökset eivät palaa kysymyksiksi.
+Uusi ristiriita tai hyväksytystä suunnasta poikkeava turvallisuus-,
+yhteensopivuus-, tietosuoja- tai riippuvuusmuutos käsitellään erikseen;
+yleinen jatkolupa ei ratkaise nimeämätöntä poikkeusta.
+
 #### Omistajan päätettävät sopimukset
+
+Alla oleva 23.10.2026 lähtötaulukko säilyttää alkuperäiset päätökset ja
+niiden tekniset täsmennystarpeet. Uudemmat W7-P1-P4-hyväksynnät yllä ovat
+ensisijaisia; taulukon vanha avoin hyväksyntä ei avaa samaa päätöstä uudelleen.
 
 | Päätös | Voimassa oleva raja | Ehdotus ja avoin hyväksyntä |
 | --- | --- | --- |
@@ -1651,7 +3196,8 @@ ja muiden yritysten sekä ulkoisten tallenteiden suoja säilyvät.
 Poistettavan aineiston tarkka inventaario ja keskeytyneen operaation
 sulkurajat, vahvistusten kohdesidonta sekä poistojärjestys ja
 keskeytysrecovery ratkaistaan ennen toteutusta.
-Hyväksyntä ei vielä ole tuotantokytkennän tai journal-/registry-muutoksen lupa.
+Tämä 23.10.2026 käyttäytymispäätös ei yksin antanut tuotantokytkennän tai
+journal-/registry-muutoksen lupaa; myöhempi ehdollinen valtuus on W7-P1-P4:ssä.
 
 W7-D8:n palautuspistepoikkeus on kirjattu
 [ADR-0009:ään](../decisions/ADR-0009-local-backup-encryption-and-recovery-points.md#rotaatio).
@@ -1664,9 +3210,10 @@ ulkoinen arkisto [PDF-arkistosuunnitelmassa](local-invoice-pdf-archive-plan.md).
 
 #### Jäljellä olevat käyttäytymispäätökset
 
-Tilanne 23.10.2026: tämän keskustelun nimetyt käyttäytymisvalinnat on
-ratkaistu. Seuraava vaihe on alla olevan kootun toteutusehdotuksen
-tekninen täsmennys ja katselmus, ei uusi rinnakkainen työjono.
+Tilanne 24.10.2026: nimetyt käyttäytymisvalinnat sekä W7-P1-P3:n suunnat
+on ratkaistu. W7-P4:n ehdollinen toteutuslupa on annettu. Seuraava vaihe on
+alla olevan työjaon tekninen täsmennys, pienet kokeet ja katselmus,
+ei uusi rinnakkainen työjono tai samojen kysymysten toistaminen.
 Backupin tuoreus, tarkka nimivertailu, vahvistusten kohdesidonta,
 inventaario ja diagnostinen lukuketju täsmennetään nykyisten omistajien
 kautta. Käyttäytymispäätökset eivät hyväksy nimeämättömiä formaatti- tai
@@ -1674,13 +3221,14 @@ arkkitehtuurimuutoksia eivätkä sulje todennetun uuden löydön päätösportti
 
 #### Koottu toteutusehdotus
 
-**Ehdotus 23.10.2026, ei vielä tuotantototeutuksen hyväksyntä.** M1 omistaa
-M4:n työjärjestyksen; tämä osio omistaa W7:n teknisen valmistelun.
+**Työjako 23.10.2026, ehdollinen toteutus hyväksytty 24.10.2026.**
+Yllä olevat W7-P1-P4-päätökset täsmentävät tämän työjaon toteutusvaltuutta.
+M1 omistaa M4:n työjärjestyksen; tämä osio omistaa W7:n teknisen valmistelun.
 Toteutus säilyttää yllä hyväksytyn käytöksen ja nykyiset C/D/K:n turvarajat.
 
 | Pala | Nykyinen omistaja ja suunniteltu muutos | Valmistumisehto ennen seuraavaa kytkentää |
 | --- | --- | --- |
-| W7.0 / sopimus | `workspaces/management`, `registry`, `maintenance` ja `runtime`: nimeä capabilityn suljetut pyynnöt/tulokset, keskeytyskirjauksen formaatti, täsmälliset siirto-/poistorajat ja kaikki luettavat sekä muuttuvat juuret. | Katselmoitu tiedosto- ja kutsujakartta, inventaario sekä keskeytystilataulukko. Mahdollinen uusi operaatiokohtainen journal ja registry-/capability-muutos esitetään nimenomaisesti hyväksyttäväksi ennen koodausta. |
+| W7.0 / sopimus | `workspaces/management`, `registry`, `maintenance` ja `runtime`: capabilityn suljetut pyynnöt/tulokset, keskeytyskirjauksen formaatti, täsmälliset siirto-/poistorajat ja luettavien sekä muuttuvien juurten omistajat. | Valmis rajattuna sopimus-/koevaiheena 25.10.2026 yllä olevan valmiustaulukon mukaan. Ei tuotantokytkentää tai koko W7:n hyväksyntää; uusi poikkeus käsitellään erikseen. |
 | W7.1 / nimet | `registry/workspaceLabelValidation.ts`, `workspaceRegistryMutations.ts` ja nykyiset create/import/rename-kutsujat: yksi nimivertailu, tarkistus saman maintenance-omistajan sisällä ennen julkaisua. | Kirjainkoko- ja välilyöntivariantit estyvät; oma nimenmuutos ei törmää itseensä. Vanhat samannimiset säilyvät ja erottuvat turvallisesti ilman automaattista muutosta. Virallinen yritysnimi ja lineage eivät muutu. |
 | W7.2 / yritysvalinta | `workspaceManagementComposition.ts`, `workspaceSwitchStartup.ts` ja nykyinen käynnistyscomposition: erota business-runtimen avaus backendittomasta hallinnasta. | Aktiivisen poiston jälkeinen valinta, viimeisen poiston jälkeinen luonti/tuonti ja restart toimivat ilman automaattista yrityksen avausta/luontia. Pelkkien recovery-kohteiden luettelo ei ole tyhjä asennus. R030-06:n ensiasennusmuutos jää erilliseksi. |
 | W7.3 / vahvistus ja sulku | Nykyinen management-capability, maintenance-lease ja `ActiveWorkspaceLifecyclePort`: sido backup/riskivalinta, kirjoitettu nimi ja native-vahvistus samaan mainin uudelleenvalidoimaan kohteeseen. | Vanhentunut valinta/nimi, kilpaileva operaatio tai puuttuva suostumus eivät anna siirtolupaa. Business-kirjoitukset, backendin exit sekä arkisto- ja secret-I/O:n päättyminen todistetaan erikseen ennen tiedostomuutoksia. |
@@ -1749,7 +3297,7 @@ ennen kytkentää. Valmistelu ei käynnistä pitkää CI- tai asennusajoa.
   jos pending-operaatio voi vielä muuttaa poistettavaa storea. Poisto ei saa
   ohittaa sitä eikä audit-rivin poistaminen todista työn päättymistä.
 
-Suositeltu vaiheistus on jäljellä olevien sopimusten hyväksyntä, passiivisen,
+Suositeltu vaiheistus on täsmennettyjen sopimusten todennus, passiivisen,
 aktiivisen, viimeisen ja vikatilaisen yrityksen poisto sekä backendittoman
 tilan recovery ja lopullinen quarantine/purge-todennus. Kukin vaihe
 toteutetaan täydellä sille soveltuvalla turvarajalla; karanteenia tai
@@ -1766,7 +3314,9 @@ aloitusraja ja siirron sekä rekisterijulkaisun välitilat määritetään W7.0:
 Osittain tuhottua yritystä ei palauteta toimivaksi. Puuttuva/rikkinäinen
 journal, linkki tai ristiriitaiset juuret johtavat turvalliseen recovery-
 tilaan, eivät arvaavaan poistoon. Jatkaminen revalidoi myös vanhan omistajan
-päättymisen eikä ohita muita avoimia restore-/update-journaleja.
+päättymisen. Vain W7-P3:n mukaan todistettu kohteen oma keskeytynyt palautus
+voi väistyä lopullisen poiston tieltä; muita avoimia operaatioita tai
+asennustason update-journaleja ei ohiteta.
 Pelkkä keskeytyskirjaus ei ole tuore tiedostomuutoksen valtuus.
 
 Nykyinen `WORKSPACE-DELETE-001` on lykätty paikkamerkki, ei testitodiste.

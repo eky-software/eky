@@ -19,6 +19,8 @@ import { generateWorkspaceCreationOperationId } from './workspaceCreationOperati
 import { deriveWorkspaceCreationPaths } from './workspaceCreationPaths.js';
 import {
   assertLineageAvailable,
+  assertCreationWorkspaceLabelAvailable,
+  assertRegistryStillAtPreviousActive,
   assertWorkspaceIdAvailable,
   createReadyWorkspaceEntry,
   publishWorkspaceEntry,
@@ -91,6 +93,7 @@ export class EmptyWorkspaceCreationCoordinator {
         );
       }
       const registry = readCreationRegistry(await this.readRegistry());
+      assertCreationWorkspaceLabelAvailable(registry, workspaceLabel, 'inputValidation');
       previousActiveWorkspaceId = registry.activeWorkspaceId;
 
       await this.runLifecycle(
@@ -182,6 +185,12 @@ export class EmptyWorkspaceCreationCoordinator {
         bootstrap.lineageIdentity,
       );
 
+      const publicationRegistry = readCreationRegistry(await this.readRegistry());
+      assertRegistryStillAtPreviousActive(publicationRegistry, previousActiveWorkspaceId);
+      assertWorkspaceIdAvailable(publicationRegistry, workspaceId);
+      assertLineageAvailable(publicationRegistry, bootstrap.lineageIdentity);
+      assertCreationWorkspaceLabelAvailable(publicationRegistry, workspaceLabel, 'registryPublish');
+
       await this.options.rootStore.publishCandidate(paths);
       journal = await this.advanceJournal(
         journal,
@@ -202,7 +211,7 @@ export class EmptyWorkspaceCreationCoordinator {
         lineageIdentity: journal.lineageIdentity,
         createdAt: journal.createdAt,
       });
-      await this.writeRegistry(publishWorkspaceEntry(registry, entry));
+      await this.writeRegistry(publishWorkspaceEntry(publicationRegistry, entry));
       journal = await this.advanceJournal(
         journal,
         'registryPublished',

@@ -330,6 +330,43 @@ describe('workspace management capability', () => {
     expect(fixture.showSafeError).not.toHaveBeenCalled();
   });
 
+  it.each(['create', 'import', 'rename'] as const)(
+    'preserves only the safe %s name-conflict code and releases the command guard',
+    async (operation) => {
+      const fixture = createFixture();
+      const internal = new WorkspaceManagementError(
+        'WORKSPACE_MANAGEMENT_LABEL_EXISTS', operation,
+        { cause: new Error('synthetic private label/path/password') },
+      );
+      const command = operation === 'create' ? fixture.createEmpty
+        : operation === 'import' ? fixture.importBackupAsNew : fixture.rename;
+      command.mockRejectedValueOnce(internal);
+      const channel = operation === 'create' ? createEmptyWorkspaceIpcChannel
+        : operation === 'import' ? importWorkspaceBackupAsNewIpcChannel
+          : renameWorkspaceIpcChannel;
+      const input = {
+        workspaceLabel: 'Synthetic name',
+        ...(operation === 'rename' ? { workspaceId: otherWorkspaceId } : {}),
+      };
+      const failure: unknown = await fixture.invoke(
+        channel, fixture.trustedEvent, input,
+      ).catch((error: unknown) => error);
+
+      expect(failure).toBeInstanceOf(Error);
+      if (!(failure instanceof Error)) throw new Error('Expected an IPC error');
+      expect(failure).not.toBe(internal);
+      expect(failure.message).toBe('WORKSPACE_MANAGEMENT_LABEL_EXISTS');
+      expect(failure.cause).toBeUndefined();
+      expect(JSON.stringify(failure)).not.toMatch(/label|path|password|cause/i);
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+      await expect(fixture.invoke(channel, fixture.trustedEvent, input)).resolves.toEqual({
+        formatVersion: 1,
+        status: operation === 'rename' ? 'completed' : 'relaunching',
+      });
+      expect(command).toHaveBeenCalledTimes(2);
+    },
+  );
+
   it('releases the mutation guard after a service failure', async () => {
     let callCount = 0;
     const fixture = createFixture({

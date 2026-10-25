@@ -50,6 +50,24 @@ describe('WorkspaceManagementDialog', () => {
     expect(html).toContain('Tuo yritys varmuuskopiosta');
     expect(html).not.toContain('Korvaa aktiivisen yrityksen tiedot');
     expect(html).not.toContain('Poista yritys');
+    expect(html).not.toContain('Yrityslistassa on samannimisiä yrityksiä');
+    expect(html).not.toContain('Työtilan tunniste:');
+  });
+
+  it('shows the projected duplicate warning and ids without adding an operation block', () => {
+    const html = renderDialog(createState({
+      status: { ...status, duplicateWorkspaceLabelIds: [activeWorkspaceId, readyWorkspaceId] },
+    }));
+
+    expect(html).toContain('role="status"');
+    expect(html).toContain('Yrityslistassa on samannimisiä yrityksiä');
+    expect(html).toContain(`Työtilan tunniste: ${activeWorkspaceId}`);
+    expect(html).toContain(`Työtilan tunniste: ${readyWorkspaceId}`);
+    expect(html).not.toContain(`Työtilan tunniste: ${recoveryWorkspaceId}`);
+    expect(html.match(/Sama nimi/g)).toHaveLength(2);
+    expect(html.match(/disabled=""/g)).toHaveLength(
+      renderDialog(createState()).match(/disabled=""/g)!.length,
+    );
   });
 
   it.each([

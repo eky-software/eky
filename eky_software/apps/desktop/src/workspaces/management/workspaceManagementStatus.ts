@@ -1,5 +1,6 @@
 import type { WorkspaceMaintenanceState } from '../maintenance/workspaceMaintenanceLease.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import { findDuplicateWorkspaceLabelIds } from '../registry/workspaceLabelComparison.js';
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
 import type { LocalWorkspaceRegistryV1 } from '../registry/workspaceRegistryTypes.js';
 import {
@@ -47,10 +48,16 @@ export function createWorkspaceManagementStatus(input: {
     input.operationRecoveryRequired
       ? 'recoveryRequired'
       : input.maintenanceState;
+  const duplicateWorkspaceLabelIds = [
+    ...findDuplicateWorkspaceLabelIds(input.registry.workspaces),
+  ];
   return parseWorkspaceManagementStatus({
     activeWorkspaceId: input.registry.activeWorkspaceId,
     formatVersion: 1,
     operationState,
+    ...(duplicateWorkspaceLabelIds.length === 0
+      ? {}
+      : { duplicateWorkspaceLabelIds }),
     workspaces: input.registry.workspaces.map((entry) => ({
       availability: entry.lifecycleState,
       isActive: entry.workspaceId === input.registry.activeWorkspaceId,
@@ -64,7 +71,15 @@ export function parseWorkspaceManagementStatus(
   value: unknown,
 ): Readonly<WorkspaceManagementStatusV1> {
   try {
-    if (!isPlainDataRecord(value) || !hasExactDataKeys(value, statusKeys)) {
+    if (
+      !isPlainDataRecord(value) ||
+      !hasExactDataKeys(value, [
+        ...statusKeys,
+        ...(Object.hasOwn(value, 'duplicateWorkspaceLabelIds')
+          ? ['duplicateWorkspaceLabelIds']
+          : []),
+      ])
+    ) {
       return invalidStatus();
     }
     if (
@@ -106,6 +121,9 @@ export function parseWorkspaceManagementStatus(
       });
     });
     const activeEntries = workspaces.filter((entry) => entry.isActive);
+    const duplicateWorkspaceLabelIds = Object.hasOwn(value, 'duplicateWorkspaceLabelIds')
+      ? parseDuplicateWorkspaceLabelIds(value.duplicateWorkspaceLabelIds, seenIds)
+      : undefined;
     if (
       (activeWorkspaceId === null && activeEntries.length !== 0) ||
       (activeWorkspaceId !== null &&
@@ -121,6 +139,9 @@ export function parseWorkspaceManagementStatus(
       operationState:
         value.operationState as WorkspaceManagementOperationState,
       workspaces: Object.freeze(workspaces),
+      ...(duplicateWorkspaceLabelIds === undefined
+        ? {}
+        : { duplicateWorkspaceLabelIds }),
     });
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_STATUS_BYTES) {
       return invalidStatus();
@@ -129,6 +150,24 @@ export function parseWorkspaceManagementStatus(
   } catch {
     return invalidStatus();
   }
+}
+
+function parseDuplicateWorkspaceLabelIds(
+  value: unknown,
+  workspaceIds: ReadonlySet<string>,
+) {
+  if (
+    !Array.isArray(value) ||
+    value.length < 2 ||
+    value.length > WORKSPACE_REGISTRY_MAX_ENTRIES
+  ) return invalidStatus();
+  const seen = new Set<string>();
+  return Object.freeze(Array.from(value, (item) => {
+    const id = validateWorkspaceId(item);
+    if (!workspaceIds.has(id) || seen.has(id)) return invalidStatus();
+    seen.add(id);
+    return id;
+  }));
 }
 
 function invalidStatus(): never {

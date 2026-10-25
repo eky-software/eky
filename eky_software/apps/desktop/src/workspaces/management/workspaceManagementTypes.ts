@@ -22,6 +22,7 @@ export interface WorkspaceManagementStatusV1 {
   readonly formatVersion: 1;
   readonly operationState: WorkspaceManagementOperationState;
   readonly workspaces: readonly Readonly<WorkspaceManagementEntryV1>[];
+  readonly duplicateWorkspaceLabelIds?: readonly WorkspaceId[];
 }
 
 export type WorkspaceManagementOperationKind =

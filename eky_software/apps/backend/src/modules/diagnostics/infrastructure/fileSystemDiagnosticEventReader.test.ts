@@ -24,6 +24,49 @@ describe('FileSystemDiagnosticEventReader', () => {
   });
 
   it.each([
+    ['workspace.create', 'WORKSPACE_CREATION_LABEL_EXISTS'],
+    ['workspace.import', 'WORKSPACE_IMPORT_LABEL_EXISTS'],
+    ['workspace.create', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+    ['workspace.import', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+    ['workspace.rename', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+  ])('reads %s label conflict %s without accepting private or unknown source fields', async (operationId, errorCode) => {
+    const logsRoot = createLogsRoot();
+    const event: Record<string, unknown> = {
+      ...createDesktopOperationalEventFixture({
+        category: 'workspaceManagement', errorCode, eventId: 'synthetic-workspace-failure',
+        eventName: 'workspaceManagement.operationFailed', level: 'error', outcome: 'failure',
+        timestamp: '2026-07-27T10:04:00.000Z',
+      }),
+      operationId, correlationId: '22222222-2222-4222-8222-222222222222',
+      stage: 'operation', retryable: false, sideEffectState: 'unknown',
+    };
+    writeLines(logsRoot, 'desktop', 'desktop-warning-error-2026-07-001.jsonl', [
+      event,
+      { ...event, eventId: 'synthetic-unknown-code', errorCode: 'WORKSPACE_LABEL_EXISTS' },
+      { ...event, eventId: 'synthetic-wrong-operation', operationId: 'workspace.replace' },
+      { ...event, eventId: 'synthetic-wrong-stage', stage: 'admission' },
+      { ...event, eventId: 'synthetic-private-label', workspaceLabel: 'Synthetic' },
+      { ...event, eventId: 'synthetic-private-id', workspaceId: 'synthetic-workspace-id' },
+      { ...event, eventId: 'synthetic-private-message', message: 'synthetic-private' },
+    ]);
+    const diagnostic = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const support = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot).readSupportBundleDiagnosticEvents({
+      earliestTimestamp: '2026-07-01T00:00:00.000Z', latestTimestamp: '2026-07-28T00:00:00.000Z',
+    });
+    for (const events of [diagnostic.diagnosticEvents, support.diagnosticEvents]) {
+      expect(events).toEqual([expect.objectContaining({
+        eventName: event.eventName, operationId, errorCode, stage: 'operation',
+        correlationId: event.correlationId, durationMs: event.durationMs,
+        retryable: false, sideEffectState: 'unknown',
+      })]);
+      expect(JSON.stringify(events)).not.toContain(logsRoot);
+      expect(JSON.stringify(events)).not.toMatch(/workspaceLabel|workspaceId|companyId|synthetic-private|message|stack|path/);
+    }
+    expect(diagnostic.readState).toEqual({ status: 'partial', reasons: ['invalidEntries'] });
+    expect(support.sourceTruncated).toBe(true);
+  });
+
+  it.each([
     'WORKSPACE_PROCESS_RESERVATION_FAILED',
     'BACKEND_PROCESS_RESERVATION_FAILED',
     'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',

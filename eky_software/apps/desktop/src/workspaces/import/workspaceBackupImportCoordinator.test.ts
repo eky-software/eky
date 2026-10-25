@@ -225,6 +225,50 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(fixture.journal.current).toBeUndefined();
   });
 
+  it.each(['ready', 'recoveryRequired'] as const)('rejects a name held by a %s workspace before runtime mutation', async (lifecycleState) => {
+    const fixture = createFixture();
+    const original = fixture.registry.value!;
+    const conflicting = { ...createReadyWorkspaceEntry({
+      workspaceId: '00000000-0000-4000-8000-000000000099' as WorkspaceId,
+      workspaceLabel: 'TUOTU  YRITYS',
+      lineageIdentity: { formatVersion: 1 as const, profileId: 'd'.repeat(64) },
+      createdAt: '2026-10-25T10:00:00.000Z',
+    }), lifecycleState };
+    fixture.registry.value = { ...original, workspaces: [...original.workspaces, conflicting] };
+    const before = JSON.stringify(fixture.registry.value);
+
+    await expectImportError(fixture.coordinator.import(importInput), 'WORKSPACE_IMPORT_LABEL_EXISTS', 'registryRead');
+    expect(JSON.stringify(fixture.registry.value)).toBe(before);
+    expect(fixture.events).not.toContain('lifecycle.quiesce');
+    expect(fixture.events).not.toContain('backup.stage');
+    expect(fixture.journal.current).toBeUndefined();
+  });
+
+  it('rejects a name claimed during candidate validation without publishing its root', async () => {
+    const fixture = createFixture();
+    const original = fixture.registry.value!;
+    const inspect = fixture.root.inspectCandidate.bind(fixture.root);
+    vi.spyOn(fixture.root, 'inspectCandidate').mockImplementationOnce(async () => {
+      await inspect();
+      fixture.registry.value = { ...original, workspaces: [...original.workspaces,
+        createReadyWorkspaceEntry({
+          workspaceId: '00000000-0000-4000-8000-000000000099' as WorkspaceId,
+          workspaceLabel: 'TUOTU  YRITYS',
+          lineageIdentity: { formatVersion: 1, profileId: 'd'.repeat(64) },
+          createdAt: '2026-10-25T10:00:00.000Z',
+        }),
+      ] };
+    });
+
+    await expectImportError(fixture.coordinator.import(importInput), 'WORKSPACE_IMPORT_LABEL_EXISTS', 'registryPublish');
+    expect(fixture.registry.value?.workspaces).toHaveLength(2);
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.events).not.toContain('root.publishCandidate');
+    expect(fixture.root.candidateExists).toBe(false);
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.lifecycle.ensureCalls).toBe(1);
+  });
+
   it('does not clean plaintext or read a backup while an unresolved journal exists', async () => {
     const fixture = createFixture();
     fixture.journal.current = createTestImportJournal({ state: 'prepared' });

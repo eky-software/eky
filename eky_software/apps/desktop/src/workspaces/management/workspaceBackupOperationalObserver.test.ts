@@ -58,6 +58,9 @@ describe('workspace backup operational observer', () => {
     ['create', 'WORKSPACE_MANAGEMENT_CREATE_FAILED'], ['import', 'WORKSPACE_MANAGEMENT_IMPORT_FAILED'],
     ['replace', 'WORKSPACE_MANAGEMENT_REPLACE_FAILED'], ['switch', 'WORKSPACE_MANAGEMENT_SWITCH_FAILED'],
     ['rename', 'WORKSPACE_MANAGEMENT_RENAME_FAILED'],
+    ['create', 'WORKSPACE_CREATION_LABEL_EXISTS'], ['import', 'WORKSPACE_IMPORT_LABEL_EXISTS'],
+    ['create', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'], ['import', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+    ['rename', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
   ] as const)('writes one non-inspection %s failure with a logical operation only', (operationKind, errorCode) => {
     const write = vi.fn();
     const observer = createWorkspaceBackupOperationalObserver({ operationalIdentity: identity, operationalLogger: { write } });

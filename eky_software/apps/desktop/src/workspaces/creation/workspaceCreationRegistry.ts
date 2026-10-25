@@ -9,6 +9,7 @@ import {
   assertActiveWorkspaceUnchanged,
   assertWorkspaceIdAvailable as assertRegistryWorkspaceIdAvailable,
   assertWorkspaceLineageAvailable,
+  assertWorkspaceLabelAvailable,
   createReadyWorkspaceEntry as createRegistryReadyWorkspaceEntry,
   findWorkspaceEntry as findRegistryWorkspaceEntry,
   readWorkspaceRegistry,
@@ -66,6 +67,9 @@ export function publishWorkspaceEntry(
   try {
     return appendReadyWorkspaceEntry(registry, entry);
   } catch (error) {
+    if (error instanceof WorkspaceRegistryMutationError && error.failure === 'workspaceLabelExists') {
+      throw new EmptyWorkspaceCreationError('WORKSPACE_CREATION_LABEL_EXISTS', 'registryPublish');
+    }
     if (
       error instanceof WorkspaceRegistryMutationError &&
       error.failure === 'capacityExceeded'
@@ -79,6 +83,21 @@ export function publishWorkspaceEntry(
       'WORKSPACE_CREATION_CONFLICT',
       'bootstrap',
     );
+  }
+}
+
+export function assertCreationWorkspaceLabelAvailable(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  workspaceLabel: string,
+  stage: 'inputValidation' | 'registryPublish',
+): void {
+  try {
+    assertWorkspaceLabelAvailable(registry, workspaceLabel);
+  } catch (error) {
+    if (error instanceof WorkspaceRegistryMutationError && error.failure === 'workspaceLabelExists') {
+      throw new EmptyWorkspaceCreationError('WORKSPACE_CREATION_LABEL_EXISTS', stage);
+    }
+    throw error;
   }
 }
 

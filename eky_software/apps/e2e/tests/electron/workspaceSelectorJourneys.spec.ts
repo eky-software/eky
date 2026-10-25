@@ -12,6 +12,7 @@ import {
   readElectronNativeAdapterSnapshot,
   readElectronProcessMetrics,
 } from '../../src/electron/electronMainCapabilities.js';
+import { readDiagnosticPage } from '../../src/assertions/readDiagnosticPage.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { createSyntheticCustomerInput } from '../../src/data/syntheticBusinessInputs.js';
 import {
@@ -32,6 +33,8 @@ const renamedWorkspaceLabel = 'E2E Yritys B Nimetty';
 const importedWorkspaceLabel = 'E2E Yritys C';
 const originalCustomerName = 'Desktop Synthetic Customer Oy';
 const postBackupCustomerName = 'Synthetic Post Backup Marker Oy';
+const workspaceNameConflictMessage =
+  'Tällä nimellä on jo yritys EKYssä. Valitse toinen nimi.';
 
 test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated through create, switch and rename', async ({
   e2eElectron,
@@ -67,10 +70,20 @@ test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated th
     .click();
 
   const pageBeforeCreate = e2eElectron.page;
+  const registryBeforeCreateConflict = readWorkspaceRegistry(e2eElectron);
+  const runtimeBeforeCreateConflict = e2eElectron.runtime.runtimeInstanceId;
   await openWorkspaceDialog(pageBeforeCreate);
   await pageBeforeCreate
     .getByRole('button', { name: 'Lisää yritys Ekyyn' })
     .click();
+  await pageBeforeCreate.getByRole('textbox', { name: 'Yrityksen nimi' })
+    .fill('OMA  YRITYS');
+  await pageBeforeCreate.getByRole('button', { name: 'Luo yritys' }).click();
+  await expect(pageBeforeCreate.getByRole('alert')).toHaveText(workspaceNameConflictMessage);
+  await expectNameConflictDiagnostic(e2eElectron.api, 'workspace.create');
+  expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBeforeCreateConflict);
+  expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeBeforeCreateConflict);
+  await assertSingleHealthyDesktopRuntime(e2eElectron);
   await pageBeforeCreate
     .getByRole('textbox', { name: 'Yrityksen nimi' })
     .fill(createdWorkspaceLabel);
@@ -129,6 +142,13 @@ test('DESK-WORKSPACE-UI-001 @critical @recovery keeps workspace data isolated th
     name: 'Yrityksen nimi',
   });
   await expect(renameInput).toHaveValue(createdWorkspaceLabel);
+  const registryBeforeRenameConflict = readWorkspaceRegistry(e2eElectron);
+  await renameInput.fill('oma\u00a0yritys');
+  await e2eElectron.page.getByRole('button', { name: 'Tallenna nimi' }).click();
+  await expect(e2eElectron.page.getByRole('alert')).toHaveText(workspaceNameConflictMessage);
+  await expectNameConflictDiagnostic(e2eElectron.api, 'workspace.rename');
+  expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBeforeRenameConflict);
+  await expectWorkspaceBrand(e2eElectron.page, createdWorkspaceLabel);
   await renameInput.fill(renamedWorkspaceLabel);
   await e2eElectron.page
     .getByRole('button', { name: 'Tallenna nimi' })
@@ -188,10 +208,26 @@ test.describe('workspace backup import', () => {
     );
 
     const pageBeforeImport = e2eElectron.page;
+    const registryBeforeImportConflict = readWorkspaceRegistry(e2eElectron);
+    const runtimeBeforeImportConflict = e2eElectron.runtime.runtimeInstanceId;
     await openWorkspaceDialog(pageBeforeImport);
     await pageBeforeImport
       .getByRole('button', { name: 'Tuo yritys varmuuskopiosta' })
       .click();
+    await pageBeforeImport.getByRole('textbox', { name: 'Yrityksen nimi' })
+      .fill('OMA  YRITYS');
+    const conflictPasswordWindowPromise = waitForAdditionalWindow(e2eElectron.electronApp);
+    await pageBeforeImport.getByRole('button', { name: 'Valitse varmuuskopio' }).click();
+    const conflictPasswordWindow = await conflictPasswordWindowPromise;
+    await conflictPasswordWindow.locator('#password').fill(fixture.password);
+    await clickPasswordWindowButtonAndWaitForClose(conflictPasswordWindow, '#submit');
+    await expect(pageBeforeImport.getByRole('alert')).toHaveText(workspaceNameConflictMessage);
+    await expectNameConflictDiagnostic(e2eElectron.api, 'workspace.import');
+    expect(readWorkspaceRegistry(e2eElectron)).toBe(registryBeforeImportConflict);
+    expect(e2eElectron.runtime.runtimeInstanceId).toBe(runtimeBeforeImportConflict);
+    expect(await sha256File(fixture.backupPath)).toBe(sourceBackupSha256Before);
+    expect(await sha256File(fixture.sourceDatabaseFilePath)).toBe(sourceDatabaseSha256Before);
+    await assertSingleHealthyDesktopRuntime(e2eElectron);
     await pageBeforeImport
       .getByRole('textbox', { name: 'Yrityksen nimi' })
       .fill(importedWorkspaceLabel);
@@ -692,6 +728,24 @@ async function readActiveInvoicePdfSha256(
   const fileSha256 = await sha256File(filePath);
   expect(fileSha256).toBe(document.sha256);
   return fileSha256;
+}
+
+async function expectNameConflictDiagnostic(
+  api: APIRequestContext,
+  operationId: 'workspace.create' | 'workspace.import' | 'workspace.rename',
+): Promise<void> {
+  const { diagnosticEvents } = await readDiagnosticPage(api);
+  const failures = diagnosticEvents.filter(event =>
+    event.eventName === 'workspaceManagement.operationFailed' &&
+    event.operationId === operationId,
+  );
+  expect(failures).toHaveLength(1);
+  expect(failures[0]).toMatchObject({
+    errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS',
+    stage: 'operation',
+    retryable: false,
+  });
+  expect(JSON.stringify(failures)).not.toMatch(/workspaceLabel|workspaceId|companyId|rawError|stack/);
 }
 
 async function assertSingleHealthyDesktopRuntime(

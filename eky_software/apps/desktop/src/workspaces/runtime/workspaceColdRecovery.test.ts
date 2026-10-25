@@ -29,8 +29,9 @@ import {
 } from '../import/workspaceBackupImportTestSupport.js';
 import type { WorkspaceBackupImportJournal } from '../import/workspaceBackupImportTypes.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
+import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
-import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import { validateWorkspaceRegistry, WORKSPACE_REGISTRY_MAX_ENTRIES } from '../registry/workspaceRegistryValidation.js';
 
 type RecoveryKind = 'creation' | 'import';
 type JournalState = WorkspaceCreationJournal['state'] | WorkspaceBackupImportJournal['state'];
@@ -48,6 +49,7 @@ async function createFixture(kind: RecoveryKind, input: {
   readonly firstWorkspace?: boolean;
   readonly afterPublishedValidation?: () => void;
   readonly formatVersion?: 1 | 2;
+  readonly duplicateLabel?: boolean;
 } = {}) {
   const userDataRoot = await mkdtemp(join(tmpdir(), 'eky-cold-recovery-'));
   roots.push(userDataRoot);
@@ -72,7 +74,9 @@ async function createFixture(kind: RecoveryKind, input: {
   });
   const previousEntry = createReadyWorkspaceEntry({
     workspaceId: TEST_SECOND_WORKSPACE_ID,
-    workspaceLabel: 'Previous synthetic workspace',
+    workspaceLabel: input.duplicateLabel
+      ? value.workspaceLabel.toUpperCase().replace(' ', '\u00a0\u00a0')
+      : 'Previous synthetic workspace',
     lineageIdentity: { formatVersion: 1, profileId: 'b'.repeat(64) },
     createdAt: value.createdAt,
   });
@@ -144,8 +148,8 @@ async function createFixture(kind: RecoveryKind, input: {
 describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
   const errorCode = kind === 'creation' ? 'WORKSPACE_CREATION_RECOVERY_REQUIRED' : 'WORKSPACE_IMPORT_RECOVERY_REQUIRED';
 
-  it('rejects a legacy journal even if the admission port mistakenly grants it', async () => {
-    const fixture = await createFixture(kind, { state: 'prepared', formatVersion: 1 });
+  it.each([false, true])('rejects a legacy journal even if admission grants it (duplicate label: %s)', async (duplicateLabel) => {
+    const fixture = await createFixture(kind, { state: 'prepared', formatVersion: 1, duplicateLabel });
     const before = fixture.journal.current;
     await expect(fixture.recovery.recover()).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
     expect(fixture.journal.current).toEqual(before);
@@ -236,6 +240,97 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     },
   );
 
+  it.each(['candidateValidated', 'rootPublished'] as const)(
+    'finishes a previously published %s root despite a historical label conflict', async (state) => {
+      const fixture = await createFixture(kind, { state, published: true, duplicateLabel: true });
+      const previousRegistry = fixture.registry.value!;
+      const previousJournal = fixture.journal.current!;
+
+      await expect(fixture.recovery.recover()).resolves.toBe('completedPublication');
+
+      expect(fixture.registry.value).toEqual({
+        ...previousRegistry,
+        workspaces: [...previousRegistry.workspaces, fixture.targetEntry],
+      });
+      expect(fixture.targetEntry.workspaceLabel).toBe(previousJournal.workspaceLabel);
+      expect(fixture.registry.writes).toHaveLength(1);
+      expect(fixture.rootStore.finalExists).toBe(true);
+      expect(fixture.rootStore.candidateExists).toBe(false);
+      expect(fixture.events).not.toContain('root.discardCandidate');
+      const validationEvent = kind === 'creation' ? 'publishedValidation.run' : 'candidate.validatePublished';
+      expect(fixture.events.indexOf('root.inspectPublished')).toBeLessThan(fixture.events.indexOf(validationEvent));
+      expect(fixture.events.indexOf(validationEvent)).toBeLessThan(fixture.events.indexOf('registry.write'));
+      expect(fixture.events.lastIndexOf('runtimeAbsence.assert')).toBeLessThan(fixture.events.indexOf('journal.remove'));
+      expect(fixture.events).not.toContain('lifecycle.ensure');
+      expect(fixture.journal.current).toBeUndefined();
+      expect(fixture.lease.held).toBe(false);
+      await expect(fixture.recovery.recover()).resolves.toBe('nothingToRecover');
+      expect(fixture.registry.writes).toHaveLength(1);
+    },
+  );
+
+  it.each(['prepared', 'candidateValidated'] as const)(
+    'does not turn an unpublished %s name collision into a completed publication', async (state) => {
+      const fixture = await createFixture(kind, { state, duplicateLabel: true });
+      const registry = fixture.registry.value;
+      await expect(fixture.recovery.recover()).resolves.toBe('discardedBeforePublication');
+      expect(fixture.registry.value).toBe(registry);
+      expect(fixture.registry.writes).toHaveLength(0);
+      expect(fixture.rootStore.finalExists).toBe(false);
+      expect(fixture.journal.current).toBeUndefined();
+      expect(fixture.lease.held).toBe(false);
+    },
+  );
+
+  it('preserves the capacity-specific failure when recovering a historical label conflict', async () => {
+    const fixture = await createFixture(kind, { state: 'rootPublished', published: true, duplicateLabel: true });
+    fixture.registry.value = validateWorkspaceRegistry({ ...fixture.registry.value!, workspaces: [
+      ...fixture.registry.value!.workspaces,
+      ...Array.from({ length: WORKSPACE_REGISTRY_MAX_ENTRIES - 1 }, (_, index) => createReadyWorkspaceEntry({
+        workspaceId: validateWorkspaceId(`00000000-0000-4000-8000-${String(index + 1).padStart(12, '0')}`),
+        workspaceLabel: `Other synthetic workspace ${index + 1}`,
+        lineageIdentity: { formatVersion: 1, profileId: (index + 1).toString(16).padStart(64, '0') },
+        createdAt: fixture.targetEntry.createdAt,
+      })),
+    ] });
+    const registry = fixture.registry.value;
+    const journal = fixture.journal.current;
+
+    await expect(fixture.recovery.recover()).rejects.toMatchObject({
+      code: kind === 'creation' ? 'WORKSPACE_CREATION_CAPACITY_EXCEEDED' : 'WORKSPACE_IMPORT_CAPACITY_EXCEEDED',
+      stage: 'identityGeneration',
+    });
+    expect(fixture.registry.value).toBe(registry);
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.journal.current).toBe(journal);
+    expect(fixture.rootStore.finalExists).toBe(true);
+    expect(fixture.events).not.toContain('journal.remove');
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it.each(['unexpectedState', 'candidatePresent', 'existingIdentity'] as const)(
+    'does not use a historical label conflict to bypass %s', async (fault) => {
+      const fixture = await createFixture(kind, { state: fault === 'unexpectedState' ? 'prepared' : 'rootPublished',
+        published: true, duplicateLabel: true });
+      if (fault === 'candidatePresent') fixture.rootStore.candidateExists = true;
+      if (fault === 'existingIdentity') {
+        fixture.registry.value = { ...fixture.registry.value!, workspaces: [
+          ...fixture.registry.value!.workspaces,
+          { ...fixture.targetEntry, lineageIdentity: { formatVersion: 1, profileId: 'c'.repeat(64) } },
+        ] };
+      }
+      const registry = fixture.registry.value;
+      const journal = fixture.journal.current;
+      await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode, stage: 'recovery' });
+      expect(fixture.registry.value).toBe(registry);
+      expect(fixture.registry.writes).toHaveLength(0);
+      expect(fixture.journal.current).toBe(journal);
+      expect(fixture.rootStore.finalExists).toBe(true);
+      expect(fixture.events).not.toContain('root.cleanupPublishedOperation');
+      expect(fixture.lease.held).toBe(false);
+    },
+  );
+
   const unpublishedStates: JournalState[] = kind === 'creation'
     ? ['prepared', 'candidateRootCreated', 'bootstrapCompleted', 'candidateValidated']
     : ['prepared', 'candidateRootCreated', 'backupStaged', 'candidateMigrated', 'candidateValidated'];
@@ -268,8 +363,8 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     expect(fixture.journal.current?.state).toBe('prepared');
   });
 
-  it('retains a published journal when its target fails full validation', async () => {
-    const fixture = await createFixture(kind, { state: 'rootPublished', published: true });
+  it.each([false, true])('retains a published journal when full validation fails (duplicate label: %s)', async (duplicateLabel) => {
+    const fixture = await createFixture(kind, { state: 'rootPublished', published: true, duplicateLabel });
     fixture.failValidation();
     await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
     expect(fixture.journal.current?.state).toBe('rootPublished');
@@ -286,8 +381,8 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     expect(fixture.events).not.toContain('journal.remove');
   });
 
-  it('does not clean or publish after validation loses exclusive ownership', async () => {
-    const fixture = await createFixture(kind, { state: 'rootPublished', published: true,
+  it.each([false, true])('does not clean or publish after losing ownership (duplicate label: %s)', async (duplicateLabel) => {
+    const fixture = await createFixture(kind, { state: 'rootPublished', published: true, duplicateLabel,
       afterPublishedValidation: () => { fixture.absence.state = 'unknown'; },
     });
     const cleanup = vi.spyOn(fixture.rootStore, 'cleanupPublishedOperation');
@@ -298,8 +393,8 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     expect(fixture.lease.held).toBe(false);
   });
 
-  it('does not overwrite a registry changed during published target validation', async () => {
-    const fixture = await createFixture(kind, { state: 'rootPublished', published: true,
+  it.each([false, true])('does not overwrite registry drift during validation (duplicate label: %s)', async (duplicateLabel) => {
+    const fixture = await createFixture(kind, { state: 'rootPublished', published: true, duplicateLabel,
       afterPublishedValidation: () => {
         fixture.registry.value = { ...fixture.registry.value!, activeWorkspaceId: null };
       },
@@ -399,8 +494,8 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     },
   );
 
-  it('keeps a failed terminal removal restartable without another publication', async () => {
-    const fixture = await createFixture(kind, { state: 'rootPublished', published: true });
+  it.each([false, true])('keeps failed terminal removal restartable without republishing (duplicate label: %s)', async (duplicateLabel) => {
+    const fixture = await createFixture(kind, { state: 'rootPublished', published: true, duplicateLabel });
     fixture.journal.failRemove = true;
     await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
     expect(fixture.journal.current?.state).toBe('registryPublished');

@@ -5,6 +5,8 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { createDesktopOperationalEvent } from '../createDesktopOperationalEvent.js';
+import { validateDesktopOperationalEvent } from '../desktopOperationalEventValidator.js';
+import { DesktopIncidentIndexingOperationalLogger } from './jsonLineDesktopIncidentIndex.js';
 import { JsonLineDesktopOperationalLogger } from './jsonLineDesktopOperationalLogger.js';
 
 const temporaryDirectories: string[] = [];
@@ -23,6 +25,48 @@ afterEach(() => {
 });
 
 describe('JsonLineDesktopOperationalLogger', () => {
+  it.each([
+    ['workspace.create', 'WORKSPACE_CREATION_LABEL_EXISTS'],
+    ['workspace.import', 'WORKSPACE_IMPORT_LABEL_EXISTS'],
+    ['workspace.create', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+    ['workspace.import', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+    ['workspace.rename', 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'],
+  ] as const)('writes only the safe %s label conflict %s', (operationId, errorCode) => {
+    const root = mkdtempSync(join(tmpdir(), 'eky-desktop-log-'));
+    temporaryDirectories.push(root);
+    const logsRoot = join(root, 'logs');
+    const detailedLogger = new JsonLineDesktopOperationalLogger({ logsRoot });
+    const logger = new DesktopIncidentIndexingOperationalLogger(detailedLogger, logsRoot);
+    const event = createDesktopOperationalEvent({
+      eventName: 'workspaceManagement.operationFailed', operationId, errorCode,
+      correlationId: '22222222-2222-4222-8222-222222222222', durationMs: 2,
+      stage: 'operation', retryable: false, sideEffectState: 'unknown',
+    }, eventOptions);
+    if (event.eventName !== 'workspaceManagement.operationFailed') {
+      throw new Error('Unexpected workspace management fixture event.');
+    }
+    logger.write(event);
+    for (const change of [
+      { errorCode: 'WORKSPACE_LABEL_EXISTS' }, { errorCode: 'unknown' },
+      { operationId: 'workspace.replace' }, { operationId: 'workspace.switch' },
+      { stage: 'admission' }, { stage: 'lineageCheck' }, { retryable: true },
+      { workspaceLabel: 'Synthetic' }, { workspaceId: 'synthetic-workspace-id' },
+      { message: 'synthetic-private' }, { rawError: 'synthetic-private' },
+      { companyId: 'synthetic-company' }, { path: '/synthetic/private' },
+    ]) expect(() => validateDesktopOperationalEvent({ ...event, ...change })).toThrow();
+    detailedLogger.write({ ...event, errorCode: 'WORKSPACE_LABEL_EXISTS' });
+    const line = readFileSync(join(logsRoot, 'desktop', 'desktop-warning-error-2026-07-001.jsonl'), 'utf8');
+    expect(line.trim().split('\n')).toHaveLength(1);
+    expect(JSON.parse(line)).toEqual(event);
+    expect(line).not.toMatch(/workspaceLabel|workspaceId|companyId|synthetic-private|message|stack|path/);
+    const incident = JSON.parse(readFileSync(join(logsRoot, 'incident-index', 'desktop-incident-index-2026.jsonl'), 'utf8'));
+    expect(incident).toMatchObject({ eventName: event.eventName, errorCode, outcome: 'failure' });
+    expect(Object.keys(incident).sort()).toEqual([
+      'appVersion', 'buildRevision', 'component', 'errorCode', 'eventName',
+      'fingerprint', 'outcome', 'schemaVersion', 'timestamp',
+    ]);
+  });
+
   it('writes desktop and security streams separately', () => {
     const root = mkdtempSync(join(tmpdir(), 'eky-desktop-log-'));
     temporaryDirectories.push(root);
