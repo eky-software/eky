@@ -48,6 +48,27 @@ export function captureWorkspaceSelectorSwitchSelection(selection: WorkspaceSele
   };
   return {
     journalSlots, registrySlots, guard,
+    registryGuard(readJournalSlots: () => Promise<ReadOnlyJournalSlots<WorkspaceSwitchJournal>>): CrashSafeByteSlotSelection {
+      return {
+        expectedSlots: {
+          current: registrySlots.current?.bytes,
+          next: registrySlots.next?.bytes,
+          backup: registrySlots.backup?.bytes,
+        },
+        expectedIdentities: {
+          current: registrySlots.current?.identity,
+          next: registrySlots.next?.identity,
+          backup: registrySlots.backup?.identity,
+        },
+        assertAuthority,
+        async assertExternalSelection() {
+          assertAuthority();
+          const actual = await readJournalSlots();
+          assertAuthority();
+          assertSameSlots(journalSlots, actual);
+        },
+      };
+    },
     assertJournalSelection(actual: ReadOnlyJournalSlots<WorkspaceSwitchJournal>) {
       assertAuthority();
       assertSameSlots(journalSlots, actual);

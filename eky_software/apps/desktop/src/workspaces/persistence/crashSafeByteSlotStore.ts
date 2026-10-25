@@ -31,7 +31,7 @@ export class CrashSafeByteSlotStore {
 
   // Selected operations never infer admission or roll back on a lost reply.
   // The owning journal supplies semantic admission and live external guards.
-  async replaceSelected(bytes: Uint8Array, selection: CrashSafeByteSlotSelection): Promise<void> {
+  async replaceSelected(bytes: Uint8Array, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     const selected = captureSelectedSlots(selection);
     if (selected.slots.next !== undefined || selected.slots.backup !== undefined) {
       throw new CrashSafeByteSlotStoreError();
@@ -75,9 +75,10 @@ export class CrashSafeByteSlotStore {
       await this.fileSystem.syncDirectory(guard);
     }
     await guard.beforeMutation();
+    return publishedIdentity(selected);
   }
 
-  async recoverSelected(selection: CrashSafeByteSlotSelection): Promise<void> {
+  async recoverSelected(selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     const selected = captureSelectedSlots(selection);
     const guard = this.selectedGuard(selected);
     if ((selected.slots.current === undefined && selected.slots.backup === undefined) ||
@@ -99,6 +100,7 @@ export class CrashSafeByteSlotStore {
     }
     await this.fileSystem.syncDirectory(guard);
     await guard.beforeMutation();
+    return publishedIdentity(selected);
   }
 
   async clearSelected(selection: CrashSafeByteSlotSelection): Promise<void> {
@@ -264,6 +266,13 @@ export class CrashSafeByteSlotStore {
       // The owning journal or registry validates recovery on the next read.
     }
   }
+}
+
+function publishedIdentity(selected: ReturnType<typeof captureSelectedSlots>): Readonly<CrashSafeFileSlotIdentity> {
+  const identity = selected.identities.current;
+  if (identity === undefined) throw new CrashSafeByteSlotStoreError();
+  // Return the identity tracked through our write/rename, not a newly adopted read.
+  return Object.freeze({ ...identity });
 }
 
 function captureSelectedSlots(selection: CrashSafeByteSlotSelection) {

@@ -159,8 +159,27 @@ luokkien yhteinen koe ohjatuilla prosessi- ja sisältöporteilla sekä
 koordinaattorin valtuudenmenetysten regressiot. Aiemmat osajoukot eivät ole
 lisänä tähän testimäärään.
 Rajattu riippumaton jälkikatselmus ei jättänyt avoimia P1/P2-havaintoja.
-Varsinainen valitsin-startup ei vielä muodosta tätä valtuutta. Tämä ei ole
-SQLiten, Electronin tai koko W7.2:n integraatiohyväksyntä.
+Tämä aiempi osaraja ei vielä muodostanut valtuutta valitsimen startupissa.
+Se ei ole SQLiten, Electronin tai koko W7.2:n integraatiohyväksyntä.
+
+**Valitsinavauksen startup:** workspace-resolverin uusi versionmukainen
+haara sovittaa v2-slotit nykyisillä tallentimilla ja välittää valinnan
+aktivoinnin suojaan. Yrityksetön tulos erotetaan ennen business-sessionin
+luontia. Paluu, kohteen hylkäys ja hyväksyntä vaativat nykyisen päättymis-
+todisteen; epävarma tai vanhentunut valtuus säilyttää aineiston. Kadonnut
+kirjoituskuittaus ratkaistaan uuden käynnistyksen pysyvästä tilasta.
+Katselmuksen identiteetti- ja vanhan v1-journalin keskeytystapaukset
+toistettiin ja korjattiin; jälkiluku ei ota vierasta samantavuista tiedostoa
+omakseen. Todellisen compositionin testi toisti myös legacy-adoption
+ohittamisen null-valinnassa, ja aiempi palautusomistaja säilytettiin.
+Lopullinen tallennus-/switch-/aktivointikuluttajien sarja läpäisi 700 testiä
+35 tiedostossa; yksi alustakohtainen tapaus jäi ajamatta. Käynnistys- ja
+palautuscompositionin erillinen sarja läpäisi 228 testiä. Osajoukkoja ei
+lasketa näihin lisänä. Rajattu riippumaton jälkikatselmus ei jättänyt
+avoimia P1/P2-havaintoja tähän osarajaan.
+Tämän osarajan testit käyttävät oikeita tiedostoja ja ohjattuja terminal-
+portteja. Main ei vielä toimita lopullista valtuutta: valitsimen ikkuna,
+FirstStart/W6-kytkentä ja native-/paketoitu näyttö ovat edelleen avoinna.
 
 **Seuraava työ:** ensimmäisen yritysavauksen kytkentä
 nykyisiin FirstStart- ja W6-valtuuksiin.

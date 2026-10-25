@@ -9,6 +9,7 @@ import {
   CrashSafeFileSlotError,
   type CrashSafeFileSlotFileSystem,
   type CrashSafeFileSlotIdentity,
+  type CrashSafeFileSlot,
 } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { WorkspaceSwitchError } from './workspaceSwitchError.js';
@@ -29,6 +30,12 @@ import {
 } from './workspaceSwitchJournalCodec.js';
 
 export * from './workspaceSwitchJournalCodec.js';
+
+type ObservedSwitchSlots = Readonly<Record<CrashSafeFileSlot,
+  Readonly<{ bytes: Uint8Array; identity?: Readonly<CrashSafeFileSlotIdentity> }> | undefined>>;
+
+type WorkspaceSwitchStartupInspection = Readonly<{ mode: 'legacy' }> |
+  Readonly<{ mode: 'selector'; slots: ReadOnlyJournalSlots<WorkspaceSwitchJournal> }>;
 
 export interface WorkspaceSwitchJournalPort {
   read(): Promise<Readonly<WorkspaceSwitchJournalV1> | undefined>;
@@ -77,20 +84,42 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
   // Inspection never repairs slots or grants a selector mutation authority.
   inspectSlots(): Promise<ReadOnlyJournalSlots<WorkspaceSwitchJournal>> {
     return this.runExclusive(async () => {
-      const slots: Record<'current' | 'next' | 'backup', ReadOnlyJournalSlots<WorkspaceSwitchJournal>['current']> = {
-        current: undefined, next: undefined, backup: undefined,
-      };
       try {
-        for (const slot of ['current', 'next', 'backup'] as const) {
-          let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
-          const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
-          if (bytes !== undefined) {
-            slots[slot] = Object.freeze({ bytes, value: parseVersionedWorkspaceSwitchJournalBytes(bytes), ...(identity === undefined ? {} : { identity }) });
-          }
-        }
-        return Object.freeze(slots);
+        const result = parseObservedSlots(await this.observeSlots());
+        if (result.failure !== undefined) throw result.failure;
+        return result.slots;
       } catch (error) { throw mapStorageError(error); }
     });
+  }
+
+  // V1 recovery owns an interrupted unselected write. V2 requires every slot;
+  // a valid v2 sibling must never be discarded by the legacy repairing reader.
+  inspectStartup(): Promise<WorkspaceSwitchStartupInspection> {
+    return this.runExclusive(async () => {
+      try {
+        const observed = await this.observeSlots('allowEmptyObservation');
+        const parsed = parseObservedSlots(observed);
+        const selectedSlot = observed.current !== undefined ? 'current'
+          : observed.backup !== undefined ? 'backup' : 'next';
+        const selected = parsed.slots[selectedSlot];
+        const hasSelector = Object.values(parsed.slots).some(slot => slot?.value.formatVersion === 2);
+        if (!hasSelector && selected?.value.formatVersion === 1) return { mode: 'legacy' };
+        if (parsed.failure !== undefined) throw parsed.failure;
+        return { mode: 'selector', slots: parsed.slots };
+      } catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  private async observeSlots(mode?: 'allowEmptyObservation'): Promise<ObservedSwitchSlots> {
+    const slots: Record<CrashSafeFileSlot, ObservedSwitchSlots['current']> = {
+      current: undefined, next: undefined, backup: undefined,
+    };
+    for (const slot of ['current', 'next', 'backup'] as const) {
+      let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+      const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; }, mode);
+      if (bytes !== undefined) slots[slot] = Object.freeze({ bytes, ...(identity === undefined ? {} : { identity }) });
+    }
+    return Object.freeze(slots);
   }
 
   write(value: unknown): Promise<void> {
@@ -123,7 +152,7 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
     });
   }
 
-  writeSelector(value: unknown, selection: WorkspaceSelectorSwitchSelection): Promise<void> {
+  writeSelector(value: unknown, selection: WorkspaceSelectorSwitchSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     return this.runExclusive(async () => {
       const captured = captureWorkspaceSelectorSwitchSelection(selection);
       const next = validateVersionedWorkspaceSwitchJournal(value);
@@ -133,19 +162,19 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
       assertWorkspaceSwitchTransition(captured.journalSlots.current?.value, next);
       const bytes = serializeVersionedWorkspaceSwitchJournal(next);
       planWorkspaceSelectorSwitchSlots({ ...captured.journalSlots, next: { value: next, bytes } }, captured.registrySlots);
-      try { await this.byteStore.replaceSelected(bytes, captured.guard); }
+      try { return await this.byteStore.replaceSelected(bytes, captured.guard); }
       catch (error) { throw mapStorageError(error); }
     });
   }
 
-  recoverSelector(selection: WorkspaceSelectorSwitchSelection): Promise<void> {
+  recoverSelector(selection: WorkspaceSelectorSwitchSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     return this.runExclusive(async () => {
       const captured = captureWorkspaceSelectorSwitchSelection(selection);
       const plan = planWorkspaceSelectorSwitchSlots(captured.journalSlots, captured.registrySlots);
       if (plan.mode === 'unpublishedPreparation' || plan.mode === 'recoveryRequired') {
         throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
       }
-      try { await this.byteStore.recoverSelected(captured.guard); }
+      try { return await this.byteStore.recoverSelected(captured.guard); }
       catch (error) { throw mapStorageError(error); }
     });
   }
@@ -205,6 +234,20 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
       this.activeOperation = false;
     }
   }
+}
+
+function parseObservedSlots(observed: ObservedSwitchSlots) {
+  const slots: Record<CrashSafeFileSlot, ReadOnlyJournalSlots<WorkspaceSwitchJournal>['current']> = {
+    current: undefined, next: undefined, backup: undefined,
+  };
+  let failure: unknown;
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const record = observed[slot];
+    if (record === undefined) continue;
+    try { slots[slot] = Object.freeze({ ...record, value: parseVersionedWorkspaceSwitchJournalBytes(record.bytes) }); }
+    catch (error) { failure ??= error; }
+  }
+  return { slots: Object.freeze(slots), failure };
 }
 
 function requireAbsoluteRoot(value: string): string {

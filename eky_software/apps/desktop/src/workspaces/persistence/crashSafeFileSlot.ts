@@ -59,7 +59,11 @@ export interface CrashSafeFileSlotMutationGuard {
 
 export interface CrashSafeFileSlotFileSystem {
   prepareDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void>;
-  readSlot(slot: CrashSafeFileSlot, captureIdentity?: (identity: CrashSafeFileSlotIdentity) => void): Promise<Uint8Array | undefined>;
+  readSlot(
+    slot: CrashSafeFileSlot,
+    captureIdentity?: (identity: CrashSafeFileSlotIdentity) => void,
+    mode?: 'allowEmptyObservation',
+  ): Promise<Uint8Array | undefined>;
   createNextWriter(guard?: CrashSafeFileSlotMutationGuard): Promise<CrashSafeFileSlotNextWriter>;
   moveSlot(
     source: CrashSafeFileSlot,
@@ -110,20 +114,21 @@ class NodeCrashSafeFileSlotFileSystem
   async readSlot(
     slot: CrashSafeFileSlot,
     captureIdentity?: (identity: CrashSafeFileSlotIdentity) => void,
+    mode?: 'allowEmptyObservation',
   ): Promise<Uint8Array | undefined> {
     const path = this.pathFor(slot);
     try {
       if (!(await directoryExists(this.paths.directoryPath))) return undefined;
       await assertRealDirectory(this.paths.directoryPath, true);
       const before = await lstat(path);
-      assertSafeRegularFile(before, this.maximumBytes, true);
+      assertSafeRegularFile(before, this.maximumBytes, true, mode === 'allowEmptyObservation');
       if (!pathsAreEqual(await realpath(path), path)) {
         throw new CrashSafeFileSlotError('invalid');
       }
       const file = await open(path, 'r');
       try {
         const opened = await file.stat();
-        assertSafeRegularFile(opened, this.maximumBytes, true);
+        assertSafeRegularFile(opened, this.maximumBytes, true, mode === 'allowEmptyObservation');
         if (!sameOpenedFile(before, opened)) {
           throw new CrashSafeFileSlotError('invalid');
         }
@@ -335,13 +340,14 @@ function assertSafeRegularFile(
   metadata: Awaited<ReturnType<typeof lstat>>,
   maximumBytes: number,
   enforceByteLimit: boolean,
+  allowEmptyObservation = false,
 ): void {
   if (
     !metadata.isFile() ||
     metadata.isSymbolicLink() ||
     metadata.nlink !== 1 ||
     (enforceByteLimit &&
-      (metadata.size < 1 || metadata.size > maximumBytes))
+      (metadata.size < (allowEmptyObservation ? 0 : 1) || metadata.size > maximumBytes))
   ) {
     throw new CrashSafeFileSlotError('invalid');
   }

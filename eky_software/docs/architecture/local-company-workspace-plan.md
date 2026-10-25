@@ -528,12 +528,29 @@ lukuja, poistoja tai valinnan muutosta. Menetetty valtuus sallii omistetun
 runtimen sulkemisen, mutta ei anna uutta palautus- tai siivousvaltaa;
 aineisto säilyy selvitykseen. Vanha ei-null-polku säilyy.
 
-Valtuuden välitys on nimetty nykyisessä aktivointicompositionissa, mutta
-varsinainen valitsimen startup ei vielä muodosta sitä. Tiedostotallentimien,
-guardin, startup-luokan ja inspectorin yhteiset regressiot käyttävät
-ohjattuja prosessi- ja sisältöportteja; ne eivät korvaa SQLite-/Electron-
-tai paketoitua todistusta. Mainin todellisen startup-sukupolven, A/B-tilan,
-W6:n ja palautuksen terminal-valtuuden liitos on edelleen W7.2:n portti.
+Nykyinen workspace-startup muodostaa valintatodisteen erikseen annetulla
+mainin valtuudella. Switch-omistajan v2-haara tarkistaa rekisterin ja
+journalin yhdessä ennen slot-palautusta, julkaisee keskeytyneen valinnan
+ja erottaa valitsimeen paluun business-hyväksynnästä. Paluu ja hyväksyntä
+vaativat omistajiensa tuoreen terminal-todisteen myös tallentimen sisällä.
+Kadonnut kirjoituskuittaus pysäyttää nykyisen jatkon; uusi startup lukee
+pysyvän tilan uudelleen. Valitsintulos ei luo business-sessionia.
+Kirjoituksen tai slot-palautuksen jälkiluku vaatii tallentimen itse
+seuraaman julkaistun tiedoston identiteetin, ei vain samoja tavuja.
+V1:n kelvollinen valittu journal säilyttää keskeneräisen, myös tyhjän
+välitiedoston aiemman palautuksen. Tämä havaintoluku ei hyväksy tyhjää
+valittua journalia tai v2:n osittaista aineistoa. Kelvollinen v2-sivuslotti
+estää delegoinnin vanhalle korjaavalle lukijalle. Null-valinta ei myöskään
+ohita olemassa olevaa legacy-adoption palautusomistajaa; sen ja v2-switchin
+ristiriita säilyttää aineiston ja estää jatkon.
+
+Mainin lopullinen valitsinkytkentä ei vielä toimita tätä valtuutta tai
+terminal-todistetta. Tiedostotallentimien, resolverin, guardin ja
+startup-/inspector-luokkien yhteiset regressiot käyttävät ohjattuja prosessi-
+ja sisältöportteja; ne eivät korvaa SQLite-/Electron- tai paketoitua
+todistusta. Todellisen startup-sukupolven, A/B-tilan, W6:n ja palautuksen
+terminal-valtuuden liitos on edelleen W7.2:n portti. Business-composition
+ei saa käyttää puuttuvaa valitsinkytkentää syynä session luomiseen.
 
 **Nimetty W6-jatko:** nykyinen W6-composition voi ottaa mainin erikseen
 sitoman `deferredBusiness`-valtuuden. Sovellusadmission säilyy

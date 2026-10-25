@@ -101,7 +101,7 @@ export class WorkspaceRegistryStore {
     });
   }
 
-  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<void> {
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     return this.runExclusive(async () => {
       const registry = validateWorkspaceRegistry(value);
       try {
@@ -110,18 +110,18 @@ export class WorkspaceRegistryStore {
             throw new WorkspaceRegistryValidationError();
           }
         }
-        await this.byteStore.replaceSelected(serializeWorkspaceRegistry(registry), selection);
+        return await this.byteStore.replaceSelected(serializeWorkspaceRegistry(registry), selection);
       } catch (error) { throw this.mapStoreError(error); }
     });
   }
 
-  recoverSelected(selection: CrashSafeByteSlotSelection): Promise<void> {
+  recoverSelected(selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     return this.runExclusive(async () => {
       try {
         for (const bytes of Object.values(selection.expectedSlots)) {
           if (bytes !== undefined) parseWorkspaceRegistryBytes(bytes);
         }
-        await this.byteStore.recoverSelected(selection);
+        return await this.byteStore.recoverSelected(selection);
       } catch (error) { throw this.mapStoreError(error); }
     });
   }

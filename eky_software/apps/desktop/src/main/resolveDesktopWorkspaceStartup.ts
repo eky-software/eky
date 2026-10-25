@@ -2,6 +2,7 @@ import {
   ActiveWorkspaceStartupRelaunchRequiredError,
   type ActiveWorkspaceStartupSelection,
 } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import type { WorkspaceSelectorStartupSelection } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
 
 export type DesktopWorkspaceStartupResolution =
   | Readonly<{
@@ -9,6 +10,7 @@ export type DesktopWorkspaceStartupResolution =
       activeWorkspace: Readonly<ActiveWorkspaceStartupSelection>;
       runtimeSessionSecret: string;
     }>
+  | Readonly<{ status: 'selector'; selection: WorkspaceSelectorStartupSelection }>
   | Readonly<{ status: 'relaunching' }>;
 
 export interface ResolveDesktopWorkspaceStartupOptions {
@@ -16,7 +18,7 @@ export interface ResolveDesktopWorkspaceStartupOptions {
   readonly relaunchApplication: () => void;
   readonly resolveActiveWorkspace: (
     userDataRoot: string,
-  ) => Promise<Readonly<ActiveWorkspaceStartupSelection>>;
+  ) => Promise<Readonly<ActiveWorkspaceStartupSelection> | WorkspaceSelectorStartupSelection>;
   readonly userDataRoot: string;
 }
 
@@ -27,6 +29,10 @@ export async function resolveDesktopWorkspaceStartup(
     const activeWorkspace = await options.resolveActiveWorkspace(
       options.userDataRoot,
     );
+    if (activeWorkspace.mode === 'selector') {
+      await activeWorkspace.assertCurrent();
+      return Object.freeze({ status: 'selector', selection: activeWorkspace });
+    }
     return Object.freeze({
       status: 'ready',
       activeWorkspace,

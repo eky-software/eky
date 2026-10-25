@@ -692,6 +692,10 @@ export async function startDesktopComposition(
       await workspaceReservation.close();
       return undefined;
     }
+    if (workspaceStartup.status === 'selector') {
+      // Business composition must never turn a backendless selection into a session.
+      throw new WorkspaceManagementRecoveryRequiredError();
+    }
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
     startupSessionSecret = runtimeSessionSecret;
     const rollbackAdmission = rollbackStartupAdmission === undefined ? undefined : Object.freeze({

@@ -9,11 +9,26 @@ import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlot, type Cra
 const names = ['current', 'next', 'backup'] as const;
 const bytes = (text: string) => Buffer.from(text);
 
+it('keeps empty-file observation separate from normal reads and mutation authority', async test => {
+  const f = await fixture(test, { current: 'old' });
+  await writeFile(f.path('next'), bytes(''));
+  await expect(f.fs.readSlot('next')).rejects.toThrow();
+  let identity: CrashSafeFileSlotIdentity | undefined;
+  await expect(f.fs.readSlot('next', value => { identity = value; }, 'allowEmptyObservation')).resolves.toEqual(new Uint8Array(0));
+  expect(identity?.size).toBe(0);
+  expect(identity?.ino).not.toBe(0);
+  await expect(f.fs.readSlot('next')).rejects.toThrow();
+  expect(await readFile(f.path('current'))).toEqual(bytes('old'));
+  expect(await readFile(f.path('next'))).toEqual(bytes(''));
+});
+
 it.for([false, true])('publishes selected bytes with previous current: %s', async (present, test) => {
   const f = await fixture(test, present ? { current: 'old' } : {});
   const external = vi.fn(async () => undefined);
-  await f.store.replaceSelected(bytes('new'), { ...await f.selection(), assertExternalSelection: external });
+  const identity = await f.store.replaceSelected(bytes('new'), { ...await f.selection(), assertExternalSelection: external });
   expect(await f.snapshot()).toEqual({ current: bytes('new'), next: undefined, backup: undefined });
+  expect(identity).toEqual((await f.selection()).expectedIdentities.current);
+  expect(Object.isFrozen(identity)).toBe(true);
   expect(external.mock.calls.length).toBeGreaterThan(4);
 });
 
@@ -24,8 +39,10 @@ it.for([
   { backup: 'old', expected: 'old' },
 ] as const)('recovers exactly the admitted published bytes %#', async (input, test) => {
   const f = await fixture(test, input);
-  await f.store.recoverSelected(await f.selection());
+  const identity = await f.store.recoverSelected(await f.selection());
   expect(await f.snapshot()).toEqual({ current: bytes(input.expected), next: undefined, backup: undefined });
+  expect(identity).toEqual((await f.selection()).expectedIdentities.current);
+  expect(Object.isFrozen(identity)).toBe(true);
 });
 
 it.for([{ next: 'unpublished' }, { current: 'new', backup: 'old', next: 'other' }])(
