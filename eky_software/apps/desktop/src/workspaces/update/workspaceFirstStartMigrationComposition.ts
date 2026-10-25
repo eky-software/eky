@@ -16,10 +16,12 @@ import { WorkspaceFirstStartMigrationOrchestrator } from './workspaceFirstStartM
 import type { WorkspaceFirstStartMigrationOrchestration } from './workspaceFirstStartMigrationOrchestratorTypes.js';
 import { WorkspaceFirstStartMigrationTransitionCoordinator } from './workspaceFirstStartMigrationTransitionCoordinator.js';
 import { WorkspaceMigrationInventoryCoordinator } from './workspaceMigrationInventoryCoordinator.js';
+import type { WorkspaceFirstStartDeferredBusinessAuthority } from './workspaceFirstStartDeferredBusiness.js';
 
 export interface WorkspaceFirstStartMigrationCompositionOptions {
   readonly acceptedBuildStore: AcceptedBuildMetadataStore;
   readonly admission: PreWorkspaceBuildAdmission;
+  readonly deferredBusiness?: WorkspaceFirstStartDeferredBusinessAuthority;
   readonly buildInfo: Readonly<DesktopBuildInfo>;
   readonly directSetupRecoveryStore: DirectSetupMigrationRecoveryStore;
   readonly releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
@@ -43,6 +45,7 @@ export function createWorkspaceFirstStartMigrationComposition(
     acceptedBuild: options.acceptedBuildStore,
     journal,
     registry,
+    ...(options.deferredBusiness === undefined ? {} : { deferredBusiness: options.deferredBusiness }),
   });
   let inventoryCoordinator:
     | Promise<WorkspaceMigrationInventoryCoordinator>
@@ -51,6 +54,7 @@ export function createWorkspaceFirstStartMigrationComposition(
   return new WorkspaceFirstStartMigrationOrchestrator({
     acceptedBuild: options.acceptedBuildStore,
     admission: options.admission,
+    ...(options.deferredBusiness === undefined ? {} : { deferredBusiness: options.deferredBusiness }),
     failureAuthority: new PreBackendFirstStartFailureAuthority({
       acceptedBuildStore: options.acceptedBuildStore,
       directSetupRecoveryStore: options.directSetupRecoveryStore,

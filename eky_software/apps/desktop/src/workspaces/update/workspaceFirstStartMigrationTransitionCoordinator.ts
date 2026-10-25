@@ -25,11 +25,16 @@ import {
   markPassiveWorkspacesRecoveryRequired,
   restoreJournaledPassiveWorkspacesReady,
 } from './workspaceFirstStartMigrationRegistryTransitions.js';
+import {
+  readDeferredBusinessAcceptance,
+  type WorkspaceFirstStartDeferredBusinessAuthority,
+} from './workspaceFirstStartDeferredBusiness.js';
 
 export interface WorkspaceFirstStartMigrationTransitionCoordinatorOptions {
   readonly acceptedBuild: WorkspaceFirstStartAcceptedBuildReader;
   readonly journal: WorkspaceFirstStartMigrationJournalPort;
   readonly registry: Pick<WorkspaceRegistryPort, 'read' | 'write'>;
+  readonly deferredBusiness?: WorkspaceFirstStartDeferredBusinessAuthority;
 }
 
 export class WorkspaceFirstStartMigrationTransitionCoordinator {
@@ -74,6 +79,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       createdAt: input.createdAt,
       updatedAt: input.createdAt,
     });
+    await this.assertDeferredAcceptance(journal, 'source');
     await this.options.journal.write(journal);
     return journal;
   }
@@ -89,6 +95,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     assertBuildsMatch(journal.targetBuild, input.targetBuild);
     const registry = await this.readRequiredRegistry();
     const registrySha256 = calculateWorkspaceRegistrySha256(registry);
+    await this.assertDeferredAcceptance(journal, 'source');
     if (journal.state === 'registryTransitioned') {
       if (registrySha256 !== journal.transitionedRegistrySha256) {
         return recoveryRequired();
@@ -111,6 +118,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       if (
         journal.sourceRegistrySha256 !== journal.transitionedRegistrySha256
       ) {
+        await this.assertDeferredAcceptance(journal, 'source');
         await this.options.registry.write(transitioned);
       }
     } else if (registrySha256 !== journal.transitionedRegistrySha256) {
@@ -122,6 +130,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       state: 'registryTransitioned',
       updatedAt: input.updatedAt,
     });
+    await this.assertDeferredAcceptance(journal, 'source');
     await this.options.journal.write(transitionedJournal);
     return transitionedJournal;
   }
@@ -136,6 +145,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     ) {
       return recoveryRequired();
     }
+    await this.assertDeferredAcceptance(journal, 'source');
     await this.options.journal.discardPrepared(operationId);
   }
 
@@ -156,20 +166,21 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     ) {
       return recoveryRequired();
     }
-    const metadata = await this.options.acceptedBuild.read();
-    const acceptedBuild = metadata === undefined ? undefined : readAcceptedBusinessBuild(metadata);
-    if (
-      acceptedBuild === undefined ||
-      !buildsAreEqual(acceptedBuild, journal.targetBuild)
-    ) {
-      return recoveryRequired();
+    if (this.options.deferredBusiness === undefined) {
+      const metadata = await this.options.acceptedBuild.read();
+      const acceptedBuild = metadata === undefined ? undefined : readAcceptedBusinessBuild(metadata);
+      if (acceptedBuild === undefined || !buildsAreEqual(acceptedBuild, journal.targetBuild)) {
+        return recoveryRequired();
+      }
     }
+    await this.assertDeferredAcceptance(journal, 'target');
     await this.options.journal.removeTransitioned(journal.operationId);
   }
 
   async recover(
     runningBuildInput: Readonly<WorkspaceFirstStartBuildIdentity>,
   ): Promise<Readonly<WorkspaceFirstStartMigrationRecoveryResult>> {
+    if (this.options.deferredBusiness !== undefined) await this.options.deferredBusiness.assertCurrent();
     const journal = await this.options.journal.read();
     if (journal === undefined) return Object.freeze({ kind: 'noJournal' });
 
@@ -182,14 +193,16 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
     ) {
       return frozenRecoveryRequired(journal.operationId);
     }
+    if (this.options.deferredBusiness !== undefined) await this.options.deferredBusiness.assertCurrent();
     const registryValue = await this.options.registry.read();
     if (registryValue === undefined) {
       return frozenRecoveryRequired(journal.operationId);
     }
     const registry = validateWorkspaceRegistry(registryValue);
     const registrySha256 = calculateWorkspaceRegistrySha256(registry);
-    const acceptedBuild = await this.options.acceptedBuild.read();
-    const accepted = classifyAcceptedBuild(acceptedBuild, journal);
+    const accepted = this.options.deferredBusiness === undefined
+      ? classifyAcceptedBuild(await this.options.acceptedBuild.read(), journal)
+      : await this.assertDeferredAcceptance(journal, undefined, runningBuild);
 
     if (journal.state === 'prepared') {
       if (
@@ -206,6 +219,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
         registrySha256 === journal.transitionedRegistrySha256
       ) {
         await this.restoreSourceRegistry(registry, journal);
+        await this.assertDeferredAcceptance(journal, 'source');
         await this.options.journal.discardPrepared(journal.operationId);
         return Object.freeze({
           kind: 'recoveredSource',
@@ -217,6 +231,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
         buildsAreEqual(runningBuild, journal.targetBuild) &&
         registrySha256 === journal.transitionedRegistrySha256
       ) {
+        await this.assertDeferredAcceptance(journal, 'target');
         await this.options.journal.discardPrepared(journal.operationId);
         return Object.freeze({
           kind: 'acceptedTarget',
@@ -232,6 +247,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       } else if (registrySha256 !== journal.sourceRegistrySha256) {
         return frozenRecoveryRequired(journal.operationId);
       }
+      await this.assertDeferredAcceptance(journal, 'source');
       await this.options.journal.removeTransitioned(journal.operationId);
       return Object.freeze({
         kind: 'recoveredSource',
@@ -243,6 +259,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       buildsAreEqual(runningBuild, journal.targetBuild) &&
       registrySha256 === journal.transitionedRegistrySha256
     ) {
+      await this.assertDeferredAcceptance(journal, 'target');
       await this.options.journal.removeTransitioned(journal.operationId);
       return Object.freeze({
         kind: 'acceptedTarget',
@@ -267,13 +284,34 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
       calculateWorkspaceRegistrySha256(registry) !==
       journal.sourceRegistrySha256
     ) {
+      await this.assertDeferredAcceptance(journal, 'source');
       await this.options.registry.write(restored);
     }
+  }
+
+  private async assertDeferredAcceptance(
+    journal: Readonly<WorkspaceFirstStartMigrationJournalV1>,
+    expected?: 'source' | 'target',
+    runningBuild: Readonly<WorkspaceFirstStartBuildIdentity> = journal.targetBuild,
+  ): Promise<'source' | 'target' | undefined> {
+    const authority = this.options.deferredBusiness;
+    if (authority === undefined) return undefined;
+    const { businessBaseline, acceptedBuild } = authority.acceptedBuild;
+    assertBuildsMatch(journal.sourceBuild, {
+      appVersion: businessBaseline.appVersion, buildRevision: businessBaseline.buildRevision,
+    });
+    assertBuildsMatch(journal.targetBuild, {
+      appVersion: acceptedBuild.appVersion, buildRevision: acceptedBuild.buildRevision,
+    });
+    const state = await readDeferredBusinessAcceptance(authority, this.options.acceptedBuild, runningBuild);
+    if (expected !== undefined && state !== expected) return recoveryRequired();
+    return state;
   }
 
   private async readRequiredRegistry(): Promise<
     Readonly<LocalWorkspaceRegistry>
   > {
+    if (this.options.deferredBusiness !== undefined) await this.options.deferredBusiness.assertCurrent();
     const value = await this.options.registry.read();
     if (value === undefined) return invalidTransition();
     try {
@@ -286,6 +324,7 @@ export class WorkspaceFirstStartMigrationTransitionCoordinator {
   private async readRequiredJournal(
     operationId: string,
   ): Promise<Readonly<WorkspaceFirstStartMigrationJournalV1>> {
+    if (this.options.deferredBusiness !== undefined) await this.options.deferredBusiness.assertCurrent();
     const journal = await this.options.journal.read();
     if (journal === undefined || journal.operationId !== operationId) {
       return invalidTransition();

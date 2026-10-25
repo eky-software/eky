@@ -39,6 +39,10 @@ import type {
   WorkspaceFirstStartRecoveryOutcome,
 } from './workspaceFirstStartMigrationOrchestratorTypes.js';
 import type { WorkspaceMigrationInventoryCoordinator } from './workspaceMigrationInventoryCoordinator.js';
+import {
+  readDeferredBusinessAcceptance,
+  type WorkspaceFirstStartDeferredBusinessAuthority,
+} from './workspaceFirstStartDeferredBusiness.js';
 
 const updateAdmissions = new Set<PreWorkspaceBuildAdmission>([
   'authorizedNewerBuild',
@@ -48,6 +52,7 @@ const updateAdmissions = new Set<PreWorkspaceBuildAdmission>([
 interface WorkspaceFirstStartMigrationOrchestratorOptions {
   readonly acceptedBuild: WorkspaceFirstStartAcceptedBuildReader;
   readonly admission: PreWorkspaceBuildAdmission;
+  readonly deferredBusiness?: WorkspaceFirstStartDeferredBusinessAuthority;
   readonly failureAuthority: Pick<
     PreBackendFirstStartFailureAuthority,
     'recordFailure'
@@ -95,13 +100,17 @@ export class WorkspaceFirstStartMigrationOrchestrator
 
   async recoverBeforeWorkspaceResolution(): Promise<WorkspaceFirstStartRecoveryOutcome> {
     if (this.recoveryCompleted) return invalidOrchestration();
-    const journalBeforeRecovery = await this.options.journal.read();
+    if (this.options.deferredBusiness !== undefined) await this.assertDeferredAcceptance();
+    const journalBeforeRecovery = await this.readJournal();
     let result;
     try {
       result = await this.options.transitions.recover(
         this.options.runningBuild,
       );
-    } catch {
+    } catch (error) {
+      if (this.options.deferredBusiness !== undefined) {
+        throw new WorkspaceFirstStartMigrationOrchestratorError('recoveryRequired', { cause: error });
+      }
       return recoveryRequired();
     }
 
@@ -132,7 +141,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
         this.options.runningBuild,
         journalBeforeRecovery.targetBuild,
       ) &&
-      updateAdmissions.has(this.options.admission)
+      (updateAdmissions.has(this.options.admission) || this.options.deferredBusiness !== undefined)
     ) {
       this.resumedJournal = journalBeforeRecovery;
       return 'resumable';
@@ -162,11 +171,12 @@ export class WorkspaceFirstStartMigrationOrchestrator
     }
 
     if (context.rollbackOnly !== undefined) {
+      if (this.options.deferredBusiness !== undefined) return invalidOrchestration();
       await context.rollbackOnly.assertCurrent();
       if (this.options.admission !== 'coordinatedUpdateTarget') return invalidOrchestration();
       const registry = await this.readRequiredRegistry();
       const sourceBuild = await this.resolveSourceBuild();
-      const journal = await this.options.journal.read();
+      const journal = await this.readJournal();
       await context.rollbackOnly.assertCurrent();
       if (sourceBuild === null || !buildsAreEqual(sourceBuild, context.rollbackOnly.sourceBuild) ||
           registry.activeWorkspaceId !== context.activeWorkspaceId ||
@@ -185,12 +195,16 @@ export class WorkspaceFirstStartMigrationOrchestrator
       return 'rollbackOnly';
     }
 
-    if (!updateAdmissions.has(this.options.admission)) {
+    if (!updateAdmissions.has(this.options.admission) && this.options.deferredBusiness === undefined) {
       this.preparation = Object.freeze({ kind: 'notRequired' });
       return 'notRequired';
     }
 
     try {
+      if (this.options.deferredBusiness !== undefined) {
+        await this.assertDeferredAcceptance('source');
+        if (context.workspaceState !== 'publishedRegistry') return invalidOrchestration();
+      }
       if (context.workspaceState === 'legacyAdoptionPendingAcceptance') {
         await this.assertLegacyAdoptionHasNoPassiveRegistryState(
           context.activeWorkspaceId,
@@ -199,10 +213,18 @@ export class WorkspaceFirstStartMigrationOrchestrator
         return 'notRequired';
       }
       const registry = await this.readRequiredRegistry();
+      if (this.options.deferredBusiness !== undefined &&
+        registry.activeWorkspaceId !== context.activeWorkspaceId) return invalidOrchestration();
       const sourceBuild = await this.resolveSourceBuild();
       const inventory = await this.options.inventory.inspect();
+      if (this.options.deferredBusiness !== undefined) {
+        await this.assertDeferredAcceptance('source');
+        if (!isDeepStrictEqual(registry, await this.readRequiredRegistry())) return invalidOrchestration();
+        if (!isDeepStrictEqual(this.resumedJournal, await this.readJournal())) return recoveryRequired();
+        await this.assertDeferredAcceptance('source');
+      }
       const plan = resolveWorkspaceFirstStartMigrationPlan({
-        admission: this.options.admission,
+        admission: this.options.deferredBusiness === undefined ? this.options.admission : 'deferredBusiness',
         ...(inventory === undefined ? {} : { inventory }),
         registry,
         sourceBuild,
@@ -254,6 +276,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   async transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void> {
     const preparation = this.requirePreparation();
     if (preparation.kind === 'rollbackOnly') return invalidOrchestration();
+    if (this.options.deferredBusiness !== undefined) await this.assertDeferredAcceptance('source');
     if (preparation.kind === 'notRequired') return;
     if (preparation.operation.registryTransitioned) {
       return invalidOrchestration();
@@ -278,6 +301,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
     const preparation = this.requirePreparation();
     if (preparation.kind === 'rollbackOnly') return invalidOrchestration();
     if (this.completed) return invalidOrchestration();
+    if (this.options.deferredBusiness !== undefined) await this.assertDeferredAcceptance('target');
     if (preparation.kind === 'notRequired') {
       this.completed = true;
       return;
@@ -303,6 +327,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
     ) {
       return null;
     }
+    if (this.options.deferredBusiness !== undefined) await this.options.deferredBusiness.assertCurrent();
     const acceptedBuild = await this.options.acceptedBuild.read();
     if (acceptedBuild === undefined) return invalidOrchestration();
     return toBuildIdentity(readAcceptedBusinessBaseline(acceptedBuild));
@@ -314,6 +339,11 @@ export class WorkspaceFirstStartMigrationOrchestrator
     const registry = await this.options.registry.inspect();
     if (registry === undefined) return invalidOrchestration();
     return validateWorkspaceRegistry(registry);
+  }
+
+  private async readJournal(): Promise<Readonly<WorkspaceFirstStartMigrationJournalV1> | undefined> {
+    if (this.options.deferredBusiness !== undefined) await this.options.deferredBusiness.assertCurrent();
+    return this.options.journal.read();
   }
 
   private async assertLegacyAdoptionHasNoPassiveRegistryState(
@@ -375,6 +405,10 @@ export class WorkspaceFirstStartMigrationOrchestrator
   }
 
   private async failBeforeBackend(error: unknown): Promise<never> {
+    if (this.options.deferredBusiness !== undefined) {
+      // Copy activation owns rollback; do not create a second C/Setup recovery.
+      throw new WorkspaceFirstStartMigrationOrchestratorError('failed', { cause: error });
+    }
     let result: PreBackendFirstStartFailureResult;
     try {
       result = await this.options.failureAuthority.recordFailure(
@@ -400,6 +434,13 @@ export class WorkspaceFirstStartMigrationOrchestrator
 
   private now(): string {
     return (this.options.now ?? (() => new Date()))().toISOString();
+  }
+
+  private async assertDeferredAcceptance(expected?: 'source' | 'target'): Promise<void> {
+    const authority = this.options.deferredBusiness;
+    if (authority === undefined || this.options.admission !== 'exactAcceptedBuild') return invalidOrchestration();
+    const state = await readDeferredBusinessAcceptance(authority, this.options.acceptedBuild, this.options.runningBuild);
+    if (expected !== undefined && state !== expected) return invalidOrchestration();
   }
 }
 

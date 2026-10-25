@@ -10,8 +10,10 @@ export interface WorkspaceFirstStartBuildIdentity {
   readonly buildRevision: string;
 }
 
+export type WorkspaceFirstStartMigrationAdmission = PreWorkspaceBuildAdmission | 'deferredBusiness';
+
 export interface WorkspaceFirstStartMigrationPlanInput {
-  readonly admission: PreWorkspaceBuildAdmission;
+  readonly admission: WorkspaceFirstStartMigrationAdmission;
   readonly inventory?: Readonly<WorkspaceMigrationInventory>;
   readonly registry: Readonly<LocalWorkspaceRegistry>;
   readonly sourceBuild: Readonly<WorkspaceFirstStartBuildIdentity> | null;

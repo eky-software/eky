@@ -117,12 +117,22 @@ Rajattu riippumaton lähdekatselmus korjauksineen on valmis.
 Todiste kattaa oikean compositionin ja tiedostotavut ohjatuilla native- ja
 Electron-rajoilla, ei valitsimen käyttöliittymää tai paketoitua ketjua.
 
-**Seuraava työ:** W6:n nimetty lykätyn business-hyväksynnän jatko sekä
-valitsimen ja ensimmäisen yritysavauksen kytkentä.
+**W6:n nimetty jatko:** lykkääntynyt business-hyväksyntä on toteutettu
+nykyisiin suunnittelu-, journal- ja siirtymäomistajiin erillisellä
+startup-valtuudella. Sovellusadmissionia ei muuteta uudeksi päivitykseksi.
+Pysyvä keskeytys-/v1/v2-todennus ja vanhojen kutsujien vaikutusalueen sarja
+läpäisivät 451 testiä 19 tiedostossa. Rajattu katselmus löysi korjaavan
+lukemisen valtuusjärjestyksen puutteen; korjaus ja sivuslottien säilymisen
+regressiot läpäisivät jälkitarkistuksen. Desktopin ja E2E:n tyyppitarkistukset
+sekä ohjeiden linkkitarkistus läpäisivät. Tämä ei ole SQLiten, Electronin
+tai koko yritysavauksen tuotantokytkennän näyttö.
+
+**Seuraava työ:** valitsimen ja ensimmäisen yritysavauksen kytkentä
+nykyisiin FirstStart- ja W6-valtuuksiin.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.
-W6 tarvitsee oman nimetyn lykätyn business-hyväksynnän jatkonsa, ei yleistä
-B-baselinen store-adapteria tai teeskenneltyä uutta päivitystä.
+W6:n nimetty jatko tarvitsee vielä startup-omistajan todellisen kutsun,
+ei yleistä B-baselinen store-adapteria tai teeskenneltyä uutta päivitystä.
 Todellinen v2-julkaisu, historiallisen palautuksen terminal-kytkentä ja
 source-null-composition jäävät pysyvien regressioiden ja integraation porteiksi.
 Valitsimen readiness ei ole business-hyväksyntä, null-valinta ei luo

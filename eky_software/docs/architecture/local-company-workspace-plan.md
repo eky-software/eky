@@ -513,6 +513,34 @@ palautetun historiallisen prefixin terminal-kytkentä tarvitsevat pysyvät
 regressiot ja oikean prosessi-/pakettiketjun näytön ennen W7.2:n hyväksyntää.
 Jo hyväksyttyjä W7.0:n codec-/slot-kokeita ei lasketa tämän näytöksi uudelleen.
 
+**Nimetty W6-jatko:** nykyinen W6-composition voi ottaa mainin erikseen
+sitoman `deferredBusiness`-valtuuden. Sovellusadmission säilyy
+`exactAcceptedBuild`-arvona; vain W6:n suunnittelija käyttää nimettyä
+lykättyä business-haaraa. Valtuus sitoo täsmällisen selector-metadatan ja
+käynnissä olevan kohdebuildin. Startup vastaa valtuuden sitomisesta elävään
+käynnistyssukupolveen, valittuun yritykseen, operaatioon ja sallittuun
+rekisterisiirtymään. Rajapinnan olemassaolo ei todista tätä startup-kytkentää.
+
+Ennen inventaarion tuloksen käyttöä lähdemetadata, rekisteri ja mahdollinen
+journal tarkistetaan uudelleen. Sama `prepared`-journal saa jatkua myös
+pending -> current -muutoksen jälkeen vain nykyisten täsmällisten build-,
+kohde-, passiivijoukko- ja rekisteritiiviste-ehtojen täyttyessä.
+Siirtymäomistaja tarkistaa nimetyn valtuuden ennen korjaavia journal-,
+rekisteri- ja metadatalukuja sekä ennen muutoksia. Myös lukeminen voi
+julkaista tai poistaa sivuslotin, joten pelkkä loppukirjoituksen portti ei
+riitä. Vanhentunut valtuus säilyttää tällaiset slotit muuttumattomina. Selector-tila
+voi todistaa vain journalin business-lähteen, ei business-kohteen hyväksyntää:
+lopetus vaatii todellisen v2/business-julkaisun. Keskeytynyt passiivisiirtymä
+palautetaan tai päätetään nykyisellä journalilla. Virhe ei luo uutta
+C-/Direct Setup -palautusta eikä alenna sovellushyväksyntää. Vanhat kutsujat
+ilman nimettyä valtuutta säilyttävät nykyisen käsittelyn.
+
+Pysyvät testit käyttävät nykyisiä tiedostotallentimia ja v1/v2-rekistereitä.
+Inventaario ja startup-valtuus ovat niissä ohjattuja; ne eivät todista oikeaa
+SQLite-/Electron- tai paketoitua ketjua. Valitsimen ja source-null-avauksen
+tuotantokutsuja ei vielä käytä tätä W6-valtuutta. Ajantasainen testinäyttö
+ja jäljellä oleva kytkentä kirjataan M1:n jatkamiskohtaan.
+
 ## Muuttumattomat rajat W1-W6:ssa
 
 - Domain- ja application-logiikka eivät tunne Electron-polkuja.
