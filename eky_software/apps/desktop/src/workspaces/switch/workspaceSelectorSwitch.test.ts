@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import { expect, it, type TestContext } from 'vitest';
 
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
+import type { CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
 import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
@@ -16,6 +17,7 @@ import {
   WorkspaceSwitchJournalStore, type WorkspaceSwitchJournal, type WorkspaceSwitchJournalState,
 } from './workspaceSwitchJournal.js';
 import { planWorkspaceSelectorSwitchSlots } from './workspaceSelectorSwitchSlots.js';
+import type { WorkspaceSelectorSwitchSelection } from './workspaceSelectorSwitchSelection.js';
 import {
   classifyWorkspaceSelectorSwitch, createWorkspaceSelectorSwitchJournal,
   createWorkspaceSelectorSwitchRegistryVariants,
@@ -202,6 +204,125 @@ it.for(['read', 'write', 'clear'] as const)('does not let the v1 %s path mutate 
   expect(await f.snapshot()).toEqual(before);
 });
 
+it('publishes through the real selected stores and requires a separate current terminal before clear', async test => {
+  const f = await fixture(test);
+  await f.write({}, { current: variants.before });
+  await f.journal.writeSelector(prepared, await f.selection());
+  await f.journal.writeSelector(prepared, await f.selection());
+  const before = await f.snapshot();
+  await expect(f.journal.writeSelector(state('targetSelected'), await f.selection())).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+  await f.registry.writeSelected(variants.selected, await f.registrySelection());
+  await f.journal.writeSelector(state('targetSelected'), await f.selection());
+  expect((await f.inspect()).mode).toBe('validateTarget');
+  const selected = await f.snapshot();
+  await expect(f.journal.clearSelector(await f.selection(), {
+    purpose: 'acceptedTarget', assertCurrent() { throw new Error('BUSINESS_NOT_READY'); },
+  })).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(selected);
+  await f.journal.clearSelector(await f.selection(), { purpose: 'acceptedTarget', assertCurrent() {} });
+  expect((await f.snapshot()).slice(0, 3)).toEqual([undefined, undefined, undefined]);
+  expect(await f.registry.inspect()).toEqual(variants.selected);
+});
+
+it.for(['before', 'rejected'] as const)('publishes and clears only the admitted %s return', async (kind, test) => {
+  const f = await fixture(test);
+  await f.write({ current: state('targetSelected') }, { current: variants.selected });
+  await expect(f.journal.writeSelector(state('rollbackSelected'), await f.selection())).rejects.toThrow();
+  await f.registry.writeSelected(variants[kind], await f.registrySelection());
+  await f.journal.writeSelector(state('rollbackSelected'), await f.selection());
+  expect((await f.inspect()).mode).toBe('selectorReturned');
+  await f.journal.clearSelector(await f.selection(), { purpose: 'selectorReturn', assertCurrent() {} });
+  expect(await f.registry.inspect()).toEqual(variants[kind]);
+});
+
+it.for([
+  { current: 'targetSelected', next: 'rollbackSelected' },
+  { backup: 'targetSelected', next: 'rollbackSelected' },
+  { current: 'rollbackSelected', backup: 'targetSelected' },
+  { backup: 'rollbackSelected' },
+  { current: 'rollbackSelected', next: 'rollbackSelected' },
+] as const)('repairs admitted return slots using exact selected bytes %#', async (phases, test) => {
+  const f = await fixture(test);
+  const journals: Values<WorkspaceSwitchJournal> = {};
+  for (const slot of slots) {
+    const phase = phases[slot as keyof typeof phases];
+    if (phase !== undefined) journals[slot] = state(phase);
+  }
+  await f.write(journals, { current: variants.before });
+  await f.journal.recoverSelector(await f.selection());
+  const observed = await f.journal.inspectSlots();
+  expect(observed.current?.value).toEqual(journals.current ?? journals.backup);
+  expect([observed.next, observed.backup]).toEqual([undefined, undefined]);
+  expect(await f.registry.inspect()).toEqual(variants.before);
+});
+
+it('does not promote unpublished next and needs current absence authority to discard it', async test => {
+  const f = await fixture(test);
+  await f.write({ next: prepared }, { current: variants.before });
+  const before = await f.snapshot();
+  await expect(f.journal.recoverSelector(await f.selection())).rejects.toThrow();
+  await expect(f.journal.clearSelector(await f.selection(), {
+    purpose: 'selectorReturn', assertCurrent() { throw new Error('RUNTIME_UNCERTAIN'); },
+  })).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+  await f.journal.clearSelector(await f.selection(), { purpose: 'selectorReturn', assertCurrent() {} });
+  expect((await f.snapshot()).slice(0, 3)).toEqual([undefined, undefined, undefined]);
+  expect(await f.registry.inspect()).toEqual(variants.before);
+});
+
+it.for(['write', 'recover', 'clear'] as const)('preserves all files when the registry changes before selector %s', async (operation, test) => {
+  const f = await fixture(test);
+  await f.write({ current: prepared }, { current: variants.before });
+  const selection = await f.selection();
+  await writeFile(f.registryPath, serializeWorkspaceRegistry(variants.selected));
+  const before = await f.snapshot();
+  await expect(operation === 'write' ? f.journal.writeSelector(prepared, selection)
+    : operation === 'recover' ? f.journal.recoverSelector(selection)
+      : f.journal.clearSelector(selection, { purpose: 'selectorReturn', assertCurrent() {} })).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('preserves a pending registry publication at terminal clear', async test => {
+  const f = await fixture(test);
+  await f.write({ current: prepared }, { current: variants.before, next: variants.selected });
+  const before = await f.snapshot();
+  await expect(f.journal.clearSelector(await f.selection(), { purpose: 'selectorReturn', assertCurrent() {} })).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('does not repair or clear a recoveryRequired selector journal', async test => {
+  const f = await fixture(test);
+  await f.write({ current: state('recoveryRequired'), backup: state('targetSelected') }, { current: variants.selected });
+  const before = await f.snapshot();
+  await expect(f.journal.recoverSelector(await f.selection())).rejects.toThrow();
+  for (const purpose of ['selectorReturn', 'acceptedTarget'] as const) {
+    await expect(f.journal.clearSelector(await f.selection(), { purpose, assertCurrent() {} })).rejects.toThrow();
+  }
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('rejects expired authority after the external read without touching either owner', async test => {
+  const f = await fixture(test);
+  await f.write({ current: prepared }, { current: variants.before });
+  const selection = await f.selection();
+  const before = await f.snapshot();
+  let live = true;
+  await expect(f.journal.writeSelector(prepared, { ...selection,
+    async readRegistrySlots() { const actual = await f.registry.inspectSlots(); live = false; return actual; },
+    assertAuthority() { if (!live) throw new Error('EXPIRED'); },
+  })).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('rejects selected registry downgrade without touching either owner', async test => {
+  const f = await fixture(test);
+  await f.write({ current: prepared }, { current: variants.before });
+  const before = await f.snapshot();
+  await expect(f.registry.writeSelected(createSwitchRegistry(), await f.registrySelection())).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
 type Values<T> = Partial<Record<'current' | 'next' | 'backup', T>>;
 const slots = ['current', 'next', 'backup'] as const;
 function records<T>(values: Values<T>, serialize: (value: T) => Uint8Array): ReadOnlyJournalSlots<T> {
@@ -219,8 +340,24 @@ async function fixture(test: TestContext) {
   await mkdir(journalPaths.directoryPath, { mode: 0o700 });
   const paths = [journalPaths.currentPath, journalPaths.nextPath, journalPaths.backupPath,
     registryPath, registryPath + '.next', registryPath + '.backup'];
+  const journal = new WorkspaceSwitchJournalStore(root);
+  const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
   return {
-    root, journalPaths, registryPath,
+    root, journalPaths, registryPath, journal, registry,
+    async selection(): Promise<WorkspaceSelectorSwitchSelection> {
+      return { journalSlots: await journal.inspectSlots(), registrySlots: await registry.inspectSlots(),
+        readRegistrySlots: () => registry.inspectSlots(), assertAuthority() {} };
+    },
+    async registrySelection(): Promise<CrashSafeByteSlotSelection> {
+      const observed = await registry.inspectSlots();
+      const external = await journal.inspectSlots();
+      return {
+        expectedSlots: { current: observed.current?.bytes, next: observed.next?.bytes, backup: observed.backup?.bytes },
+        expectedIdentities: { current: observed.current?.identity, next: observed.next?.identity, backup: observed.backup?.identity },
+        assertAuthority() {},
+        async assertExternalSelection() { expect(await journal.inspectSlots()).toEqual(external); },
+      };
+    },
     async write(journals: Values<WorkspaceSwitchJournal>, registries: Values<LocalWorkspaceRegistry>) {
       for (const slot of slots) {
         const journal = journals[slot]; const registry = registries[slot];
@@ -236,8 +373,6 @@ async function fixture(test: TestContext) {
       }));
     },
     async inspect() {
-      const journal = new WorkspaceSwitchJournalStore(root);
-      const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
       return planWorkspaceSelectorSwitchSlots(await journal.inspectSlots(), await registry.inspectSlots());
     },
   };

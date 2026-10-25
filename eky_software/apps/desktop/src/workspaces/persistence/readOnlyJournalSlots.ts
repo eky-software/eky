@@ -5,6 +5,7 @@ import {
   CrashSafeFileSlotError,
   createNodeCrashSafeFileSlotFileSystem,
   type CrashSafeFileSlot,
+  type CrashSafeFileSlotIdentity,
 } from './crashSafeFileSlot.js';
 
 export interface ReadOnlyJournalSlotPaths {
@@ -16,6 +17,7 @@ export interface ReadOnlyJournalSlotPaths {
 export interface ReadOnlyJournalSlotRecord<T> {
   readonly bytes: Uint8Array;
   readonly value: Readonly<T>;
+  readonly identity?: Readonly<CrashSafeFileSlotIdentity>;
 }
 
 export type ReadOnlyJournalSlots<T> = Readonly<Record<

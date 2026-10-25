@@ -136,8 +136,18 @@ V1:n tavut ja vanhat tallennusmetodit säilyvät. Vaikutusalueen 931 testiä
 riippumattomassa lähdekatselmuksessa ei löytynyt korjattavaa virhettä.
 Tämä on lukurajan näyttö, ei kirjoitus-/poistovaltuus tai valmis yritysavaus.
 
-**Seuraava työ:** valitsimen kirjoitus-/siivousvartijat nykyisiin
-tallennusomistajiin, sitten ensimmäisen yritysavauksen kytkentä
+**Valitun tallennuksen osaraja:** nykyinen byte-slot-tallennin sekä registry-
+ja switch-omistajat sitovat kirjoituksen, palautuksen ja siivouksen
+tarkkoihin tavuihin, tiedostoidentiteettiin ja tuoreeseen valtuuteen.
+Rajatut regressiot ja riippumaton katselmus korjauksineen läpäisivät.
+Kuluttajien yhdistetyissä ajoissa palautustestit aikakatkaisivat; kahden
+testipolun ennenaikainen siivous liitettiin nykyiseen elinkaarisuojaan.
+Korjattu palautustiedosto ja sen tukiregressiot läpäisivät 200 testiä.
+Alkuperäisen viiveen syy on edelleen avoin eikä yhdistettyjä hylkäyksiä
+muuteta onnistumisiksi. Tämä ei ole koko startupin tai paketoidun ketjun
+hyväksyntä.
+
+**Seuraava työ:** ensimmäisen yritysavauksen kytkentä
 nykyisiin FirstStart- ja W6-valtuuksiin.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.

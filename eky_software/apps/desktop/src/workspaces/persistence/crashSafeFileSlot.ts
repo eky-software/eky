@@ -8,6 +8,7 @@ import {
   rm,
 } from 'node:fs/promises';
 import type { FileHandle } from 'node:fs/promises';
+import type { Stats } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 export type CrashSafeFileSlot = 'current' | 'next' | 'backup';
@@ -35,18 +36,38 @@ export interface CrashSafeFileSlotNextWriter {
   write(bytes: Uint8Array): Promise<number>;
   sync(): Promise<void>;
   close(): Promise<void>;
+  readIdentity?(): Promise<CrashSafeFileSlotIdentity>;
+}
+
+export interface CrashSafeFileSlotIdentity {
+  readonly dev: number;
+  readonly ino: number;
+  readonly size: number;
+  readonly mtimeMs: number;
+  readonly ctimeMs: number;
+}
+
+export function sameCrashSafeFileSlotIdentity(left: CrashSafeFileSlotIdentity, right: CrashSafeFileSlotIdentity): boolean {
+  return left.dev === right.dev && left.ino === right.ino && left.size === right.size &&
+    left.mtimeMs === right.mtimeMs && left.ctimeMs === right.ctimeMs;
+}
+
+export interface CrashSafeFileSlotMutationGuard {
+  beforeMutation(): Promise<void>;
+  assertAuthority(): void;
 }
 
 export interface CrashSafeFileSlotFileSystem {
-  prepareDirectory(): Promise<void>;
-  readSlot(slot: CrashSafeFileSlot): Promise<Uint8Array | undefined>;
-  createNextWriter(): Promise<CrashSafeFileSlotNextWriter>;
+  prepareDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void>;
+  readSlot(slot: CrashSafeFileSlot, captureIdentity?: (identity: CrashSafeFileSlotIdentity) => void): Promise<Uint8Array | undefined>;
+  createNextWriter(guard?: CrashSafeFileSlotMutationGuard): Promise<CrashSafeFileSlotNextWriter>;
   moveSlot(
     source: CrashSafeFileSlot,
     destination: CrashSafeFileSlot,
+    guard?: CrashSafeFileSlotMutationGuard,
   ): Promise<void>;
-  removeSlot(slot: CrashSafeFileSlot): Promise<boolean>;
-  syncDirectory(): Promise<void>;
+  removeSlot(slot: CrashSafeFileSlot, guard?: CrashSafeFileSlotMutationGuard): Promise<boolean>;
+  syncDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void>;
 }
 
 export function createNodeCrashSafeFileSlotFileSystem(
@@ -64,15 +85,20 @@ class NodeCrashSafeFileSlotFileSystem
     private readonly maximumBytes: number,
   ) {}
 
-  async prepareDirectory(): Promise<void> {
+  async prepareDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void> {
     try {
       await assertRealDirectory(dirname(this.paths.directoryPath), false);
+      if (guard !== undefined) {
+        await guard.beforeMutation();
+        guard.assertAuthority();
+      }
       try {
         await mkdir(this.paths.directoryPath, { mode: 0o700 });
       } catch (error) {
         if (!isNodeError(error) || error.code !== 'EEXIST') throw error;
       }
       if (process.platform !== 'win32') {
+        guard?.assertAuthority();
         await chmod(this.paths.directoryPath, 0o700);
       }
       await assertRealDirectory(this.paths.directoryPath, true);
@@ -83,6 +109,7 @@ class NodeCrashSafeFileSlotFileSystem
 
   async readSlot(
     slot: CrashSafeFileSlot,
+    captureIdentity?: (identity: CrashSafeFileSlotIdentity) => void,
   ): Promise<Uint8Array | undefined> {
     const path = this.pathFor(slot);
     try {
@@ -124,6 +151,10 @@ class NodeCrashSafeFileSlotFileSystem
         if (!sameOpenedFile(opened, after) || after.size !== bytes.byteLength) {
           throw new CrashSafeFileSlotError('invalid');
         }
+        if (captureIdentity !== undefined) {
+          if (before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) throw new CrashSafeFileSlotError('invalid');
+          captureIdentity(fileIdentity(after));
+        }
         return bytes;
       } finally {
         await file.close();
@@ -134,12 +165,22 @@ class NodeCrashSafeFileSlotFileSystem
     }
   }
 
-  async createNextWriter(): Promise<CrashSafeFileSlotNextWriter> {
+  async createNextWriter(guard?: CrashSafeFileSlotMutationGuard): Promise<CrashSafeFileSlotNextWriter> {
     try {
       await assertRealDirectory(this.paths.directoryPath, true);
+      if (guard !== undefined) {
+        await guard.beforeMutation();
+        guard.assertAuthority();
+      }
       const file = await open(this.paths.nextPath, 'wx', 0o600);
-      if (process.platform !== 'win32') await chmod(this.paths.nextPath, 0o600);
-      return new NodeCrashSafeFileSlotNextWriter(file);
+      try {
+        guard?.assertAuthority();
+        if (process.platform !== 'win32') await file.chmod(0o600);
+        return new NodeCrashSafeFileSlotNextWriter(file, guard?.assertAuthority);
+      } catch (error) {
+        await file.close();
+        throw error;
+      }
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
     }
@@ -148,14 +189,21 @@ class NodeCrashSafeFileSlotFileSystem
   async moveSlot(
     source: CrashSafeFileSlot,
     destination: CrashSafeFileSlot,
+    guard?: CrashSafeFileSlotMutationGuard,
   ): Promise<void> {
     const sourcePath = this.pathFor(source);
     const destinationPath = this.pathFor(destination);
     try {
       await assertRealDirectory(this.paths.directoryPath, true);
-      await assertSafeSlotForMutation(sourcePath, this.maximumBytes);
+      const selected = await assertSafeSlotForMutation(sourcePath, this.maximumBytes);
       if (await pathExists(destinationPath)) {
         throw new CrashSafeFileSlotError('unavailable');
+      }
+      if (guard !== undefined) {
+        await guard.beforeMutation();
+        await assertUnchangedMutationSlot(sourcePath, this.maximumBytes, selected);
+        if (await pathExists(destinationPath)) throw new CrashSafeFileSlotError('invalid');
+        guard.assertAuthority();
       }
       await rename(sourcePath, destinationPath);
       await assertSafeSlotForMutation(destinationPath, this.maximumBytes);
@@ -164,13 +212,18 @@ class NodeCrashSafeFileSlotFileSystem
     }
   }
 
-  async removeSlot(slot: CrashSafeFileSlot): Promise<boolean> {
+  async removeSlot(slot: CrashSafeFileSlot, guard?: CrashSafeFileSlotMutationGuard): Promise<boolean> {
     const path = this.pathFor(slot);
     try {
       if (!(await directoryExists(this.paths.directoryPath))) return false;
       await assertRealDirectory(this.paths.directoryPath, true);
       if (!(await pathExists(path))) return false;
-      await assertSafeSlotForMutation(path, this.maximumBytes);
+      const selected = await assertSafeSlotForMutation(path, this.maximumBytes);
+      if (guard !== undefined) {
+        await guard.beforeMutation();
+        await assertUnchangedMutationSlot(path, this.maximumBytes, selected);
+        guard.assertAuthority();
+      }
       await rm(path);
       return true;
     } catch (error) {
@@ -178,12 +231,17 @@ class NodeCrashSafeFileSlotFileSystem
     }
   }
 
-  async syncDirectory(): Promise<void> {
+  async syncDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void> {
+    if (guard !== undefined) {
+      await guard.beforeMutation();
+      guard.assertAuthority();
+    }
     if (process.platform === 'win32') return;
     try {
       await assertRealDirectory(this.paths.directoryPath, true);
       const directory = await open(this.paths.directoryPath, 'r');
       try {
+        guard?.assertAuthority();
         await directory.sync();
       } finally {
         await directory.close();
@@ -204,11 +262,21 @@ class NodeCrashSafeFileSlotNextWriter
   implements CrashSafeFileSlotNextWriter {
   private closed = false;
 
-  constructor(private readonly file: FileHandle) {}
+  constructor(private readonly file: FileHandle, private readonly assertAuthority?: () => void) {}
+
+  async readIdentity(): Promise<CrashSafeFileSlotIdentity> {
+    this.assertOpen();
+    this.assertAuthority?.();
+    const metadata = await this.file.stat();
+    this.assertAuthority?.();
+    assertSafeRegularFile(metadata, Number.MAX_SAFE_INTEGER, false);
+    return fileIdentity(metadata);
+  }
 
   async write(bytes: Uint8Array): Promise<number> {
     this.assertOpen();
     try {
+      this.assertAuthority?.();
       return (await this.file.write(bytes, 0, bytes.byteLength, 0)).bytesWritten;
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
@@ -218,6 +286,7 @@ class NodeCrashSafeFileSlotNextWriter
   async sync(): Promise<void> {
     this.assertOpen();
     try {
+      this.assertAuthority?.();
       await this.file.sync();
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
@@ -242,10 +311,22 @@ class NodeCrashSafeFileSlotNextWriter
 async function assertSafeSlotForMutation(
   path: string,
   maximumBytes: number,
-): Promise<void> {
+): Promise<Awaited<ReturnType<typeof lstat>>> {
   const metadata = await lstat(path);
   assertSafeRegularFile(metadata, maximumBytes, false);
   if (!pathsAreEqual(await realpath(path), path)) {
+    throw new CrashSafeFileSlotError('invalid');
+  }
+  return metadata;
+}
+
+async function assertUnchangedMutationSlot(
+  path: string, maximumBytes: number, before: Awaited<ReturnType<typeof lstat>>,
+): Promise<void> {
+  const after = await assertSafeSlotForMutation(path, maximumBytes);
+  if (before.ino === 0 || after.ino === 0 || before.dev !== after.dev || before.ino !== after.ino ||
+    !sameOpenedFile(before, after) || before.size !== after.size ||
+    before.mtimeMs !== after.mtimeMs || before.ctimeMs !== after.ctimeMs) {
     throw new CrashSafeFileSlotError('invalid');
   }
 }
@@ -320,6 +401,12 @@ function sameOpenedFile(
     first.nlink === second.nlink &&
     second.nlink === 1
   );
+}
+
+function fileIdentity(metadata: Stats): Readonly<CrashSafeFileSlotIdentity> {
+  if (metadata.ino === 0) throw new CrashSafeFileSlotError('invalid');
+  return Object.freeze({ dev: metadata.dev, ino: metadata.ino, size: metadata.size,
+    mtimeMs: metadata.mtimeMs, ctimeMs: metadata.ctimeMs });
 }
 
 function assertMaximumBytes(value: number): void {

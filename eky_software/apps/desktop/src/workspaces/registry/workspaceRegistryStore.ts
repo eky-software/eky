@@ -13,8 +13,9 @@ import {
 import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
+  type CrashSafeByteSlotSelection,
 } from '../persistence/crashSafeByteSlotStore.js';
-import { CrashSafeFileSlotError } from '../persistence/crashSafeFileSlot.js';
+import { CrashSafeFileSlotError, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { parseWorkspaceRegistryBytes } from './workspaceRegistryBytes.js';
 import { serializeWorkspaceRegistry } from './workspaceRegistrySerializer.js';
@@ -71,9 +72,10 @@ export class WorkspaceRegistryStore {
           current: undefined, next: undefined, backup: undefined,
         };
         for (const slot of ['current', 'next', 'backup'] as const) {
-          const bytes = await this.fileSystem.readSlot(slot);
+          let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+          const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
           if (bytes !== undefined) {
-            result[slot] = Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes) });
+            result[slot] = Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes), ...(identity === undefined ? {} : { identity }) });
           }
         }
         return Object.freeze(result);
@@ -96,6 +98,31 @@ export class WorkspaceRegistryStore {
       } catch (error) {
         throw this.mapStoreError(error);
       }
+    });
+  }
+
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<void> {
+    return this.runExclusive(async () => {
+      const registry = validateWorkspaceRegistry(value);
+      try {
+        for (const bytes of Object.values(selection.expectedSlots)) {
+          if (bytes !== undefined && parseWorkspaceRegistryBytes(bytes).formatVersion === 2 && registry.formatVersion === 1) {
+            throw new WorkspaceRegistryValidationError();
+          }
+        }
+        await this.byteStore.replaceSelected(serializeWorkspaceRegistry(registry), selection);
+      } catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  recoverSelected(selection: CrashSafeByteSlotSelection): Promise<void> {
+    return this.runExclusive(async () => {
+      try {
+        for (const bytes of Object.values(selection.expectedSlots)) {
+          if (bytes !== undefined) parseWorkspaceRegistryBytes(bytes);
+        }
+        await this.byteStore.recoverSelected(selection);
+      } catch (error) { throw this.mapStoreError(error); }
     });
   }
 

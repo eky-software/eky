@@ -1059,31 +1059,38 @@ describe('desktop restore startup composition', () => {
     await fixture.assertRegistryUnchanged();
   });
 
-  it.each([false, true])('logs terminal preparation failure before a successful rollback relaunch (replacement: %s)', async replacementTarget => {
-    const fixture = await createFixture(originalProfileId, { replacementTarget });
-    const primary = new Error('synthetic private preparation detail', { cause: new Error('PROFILE_INSPECTION_TIMEOUT') });
-    vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'readTerminalCleanupCensus').mockRejectedValueOnce(primary);
-    await expect(fixture.start()).resolves.toBeUndefined();
-    expect(fixture.relaunch).toHaveBeenCalledOnce();
-    expect(electronBoundary.createWindow).not.toHaveBeenCalled();
-    if (replacementTarget) {
-      await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
-      await expect(readFile(fixture.pdfPath, 'utf8')).resolves.toBe('%PDF-1.7 original pdf');
-      await expect(fixture.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack' });
-      await expect(fixture.registry.read()).resolves.toMatchObject({
-        activeWorkspaceId: '44444444-4444-4444-8444-444444444444',
+  it.for([false, true])('logs terminal preparation failure before a successful rollback relaunch (replacement: %s)', async (replacementTarget, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget, ownedRoots: lifetime.roots,
+      }));
+      const primary = new Error('synthetic private preparation detail', { cause: new Error('PROFILE_INSPECTION_TIMEOUT') });
+      vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'readTerminalCleanupCensus').mockRejectedValueOnce(primary);
+      await lifetime.step('startupRollback', async () => { await expect(fixture.start()).resolves.toBeUndefined(); });
+      await lifetime.step('restoredContentCheck', async () => {
+        expect(fixture.relaunch).toHaveBeenCalledOnce();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        if (replacementTarget) {
+          await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
+          await expect(readFile(fixture.pdfPath, 'utf8')).resolves.toBe('%PDF-1.7 original pdf');
+          await expect(fixture.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack' });
+          await expect(fixture.registry.read()).resolves.toMatchObject({
+            activeWorkspaceId: '44444444-4444-4444-8444-444444444444',
+          });
+        } else {
+          await fixture.assertOriginalRestored();
+        }
+        const logged = await readRestoreDiagnosticEvents(fixture.root);
+        expect(logged.filter(event => event.eventName === 'restore.acceptanceFailed')).toEqual([
+          expect.objectContaining({ stage: 'acceptancePreparation', errorCode: 'PROFILE_INSPECTION_TIMEOUT',
+            correlationId: operationId, retryable: false, sideEffectState: 'unknown' }),
+        ]);
+        expect(logged.some(event => event.eventName === 'restore.validationCompleted')).toBe(true);
+        expect(logged.some(event => event.eventName === 'restore.validationFailed' || event.eventName === 'desktop.bootstrapFailed')).toBe(false);
+        expect(JSON.stringify(logged)).not.toContain('synthetic private preparation detail');
       });
-    } else {
-      await fixture.assertOriginalRestored();
-    }
-    const logged = await readRestoreDiagnosticEvents(fixture.root);
-    expect(logged.filter(event => event.eventName === 'restore.acceptanceFailed')).toEqual([
-      expect.objectContaining({ stage: 'acceptancePreparation', errorCode: 'PROFILE_INSPECTION_TIMEOUT',
-        correlationId: operationId, retryable: false, sideEffectState: 'unknown' }),
-    ]);
-    expect(logged.some(event => event.eventName === 'restore.validationCompleted')).toBe(true);
-    expect(logged.some(event => event.eventName === 'restore.validationFailed' || event.eventName === 'desktop.bootstrapFailed')).toBe(false);
-    expect(JSON.stringify(logged)).not.toContain('synthetic private preparation detail');
+    });
   });
 
   it.each([false, true])('retains accepted content and journal when terminal cleanup fails (replacement: %s)', async replacementTarget => {
@@ -2358,21 +2365,27 @@ describe('desktop restore startup composition', () => {
     await fixture.assertPendingRestoreRetained();
   });
 
-  it('rejects foreign restored lineage, restores original bytes and validates them on restart', async () => {
-    const fixture = await createFixture(originalProfileId, { validationProfileId: foreignProfileId });
-
-    await expect(fixture.start()).resolves.toBeUndefined();
-
-    expect(fixture.relaunch).toHaveBeenCalledTimes(1);
-    expect(electronBoundary.createWindow).not.toHaveBeenCalled();
-    expect(fixture.events).toEqual(['backendStarted', 'backendStopped', 'rollback']);
-    expect(originalInspection.runProfileRestoreOriginalInspection).toHaveBeenCalled();
-    await fixture.assertOriginalRestored();
-
-    await expect(fixture.start()).rejects.toThrow(windowBoundary);
-    expect(electronBoundary.createWindow).toHaveBeenCalledTimes(1);
-    await expect(fixture.journal.read()).resolves.toBeUndefined();
-    await fixture.assertRegistryUnchanged();
+  it('rejects foreign restored lineage, restores original bytes and validates them on restart', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        validationProfileId: foreignProfileId, ownedRoots: lifetime.roots,
+      }));
+      await lifetime.step('startupRollback', async () => { await expect(fixture.start()).resolves.toBeUndefined(); });
+      await lifetime.step('restoredContentCheck', async () => {
+        expect(fixture.relaunch).toHaveBeenCalledTimes(1);
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        expect(fixture.events).toEqual(['backendStarted', 'backendStopped', 'rollback']);
+        expect(originalInspection.runProfileRestoreOriginalInspection).toHaveBeenCalled();
+        await fixture.assertOriginalRestored();
+      });
+      await lifetime.step('startup', async () => { await expect(fixture.start()).rejects.toThrow(windowBoundary); });
+      await lifetime.step('restoredContentCheck', async () => {
+        expect(electronBoundary.createWindow).toHaveBeenCalledTimes(1);
+        await expect(fixture.journal.read()).resolves.toBeUndefined();
+        await fixture.assertRegistryUnchanged();
+      });
+    });
   });
 
   it('rolls back if health fails after deferred restore validation but before acceptance', async context => {

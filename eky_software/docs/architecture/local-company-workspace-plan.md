@@ -2363,9 +2363,29 @@ eivät korjaa tai poista tiedostoja. Pysyvät testit kattavat todelliset
 keskeytysslotit, väärän yhteisen julkaisujärjestyksen ja aineiston säilymisen;
 vaikutusalueen 931 testiä 30 tiedostossa sekä desktopin tyyppitarkistus
 läpäisivät. Rajattu riippumaton katselmus ei jättänyt korjattavaa löydöstä.
-Valitut tavut, tiedostoidentiteetti ja tuore valtuus on vielä sidottava
-tallentimien muutoksiin ja startupiin. Tämä ei ole native-/paketoidun
-ketjun eikä koko W7.2:n hyväksyntä.
+Tämä lukurajan näyttö ei vielä todentanut valittujen tavujen,
+tiedostoidentiteetin ja tuoreen valtuuden sidontaa tallennusmuutoksiin
+tai startupiin. Se ei ole native-/paketoidun ketjun eikä koko W7.2:n hyväksyntä.
+
+**Valitun tallennusoperaation rajaus:** nykyisen byte-slot-tallentimen
+nimetyt `replaceSelected`, `recoverSelected` ja `clearSelected` käyttävät
+kopioituja odotettuja tavuja ja samasta lukukahvasta havaittuja
+tiedostoidentiteettejä. Saman sisältöinen eri tiedosto ei ole sama valinta.
+Uuden nextin identiteetti sidotaan omaan kirjoituskahvaan; omassa renamessa
+säilyvät inode ja sisältö tarkistetaan ennen valinnan päivittämistä.
+Omistajan valtuus ja muiden omistajien tarkka valinta tarkistetaan
+uudelleen operaation sisällä. Näiden metodien valinta ei yksin anna
+business-, sulku- tai registry-muunnosvaltuutta.
+
+Switch-omistajan v2-kirjoitus tarkistaa version, etenemisen ja yhteisen
+julkaisujärjestyksen. Loppusiivous vaatii lisäksi current-only-rekisterin,
+uuden readbackin sekä saman operaation ajantasaisen paluu- tai
+business-hyväksyntätodisteen. `recoveryRequired` ei anna automaattista
+korjaus- tai siivousvaltuutta. Virheessä suljetaan oma kirjoituskahva,
+mutta säilytetään keskeytysslotit; kadonnut kuittaus ei käynnistä
+automaattista vanhan arvon palauttamista. V1:n vanhat metodit säilyvät.
+Näiden vartijoiden todelliset startup-/lifecycle-kutsujat ovat edelleen
+erillinen keskeneräinen tuotantokytkentä, eivät tämän tallennusrajauksen näyttö.
 
 `FirstStartUpdateCoordinator` hyväksyy nykyisin buildin backendin ja
 aktiivisen profiilin tarkistuksen jälkeen. Valitsimen avaamista ei saa
