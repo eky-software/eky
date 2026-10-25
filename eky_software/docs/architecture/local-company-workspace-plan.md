@@ -2356,6 +2356,17 @@ todellista business-hyväksyntää tai kaikkien tuotantokutsujien kytkentää.
 Tuotannon kirjoitus-/clear-vartijat ja v2-registryä käyttävät vanhat
 ei-null-vaihdot tarvitsevat vielä W7.1-W7.5:n omat integraatiotestit.
 
+**Tuotannon lukurajan osatodennus:** switch-journalin yhteinen codec säilyttää
+v1:n kanoniset tavut ja lisää versionmukaisen v2-lukijan. Nykyisen tallentimen
+`inspectSlots` sekä journalin ja rekisterin yhteinen puhdas tilaluokitus
+eivät korjaa tai poista tiedostoja. Pysyvät testit kattavat todelliset
+keskeytysslotit, väärän yhteisen julkaisujärjestyksen ja aineiston säilymisen;
+vaikutusalueen 931 testiä 30 tiedostossa sekä desktopin tyyppitarkistus
+läpäisivät. Rajattu riippumaton katselmus ei jättänyt korjattavaa löydöstä.
+Valitut tavut, tiedostoidentiteetti ja tuore valtuus on vielä sidottava
+tallentimien muutoksiin ja startupiin. Tämä ei ole native-/paketoidun
+ketjun eikä koko W7.2:n hyväksyntä.
+
 `FirstStartUpdateCoordinator` hyväksyy nykyisin buildin backendin ja
 aktiivisen profiilin tarkistuksen jälkeen. Valitsimen avaamista ei saa
 ilmoittaa onnistuneeksi business-health-tarkistukseksi. V2:n jälkeisen

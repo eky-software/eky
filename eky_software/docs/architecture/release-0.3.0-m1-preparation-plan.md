@@ -127,7 +127,17 @@ regressiot läpäisivät jälkitarkistuksen. Desktopin ja E2E:n tyyppitarkistuks
 sekä ohjeiden linkkitarkistus läpäisivät. Tämä ei ole SQLiten, Electronin
 tai koko yritysavauksen tuotantokytkennän näyttö.
 
-**Seuraava työ:** valitsimen ja ensimmäisen yritysavauksen kytkentä
+**Valitsinavauksen lukuraja:** nykyinen switch-omistaja osaa tarkastaa
+source-null-journalin v2:n ja rekisterin kaikki slotit muuttamatta niitä.
+Yhteinen tilaluokitus tarkistaa koko rekisterin sidonnan ja omistajien
+julkaisujärjestyksen; julkaisematon initial-next ei anna avausvaltuutta.
+V1:n tavut ja vanhat tallennusmetodit säilyvät. Vaikutusalueen 931 testiä
+30 tiedostossa ja desktopin tyyppitarkistus läpäisivät. Rajatussa
+riippumattomassa lähdekatselmuksessa ei löytynyt korjattavaa virhettä.
+Tämä on lukurajan näyttö, ei kirjoitus-/poistovaltuus tai valmis yritysavaus.
+
+**Seuraava työ:** valitsimen kirjoitus-/siivousvartijat nykyisiin
+tallennusomistajiin, sitten ensimmäisen yritysavauksen kytkentä
 nykyisiin FirstStart- ja W6-valtuuksiin.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
 FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.
