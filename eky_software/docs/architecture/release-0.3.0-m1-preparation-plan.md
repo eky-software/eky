@@ -33,7 +33,8 @@ suorituskykylupaus. Integraatiota edeltävä checkpoint säilyy
 **Nykyinen työ (25.10.2026):** W7.1:n nimivertailun toteutus ja testit.
 W7.0:n katselmoitu sopimus-/koevaihe on valmis ja säilytetty erillisessä
 valmistelucommitissa `162f5ab2`. Main on edelleen yllä mainittu `f38c1f77`;
-W7.1:n toteutus on paikallisella toteutushaaralla, ei pushattu tai yhdistetty.
+W7.1:n toteutus on integraatioehdokas toteutushaaralla; PR/main-porttien
+hyväksyntä ja yhdistäminen ovat vielä kesken.
 **Palautumiskorjaus todennettu kohdetasolla:** uuden append-eston ja jo
 julkaistuun create/import-kohteeseen sidotun recoveryn nimipolitiikka on
 erotettu. Neljä historiallista nimikonfliktia toistivat ensin hylkäyksen;
@@ -57,6 +58,12 @@ avoimia löydöksiä. Koko työtilan tyyppitarkistus ja nykyisen core-CI:n mukai
 peräkkäinen testisarja läpäisivät ilman uusintaa. Alustakohtaiset ohitukset
 eivät ole läpäisyjä tai Linux-näyttöä. Riippuvuusauditointi ja nykyisten
 pakettien rekisteriallekirjoitukset läpäisivät.
+**Puhtaan paketin näyttö:** katselmoidusta sovelluslähteestä
+`e8bfc387f7530c391b7d955b26ffec14b1eada47` rakennettu hardened Windows-paketti
+läpäisi nykyisen backup -> inspect -> restore -> restart -> compare -ketjun
+ilman uusintaa. Paketin sisäinen lähderevisio ja puhdas build-tila tarkistettiin;
+samat pakettitavut varmennettiin myös ajon jälkeen. Tämän jälkeinen delta
+päivittää vain tämän jatkamissivun hyväksyntänäytön.
 W7.1:n koko integraatio ei vielä ole hyväksytty.
 
 [Omistava W7.0-sopimus](local-company-workspace-plan.md#w70n-turvallisuussopimusehdotus)
@@ -81,10 +88,10 @@ kaikkien juurien inventaario ja oikea packaged/restart ovat edelleen
 Aiempi vaihekohtainen jatkamisteksti säilyy muuttamattomana
 [W7.0:n valmisteluhistoriassa](release-0.3.0-integration-history.md#w70n-sopimusvalmistelun-jatkamiskohta-25102026).
 
-**Seuraava työ:** viimeistele W7.1:n koko vaikutusalueen tarkistukset,
-jäädytä katselmoitu lähde ja todenna nykyinen hardened packaged
-backup -> inspect -> restore -> restart -> compare sekä PR/main-portit.
-Kohdenäyttö ei korvaa puhtaan paketin tai täsmällisen revision hyväksyntää.
+**Seuraava työ:** vie katselmoitu W7.1-diffi normaalin PR:n kautta
+täsmällisen revision riskiperusteisiin portteihin ja riippuvuustarkistukseen.
+Niiden hyväksynnän jälkeen tehdään suojattu merge ja uuden mainin omat portit.
+Paikallinen kohde- ja pakettinäyttö ei korvaa PR/main-hyväksyntää.
 Palautumiskorjausta ei aloiteta uudelleen
 ilman omaa vastanäyttöä. Jatketaan
 [nykyisen W7.0-W7.5-työjaon](local-company-workspace-plan.md#koottu-toteutusehdotus)
