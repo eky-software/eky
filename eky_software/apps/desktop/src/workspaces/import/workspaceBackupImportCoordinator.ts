@@ -28,6 +28,7 @@ import {
 } from './workspaceBackupImportReadiness.js';
 import {
   assertImportLineageAvailable,
+  assertImportWorkspaceLabelAvailable,
   assertImportRegistryStillAtPreviousActive,
   assertImportWorkspaceIdAvailable,
   createImportedWorkspaceEntry,
@@ -107,6 +108,7 @@ export class WorkspaceBackupImportCoordinator {
         await this.readRegistry('registryRead'),
       );
       assertImportLineageAvailable(registry, sourceLineage);
+      assertImportWorkspaceLabelAvailable(registry, workspaceLabel, 'registryRead');
       previousActiveWorkspaceId = registry.activeWorkspaceId;
 
       await this.runLifecycle('activeRuntimeQuiesce', () =>
@@ -229,6 +231,7 @@ export class WorkspaceBackupImportCoordinator {
         publicationRegistry,
         readiness.lineageIdentity,
       );
+      assertImportWorkspaceLabelAvailable(publicationRegistry, workspaceLabel, 'registryPublish');
 
       await this.runRootOperation('rootPublish', () =>
         this.options.rootStore.publishCandidate(paths),

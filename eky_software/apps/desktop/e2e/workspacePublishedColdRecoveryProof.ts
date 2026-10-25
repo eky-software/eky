@@ -16,6 +16,7 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspa
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import { deriveWorkspaceRoot } from '../src/workspaces/registry/deriveWorkspaceRoot.js';
 import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
+import { hasWorkspaceLabelConflict } from '../src/workspaces/registry/workspaceLabelComparison.js';
 import {
   createWorkspaceFirstStartProofFactories,
   createWorkspaceFirstStartProofRegistry,
@@ -62,13 +63,15 @@ export async function provePublishedWorkspaceColdRecovery(
         const before = await Promise.all(paths.map(path => readFile(path)));
         const value = {
           formatVersion: 2, operationId: randomUUID(), workspaceId: target.workspaceId,
-          workspaceLabel: 'Synthetic interrupted workspace', previousActiveWorkspaceId: original.workspaceId,
+          workspaceLabel: initialRegistry.workspaces[0]!.workspaceLabel,
+          previousActiveWorkspaceId: original.workspaceId,
           state: 'rootPublished', createdAt: '2026-08-21T00:01:00.000Z',
           lineageIdentity: { formatVersion: 1, profileId: target.profileId },
         };
         // A validated on-disk interruption fixture, not a new journal writer path.
         const bytes = kind === 'creation' ? serializeWorkspaceCreationJournal(value)
           : serializeWorkspaceBackupImportJournal(value);
+        requireProof(hasWorkspaceLabelConflict(initialRegistry.workspaces, value.workspaceLabel), 'FIXTURE_NAME_CONFLICT');
         await writeFile(journalPath, bytes, { mode: 0o600 });
         requireProof((await journal.read())?.state === 'rootPublished', 'FIXTURE_JOURNAL');
         const expectedRegistry = {
@@ -151,7 +154,7 @@ async function runColdStartupToBusinessBoundary(input: Readonly<WorkspaceStartup
     && caught instanceof Error && caught.message === 'DESKTOP_START_FAILED', 'BUSINESS_BOUNDARY');
 }
 
-function requireProof(condition: boolean, stage: 'FIXTURE_JOURNAL' | 'RECOVERED_REGISTRY'
+function requireProof(condition: boolean, stage: 'FIXTURE_JOURNAL' | 'FIXTURE_NAME_CONFLICT' | 'RECOVERED_REGISTRY'
   | 'RESTART_IDEMPOTENCE' | 'ARTIFACT_PRESERVATION' | 'PROCESS_CLEANUP' | 'BUSINESS_BOUNDARY'): asserts condition {
   if (!condition) throw new Error(`WORKSPACE_PUBLISHED_COLD_RECOVERY_PROOF_${stage}_FAILED`);
 }

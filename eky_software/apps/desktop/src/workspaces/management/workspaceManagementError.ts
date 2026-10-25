@@ -11,6 +11,7 @@ import type { WorkspaceManagementOperationKind } from './workspaceManagementType
 export type WorkspaceManagementErrorCode =
   | 'WORKSPACE_MANAGEMENT_BUSY'
   | 'WORKSPACE_MANAGEMENT_INVALID'
+  | 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
   | 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED'
   | 'WORKSPACE_MANAGEMENT_CREATE_FAILED'
   | 'WORKSPACE_MANAGEMENT_IMPORT_FAILED'
@@ -50,6 +51,13 @@ export function mapWorkspaceManagementError(
       operationKind,
       { cause: error },
     );
+  }
+  if (
+    (error instanceof WorkspaceRegistryMutationError && error.failure === 'workspaceLabelExists') ||
+    (error instanceof EmptyWorkspaceCreationError && error.code === 'WORKSPACE_CREATION_LABEL_EXISTS') ||
+    (error instanceof WorkspaceBackupImportError && error.code === 'WORKSPACE_IMPORT_LABEL_EXISTS')
+  ) {
+    return new WorkspaceManagementError('WORKSPACE_MANAGEMENT_LABEL_EXISTS', operationKind, { cause: error });
   }
   if (isRecoveryRequiredError(error)) {
     return new WorkspaceManagementError(

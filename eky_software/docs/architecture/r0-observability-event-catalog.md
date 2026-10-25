@@ -468,6 +468,24 @@ Koodi/toiminto/vaihe/retryable-yhdistelmät omistaa
 `operationId` ei ole työtilan tai yrityksen tunniste. Status-pollingia ja
 onnistumisia ei lisätä tähän julkiseen perheeseen.
 
+W7.1 lisää samaan suljettuun sopimukseen nimiristiriidan koodit:
+
+| Virhekoodi | Sallittu operationId |
+| --- | --- |
+| `WORKSPACE_CREATION_LABEL_EXISTS` | `workspace.create` |
+| `WORKSPACE_IMPORT_LABEL_EXISTS` | `workspace.import` |
+| `WORKSPACE_MANAGEMENT_LABEL_EXISTS` | `workspace.create`, `workspace.import`, `workspace.rename` |
+
+Kaikissa vaihe on `operation`, `retryable: false` ja sivuvaikutus säilyy
+nykyisenä `none|unknown`-arvona. Nykyinen management-palvelu muuntaa
+creation-/import-koodit yhteiseksi management-koodiksi ennen observeria;
+projektio ei päättele tai rekonstruoi sisäistä koodia. Writer, Diagnostics,
+strict-client ja tukipaketin vastaanottaja tarkistavat saman rajauksen.
+Nimeä, vertailuavainta, työtila-/yritystunnistetta tai raakaa viestiä ei lisätä.
+Tämä on uuden nimeämisen esto, ei vanhojen nimikaksoiskappaleiden lukuvirhe
+tai lupa muuttaa niitä. Historialliset tapahtumat ja nykyiset kenttä-,
+retention-, incident- ja Activity-rajat säilyvät.
+
 K:n import/replace-tarkistushylkäys säilyy workspaceBackup-perheessä.
 Tyypitetty tarkistusraja voi säilyttää tuntemattoman ensisyyn; pelkkää
 muuta tuntematonta hallintavirhettä tai operation guardin estoa ei nimetä

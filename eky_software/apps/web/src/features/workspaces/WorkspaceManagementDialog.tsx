@@ -165,6 +165,7 @@ export function WorkspaceManagementDialog({
         {state.loadState === 'ready' && state.mode === 'list' ? (
           <WorkspaceList
             canReplaceActiveWorkspace={canReplaceActiveWorkspace}
+            duplicateWorkspaceLabelIds={state.status?.duplicateWorkspaceLabelIds ?? []}
             isBusy={isBusy}
             isRecoveryRequired={isRecoveryRequired}
             onModeChange={onModeChange}

@@ -9,6 +9,8 @@ import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
 import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError.js';
+import { EmptyWorkspaceCreationError } from '../creation/emptyWorkspaceCreationError.js';
+import { WorkspaceRegistryMutationError } from '../registry/workspaceRegistryMutations.js';
 import { WorkspaceBackupReplacementError } from '../replacement/workspaceBackupReplacementError.js';
 import { createWorkspaceBackupReplacementFixture, TEST_REPLACEMENT_WORKSPACE_ID } from '../replacement/workspaceBackupReplacementTestSupport.js';
 import { JsonLineDesktopOperationalLogger } from '../../observability/infrastructure/jsonLineDesktopOperationalLogger.js';
@@ -21,6 +23,42 @@ afterEach(async () => {
 });
 
 describe('workspace management service', () => {
+  it.each(['create', 'import', 'rename'] as const)(
+    'writes the mapped %s label conflict through the real observer and JSONL writer', async operationKind => {
+      const original = operationKind === 'create'
+        ? new EmptyWorkspaceCreationError('WORKSPACE_CREATION_LABEL_EXISTS', 'inputValidation')
+        : operationKind === 'import'
+          ? new WorkspaceBackupImportError('WORKSPACE_IMPORT_LABEL_EXISTS', 'registryRead')
+          : new WorkspaceRegistryMutationError('workspaceLabelExists');
+      const fail = async () => { throw original; };
+      const logsRoot = await mkdtemp(join(tmpdir(), 'eky-workspace-failure-'));
+      logRoots.push(logsRoot);
+      const service = createService({ create: fail, importBackup: fail, rename: fail,
+        observer: createWorkspaceBackupOperationalObserver({
+          operationalIdentity: { appVersion: '0.2.81', buildRevision: 'development',
+            runtimeInstanceId: '11111111-1111-4111-8111-111111111111' },
+          operationalLogger: new JsonLineDesktopOperationalLogger({ logsRoot }),
+        }),
+      });
+      const result = operationKind === 'create' ? service.createEmpty('Synthetic')
+        : operationKind === 'rename' ? service.rename(activeId, 'Synthetic')
+          : service.importBackupAsNew({ containerPath: 'synthetic-private-path',
+            password: 'synthetic-private-password', workspaceLabel: 'Synthetic' });
+      await expect(result).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS', cause: original });
+      const files = await readdir(join(logsRoot, 'desktop'));
+      expect(files).toHaveLength(1);
+      const lines = (await readFile(join(logsRoot, 'desktop', files[0]!), 'utf8')).trim().split('\n');
+      expect(lines).toHaveLength(1);
+      expect(JSON.parse(lines[0]!)).toMatchObject({
+        eventName: 'workspaceManagement.operationFailed', operationId: `workspace.${operationKind}`,
+        errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS', stage: 'operation',
+        retryable: false, sideEffectState: 'unknown', outcome: 'failure',
+      });
+      expect(lines[0]).not.toContain(activeId);
+      expect(lines[0]).not.toMatch(/Synthetic|synthetic-private|workspaceLabel|workspaceId|profileId|companyId|password|message|stack/);
+    },
+  );
+
   it('writes the real wrong-lineage rejection before any lease, shutdown or profile mutation', async () => {
     const f = createWorkspaceBackupReplacementFixture({ profileId: 'f'.repeat(64) });
     const before = f.registry.value;

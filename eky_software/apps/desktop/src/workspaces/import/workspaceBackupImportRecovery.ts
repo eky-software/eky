@@ -13,6 +13,7 @@ import {
 } from '../runtime/assertColdWorkspaceRecoveryContinuation.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import { appendRecoveredWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import {
   WorkspaceBackupImportError,
   mapWorkspaceBackupImportError,
@@ -28,7 +29,6 @@ import {
   assertImportWorkspaceIdAvailable,
   createImportedWorkspaceEntry,
   findImportedWorkspaceEntry,
-  publishImportedWorkspaceEntry,
   readWorkspaceBackupImportRegistry,
 } from './workspaceBackupImportRegistry.js';
 import type {
@@ -188,7 +188,7 @@ export class WorkspaceBackupImportRecovery {
     if (current.state === 'candidateValidated') {
       current = await this.advance(current, 'rootPublished');
     }
-    const expectedRegistry = publishImportedWorkspaceEntry(
+    const expectedRegistry = appendRecoveredWorkspaceEntry(
       registry,
       createImportedWorkspaceEntry({
         workspaceId: current.workspaceId,

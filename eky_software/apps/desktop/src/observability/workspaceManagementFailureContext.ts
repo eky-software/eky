@@ -7,6 +7,8 @@ export type WorkspaceManagementOperationId =
   (typeof workspaceManagementOperationIds)[keyof typeof workspaceManagementOperationIds];
 
 const failureOperationIds: Readonly<Record<string, WorkspaceManagementOperationId>> = {
+  WORKSPACE_CREATION_LABEL_EXISTS: 'workspace.create',
+  WORKSPACE_IMPORT_LABEL_EXISTS: 'workspace.import',
   WORKSPACE_MANAGEMENT_CREATE_FAILED: 'workspace.create',
   WORKSPACE_MANAGEMENT_IMPORT_FAILED: 'workspace.import',
   WORKSPACE_MANAGEMENT_REPLACE_FAILED: 'workspace.replace',
@@ -28,6 +30,8 @@ export function isWorkspaceManagementFailureContext(value: Record<string, unknow
     return value.operationId === 'workspace.replace' && value.stage === 'lineageCheck';
   }
   return value.stage === 'operation' && (
+    (value.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' &&
+      (value.operationId === 'workspace.create' || value.operationId === 'workspace.import' || value.operationId === 'workspace.rename')) ||
     value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' || value.errorCode === 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' ||
     (typeof value.errorCode === 'string' && Object.hasOwn(failureOperationIds, value.errorCode) &&
       failureOperationIds[value.errorCode] === value.operationId)

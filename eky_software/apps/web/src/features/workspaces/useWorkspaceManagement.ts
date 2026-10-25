@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef } from 'react';
 
-import type {
-  WorkspaceManagementCapability,
-  WorkspaceManagementEntry,
+import {
+  isWorkspaceLabelExistsError,
+  type WorkspaceManagementCapability,
+  type WorkspaceManagementEntry,
 } from '../../app/desktopWorkspaceManagement.js';
 import { uiText } from '../../i18n/fi.js';
 import { runWorkspaceManagementOperation } from './workspaceManagementOperation.js';
@@ -163,9 +164,14 @@ export function useWorkspaceManagement(
           dispatch({ type: 'relaunching' });
         }
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         operationInFlight.current = false;
-        dispatch({ errorMessage: genericWorkspaceError, type: 'operationFailed' });
+        dispatch({
+          errorMessage: isWorkspaceLabelExistsError(error)
+            ? uiText.workspaces.workspaceNameExists
+            : genericWorkspaceError,
+          type: 'operationFailed',
+        });
       });
   }, [capability, state]);
 

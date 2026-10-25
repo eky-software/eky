@@ -10,6 +10,7 @@ import {
 } from '../runtime/assertColdWorkspaceRecoveryContinuation.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import { appendRecoveredWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import {
@@ -25,9 +26,9 @@ import { deriveWorkspaceCreationPaths } from './workspaceCreationPaths.js';
 import {
   assertLineageAvailable,
   assertRegistryStillAtPreviousActive,
+  assertWorkspaceIdAvailable,
   createReadyWorkspaceEntry,
   findWorkspaceEntry,
-  publishWorkspaceEntry,
   readCreationRegistry,
 } from './workspaceCreationRegistry.js';
 import type { WorkspaceCreationRootStore } from './workspaceCreationRootStore.js';
@@ -173,7 +174,8 @@ export class EmptyWorkspaceCreationRecovery {
     if (current.state === 'candidateValidated') {
       current = await this.advance(current, 'rootPublished');
     }
-    const expectedRegistry = publishWorkspaceEntry(
+    assertWorkspaceIdAvailable(registry, current.workspaceId);
+    const expectedRegistry = appendRecoveredWorkspaceEntry(
       registry,
       createReadyWorkspaceEntry({
         workspaceId: current.workspaceId,

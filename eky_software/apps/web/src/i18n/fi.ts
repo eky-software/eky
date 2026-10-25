@@ -42,6 +42,8 @@ export const uiText = {
     confirmSwitch: 'Vaihda yritys',
     continueToBackup: 'Jatka tiedoston valintaan',
     create: 'Luo yritys',
+    duplicateWorkspaceNames:
+      'Yrityslistassa on samannimisiä yrityksiä. Tiedot säilyvät erillään. Voit nimetä yrityksen uudelleen.',
     fallbackName: 'Eky',
     heading: 'Yritykset',
     importBackup: 'Tuo yritys varmuuskopiosta',
@@ -81,6 +83,8 @@ export const uiText = {
     unavailableSubtitle: 'Yritystiedot eivät ole käytettävissä',
     workspaceName: 'Yrityksen nimi',
     workspaceNameRequired: 'Anna yritykselle nimi.',
+    workspaceNameExists: 'Tällä nimellä on jo yritys EKYssä. Valitse toinen nimi.',
+    workspaceIdentifier: (workspaceId: string) => `Työtilan tunniste: ${workspaceId}`,
   },
   activity: {
     changeCategories: {

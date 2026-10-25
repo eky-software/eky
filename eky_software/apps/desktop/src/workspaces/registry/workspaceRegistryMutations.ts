@@ -5,11 +5,14 @@ import type {
   WorkspaceLineageIdentityV1,
 } from './workspaceRegistryTypes.js';
 import { WORKSPACE_REGISTRY_MAX_ENTRIES } from './workspaceRegistryValidation.js';
+import { hasWorkspaceLabelConflict } from './workspaceLabelComparison.js';
+import { validateWorkspaceLabel } from './workspaceLabelValidation.js';
 
 export type WorkspaceRegistryMutationFailure =
   | 'activeWorkspaceChanged'
   | 'capacityExceeded'
   | 'lineageExists'
+  | 'workspaceLabelExists'
   | 'workspaceNotFound'
   | 'workspaceNotReady'
   | 'workspaceIdExists';
@@ -61,6 +64,24 @@ export function appendReadyWorkspaceEntry(
   registry: Readonly<LocalWorkspaceRegistryV1>,
   entry: Readonly<LocalWorkspaceRegistryEntryV1>,
 ): Readonly<LocalWorkspaceRegistryV1> {
+  const next = appendIdentityCheckedWorkspaceEntry(registry, entry);
+  assertWorkspaceLabelAvailable(registry, entry.workspaceLabel);
+  return next;
+}
+
+// The recovery owner must first prove the journal-bound root and its contents.
+// A historical label collision must not strand that already published root.
+export function appendRecoveredWorkspaceEntry(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  entry: Readonly<LocalWorkspaceRegistryEntryV1>,
+): Readonly<LocalWorkspaceRegistryV1> {
+  return appendIdentityCheckedWorkspaceEntry(registry, entry);
+}
+
+function appendIdentityCheckedWorkspaceEntry(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  entry: Readonly<LocalWorkspaceRegistryEntryV1>,
+): Readonly<LocalWorkspaceRegistryV1> {
   assertWorkspaceIdAvailable(registry, entry.workspaceId);
   assertWorkspaceLineageAvailable(registry, entry.lineageIdentity);
   return Object.freeze({
@@ -68,6 +89,16 @@ export function appendReadyWorkspaceEntry(
     activeWorkspaceId: registry.activeWorkspaceId ?? entry.workspaceId,
     workspaces: Object.freeze([...registry.workspaces, entry]),
   });
+}
+
+export function assertWorkspaceLabelAvailable(
+  registry: Readonly<LocalWorkspaceRegistryV1>,
+  workspaceLabel: string,
+  exceptWorkspaceId?: WorkspaceId,
+): void {
+  if (hasWorkspaceLabelConflict(registry.workspaces, workspaceLabel, exceptWorkspaceId)) {
+    throw new WorkspaceRegistryMutationError('workspaceLabelExists');
+  }
 }
 
 export function createReadyWorkspaceEntry(input: {
@@ -164,6 +195,7 @@ export function renameWorkspaceLabel(
   workspaceId: WorkspaceId,
   workspaceLabel: string,
 ): Readonly<LocalWorkspaceRegistryV1> {
+  validateWorkspaceLabel(workspaceLabel);
   const targetIndex = registry.workspaces.findIndex(
     (entry) => entry.workspaceId === workspaceId,
   );
@@ -174,6 +206,7 @@ export function renameWorkspaceLabel(
   if (current.workspaceLabel === workspaceLabel) {
     return registry;
   }
+  assertWorkspaceLabelAvailable(registry, workspaceLabel, workspaceId);
   const workspaces = [...registry.workspaces];
   workspaces[targetIndex] = Object.freeze({ ...current, workspaceLabel });
   return Object.freeze({

@@ -149,6 +149,81 @@ tuoreen registry-arvon vaatimusta. Se ei todista oikeaa IPC-/UI-kytkentää,
 kahden kirjoittajan poissulkua, journal-recoverya, Electron-runtimea tai
 fyysistä poistoa. Ne säilyvät W7.1-W7.5:n tuotantoporteissa.
 
+### W7.1:n toteutusraja
+
+**25.10.2026, toteutus hyväksytty ja käynnissä:** registry omistaa yhden
+vertailuavaimen sekä append-/rename-eston. Create ja import tarkistavat nimen
+ensimmäisestä leasen alla luetusta rekisteristä ja uudelleen juuri ennen
+root-julkaisua; creation käyttää myös tuoretta publication-registryä eikä
+kirjoita vanhaa jäsenjoukkoa myöhemmin havaitun tilan päälle. Jo julkaistun
+vanhan journalin kohdetta ei nimetä tai poisteta uudelleen nimiristiriidan
+vuoksi. Sen nykyinen omistaja säilyttää fail-closed-recoveryrajan.
+
+Nimiristiriidan sisäiset koodit ovat `WORKSPACE_CREATION_LABEL_EXISTS`,
+`WORKSPACE_IMPORT_LABEL_EXISTS` ja niiden yhteinen management-projektio
+`WORKSPACE_MANAGEMENT_LABEL_EXISTS`; labelia ei sisällytetä virheeseen.
+Nykyinen capability säilyttää turvallisen koodin. App-adapteri tunnistaa
+vain tarkan koodin tai kyseisen create/import/rename-kanavan Electron-
+kuljetuksen tarkan kääreen, ei vapaata virhetekstin osahakua. Web näyttää
+yllä sovitun suomenkielisen palautteen; muut virheet säilyttävät fallbackin.
+
+Vanhojen nimikaksoiskappaleiden huomautus johdetaan mainin samasta
+vertailuavaimesta. Nykyisen status v1:n rajattu lisäprojektiokenttä on
+valinnainen `duplicateWorkspaceLabelIds`: vain statuksessa jo olevia
+workspaceId-arvoja, kukin kerran, 2-64 tunnistetta. Main lisää sen vain
+ristiriidan löytyessä. Molemmat strict-lukijat tunnistavat tämän nimetyn
+kentän; muut lisäkentät, vieras tai toistettu ID, harva taulukko ja väärä
+tyyppi hylätään. Projektio kopioidaan ja jäädytetään vastaanottorajalla.
+32 KiB:n statusraja ja kaikki nykyiset entry-rajat säilyvät. Vanha kentätön
+status on edelleen luettavissa, mutta se ei ole todistus nimien
+yksilöllisyydestä. Tämä on saman asennusbuildin sisäinen luku-DTO, ei uusi
+registry-kenttä tai pysyvä formaatti. Vanhat labelit ja tavut eivät muutu.
+UI ei toteuta rinnakkaista vertailusääntöä, käytä nimeä identiteettinä tai
+estä avaamista pelkän nimihuomautuksen vuoksi. Ristiriitaisessa ryhmässä
+näytetään jo sallittu opaque workspaceId erottimena, ei business-companyId:tä.
+
+Ensimmäiset 228 kirjoittaja-/recovery-/codec-tapausta ja desktopin tyypit
+läpäisivät ennen UI-kytkentää. Katselmuksessa löytynyt vanhan julkaistun
+juuren palautumispuute toistettiin neljällä create/import-vastatapauksella.
+Rajattu korjaus erottaa uuden operaation nimirajan pysyvästi sidotun
+operaation täydentämisestä:
+
+- Uudet operaatiot käyttävät edelleen `appendReadyWorkspaceEntry`-polkua
+  ja nykyisiä nimirajatarkistuksia; yleistä ohitusvalintaa ei lisätä.
+- Vain create/import-recoveryn jo julkaistun juuren haara käyttää
+  `appendRecoveredWorkspaceEntry`-polkua. Se säilyttää ID-, lineage- ja
+  kapasiteettitarkistukset sekä alkuperäisen nimen ja aktiivisen valinnan.
+  `candidateValidated + finalExists` ja `rootPublished` vaativat edelleen
+  oman journalin, tarkan kohteen, sisältötarkistuksen, leasen, prosessien
+  poissaolon ja muuttumattoman rekisterin ennen julkaisua.
+- Julkaisematon candidate ei muutu nimiristiriidan perusteella valmiiksi
+  työtilaksi. Kylmäkäynnistyksen journal v1 -esto säilyy; tämä korjaus ei
+  laajenna vanhojen journal-formaattien hyväksyntää.
+- Kapasiteetin turvallinen alkuperäinen virhekoodi ja vaihe säilyvät.
+  Epävarma sisältö, omistajuus, rekisteri tai loppusiivous säilyttää
+  palautumisaineiston nykyisen sopimuksen mukaan.
+
+Pysyvät regressiot kattavat vastatapaukset, kielteiset turvarajat ja
+idempotentin jatkamisen. Nykyisen käynnistyscompositionin tiedostotestit
+tarkistavat nimikonfliktin jo ennen käynnistystä, tarkistusprosessin
+exit-rajan, journalin/rekisterin sekä DB-/PDF-tavujen säilymisen.
+Niiden native-/SQLite-tarkistusraja on ohjattu testiraja, ei oikean
+Electron-prosessin tai paketoidun palautuksen todiste. Ajantasainen
+kohdenäyttö on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+UI:n lisäprojektion, virhepalautteen ja historiallisen nimihuomautuksen
+kohdetestit on toteutettu. Oikea Electron-polku todentaa create/import/rename-
+eston, onnistuvan jatkon, yrityseristyksen ja turvallisen virheen nykyisestä
+lokituksesta Diagnosticsin HTTP-reittiin ja strict-clientiin. Nykyinen
+Electron-kylmäkäynnistyskoe todentaa myös jo julkaistun historiallisen
+samannimisen create/import-kohteen palautumisen oikealla tarkistusprosessilla.
+Se pysähtyy edelleen ennen business-backendia eikä ole packaged-todistus.
+Selainkoe käyttää injektoitua desktop-statussopimusta ja todentaa huomautuksen,
+tunnisteella tehtävän valinnan sekä leveän ja kapean näkymän; se ei todista
+IPC:tä tai oikeaa yritysvaihtoa. Diagnostiikan ja tukipaketin suljetut lukijat
+säilyttävät vain [tapahtumakatalogin](r0-observability-event-catalog.md)
+sallimat kentät. W7.1:n paketoitu palautustodennus ja PR/main-portit ovat
+edelleen avoinna.
+
 ## Muuttumattomat rajat W1-W6:ssa
 
 - Domain- ja application-logiikka eivät tunne Electron-polkuja.

@@ -6,6 +6,8 @@ const requiredFields = [
   'correlationId', 'durationMs', 'errorCode', 'operationId', 'retryable', 'sideEffectState', 'stage',
 ];
 const failureOperations: Readonly<Record<string, string>> = {
+  WORKSPACE_CREATION_LABEL_EXISTS: 'workspace.create',
+  WORKSPACE_IMPORT_LABEL_EXISTS: 'workspace.import',
   WORKSPACE_MANAGEMENT_CREATE_FAILED: 'workspace.create',
   WORKSPACE_MANAGEMENT_IMPORT_FAILED: 'workspace.import',
   WORKSPACE_MANAGEMENT_REPLACE_FAILED: 'workspace.replace',
@@ -30,6 +32,8 @@ export function isWorkspaceManagementSourcePayload(value: Record<string, unknown
     return value.operationId === 'workspace.replace' && value.stage === 'lineageCheck';
   }
   return value.stage === 'operation' && (
+    (value.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' &&
+      (value.operationId === 'workspace.create' || value.operationId === 'workspace.import' || value.operationId === 'workspace.rename')) ||
     value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' || value.errorCode === 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' ||
     (typeof value.errorCode === 'string' && Object.hasOwn(failureOperations, value.errorCode) &&
       failureOperations[value.errorCode] === value.operationId)

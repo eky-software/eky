@@ -203,7 +203,7 @@ function createEntry(
 ): Readonly<LocalWorkspaceRegistryEntryV1> {
   return createReadyWorkspaceEntry({
     workspaceId,
-    workspaceLabel: 'Yritys',
+    workspaceLabel: `Yritys ${workspaceId}`,
     lineageIdentity: { formatVersion: 1, profileId },
     createdAt: '2026-08-18T10:00:00.000Z',
   });

@@ -46,6 +46,7 @@ import { encodeProfileInspectionDocumentBindings } from '../runtime/profileInspe
 import { createProfileSnapshotArtifactIdentity } from '../runtime/profileInspectionArtifactIdentity.js';
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
 import { createTestJournal } from '../workspaces/creation/emptyWorkspaceCreationTestSupport.js';
+import { hasWorkspaceLabelConflict } from '../workspaces/registry/workspaceLabelComparison.js';
 import { createWorkspaceCreationJournalPaths, WORKSPACE_CREATION_JOURNAL_FILE_NAME } from '../workspaces/creation/workspaceCreationJournalPaths.js';
 import { WorkspaceCreationJournalStore } from '../workspaces/creation/workspaceCreationJournalStore.js';
 import { deriveWorkspaceCreationPaths } from '../workspaces/creation/workspaceCreationPaths.js';
@@ -1321,10 +1322,25 @@ describe('desktop restore startup composition', () => {
   );
 
   describe.each(['creation', 'import'] as const)('cold %s production wiring', (kind) => {
-    it.each(['completed', 'failed'] as const)(
-      'waits for candidate exit after a %s terminal before changing published recovery state', async terminal => {
+    it.each([
+      { terminal: 'completed', state: 'rootPublished', duplicateLabel: false },
+      { terminal: 'failed', state: 'rootPublished', duplicateLabel: false },
+      { terminal: 'completed', state: 'rootPublished', duplicateLabel: true },
+      { terminal: 'failed', state: 'rootPublished', duplicateLabel: true },
+      { terminal: 'completed', state: 'candidateValidated', duplicateLabel: true },
+      { terminal: 'failed', state: 'candidateValidated', duplicateLabel: true },
+    ] as const)(
+      'waits for candidate exit after $terminal from $state (historical duplicate: $duplicateLabel)', async ({ terminal, state, duplicateLabel }) => {
         const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
-        const pending = await prepareColdJournal(fixture.root, kind, { state: 'rootPublished' });
+        const pending = await prepareColdJournal(fixture.root, kind, {
+          state, ...(duplicateLabel ? { workspaceLabel: 'SYNTHETIC  RESTORE TEST' } : {}),
+        });
+        const previousRegistry = await fixture.registry.read();
+        expect(hasWorkspaceLabelConflict(previousRegistry!.workspaces, pending.value.workspaceLabel)).toBe(duplicateLabel);
+        if (duplicateLabel) expect(pending.value.workspaceLabel).toBe('SYNTHETIC  RESTORE TEST');
+        const journalBytes = await readFile(pending.paths.currentPath);
+        const databaseBytes = await readFile(fixture.databasePath);
+        const pdfBytes = await readFile(fixture.pdfPath);
         const child = new EventEmitter();
         let signalShutdownRequested!: () => void;
         const shutdownRequested = new Promise<void>(resolve => { signalShutdownRequested = resolve; });
@@ -1373,7 +1389,8 @@ describe('desktop restore startup composition', () => {
             started.then(() => { throw new Error('TEST_RECOVERY_RETURNED_BEFORE_EXIT'); }),
           ]);
           expect(operations).toEqual(['validatePublished']);
-          await expect(pending.journal.read()).resolves.toMatchObject({ state: 'rootPublished' });
+          await expect(pending.journal.read()).resolves.toMatchObject({ state });
+          await expect(readFile(pending.paths.currentPath)).resolves.toEqual(journalBytes);
           await expect(readFile(pending.publishedFile, 'utf8')).resolves.toBe('synthetic published');
           await fixture.assertRegistryUnchanged();
           expect(fixture.events).toEqual([]);
@@ -1388,14 +1405,25 @@ describe('desktop restore startup composition', () => {
             const registry = await fixture.registry.read();
             expect(registry?.activeWorkspaceId).toBe(workspaceId);
             expect(registry?.workspaces).toHaveLength(2);
+            expect(registry?.workspaces[0]).toEqual(previousRegistry?.workspaces[0]);
+            expect(registry?.workspaces[1]).toMatchObject({
+              workspaceId: pending.value.workspaceId,
+              workspaceLabel: pending.value.workspaceLabel,
+              lineageIdentity: pending.value.lineageIdentity,
+              createdAt: pending.value.createdAt,
+              lifecycleState: 'ready', layoutVersion: 1,
+            });
             expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
           } else {
-            await expect(pending.journal.read()).resolves.toMatchObject({ state: 'rootPublished' });
+            await expect(pending.journal.read()).resolves.toMatchObject({ state });
+            await expect(readFile(pending.paths.currentPath)).resolves.toEqual(journalBytes);
             await fixture.assertRegistryUnchanged();
             expect(fixture.events).toEqual([]);
             expect(electronBoundary.createWindow).not.toHaveBeenCalled();
           }
           await expect(readFile(pending.publishedFile, 'utf8')).resolves.toBe('synthetic published');
+          await expect(readFile(fixture.databasePath)).resolves.toEqual(databaseBytes);
+          await expect(readFile(fixture.pdfPath)).resolves.toEqual(pdfBytes);
         } finally {
           exit();
           const result = await started;
@@ -2284,7 +2312,8 @@ function prepareUpdateBoundary(root: string, onShutdownStarted?: () => void) {
 async function prepareColdJournal(root: string, kind: 'creation' | 'import', options: {
   formatVersion?: 1 | 2;
   slot?: 'currentPath' | 'backupPath' | 'nextPath';
-  state?: 'prepared' | 'rootPublished';
+  state?: 'prepared' | 'candidateValidated' | 'rootPublished';
+  workspaceLabel?: string;
 } = {}) {
   const input = {
     state: options.state ?? 'prepared',
@@ -2294,6 +2323,7 @@ async function prepareColdJournal(root: string, kind: 'creation' | 'import', opt
   const creationValue = createTestJournal({ ...input, profileCharacter: 'b' });
   const importValue = createTestImportJournal({ ...input, profileId: foreignProfileId });
   const value = { ...(kind === 'creation' ? creationValue : importValue),
+    ...(options.workspaceLabel === undefined ? {} : { workspaceLabel: options.workspaceLabel }),
     formatVersion: options.formatVersion ?? 2 };
   const filePath = join(root, kind === 'creation' ? WORKSPACE_CREATION_JOURNAL_FILE_NAME : WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME);
   const journal = kind === 'creation'
@@ -2309,13 +2339,13 @@ async function prepareColdJournal(root: string, kind: 'creation' | 'import', opt
   await mkdir(dirname(candidate.databaseFilePath), { recursive: true, mode: 0o700 });
   await writeFile(candidate.databaseFilePath, 'synthetic candidate', { mode: 0o600 });
   const published = createDesktopProfilePaths(deriveWorkspaceRoot(root, input.workspaceId, 1).workspaceRoot);
-  if (options.state === 'rootPublished') {
+  if (options.state === 'rootPublished' || options.state === 'candidateValidated') {
     await mkdir(dirname(published.databaseFilePath), { recursive: true, mode: 0o700 });
     await mkdir(published.invoiceDocumentStorageRoot, { recursive: true, mode: 0o700 });
     await writeFile(published.databaseFilePath, 'synthetic published', { mode: 0o600 });
     await rm(candidate.candidateRoot, { recursive: true, force: true });
   }
-  return { journal, paths, candidateFile: candidate.databaseFilePath, publishedFile: published.databaseFilePath };
+  return { journal, paths, value, candidateFile: candidate.databaseFilePath, publishedFile: published.databaseFilePath };
 }
 
 async function preparePlaintext(root: string) {

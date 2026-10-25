@@ -20,7 +20,14 @@ describe('readSupportBundleBackendData', () => {
     ]);
     const lineage = { operationId: 'workspace.replace' as const, errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck' as const, retryable: false };
     const read = (value: unknown) => readSupportBundleBackendData({ ...createValidData(), diagnosticEvents: [value] }).diagnosticEvents;
-    for (const entry of [...cases, lineage]) {
+    const labelConflicts = [
+      { operationId: 'workspace.create' as const, errorCode: 'WORKSPACE_CREATION_LABEL_EXISTS' },
+      { operationId: 'workspace.import' as const, errorCode: 'WORKSPACE_IMPORT_LABEL_EXISTS' },
+      ...(['workspace.create', 'workspace.import', 'workspace.rename'] as const).map(operationId => ({
+        operationId, errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS',
+      })),
+    ].map(entry => ({ ...entry, stage: 'operation' as const, retryable: false }));
+    for (const entry of [...cases, lineage, ...labelConflicts]) {
       const source = createDesktopOperationalEvent({
         ...entry, eventName: 'workspaceManagement.operationFailed',
         correlationId: '22222222-2222-4222-8222-222222222222', durationMs: 2, sideEffectState: 'unknown',
@@ -28,6 +35,7 @@ describe('readSupportBundleBackendData', () => {
       const { eventId, timestamp, schemaVersion: _schemaVersion, ...fields } = source;
       const event = { ...fields, id: `desktop:${eventId}`, occurredAt: timestamp };
       expect(read(event)).toEqual([event]);
+      expect(read({ ...event, sideEffectState: 'none' })).toEqual([{ ...event, sideEffectState: 'none' }]);
       for (const change of [
         { component: 'backend' }, { category: 'backup' }, { level: 'warn' }, { outcome: 'success' },
         { correlationId: undefined }, { durationMs: undefined }, { operationId: undefined },
@@ -38,6 +46,13 @@ describe('readSupportBundleBackendData', () => {
         { fingerprint: 'synthetic-fingerprint' }, { cipherName: 'synthetic-cipher' },
         { recoveryPointKind: 'daily' }, { smtpProfile: 'dnaSmtp' }, { companyId: 'synthetic-company' },
         { rawError: 'synthetic-private' }, { path: '/synthetic/private' },
+        { workspaceLabel: 'Synthetic' }, { workspaceId: 'synthetic-workspace-id' },
+        { message: 'synthetic-private' }, { errorCode: 'WORKSPACE_LABEL_EXISTS' },
+        ...(entry.errorCode.endsWith('_LABEL_EXISTS')
+          ? [{ stage: 'admission' }, { stage: 'lineageCheck' },
+            ...Object.values(workspaceManagementOperationIds).filter(operationId => entry.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
+              ? operationId === 'workspace.replace' || operationId === 'workspace.switch' : operationId !== entry.operationId)
+              .map(operationId => ({ operationId }))] : []),
         ...(entry.errorCode.endsWith('_FAILED') || entry.stage === 'lineageCheck'
           ? [{ operationId: entry.operationId === 'workspace.create' ? 'workspace.replace' : 'workspace.create' }, { stage: 'admission' }] : []),
       ]) expect(() => read({ ...event, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');

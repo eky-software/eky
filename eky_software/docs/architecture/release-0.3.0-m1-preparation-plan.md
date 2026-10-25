@@ -30,10 +30,34 @@ omistaa voimassa olevan sopimuksen. Tämä ei ole maksimikuorman
 suorituskykylupaus. Integraatiota edeltävä checkpoint säilyy
 [historiassa](release-0.3.0-integration-history.md#m43n-integraatiota-edeltävä-jatkamiskohta-24102026).
 
-**Nykyinen työ (25.10.2026):** W7.0:n sopimus- ja koevaihe on valmis
-rajattuine katselmuksineen. Tuotantokytkentää,
-pitkää CI/MSI-ajoa, committia tai mergeä ei ole tehty tässä valmistelussa.
-Paikallinen HEAD, main ja etä-main ovat edelleen yllä mainittu `f38c1f77`.
+**Nykyinen työ (25.10.2026):** W7.1:n nimivertailun toteutus ja testit.
+W7.0:n katselmoitu sopimus-/koevaihe on valmis ja säilytetty erillisessä
+valmistelucommitissa `162f5ab2`. Main on edelleen yllä mainittu `f38c1f77`;
+W7.1:n toteutus on paikallisella toteutushaaralla, ei pushattu tai yhdistetty.
+**Palautumiskorjaus todennettu kohdetasolla:** uuden append-eston ja jo
+julkaistuun create/import-kohteeseen sidotun recoveryn nimipolitiikka on
+erotettu. Neljä historiallista nimikonfliktia toistivat ensin hylkäyksen;
+korjauksen lopullinen 12 tiedoston sarja läpäisi 511 tapausta ja desktopin
+tyyppitarkistuksen. Tarkat ID-, lineage-, kapasiteetti-, sisältö-, omistajuus-
+ja journal-portit sekä uusien operaatioiden nimiraja säilyvät.
+Rajattu katselmus sekä siinä havaittujen virheluokitus- ja testiaineistopuutteiden
+korjaus on tehty. Käynnistyscomposition käyttää oikeita tiedostotavuja,
+mutta ohjattua tarkistusprosessia: tämä ei korvaa Electron-/packaged-näyttöä.
+**UI-/diagnostiikkaketjun kohdenäyttö:** webin 82, desktopin 144,
+Diagnosticsin 48 ja strict-clientin 31 kohdetestiä läpäisivät omissa
+sarjoissaan. Testimäärät eivät muodosta yhtä integraatiokierrosta.
+Oikean Electronin kolme polkua läpäisivät: historiallinen julkaistu
+create/import-recovery sekä uuden luonti-/nimeämis- ja tuontiristiriidan
+esto onnistuvine jatkoineen. Kahden jälkimmäisen täydennetty ajo todensi
+myös syykoodin nykyisen lokituksen, HTTP:n ja strict-clientin läpi.
+Historiallisen nimihuomautuksen selainkoe läpäisi; sen desktop-status on
+injektoitu, joten se ei ole IPC- tai yritysvaihtotodiste. Kapean ja leveän
+näkymän kuvat tarkistettiin. Uusimman rajatun katselmuksen tulos ei sisältänyt
+avoimia löydöksiä. Koko työtilan tyyppitarkistus ja nykyisen core-CI:n mukainen
+peräkkäinen testisarja läpäisivät ilman uusintaa. Alustakohtaiset ohitukset
+eivät ole läpäisyjä tai Linux-näyttöä. Riippuvuusauditointi ja nykyisten
+pakettien rekisteriallekirjoitukset läpäisivät.
+W7.1:n koko integraatio ei vielä ole hyväksytty.
 
 [Omistava W7.0-sopimus](local-company-workspace-plan.md#w70n-turvallisuussopimusehdotus)
 ja sen [valmiustaulukko](local-company-workspace-plan.md#w70n-jäljellä-olevat-sopimustäsmennykset)
@@ -57,14 +81,19 @@ kaikkien juurien inventaario ja oikea packaged/restart ovat edelleen
 Aiempi vaihekohtainen jatkamisteksti säilyy muuttamattomana
 [W7.0:n valmisteluhistoriassa](release-0.3.0-integration-history.md#w70n-sopimusvalmistelun-jatkamiskohta-25102026).
 
-**Seuraava työ:** W7.1:n yhteinen nimivertailu ja nykyiset create/import/rename-kirjoittajat
+**Seuraava työ:** viimeistele W7.1:n koko vaikutusalueen tarkistukset,
+jäädytä katselmoitu lähde ja todenna nykyinen hardened packaged
+backup -> inspect -> restore -> restart -> compare sekä PR/main-portit.
+Kohdenäyttö ei korvaa puhtaan paketin tai täsmällisen revision hyväksyntää.
+Palautumiskorjausta ei aloiteta uudelleen
+ilman omaa vastanäyttöä. Jatketaan
 [nykyisen W7.0-W7.5-työjaon](local-company-workspace-plan.md#koottu-toteutusehdotus)
 mukaisesti. W7.2 kytkee sen jälkeen versionmukaisen rekisterin, pysyvän
 valinnan ja backendittoman tilan avaus-/rollback-rajat. Toteutetaan yksi omistajaraja
 kerrallaan pysyvine regressioineen; jo katselmoituja suunnittelukokeita ei
 aloiteta uudelleen ilman omaa löydöstä. W7-P4:n ehdollista toteutuslupaa ei
-kysytä uudelleen. Nykyinen valmistelu-Goal päättyy W7.0-valmiuteen,
-ei W7.1-W7.5:n toteutukseen, PR/main-hyväksyntään tai koko julkaisuun.
+kysytä uudelleen. Uusi rajattu W7.1-Goal sisältää tämän palan toteutuksen,
+testit, katselmuksen ja nykyiset integraatioportit; se ei toteuta W7.2-W7.5:tä.
 W7 ja M5 ovat avoimia; R030-06:n laajempi ensiasennusmuutos jää erilliseksi
 rajaukseksi. Avoimet historialliset virheet alla säilyvät avoimina.
 

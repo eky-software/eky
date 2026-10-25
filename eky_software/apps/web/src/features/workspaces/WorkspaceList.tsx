@@ -9,6 +9,7 @@ interface WorkspaceListProps {
   readonly isBusy: boolean;
   readonly isRecoveryRequired: boolean;
   readonly workspaces: readonly WorkspaceManagementEntry[];
+  readonly duplicateWorkspaceLabelIds: readonly string[];
   readonly onModeChange: (
     mode: WorkspaceSelectorMode,
     workspace?: WorkspaceManagementEntry,
@@ -17,6 +18,7 @@ interface WorkspaceListProps {
 
 export function WorkspaceList({
   canReplaceActiveWorkspace,
+  duplicateWorkspaceLabelIds,
   isBusy,
   isRecoveryRequired,
   onModeChange,
@@ -41,6 +43,11 @@ export function WorkspaceList({
           {uiText.workspaces.recoveryRequired}
         </p>
       ) : null}
+      {duplicateWorkspaceLabelIds.length > 0 ? (
+        <p className={styles.warning} role="status">
+          {uiText.workspaces.duplicateWorkspaceNames}
+        </p>
+      ) : null}
       {workspaces.length === 0 ? (
         <p className={styles.statusMessage}>{uiText.workspaces.noWorkspaces}</p>
       ) : (
@@ -54,6 +61,11 @@ export function WorkspaceList({
               <li className={styles.workspaceRow} key={workspace.workspaceId}>
                 <div className={styles.workspaceIdentity}>
                   <strong>{workspace.workspaceLabel}</strong>
+                  {duplicateWorkspaceLabelIds.includes(workspace.workspaceId) ? (
+                    <span>
+                      {uiText.workspaces.workspaceIdentifier(workspace.workspaceId)}
+                    </span>
+                  ) : null}
                   <span>
                     {workspace.isActive
                       ? uiText.workspaces.active

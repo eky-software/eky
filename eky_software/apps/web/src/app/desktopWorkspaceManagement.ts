@@ -26,6 +26,7 @@ export interface WorkspaceManagementStatus {
   readonly formatVersion: 1;
   readonly operationState: WorkspaceManagementOperationState;
   readonly workspaces: readonly WorkspaceManagementEntry[];
+  readonly duplicateWorkspaceLabelIds?: readonly string[];
 }
 
 export interface WorkspaceManagementCapability {
@@ -130,6 +131,9 @@ function parseWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
       'formatVersion',
       'operationState',
       'workspaces',
+      ...(Object.hasOwn(value, 'duplicateWorkspaceLabelIds')
+        ? ['duplicateWorkspaceLabelIds']
+        : []),
     ]) ||
     value.formatVersion !== 1 ||
     !isOperationState(value.operationState) ||
@@ -169,6 +173,9 @@ function parseWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
     });
   });
   const activeEntries = workspaces.filter((entry) => entry.isActive);
+  const duplicateWorkspaceLabelIds = Object.hasOwn(value, 'duplicateWorkspaceLabelIds')
+    ? readDuplicateWorkspaceLabelIds(value.duplicateWorkspaceLabelIds, seenIds)
+    : undefined;
   if (
     (activeWorkspaceId === null && activeEntries.length !== 0) ||
     (activeWorkspaceId !== null &&
@@ -184,11 +191,42 @@ function parseWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
     formatVersion: 1,
     operationState: value.operationState,
     workspaces: Object.freeze(workspaces),
+    ...(duplicateWorkspaceLabelIds === undefined
+      ? {}
+      : { duplicateWorkspaceLabelIds }),
   });
   if (encodedByteLength(result) > WORKSPACE_STATUS_MAX_BYTES) {
     return invalidWorkspaceStatus();
   }
   return result;
+}
+
+function readDuplicateWorkspaceLabelIds(
+  value: unknown,
+  workspaceIds: ReadonlySet<string>,
+): readonly string[] {
+  if (
+    !Array.isArray(value) ||
+    value.length < 2 ||
+    value.length > WORKSPACE_MAX_ENTRIES
+  ) return invalidWorkspaceStatus();
+  const seen = new Set<string>();
+  return Object.freeze(Array.from(value, (item) => {
+    const id = readWorkspaceId(item);
+    if (!workspaceIds.has(id) || seen.has(id)) return invalidWorkspaceStatus();
+    seen.add(id);
+    return id;
+  }));
+}
+
+export function isWorkspaceLabelExistsError(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const code = 'WORKSPACE_MANAGEMENT_LABEL_EXISTS';
+  if (error.message === code) return true;
+  return ['create-empty', 'import-backup-as-new', 'rename'].some(
+    (operation) => error.message ===
+      `Error invoking remote method 'eky:workspace-management:v1:${operation}': Error: ${code}`,
+  );
 }
 
 function readOperationResult<const Status extends string>(

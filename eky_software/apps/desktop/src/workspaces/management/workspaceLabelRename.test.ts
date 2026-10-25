@@ -40,14 +40,14 @@ describe('workspace label rename', () => {
     );
   });
 
-  it('allows duplicate labels and treats the same label as a no-op', async () => {
+  it('rejects duplicate labels and treats the same label as a no-op', async () => {
     const original = createRegistry();
     const duplicateWrites: unknown[] = [];
-    await createRename(original, duplicateWrites).rename(
+    await expect(createRename(original, duplicateWrites).rename(
       inactiveId,
-      'Yritys A',
-    );
-    expect(duplicateWrites).toHaveLength(1);
+      'YRITYS  A',
+    )).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+    expect(duplicateWrites).toHaveLength(0);
 
     const noOpWrites: unknown[] = [];
     await expect(
@@ -58,6 +58,16 @@ describe('workspace label rename', () => {
       workspaceLabel: 'Yritys A',
     });
     expect(noOpWrites).toHaveLength(0);
+  });
+
+  it('preserves historical duplicates on exact no-op and allows an explicit distinct name', async () => {
+    const registry = createRegistry();
+    const historical = { ...registry, workspaces: registry.workspaces.map((entry) => ({ ...entry, workspaceLabel: 'Yritys A' })) };
+    const writes: unknown[] = [];
+    await expect(createRename(historical, writes).rename(activeId, 'Yritys A')).resolves.toMatchObject({ changed: false });
+    expect(writes).toHaveLength(0);
+    await expect(createRename(historical, writes).rename(activeId, 'Different')).resolves.toMatchObject({ changed: true });
+    expect(historical.workspaces.map((entry) => entry.workspaceLabel)).toEqual(['Yritys A', 'Yritys A']);
   });
 
   it.each([
