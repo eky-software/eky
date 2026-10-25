@@ -151,7 +151,7 @@ fyysistä poistoa. Ne säilyvät W7.1-W7.5:n tuotantoporteissa.
 
 ### W7.1:n toteutusraja
 
-**25.10.2026, toteutus hyväksytty ja käynnissä:** registry omistaa yhden
+**25.10.2026, hyväksytty PR #320:n ja mainin omilla porteilla:** registry omistaa yhden
 vertailuavaimen sekä append-/rename-eston. Create ja import tarkistavat nimen
 ensimmäisestä leasen alla luetusta rekisteristä ja uudelleen juuri ennen
 root-julkaisua; creation käyttää myös tuoretta publication-registryä eikä
@@ -221,8 +221,164 @@ Selainkoe käyttää injektoitua desktop-statussopimusta ja todentaa huomautukse
 tunnisteella tehtävän valinnan sekä leveän ja kapean näkymän; se ei todista
 IPC:tä tai oikeaa yritysvaihtoa. Diagnostiikan ja tukipaketin suljetut lukijat
 säilyttävät vain [tapahtumakatalogin](r0-observability-event-catalog.md)
-sallimat kentät. W7.1:n paketoitu palautustodennus ja PR/main-portit ovat
-edelleen avoinna.
+sallimat kentät. W7.1:n puhtaan paketin palautustodennus sekä PR:n ja uuden
+mainin omat portit läpäisivät ilman CI-uusintaa.
+[Loppuhyväksyntä](https://github.com/eky-software/eky/pull/320#issuecomment-6397583475)
+ja [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistavat täsmällisen revision ja hyväksyntänäytön; tämä ei sulje W7.2-W7.5:tä.
+
+### W7.2:n toteutusraja
+
+**25.10.2026, aloituskartoitus:** W7.1 on hyväksytty. W7.2 toteuttaa
+yllä hyväksytyn työjaon yritysvalinnan; poistopyyntö, purge ja backenditon
+tukiformaatti eivät kuulu tähän palaan. Alla oleva järjestys ei muuta
+[pysyvän valinnan sopimusta](#pysyvä-yritysvalinta-ja-versioraja) tai
+[valitsimesta avauksen jatkoa](#valitsimesta-avauksen-pysyvä-jatko).
+
+| Toteutuspala | Nykyinen omistaja ja säilyvä raja |
+| --- | --- |
+| Rekisterin esitys | `registry/workspaceRegistryTypes.ts`, `workspaceRegistryValidation.ts`, `workspaceRegistryBytes.ts`, `workspaceRegistrySerializer.ts`, `workspaceRegistryStore.ts` ja `workspaceRegistryPort.ts`: yhteinen entry-validointi ja versionmukainen arvo samoissa `workspace-registry-v1.json`-sloteissa. V1-tavut säilyvät. Store-kutsun `read()`/`write()` korjaava luku ja `inspect()`-valinta eivät korvaa kaikkien slottien admissionia. Codec-, store-, recovery- ja tiedostoturvatestit kattavat version säilymisen; parserin tuki ei anna muunnosvaltuutta. |
+| Lisäys ja nimeäminen | `registry/workspaceRegistryMutations.ts`, `creation/workspaceCreationRegistry.ts`, `import/workspaceBackupImportRegistry.ts` ja `management/workspaceLabelRename.ts`: yksi version säilyttävä mutaatiototeutus, v2:n null-valinta säilyy ja rename-no-op palauttaa saman olion. Nykyiset nimiraja- ja virhekooditestit säilyvät. Puuttuvaa rekisteriä ei normalisoida valitsimen tyhjäksi rekisteriksi; adoption nykyinen ensialustus erotetaan hallinnan jo olemassa olevasta rekisteristä. |
+| Luonnin ja tuonnin palautuminen | Nykyiset `emptyWorkspaceCreationCoordinator`/`Recovery`, `workspaceBackupImportCoordinator`/`Recovery` ja `runtime/assertColdWorkspaceRecoveryContinuation.ts`: v2:n julkaisun jälkeinen jatko on edelleen null, ei nykyisen `previousActiveWorkspaceId ?? workspaceId` -oletuksen valitsema uusi yritys. Ennen julkaisua keskeytynyt työ ja jo julkaistu juuri testataan erikseen kummallakin rekisteriversiolla. Valitsinjatko todistaa rekisterin, omistajuuden ja töiden poissaolon ilman tekaistua aktiivista juurta tai health-tulosta; W7.1:n historiallinen nimiristiriitapalautus säilyy. |
+| Hyväksynnän laajuus ja muunnos | `update/acceptedBuildMetadata.ts`, nykyinen store, `preWorkspaceBuildAdmission.ts`, `firstStartUpdateCoordinator.ts` sekä nykyinen installation-state/legacy-kytkentä: kaikki lukijat luokitellaan selector-, business- tai baseline-kuluttajiksi ennen kirjoittajan muutosta. Slot-admission, terminal-clear ja keskeytysjärjestys todennetaan nykyisissä omistajissa. |
+| Valitsimesta avaus | Nykyiset switch-journal/coordinator/startup sekä W6:n registry-transitionit: source-null ja ei-null käyttävät samaa versionmukaista sopimusta. Koko rekisterin tiivisteet, julkaisu-/paluu-järjestys ja omistettujen töiden loppuminen säilyvät. |
+| Käynnistys ja hallinta | `runtime/resolveActiveWorkspaceStartup.ts`, `management/workspaceManagementComposition.ts` ja nykyinen main-composition: valitsin erotetaan yritysruntimesta ennen backend/session/broker-luontia. Nykyisen aktiivisen yrityksen sulkuporttia ei korvata no-opilla eikä puuttuvaa yritystä tekaista. |
+| Muut lukijat | `adoption/workspaceLegacyAdoptionStartup.ts`/`Recovery`, `replacement/workspaceBackupReplacementRegistry.ts`, `update/workspaceActivationMigrationGuard.ts` sekä W6-inventaario/plan: historiallinen adoptio ja todellisen aktiivisen kohteen vaatimukset säilyvät, vertailu kattaa versionmukaiset kanoniset tavut. `management/workspaceManagementStatus.ts`:n nykyinen DTO v1 sallii jo null-valinnan; rekisteriversio ei vaihda status- tai lineage-formaattia. |
+| Todellinen ketju | Nykyiset startup-, first-start-, registry- ja management-testit, Electron/IPC/UI sekä packaged/update/rollback-portit: erityisesti v1 -> v2, null ready-entryillä, tyhjä/recovery-only, keskeytykset ja toistuva selector-päivitys business-baselinen säilyttäen. |
+
+Kutsujakartoitus kattaa myös testien erilliset lukijat:
+`apps/e2e/src/environment/readElectronE2eActiveWorkspace.ts` vaatii oikean
+aktiivisen yrityksen eikä sitä muuteta valitsimen näennäiseksi profiiliksi.
+Asenninharnessin `legacyUpgradeProfileEvidence.mjs`:n historiallinen v1-luku
+sekä `workspaceSuccessProfileEvidence.mjs`:n kohdepaketista ladattu lukija
+pidetään erillään. Pelkkä nykyisten v1-testien läpäisy ei todista näitä
+v2-kutsujia; tuotantokytkentä kattaa myös niiden omat versionmukaiset kontrollit.
+
+Ensimmäinen lähdevertailu vahvisti, että registry-codec ja kirjoittajat
+ovat vielä v1-only, switch-startup vaatii aktiivisen yrityksen ja nykyinen
+management-composition tarvitsee aktiivisen profiilin palautuspalvelut.
+Accepted-buildin nykyinen v1 tarkoittaa business-hyväksyntää. W6 ei tee
+uutta inventaariota `exactAcceptedBuild`-haarassa. Tämä ei ole nykyisen
+normaalipolun uusi vikaväite, vaan syy estää selector-readinessin merkitseminen
+samaksi hyväksynnäksi.
+
+**Rajattu lähde- ja kutsujakatselmus 25.10.2026:** hyväksynnän lukijat on
+eroteltu alla. Katselmus tarkensi uuden kytkennän todistettavat rajat,
+ei nykyisen v1-normaalipolun uutta vikaväitettä. Tuotantokoodi, formaatit,
+aikarajat ja CI-kytkentä eivät ole muuttuneet. Jo katselmoituja W7.0-kokeita
+ei ajeta uudelleen ilman omaa havaintoa. Täsmällinen hyväksyntätila säilyy
+[M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+#### W7.2:n ensimmäinen yritysavaus valitsinhyväksynnän jälkeen
+
+`A` tarkoittaa hyväksyttyä sovellusbuildia ja `B` viimeistä business-
+hyväksyttyä buildia. Selector-päivityksen jälkeen `A = T`, `B = S`.
+Baseline ei todista yksittäisen yrityksen nykyistä tietokantaversiota;
+se tarkistetaan aina yrityksen omista tavuista nykyisillä tarkistimilla.
+
+| Kutsuja | Hyväksynnän käyttötarkoitus |
+| --- | --- |
+| Metadata-codec/store ja legacy-sijaintimuunnos | Koko versionmukainen arvo aikoineen. Korjaava `read()` ei ole slot-admission. Muunnos ei luo uutta hyväksyntää. |
+| `preWorkspaceBuildAdmission` ja C:n lähdebuildin tarkistus | A määrää sallitun sovellusversion ja C-journalin vastaavuuden. B ei anna downgrade-valtuutta. |
+| `FirstStartUpdateCoordinator` | A erottaa sovelluksen hyväksynnän; B tarvitaan lykätyn business-siirtymän lähtöön. Business-valmistuminen julkaisee A = B = T vasta oikeiden porttien jälkeen. |
+| `PreBackendFirstStartFailureAuthority` | C:n sovellusidentiteetti ja Direct Setupin business-lähde ovat eri käyttötarkoituksia. Koko lukijaa ei saa vaihtaa B-projektioksi. |
+| W6-orchestraattori ja transition/recovery | Inventaarion lähde on B; valmistuminen vaatii business-T:n, ei pelkkää selector-A:n vastaavuutta. Registry-transitionit säilyttävät todellisen formaattiversion ja koko rekisterin tiivisteet. |
+| Packaged smoke, workspace-success/fault ja niiden jälkitarkistimet | Skenaarion oikea business-hyväksyntä ja journalin lopputila. Historiallisten pakettien strict-v1-lukuraja säilyy erillisenä. |
+
+Nykyisessä FirstStartissa täsmäävä A valitsee `normal`-haaran, joka ei
+hyväksy uutta business-versiota. Toisaalta `targetValidation`-startup valitsee
+W6A.3:n aktivointimigraation, jolloin sen `beforeMigrations` ohittaa
+FirstStartin vastaavan kutsun. Molempien migraatio-omistajien käynnistäminen
+ei ratkaise tätä. Sovellusadmissionia ei myöskään saa esittää virheellisesti
+uutena binääripäivityksenä käyttämällä kaikkialla vanhempaa B:tä.
+
+**Omistaja hyväksyi 25.10.2026 suunnittelun ja keskeytyskokeen jälkeen
+rajatun tuotantokytkennän pysyvine regressioineen ja integraatiotesteineen:** ensimmäisen
+source-null-avauksen pending-migraatio käyttää nykyistä W6A.3:n erillisen
+candidaten ja atomisen aktivoinnin polkua. FirstStart säilyy lopullisen
+business-hyväksynnän omistajana; sen tarvitsema tuore, täsmällinen
+todistesiirto toteutetaan alla olevan katselmoidun sopimuksen mukaan. Samalle uudelle
+operaatiolle ei luoda rinnakkaista Direct Setup -migraatiota. Nykyiset
+ei-null-aktivoinnit sekä aiemmin alkaneet C-/Direct Setup -palautukset
+säilyttävät omat omistajansa. Uutta journalia tai koordinaattoria ei ehdoteta.
+
+Vaihtoehto olisi käyttää ensimmäiseen avaukseen nykyistä FirstStartin
+Direct Setup -migraatiopolkua palautuspisteineen. Se muuttaisi tämän
+valitsimesta avattavan kohteen kopioon perustuvaa aktivointirajaa ja vaatisi
+erikseen A/B-tietoisen pending-restartin sekä palautussidonnan. Sitä ei
+valita pelkän pienemmän kutsumuutoksen perusteella.
+
+Suosituksen pieni koe rajataan nykyisten omistajien seuraaviin liitoksiin:
+
+- Yksi migraatioauktoriteetti ennen SQL-kirjoitusvaltuutta; current-kohde
+  ei muodosta turhaa candidatea. Inventaario, lineage ja yrityseristys säilyvät.
+- Candidate-aktivoinnin keskeytys ja uusi käynnistys säilyttävät nykyisen
+  palautusjournalin auktoriteetin. Vanhaa muistikuittia ei käytetä terveystuloksena.
+- Nykyinen startup hyväksyy switchin ennen W6:n passiivisia muutoksia,
+  FirstStart-hyväksyntää ja W6:n loppusiivousta. Tämä vastuun siirto sekä
+  epäonnistuminen sen kummallakin puolella todennetaan erikseen. Switchin
+  koko-registry-tiivisteitä ei löysennetä W6:n myöhempien muutosten vuoksi.
+- Valitsimeen paluu vaatii todetut prosessi-/I/O-poistumiset ja sisäkkäisen
+  palautuksen päättymisen. Avoin W6 tai activation-journal ei saa jäädä
+  viittaamaan toiseen aktiivivalintaan. Epävarma tila säilyy recovery-tilana.
+- Epäonnistuminen ei alenna A:ta eikä nosta B:tä. Onnistunut business-
+  hyväksyntä ja W6:n päättäminen erotetaan myös metadata-kirjoituksen
+  epävarmasta kuittauksesta. Muut yritykset ja ensimmäinen syy säilyvät.
+
+Koe ei uusi W7.0:n codec-/slot-kokeita eikä yksin sulje W7.2:ta. Tarkka
+tuotantosopimus, rajattu katselmus ja nykyiset oikean prosessi-/pakettiketjun
+portit vaaditaan edelleen. Suunnittelun ja kokeen tulos on katselmoitu;
+tuotantototeutus katselmoidaan erikseen. W7-P1-P4:n käyttäytymisvalintoja
+ei avata uudelleen.
+
+##### Rajatun kokeen mukainen toteutussopimus
+
+**Suunnittelunäyttö 25.10.2026:** 28 rajattua sopimuskoetta ja niiden
+tyyppitarkistus läpäisivät. Rajattu riippumaton katselmus tarkisti
+valinnan/sukupolven sidonnan, W6:n jatkamisen ja terminal-rajat; sen
+koemallia koskevat havainnot korjattiin vastatesteineen. Tämä ei ole
+tuotantokytkennän tai koko W7.2:n hyväksyntä.
+
+Seuraava on hyväksytty W7.2:n tuotantokytkennän sopimus, ei vielä toimitettu toiminto.
+Se käyttää nykyisiä omistajia ja alla olevaa järjestystä; uuden yleisen
+koordinaattorin tai journalin perustamista ei tarvita.
+
+| Vaihe | Omistaja ja vaadittu todiste |
+| --- | --- |
+| Aloitus | Mainin nykyinen installation-/startup-valtuus sitoo A:n, B:n, käynnistyssukupolven, switch-operaation, kohteen, lineagen ja koko valitun rekisterin. Jo ensimmäisen luetun valinnan pitää olla oikea; pelkkä myöhempi muuttumattomuus ei riitä. Kaikkien slottien admission säilyy. Vanha C-/Direct Setup -palautus ohjataan omaan nykyiseen omistajaansa. |
+| Yksi migraatio | Pending-kohde käyttää W6A.3:n snapshot/candidate/activation-ketjua, ei uuden Direct Setup -migraation rinnakkaista käynnistystä. Alkuperäistä kantaa ei migroida paikallaan. Current-kohde ei luo candidatea. Avoin aktivointijournal ratkaistaan ennen uuden työn sallimista. |
+| Uusi käynnistys | Nykyinen restore-startup lukee pysyvän journalin ja valitun sisällön uudelleen. SQL-, schema-, lineage-, artifact-, salaisuus- ja health-todisteet tulevat tämän sukupolven oikeista omistajista. Vanhaa muistikuittia ei siirretä käynnistysten välillä. |
+| FirstStart | Nykyiseen FirstStartiin nimetään erillinen `deferredBusiness`-haara. Se ei esitä A = T:tä uutena binääripäivityksenä. Kopion jälkeinen portti vaatii nykyisen manifestin ja nolla pending-migraatiota ennen SQL-kirjoitusvaltuutta. FirstStart säilyttää tuoreen sisältö-/salaisuusvalidoinnin ja versionmukaisen metadatajulkaisun. Kokeen rajattu B-projektio ei ole tuotantoon kopioitava yleinen store-adapteri. |
+| W6 | Nykyiselle orchestraattorille nimetään lykätty business-admission. Lähde on B, kohde T; `exactAcceptedBuild` tai teeskennelty uusi asennuspäivitys ei korvaa sitä. Valmisteltu sama journal voi jatkua pending -> current -muutoksen jälkeen vain buildien, kohteen, passiivisten ID-joukon ja molempien koko-registry-tiivisteiden täsmätessä. |
+| Hyväksyntä | Nykyinen järjestys säilyy: palautussisällön hyväksyntä, switchin hyväksyntä, W6:n passiivinen rekisterisiirtymä, FirstStartin business-julkaisu A = B = T ja W6:n loppusiivous. Jokainen raja tarkistaa oman tuoreen valtuutensa. FirstStartin guard huomioi täsmällisen sallitun W6-siirtymän, ei vain alkuperäisiä rekisteritavuja. |
+
+Ennen palautuksen hyväksynnän aloittamista virhe voi palauttaa alkuperäiset
+tavut nykyisellä rollbackilla. Null-valinta julkaistaan vasta todettujen
+exit/reclaim- ja I/O-sulkujen, sisäkkäisen palautuksen terminal-tarkistuksen
+sekä W6:n `prepared`-journalin täsmällisen peruutuksen jälkeen. W6 perutaan
+vielä valitun kohteen rekisteristä, ennen null-valintaa tai kohteen
+lifecycle-muutosta. Vanhan prefixin palautus ei saa vahingossa käynnistää
+eteenpäinmigraatiota; sen tarkistus on nimetty palautustarkistus, ei
+business-readiness. Jos turvallista loppua ei voida todistaa, journalit ja
+aineisto säilyvät recovery-tilassa eikä valitsimeen paluuta luvata.
+
+Palautuksen `unverified`/`committed`-hyväksyntä tai jo päätetty switch ei
+anna enää uutta rollback- tai null-paluuvaltuutta. Kadonnut hyväksyntäkuittaus
+ratkaistaan pysyvästä valinnasta: B on voinut jo muuttua T:ksi. A:ta ei
+alenneta eikä B:tä arvata. Hyväksytyn sisällön epäonnistunut loppusiivous
+jatkuu nykyisellä tuoretta validointia vaativalla polulla, ei uudella
+migraatiolla. W6:n siirtymä palautuu tai päättyy oman journalinsa ja todellisen
+business-hyväksynnän mukaan. Switchin tiivisteitä ei löysennetä tämän vuoksi.
+
+**Kokeen rajat:** aktivoinnin tiedostosiirrot, restore-journal/store,
+restore-startup, FirstStart sekä W6:n journal/store/transition ja
+orchestraattori ovat nykyisiä toteutuksia. Migraatio-/sisältötyö,
+prosessipoissaolo, health ja v2-metadatajulkaisu on injektoitu. W6:n nykyistä
+lukijaa kokeillaan v1-rekisterillä; tämä ei todista tulevaa v2-kytkentää,
+atomista metadatajulkaisua tai koko source-null-compositionia. Ne sekä
+palautetun historiallisen prefixin terminal-kytkentä tarvitsevat pysyvät
+regressiot ja oikean prosessi-/pakettiketjun näytön ennen W7.2:n hyväksyntää.
+Jo hyväksyttyjä W7.0:n codec-/slot-kokeita ei lasketa tämän näytöksi uudelleen.
 
 ## Muuttumattomat rajat W1-W6:ssa
 

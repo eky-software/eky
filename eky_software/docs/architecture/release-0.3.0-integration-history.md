@@ -5,6 +5,109 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.1:n integraatiota edeltävä jatkamiskohta 25.10.2026
+
+Seuraava aiempi M1-jatkamisteksti säilytetään muuttamattomana. Sen
+keskeneräisyysväitteet kuvaavat integraatiota edeltävää vaihetta.
+Myöhempi hyväksyntä on PR #320:n loppupäätöksessä ja M1:n nykytilassa.
+
+**Hyväksytty lähtö (24.10.2026):** M4.3/R030-08 on hyväksytty
+[PR #319:n loppupäätöksellä](https://github.com/eky-software/eky/pull/319#issuecomment-6385011410)
+mainiin `f38c1f77e9d5db864a3624bc0a4e8277a446a02d`.
+Mainin puu vastaa katselmoitua PR-headia
+`26f0dc762b3266373bc1c978c507df12e8d95f2d`.
+T/A/B/C/K/D/E/F/G/H/I sekä M4.1-M4.3 säilyvät hyväksyttyinä omissa rajauksissaan;
+niitä ei toteuteta uudelleen ilman niiden omaa todennettua regressiota.
+
+| Tarkistus | Hyväksytty näyttö |
+| --- | --- |
+| PR #319 | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/40091411333/attempts/2) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40091411237) läpäisivät. Kaikki 38 valittua työtä, 11 perhettä, viisi fault-skenaariota, molemmat toistot ja pakolliset askeleet varmennettiin; kuusi diagnostiikkatyötä jätettiin tarkoituksella valitsematta. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/40095610406/attempts/2) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40096462545) läpäisivät. Täysi kattavuus sekä asennus-, auditointi- ja allekirjoitusaskeleet varmennettiin erikseen. Audit käynnistettiin tälle mainille manuaalisesti nykyisen push-polkurajauksen vuoksi. |
+
+M4.3:n rajattu historian selaus, todellinen HTTP-/selainketju ja readerin
+kesken olevan tiedosto-I/O:n sulku on todennettu. Puhdas sovelluslähde
+`3ff0bdd347915f4a5efb860d1bec3ff9e84e028f` läpäisi saman Windows-paketin
+selaus-/tukipaketti- sekä backup -> inspect -> restore -> restart -> compare
+-ketjun; sen jälkeinen PR-delta muutti vain kahta omistavaa dokumenttia.
+[Diagnostiikkasuunnitelma](diagnostics-0.2.9-completion-plan.md#m43-jatkohakusopimuksen-ehdotus)
+omistaa voimassa olevan sopimuksen. Tämä ei ole maksimikuorman
+suorituskykylupaus. Integraatiota edeltävä checkpoint säilyy
+[historiassa](release-0.3.0-integration-history.md#m43n-integraatiota-edeltävä-jatkamiskohta-24102026).
+
+**Nykyinen työ (25.10.2026):** W7.1:n nimivertailun toteutus ja testit.
+W7.0:n katselmoitu sopimus-/koevaihe on valmis ja säilytetty erillisessä
+valmistelucommitissa `162f5ab2`. Main on edelleen yllä mainittu `f38c1f77`;
+W7.1:n toteutus on integraatioehdokas toteutushaaralla; PR/main-porttien
+hyväksyntä ja yhdistäminen ovat vielä kesken.
+**Palautumiskorjaus todennettu kohdetasolla:** uuden append-eston ja jo
+julkaistuun create/import-kohteeseen sidotun recoveryn nimipolitiikka on
+erotettu. Neljä historiallista nimikonfliktia toistivat ensin hylkäyksen;
+korjauksen lopullinen 12 tiedoston sarja läpäisi 511 tapausta ja desktopin
+tyyppitarkistuksen. Tarkat ID-, lineage-, kapasiteetti-, sisältö-, omistajuus-
+ja journal-portit sekä uusien operaatioiden nimiraja säilyvät.
+Rajattu katselmus sekä siinä havaittujen virheluokitus- ja testiaineistopuutteiden
+korjaus on tehty. Käynnistyscomposition käyttää oikeita tiedostotavuja,
+mutta ohjattua tarkistusprosessia: tämä ei korvaa Electron-/packaged-näyttöä.
+**UI-/diagnostiikkaketjun kohdenäyttö:** webin 82, desktopin 144,
+Diagnosticsin 48 ja strict-clientin 31 kohdetestiä läpäisivät omissa
+sarjoissaan. Testimäärät eivät muodosta yhtä integraatiokierrosta.
+Oikean Electronin kolme polkua läpäisivät: historiallinen julkaistu
+create/import-recovery sekä uuden luonti-/nimeämis- ja tuontiristiriidan
+esto onnistuvine jatkoineen. Kahden jälkimmäisen täydennetty ajo todensi
+myös syykoodin nykyisen lokituksen, HTTP:n ja strict-clientin läpi.
+Historiallisen nimihuomautuksen selainkoe läpäisi; sen desktop-status on
+injektoitu, joten se ei ole IPC- tai yritysvaihtotodiste. Kapean ja leveän
+näkymän kuvat tarkistettiin. Uusimman rajatun katselmuksen tulos ei sisältänyt
+avoimia löydöksiä. Koko työtilan tyyppitarkistus ja nykyisen core-CI:n mukainen
+peräkkäinen testisarja läpäisivät ilman uusintaa. Alustakohtaiset ohitukset
+eivät ole läpäisyjä tai Linux-näyttöä. Riippuvuusauditointi ja nykyisten
+pakettien rekisteriallekirjoitukset läpäisivät.
+**Puhtaan paketin näyttö:** katselmoidusta sovelluslähteestä
+`e8bfc387f7530c391b7d955b26ffec14b1eada47` rakennettu hardened Windows-paketti
+läpäisi nykyisen backup -> inspect -> restore -> restart -> compare -ketjun
+ilman uusintaa. Paketin sisäinen lähderevisio ja puhdas build-tila tarkistettiin;
+samat pakettitavut varmennettiin myös ajon jälkeen. Tämän jälkeinen delta
+päivittää vain tämän jatkamissivun hyväksyntänäytön.
+W7.1:n koko integraatio ei vielä ole hyväksytty.
+
+[Omistava W7.0-sopimus](local-company-workspace-plan.md#w70n-turvallisuussopimusehdotus)
+ja sen [valmiustaulukko](local-company-workspace-plan.md#w70n-jäljellä-olevat-sopimustäsmennykset)
+nimeävät rekisterin v2:n, pysyvän null-valinnan, first-start/rollbackin,
+kohdesidonnat, poiston journalin/kohdeluettelon, vahvistukset ja backendittoman
+tuen. W7-P1-P4 sekä 25.10. hyväksytyt kohdeluettelo- ja
+asennuspakettipäivityksen suunnat säilyvät. Vanhojen backupien tukea ei
+poisteta; historiapoikkeusta ei ole valittu. Yksi sovellusversio koskee
+kaikkia yrityksiä, mutta valitsimen hyväksyntä ei todista avaamattomien
+yritysten tietokantojen muunnosta tai terveyttä.
+
+**Viimeisten sopimusrajojen näyttö:** kohdeluettelon/journalin 44 tapausta
+ja tyypit läpäisivät. Poistovahvistuksen 42 uutta tapausta, 18 nykyistä
+capability-/protokollaregressiota ja tyypit läpäisivät. Katselmuksen kolme
+rajattua puutetta toistettiin, korjattiin koeehdokkaisiin ja jälkitarkistettiin.
+Aiemmat nimivertailu-, backup-kuitti-, selector-, kohdesidonta- ja tukikokeet
+säilyvät erillisinä näyttöinään, eivät yhteen laskettavana integraatiomääränä.
+Koekoodi on tuotannosta erillään. Native-sulku, oikeat IPC-/observer-lukijat,
+kaikkien juurien inventaario ja oikea packaged/restart ovat edelleen
+**tuotantototeutuksen portteja**, eivät näiden kokeiden läpäisytuloksia.
+Aiempi vaihekohtainen jatkamisteksti säilyy muuttamattomana
+[W7.0:n valmisteluhistoriassa](release-0.3.0-integration-history.md#w70n-sopimusvalmistelun-jatkamiskohta-25102026).
+
+**Seuraava työ:** vie katselmoitu W7.1-diffi normaalin PR:n kautta
+täsmällisen revision riskiperusteisiin portteihin ja riippuvuustarkistukseen.
+Niiden hyväksynnän jälkeen tehdään suojattu merge ja uuden mainin omat portit.
+Paikallinen kohde- ja pakettinäyttö ei korvaa PR/main-hyväksyntää.
+Palautumiskorjausta ei aloiteta uudelleen
+ilman omaa vastanäyttöä. Jatketaan
+[nykyisen W7.0-W7.5-työjaon](local-company-workspace-plan.md#koottu-toteutusehdotus)
+mukaisesti. W7.2 kytkee sen jälkeen versionmukaisen rekisterin, pysyvän
+valinnan ja backendittoman tilan avaus-/rollback-rajat. Toteutetaan yksi omistajaraja
+kerrallaan pysyvine regressioineen; jo katselmoituja suunnittelukokeita ei
+aloiteta uudelleen ilman omaa löydöstä. W7-P4:n ehdollista toteutuslupaa ei
+kysytä uudelleen. Uusi rajattu W7.1-Goal sisältää tämän palan toteutuksen,
+testit, katselmuksen ja nykyiset integraatioportit; se ei toteuta W7.2-W7.5:tä.
+W7 ja M5 ovat avoimia; R030-06:n laajempi ensiasennusmuutos jää erilliseksi
+rajaukseksi. Avoimet historialliset virheet alla säilyvät avoimina.
+
 ## W7.0:n sopimusvalmistelun jatkamiskohta 25.10.2026
 
 Seuraava aiempi M1-jatkamisteksti on säilytetty muuttamattomana. Sen
