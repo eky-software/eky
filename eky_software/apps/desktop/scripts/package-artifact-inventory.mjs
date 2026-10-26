@@ -33,11 +33,11 @@ const validStages = new Set([
 ]);
 const reviewedVendorSensitiveArtifactAllowlist = new Set([]);
 const maximumCredentialJsonInspectionBytes = 1_048_576;
-const maximumApplicationBytes = 2_883_584;
+const maximumApplicationBytes = 3_407_872;
 const stageLimits = Object.freeze({
   applicationStage: Object.freeze({
     maximumDirectoryDepth: 5,
-    maximumFileCount: 400,
+    maximumFileCount: 448,
     maximumLogicalPathBytes: 96,
     maximumProjectOwnedFileBytes: 1_048_576,
     maximumTotalBytes: maximumApplicationBytes,

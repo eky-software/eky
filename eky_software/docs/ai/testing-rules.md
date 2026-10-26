@@ -149,18 +149,19 @@ muutu. Tämä ei ole yleinen lupa siirtää valmistelua testin aikarajan
 ulkopuolelle tai kasvattaa aikarajoja.
 
 Omistajan 26.10.2026 hyväksymä sama kymmenen sekunnin testiraja koskee
-lisäksi vain kahta W7.2:n yhdistelmätestiä samassa tiedostossa:
+lisäksi vain kolmea W7.2:n yhdistelmätestiä samassa tiedostossa:
 
 - `accepts deferred business through real main and FirstStart` vain
-  variantilla `passive: true, source-null: true`
+  varianteilla `passive: true, source-null: true` ja
+  `passive: true, source-null: false`
 - `settles the selected source-null replacement through real rollback
   before selector return` vain variantilla `completed`.
 
 Näissä valmistelu, toiminta ja tarkistukset sisältyvät samaan testirungon
 rajaan. Muiden saman testiryhmän varianttien oletusraja säilyy.
 Tarkistuksia, elinkaaritukea, sovelluksen aikarajoja tai CI:n kokonaisrajoja
-ei muuteta. Hyväksytty mittaus läpäisi molemmat tapaukset, mutta ei yksin
-selitä aiempia aikakatkaisuja eikä ole koko W7.2:n hyväksyntä.
+ei muuteta. Hyväksytyt mittaukset läpäisivät nämä tapaukset, mutta eivät yksin
+selitä aiempia aikakatkaisuja eivätkä ole koko W7.2:n hyväksyntä.
 
 Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
 valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai

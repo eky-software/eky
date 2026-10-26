@@ -76,8 +76,28 @@ säilyvät erillisinä todisteina. Ensimmäiset adapterihylkäykset ja avoimet
 viiveet säilytetään; päällekkäisiä ajoja ei lasketa yhteen. Nykyinen rajattu
 yksityinen keräys ei takaa jokaisen alkuperäisen poikkeuksen talteenottoa.
 
-**Seuraava työ:** todenna saman puhtaan paketin palautusketju ja ratkaise
-alla oleva kolmannen yhdistelmätestin rajaus ennen laajaa ajoa. Säilytä vanhan
+**Hyväksytty pakettirajaus 26.10.2026:** sovellusosan budjetti on enintään
+448 tiedostoa ja 3,25 MiB; vain täsmällinen `resources/app.asar` saa saman
+3,25 MiB:n tiedostorajan. Muut sisältö-, koko- ja eheysvaatimukset säilyvät.
+[Omistava pakettisopimus](windows-installer-acceptance-harness-v2.md#sovellusosan-pakettibudjetti)
+vaatii rajatestit, sisältökatselmuksen ja uuden puhtaan paketin todennuksen.
+Puhtaan aiemman osarevision
+`7d2ee2a1ecc9b364d4149157bd9b2c0a6b793f70` paketointi läpäisi käännökset
+ja native-ajurin valmistelun, mutta sovellusosan tiedostomääräraja hylkäsi
+inventaarion ennen paketin valmistumista. Rajattu jatkotarkistus osoitti
+myös kokonaisbudjetin ylittymisen; tiedostonimi- ja tiedostotyyppitarkistus
+ei havainnut kiellettyä sisältöä. Tämä ei ole valmis paketti tai koko
+sisältövalidoinnin hyväksyntä. Alkuperäinen hylkäys säilyy erillisenä.
+Koko työtilan tyyppitarkistus, riippuvuusauditointi ja rekisteriallekirjoitusten
+tarkistus läpäisivät.
+
+Hyväksyttyjen rajamuutosten jälkeen paketti-inventaarion 67 regressiota ja
+koko palautuksen käynnistystiedoston 311 testiä läpäisivät. Ohjelinkit ja
+rajattu riippumaton katselmus läpäisivät. Tämä ei vielä ole uuden puhtaan
+paketin sisältö- tai palautusnäyttö.
+
+**Seuraava työ:** todenna saman uuden puhtaan paketin palautusketju ennen
+integraatiota. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
 palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
@@ -85,18 +105,20 @@ PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
 omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä
 ei toteuteta uudelleen ilman omaa regressiota.
 
-**Avoin ennen seuraavaa laajaa ajoa:** passiivisen yrityksen siirtymän
+**Avoin aiempi viivehavainto:** passiivisen yrityksen siirtymän
 variantti `passive: true, source-null: false` ylitti muuttumattoman
 testikohtaisen rajan. Seitsemän tapauksen kohdeajossa kaksi läpäisi, tämä
 tapaus aikakatkaisi ja keskeneräisen työn suoja esti neljän seuraavan
 aloituksen. Yksi erillinen mittaus läpäisi kyseisen variantin kokeen
-rajalla; se ei ole normaalin testirajan läpäisy. Mahdollinen pysyvä
-rajamuutos on erillisessä päätöksessä. Aineisto ja epävarma siivoustila
+rajalla; se ei ole aiemman normaalin testirajan läpäisy. Omistaja hyväksyi
+myös tämän variantin pysyvän kymmenen sekunnin rajan 26.10.2026.
+Aineisto ja epävarma siivoustila
 säilyvät; koko sarjaa tai vanhaa viivettä ei merkitä korjatuksi.
 
 **Hyväksytty testirajaus 26.10.2026:** pysyvä kymmenen sekunnin testiraja
-on toteutettu vain source-null-avauksen passiivisiirtymälle ja onnistuneelle
-kopioaktivoinnin rollbackille. Molemmat läpäisivät normaalilla asetuksella,
+on toteutettu passiivisiirtymän molemmille source-null-varianteille ja
+onnistuneelle kopioaktivoinnin rollbackille. Aiemmin hyväksytyt
+source-null-avaus ja rollback läpäisivät normaalilla asetuksella,
 tyyppitarkistus läpäisi ja rajatussa riippumattomassa katselmuksessa ei
 löytynyt puutetta. Testirungot ja tarkistukset säilyvät, samoin muiden
 varianttien, sovelluksen ja CI:n aikarajat.

@@ -1073,7 +1073,7 @@ describe('selector installation-state startup wiring', () => {
           expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
         } finally { await lifecycle?.shutdown(); }
       });
-    }, passiveTransition && sourceNull ? restoreStartupCompositionTimeoutMs : undefined);
+    }, passiveTransition ? restoreStartupCompositionTimeoutMs : undefined);
   }
 
   it.for(['missingRoot', 'invalidHistory', 'runtimeInitialization', 'health', 'healthPrepared', 'secretDrain', 'cancelLostReply'] as const)(
