@@ -5,6 +5,45 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n valitsimen native-UI-osatodennus 26.10.2026
+
+Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Yritysavauksen
+uudempi näyttö ja puuttuvat integraatiotodisteet ovat M1:n alussa.
+
+**Uusin osatodiste:** backendittoman valitsimen kolme oikeaa Electron-
+käyttäjäpolkua läpäisivät: tyhjä lista, avaamaton ready-yritys ja pelkät
+recovery-kohteet. IPC-nimenmuutos ja null-valinta säilyivät restartissa;
+business-reitit estyivät ilman backendin tai mainin yrityssession luontia.
+Samassa ajossa vanhan business-tilan siltaeristyskontrolli läpäisi.
+Testiaineistossa ei ole yritystietokantaa: tämä ei todista yritysavausta,
+historiallista migraatiota, release-hyväksyntää tai paketoitua palautusta.
+
+Nykyinen Electron-fixture säilyttää prosessien omistajuuden ja siivouksen.
+Testikäynnistin välittää mainin täsmällisen valtuuden resolverille;
+uutta testialustaa tai terveystodisteen korviketta ei lisätty.
+Resolverin 10 kohdetestiä ja fixturen 53 kohdekontrollia läpäisivät,
+samoin E2E-tyyppitarkistus ja puhdas Electron-valmistelu.
+Rajatussa katselmuksessa löydetty testivalmistelun polkupoikkeama
+korjattiin tiedostotavut säilyttävällä regressiolla. Jälkikatselmukseen
+ei jäänyt vahvistettua puutetta.
+
+Ensimmäisten ajojen väärä synteettinen tunnistemuoto ja väärä testireitti
+säilyvät erillisinä hylkäyksinä; korjaukset koskivat testiaineistoa ja
+tarkistusta, eivät sovelluksen hyväksyntäehtoja. Aiempi
+[business-avauskytkennän näyttö](release-0.3.0-integration-history.md#w72n-business-avauskytkennän-osatodennus-26102026)
+ja avoimet viivehavainnot säilyvät historiassa. Päällekkäisiä ajoja ei
+lasketa yhdeksi hyväksyntämääräksi.
+
+**Seuraava työ:** todenna yritysavaus oikeassa SQLite/Electron- ja
+paketoidussa palautusketjussa. Erota normaali hyväksytty
+avaus, kopioaktivoinnin uudelleenkäynnistys ja mahdollinen aiempi
+Direct Setup -palautus; palautusomistajaa ei saa ohittaa. Sen jälkeen
+rajattu katselmus sekä täsmällisen
+PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
+[Toteutussopimus ja puuttuvat liitokset](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
+omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä
+ei toteuteta uudelleen ilman omaa regressiota.
+
 ## W7.2:n business-avauskytkennän osatodennus 26.10.2026
 
 Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Valitsimen

@@ -555,6 +555,17 @@ nykyisen utility-process-poistumistodisteen jälkeen. Uudet
 testikomentoon. Ne todistavat orkestroinnin sopimuksen mockatulla OS-rajalla,
 eivät yksin oikean Electron-prosessin tai paketoidun sovelluksen hyväksyntää.
 
+`workspaceActivationMigrationProof` säilyttää vanhan `selected`-kontrollin
+ja lisää samaan ketjuun `selector`- sekä `selectorDeferred`-lähdöt.
+Valitsinvalinta tehdään oikean sandboxatun preload/IPC:n kautta.
+Vain lähtörekisteri ja hyväksyntämetadata valmistellaan synteettisesti;
+business-hyväksyntä ja SQLite-migraatio käyttävät tuotannon omistajia.
+Rekisteriformaatti tarkistetaan kunkin lähdön mukaan. Ensivirhe säilyy,
+ja epävarma selector-sulku estää tutkimusjuuren poistamisen. Compositionin
+uudelleenkäynnistys samassa Electron-prosessissa ei ole fyysisen restartin
+tai paketin todiste. [Testimatriisi](r0-e2e-test-matrix.md)
+erottaa avaus-, lähtömetadatan ja virhehaaran näytön.
+
 Electronin julkisen sulun jälkeen suoritetaan aina omistajan stop ja
 koko puun poistumisen varmennus, myös sovelluksen jo sulkeuduttua tai
 Playwright-sulun epäonnistuttua. Tämä ei ole pelkkä puuttuvan root-exitin

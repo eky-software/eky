@@ -345,7 +345,7 @@ Object.assign(globalThis, {
     async runWorkspaceFirstStartLoadOrderDiagnostic() {
       return runFirstStartProof('releaseAfterProtocolRemoval');
     },
-    async runWorkspaceActivationMigrationProof() {
+    async runWorkspaceActivationMigrationProof(opening: 'selected' | 'selector' | 'selectorDeferred' = 'selected') {
       if (lifecycle === undefined) {
         throw new Error('WORKSPACE_ACTIVATION_MIGRATION_LIFECYCLE_MISSING');
       }
@@ -357,6 +357,7 @@ Object.assign(globalThis, {
         './workspaceActivationMigrationProof.js'
       );
       return runWorkspaceActivationMigrationProof({
+        opening,
         applicationPath: config.paths.applicationPath,
         appVersion: e2eAppVersion,
         resourcesPath: config.paths.resourcesPath,

@@ -43,35 +43,35 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Uusin osatodiste:** backendittoman valitsimen kolme oikeaa Electron-
-käyttäjäpolkua läpäisivät: tyhjä lista, avaamaton ready-yritys ja pelkät
-recovery-kohteet. IPC-nimenmuutos ja null-valinta säilyivät restartissa;
-business-reitit estyivät ilman backendin tai mainin yrityssession luontia.
-Samassa ajossa vanhan business-tilan siltaeristyskontrolli läpäisi.
-Testiaineistossa ei ole yritystietokantaa: tämä ei todista yritysavausta,
-historiallista migraatiota, release-hyväksyntää tai paketoitua palautusta.
+**Uusin osatodiste:** nykyisen avauskokeen valitsinvariantit läpäisivät
+oikealla SQLitellä, Electronilla ja preload/IPC-ketjulla. Business-hyväksytty
+build sekä valitsimessa hyväksytyn päivityksen lykätty business-avaus
+käyttävät historialliselle kohteelle nykyistä kopioaktivointia. Valitsimen
+alussa ei synny backendia tai yrityssessiota; valinta ei muuta tietokantoja
+eikä hyväksyntämetadataa. Lykätyn avauksen business-hyväksyntä syntyy vasta
+oikeiden tarkistusten jälkeen, ja metadata säilyy seuraavassa käynnistyksessä.
 
-Nykyinen Electron-fixture säilyttää prosessien omistajuuden ja siivouksen.
-Testikäynnistin välittää mainin täsmällisen valtuuden resolverille;
-uutta testialustaa tai terveystodisteen korviketta ei lisätty.
-Resolverin 10 kohdetestiä ja fixturen 53 kohdekontrollia läpäisivät,
-samoin E2E-tyyppitarkistus ja puhdas Electron-valmistelu.
-Rajatussa katselmuksessa löydetty testivalmistelun polkupoikkeama
-korjattiin tiedostotavut säilyttävällä regressiolla. Jälkikatselmukseen
-ei jäänyt vahvistettua puutetta.
+Todisteen käynnistykset ovat compositionin uudelleenkäynnistyksiä samassa
+Electron-prosessissa. Edeltävä asennuspäivitys ja valitsinhyväksyntä ovat
+synteettinen lähtötila. Myöhemmät virhe- ja rollback-kontrollit käyttävät
+ei-null-lähdettä; ne eivät todista source-null-virheen paluuta valitsimeen.
+Fyysinen restart, tämä virhehaara ja puhtaan paketin todennus erotetaan
+edelleen tästä näytöstä.
 
-Ensimmäisten ajojen väärä synteettinen tunnistemuoto ja väärä testireitti
-säilyvät erillisinä hylkäyksinä; korjaukset koskivat testiaineistoa ja
-tarkistusta, eivät sovelluksen hyväksyntäehtoja. Aiempi
-[business-avauskytkennän näyttö](release-0.3.0-integration-history.md#w72n-business-avauskytkennän-osatodennus-26102026)
-ja avoimet viivehavainnot säilyvät historiassa. Päällekkäisiä ajoja ei
-lasketa yhdeksi hyväksyntämääräksi.
+Valitun rekisteriformaatin, ensivirheen ja epävarman siivouksen säilymisen
+regressiot sekä molemmat E2E-tyyppitarkistukset läpäisivät. Rajattu
+katselmus ei korjausten jälkeen löytänyt vahvistettua puutetta.
+Lopullisen testilähteen vanha FirstStart-/Direct Setup -kontrolli,
+ei-null-aktivointi ja business-hyväksytty valitsinavaus läpäisivät.
+Ensimmäiset testivalmistelun ja tyyppitarkistuksen hylkäykset säilyvät
+erillisinä; päällekkäisiä ajoja ei lasketa yhdeksi hyväksyntämääräksi.
+[Aiempi valitsimen UI-näyttö](release-0.3.0-integration-history.md#w72n-valitsimen-native-ui-osatodennus-26102026)
+ja avoimet viivehavainnot säilyvät historiassa.
 
-**Seuraava työ:** todenna yritysavaus oikeassa SQLite/Electron- ja
-paketoidussa palautusketjussa. Erota normaali hyväksytty
-avaus, kopioaktivoinnin uudelleenkäynnistys ja mahdollinen aiempi
-Direct Setup -palautus; palautusomistajaa ei saa ohittaa. Sen jälkeen
-rajattu katselmus sekä täsmällisen
+**Seuraava työ:** viimeistele source-null-virhepaluu sekä fyysisen
+uudelleenkäynnistyksen ja paketoidun palautusketjun näyttö. Säilytä vanhan
+ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
+palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
 [Toteutussopimus ja puuttuvat liitokset](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä

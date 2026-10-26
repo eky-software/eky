@@ -58,7 +58,7 @@ describe('workspace proof initial shutdown evidence', () => {
 
   it.each([
     ['async function runFirstStartProof(', 'const { runWorkspaceFirstStartMigrationProof }'],
-    ['async runWorkspaceActivationMigrationProof()', 'return runWorkspaceActivationMigrationProof('],
+    ['async runWorkspaceActivationMigrationProof(', 'return runWorkspaceActivationMigrationProof('],
   ])('is wired before the backend-absence check in %s', async (entry, proofCall) => {
     const source = await readFile(new URL('./electronE2eEntrypoint.ts', import.meta.url), 'utf8');
     const start = source.indexOf(entry);
