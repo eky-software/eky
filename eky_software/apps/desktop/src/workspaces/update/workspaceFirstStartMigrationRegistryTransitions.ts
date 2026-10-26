@@ -4,7 +4,7 @@ import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
@@ -12,7 +12,7 @@ import { WorkspaceFirstStartMigrationTransitionError } from './workspaceFirstSta
 import { validateWorkspaceFirstStartMigrationSha256 } from './workspaceFirstStartMigrationJournalCodec.js';
 
 export function calculateWorkspaceRegistrySha256(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
 ): string {
   return createHash('sha256')
     .update(serializeWorkspaceRegistry(registry))
@@ -20,10 +20,10 @@ export function calculateWorkspaceRegistrySha256(
 }
 
 export function markPassiveWorkspacesRecoveryRequired(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   expectedActiveWorkspaceId: WorkspaceId,
   passiveRecoveryWorkspaceIds: readonly WorkspaceId[],
-): Readonly<LocalWorkspaceRegistryV1> {
+): Readonly<LocalWorkspaceRegistry> {
   try {
     validateWorkspaceRegistry(registry);
     const activeWorkspaceId = validateWorkspaceId(expectedActiveWorkspaceId);
@@ -51,7 +51,7 @@ export function markPassiveWorkspacesRecoveryRequired(
         : entry,
     );
     return validateWorkspaceRegistry({
-      formatVersion: 1,
+      formatVersion: registry.formatVersion,
       activeWorkspaceId: registry.activeWorkspaceId,
       workspaces,
     });
@@ -64,12 +64,12 @@ export function markPassiveWorkspacesRecoveryRequired(
 }
 
 export function restoreJournaledPassiveWorkspacesReady(input: {
-  readonly registry: Readonly<LocalWorkspaceRegistryV1>;
+  readonly registry: Readonly<LocalWorkspaceRegistry>;
   readonly expectedActiveWorkspaceId: WorkspaceId;
   readonly passiveRecoveryWorkspaceIds: readonly WorkspaceId[];
   readonly sourceRegistrySha256: string;
   readonly transitionedRegistrySha256: string;
-}): Readonly<LocalWorkspaceRegistryV1> {
+}): Readonly<LocalWorkspaceRegistry> {
   try {
     validateWorkspaceRegistry(input.registry);
     const activeWorkspaceId = validateWorkspaceId(
@@ -107,7 +107,7 @@ export function restoreJournaledPassiveWorkspacesReady(input: {
         : entry,
     );
     const restored = validateWorkspaceRegistry({
-      formatVersion: 1,
+      formatVersion: input.registry.formatVersion,
       activeWorkspaceId: input.registry.activeWorkspaceId,
       workspaces,
     });

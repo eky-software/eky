@@ -508,6 +508,132 @@ describe('workspace management capability', () => {
       expect(fixture.removeHandler).toHaveBeenCalledWith(channel);
     }
   });
+
+  it.each(['file', 'password'] as const)('blocks a late import %s result after disposal', async stage => {
+    const result = createDeferred<string | null>();
+    const entered = createDeferred<void>();
+    const fixture = createFixture();
+    const read = stage === 'file' ? fixture.selectBackupSource : fixture.requestPassword;
+    read.mockImplementationOnce(() => { entered.resolve(); return result.promise; });
+    const operation = fixture.invoke(importWorkspaceBackupAsNewIpcChannel,
+      fixture.trustedEvent, { workspaceLabel: 'Synthetic' });
+    const rejected = expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    await entered.promise;
+    const closing = fixture.capability.shutdown();
+    expect(fixture.capability.shutdown()).toBe(closing);
+    let closed = false;
+    void closing.then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    result.resolve('synthetic-private-value');
+    await rejected;
+    await closing;
+    expect(fixture.importBackupAsNew).not.toHaveBeenCalled();
+    if (stage === 'file') expect(fixture.requestPassword).not.toHaveBeenCalled();
+    expect(fixture.showSafeError).not.toHaveBeenCalled();
+  });
+
+  it.each(['status', 'file', 'password', 'confirmation'] as const)(
+    'blocks a late replacement %s result before the next native step', async stage => {
+      const entered = createDeferred<void>();
+      const finish = createDeferred<void>();
+      const fixture = createFixture();
+      const pause = async <T,>(value: T): Promise<T> => {
+        entered.resolve(); await finish.promise; return value;
+      };
+      if (stage === 'status') fixture.getStatus.mockImplementationOnce(() => pause(status));
+      if (stage === 'file') fixture.selectReplacementBackupSource.mockImplementationOnce(() => pause('synthetic-private-path'));
+      if (stage === 'password') fixture.requestPassword.mockImplementationOnce(() => pause('synthetic-private-password'));
+      if (stage === 'confirmation') fixture.confirmActiveWorkspaceReplacement.mockImplementationOnce(() => pause(true));
+      const operation = fixture.invoke(replaceActiveWorkspaceFromBackupIpcChannel, fixture.trustedEvent);
+      const rejected = expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+      await entered.promise;
+      const closing = fixture.capability.shutdown();
+      finish.resolve();
+      await rejected;
+      await closing;
+      expect(fixture.replaceActiveFromBackup).not.toHaveBeenCalled();
+      if (stage === 'status') expect(fixture.selectReplacementBackupSource).not.toHaveBeenCalled();
+      if (stage === 'file') expect(fixture.requestPassword).not.toHaveBeenCalled();
+      if (stage === 'password') expect(fixture.confirmActiveWorkspaceReplacement).not.toHaveBeenCalled();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['status', 'switch'] as const)('does not use a late %s read after shutdown', async kind => {
+    const read = createDeferred<unknown>();
+    const fixture = createFixture({ getStatus: () => read.promise });
+    const operation = kind === 'status'
+      ? fixture.invoke(getWorkspaceManagementStatusIpcChannel, fixture.trustedEvent)
+      : fixture.invoke(switchWorkspaceIpcChannel, fixture.trustedEvent, { workspaceId: otherWorkspaceId });
+    const rejected = expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    const closing = fixture.capability.shutdown();
+    read.resolve(status);
+    await rejected;
+    await closing;
+    expect(fixture.switchTo).not.toHaveBeenCalled();
+    expect(fixture.showSafeError).not.toHaveBeenCalled();
+  });
+
+  it('revalidates the originating main frame after a native dialog', async () => {
+    const selected = createDeferred<string | null>();
+    const fixture = createFixture({ selectBackupSource: () => selected.promise });
+    const operation = fixture.invoke(importWorkspaceBackupAsNewIpcChannel,
+      fixture.trustedEvent, { workspaceLabel: 'Synthetic' });
+    const rejected = expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    fixture.webContents.mainFrame = {};
+    selected.resolve('synthetic-private-path');
+    await rejected;
+    expect(fixture.requestPassword).not.toHaveBeenCalled();
+    expect(fixture.importBackupAsNew).not.toHaveBeenCalled();
+    await fixture.capability.shutdown();
+  });
+
+  it.each(['success', 'failure'] as const)('settles an already started mutation with its %s during shutdown', async outcome => {
+    const work = createDeferred<unknown>();
+    const fixture = createFixture({ createEmpty: () => work.promise });
+    const cached = fixture.getHandler(createEmptyWorkspaceIpcChannel);
+    const operation = fixture.invoke(createEmptyWorkspaceIpcChannel,
+      fixture.trustedEvent, { workspaceLabel: 'Synthetic' });
+    const assertion = outcome === 'success'
+      ? expect(operation).resolves.toEqual({ formatVersion: 1, status: 'relaunching' })
+      : expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CREATE_FAILED');
+    const closing = fixture.capability.shutdown();
+    let closed = false;
+    void closing.then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    await expect(cached(fixture.trustedEvent, { workspaceLabel: 'Later' }))
+      .rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    if (outcome === 'success') work.resolve(undefined);
+    else work.reject(new WorkspaceManagementError('WORKSPACE_MANAGEMENT_CREATE_FAILED', 'create'));
+    await assertion;
+    await closing;
+    expect(fixture.createEmpty).toHaveBeenCalledOnce();
+    expect(fixture.showSafeError).not.toHaveBeenCalled();
+  });
+
+  it('tracks a native callback before reentrant shutdown', async () => {
+    const result = createDeferred<string | null>();
+    const fixture = createFixture();
+    let closing: Promise<void> | undefined;
+    fixture.selectBackupSource.mockImplementationOnce(() => {
+      closing = fixture.capability.shutdown();
+      return result.promise;
+    });
+    const operation = fixture.invoke(importWorkspaceBackupAsNewIpcChannel,
+      fixture.trustedEvent, { workspaceLabel: 'Synthetic' });
+    const rejected = expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    expect(closing).toBeDefined();
+    let closed = false;
+    void closing!.then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    result.resolve(null);
+    await rejected;
+    await closing;
+    expect(fixture.requestPassword).not.toHaveBeenCalled();
+  });
 });
 
 function createFixture(

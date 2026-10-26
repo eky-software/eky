@@ -6,6 +6,7 @@ import { CustomerPage } from '../features/customers/CustomerPage.js';
 import { InvoicingPage } from '../features/invoicing/InvoicingPage.js';
 import { ActivityPage } from '../features/activity/ActivityPage.js';
 import { DiagnosticsPage } from '../features/diagnostics/DiagnosticsPage.js';
+import { WorkspaceSelectorPage } from '../features/workspaces/WorkspaceSelectorPage.js';
 import { uiText } from '../i18n/fi.js';
 import { AppLayout } from '../layout/AppLayout.js';
 import {
@@ -13,6 +14,7 @@ import {
   initialAppNavigationState,
 } from './appNavigation.js';
 import { DesktopOperationalLogNotice } from './DesktopOperationalLogNotice.js';
+import type { WebAppComposition } from './createWebAppComposition.js';
 import {
   getDesktopInvoicePdfPreview,
   getDesktopInvoicePdfArchive,
@@ -27,7 +29,21 @@ interface AppProps {
   apiClient: EkyApiClient;
 }
 
-export function App({ apiClient }: AppProps): React.JSX.Element {
+export function App(composition: WebAppComposition): React.JSX.Element {
+  if (composition.mode === 'workspaceSelector') {
+    return (
+      <>
+        <DesktopOperationalLogNotice />
+        <WorkspaceSelectorPage
+          capability={composition.workspaceManagementCapability}
+        />
+      </>
+    );
+  }
+  return <BusinessApp apiClient={composition.apiClient} />;
+}
+
+function BusinessApp({ apiClient }: AppProps): React.JSX.Element {
   const [navigation, activateView] = useReducer(
     activateAppView,
     initialAppNavigationState,

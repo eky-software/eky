@@ -626,6 +626,17 @@ pelkkää busy-tilaa. Tuore single-instance-omistajuus tarkistetaan odotusten
 jälkeen ja ennen työluvan lähetystä. Epävarma takaisinotto estää myös
 create/import-virhesiivouksen korjaavan luvun ja poiston.
 
+Mainin `assertInstallationCurrent` on toistettava elinkaaritarkistus myös
+varauksen ollessa hallitusti lapsella. Se tarkistaa omistajan pysyvän
+mitätöitymisen ja sulkutilan, mutta ei todista fyysistä main-varausta,
+lapsen poistumista tai palautuksen valmistumista. Se ei kuluta lapsen
+kertakäyttöistä työlupaa. Startup yhdistää tähän oman sukupolvensa
+voimassaolon. Yritysvalinnan alkuperäinen valtuus tarkistetaan uudelleen
+ennen session luontia, turvalliseksi todetun palautuksen relaunchia ja
+asynkronisesti validoidun valitsintuloksen käyttöä. Myös backendin
+valmistelun jälkeen valtuus tarkistetaan ennen runtime-resurssien avausta.
+Vanha myöhäinen tulos ei anna uuden käynnistyksen valtuutta.
+
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:
 readonly admission, nykyinen build-portti, tuore varaus sekä sama huoltolease

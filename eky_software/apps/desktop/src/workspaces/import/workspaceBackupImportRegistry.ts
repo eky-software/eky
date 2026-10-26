@@ -1,6 +1,6 @@
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
   WorkspaceLineageIdentityV1,
 } from '../registry/workspaceRegistryTypes.js';
@@ -18,13 +18,13 @@ import {
 import { WorkspaceBackupImportError } from './workspaceBackupImportError.js';
 
 export function readWorkspaceBackupImportRegistry(
-  value: Readonly<LocalWorkspaceRegistryV1> | undefined,
-): Readonly<LocalWorkspaceRegistryV1> {
+  value: Readonly<LocalWorkspaceRegistry> | undefined,
+): Readonly<LocalWorkspaceRegistry> {
   return readWorkspaceRegistry(value);
 }
 
 export function assertImportLineageAvailable(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   lineageIdentity: Readonly<WorkspaceLineageIdentityV1>,
 ): void {
   try {
@@ -38,7 +38,7 @@ export function assertImportLineageAvailable(
 }
 
 export function assertImportWorkspaceIdAvailable(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   workspaceId: WorkspaceId,
 ): void {
   try {
@@ -61,7 +61,7 @@ export function assertImportWorkspaceIdAvailable(
 }
 
 export function assertImportRegistryStillAtPreviousActive(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   previousActiveWorkspaceId: WorkspaceId | null,
 ): void {
   try {
@@ -75,9 +75,9 @@ export function assertImportRegistryStillAtPreviousActive(
 }
 
 export function publishImportedWorkspaceEntry(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   entry: Readonly<LocalWorkspaceRegistryEntryV1>,
-): Readonly<LocalWorkspaceRegistryV1> {
+): Readonly<LocalWorkspaceRegistry> {
   try {
     return appendReadyWorkspaceEntry(registry, entry);
   } catch (error) {
@@ -106,7 +106,7 @@ export function publishImportedWorkspaceEntry(
 }
 
 export function assertImportWorkspaceLabelAvailable(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   workspaceLabel: string,
   stage: 'registryRead' | 'registryPublish',
 ): void {
@@ -130,7 +130,7 @@ export function createImportedWorkspaceEntry(input: {
 }
 
 export function findImportedWorkspaceEntry(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   workspaceId: WorkspaceId,
 ): Readonly<LocalWorkspaceRegistryEntryV1> | undefined {
   return findWorkspaceEntry(registry, workspaceId);

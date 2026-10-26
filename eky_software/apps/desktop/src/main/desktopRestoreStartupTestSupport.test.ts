@@ -45,21 +45,21 @@ describe('restore startup test evidence ownership', () => {
     expect(console.error).not.toHaveBeenCalled();
   });
 
-  it('preserves the primary failure and last completed phase even after a later pass notification', async context => {
+  it.for(['startup', 'startupRollback'] as const)('preserves the primary %s failure and last completed phase even after a later pass notification', async (phase, context) => {
     const completion = captureCompletion(context);
     const lifetime = createRestoreStartupTestLifetime(completion.context, vi.fn());
     const original = new Error('synthetic original failure');
     const root = await createRoot();
     await expect(lifetime.run(async () => {
       await lifetime.step('fixturePreparation', async () => { lifetime.roots.push(root); });
-      await lifetime.step('startupRollback', async () => { throw original; });
+      await lifetime.step(phase, async () => { throw original; });
     })).rejects.toBe(original);
     lifetime.releaseWhenSettled();
     await completion.finish('fail');
     await completion.finish('pass');
     await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
     expect(JSON.parse(vi.mocked(console.error).mock.calls[0]![0] as string)).toEqual({
-      diagnostic: 'desktopRestoreStartupTest', phase: 'startupRollback', lastCompletedPhase: 'fixturePreparation',
+      diagnostic: 'desktopRestoreStartupTest', phase, lastCompletedPhase: 'fixturePreparation',
       bodySettled: true, resourceCleanup: 'completed', rootsRetained: true,
       resourceCleanupFailureCode: null, resourceCleanupFailureStages: [],
     });
@@ -152,6 +152,47 @@ describe('restore startup test evidence ownership', () => {
       });
     } finally {
       gate.resolve();
+      await outcome;
+    }
+  });
+
+  it('retains a late startup handle until its owned shutdown settles after cancellation', async context => {
+    const completion = captureCompletion(context);
+    const release = vi.fn();
+    const lifetime = createRestoreStartupTestLifetime(completion.context, release);
+    const startup = createGate();
+    const closing = createGate();
+    const closeEntered = createGate();
+    const shutdown = vi.fn(async () => { closeEntered.resolve(); await closing.promise; });
+    const root = await createRoot();
+    let handle: { shutdown(): Promise<void> } | undefined;
+    const pending = lifetime.run(async () => {
+      lifetime.roots.push(root);
+      try {
+        await lifetime.step('startup', async () => {
+          await startup.promise;
+          handle = { shutdown };
+        });
+      } finally { await handle?.shutdown(); }
+    });
+    const outcome = pending.then(() => undefined, (error: unknown) => error);
+    try {
+      completion.abort();
+      lifetime.releaseWhenSettled();
+      await completion.finish('fail');
+      startup.resolve();
+      await closeEntered.promise;
+      expect(shutdown).toHaveBeenCalledTimes(1);
+      expect(release).not.toHaveBeenCalled();
+      expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
+      closing.resolve();
+      expect(await outcome).toBe(completion.context.signal.reason);
+      lifetime.assertSharedStateReleased();
+      expect(release).toHaveBeenCalledTimes(1);
+      await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
+    } finally {
+      startup.resolve();
+      closing.resolve();
       await outcome;
     }
   });

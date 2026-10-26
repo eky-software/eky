@@ -69,13 +69,16 @@ export interface WorkspaceManagementServiceOptions {
   readonly operationGuard: WorkspaceManagementOperationGuard;
   readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
   readonly renameWorkspace: WorkspaceLabelRenameCommand;
-  readonly replaceActive: WorkspaceBackupReplacementCommand;
+  readonly replaceActive?: WorkspaceBackupReplacementCommand;
   readonly runtimeRelaunchCompletion?: WorkspaceRuntimeRelaunchCompletion;
   readonly switchWorkspace: WorkspaceSwitchCommand;
 }
 
 export class WorkspaceManagementService {
   private activeOperation = false;
+  private admissionClosed = false;
+  private readonly pendingWork = new Set<Promise<void>>();
+  private shutdownTask: Promise<void> | undefined;
   private readonly now: () => number;
 
   constructor(
@@ -84,12 +87,41 @@ export class WorkspaceManagementService {
     this.now = options.now ?? Date.now;
   }
 
-  async getStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
+  getStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
+    return this.trackWork('status', () => this.readStatus());
+  }
+
+  closeAdmission(): void {
+    this.admissionClosed = true;
+  }
+
+  shutdown(): Promise<void> {
+    this.closeAdmission();
+    // Settlement is not successful mutation, native exit or cleanup authority.
+    this.shutdownTask ??= Promise.all([...this.pendingWork]).then(() => undefined);
+    return this.shutdownTask;
+  }
+
+  private async readStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
     try {
-      const [registry, recoveryState] = await Promise.all([
-        this.options.registry.read(),
-        this.options.operationGuard.readRecoveryState(),
+      let firstFailure: { cause: unknown } | undefined;
+      const read = <T>(operation: () => Promise<T>) => Promise.resolve().then(() => {
+        this.assertAdmissionOpen('status');
+        return operation();
+      }).catch((cause: unknown) => {
+        firstFailure ??= { cause };
+        throw cause;
+      });
+      const [registryResult, recoveryResult] = await Promise.allSettled([
+        read(() => this.options.registry.read()),
+        read(() => this.options.operationGuard.readRecoveryState()),
       ]);
+      if (firstFailure !== undefined) throw firstFailure.cause;
+      if (registryResult.status === 'rejected') throw registryResult.reason;
+      if (recoveryResult.status === 'rejected') throw recoveryResult.reason;
+      this.assertAdmissionOpen('status');
+      const registry = registryResult.value;
+      const recoveryState = recoveryResult.value;
       if (registry === undefined) {
         throw new WorkspaceManagementError(
           'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
@@ -117,7 +149,12 @@ export class WorkspaceManagementService {
   }
 
   replaceActiveFromBackup(input: Readonly<WorkspaceBackupReplacementInput>) {
-    return this.run('replace', () => this.options.replaceActive.replace(input));
+    return this.run('replace', () => {
+      if (this.options.replaceActive === undefined) {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'replace');
+      }
+      return this.options.replaceActive.replace(input);
+    });
   }
 
   switchTo(workspaceIdInput: unknown): Promise<void> {
@@ -144,7 +181,14 @@ export class WorkspaceManagementService {
     );
   }
 
-  private async run<T>(
+  private run<T>(
+    operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    return this.trackWork(operationKind, () => this.runAdmitted(operationKind, operation));
+  }
+
+  private async runAdmitted<T>(
     operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
     operation: () => Promise<T>,
   ): Promise<T> {
@@ -171,6 +215,7 @@ export class WorkspaceManagementService {
     let operationStarted = false;
     try {
       await this.options.operationGuard.assertNoUnresolvedOperations();
+      this.assertAdmissionOpen(operationKind);
       operationStarted = true;
       const result = await operation();
       this.record({
@@ -213,6 +258,29 @@ export class WorkspaceManagementService {
     } finally {
       this.activeOperation = false;
       this.options.runtimeRelaunchCompletion?.complete();
+    }
+  }
+
+  private async trackWork<T>(
+    operationKind: WorkspaceManagementOperationKind,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    this.assertAdmissionOpen(operationKind);
+    let settle!: () => void;
+    const completion = new Promise<void>(resolve => { settle = resolve; });
+    // Publish before invoking collaborators which can re-enter shutdown.
+    this.pendingWork.add(completion);
+    try {
+      return await operation();
+    } finally {
+      this.pendingWork.delete(completion);
+      settle();
+    }
+  }
+
+  private assertAdmissionOpen(operationKind: WorkspaceManagementOperationKind): void {
+    if (this.admissionClosed) {
+      throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', operationKind);
     }
   }
 

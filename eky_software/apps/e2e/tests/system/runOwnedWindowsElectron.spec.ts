@@ -5,6 +5,7 @@ import { runOwnedWindowsElectron, DirectElectronRunFailure } from '../../src/env
 import { OwnedWindowsElectronStartupFailure } from '../../src/environment/startOwnedWindowsElectron.js';
 import type { ObservedWindowsService } from '../../src/environment/startOwnedWindowsService.js';
 import type { E2eProcessStartupState } from '../../src/environment/e2eProcessStartupObservation.js';
+import type { ProcessOutput } from '../../src/environment/boundedProcessOutput.js';
 
 function fixture() {
   let now = 0; let stops = 0; let unsubscribed = false; let cancelled = false;
@@ -29,6 +30,39 @@ function fixture() {
 }
 
 test.describe('Direct Windows Electron result and cleanup boundary', () => {
+  test('retains the same bounded output reader across root failure and cleanup', async () => {
+    const f = fixture();
+    let output: ProcessOutput | undefined;
+    let closed = false;
+    f.owned.workload.readExitCode = () => 2;
+    f.owned.readStderr = () => closed ? 'synthetic original failure after cleanup' : 'early';
+    f.owned.stop = async () => { closed = true; };
+    await expect(runOwnedWindowsElectron({ ...f.input, captureOutput: value => { output = value; } }, f.dependencies))
+      .rejects.toMatchObject({ failure: 'unexpectedExitCode', processTree: 'stopped' });
+    expect(output?.readStderr()).toBe('synthetic original failure after cleanup');
+  });
+  test('retains startup output even if no workload handle is returned', async () => {
+    const f = fixture();
+    let output: ProcessOutput | undefined;
+    f.dependencies.start = async () => { throw new OwnedWindowsElectronStartupFailure({
+      spawnObserved: true, exitedBeforeCleanup: true, processTree: 'stopped', startupFailure: 'workloadExited',
+    }, { readStdout: () => '', readStderr: () => 'synthetic startup failure' }); };
+    await expect(runOwnedWindowsElectron({ ...f.input, captureOutput: value => { output = value; } }, f.dependencies))
+      .rejects.toMatchObject({ failure: 'startupFailed', processTree: 'stopped' });
+    expect(output?.readStderr()).toBe('synthetic startup failure');
+  });
+  test('evidence callback failure cannot skip native cleanup or replace startup failure', async () => {
+    const f = fixture();
+    const captureOutput = () => { throw new Error('synthetic capture failure'); };
+    await expect(runOwnedWindowsElectron({ ...f.input, captureOutput }, f.dependencies))
+      .rejects.toMatchObject({ failure: 'startupFailed', processTree: 'stopped' });
+    expect(f.read().stops).toBe(1);
+    f.dependencies.start = async () => { throw new OwnedWindowsElectronStartupFailure({
+      spawnObserved: false, exitedBeforeCleanup: false, processTree: 'unverified', startupFailure: 'launchFailed',
+    }, { readStdout: () => '', readStderr: () => 'synthetic first failure' }); };
+    await expect(runOwnedWindowsElectron({ ...f.input, captureOutput }, f.dependencies))
+      .rejects.toMatchObject({ failure: 'startupFailed', processTree: 'unverified', ownerFailure: 'launchFailed' });
+  });
   for (const code of [0, 1]) {
     test(`preserves early actual exit ${code} without confusing it with cleanup`, async () => {
       const f = fixture(); f.owned.workload.readExitCode = () => code; f.input.expectedExitCode = code as 0 | 1;

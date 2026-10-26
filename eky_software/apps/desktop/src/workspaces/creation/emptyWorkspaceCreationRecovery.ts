@@ -10,7 +10,7 @@ import {
 } from '../runtime/assertColdWorkspaceRecoveryContinuation.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
-import { appendRecoveredWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
+import { appendRecoveredWorkspaceEntry, workspaceSelectionAfterPublication } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import {
@@ -88,6 +88,9 @@ export class EmptyWorkspaceCreationRecovery {
         journal.workspaceId,
       );
       const registrySnapshot = await this.readRegistry();
+      if (this.options.completionMode === 'beforeRuntimeStart' && registrySnapshot === undefined) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
       const registryValue = readCreationRegistry(registrySnapshot);
       const registry = this.options.completionMode === 'beforeRuntimeStart'
         ? validateWorkspaceRegistry(registryValue)
@@ -215,7 +218,7 @@ export class EmptyWorkspaceCreationRecovery {
       entry.lifecycleState !== 'ready' ||
       entry.lineageIdentity.profileId !== journal.lineageIdentity.profileId ||
       registry.activeWorkspaceId !==
-        (journal.previousActiveWorkspaceId ?? journal.workspaceId)
+        workspaceSelectionAfterPublication(registry.formatVersion, journal.previousActiveWorkspaceId, journal.workspaceId)
     ) {
       return recoveryRequired();
     }
@@ -343,7 +346,9 @@ export class EmptyWorkspaceCreationRecovery {
   ): Promise<void> {
     if (this.options.completionMode === 'beforeRuntimeStart') {
       await this.assertColdContinuation(
-        journal.previousActiveWorkspaceId ?? (published ? journal.workspaceId : null),
+        published
+          ? workspaceSelectionAfterPublication(expectedRegistry.formatVersion, journal.previousActiveWorkspaceId, journal.workspaceId)
+          : journal.previousActiveWorkspaceId,
         expectedRegistry,
       );
       return;

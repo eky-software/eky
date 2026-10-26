@@ -2,6 +2,7 @@ import { join } from 'node:path';
 
 import { createDesktopProfilePaths } from '../src/runtime/desktopProfilePaths.js';
 import { acquireDesktopWorkspaceReservation } from '../src/main/desktopComposition.js';
+import { readAcceptedBusinessBuild } from '../src/update/acceptedBuildMetadata.js';
 import { AcceptedBuildMetadataStore } from '../src/update/acceptedBuildMetadataStore.js';
 import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimePaths.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
@@ -250,9 +251,12 @@ async function requireAcceptedTargetBuild(
     legacyRuntimeRoot: profile.runtimeRoot,
     userDataPath: userDataRoot,
   });
-  const accepted = await new AcceptedBuildMetadataStore(
+  const metadata = await new AcceptedBuildMetadataStore(
     paths.acceptedBuildMetadataPath,
   ).read();
+  const accepted = metadata === undefined
+    ? undefined
+    : readAcceptedBusinessBuild(metadata);
   if (
     accepted?.appVersion !== '0.2.8' ||
     accepted.buildRevision !== buildRevision ||

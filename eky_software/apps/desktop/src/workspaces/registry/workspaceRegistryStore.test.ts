@@ -24,13 +24,90 @@ const roots: string[] = [];
 const firstWorkspaceId = '11111111-1111-4111-8111-111111111111';
 const secondWorkspaceId = '22222222-2222-4222-8222-222222222222';
 
-afterEach(async () => {
+afterEach(async (context) => {
+  const completedRoots = roots.splice(0);
+  if (context.task.result?.state !== 'pass') return;
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+    completedRoots.map((root) => rm(root, { force: true, recursive: true })),
   );
 });
 
 describe('workspace registry store', () => {
+  it('inspects all slot bytes without selecting or repairing them', async () => {
+    const fixture = await createFixture();
+    const current = createRegistry('Current');
+    const next = { ...createRegistry('Next'), formatVersion: 2, activeWorkspaceId: null };
+    const backup = createRegistry('Backup');
+    await writeSlot(fixture.currentPath, current);
+    await writeSlot(fixture.nextPath, next);
+    await writeSlot(fixture.backupPath, backup);
+    const paths = [fixture.currentPath, fixture.nextPath, fixture.backupPath];
+    const before = await Promise.all(paths.map(path => readFile(path)));
+
+    const slots = await fixture.store.inspectSlots();
+
+    expect([slots.current?.value, slots.next?.value, slots.backup?.value]).toEqual([current, next, backup]);
+    expect([slots.current, slots.next, slots.backup].map(slot => Buffer.from(slot!.bytes))).toEqual(before);
+    expect(await Promise.all(paths.map(path => readFile(path)))).toEqual(before);
+  });
+
+  it.each(['next', 'backup'] as const)('validates %s even when current is valid without weakening the byte parser', async slot => {
+    const fixture = await createFixture();
+    await writeSlot(fixture.currentPath, createRegistry('Current'));
+    const path = slot === 'next' ? fixture.nextPath : fixture.backupPath;
+    const current = await readFile(fixture.currentPath);
+    for (const invalid of [Buffer.from([0xff]), Buffer.from('{"formatVersion":1,"formatVersion":1}'), Buffer.from('{}')]) {
+      await writeFile(path, invalid);
+      await expect(fixture.store.inspectSlots()).rejects.toThrow(WORKSPACE_REGISTRY_INVALID);
+      expect(await readFile(fixture.currentPath)).toEqual(current);
+      expect(await readFile(path)).toEqual(invalid);
+    }
+  });
+
+  it('reports absent slots without creating a registry directory', async () => {
+    const fixture = await createFixture();
+    await expect(fixture.store.inspectSlots()).resolves.toEqual({ current: undefined, next: undefined, backup: undefined });
+    expect(await pathExists(fixture.installationRoot)).toBe(false);
+  });
+
+  it.each(['current', 'backup', 'next'] as const)(
+    'keeps the v2 null selection when inspecting and recovering %s', async (slot) => {
+      const fixture = await createFixture();
+      const value = { ...createRegistry('Synthetic company'), formatVersion: 2, activeWorkspaceId: null };
+      const selectedPath = slot === 'current' ? fixture.currentPath
+        : slot === 'backup' ? fixture.backupPath : fixture.nextPath;
+      await writeSlot(selectedPath, value);
+      const before = await readFile(selectedPath);
+      await expect(fixture.store.inspect()).resolves.toEqual(value);
+      expect(await readFile(selectedPath)).toEqual(before);
+      await expect(fixture.store.read()).resolves.toEqual(value);
+      expect(await readFile(fixture.currentPath)).toEqual(before);
+      expect(await pathExists(fixture.nextPath)).toBe(false);
+      expect(await pathExists(fixture.backupPath)).toBe(false);
+    },
+  );
+
+  it('preserves v2 across replacement and refuses a v1 downgrade', async () => {
+    const fixture = await createFixture();
+    const value = { ...createRegistry('Synthetic company'), formatVersion: 2, activeWorkspaceId: null };
+    await fixture.store.write(value);
+    const replacement = { ...value, workspaces: [{ ...value.workspaces[0], workspaceLabel: 'Renamed' }] };
+    await fixture.store.write(replacement);
+    await expect(fixture.store.read()).resolves.toEqual(replacement);
+    const before = await readFile(fixture.currentPath);
+    await expect(fixture.store.write(createRegistry('Downgrade'))).rejects.toThrow(WORKSPACE_REGISTRY_INVALID);
+    expect(await readFile(fixture.currentPath)).toEqual(before);
+    expect(await pathExists(fixture.nextPath)).toBe(false);
+    expect(await pathExists(fixture.backupPath)).toBe(false);
+  });
+
+  it('does not invent an empty registry when all slots are absent', async () => {
+    const fixture = await createFixture();
+    await expect(fixture.store.inspect()).resolves.toBeUndefined();
+    await expect(fixture.store.read()).resolves.toBeUndefined();
+    expect(await pathExists(fixture.currentPath)).toBe(false);
+  });
+
   it.each(['current', 'backup', 'next'] as const)(
     'inspects authoritative %s without promoting or deleting any slot',
     async (selected) => {

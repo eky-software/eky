@@ -1,7 +1,7 @@
 import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
@@ -13,7 +13,7 @@ export interface WorkspaceReplacementTarget {
 }
 
 export function validateWorkspaceReplacementTarget(
-  value: Readonly<LocalWorkspaceRegistryV1> | undefined,
+  value: Readonly<LocalWorkspaceRegistry> | undefined,
   targetWorkspaceId: unknown,
 ): Readonly<WorkspaceReplacementTarget> {
   let workspaceId: WorkspaceId;
@@ -71,7 +71,7 @@ export function assertWorkspaceReplacementLineage(
 
 export function assertWorkspaceReplacementRegistryUnchanged(
   expectedSnapshot: Uint8Array,
-  current: Readonly<LocalWorkspaceRegistryV1> | undefined,
+  current: Readonly<LocalWorkspaceRegistry> | undefined,
 ): void {
   try {
     if (current === undefined) throw new Error('missing');

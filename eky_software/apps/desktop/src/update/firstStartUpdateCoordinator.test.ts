@@ -7,6 +7,10 @@ import {
 } from './firstStartUpdateCoordinator.js';
 import type { UpdateJournal } from './updateJournal.js';
 import {
+  parseVersionedAcceptedBuildMetadata,
+  type VersionedAcceptedBuildMetadata,
+} from './acceptedBuildMetadata.js';
+import {
   createDirectSetupMigrationRecovery,
   transitionDirectSetupMigrationRecovery,
   type DirectSetupMigrationRecovery,
@@ -45,6 +49,44 @@ const currentReleaseInfo = {
 };
 
 describe('first-start update coordinator', () => {
+  it.each(['directSetup', 'coordinated', 'rollback'] as const)(
+    'keeps business-v2 metadata through the existing %s owner',
+    async mode => {
+      const prior = mode === 'rollback' ? acceptedCandidateBuild() : acceptedCurrentBuild();
+      const scoped = parseVersionedAcceptedBuildMetadata({
+        formatVersion: 2,
+        acceptanceScope: 'business',
+        acceptedBuild: prior,
+        businessBaseline: prior,
+      });
+      const fixture = createFixture({
+        acceptedBuild: scoped,
+        ...(mode === 'coordinated' ? { journal: createJournal('awaitingFirstStart') } : {}),
+        ...(mode === 'rollback' ? {
+          journal: createJournal('awaitingRollbackFirstStart'),
+          runningReleaseInfo: currentReleaseInfo,
+          cacheAlreadyRotated: true,
+        } : {}),
+      });
+      await fixture.coordinator.beforeMigrations(createInspection('existing', mode === 'rollback' ? 0 : 1));
+      await fixture.coordinator.acceptAfterBackendReady();
+
+      const expected = mode === 'rollback' ? acceptedCurrentBuild() : acceptedCandidateBuild();
+      expect(fixture.acceptedWrites).toEqual([{
+        formatVersion: 2,
+        acceptanceScope: 'business',
+        acceptedBuild: { ...expected, acceptedAt: expect.any(String) },
+        businessBaseline: { ...expected, acceptedAt: expect.any(String) },
+      }]);
+      const published = parseVersionedAcceptedBuildMetadata(fixture.acceptedWrites[0]);
+      expect(published.formatVersion).toBe(2);
+      expect(fixture.journalStates.at(-1)).toBe(mode === 'rollback' ? 'rolledBack'
+        : mode === 'coordinated' ? 'accepted' : undefined);
+      if (mode === 'directSetup') {
+        expect(fixture.directRecoveryStates).toEqual(['prepared', 'migrationRunning', 'accepted', 'cleared']);
+      }
+    },
+  );
   it.each([false, true])('observes a pre-migration exception before translation without changing failure handling (observer throws: %s)', async (observerThrows) => {
     const original = new Error('synthetic private recovery failure', { cause: new Error('synthetic root') });
     const failureCountsAtObservation: number[] = [];
@@ -668,7 +710,7 @@ describe('first-start update coordinator', () => {
 });
 
 function createFixture(options: {
-  acceptedBuild?: ReturnType<typeof acceptedCandidateBuild>;
+  acceptedBuild?: VersionedAcceptedBuildMetadata;
   activeMigrationChainIdentity?: string;
   cacheAlreadyRotated?: boolean;
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;

@@ -1,8 +1,7 @@
 import { isSemVer } from '../../release/desktopBuildInfo.js';
-import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildAdmission.js';
 import { compareSemanticVersions } from '../../update/semanticVersionComparison.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
-import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import {
   hasExactDataKeys,
@@ -12,6 +11,7 @@ import { WorkspaceFirstStartMigrationPlanError } from './workspaceFirstStartMigr
 import type {
   WorkspaceFirstStartActiveMigrationPlan,
   WorkspaceFirstStartBuildIdentity,
+  WorkspaceFirstStartMigrationAdmission,
   WorkspaceFirstStartMigrationPlan,
   WorkspaceFirstStartMigrationPlanInput,
 } from './workspaceFirstStartMigrationPlanTypes.js';
@@ -21,9 +21,10 @@ import type {
   WorkspaceMigrationInventoryStatus,
 } from './workspaceMigrationInventoryTypes.js';
 
-const updateAdmissions = new Set<PreWorkspaceBuildAdmission>([
+const updateAdmissions = new Set<WorkspaceFirstStartMigrationAdmission>([
   'authorizedNewerBuild',
   'coordinatedUpdateTarget',
+  'deferredBusiness',
 ]);
 const revisionPattern = /^[0-9a-f]{7,40}$/;
 const inputKeys = [
@@ -84,7 +85,7 @@ export function resolveWorkspaceFirstStartMigrationPlan(
 }
 
 function createUpdatePlan(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   inventory: Readonly<WorkspaceMigrationInventory>,
 ): Readonly<WorkspaceFirstStartMigrationPlan> {
   const readyWorkspaceIds = registry.workspaces
@@ -194,7 +195,7 @@ function validateInventoryEntry(
 }
 
 function validateNoMigrationAdmission(
-  admission: PreWorkspaceBuildAdmission,
+  admission: WorkspaceFirstStartMigrationAdmission,
   sourceBuild: Readonly<WorkspaceFirstStartBuildIdentity> | null,
   targetBuild: Readonly<WorkspaceFirstStartBuildIdentity>,
 ): void {
@@ -300,10 +301,11 @@ function isPlannerInput(
   });
 }
 
-function validateAdmission(value: unknown): asserts value is PreWorkspaceBuildAdmission {
+function validateAdmission(value: unknown): asserts value is WorkspaceFirstStartMigrationAdmission {
   if (
     value !== 'authorizedNewerBuild' &&
     value !== 'coordinatedUpdateTarget' &&
+    value !== 'deferredBusiness' &&
     value !== 'development' &&
     value !== 'exactAcceptedBuild' &&
     value !== 'initialInstall'

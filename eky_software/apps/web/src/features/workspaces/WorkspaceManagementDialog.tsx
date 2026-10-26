@@ -19,13 +19,13 @@ import styles from './WorkspaceSelector.module.css';
 interface WorkspaceManagementDialogProps {
   readonly canReplaceActiveWorkspace: boolean;
   readonly state: WorkspaceSelectorState;
-  readonly onClose: () => void;
+  readonly onClose?: () => void;
   readonly onLabelChange: (value: string) => void;
   readonly onModeChange: (
     mode: WorkspaceSelectorMode,
     workspace?: WorkspaceManagementEntry,
   ) => void;
-  readonly onRetry: () => void;
+  readonly onRetry?: () => void;
   readonly onSubmit: () => void;
 }
 
@@ -42,6 +42,8 @@ export function WorkspaceManagementDialog({
   state,
 }: WorkspaceManagementDialogProps): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const Container = onClose === undefined ? 'main' : 'div';
+  const Heading = onClose === undefined ? 'h1' : 'h2';
   const isBusy = isWorkspaceSelectorBusy(state);
   const busyRef = useRef(isBusy);
   busyRef.current = isBusy;
@@ -65,12 +67,15 @@ export function WorkspaceManagementDialog({
     });
 
     function handleKeyDown(event: KeyboardEvent): void {
-      if (shouldCloseWorkspaceDialog(event.key, busyRef.current)) {
+      if (
+        onClose !== undefined &&
+        shouldCloseWorkspaceDialog(event.key, busyRef.current)
+      ) {
         event.preventDefault();
         onClose();
         return;
       }
-      if (event.key !== 'Tab') return;
+      if (onClose === undefined || event.key !== 'Tab') return;
       const focusable = [
         ...dialogElement.querySelectorAll<HTMLElement>(focusableSelector),
       ];
@@ -117,36 +122,39 @@ export function WorkspaceManagementDialog({
   }, [state.mode]);
 
   return (
-    <div
-      className={styles.backdrop}
-      onMouseDown={(event) => {
-        if (event.currentTarget === event.target && !isBusy) onClose();
+    <Container
+      aria-labelledby={onClose === undefined ? 'workspace-selector-title' : undefined}
+      className={onClose === undefined ? styles.selectorPage : styles.backdrop}
+      onMouseDown={(event: React.MouseEvent<HTMLElement>) => {
+        if (event.currentTarget === event.target && !isBusy) onClose?.();
       }}
     >
       <div
         aria-labelledby="workspace-selector-title"
-        aria-modal="true"
-        className={styles.dialog}
+        aria-modal={onClose === undefined ? undefined : true}
+        className={onClose === undefined ? styles.selectorContent : styles.dialog}
         data-workspace-dialog="true"
         ref={dialogRef}
-        role="dialog"
+        role={onClose === undefined ? undefined : 'dialog'}
         tabIndex={-1}
       >
         <header className={styles.dialogHeader}>
           <div>
             <p className={styles.kicker}>{uiText.workspaces.kicker}</p>
-            <h2 id="workspace-selector-title">{uiText.workspaces.heading}</h2>
+            <Heading id="workspace-selector-title">{uiText.workspaces.heading}</Heading>
           </div>
-          <button
-            aria-label={uiText.workspaces.close}
-            className={styles.closeButton}
-            disabled={isBusy}
-            onClick={onClose}
-            title={uiText.workspaces.close}
-            type="button"
-          >
-            <span aria-hidden="true">×</span>
-          </button>
+          {onClose !== undefined ? (
+            <button
+              aria-label={uiText.workspaces.close}
+              className={styles.closeButton}
+              disabled={isBusy}
+              onClick={onClose}
+              title={uiText.workspaces.close}
+              type="button"
+            >
+              <span aria-hidden="true">×</span>
+            </button>
+          ) : null}
         </header>
 
         {state.loadState === 'loading' ? (
@@ -157,9 +165,11 @@ export function WorkspaceManagementDialog({
         {state.loadState === 'error' ? (
           <div className={styles.loadError}>
             <p role="alert">{state.errorMessage}</p>
-            <button className="ghost-button" onClick={onRetry} type="button">
-              {uiText.workspaces.retry}
-            </button>
+            {onRetry !== undefined ? (
+              <button className="ghost-button" onClick={onRetry} type="button">
+                {uiText.workspaces.retry}
+              </button>
+            ) : null}
           </div>
         ) : null}
         {state.loadState === 'ready' && state.mode === 'list' ? (
@@ -184,6 +194,6 @@ export function WorkspaceManagementDialog({
           />
         ) : null}
       </div>
-    </div>
+    </Container>
   );
 }

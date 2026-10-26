@@ -1,4 +1,5 @@
-import type { AcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import type { VersionedAcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import type { ReadOnlyJournalSlotRecord } from '../persistence/readOnlyJournalSlots.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceFirstStartBuildIdentity } from './workspaceFirstStartMigrationPlanTypes.js';
 
@@ -22,13 +23,20 @@ export interface WorkspaceFirstStartMigrationJournalV1 {
 
 export interface WorkspaceFirstStartMigrationJournalPort {
   read(): Promise<Readonly<WorkspaceFirstStartMigrationJournalV1> | undefined>;
+  inspect(): Promise<ReadOnlyJournalSlotRecord<WorkspaceFirstStartMigrationJournalV1> | undefined>;
   write(value: unknown): Promise<void>;
-  discardPrepared(operationId: string): Promise<void>;
+  discardPrepared(operationId: string, selection?: WorkspaceFirstStartPreparedCancellation): Promise<void>;
   removeTransitioned(operationId: string): Promise<void>;
 }
 
+export interface WorkspaceFirstStartPreparedCancellation {
+  readonly selected: ReadOnlyJournalSlotRecord<WorkspaceFirstStartMigrationJournalV1>;
+  assertCurrent(): void;
+  assertExternalSelection(): Promise<void>;
+}
+
 export interface WorkspaceFirstStartAcceptedBuildReader {
-  read(): Promise<Readonly<AcceptedBuildMetadata> | undefined>;
+  read(): Promise<VersionedAcceptedBuildMetadata | undefined>;
 }
 
 export type WorkspaceFirstStartMigrationRecoveryResult = Readonly<

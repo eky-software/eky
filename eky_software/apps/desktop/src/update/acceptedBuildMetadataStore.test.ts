@@ -1,8 +1,9 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
+import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadata, parseAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 import {
   acceptedBuildMetadataFileName,
@@ -18,13 +19,103 @@ const metadata = {
   releaseChannel: 'pilot' as const,
 };
 
-afterEach(async () => {
+afterEach(async context => {
+  const completedRoots = roots.splice(0);
+  if (context.task.result?.state !== 'pass') return;
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+    completedRoots.map((root) => rm(root, { force: true, recursive: true })),
   );
 });
 
 describe('accepted build metadata store', () => {
+  it.skipIf(process.platform === 'win32')('rejects a non-private directory without repairing its permissions or slots', async () => {
+    const filePath = await createPath();
+    await writeSlot(filePath, metadata);
+    await chmod(dirname(filePath), 0o755);
+    const before = await readFile(filePath);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    await expect(store.inspectStartup()).rejects.toThrow('CRASH_SAFE_FILE_SLOT_INVALID');
+    await expect(store.inspectSlots()).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    expect((await lstat(dirname(filePath))).mode & 0o777).toBe(0o755);
+    expect(await readFile(filePath)).toEqual(before);
+    await expect(lstat(`${filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(lstat(`${filePath}.backup`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['', '{'])('observes v1 without consuming its partial next %j', async partial => {
+    const filePath = await createPath();
+    await writeSlot(filePath, metadata);
+    await writeFile(`${filePath}.next`, partial);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    await expect(store.inspectStartup()).resolves.toEqual({ mode: 'legacy' });
+    await expect(readFile(`${filePath}.next`, 'utf8')).resolves.toBe(partial);
+    await expect(store.read()).resolves.toEqual(metadata);
+  });
+
+  it.each(['', '.backup', '.next'])('selects joint admission for a complete scoped slot %s', async suffix => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    if (suffix !== '') await writeSlot(filePath, metadata);
+    await writeSlot(`${filePath}${suffix}`, scoped);
+    const before = await readFile(`${filePath}${suffix}`);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    const result = await store.inspectStartup();
+    expect(result.mode).toBe('scoped');
+    if (result.mode !== 'scoped') throw new Error('TEST_EXPECTED_SCOPED_OBSERVATION');
+    expect(result.slots[suffix === '' ? 'current' : suffix === '.backup' ? 'backup' : 'next']?.value).toEqual(scoped);
+    expect(result.slots[suffix === '' ? 'current' : suffix === '.backup' ? 'backup' : 'next']?.identity).toBeDefined();
+    await expect(readFile(`${filePath}${suffix}`)).resolves.toEqual(before);
+  });
+
+  it.each(['', '{'])('never ignores partial evidence %j beside scoped metadata', async partial => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await writeSlot(filePath, scoped);
+    await writeFile(`${filePath}.next`, partial);
+    await expect(new AcceptedBuildMetadataStore(filePath).inspectStartup()).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    await expect(readFile(`${filePath}.next`, 'utf8')).resolves.toBe(partial);
+  });
+
+  it('does not substitute a valid backup for invalid selected metadata during observation', async () => {
+    const filePath = await createPath();
+    await writeSlot(`${filePath}.backup`, metadata);
+    const before = await readFile(`${filePath}.backup`);
+    await writeFile(filePath, '{');
+    await expect(new AcceptedBuildMetadataStore(filePath).inspectStartup()).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    await expect(readFile(filePath, 'utf8')).resolves.toBe('{');
+    await expect(readFile(`${filePath}.backup`)).resolves.toEqual(before);
+  });
+
+  it('preserves canonical v1 bytes and reads scoped metadata from the same slots', async () => {
+    const filePath = await createPath();
+    const store = new AcceptedBuildMetadataStore(filePath);
+    await store.write(metadata);
+    expect(await readFile(filePath, 'utf8')).toBe(`${JSON.stringify(parseAcceptedBuildMetadata(metadata))}\n`);
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await store.write(scoped);
+    expect(await store.read()).toEqual(scoped);
+    expect(await readFile(filePath, 'utf8')).toBe(`${JSON.stringify(scoped)}\n`);
+  });
+
+  it.each(['', '.backup', '.next'])('rejects a format downgrade with v2 in %s without deleting evidence', async suffix => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    for (const slot of ['', '.backup', '.next']) await writeSlot(`${filePath}${slot}`, slot === suffix ? scoped : metadata);
+    const before = await Promise.all(['', '.backup', '.next'].map(slot => readFile(`${filePath}${slot}`)));
+    await expect(new AcceptedBuildMetadataStore(filePath).write(metadata)).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    expect(await Promise.all(['', '.backup', '.next'].map(slot => readFile(`${filePath}${slot}`)))).toEqual(before);
+  });
+
+  it('recovers the scoped baseline from backup without claiming pending next as accepted', async () => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    const pending = createSelectorAcceptedBuildMetadata(scoped, { ...metadata, appVersion: '0.4.0' });
+    await writeSlot(`${filePath}.backup`, scoped);
+    await writeSlot(`${filePath}.next`, pending);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    expect(await store.read()).toEqual(scoped);
+    expect(await store.read()).toEqual(scoped);
+  });
   it('writes and reads only the bounded installation identity', async () => {
     const filePath = await createPath();
     const store = new AcceptedBuildMetadataStore(filePath);
@@ -83,6 +174,105 @@ describe('accepted build metadata store', () => {
 
     await expect(store.read()).resolves.toBeUndefined();
   });
+
+  it('publishes from the original selected identity and returns the writer identity', async () => {
+    const filePath = await createPath();
+    const store = new AcceptedBuildMetadataStore(filePath);
+    const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await store.write(selector);
+    const selected = (await store.inspectSlots()).current!;
+    const published = createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild);
+    const identity = await store.publishSelected(published, {
+      selected, assertAuthority() {}, async assertExternalSelection() {},
+    });
+    const slots = await store.inspectSlots();
+    expect(slots.current?.identity).toEqual(identity);
+    expect(identity.ino).not.toBe(selected.identity?.ino);
+    expect(slots.current?.value).toEqual(published);
+    expect(slots.next).toBeUndefined();
+    expect(slots.backup).toBeUndefined();
+  });
+
+  it.each(['missingIdentity', 'mismatchedValue', 'downgrade', 'authority'] as const)(
+    'preserves the selected bytes when publication rejects %s', async fault => {
+      const filePath = await createPath();
+      const store = new AcceptedBuildMetadataStore(filePath);
+      const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+      await store.write(selector);
+      const original = (await store.inspectSlots()).current!;
+      const selected = fault === 'missingIdentity' ? { bytes: original.bytes, value: original.value }
+        : fault === 'mismatchedValue' ? { ...original, value: metadata } : original;
+      await expect(store.publishSelected(fault === 'downgrade' ? metadata
+        : createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild), {
+        selected,
+        assertAuthority() { if (fault === 'authority') throw new Error('SYNTHETIC_AUTHORITY_LOST'); },
+        async assertExternalSelection() {},
+      })).rejects.toThrow();
+      const retained = await store.inspectSlots();
+      expect(retained.current).toEqual(original);
+      expect(retained.next).toBeUndefined();
+      expect(retained.backup).toBeUndefined();
+    },
+  );
+
+  it('retains published current and original backup when external authority expires before cleanup', async () => {
+    const filePath = await createPath();
+    const store = new AcceptedBuildMetadataStore(filePath);
+    const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await store.write(selector);
+    const selected = (await store.inspectSlots()).current!;
+    const business = createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild);
+    let expired = false;
+    await expect(store.publishSelected(business, {
+      selected,
+      assertAuthority() { if (expired) throw new Error('SYNTHETIC_AUTHORITY_LOST'); },
+      async assertExternalSelection() {
+        const current = await readFile(filePath).catch(error => {
+          if (error.code === 'ENOENT') return undefined;
+          throw error;
+        });
+        if (current !== undefined && JSON.parse(current.toString()).acceptanceScope === 'business') {
+          expired = true;
+          throw new Error('SYNTHETIC_AUTHORITY_LOST');
+        }
+      },
+    })).rejects.toThrow('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
+    expect(expired).toBe(true);
+    expect(JSON.parse((await readFile(filePath)).toString())).toEqual(business);
+    expect(await readFile(`${filePath}.backup`)).toEqual(Buffer.from(selected.bytes));
+    await expect(readFile(`${filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each(['synchronous', 'external'] as const)(
+    'does not replace the captured %s authority during a publication', async kind => {
+      const filePath = await createPath();
+      const store = new AcceptedBuildMetadataStore(filePath);
+      const selector = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+      await store.write(selector);
+      const selected = (await store.inspectSlots()).current!;
+      let current = true;
+      const publication = {
+        selected,
+        assertAuthority() {
+          if (kind === 'synchronous' && !current) throw new Error('SYNTHETIC_AUTHORITY_LOST');
+        },
+        async assertExternalSelection() {
+          if (kind === 'external' && !current) throw new Error('SYNTHETIC_AUTHORITY_LOST');
+          await Promise.resolve();
+          current = false;
+          if (kind === 'synchronous') publication.assertAuthority = () => {};
+          else publication.assertExternalSelection = async () => {};
+        },
+      };
+      await expect(store.publishSelected(
+        createBusinessAcceptedBuildMetadata(selector, selector.acceptedBuild), publication,
+      )).rejects.toThrow('ACCEPTED_BUILD_METADATA_UNAVAILABLE');
+      expect(current).toBe(false);
+      expect((await store.inspectSlots()).current).toEqual(selected);
+      await expect(readFile(`${filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(readFile(`${filePath}.backup`)).rejects.toMatchObject({ code: 'ENOENT' });
+    },
+  );
 });
 
 async function createPath(): Promise<string> {
@@ -92,6 +282,6 @@ async function createPath(): Promise<string> {
 }
 
 async function writeSlot(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeFile(path, `${JSON.stringify(value)}\n`, { mode: 0o600 });
 }

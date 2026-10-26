@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, unlinkSync } from 'node:fs';
+import { existsSync, mkdirSync, renameSync, unlinkSync, utimesSync, writeFileSync } from 'node:fs';
 import {
   mkdir,
   mkdtemp,
@@ -19,13 +19,141 @@ import {
 
 const roots: string[] = [];
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  const completedRoots = roots.splice(0);
+  if (task.result?.state !== 'pass') return;
   await Promise.all(
-    roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
+    completedRoots.map((root) => rm(root, { force: true, recursive: true })),
   );
 });
 
 describe('update journal store', () => {
+  it('clears only the exact selected current and verifies all slots absent', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    let calls = 0;
+    await store.clearSelected({ expectedBytes: selected.bytes, assertAuthority() { calls++; } });
+    expect(calls).toBe(8);
+    expect(await store.inspectSlots()).toEqual({ current: undefined, next: undefined, backup: undefined });
+  });
+
+  it.each(['current', 'next', 'backup'] as const)('preserves an unexpected %s on selected clear', async slot => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    const unexpectedPath = slot === 'current' ? fixture.filePath : `${fixture.filePath}.${slot}`;
+    await writeSlot(unexpectedPath, createJournal({ revision: 2 }));
+    const before = await readFile(fixture.filePath);
+    const unexpected = await readFile(unexpectedPath);
+    await expect(store.clearSelected({ expectedBytes: selected.bytes, assertAuthority() {} }))
+      .rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect(await readFile(fixture.filePath)).toEqual(before);
+    expect(await readFile(unexpectedPath)).toEqual(unexpected);
+  });
+
+  it.each([1, 4])('preserves selected bytes when authority expires at check %i', async check => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    const expired = new Error('synthetic expired clear authority');
+    let calls = 0;
+    await expect(store.clearSelected({ expectedBytes: selected.bytes,
+      assertAuthority() { if (++calls === check) throw expired; },
+    })).rejects.toMatchObject({ message: 'UPDATE_JOURNAL_UNAVAILABLE', cause: expired });
+    expect(await readFile(fixture.filePath)).toEqual(Buffer.from(selected.bytes));
+  });
+
+  it.each(['replacement', 'timestamp'] as const)('rejects a file-identity %s after the selected-byte read', async change => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    let calls = 0;
+    await expect(store.clearSelected({ expectedBytes: selected.bytes,
+      assertAuthority() {
+        if (++calls !== 3) return;
+        if (change === 'replacement') {
+          renameSync(fixture.filePath, `${fixture.filePath}.retained`);
+          writeFileSync(fixture.filePath, selected.bytes);
+        } else {
+          utimesSync(fixture.filePath, new Date('2000-01-01T00:00:00Z'), new Date('2000-01-01T00:00:00Z'));
+        }
+      },
+    })).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect(await readFile(fixture.filePath)).toEqual(Buffer.from(selected.bytes));
+    if (change === 'replacement') {
+      expect(await readFile(`${fixture.filePath}.retained`)).toEqual(Buffer.from(selected.bytes));
+    }
+  });
+
+  it('captures the selected bytes before yielding to asynchronous reads', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    const clearing = store.clearSelected({ expectedBytes: selected.bytes, assertAuthority() {} });
+    selected.bytes.fill(0);
+    await clearing;
+    expect((await store.inspectSlots()).current).toBeUndefined();
+  });
+
+  it('reports lost authority after unlink without claiming that the old journal remains', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    const expired = new Error('synthetic lost clear acknowledgement');
+    await expect(store.clearSelected({ expectedBytes: selected.bytes,
+      assertAuthority() { if (!existsSync(fixture.filePath)) throw expired; },
+    })).rejects.toMatchObject({ message: 'UPDATE_JOURNAL_UNAVAILABLE', cause: expired });
+    expect(await store.inspectSlots()).toEqual({ current: undefined, next: undefined, backup: undefined });
+  });
+
+  it('retains a new journal discovered during final clear readback', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    const replacement = createJournal({ revision: 2 });
+    await expect(store.clearSelected({ expectedBytes: selected.bytes,
+      assertAuthority() {
+        if (!existsSync(fixture.filePath)) writeFileSync(fixture.filePath, JSON.stringify(replacement));
+      },
+    })).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect((await store.inspectSlots()).current?.value).toEqual(replacement);
+  });
+
+  it.each(['async', 'reentrant'] as const)('rejects %s clear authority before unlink', async mode => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    const assertAuthority = mode === 'async' ? async () => undefined : () => store.read();
+    await expect(store.clearSelected({ expectedBytes: selected.bytes, assertAuthority }))
+      .rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
+    expect(await readFile(fixture.filePath)).toEqual(Buffer.from(selected.bytes));
+  });
+
+  it('blocks a same-instance writer throughout selected clear', async () => {
+    const fixture = await createFixture();
+    const store = new UpdateJournalStore(fixture.filePath);
+    await store.write(createJournal());
+    const selected = (await store.inspectSlots()).current!;
+    let competing: Promise<void> | undefined;
+    await store.clearSelected({ expectedBytes: selected.bytes,
+      assertAuthority() {
+        competing ??= expect(store.write(createJournal({ revision: 2 }))).rejects.toThrow('UPDATE_JOURNAL_BUSY');
+      },
+    });
+    expect(competing).toBeDefined();
+    await competing;
+    expect((await store.inspectSlots()).current).toBeUndefined();
+  });
+
   it('publishes from one exact selection while preserving ordinary equal-revision writes', async () => {
     const fixture = await createFixture();
     const store = new UpdateJournalStore(fixture.filePath);

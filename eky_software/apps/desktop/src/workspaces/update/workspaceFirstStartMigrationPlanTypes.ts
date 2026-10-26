@@ -1,5 +1,5 @@
 import type { PreWorkspaceBuildAdmission } from '../../update/preWorkspaceBuildAdmission.js';
-import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import type {
   WorkspaceMigrationInventory,
   WorkspaceMigrationInventoryStatus,
@@ -10,10 +10,12 @@ export interface WorkspaceFirstStartBuildIdentity {
   readonly buildRevision: string;
 }
 
+export type WorkspaceFirstStartMigrationAdmission = PreWorkspaceBuildAdmission | 'deferredBusiness';
+
 export interface WorkspaceFirstStartMigrationPlanInput {
-  readonly admission: PreWorkspaceBuildAdmission;
+  readonly admission: WorkspaceFirstStartMigrationAdmission;
   readonly inventory?: Readonly<WorkspaceMigrationInventory>;
-  readonly registry: Readonly<LocalWorkspaceRegistryV1>;
+  readonly registry: Readonly<LocalWorkspaceRegistry>;
   readonly sourceBuild: Readonly<WorkspaceFirstStartBuildIdentity> | null;
   readonly targetBuild: Readonly<WorkspaceFirstStartBuildIdentity>;
 }

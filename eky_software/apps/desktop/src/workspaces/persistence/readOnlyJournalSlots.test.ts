@@ -9,7 +9,7 @@ import { hasAnyJournalSlot, hasTerminalJournalConflict } from './readOnlyJournal
 
 vi.mock('node:fs/promises', async (importOriginal) => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, open: vi.fn(actual.open) };
+  return { ...actual, open: vi.fn(actual.open), lstat: vi.fn(actual.lstat) };
 });
 
 const roots: string[] = [];
@@ -39,6 +39,39 @@ async function createFixture() {
 }
 
 describe('read-only journal slots', () => {
+  it.each(['any', 'terminal'] as const)('settles all %s presence reads before returning the first failure', async kind => {
+    const { paths } = await createFixture();
+    const real = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    let release!: () => void;
+    let entered!: () => void;
+    let firstRejected!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    const rejected = new Promise<void>(resolve => { firstRejected = resolve; });
+    const first = new Error('synthetic first presence failure');
+    vi.mocked(fs.lstat).mockImplementation(async (...args) => {
+      if (args[0] === paths.currentPath) { firstRejected(); throw first; }
+      if (args[0] === paths.backupPath) {
+        entered(); await pending;
+        throw new Error('synthetic later presence failure');
+      }
+      return real.lstat(...args);
+    });
+    let settled = false;
+    const result = (kind === 'any' ? hasAnyJournalSlot(paths)
+      : hasTerminalJournalConflict(paths, maximumBytes, parse, isTerminal))
+      .then(value => { settled = true; return value; }, cause => { settled = true; return cause; });
+    try {
+      await Promise.all([started, rejected]);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(settled).toBe(false);
+    } finally {
+      release();
+      await result;
+    }
+    expect(await result).toBe(first);
+  });
+
   it('does not create missing journal directories', async () => {
     const { root } = await createFixture();
     const paths = createReadOnlyJournalSlotPaths(join(root, 'missing', 'nested', 'journal.json'));

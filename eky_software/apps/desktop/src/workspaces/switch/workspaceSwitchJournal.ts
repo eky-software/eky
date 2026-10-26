@@ -7,32 +7,35 @@ import {
 import {
   createNodeCrashSafeFileSlotFileSystem,
   CrashSafeFileSlotError,
+  type CrashSafeFileSlotFileSystem,
+  type CrashSafeFileSlotIdentity,
+  type CrashSafeFileSlot,
 } from '../persistence/crashSafeFileSlot.js';
-import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
-import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
-import { validateWorkspaceTimestamp } from '../registry/workspaceTimestampValidation.js';
+import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { WorkspaceSwitchError } from './workspaceSwitchError.js';
-import { assertNoDuplicateWorkspaceSwitchJournalKeys } from './workspaceSwitchJournalDuplicateKeys.js';
+import { planWorkspaceSelectorSwitchSlots } from './workspaceSelectorSwitchSlots.js';
+import { captureWorkspaceSelectorSwitchSelection, type WorkspaceSelectorSwitchSelection } from './workspaceSelectorSwitchSelection.js';
+import {
+  assertWorkspaceSwitchTransition,
+  maximumWorkspaceSwitchJournalBytes,
+  parseWorkspaceSwitchJournalBytes,
+  parseVersionedWorkspaceSwitchJournalBytes,
+  serializeWorkspaceSwitchJournal,
+  serializeVersionedWorkspaceSwitchJournal,
+  validateWorkspaceSwitchJournal,
+  validateVersionedWorkspaceSwitchJournal,
+  workspaceSwitchJournalFileName,
+  type WorkspaceSwitchJournalV1,
+  type WorkspaceSwitchJournal,
+} from './workspaceSwitchJournalCodec.js';
 
-const maximumJournalBytes = 4_096;
-export const workspaceSwitchJournalFileName = 'workspace-switch-v1.json';
-const operationIdPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
+export * from './workspaceSwitchJournalCodec.js';
 
-export type WorkspaceSwitchJournalState =
-  | 'prepared'
-  | 'targetSelected'
-  | 'rollbackSelected'
-  | 'recoveryRequired';
+type ObservedSwitchSlots = Readonly<Record<CrashSafeFileSlot,
+  Readonly<{ bytes: Uint8Array; identity?: Readonly<CrashSafeFileSlotIdentity> }> | undefined>>;
 
-export interface WorkspaceSwitchJournalV1 {
-  readonly formatVersion: 1;
-  readonly operationId: string;
-  readonly sourceWorkspaceId: WorkspaceId;
-  readonly targetWorkspaceId: WorkspaceId;
-  readonly state: WorkspaceSwitchJournalState;
-  readonly createdAt: string;
-}
+type WorkspaceSwitchStartupInspection = Readonly<{ mode: 'legacy' }> |
+  Readonly<{ mode: 'selector'; slots: ReadOnlyJournalSlots<WorkspaceSwitchJournal> }>;
 
 export interface WorkspaceSwitchJournalPort {
   read(): Promise<Readonly<WorkspaceSwitchJournalV1> | undefined>;
@@ -63,20 +66,60 @@ export function createWorkspaceSwitchJournalPaths(
 
 export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
   private readonly byteStore: CrashSafeByteSlotStore;
+  private readonly fileSystem: CrashSafeFileSlotFileSystem;
   private activeOperation = false;
 
   constructor(userDataRoot: string) {
     const paths = createWorkspaceSwitchJournalPaths(userDataRoot);
-    this.byteStore = new CrashSafeByteSlotStore(
-      createNodeCrashSafeFileSlotFileSystem(
-        paths,
-        maximumJournalBytes,
-      ),
+    this.fileSystem = createNodeCrashSafeFileSlotFileSystem(
+      paths, maximumWorkspaceSwitchJournalBytes,
     );
+    this.byteStore = new CrashSafeByteSlotStore(this.fileSystem);
   }
 
   read(): Promise<Readonly<WorkspaceSwitchJournalV1> | undefined> {
     return this.runExclusive(() => this.recoverAndRead());
+  }
+
+  // Inspection never repairs slots or grants a selector mutation authority.
+  inspectSlots(): Promise<ReadOnlyJournalSlots<WorkspaceSwitchJournal>> {
+    return this.runExclusive(async () => {
+      try {
+        const result = parseObservedSlots(await this.observeSlots());
+        if (result.failure !== undefined) throw result.failure;
+        return result.slots;
+      } catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  // V1 recovery owns an interrupted unselected write. V2 requires every slot;
+  // a valid v2 sibling must never be discarded by the legacy repairing reader.
+  inspectStartup(): Promise<WorkspaceSwitchStartupInspection> {
+    return this.runExclusive(async () => {
+      try {
+        const observed = await this.observeSlots('allowEmptyObservation');
+        const parsed = parseObservedSlots(observed);
+        const selectedSlot = observed.current !== undefined ? 'current'
+          : observed.backup !== undefined ? 'backup' : 'next';
+        const selected = parsed.slots[selectedSlot];
+        const hasSelector = Object.values(parsed.slots).some(slot => slot?.value.formatVersion === 2);
+        if (!hasSelector && selected?.value.formatVersion === 1) return { mode: 'legacy' };
+        if (parsed.failure !== undefined) throw parsed.failure;
+        return { mode: 'selector', slots: parsed.slots };
+      } catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  private async observeSlots(mode?: 'allowEmptyObservation'): Promise<ObservedSwitchSlots> {
+    const slots: Record<CrashSafeFileSlot, ObservedSwitchSlots['current']> = {
+      current: undefined, next: undefined, backup: undefined,
+    };
+    for (const slot of ['current', 'next', 'backup'] as const) {
+      let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+      const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; }, mode);
+      if (bytes !== undefined) slots[slot] = Object.freeze({ bytes, ...(identity === undefined ? {} : { identity }) });
+    }
+    return Object.freeze(slots);
   }
 
   write(value: unknown): Promise<void> {
@@ -109,6 +152,63 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
     });
   }
 
+  writeSelector(value: unknown, selection: WorkspaceSelectorSwitchSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    return this.runExclusive(async () => {
+      const captured = captureWorkspaceSelectorSwitchSelection(selection);
+      const next = validateVersionedWorkspaceSwitchJournal(value);
+      if (next.formatVersion !== 2 || captured.journalSlots.next !== undefined || captured.journalSlots.backup !== undefined) {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+      }
+      assertWorkspaceSwitchTransition(captured.journalSlots.current?.value, next);
+      const bytes = serializeVersionedWorkspaceSwitchJournal(next);
+      planWorkspaceSelectorSwitchSlots({ ...captured.journalSlots, next: { value: next, bytes } }, captured.registrySlots);
+      try { return await this.byteStore.replaceSelected(bytes, captured.guard); }
+      catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  recoverSelector(selection: WorkspaceSelectorSwitchSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    return this.runExclusive(async () => {
+      const captured = captureWorkspaceSelectorSwitchSelection(selection);
+      const plan = planWorkspaceSelectorSwitchSlots(captured.journalSlots, captured.registrySlots);
+      if (plan.mode === 'unpublishedPreparation' || plan.mode === 'recoveryRequired') {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+      }
+      try { return await this.byteStore.recoverSelected(captured.guard); }
+      catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  clearSelector(
+    selection: WorkspaceSelectorSwitchSelection,
+    terminal: Readonly<{ purpose: 'selectorReturn' | 'acceptedTarget'; assertCurrent(): void }>,
+  ): Promise<void> {
+    return this.runExclusive(async () => {
+      const captured = captureWorkspaceSelectorSwitchSelection(selection);
+      const plan = planWorkspaceSelectorSwitchSlots(captured.journalSlots, captured.registrySlots);
+      if (captured.registrySlots.current === undefined || captured.registrySlots.next !== undefined || captured.registrySlots.backup !== undefined) {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+      }
+      if (terminal.purpose === 'selectorReturn'
+        ? !['unpublishedPreparation', 'selectorUncommitted', 'selectorReturned'].includes(plan.mode)
+        : terminal.purpose !== 'acceptedTarget' || plan.mode !== 'validateTarget') {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+      }
+      const authority = captured.guard.assertAuthority;
+      const assertTerminal = terminal.assertCurrent.bind(terminal);
+      const guard = { ...captured.guard, assertAuthority() {
+        authority();
+        const result: unknown = assertTerminal();
+        if (result !== undefined) {
+          void Promise.resolve(result).catch(() => undefined);
+          throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+        }
+      } };
+      try { await this.byteStore.clearSelected(guard); }
+      catch (error) { throw mapStorageError(error); }
+    });
+  }
+
   private async recoverAndRead(): Promise<
     Readonly<WorkspaceSwitchJournalV1> | undefined
   > {
@@ -136,106 +236,18 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
   }
 }
 
-export function validateWorkspaceSwitchJournal(
-  value: unknown,
-): Readonly<WorkspaceSwitchJournalV1> {
-  try {
-    requirePlainRecord(value);
-    requireExactKeys(value, [
-      'formatVersion',
-      'operationId',
-      'sourceWorkspaceId',
-      'targetWorkspaceId',
-      'state',
-      'createdAt',
-    ]);
-    if (
-      value.formatVersion !== 1 ||
-      typeof value.operationId !== 'string' ||
-      !operationIdPattern.test(value.operationId) ||
-      !isWorkspaceSwitchState(value.state)
-    ) {
-      throw new Error('invalid');
-    }
-    const sourceWorkspaceId = validateWorkspaceId(value.sourceWorkspaceId);
-    const targetWorkspaceId = validateWorkspaceId(value.targetWorkspaceId);
-    if (sourceWorkspaceId === targetWorkspaceId) {
-      throw new Error('invalid');
-    }
-    return Object.freeze({
-      formatVersion: 1,
-      operationId: value.operationId,
-      sourceWorkspaceId,
-      targetWorkspaceId,
-      state: value.state,
-      createdAt: validateWorkspaceTimestamp(value.createdAt),
-    });
-  } catch {
-    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-  }
-}
-
-export function serializeWorkspaceSwitchJournal(
-  value: unknown,
-): Uint8Array {
-  const journal = validateWorkspaceSwitchJournal(value);
-  return new TextEncoder().encode(
-    `${JSON.stringify({
-      formatVersion: journal.formatVersion,
-      operationId: journal.operationId,
-      sourceWorkspaceId: journal.sourceWorkspaceId,
-      targetWorkspaceId: journal.targetWorkspaceId,
-      state: journal.state,
-      createdAt: journal.createdAt,
-    })}\n`,
-  );
-}
-
-export function parseWorkspaceSwitchJournalBytes(
-  bytes: Uint8Array,
-): Readonly<WorkspaceSwitchJournalV1> {
-  try {
-    if (bytes.byteLength < 1 || bytes.byteLength > maximumJournalBytes) {
-      throw new Error('invalid');
-    }
-    const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-    assertNoDuplicateWorkspaceSwitchJournalKeys(source);
-    const parsed = validateWorkspaceSwitchJournal(JSON.parse(source));
-    const canonical = serializeWorkspaceSwitchJournal(parsed);
-    if (!bytesEqual(bytes, canonical)) throw new Error('invalid');
-    return parsed;
-  } catch {
-    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-  }
-}
-
-export function assertWorkspaceSwitchTransition(
-  current: Readonly<WorkspaceSwitchJournalV1> | undefined,
-  next: Readonly<WorkspaceSwitchJournalV1>,
-): void {
-  if (current === undefined) {
-    if (next.state !== 'prepared') {
-      throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-    }
-    return;
-  }
-  if (
-    current.operationId !== next.operationId ||
-    current.sourceWorkspaceId !== next.sourceWorkspaceId ||
-    current.targetWorkspaceId !== next.targetWorkspaceId ||
-    current.createdAt !== next.createdAt
-  ) {
-    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
-  }
-  const transitions: Readonly<Record<WorkspaceSwitchJournalState, readonly WorkspaceSwitchJournalState[]>> = {
-    prepared: ['prepared', 'targetSelected', 'rollbackSelected', 'recoveryRequired'],
-    targetSelected: ['targetSelected', 'rollbackSelected', 'recoveryRequired'],
-    rollbackSelected: ['rollbackSelected', 'recoveryRequired'],
-    recoveryRequired: ['recoveryRequired'],
+function parseObservedSlots(observed: ObservedSwitchSlots) {
+  const slots: Record<CrashSafeFileSlot, ReadOnlyJournalSlots<WorkspaceSwitchJournal>['current']> = {
+    current: undefined, next: undefined, backup: undefined,
   };
-  if (!transitions[current.state].includes(next.state)) {
-    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
+  let failure: unknown;
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const record = observed[slot];
+    if (record === undefined) continue;
+    try { slots[slot] = Object.freeze({ ...record, value: parseVersionedWorkspaceSwitchJournalBytes(record.bytes) }); }
+    catch (error) { failure ??= error; }
   }
+  return { slots: Object.freeze(slots), failure };
 }
 
 function requireAbsoluteRoot(value: string): string {
@@ -248,57 +260,6 @@ function requireAbsoluteRoot(value: string): string {
     throw new WorkspaceSwitchError('WORKSPACE_SWITCH_STORAGE_FAILED');
   }
   return value;
-}
-
-function requirePlainRecord(
-  value: unknown,
-): asserts value is Record<string, unknown> {
-  if (
-    typeof value !== 'object' ||
-    value === null ||
-    Array.isArray(value) ||
-    Object.getPrototypeOf(value) !== Object.prototype
-  ) {
-    throw new Error('invalid');
-  }
-  for (const key of Object.keys(value)) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (descriptor === undefined || !('value' in descriptor)) {
-      throw new Error('invalid');
-    }
-  }
-}
-
-function requireExactKeys(
-  value: Record<string, unknown>,
-  expected: readonly string[],
-): void {
-  const keys = Object.keys(value).sort();
-  const required = [...expected].sort();
-  if (
-    keys.length !== required.length ||
-    keys.some((key, index) => key !== required[index])
-  ) {
-    throw new Error('invalid');
-  }
-}
-
-function isWorkspaceSwitchState(
-  value: unknown,
-): value is WorkspaceSwitchJournalState {
-  return (
-    value === 'prepared' ||
-    value === 'targetSelected' ||
-    value === 'rollbackSelected' ||
-    value === 'recoveryRequired'
-  );
-}
-
-function bytesEqual(first: Uint8Array, second: Uint8Array): boolean {
-  return (
-    first.byteLength === second.byteLength &&
-    first.every((value, index) => value === second[index])
-  );
 }
 
 function mapStorageError(error: unknown): WorkspaceSwitchError {

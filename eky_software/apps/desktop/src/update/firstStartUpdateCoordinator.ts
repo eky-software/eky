@@ -6,12 +6,22 @@ import type {
   LocalUpdatePackageCache,
 } from './localUpdatePackageCache.js';
 import type { AcceptedBuildMetadataStore } from './acceptedBuildMetadataStore.js';
+import type { ReadOnlyJournalSlotRecord } from '../workspaces/persistence/readOnlyJournalSlots.js';
+import { sameCrashSafeFileSlotIdentity } from '../workspaces/persistence/crashSafeFileSlot.js';
+import {
+  createBusinessAcceptedBuildMetadata,
+  parseVersionedAcceptedBuildMetadata,
+  readAcceptedApplicationBuild,
+  readAcceptedBusinessBuild,
+  type ScopedAcceptedBuildMetadata,
+  type VersionedAcceptedBuildMetadata,
+} from './acceptedBuildMetadata.js';
 import { compareSemanticVersions } from './semanticVersionComparison.js';
 import {
   transitionUpdateJournal,
   type UpdateJournal,
 } from './updateJournal.js';
-import type { UpdateJournalStore } from './updateJournalStore.js';
+import { assertUpdateJournalAuthority, type UpdateJournalStore } from './updateJournalStore.js';
 import {
   noOpUpdateOperationalObserver,
   type UpdateOperationalObserver,
@@ -30,6 +40,23 @@ export interface MigrationStartupInspection {
   profileState: 'empty' | 'existing';
 }
 
+// The startup owner binds this authority to the operation, generation, selected
+// workspace and allowed W6 transition. It is not a substitute for profile health.
+export interface DeferredBusinessFirstStartAuthority {
+  readonly acceptedBuild: Readonly<ScopedAcceptedBuildMetadata>;
+  readonly migrationChainIdentity: string;
+  // Checks external selection/ownership, not the metadata store's own in-flight slots.
+  assertCurrent(): Promise<void>;
+  assertGenerationCurrent(): void;
+}
+
+type FirstStartMigrationContext =
+  | Readonly<{ migrationAuthority: 'profileRestore' | 'update' }>
+  | Readonly<{
+      migrationAuthority: 'deferredBusiness';
+      authority: DeferredBusinessFirstStartAuthority;
+    }>;
+
 interface FirstStartProfileProtection {
   createValidatedPreMigrationPoint(): Promise<string>;
   releaseProtectedPoint(recoveryPointReference: string): Promise<void>;
@@ -42,7 +69,8 @@ interface FirstStartProfileProtection {
 }
 
 interface FirstStartUpdateCoordinatorDependencies {
-  acceptedBuildStore: Pick<AcceptedBuildMetadataStore, 'read' | 'write'>;
+  acceptedBuildStore: Pick<AcceptedBuildMetadataStore, 'read' | 'write'> &
+    Partial<Pick<AcceptedBuildMetadataStore, 'inspectSlots' | 'publishSelected'>>;
   buildInfo: {
     buildDirty: boolean;
     buildRevision: string;
@@ -68,6 +96,13 @@ interface FirstStartUpdateCoordinatorDependencies {
 }
 
 type FirstStartMode =
+  | {
+      kind: 'deferredBusiness';
+      authority: DeferredBusinessFirstStartAuthority;
+      acceptedBuild: Readonly<ScopedAcceptedBuildMetadata>;
+      acceptedRecord: ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>;
+      migrationChainIdentity: string;
+    }
   | { kind: 'coordinated'; journal: Readonly<UpdateJournal>; rotated: boolean }
   | { kind: 'installerNotApplied'; journal: Readonly<UpdateJournal> }
   | { kind: 'rollback'; journal: Readonly<UpdateJournal> }
@@ -85,6 +120,8 @@ export class FirstStartUpdateError extends Error {
 }
 
 export class FirstStartUpdateCoordinator {
+  private acceptedMetadata: VersionedAcceptedBuildMetadata | undefined;
+  private deferredBusinessAttempt = false;
   private migrationGateCompleted = false;
   private mode: FirstStartMode | undefined;
   private operationCorrelationId: string | undefined;
@@ -98,24 +135,41 @@ export class FirstStartUpdateCoordinator {
 
   async beforeMigrations(
     inspection: Readonly<MigrationStartupInspection>,
-    context: Readonly<{
-      migrationAuthority: 'profileRestore' | 'update';
-    }> = { migrationAuthority: 'update' },
+    context: FirstStartMigrationContext = { migrationAuthority: 'update' },
   ): Promise<void> {
     if (this.migrationGateCompleted) {
       throw new FirstStartUpdateError();
     }
+    this.deferredBusinessAttempt = context.migrationAuthority === 'deferredBusiness';
 
     let coordinatedJournal: Readonly<UpdateJournal> | undefined;
     let installerNotAppliedJournal: Readonly<UpdateJournal> | undefined;
     let rollbackJournal: Readonly<UpdateJournal> | undefined;
     let directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
     try {
-      const [journal, acceptedBuild, storedDirectSetupRecovery] = await Promise.all([
+      if (context.migrationAuthority === 'deferredBusiness') {
+        const authority = context.authority;
+        context = { migrationAuthority: 'deferredBusiness', authority: Object.freeze({
+          acceptedBuild: authority.acceptedBuild,
+          migrationChainIdentity: authority.migrationChainIdentity,
+          assertCurrent: authority.assertCurrent.bind(authority),
+          assertGenerationCurrent: authority.assertGenerationCurrent.bind(authority),
+        }) };
+        await context.authority.assertCurrent();
+      }
+      const deferredMetadata = context.migrationAuthority === 'deferredBusiness'
+        ? await this.inspectDeferredMetadata(context.authority) : undefined;
+      const [journal, acceptedMetadata, storedDirectSetupRecovery] = await Promise.all([
         this.dependencies.journalStore.read(),
-        this.dependencies.acceptedBuildStore.read(),
+        context.migrationAuthority === 'deferredBusiness'
+          ? Promise.resolve(deferredMetadata!.value) : this.dependencies.acceptedBuildStore.read(),
         this.dependencies.directSetupRecoveryStore.read(),
       ]);
+      this.acceptedMetadata = acceptedMetadata;
+      const acceptedBuild = acceptedMetadata === undefined
+        ? undefined : readAcceptedApplicationBuild(acceptedMetadata);
+      const acceptedBusiness = acceptedMetadata === undefined
+        ? undefined : readAcceptedBusinessBuild(acceptedMetadata);
       directSetupRecovery = storedDirectSetupRecovery;
       this.operationCorrelationId =
         directSetupRecovery !== undefined
@@ -133,9 +187,9 @@ export class FirstStartUpdateCoordinator {
         context.migrationAuthority === 'profileRestore' &&
         (directSetupRecovery !== undefined ||
           (journal !== undefined && journal.state !== 'accepted') ||
-          acceptedBuild?.appVersion !==
+          acceptedBusiness?.appVersion !==
             this.dependencies.releaseInfo.appVersion ||
-          acceptedBuild.buildRevision !==
+          acceptedBusiness.buildRevision !==
             this.dependencies.releaseInfo.buildRevision)
       ) {
         throw new FirstStartUpdateError();
@@ -149,7 +203,29 @@ export class FirstStartUpdateCoordinator {
         throw new FirstStartUpdateError();
       }
 
-      if (journal !== undefined && journal.state !== 'accepted') {
+      if (context.migrationAuthority === 'deferredBusiness') {
+        const expected = parseVersionedAcceptedBuildMetadata(context.authority.acceptedBuild);
+        if (expected.formatVersion !== 2 || expected.acceptanceScope !== 'selector' ||
+          JSON.stringify(expected) !== JSON.stringify(acceptedMetadata) ||
+          acceptedBuild?.appVersion !== this.dependencies.releaseInfo.appVersion ||
+          acceptedBuild.buildRevision !== this.dependencies.releaseInfo.buildRevision ||
+          journal !== undefined || directSetupRecovery !== undefined ||
+          inspection.profileState !== 'existing' || inspection.pendingMigrationCount !== 0 ||
+          !/^[0-9a-f]{64}$/.test(context.authority.migrationChainIdentity) ||
+          inspection.migrationChainIdentity !== context.authority.migrationChainIdentity) {
+          throw new FirstStartUpdateError();
+        }
+        await context.authority.assertCurrent();
+        this.mode = {
+          kind: 'deferredBusiness', authority: context.authority,
+          acceptedBuild: expected, migrationChainIdentity: inspection.migrationChainIdentity,
+          acceptedRecord: deferredMetadata!,
+        };
+        await this.assertDeferredBusinessCurrent(this.mode);
+      } else if (acceptedMetadata?.formatVersion === 2 && acceptedMetadata.acceptanceScope === 'selector') {
+        // Never turn application admission into business admission or a second migration.
+        throw new FirstStartUpdateError();
+      } else if (journal !== undefined && journal.state !== 'accepted') {
         installerNotAppliedJournal = journal;
         const runningJournalBuild = this.classifyRunningJournalBuild(journal);
         if (runningJournalBuild === 'target') {
@@ -222,13 +298,16 @@ export class FirstStartUpdateCoordinator {
         installerNotAppliedJournal,
       );
       await this.markRollbackRecoveryRequired(rollbackJournal);
-      await this.markDirectSetupRecoveryRequired(directSetupRecovery);
+      if (!this.deferredBusinessAttempt) {
+        await this.markDirectSetupRecoveryRequired(directSetupRecovery);
+      }
       this.notifyOperationFailed();
       throw new FirstStartUpdateError({ cause: error });
     }
   }
 
-  async acceptAfterBackendReady(): Promise<void> {
+  async acceptAfterBackendReady(): Promise<Readonly<ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>> | undefined> {
+    let acceptedRecord: Readonly<ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>> | undefined;
     const mode = this.mode;
     if (!this.migrationGateCompleted || mode === undefined) {
       throw new FirstStartUpdateError();
@@ -241,8 +320,15 @@ export class FirstStartUpdateCoordinator {
     const coordinatedJournal =
       mode.kind === 'coordinated' ? mode.journal : undefined;
     try {
+      if (mode.kind === 'deferredBusiness') await this.assertDeferredBusinessCurrent(mode);
       const activeProfile =
         await this.dependencies.profileProtection.validateActiveProfile();
+      if (mode.kind === 'deferredBusiness') {
+        if (activeProfile.migrationChainIdentity !== mode.migrationChainIdentity) {
+          throw new FirstStartUpdateError();
+        }
+        await this.assertDeferredBusinessCurrent(mode);
+      }
       if (
         (mode.kind === 'installerNotApplied' || mode.kind === 'rollback') &&
         activeProfile.migrationChainIdentity !==
@@ -293,13 +379,31 @@ export class FirstStartUpdateCoordinator {
       }
 
       if (mode.kind !== 'installerNotApplied') {
-        await this.dependencies.acceptedBuildStore.write({
+        const published = createBusinessAcceptedBuildMetadata(this.acceptedMetadata, {
           acceptedAt: this.now(),
           appVersion: this.dependencies.releaseInfo.appVersion,
           buildRevision: this.dependencies.releaseInfo.buildRevision,
           formatVersion: 1,
           releaseChannel: 'pilot',
         });
+        if (mode.kind === 'deferredBusiness') await this.assertDeferredBusinessCurrent(mode);
+        if (mode.kind === 'deferredBusiness') {
+          const store = this.dependencies.acceptedBuildStore;
+          if (store.publishSelected === undefined) throw new FirstStartUpdateError();
+          const publishedIdentity = await store.publishSelected(published, {
+            selected: mode.acceptedRecord,
+            assertAuthority: mode.authority.assertGenerationCurrent.bind(mode.authority),
+            assertExternalSelection: mode.authority.assertCurrent.bind(mode.authority),
+          });
+          const observed = await this.inspectDeferredMetadata(mode.authority);
+          if (publishedIdentity === undefined || observed.identity === undefined ||
+            !sameCrashSafeFileSlotIdentity(publishedIdentity, observed.identity) ||
+            !Buffer.from(observed.bytes).equals(Buffer.from(`${JSON.stringify(published)}\n`, 'utf8'))) {
+            throw new FirstStartUpdateError();
+          }
+          await mode.authority.assertCurrent();
+          acceptedRecord = structuredClone(observed);
+        } else await this.dependencies.acceptedBuildStore.write(published);
       }
 
       if (mode.kind === 'coordinated') {
@@ -346,9 +450,12 @@ export class FirstStartUpdateCoordinator {
 
     await this.releaseRecoveryPointProtectionAfterAcceptance(mode);
     this.notifyOperationCompleted();
+    return acceptedRecord;
   }
 
   async recoverFromStartupFailure(): Promise<boolean> {
+    // A rejected deferred admission never acquires an unrelated recovery owner.
+    if (this.deferredBusinessAttempt) return false;
     const mode = this.mode;
     if (mode?.kind === 'coordinated') {
       await this.markRollbackRequired(mode.journal);
@@ -365,6 +472,41 @@ export class FirstStartUpdateCoordinator {
       journal.candidatePackageIdentity.buildRevision ===
         this.dependencies.releaseInfo.buildRevision
     );
+  }
+
+  private async assertDeferredBusinessCurrent(
+    mode: Extract<FirstStartMode, { kind: 'deferredBusiness' }>,
+  ): Promise<void> {
+    await mode.authority.assertCurrent();
+    const [accepted, journal, directSetup] = await Promise.all([
+      this.inspectDeferredMetadata(mode.authority),
+      this.dependencies.journalStore.read(),
+      this.dependencies.directSetupRecoveryStore.read(),
+    ]);
+    if (accepted.identity === undefined || mode.acceptedRecord.identity === undefined ||
+      !sameCrashSafeFileSlotIdentity(accepted.identity, mode.acceptedRecord.identity) ||
+      !Buffer.from(accepted.bytes).equals(Buffer.from(mode.acceptedRecord.bytes)) ||
+      JSON.stringify(accepted.value) !== JSON.stringify(mode.acceptedBuild) ||
+      journal !== undefined || directSetup !== undefined) {
+      throw new FirstStartUpdateError();
+    }
+    await mode.authority.assertCurrent();
+  }
+
+  private async inspectDeferredMetadata(
+    authority: DeferredBusinessFirstStartAuthority,
+  ): Promise<ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>> {
+    const assertGeneration = () => assertUpdateJournalAuthority(authority.assertGenerationCurrent.bind(authority));
+    assertGeneration();
+    const store = this.dependencies.acceptedBuildStore;
+    if (store.inspectSlots === undefined) throw new FirstStartUpdateError();
+    const slots = await store.inspectSlots();
+    assertGeneration();
+    if (slots.current?.identity === undefined || slots.next !== undefined || slots.backup !== undefined) {
+      throw new FirstStartUpdateError();
+    }
+    return Object.freeze({ bytes: Uint8Array.from(slots.current.bytes), value: slots.current.value,
+      identity: Object.freeze({ ...slots.current.identity }) });
   }
 
   private classifyRunningJournalBuild(

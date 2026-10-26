@@ -153,6 +153,10 @@ export async function verifyW6b2PackagedFaultWorkspaceProfile(input: {
     requireRecoverySlotsAbsent(journalPath),
   ]);
 
+  const registry = parseWorkspaceRegistryBytes(registryBytes);
+  if (registry.formatVersion !== 1) {
+    throw new Error('W6B2_PROFILE_REGISTRY_INVALID');
+  }
   assertW6b2PackagedFaultWorkspaceState({
     acceptedBuild: parseAcceptedBuildMetadata(
       parseJsonBytes(acceptedBuildBytes),
@@ -160,7 +164,7 @@ export async function verifyW6b2PackagedFaultWorkspaceProfile(input: {
     currentEvidence,
     journal: parseUpdateJournal(parseJsonBytes(journalBytes)),
     operation: input.operation,
-    registry: parseWorkspaceRegistryBytes(registryBytes),
+    registry,
     state,
   });
 }

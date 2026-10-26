@@ -199,7 +199,7 @@ describe('workspace registry codec', () => {
   });
 
   it.each([
-    createRegistry({ formatVersion: 2 }),
+    createRegistry({ formatVersion: 3 }),
     createRegistry({
       activeWorkspaceId: firstWorkspaceId,
       workspaces: [createEntry({ layoutVersion: 2 })],

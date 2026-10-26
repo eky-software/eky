@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { AcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import { createSelectorAcceptedBuildMetadata, type AcceptedBuildMetadata, type VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 import {
   createDirectSetupMigrationRecovery,
   transitionDirectSetupMigrationRecovery,
@@ -35,6 +35,18 @@ const releaseInfo = {
 };
 
 describe('PreBackendFirstStartFailureAuthority', () => {
+  it('uses the business baseline only for Direct Setup recovery, not C source identity', async () => {
+    const selector = createSelectorAcceptedBuildMetadata(acceptedBuild, {
+      ...acceptedBuild, appVersion: '0.2.7-alpha.1', buildRevision: 'cccccccccccc',
+    });
+    const direct = createHarness({ accepted: selector, directSetupRecovery: createRecovery() });
+    await expect(direct.authority.recordFailure('authorizedNewerBuild'))
+      .resolves.toEqual({ kind: 'directSetupRecoveryRequired' });
+    const coordinated = createHarness({ accepted: selector, journal: createJournal('awaitingFirstStart') });
+    await expect(coordinated.authority.recordFailure('coordinatedUpdateTarget'))
+      .rejects.toBeInstanceOf(PreBackendFirstStartFailureAuthorityError);
+    expect(coordinated.writeJournal).not.toHaveBeenCalled();
+  });
   it('moves an identity-bound coordinated update to rollbackRequired', async () => {
     const journal = createJournal('awaitingFirstStart');
     const harness = createHarness({ journal });
@@ -128,7 +140,7 @@ describe('PreBackendFirstStartFailureAuthority', () => {
 });
 
 function createHarness(input: {
-  accepted?: AcceptedBuildMetadata;
+  accepted?: VersionedAcceptedBuildMetadata;
   directSetupRecovery?: Readonly<DirectSetupMigrationRecovery>;
   journal?: Readonly<UpdateJournal>;
 } = {}) {

@@ -1231,6 +1231,17 @@ tarkistettuna; sivuslottien ja pääjournalin poisto vaatii lopuksi juuren
 puuttumisen. [Rajattu siivousnäyttö](release-0.3.0-m1-preparation-plan.md#v2aw-rollbackin-loppusiivouksen-säilytys)
 ei korvaa backendin jälkeisen terminalin sisältö- ja omistajuusvaltuutta.
 
+W7.2:n [valitsimeen paluun sopimus](local-company-workspace-plan.md#rajatun-kokeen-mukainen-toteutussopimus)
+nimeää erillisen cold-loppusiivouksen nykyiselle startup-omistajalle.
+Tuore alkuperäissisällön ja päättyneiden töiden valtuus säilyy journalin
+poistoon asti. Palautusjuuren oma varaus suljetaan juuri ennen sen tyhjää
+poistoa; palautettu juuri-identiteetti tarkistetaan uudelleen, ja elävä
+synkroninen omistajuustarkistus seuraa viimeistä asynkronista lukua.
+Vanhentunut valtuus tai korvattu juuri säilyttää aineiston. Lopuksi odotetaan
+myös ankkurin, muiden varausten ja restore-leasen sulut. Tämä ei ole
+business-terveystodiste, eikä accepted- tai epävarmaa hyväksyntää voi
+muuttaa tällä rollbackiksi. Tavallisen live-palautuksen polku säilyy.
+
 [Alkuperäissisällön erillinen tarkistussopimus](release-0.3.0-m1-preparation-plan.md#v2av-alkuperäissisällön-tarkistussopimus)
 pitää alkuperäisen kannan ja dokumenttien sijainnit erillään tuotavasta
 sisällöstä. Journalin valitsema alkuperäiskannan poissaolo ei tuota

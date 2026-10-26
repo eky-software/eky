@@ -4,6 +4,7 @@ import type {
 } from '../src/runtime/backendProcess.js';
 
 export interface WorkspaceActivationMigrationProofInput {
+  readonly opening?: 'selected' | 'selector' | 'selectorDeferred';
   readonly applicationPath: string;
   readonly appVersion: string;
   readonly resourcesPath: string;
@@ -15,6 +16,8 @@ export interface WorkspaceActivationMigrationProofInput {
 }
 
 export interface WorkspaceActivationMigrationProofResult {
+  readonly selectorOpeningVerified?: true;
+  readonly deferredBusinessVerified?: true;
   readonly activationJournalsCleared: boolean;
   readonly artifactRootsPreserved: boolean;
   readonly backendStartCount: number;

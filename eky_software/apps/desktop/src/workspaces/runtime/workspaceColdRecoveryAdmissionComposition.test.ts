@@ -96,6 +96,7 @@ describe.each(['creation', 'import'] as const)('cold %s admission assertion', (o
       const own = owner === 'creation' ? fixture.creation : fixture.importBackup;
       const other = owner === 'creation' ? fixture.importBackup : fixture.creation;
       await put(own.currentPath, journal());
+      await put(fixture.registry.currentPath, registryValue());
       await expect(fixture.read()).resolves.toBe(owner);
       if (change === 'removed' || change === 'replaced') await rm(own.currentPath);
       if (change === 'replaced' || change === 'conflicting') await put(other.currentPath, journal());
@@ -182,18 +183,30 @@ describe('cold recovery admission composed from the main-owned root', () => {
       expect(await snapshot(fixture.root)).toEqual(before);
     });
 
-    it('allows no registry and a null previous ID without granting recovery permission', async () => {
+    it('rejects a missing registry even when the previous ID is null', async () => {
       const fixture = await ownedFixture();
       await put(fixture.own.currentPath, journal(null));
       const before = await snapshot(fixture.root);
-      await expect(fixture.read()).resolves.toBe(kind);
+      await expect(fixture.read()).rejects.toThrow(required);
       expect(await snapshot(fixture.root)).toEqual(before);
     });
+
+    it.each(([1, 2] as const).flatMap(formatVersion => slots.map(slot => ({ formatVersion, slot }))))(
+      'admits a present empty v$formatVersion registry in $slot without repairing it', async ({ formatVersion, slot }) => {
+        const fixture = await ownedFixture();
+        await put(fixture.own.currentPath, journal(null));
+        await put(fixture.registry[slot], { formatVersion, activeWorkspaceId: null, workspaces: [] });
+        const before = await snapshot(fixture.root);
+        await expect(fixture.read()).resolves.toBe(kind);
+        expect(await snapshot(fixture.root)).toEqual(before);
+      },
+    );
 
     it.each(['removed', 'replacedByOtherOwner'] as const)(
       'rejects an owner $changed before the final probe without changing the new state', async (changed) => {
         const fixture = await ownedFixture();
         await put(fixture.own.currentPath, journal());
+        await put(fixture.registry.currentPath, registryValue());
         const actualRead = admission.readWorkspaceColdRecoveryAdmission;
         let changedState: Record<string, string> | undefined;
         vi.spyOn(admission, 'readWorkspaceColdRecoveryAdmission').mockImplementationOnce(async (options) => {
@@ -260,6 +273,8 @@ describe('cold recovery admission composed from the main-owned root', () => {
           await put(fixture.registry.currentPath, registryValue(
             name === 'passive recoveryRequired' ? 'recoveryRequired' : 'ready',
           ));
+        } else {
+          await put(fixture.registry.currentPath, { formatVersion: 1, activeWorkspaceId: null, workspaces: [] });
         }
         const suffix = slot === 'currentPath' ? '' : slot === 'nextPath' ? '.next' : '.backup';
         await put(restoreJournal(fixture.root, id) + suffix, 'pending restore');
@@ -273,6 +288,7 @@ describe('cold recovery admission composed from the main-owned root', () => {
       'finds the canonical %s conflict and leaves every file unchanged', async (other) => {
         const fixture = await ownedFixture();
         await put(fixture.own.currentPath, journal());
+        await put(fixture.registry.currentPath, registryValue());
         const update = createLocalUpdateRuntimePaths({
           userDataPath: fixture.root,
           legacyRuntimeRoot: createDesktopProfilePaths(fixture.root).runtimeRoot,

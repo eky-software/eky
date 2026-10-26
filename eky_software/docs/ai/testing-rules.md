@@ -148,6 +148,35 @@ Muiden testien, sovelluksen operaatioiden tai CI:n kokonaisaikarajat eivät
 muutu. Tämä ei ole yleinen lupa siirtää valmistelua testin aikarajan
 ulkopuolelle tai kasvattaa aikarajoja.
 
+Omistajan 26.10.2026 hyväksymä sama kymmenen sekunnin testiraja koskee
+lisäksi vain kolmea W7.2:n yhdistelmätestiä samassa tiedostossa:
+
+- `accepts deferred business through real main and FirstStart` vain
+  varianteilla `passive: true, source-null: true` ja
+  `passive: true, source-null: false`
+- `settles the selected source-null replacement through real rollback
+  before selector return` vain variantilla `completed`.
+
+Näissä valmistelu, toiminta ja tarkistukset sisältyvät samaan testirungon
+rajaan. Muiden saman testiryhmän varianttien oletusraja säilyy.
+Tarkistuksia, elinkaaritukea, sovelluksen aikarajoja tai CI:n kokonaisrajoja
+ei muuteta. Hyväksytyt mittaukset läpäisivät nämä tapaukset, mutta eivät yksin
+selitä aiempia aikakatkaisuja eivätkä ole koko W7.2:n hyväksyntä.
+
+Omistajan 26.10.2026 erikseen hyväksymä kymmenen sekunnin raja koskee
+lisäksi vain seuraavia kahta W7.2:n yhdistelmätestiä:
+
+- `selector candidate rollback main handoff` -ryhmän `validates ... with the
+  existing cold owner before returning from the main callback` vain
+  variantilla `rolledBack`, samassa main-testitiedostossa.
+- `carries real switch recovery and acceptance receipts into main and W6
+  without recapturing identity` tiedostossa
+  [`workspaceFirstStartSelectedPersistence.test.ts`](../../apps/desktop/src/workspaces/update/workspaceFirstStartSelectedPersistence.test.ts).
+
+Valmistelu, toiminta ja tarkistukset sisältyvät samaan rajaan. Muiden
+varianttien, sovelluksen ja CI:n aikarajat sekä kaikki tarkistukset säilyvät.
+Mittauskoe ei yksin selitä aiempia aikakatkaisuja tai sulje W7.2:ta.
+
 Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
 valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai
 testirungon aikakatkaisun jälkeen yhteiset resurssit vapautetaan vasta työn

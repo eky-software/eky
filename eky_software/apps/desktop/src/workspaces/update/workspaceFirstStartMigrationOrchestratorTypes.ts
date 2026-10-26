@@ -1,4 +1,5 @@
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceSelectorSwitchSettlement } from '../switch/workspaceSelectorSwitchStartup.js';
 import type { WorkspaceFirstStartBuildIdentity } from './workspaceFirstStartMigrationPlanTypes.js';
 
 export type WorkspaceFirstStartRecoveryOutcome =
@@ -25,9 +26,17 @@ export type WorkspaceFirstStartPreparationContext = Readonly<{
 
 export interface WorkspaceFirstStartMigrationOrchestration {
   recoverBeforeWorkspaceResolution(): Promise<WorkspaceFirstStartRecoveryOutcome>;
+  settleSelectorRegistry(receipt: WorkspaceSelectorSwitchSettlement): Promise<void>;
   prepareBeforeBackend(
     context: Readonly<WorkspaceFirstStartPreparationContext>,
   ): Promise<WorkspaceFirstStartPreparationOutcome>;
   transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void>;
   completeAfterTargetAcceptance(): Promise<void>;
+  assertDeferredBusinessReady(phase: 'beforeMigrations' | 'beforeAcceptance'): Promise<void>;
+  cancelBeforeSelectorReturn(authority: WorkspaceFirstStartSelectorReturnAuthority): Promise<void>;
+}
+
+export interface WorkspaceFirstStartSelectorReturnAuthority {
+  assertCurrent(): void;
+  assertTerminal(): Promise<void>;
 }

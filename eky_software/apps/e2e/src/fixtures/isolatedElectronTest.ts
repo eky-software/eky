@@ -41,7 +41,7 @@ import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
-import { readElectronStartupObservation } from '../electron/readElectronMainState.js';
+import { readElectronStartupObservation, readSelectorTestBackendPort } from '../electron/readElectronMainState.js';
 import {
   createElectronActiveWorkspaceReplacementFixture,
   createElectronWorkspaceBackupFixture,
@@ -65,6 +65,9 @@ import {
   type ElectronCleanupResult,
   type ElectronPreparationFailureEvidence,
 } from './reportElectronLifecycleEvidence.js';
+import { assertElectronSelectorFixtureCombination, prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
+import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
+import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -76,6 +79,7 @@ export interface IsolatedElectronHarness {
   paths: E2eWorkerPaths;
   performRelaunchingOperation(
     operation: () => Promise<void>,
+    options?: { expectSelectorRecovery: true },
   ): Promise<{
     previousRuntimeInstanceId: string;
     previousSessionSecret: string;
@@ -105,6 +109,7 @@ interface IsolatedElectronOptions {
     | 'workspaceBackupReplacement';
   e2eWorkspaceBackupFixture: 'activeReplacement' | 'none' | 'synthetic';
   e2eLegacyInvoiceProfile: 'none' | 'sent';
+  e2eSelectorProfile: 'none' | ElectronSelectorProfileState;
 }
 
 const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
@@ -123,6 +128,7 @@ export const test = base.extend<
   e2eNativeOpenDialogPurpose: ['invoicePdfArchive', { option: true }],
   e2eWorkspaceBackupFixture: ['none', { option: true }],
   e2eLegacyInvoiceProfile: ['none', { option: true }],
+  e2eSelectorProfile: ['none', { option: true }],
   e2eElectron: async (
     {
       e2eBackendStartupFault,
@@ -132,6 +138,7 @@ export const test = base.extend<
       e2eNativeOpenDialogPurpose,
       e2eWorkspaceBackupFixture,
       e2eLegacyInvoiceProfile,
+      e2eSelectorProfile,
     },
     use,
     testInfo,
@@ -146,6 +153,9 @@ export const test = base.extend<
     if (e2eLegacyInvoiceProfile !== 'none' && e2eWorkspaceBackupFixture !== 'none') {
       throw new Error('Legacy invoice and backup fixtures cannot share a profile.');
     }
+    assertElectronSelectorFixtureCombination({ scenarioId, state: e2eSelectorProfile,
+      hasLegacyInvoiceProfile: e2eLegacyInvoiceProfile !== 'none', backup: e2eWorkspaceBackupFixture,
+      nativeDialogPurpose: e2eNativeOpenDialogPurpose });
     if (
       e2eWorkspaceBackupFixture === 'synthetic' &&
       e2eNativeOpenDialogPurpose !== 'workspaceBackupImport' &&
@@ -243,6 +253,8 @@ export const test = base.extend<
     let runtimeCleanupUnverified = false;
     let publicCloseFailure: Parameters<typeof reportElectronLifecycleEvidence>[1]['publicCloseFailure'];
     let portReleaseUnverified = false;
+    let selectorBackendPort: number | undefined;
+    let selectorBackendPortUnobserved = false;
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
     let observationsTruncated = false;
@@ -263,7 +275,8 @@ export const test = base.extend<
       electronApp = undefined;
       applicationClosed = false;
       ownership = undefined;
-      return launchElectronRuntime({
+      selectorBackendPortUnobserved = usesSelectorTestBackend(scenarioId);
+      const launched = await launchElectronRuntime({
         async launch() {
           // Retain cleanup ownership before awaiting Playwright admission.
           windowsBridge = startOwnedWindowsElectronBridge({
@@ -311,6 +324,11 @@ export const test = base.extend<
           }
         },
       });
+      if (selectorBackendPortUnobserved) {
+        selectorBackendPort = await readSelectorTestBackendPort(launched.electronApp);
+        selectorBackendPortUnobserved = false;
+      }
+      return launched;
     }
 
     async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
@@ -347,9 +365,13 @@ export const test = base.extend<
     async function releaseCurrentPort(): Promise<void> {
       try {
         await waitForLoopbackPortRelease(backendPort);
-        if (portReleaseUnverified) {
+        if (selectorBackendPort !== undefined && selectorBackendPort !== backendPort) {
+          await waitForLoopbackPortRelease(selectorBackendPort);
+        }
+        if (portReleaseUnverified || selectorBackendPortUnobserved) {
           throw new Error('E2E_ELECTRON_PORT_RELEASE_UNVERIFIED');
         }
+        selectorBackendPort = undefined;
       } catch {
         portReleaseUnverified = true;
         throw new Error('E2E_ELECTRON_PORT_RELEASE_UNVERIFIED');
@@ -357,10 +379,16 @@ export const test = base.extend<
     }
 
     try {
+      if (e2eSelectorProfile !== 'none') {
+        await prepareElectronSelectorProfile(
+          { runRoot, userDataPath: runtime.userDataPath, state: e2eSelectorProfile },
+          createElectronEnvironment({ configPath: runtime.configPath, profile: runtime.profile, runRoot: runtime.runtimeRoot }),
+        );
+      }
       const launched = await launchCurrentRuntime();
       api = await createElectronApi(backendPort, runtime.sessionSecret);
 
-      async function launchNextRuntime(): Promise<void> {
+      async function prepareNextRuntime(): Promise<void> {
         backendPort = await reserveLoopbackPort();
         runtime = createElectronE2eRuntime({
           backendPort,
@@ -374,6 +402,10 @@ export const test = base.extend<
             ? {}
             : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
         });
+      }
+
+      async function launchNextRuntime(): Promise<void> {
+        await prepareNextRuntime();
         const restarted = await launchCurrentRuntime();
         api = await createElectronApi(backendPort, runtime.sessionSecret);
         harness.api = api;
@@ -398,7 +430,7 @@ export const test = base.extend<
         },
         page: launched.page,
         paths,
-        async performRelaunchingOperation(operation) {
+        async performRelaunchingOperation(operation, options) {
           const previousRuntimeInstanceId = runtime.runtimeInstanceId;
           const previousSessionSecret = runtime.sessionSecret;
           const previousRelaunchCount = countWorkspaceRelaunchRequests(
@@ -434,6 +466,24 @@ export const test = base.extend<
             );
           }
 
+          if (options?.expectSelectorRecovery === true) {
+            await prepareNextRuntime();
+            currentOutput = { bridge: undefined, generation: ++startupGeneration };
+            try {
+              await runElectronSelectorRecoveryStartup({
+                runtime, runRoot, lifetime, scenarioId,
+                readRelaunchCount: () => countWorkspaceRelaunchRequests(runtime.observationsPath),
+                captureOutput(output) { currentOutput.bridge = output; },
+              });
+            } catch (error) {
+              firstFailedLaunch ??= { ...currentOutput };
+              if (!(error instanceof DirectElectronRunFailure) || error.processTree !== 'stopped') {
+                runtimeCleanupUnverified = true;
+              }
+              throw error;
+            }
+            await releaseCurrentPort();
+          }
           await launchNextRuntime();
           return { previousRuntimeInstanceId, previousSessionSecret };
         },

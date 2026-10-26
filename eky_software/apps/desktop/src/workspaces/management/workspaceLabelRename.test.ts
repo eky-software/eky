@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
+  LocalWorkspaceRegistry,
   LocalWorkspaceRegistryV1,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
@@ -17,6 +18,28 @@ const activeId = '00000000-0000-4000-8000-000000000001' as WorkspaceId;
 const inactiveId = '00000000-0000-4000-8000-000000000002' as WorkspaceId;
 
 describe('workspace label rename', () => {
+  it('preserves the v2 selector and lineage while renaming a workspace', async () => {
+    const original = {
+      ...createRegistry(),
+      formatVersion: 2 as const,
+      activeWorkspaceId: null,
+      workspaces: createRegistry().workspaces.map((entry, index) => ({
+        ...entry,
+        lineageIdentity: { formatVersion: 1 as const, profileId: String(index + 1).repeat(64) },
+      })),
+    };
+    const writes: unknown[] = [];
+
+    await createRename(original, writes).rename(activeId, 'New label');
+
+    expect(writes).toEqual([{
+      ...original,
+      workspaces: original.workspaces.map(entry => entry.workspaceId === activeId
+        ? { ...entry, workspaceLabel: 'New label' }
+        : entry),
+    }]);
+  });
+
   it.each([
     ['active', activeId],
     ['inactive', inactiveId],
@@ -126,7 +149,7 @@ describe('workspace label rename', () => {
 });
 
 function createRename(
-  registryValue: Readonly<LocalWorkspaceRegistryV1>,
+  registryValue: Readonly<LocalWorkspaceRegistry>,
   writes: unknown[],
 ): WorkspaceLabelRename {
   return new WorkspaceLabelRename({

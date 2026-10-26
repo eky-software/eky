@@ -7,10 +7,12 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import { InMemoryWorkspaceMaintenanceLease, type WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { deriveWorkspaceBackupReplacementPaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
-import { WorkspaceActivationMigrationCoordinator } from './workspaceActivationMigrationCoordinator.js';
+import { WorkspaceActivationMigrationCoordinator, type WorkspaceActivationMigrationRecoveryReceipt } from './workspaceActivationMigrationCoordinator.js';
+import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
 import type { WorkspaceActivationMigrationProof } from './workspaceActivationMigrationGuard.js';
 
 const operationId = validateWorkspaceBackupImportOperationId(
@@ -221,6 +223,242 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     expect(fixture.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
     expect(fixture.requestRelaunch).not.toHaveBeenCalled();
   });
+
+  it.each([{ failCandidateMigration: true }, { failActivationAdvance: true }])(
+    'hands selector rollback from the switch owner to a real restore owner %#', async failure => {
+      const lease = new InMemoryWorkspaceMaintenanceLease();
+      const f = createFixture({ ...failure, selector: true, maintenanceLease: lease });
+      f.sourceRecovery.recoverFromFailure.mockImplementation(async () => {
+        const terminal = await lease.acquire('restore');
+        try {
+          lease.captureCurrentOwner(['restore'])();
+          f.events.push('source.recover');
+          return 'relaunchRequired';
+        } finally { await terminal.release(); }
+      });
+
+      await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+      const release = f.events.indexOf('lease.release');
+      expect(f.events.slice(release)).toEqual([
+        'lease.release', 'guard.reprove', 'runtime.absent', 'guard.reprove', 'source.recover', 'runtime.relaunch',
+      ]);
+      expect(release).toBeGreaterThan(f.events.indexOf(failure.failActivationAdvance
+        ? 'activation.rollback' : 'candidate.discard'));
+      expect(lease.readState()).toBe('idle');
+    },
+  );
+
+  it('keeps non-null source recovery under its original switch owner', async () => {
+    const lease = new InMemoryWorkspaceMaintenanceLease();
+    const f = createFixture({ failCandidateMigration: true, maintenanceLease: lease });
+    f.sourceRecovery.recoverFromFailure.mockImplementation(async () => {
+      lease.captureCurrentOwner(['switch'])();
+      f.events.push('source.recover');
+      return 'relaunchRequired';
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+    expect(f.events.indexOf('source.recover')).toBeLessThan(f.events.indexOf('lease.release'));
+    expect(lease.readState()).toBe('idle');
+  });
+
+  it('does not return to the selector before lease release has settled', async () => {
+    let release!: () => void;
+    let releasing!: () => void;
+    const started = new Promise<void>(resolve => { releasing = resolve; });
+    const f = createFixture({ selector: true, failCandidateMigration: true, maintenanceLease: {
+      async acquire() { return { async release() {
+        releasing(); await new Promise<void>(resolve => { release = resolve; });
+      } }; },
+    } });
+    const result = f.coordinator.migrateAndActivate(f.input);
+    try {
+      await started;
+      expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+      expect(f.requestRelaunch).not.toHaveBeenCalled();
+    } finally { release(); }
+    await expect(result).resolves.toBe('relaunchRequired');
+  });
+
+  it('preserves the first activation failure when selector handoff release fails', async () => {
+    const f = createFixture({ selector: true, failCandidateMigration: true, failLeaseRelease: true });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+      cause: { errors: [expect.objectContaining({ message: 'migration-failed' }),
+        expect.objectContaining({ message: 'release-failed' })] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it.each(['lease.release', 'runtime.absent'])(
+    'rejects selector authority lost at the post-rollback %s boundary', async expireAt => {
+      const f = createFixture({ selector: true, failCandidateMigration: true, expireAt,
+        ...(expireAt === 'runtime.absent' ? { expireOccurrence: 3 } : {}) });
+      await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+        code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+      });
+      expect(f.events.indexOf('selector.expired')).toBeGreaterThan(f.events.indexOf('candidate.discard'));
+      expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+      expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+      expect(f.requestRelaunch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects physical ownership lost after switch release before selector recovery', async () => {
+    const f = createFixture({ selector: true, failCandidateMigration: true });
+    f.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime.mockImplementation(async () => {
+      f.events.push('runtime.absent');
+      if (f.events.includes('lease.release')) throw new Error('synthetic reservation lost');
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      cause: { errors: [expect.objectContaining({ message: 'migration-failed' }),
+        expect.objectContaining({ message: 'synthetic reservation lost' })] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('retains selector recovery failure after release without relaunching', async () => {
+    const f = createFixture({ selector: true, failCandidateMigration: true });
+    const failure = new Error('synthetic original content failure');
+    f.sourceRecovery.recoverFromFailure.mockRejectedValueOnce(failure);
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      cause: { errors: [expect.objectContaining({ message: 'migration-failed' }), failure] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).toHaveBeenCalledOnce();
+    expect(f.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it.each([false, true])('distinguishes no candidate activation from legacy recovery (selector: %s)', async selector => {
+    const f = createFixture({ selector, failCandidateMigration: true });
+    await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+    expect(f.sourceRecovery.recoverFromFailure.mock.calls).toEqual(selector ? [[{ kind: 'noActivation' }]] : [[]]);
+  });
+
+  it('carries the exact frozen rollback writer receipt after lease release without another journal read', async () => {
+    const written = { ...createActivationJournal(operationId, 'rolledBack'), revision: 3 };
+    const f = createFixture({ selector: true, failActivationAdvance: true,
+      onRelease() { written.revision = 99; written.hadActiveDocuments = false; } });
+    f.activation.transaction.rollback.mockImplementationOnce(async selected => {
+      expect(selected).toEqual(createActivationJournal(operationId, 'prepared'));
+      expect(Object.isFrozen(selected)).toBe(true);
+      return written;
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+    const receipt = f.sourceRecovery.recoverFromFailure.mock.calls[0]?.[0];
+    expect(receipt).toEqual({ kind: 'rolledBack', journal: { ...createActivationJournal(operationId, 'rolledBack'), revision: 3 } });
+    expect(Object.isFrozen(receipt)).toBe(true);
+    if (receipt?.kind === 'rolledBack') expect(Object.isFrozen(receipt.journal)).toBe(true);
+    expect(f.activation.journalStore.read).toHaveBeenCalledTimes(2);
+    expect(f.events.indexOf('source.recover')).toBeGreaterThan(f.events.indexOf('lease.release'));
+  });
+
+  it.each(['operation', 'phase', 'revision', 'database', 'documents'] as const)(
+    'refuses a conflicting rollback %s receipt without source recovery', async mismatch => {
+      const f = createFixture({ selector: true, failActivationAdvance: true });
+      f.activation.transaction.rollback.mockResolvedValueOnce({
+        ...createActivationJournal(operationId, 'rolledBack'), revision: mismatch === 'revision' ? 4 : 3,
+        ...(mismatch === 'operation' ? { operationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' } : {}),
+        ...(mismatch === 'phase' ? { phase: 'rollbackStarting' as const } : {}),
+        ...(mismatch === 'database' ? { hadActiveDatabase: false } : {}),
+        ...(mismatch === 'documents' ? { hadActiveDocuments: false } : {}),
+      });
+      await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+        code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+        cause: { errors: [expect.objectContaining({ message: 'swap-failed' }), expect.any(Error)] },
+      });
+      expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+      expect(f.requestRelaunch).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['rollbackStarting', 'rolledBack'] as const)('carries a resumed %s writer receipt at its exact revision', async phase => {
+    const f = createFixture({ selector: true, failActivationAdvance: true });
+    const selected = { ...createActivationJournal(operationId, phase), revision: 7 };
+    f.activation.journalStore.read.mockResolvedValueOnce(undefined).mockResolvedValueOnce(selected);
+    const written = { ...selected, phase: 'rolledBack' as const, revision: phase === 'rolledBack' ? 7 : 8 };
+    f.activation.transaction.rollback.mockResolvedValueOnce(written);
+    await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+    expect(f.activation.transaction.rollback).toHaveBeenCalledExactlyOnceWith(selected);
+    expect(f.sourceRecovery.recoverFromFailure).toHaveBeenCalledExactlyOnceWith({ kind: 'rolledBack', journal: written });
+  });
+
+  it('does not turn a lost rollback reply into no activation', async () => {
+    const f = createFixture({ selector: true, failActivationAdvance: true });
+    const lostReply = new Error('synthetic lost rollback reply');
+    f.activation.transaction.rollback.mockRejectedValueOnce(lostReply);
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      cause: { errors: [expect.objectContaining({ message: 'swap-failed' }), lostReply] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('preserves a journal that never contained an original database', async () => {
+    const f = createFixture({ selector: true, failActivationAdvance: true });
+    f.activation.journalStore.read.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+      ...createActivationJournal(operationId, 'prepared'), hadActiveDatabase: false,
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+    });
+    expect(f.activation.transaction.rollback).not.toHaveBeenCalled();
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('preserves activation and recovery failures when recovery marking loses authority', async () => {
+    const f = createFixture({ selector: true, failActivationAdvance: true, expireAt: 'activation.rollback' });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+      cause: { errors: [
+        expect.objectContaining({ message: 'swap-failed' }),
+        expect.objectContaining({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' }),
+        expect.objectContaining({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' }),
+      ] },
+    });
+    expect(f.events.slice(f.events.indexOf('selector.expired') + 1)).toEqual(['guard.reprove', 'guard.reprove']);
+    expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { expireAt: 'lease.acquire' }, { expireAt: 'activation.read' },
+    { expireAt: 'recovery.createAndStage' }, { expireAt: 'candidate.prepareRoot' },
+    { expireAt: 'candidate.migrate' }, { expireAt: 'candidate.validate' },
+    { expireAt: 'recovery.removeStaging' }, { expireAt: 'candidate.inspect' },
+    { expireAt: 'activation.prepare' }, { expireAt: 'activation.advance' },
+    { expireAt: 'activation.read', expireOccurrence: 2, failCandidateMigration: true },
+    { expireAt: 'candidate.discard', failCandidateMigration: true },
+    { expireAt: 'activation.rollback', failActivationAdvance: true },
+    { expireAt: 'recovery.removeStaging', failCandidateMigration: true },
+  ])('stops selector mutations after authority expires at $expireAt ($expireOccurrence)', async scenario => {
+    const f = createFixture({ ...scenario, selector: true });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+    });
+    const expiry = f.events.indexOf('selector.expired');
+    expect(expiry).toBeGreaterThan(-1);
+    expect(f.events.slice(expiry + 1).every(event =>
+      ['guard.reprove', 'runtime.stop', 'runtime.absent'].includes(event))).toBe(true);
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {}, { failCandidateMigration: true }, { failActivationAdvance: true },
+    { failCandidateMigration: true, expireAt: 'source.recover' },
+  ])(
+    'preserves successful selector activation or owned recovery %#', async failure => {
+      const f = createFixture({ ...failure, selector: true });
+      await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+      expect(f.requestRelaunch).toHaveBeenCalledOnce();
+      expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    },
+  );
 });
 
 interface FixtureOptions {
@@ -231,11 +469,25 @@ interface FixtureOptions {
   readonly failRuntimeStop?: boolean;
   readonly foreignActivationJournal?: boolean;
   readonly userDataRoot?: string;
+  readonly selector?: boolean;
+  readonly expireAt?: string;
+  readonly expireOccurrence?: number;
+  readonly maintenanceLease?: WorkspaceMaintenanceLease;
+  readonly onRelease?: () => void;
 }
 
 function createFixture(options: FixtureOptions = {}) {
   const userDataRoot = options.userDataRoot ?? testUserDataRoot;
   const events: string[] = [];
+  let selectorCurrent = true;
+  let expiryOccurrences = 0;
+  const record = (event: string) => {
+    events.push(event);
+    if (event === options.expireAt && ++expiryOccurrences === (options.expireOccurrence ?? 1)) {
+      selectorCurrent = false;
+      events.push('selector.expired');
+    }
+  };
   let activationJournal: ProfileRestoreActivationJournal | undefined =
     options.foreignActivationJournal
       ? createActivationJournal(
@@ -247,29 +499,29 @@ function createFixture(options: FixtureOptions = {}) {
     operationId,
     profileId,
     registrySnapshot: new Uint8Array([1]),
-    sourceWorkspaceId,
+    sourceWorkspaceId: options.selector ? null : sourceWorkspaceId,
     switchJournalSnapshot: new Uint8Array([2]),
     targetWorkspaceId,
   });
-  const requestRelaunch = vi.fn(() => events.push('runtime.relaunch'));
+  const requestRelaunch = vi.fn(() => record('runtime.relaunch'));
   const stopTargetStartupRuntime = vi.fn(async () => {
-    events.push('runtime.stop');
+    record('runtime.stop');
     if (options.failRuntimeStop) throw new Error('stop-failed');
   });
   const sourceRecovery = {
-    recoverFromFailure: vi.fn(async () => {
-      events.push('source.recover');
+    recoverFromFailure: vi.fn(async (_candidate?: WorkspaceActivationMigrationRecoveryReceipt) => {
+      record('source.recover');
       return 'relaunchRequired' as const;
     }),
     requireRecovery: vi.fn(async () => {
-      events.push('source.requireRecovery');
+      record('source.requireRecovery');
       return 'recoveryRequired' as const;
     }),
   };
   const activation = {
     journalStore: {
       read: vi.fn(async () => {
-        events.push('activation.read');
+        record('activation.read');
         return activationJournal;
       }),
     },
@@ -282,7 +534,7 @@ function createFixture(options: FixtureOptions = {}) {
       }),
       accept: vi.fn(async () => undefined),
       advanceToValidation: vi.fn(async () => {
-        events.push('activation.advance');
+        record('activation.advance');
         if (options.failActivationAdvance) {
           throw new Error('swap-failed');
         }
@@ -294,7 +546,7 @@ function createFixture(options: FixtureOptions = {}) {
       }),
       clearRolledBack: vi.fn(async () => undefined),
       prepare: vi.fn(async () => {
-        events.push('activation.prepare');
+        record('activation.prepare');
         activationJournal = createActivationJournal(
           operationId,
           'prepared',
@@ -302,27 +554,32 @@ function createFixture(options: FixtureOptions = {}) {
       }),
       commitAcceptance: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTANCE_PUBLICATION'); }),
       clearAccepted: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTED_CLEANUP'); }),
-      rollback: vi.fn(async () => {
-        events.push('activation.rollback');
+      rollback: vi.fn(async (selected?: Readonly<ProfileRestoreActivationJournal>) => {
+        record('activation.rollback');
         activationJournal = createActivationJournal(
           operationId,
           'rolledBack',
         );
+        if (selected !== undefined) activationJournal.revision = selected.revision +
+          (selected.phase === 'rolledBack' ? 0 : selected.phase === 'rollbackStarting' ? 1 : 2);
         return activationJournal;
       }),
     },
   };
   const rootStore = {
     discardBeforeActivation: vi.fn(async () => {
-      events.push('candidate.discard');
+      record('candidate.discard');
     }),
     inspectCandidate: vi.fn(async () => {
-      events.push('candidate.inspect');
+      record('candidate.inspect');
     }),
     prepareCandidate: vi.fn(async () => {
-      events.push('candidate.prepareRoot');
+      record('candidate.prepareRoot');
     }),
     removeImportStaging: vi.fn(async () => undefined),
+  };
+  const workspaceRuntimeAbsence = {
+    assertNoActiveWorkspaceRuntime: vi.fn(async () => { record('runtime.absent'); }),
   };
   const coordinator = new WorkspaceActivationMigrationCoordinator({
     activationAuthorityFactory: {
@@ -330,7 +587,7 @@ function createFixture(options: FixtureOptions = {}) {
     },
     backupCandidate: {
       migrate: vi.fn(async () => {
-        events.push('candidate.migrate');
+        record('candidate.migrate');
         if (options.failCandidateMigration) {
           throw new Error('migration-failed');
         }
@@ -341,32 +598,36 @@ function createFixture(options: FixtureOptions = {}) {
         } as const;
       }),
       validateAndMaterialize: vi.fn(async () => {
-        events.push('candidate.validate');
+        record('candidate.validate');
         return createCandidateReadiness();
       }),
       validatePublished: vi.fn(async () => createCandidateReadiness()),
     },
     guard: {
       reprove: vi.fn(async () => {
-        events.push('guard.reprove');
+        record('guard.reprove');
+        if (!selectorCurrent) throw new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
       }),
     },
     maintenanceLease: {
       acquire: vi.fn(async () => {
-        events.push('lease.acquire');
+        record('lease.acquire');
+        const held = await options.maintenanceLease?.acquire('switch');
         return {
           release: vi.fn(async () => {
-            events.push('lease.release');
+            record('lease.release');
             if (options.failLeaseRelease) {
               throw new Error('release-failed');
             }
+            await held?.release();
+            options.onRelease?.();
           }),
         };
       }),
     },
     recoveryPoint: {
       createAndStage: vi.fn(async () => {
-        events.push('recovery.createAndStage');
+        record('recovery.createAndStage');
         if (options.failRecoveryPoint) {
           throw new Error('recovery-point-failed');
         }
@@ -381,18 +642,14 @@ function createFixture(options: FixtureOptions = {}) {
         };
       }),
       removeStaging: vi.fn(async () => {
-        events.push('recovery.removeStaging');
+        record('recovery.removeStaging');
       }),
     },
     requestRelaunch,
     rootStore,
     sourceRecovery,
     userDataRoot,
-    workspaceRuntimeAbsence: {
-      assertNoActiveWorkspaceRuntime: vi.fn(async () => {
-        events.push('runtime.absent');
-      }),
-    },
+    workspaceRuntimeAbsence,
   });
 
   return {
@@ -408,6 +665,7 @@ function createFixture(options: FixtureOptions = {}) {
     rootStore,
     sourceRecovery,
     stopTargetStartupRuntime,
+    workspaceRuntimeAbsence,
   };
 }
 

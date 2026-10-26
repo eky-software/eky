@@ -3,7 +3,7 @@ import { WorkspaceManagementRecoveryRequiredError } from '../management/workspac
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
@@ -13,7 +13,7 @@ import {
 } from '../runtime/assertColdWorkspaceRecoveryContinuation.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
-import { appendRecoveredWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
+import { appendRecoveredWorkspaceEntry, workspaceSelectionAfterPublication } from '../registry/workspaceRegistryMutations.js';
 import {
   WorkspaceBackupImportError,
   mapWorkspaceBackupImportError,
@@ -88,10 +88,6 @@ export class WorkspaceBackupImportRecovery {
         throw new WorkspaceManagementRecoveryRequiredError();
       }
       if (journal === undefined) return 'nothingToRecover';
-      if (this.options.completionMode === 'beforeRuntimeStart') {
-        await this.assertRuntimeAbsent();
-        await this.recoverPlaintextQuarantine();
-      }
       await this.assertRuntimeAbsent();
 
       const paths = deriveWorkspaceBackupImportPaths(
@@ -100,10 +96,17 @@ export class WorkspaceBackupImportRecovery {
         journal.workspaceId,
       );
       const registrySnapshot = await this.readRegistry();
+      if (this.options.completionMode === 'beforeRuntimeStart' && registrySnapshot === undefined) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
       const registryValue = readWorkspaceBackupImportRegistry(registrySnapshot);
       const registry = this.options.completionMode === 'beforeRuntimeStart'
         ? validateWorkspaceRegistry(registryValue)
         : registryValue;
+      if (this.options.completionMode === 'beforeRuntimeStart') {
+        await this.assertRuntimeAbsent();
+        await this.recoverPlaintextQuarantine();
+      }
       const entry = findImportedWorkspaceEntry(registry, journal.workspaceId);
       const presence = await this.options.rootStore.readPresence(paths);
 
@@ -161,9 +164,9 @@ export class WorkspaceBackupImportRecovery {
 
   private async completeFromPublishedRoot(
     journal: Readonly<WorkspaceBackupImportJournal>,
-    registry: Readonly<LocalWorkspaceRegistryV1>,
+    registry: Readonly<LocalWorkspaceRegistry>,
     paths: ReturnType<typeof deriveWorkspaceBackupImportPaths>,
-    registrySnapshot: Readonly<LocalWorkspaceRegistryV1> | undefined,
+    registrySnapshot: Readonly<LocalWorkspaceRegistry> | undefined,
   ): Promise<void> {
     if (
       journal.lineageIdentity === null ||
@@ -211,7 +214,7 @@ export class WorkspaceBackupImportRecovery {
 
   private async completeFromPublishedRegistry(
     journal: Readonly<WorkspaceBackupImportJournal>,
-    registry: Readonly<LocalWorkspaceRegistryV1>,
+    registry: Readonly<LocalWorkspaceRegistry>,
     entry: Readonly<LocalWorkspaceRegistryEntryV1>,
     candidateExists: boolean,
     finalExists: boolean,
@@ -224,7 +227,7 @@ export class WorkspaceBackupImportRecovery {
       !isAtOrAfter(journal, 'rootPublished') ||
       !entryMatchesJournal(entry, journal) ||
       registry.activeWorkspaceId !==
-        (journal.previousActiveWorkspaceId ?? journal.workspaceId)
+        workspaceSelectionAfterPublication(registry.formatVersion, journal.previousActiveWorkspaceId, journal.workspaceId)
     ) {
       return recoveryRequired();
     }
@@ -354,7 +357,7 @@ export class WorkspaceBackupImportRecovery {
 
   private async assertColdContinuation(
     expectedWorkspaceId: WorkspaceId | null,
-    expectedRegistry: Readonly<LocalWorkspaceRegistryV1>,
+    expectedRegistry: Readonly<LocalWorkspaceRegistry>,
   ): Promise<void> {
     await this.assertRuntimeAbsent();
     await assertColdWorkspaceRecoveryContinuation({
@@ -368,12 +371,14 @@ export class WorkspaceBackupImportRecovery {
 
   private async completeRecovery(
     journal: Readonly<WorkspaceBackupImportJournal>,
-    expectedRegistry: Readonly<LocalWorkspaceRegistryV1>,
+    expectedRegistry: Readonly<LocalWorkspaceRegistry>,
     published: boolean,
   ): Promise<void> {
     if (this.options.completionMode === 'beforeRuntimeStart') {
       await this.assertColdContinuation(
-        journal.previousActiveWorkspaceId ?? (published ? journal.workspaceId : null),
+        published
+          ? workspaceSelectionAfterPublication(expectedRegistry.formatVersion, journal.previousActiveWorkspaceId, journal.workspaceId)
+          : journal.previousActiveWorkspaceId,
         expectedRegistry,
       );
       return;

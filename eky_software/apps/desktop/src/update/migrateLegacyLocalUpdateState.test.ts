@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 
 import { migrateLegacyLocalUpdateState } from './migrateLegacyLocalUpdateState.js';
+import { createSelectorAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
 const accepted = Object.freeze({
   acceptedAt: '2026-08-11T18:00:00.000Z',
@@ -12,6 +13,24 @@ const accepted = Object.freeze({
 const journal = Object.freeze({ correlationId: 'journal' });
 
 describe('legacy local update state migration', () => {
+  it('migrates the entire scoped value without projecting it to the business baseline', async () => {
+    const scoped = createSelectorAcceptedBuildMetadata(accepted, { ...accepted, appVersion: '0.2.0' });
+    const fixture = createFixture({ accepted: scoped, journal: undefined });
+    await migrateLegacyLocalUpdateState(fixture.stores as never);
+    expect(fixture.currentAccepted.value).toEqual(scoped);
+    expect(fixture.legacyAccepted.clear).toHaveBeenCalledOnce();
+  });
+
+  it.each(['acceptedAt', 'businessBaseline'] as const)('preserves both locations when scoped %s differs', async field => {
+    const scoped = createSelectorAcceptedBuildMetadata(accepted, { ...accepted, appVersion: '0.2.0' });
+    const fixture = createFixture({ accepted: scoped, journal: undefined });
+    fixture.currentAccepted.value = field === 'acceptedAt'
+      ? { ...scoped, acceptedBuild: { ...scoped.acceptedBuild, acceptedAt: '2026-08-12T18:00:00.000Z' } }
+      : { ...scoped, businessBaseline: { ...accepted, buildRevision: '1234567' } };
+    await expect(migrateLegacyLocalUpdateState(fixture.stores as never)).rejects.toThrow('LOCAL_UPDATE_STATE_MIGRATION_CONFLICT');
+    expect(fixture.legacyAccepted.clear).not.toHaveBeenCalled();
+    expect(fixture.currentAccepted.write).not.toHaveBeenCalled();
+  });
   it('moves legacy state only after verifying the new store', async () => {
     const fixture = createFixture({ accepted, journal });
 

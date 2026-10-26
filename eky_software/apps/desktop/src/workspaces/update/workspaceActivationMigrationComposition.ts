@@ -16,7 +16,7 @@ import { resolveWorkspaceCandidateRuntimePaths } from '../runtime/workspaceCandi
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import { NodeWorkspaceActivationMigrationStaging } from './nodeWorkspaceActivationMigrationStaging.js';
-import { WorkspaceActivationMigrationCoordinator } from './workspaceActivationMigrationCoordinator.js';
+import { WorkspaceActivationMigrationCoordinator, type WorkspaceActivationMigrationRecoveryReceipt } from './workspaceActivationMigrationCoordinator.js';
 import { createWorkspaceActivationMigrationCandidate } from './workspaceActivationMigrationCandidate.js';
 import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
 import { WorkspaceActivationMigrationGuard } from './workspaceActivationMigrationGuard.js';
@@ -29,6 +29,7 @@ export interface WorkspaceActivationMigrationCompositionOptions {
   readonly appVersion: string;
   readonly buildRevision: string;
   readonly beforeCandidateMigration?: () => void;
+  readonly completeSelectorRollback?: (receipt: WorkspaceActivationMigrationRecoveryReceipt) => Promise<void>;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
   readonly recoveryPointService: Pick<
     RecoveryPointService,
@@ -47,16 +48,25 @@ export interface WorkspaceActivationMigrationCompositionOptions {
 export async function createWorkspaceActivationMigrationComposition(
   options: Readonly<WorkspaceActivationMigrationCompositionOptions>,
 ): Promise<WorkspaceActivationMigrationStartup> {
+  const selector = options.activeWorkspace.switchContext?.sourceWorkspaceId === null;
+  const completeSelectorRollback = options.completeSelectorRollback?.bind(options);
   if (
     options.activeWorkspace.mode !== 'targetValidation' ||
     options.activeWorkspace.switchContext === undefined ||
     options.activeWorkspace.rejectInvalidTarget === undefined ||
-    options.activeWorkspace.requireRecovery === undefined
+    options.activeWorkspace.requireRecovery === undefined ||
+    (options.activeWorkspace.switchContext.sourceWorkspaceId === null) !==
+      (options.activeWorkspace.selectorActivationAuthority !== undefined) ||
+    (selector && completeSelectorRollback === undefined)
   ) {
     throw new WorkspaceActivationMigrationError(
       'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
     );
   }
+
+  const recoverSource = options.activeWorkspace.recoverFromFailure.bind(options.activeWorkspace);
+  const switchOperationId = options.activeWorkspace.switchContext.operationId;
+  let selectorRecoveryState: 'unused' | 'active' | 'complete' | 'failed' = 'unused';
 
   const runtimePaths = await resolveWorkspaceCandidateRuntimePaths(
     options.resourcesPath,
@@ -88,6 +98,7 @@ export async function createWorkspaceActivationMigrationComposition(
   const guard = new WorkspaceActivationMigrationGuard(
     registry,
     switchJournal,
+    options.activeWorkspace.selectorActivationAuthority,
   );
   const runtimeAbsence = new StartupWorkspaceRuntimeAbsence(options.assertMainReservationOwned);
   const recoveryPoint = new WorkspaceActivationMigrationRecoveryPoint(
@@ -108,7 +119,31 @@ export async function createWorkspaceActivationMigrationComposition(
     requestRelaunch: options.requestRelaunch,
     rootStore: new NodeWorkspaceBackupReplacementRootStore(),
     sourceRecovery: {
-      recoverFromFailure: () => options.activeWorkspace.recoverFromFailure(),
+      async recoverFromFailure(receipt) {
+        if (!selector) return recoverSource();
+        try {
+          if (selectorRecoveryState !== 'unused' || receipt === undefined ||
+              (receipt.kind !== 'noActivation' && receipt.kind !== 'rolledBack') ||
+              (receipt.kind === 'rolledBack' && (receipt.journal.operationId !== switchOperationId ||
+                receipt.journal.phase !== 'rolledBack' || !receipt.journal.hadActiveDatabase))) {
+            throw new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
+          }
+          selectorRecoveryState = 'active';
+          await completeSelectorRollback!(receipt);
+          if (selectorRecoveryState !== 'active') {
+            throw new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
+          }
+          const outcome = await recoverSource();
+          if (selectorRecoveryState !== 'active') {
+            throw new WorkspaceActivationMigrationError('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
+          }
+          selectorRecoveryState = 'complete';
+          return outcome;
+        } catch (error) {
+          selectorRecoveryState = 'failed';
+          throw error;
+        }
+      },
       requireRecovery: () => options.activeWorkspace.requireRecovery!(),
     },
     userDataRoot: options.userDataRoot,

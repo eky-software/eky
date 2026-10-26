@@ -34,7 +34,8 @@ const contentSecurityPolicy = [
   "form-action 'self'",
 ].join('; ');
 
-export interface RegisterApplicationProtocolOptions {
+interface BusinessApplicationProtocolOptions {
+  mode?: 'business';
   backendOrigin: string;
   backendRequestAdmission?: BackendRequestAdmission;
   confirmSmtpTestPreparation?(
@@ -46,6 +47,11 @@ export interface RegisterApplicationProtocolOptions {
   runtimeSessionSecret: string;
   webRoot: string;
 }
+
+export type RegisterApplicationProtocolOptions = BusinessApplicationProtocolOptions | Readonly<{
+  mode: 'selector';
+  webRoot: string;
+}>;
 
 function jsonError(status: number, message: string): Response {
   return Response.json({ error: message }, { status });
@@ -216,6 +222,9 @@ export function registerApplicationProtocol(
     }
 
     if (isAllowedBackendRequest(request.method, requestUrl.pathname)) {
+      if (options.mode === 'selector') {
+        return jsonError(503, 'Avaa yritys ennen tämän toiminnon käyttämistä.');
+      }
       const requestLease = options.backendRequestAdmission?.begin(
         request.method,
       );

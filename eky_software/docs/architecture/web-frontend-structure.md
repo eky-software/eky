@@ -48,6 +48,19 @@ Se valitsee aktiivisen näkymän ja yhdistää feature-moduulit yleiseen layouti
 
 Varsinaista feature-kohtaista logiikkaa ei siirretä `app/`-kansioon.
 
+W7.2:n backendittomassa desktop-valitsintilassa app-composition valitsee
+`WorkspaceSelectorPage`-entrypointin ennen business-API-clientin luontia.
+Se käyttää nykyisiä workspace-controlleria, lomakkeita ja listaa ilman
+business-layoutia tai aktiivisen yrityksen korvauskomentoa. Sama H5:n
+lokitushäiriöilmoitus säilyy. Puuttuva desktop-kyvykkyys näyttää turvallisen
+virheen, ei business-fallbackia. Tavallinen selain- ja business-tila säilyvät.
+Desktopin täsmällinen valitsin-URL ohjaa vain esitystä; käyttöoikeus,
+protokollan business-esto ja operaation elinikä kuuluvat mainille.
+Tämä ei lisää routeria tai liiketoimintasääntöjä webiin.
+[Workspace-sopimus](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
+omistaa sulun ja avauksen rajat; [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottaa paikallisen osatodennuksen varsinaisesta integraatiohyväksynnästä.
+
 `app/` käyttää featureiden julkisia entrypointteja.
 
 Esimerkiksi:

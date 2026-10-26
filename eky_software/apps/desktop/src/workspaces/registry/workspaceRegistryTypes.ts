@@ -25,3 +25,11 @@ export interface LocalWorkspaceRegistryV1 {
   readonly activeWorkspaceId: WorkspaceId | null;
   readonly workspaces: readonly Readonly<LocalWorkspaceRegistryEntryV1>[];
 }
+
+export interface LocalWorkspaceRegistryV2 {
+  readonly formatVersion: 2;
+  readonly activeWorkspaceId: WorkspaceId | null;
+  readonly workspaces: readonly Readonly<LocalWorkspaceRegistryEntryV1>[];
+}
+
+export type LocalWorkspaceRegistry = LocalWorkspaceRegistryV1 | LocalWorkspaceRegistryV2;

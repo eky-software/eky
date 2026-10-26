@@ -1,6 +1,12 @@
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
-import type { AcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import {
+  readAcceptedApplicationBuild,
+  readAcceptedBusinessBaseline,
+  readAcceptedBusinessBuild,
+  type AcceptedBuildMetadata,
+  type VersionedAcceptedBuildMetadata,
+} from './acceptedBuildMetadata.js';
 import type { DirectSetupMigrationRecovery } from './directSetupMigrationRecovery.js';
 import { compareSemanticVersions } from './semanticVersionComparison.js';
 import type { UpdateJournal } from './updateJournal.js';
@@ -19,7 +25,7 @@ export type PreWorkspaceBuildRejection =
 
 interface PreWorkspaceBuildAdmissionStores {
   acceptedBuild: {
-    read(): Promise<Readonly<AcceptedBuildMetadata> | undefined>;
+    read(): Promise<VersionedAcceptedBuildMetadata | undefined>;
   };
   directSetupRecovery: {
     read(): Promise<Readonly<DirectSetupMigrationRecovery> | undefined>;
@@ -64,7 +70,7 @@ export async function requirePreWorkspaceBuildAdmission(input: {
 }
 
 export function classifyPreWorkspaceBuildAdmission(input: {
-  acceptedBuild: Readonly<AcceptedBuildMetadata> | undefined;
+  acceptedBuild: VersionedAcceptedBuildMetadata | undefined;
   buildInfo: Readonly<DesktopBuildInfo>;
   directSetupRecovery: Readonly<DirectSetupMigrationRecovery> | undefined;
   journal: Readonly<UpdateJournal> | undefined;
@@ -86,10 +92,12 @@ export function classifyPreWorkspaceBuildAdmission(input: {
 
   const activeJournal =
     input.journal?.state === 'accepted' ? undefined : input.journal;
+  const acceptedApplication = input.acceptedBuild === undefined
+    ? undefined : readAcceptedApplicationBuild(input.acceptedBuild);
   if (
     input.journal?.state === 'accepted' &&
-    (input.acceptedBuild === undefined ||
-      !matchesIdentity(input.acceptedBuild, {
+    (acceptedApplication === undefined ||
+      !matchesIdentity(acceptedApplication, {
         appVersion: input.journal.targetVersion,
         buildRevision:
           input.journal.candidatePackageIdentity.buildRevision,
@@ -98,7 +106,7 @@ export function classifyPreWorkspaceBuildAdmission(input: {
     return reject('mixedOrUnknownUpdateIdentity');
   }
 
-  if (input.acceptedBuild === undefined) {
+  if (input.acceptedBuild === undefined || acceptedApplication === undefined) {
     return activeJournal === undefined && input.directSetupRecovery === undefined
       ? allow('initialInstall')
       : reject('mixedOrUnknownUpdateIdentity');
@@ -106,12 +114,12 @@ export function classifyPreWorkspaceBuildAdmission(input: {
 
   const versionComparison = compareSemanticVersions(
     running.appVersion,
-    input.acceptedBuild.appVersion,
+    acceptedApplication.appVersion,
   );
   if (versionComparison < 0) return reject('downgrade');
   if (
     versionComparison === 0 &&
-    input.acceptedBuild.buildRevision !== running.buildRevision
+    acceptedApplication.buildRevision !== running.buildRevision
   ) {
     return reject('sameVersionDifferentRevision');
   }
@@ -120,7 +128,7 @@ export function classifyPreWorkspaceBuildAdmission(input: {
     if (
       activeJournal !== undefined &&
       (!matchesJournalCurrent(activeJournal, running) ||
-        !matchesJournalCurrent(activeJournal, input.acceptedBuild))
+        !matchesJournalCurrent(activeJournal, acceptedApplication))
     ) {
       return reject('mixedOrUnknownUpdateIdentity');
     }
@@ -128,7 +136,7 @@ export function classifyPreWorkspaceBuildAdmission(input: {
       input.directSetupRecovery !== undefined &&
       !matchesAcceptedDirectSetupRecovery(
         input.directSetupRecovery,
-        input.acceptedBuild,
+        readAcceptedBusinessBuild(input.acceptedBuild),
         running,
       )
     ) {
@@ -139,7 +147,7 @@ export function classifyPreWorkspaceBuildAdmission(input: {
 
   if (activeJournal !== undefined) {
     return matchesJournalTarget(activeJournal, running) &&
-      matchesJournalCurrent(activeJournal, input.acceptedBuild) &&
+      matchesJournalCurrent(activeJournal, acceptedApplication) &&
       input.directSetupRecovery === undefined
       ? allow('coordinatedUpdateTarget')
       : reject('mixedOrUnknownUpdateIdentity');
@@ -148,7 +156,7 @@ export function classifyPreWorkspaceBuildAdmission(input: {
     input.directSetupRecovery !== undefined &&
     !matchesDirectSetupRecovery(
       input.directSetupRecovery,
-      input.acceptedBuild,
+      readAcceptedBusinessBaseline(input.acceptedBuild),
       running,
     )
   ) {
@@ -159,11 +167,11 @@ export function classifyPreWorkspaceBuildAdmission(input: {
 
 function matchesAcceptedDirectSetupRecovery(
   recovery: Readonly<DirectSetupMigrationRecovery>,
-  acceptedBuild: Readonly<AcceptedBuildMetadata>,
+  acceptedBuild: Readonly<AcceptedBuildMetadata> | undefined,
   running: Readonly<{ appVersion: string; buildRevision: string }>,
 ): boolean {
   return (
-    recovery.state === 'accepted' &&
+    acceptedBuild !== undefined && recovery.state === 'accepted' &&
     matchesIdentity(recovery.runningTargetBuildIdentity, running) &&
     matchesIdentity(acceptedBuild, running)
   );

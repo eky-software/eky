@@ -1,10 +1,10 @@
-import type { LocalWorkspaceRegistryV1 } from './workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from './workspaceRegistryTypes.js';
 
 export interface WorkspaceRegistryPort {
-  read(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined>;
+  read(): Promise<Readonly<LocalWorkspaceRegistry> | undefined>;
   write(value: unknown): Promise<void>;
 }
 
 export interface WorkspaceRegistryInspectionPort {
-  inspect(): Promise<Readonly<LocalWorkspaceRegistryV1> | undefined>;
+  inspect(): Promise<Readonly<LocalWorkspaceRegistry> | undefined>;
 }

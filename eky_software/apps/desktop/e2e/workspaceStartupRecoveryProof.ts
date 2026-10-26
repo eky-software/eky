@@ -67,6 +67,7 @@ export async function runWorkspaceStartupRecoveryProof(
     stage = 'historicalRecovery';
     let relaunchCount = 0;
     const recovery = await resolveDesktopWorkspaceStartup({
+      assertStartupCurrent: assertProofSingleInstanceOwnership,
       createRuntimeSession: () => 'not-created-during-recovery',
       relaunchApplication: () => {
         relaunchCount += 1;
@@ -90,6 +91,7 @@ export async function runWorkspaceStartupRecoveryProof(
     stage = 'historicalReadoption';
     let sessionCreationCount = 0;
     const readoption = await resolveDesktopWorkspaceStartup({
+      assertStartupCurrent: assertProofSingleInstanceOwnership,
       createRuntimeSession: () => {
         sessionCreationCount += 1;
         return 'synthetic-runtime-session';

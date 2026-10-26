@@ -2,6 +2,9 @@ import { join } from 'node:path';
 
 import type { RecoveryPointService } from '../../profileBackup/recoveryPoint/recoveryPointService.js';
 import type { LocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
+import { isTerminalUpdateJournalState } from '../../update/startupRecoveryAuthority.js';
+import { parseUpdateJournal } from '../../update/updateJournal.js';
+import { maximumUpdateJournalBytes } from '../../update/updateJournalStore.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { EmptyWorkspaceCreationCoordinator } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import { EmptyWorkspaceCreationRecovery } from '../creation/emptyWorkspaceCreationRecovery.js';
@@ -24,6 +27,7 @@ import { WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImpo
 import { NodeWorkspaceBackupImportRootStore } from '../import/workspaceBackupImportRootStore.js';
 import { WorkspaceBackupPlaintextQuarantine } from '../import/workspaceBackupPlaintextQuarantine.js';
 import type {
+  InMemoryWorkspaceMaintenanceLease,
   WorkspaceMaintenanceLease,
   WorkspaceMaintenanceStateReader,
 } from '../maintenance/workspaceMaintenanceLease.js';
@@ -40,6 +44,10 @@ import type { WorkspaceRuntimeRelaunchCompletion } from '../runtime/deferredWork
 import { ElectronWorkspaceCandidateRuntimeFactory, type WorkspaceCandidateReservationOwner } from '../runtime/electronWorkspaceCandidateRuntimeFactory.js';
 import { resolveWorkspaceCandidateRuntimePaths } from '../runtime/workspaceCandidateRuntimePaths.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
+import type { MainOwnedSelectorWorkspaceLifecycle } from '../runtime/mainOwnedSelectorWorkspaceLifecycle.js';
+import { assertNoSelectorWorkspaceRecoveryFromRoot } from '../runtime/workspaceColdRecoveryAdmissionComposition.js';
+import { hasAnyJournalSlot, hasTerminalJournalConflict } from '../persistence/readOnlyJournalSlots.js';
+import { captureWorkspaceSelectorSwitchSelection } from '../switch/workspaceSelectorSwitchSelection.js';
 import type { WorkspaceColdRecoveryAdmission } from '../runtime/workspaceColdRecoveryAdmission.js';
 import { WorkspaceSwitchCoordinator } from '../switch/workspaceSwitchCoordinator.js';
 import {
@@ -71,6 +79,7 @@ interface SharedActiveWorkspaceLifecycle
     WorkspaceRuntimeAbsencePort {}
 
 export interface WorkspaceManagementCompositionOptions {
+  readonly mode?: 'active';
   readonly operationalIdentity: DesktopOperationalIdentity;
   readonly operationalLogger: DesktopOperationalLogger;
   readonly activeWorkspaceId: WorkspaceId;
@@ -90,11 +99,25 @@ export interface WorkspaceManagementCompositionOptions {
   readonly userDataRoot: string;
 }
 
+export interface SelectorWorkspaceManagementCompositionOptions extends Omit<WorkspaceManagementCompositionOptions,
+  'mode' | 'activeWorkspaceId' | 'activeWorkspaceLifecycle' | 'localUpdateRuntimePaths' |
+  'profileRestoreActivationJournalPath' | 'recoveryPointService'> {
+  readonly mode: 'selector';
+  readonly activeWorkspaceLifecycle: MainOwnedSelectorWorkspaceLifecycle;
+  readonly maintenanceLease: SharedWorkspaceMaintenanceLease & Pick<InMemoryWorkspaceMaintenanceLease, 'captureCurrentOwner'>;
+  readonly localUpdateRuntimePaths: Pick<LocalUpdateRuntimePaths,
+    'directSetupMigrationRecoveryPath' | 'journalPath' | 'legacyJournalPath'>;
+  assertCurrent(): void;
+}
+
 export interface WorkspaceManagementComposition {
   readonly service: WorkspaceManagementService;
   readActiveWorkspaceLabel(): Promise<string>;
   dispose(): void;
+  shutdown(): Promise<void>;
 }
+
+export type SelectorWorkspaceManagementComposition = Omit<WorkspaceManagementComposition, 'readActiveWorkspaceLabel'>;
 
 type WorkspaceCandidateCompositionOptions = Pick<WorkspaceManagementCompositionOptions,
   'appVersion' | 'buildRevision' | 'resourcesPath' | 'reservationOwner'>;
@@ -155,9 +178,15 @@ export async function recoverWorkspaceManagementBeforeRuntime(
   await options.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime();
 }
 
-export async function createWorkspaceManagementComposition(
+export function createWorkspaceManagementComposition(
   options: Readonly<WorkspaceManagementCompositionOptions>,
-): Promise<Readonly<WorkspaceManagementComposition>> {
+): Promise<Readonly<WorkspaceManagementComposition>>;
+export function createWorkspaceManagementComposition(
+  options: Readonly<SelectorWorkspaceManagementCompositionOptions>,
+): Promise<Readonly<SelectorWorkspaceManagementComposition>>;
+export async function createWorkspaceManagementComposition(
+  options: Readonly<WorkspaceManagementCompositionOptions | SelectorWorkspaceManagementCompositionOptions>,
+): Promise<Readonly<WorkspaceManagementComposition | SelectorWorkspaceManagementComposition>> {
   const candidateRuntimeFactory = await createCandidateRuntimeFactory(options);
   const backupCandidate = new PrivateWorkspaceBackupCandidateAdapter(
     candidateRuntimeFactory,
@@ -180,12 +209,9 @@ export async function createWorkspaceManagementComposition(
     options.userDataRoot,
     WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME,
   );
-  const replacementRuntimePaths =
-    deriveWorkspaceBackupReplacementRuntimePaths(
-      options.userDataRoot,
-      options.activeWorkspaceId,
-    );
-  const operationGuard = new MainOwnedWorkspaceManagementOperationGuard({
+  const operationGuard = options.mode === 'selector'
+    ? createSelectorOperationGuard(options)
+    : new MainOwnedWorkspaceManagementOperationGuard({
     adoptionJournal: createWorkspaceLegacyAdoptionJournalPaths(
       options.userDataRoot,
     ),
@@ -204,7 +230,7 @@ export async function createWorkspaceManagementComposition(
       options.profileRestoreActivationJournalPath,
     ),
     replacementJournal: createReadOnlyJournalSlotPaths(
-      replacementRuntimePaths.activationJournalPath,
+      deriveWorkspaceBackupReplacementRuntimePaths(options.userDataRoot, options.activeWorkspaceId).activationJournalPath,
     ),
     switchJournal: createWorkspaceSwitchJournalPaths(options.userDataRoot),
     updateJournal: createReadOnlyJournalSlotPaths(
@@ -241,7 +267,7 @@ export async function createWorkspaceManagementComposition(
     userDataRoot: options.userDataRoot,
     workspaceRuntimeAbsence: options.activeWorkspaceLifecycle,
   });
-  const replaceActive = new WorkspaceBackupReplacementCoordinator({
+  const replaceActive = options.mode === 'selector' ? undefined : new WorkspaceBackupReplacementCoordinator({
     activationAuthorityFactory:
       new ProfileRestoreWorkspaceReplacementActivationFactory(),
     activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
@@ -263,18 +289,30 @@ export async function createWorkspaceManagementComposition(
     userDataRoot: options.userDataRoot,
     workspaceRuntimeAbsence: options.activeWorkspaceLifecycle,
   });
-  const switchWorkspace = new WorkspaceSwitchCoordinator({
+  const switchWorkspace = new WorkspaceSwitchCoordinator(options.mode === 'selector' ? {
+    mode: 'selector',
+    activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
+    assertCurrent: options.assertCurrent.bind(options),
+    journal: new WorkspaceSwitchJournalStore(options.userDataRoot),
+    maintenanceLease: options.maintenanceLease,
+    registry,
+    relaunchApplication: () => options.runtimeRelaunch.request(),
+  } : {
     activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
     journal: new WorkspaceSwitchJournalStore(options.userDataRoot),
     maintenanceLease: options.maintenanceLease,
     registry,
     relaunchApplication: () => options.runtimeRelaunch.request(),
   });
-  const renameWorkspace = new WorkspaceLabelRename({
+  const renameOptions = {
     maintenanceLease: options.maintenanceLease,
     operationGuard,
     registry,
-  });
+  };
+  const renameWorkspace = new WorkspaceLabelRename(options.mode === 'selector' ? {
+    ...renameOptions, mode: 'selector', assertCurrent: options.assertCurrent.bind(options),
+    captureCurrentOwner: () => options.maintenanceLease.captureCurrentOwner(['rename']),
+  } : renameOptions);
   const service = new WorkspaceManagementService({
     observer: createWorkspaceBackupOperationalObserver({
       operationalIdentity: options.operationalIdentity,
@@ -284,26 +322,75 @@ export async function createWorkspaceManagementComposition(
     importBackup,
     maintenanceState: options.maintenanceLease,
     operationGuard,
-    registry,
+    registry: options.mode === 'selector' ? { read: () => new WorkspaceRegistryStore({
+      installationRoot: options.userDataRoot,
+      filePath: join(options.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
+    }).inspect() } : registry,
     renameWorkspace,
-    replaceActive,
+    ...(replaceActive === undefined ? {} : { replaceActive }),
     runtimeRelaunchCompletion: options.runtimeRelaunch,
     switchWorkspace,
   });
 
-  return Object.freeze({
+  const composition: SelectorWorkspaceManagementComposition = Object.freeze({
     service,
-    async readActiveWorkspaceLabel() {
-      const current = await registry.inspect();
-      const workspace = current?.workspaces.find(entry => entry.workspaceId === options.activeWorkspaceId);
-      if (current?.activeWorkspaceId !== options.activeWorkspaceId ||
-        workspace?.lifecycleState !== 'ready') {
+    dispose() {
+      service.closeAdmission();
+      operationGuard.dispose();
+    },
+    async shutdown() {
+      await service.shutdown();
+      operationGuard.dispose();
+    },
+  });
+  if (options.mode === 'selector') return composition;
+  return Object.freeze({ ...composition, async readActiveWorkspaceLabel() {
+    const current = await registry.inspect();
+    const workspace = current?.workspaces.find(entry => entry.workspaceId === options.activeWorkspaceId);
+    if (current?.activeWorkspaceId !== options.activeWorkspaceId || workspace?.lifecycleState !== 'ready') {
+      throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+    }
+    return workspace.workspaceLabel;
+  } });
+}
+
+function createSelectorOperationGuard(options: Readonly<SelectorWorkspaceManagementCompositionOptions>) {
+  const assertCurrent = () => {
+    const result: unknown = options.assertCurrent();
+    if (result !== undefined) {
+      void Promise.resolve(result).catch(() => undefined);
+      throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+    }
+  };
+  return new MainOwnedWorkspaceManagementOperationGuard({ mode: 'selector',
+    async assertNoUnresolvedSelectorOperations() {
+      assertCurrent();
+      // Each admitted read owns its inspectors; status may overlap a command.
+      const registry = new WorkspaceRegistryStore({ installationRoot: options.userDataRoot,
+        filePath: join(options.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME) });
+      const journal = new WorkspaceSwitchJournalStore(options.userDataRoot);
+      const registrySlots = await registry.inspectSlots();
+      assertCurrent();
+      const journalSlots = await journal.inspectSlots();
+      assertCurrent();
+      const selected = registrySlots.current?.value;
+      if (selected?.formatVersion !== 2 || selected.activeWorkspaceId !== null ||
+        registrySlots.next !== undefined || registrySlots.backup !== undefined) {
         throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
       }
-      return workspace.workspaceLabel;
-    },
-    dispose() {
-      operationGuard.dispose();
+      const captured = captureWorkspaceSelectorSwitchSelection({ registrySlots, journalSlots,
+        readRegistrySlots: () => registry.inspectSlots(), assertAuthority: assertCurrent });
+      await assertNoSelectorWorkspaceRecoveryFromRoot(options.userDataRoot, selected);
+      assertCurrent();
+      if (await hasAnyJournalSlot(createReadOnlyJournalSlotPaths(options.localUpdateRuntimePaths.legacyJournalPath)) ||
+        await hasTerminalJournalConflict(createReadOnlyJournalSlotPaths(options.localUpdateRuntimePaths.journalPath),
+          maximumUpdateJournalBytes, parseUpdateJournal, value => isTerminalUpdateJournalState(value.state))) {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+      await captured.guard.assertExternalSelection();
+      captured.assertJournalSelection(await journal.inspectSlots());
+      await captured.guard.assertExternalSelection();
+      assertCurrent();
     },
   });
 }

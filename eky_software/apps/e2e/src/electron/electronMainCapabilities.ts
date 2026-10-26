@@ -89,6 +89,8 @@ export interface WorkspaceFirstStartMigrationProofSnapshot {
 }
 
 export interface WorkspaceActivationMigrationProofSnapshot {
+  selectorOpeningVerified?: true;
+  deferredBusinessVerified?: true;
   activationJournalsCleared: boolean;
   artifactRootsPreserved: boolean;
   backendStartCount: number;
@@ -239,8 +241,9 @@ export function runElectronWorkspaceFirstStartMigrationProof(
 
 export function runElectronWorkspaceActivationMigrationProof(
   electronApp: ElectronApplication,
+  opening: 'selected' | 'selector' | 'selectorDeferred' = 'selected',
 ): Promise<WorkspaceActivationMigrationProofSnapshot> {
-  return electronApp.evaluate(async () => {
+  return electronApp.evaluate(async (_electron, selectedOpening) => {
     const controller = (
       globalThis as typeof globalThis & {
         __EKY_ELECTRON_E2E__?: ElectronE2eController;
@@ -249,8 +252,8 @@ export function runElectronWorkspaceActivationMigrationProof(
     if (controller === undefined) {
       throw new Error('Electron E2E controller is unavailable.');
     }
-    return controller.runWorkspaceActivationMigrationProof();
-  });
+    return controller.runWorkspaceActivationMigrationProof(selectedOpening);
+  }, opening);
 }
 
 export function runElectronWorkspaceFirstStartLoadOrderDiagnostic(
@@ -287,7 +290,7 @@ interface ElectronE2eController {
   nativeAdapterSnapshot(): ElectronNativeAdapterSnapshot;
   pdfPreviewUrls(): readonly string[];
   processMetrics(): ElectronProcessMetricsSnapshot;
-  runWorkspaceActivationMigrationProof(): Promise<WorkspaceActivationMigrationProofSnapshot>;
+  runWorkspaceActivationMigrationProof(opening: 'selected' | 'selector' | 'selectorDeferred'): Promise<WorkspaceActivationMigrationProofSnapshot>;
   runWorkspaceManagementCompositionProof(): Promise<WorkspaceManagementCompositionProofSnapshot>;
   runWorkspaceFirstStartMigrationProof(): Promise<WorkspaceFirstStartMigrationProofSnapshot>;
   runWorkspaceFirstStartLoadOrderDiagnostic(): Promise<{

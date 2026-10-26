@@ -1,6 +1,6 @@
 import { findWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
-import type { LocalWorkspaceRegistryV1 } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceLegacyAdoptionError } from './workspaceLegacyAdoptionError.js';
 import type {
   WorkspaceLegacyAdoptionJournalPort,
@@ -86,7 +86,7 @@ export async function recoverWorkspaceLegacyAdoption(
 }
 
 function assertWorkspaceUnpublished(
-  registry: Readonly<LocalWorkspaceRegistryV1> | undefined,
+  registry: Readonly<LocalWorkspaceRegistry> | undefined,
   journal: Readonly<WorkspaceLegacyAdoptionJournalV1>,
 ): void {
   if (

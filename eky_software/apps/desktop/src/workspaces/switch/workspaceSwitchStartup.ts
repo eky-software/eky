@@ -6,7 +6,7 @@ import {
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { WorkspaceSwitchError } from './workspaceSwitchError.js';
@@ -136,7 +136,7 @@ export async function resolveWorkspaceSwitchStartup(
 }
 
 async function reconcileInterruptedRollbackSelection(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   journalStore: WorkspaceSwitchJournalPort,
   journal: Readonly<WorkspaceSwitchJournalV1>,
 ): Promise<Readonly<WorkspaceSwitchJournalV1>> {
@@ -158,7 +158,7 @@ async function reconcileInterruptedRollbackSelection(
 }
 
 function registryMatchesInterruptedRollbackSelection(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   journal: Readonly<WorkspaceSwitchJournalV1>,
 ): boolean {
   if (
@@ -187,7 +187,7 @@ async function recoverInvalidTarget(
   journalStore: WorkspaceSwitchJournalPort,
   journal: Readonly<WorkspaceSwitchJournalV1>,
 ): Promise<WorkspaceSwitchFailureRecoveryOutcome> {
-  let currentRegistry: Readonly<LocalWorkspaceRegistryV1> | undefined;
+  let currentRegistry: Readonly<LocalWorkspaceRegistry> | undefined;
   try {
     currentRegistry = await registryPort.read();
     if (currentRegistry === undefined) throw new Error('invalid');
@@ -196,7 +196,7 @@ async function recoverInvalidTarget(
     return 'recoveryRequired';
   }
 
-  let recoveredRegistry: Readonly<LocalWorkspaceRegistryV1>;
+  let recoveredRegistry: Readonly<LocalWorkspaceRegistry>;
   try {
     recoveredRegistry = selectSourceAndRequireTargetRecovery({
       registry: currentRegistry,
@@ -211,7 +211,7 @@ async function recoverInvalidTarget(
   try {
     await registryPort.write(recoveredRegistry);
   } catch {
-    let observed: Readonly<LocalWorkspaceRegistryV1> | undefined;
+    let observed: Readonly<LocalWorkspaceRegistry> | undefined;
     try {
       observed = await registryPort.read();
     } catch {
@@ -234,7 +234,7 @@ async function recoverInvalidTarget(
 }
 
 function registryMatchesInvalidTargetRecovery(
-  registry: Readonly<LocalWorkspaceRegistryV1> | undefined,
+  registry: Readonly<LocalWorkspaceRegistry> | undefined,
   journal: Readonly<WorkspaceSwitchJournalV1>,
 ): boolean {
   return (
@@ -251,7 +251,7 @@ async function recoverTargetValidationFailure(
   journalStore: WorkspaceSwitchJournalPort,
   journal: Readonly<WorkspaceSwitchJournalV1>,
 ): Promise<WorkspaceSwitchFailureRecoveryOutcome> {
-  let currentRegistry: Readonly<LocalWorkspaceRegistryV1> | undefined;
+  let currentRegistry: Readonly<LocalWorkspaceRegistry> | undefined;
   try {
     currentRegistry = await registryPort.read();
   } catch {
@@ -266,7 +266,7 @@ async function recoverTargetValidationFailure(
     return 'recoveryRequired';
   }
 
-  let sourceRegistry: Readonly<LocalWorkspaceRegistryV1>;
+  let sourceRegistry: Readonly<LocalWorkspaceRegistry>;
   try {
     sourceRegistry = selectActiveWorkspace(
       currentRegistry,
@@ -281,7 +281,7 @@ async function recoverTargetValidationFailure(
   try {
     await registryPort.write(sourceRegistry);
   } catch {
-    let observedRegistry: Readonly<LocalWorkspaceRegistryV1> | undefined;
+    let observedRegistry: Readonly<LocalWorkspaceRegistry> | undefined;
     try {
       observedRegistry = await registryPort.read();
     } catch {
@@ -319,7 +319,7 @@ async function persistRecoveryRequired(
 }
 
 function resolveMode(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
   journal: Readonly<WorkspaceSwitchJournalV1> | undefined,
 ): WorkspaceSwitchStartupMode {
   if (journal === undefined) return 'normal';
@@ -339,7 +339,7 @@ function resolveMode(
 }
 
 function requireActiveReadyWorkspace(
-  registry: Readonly<LocalWorkspaceRegistryV1>,
+  registry: Readonly<LocalWorkspaceRegistry>,
 ): Readonly<LocalWorkspaceRegistryEntryV1> {
   const activeWorkspaceId = registry.activeWorkspaceId as WorkspaceId;
   const workspace = findWorkspaceEntry(registry, activeWorkspaceId);

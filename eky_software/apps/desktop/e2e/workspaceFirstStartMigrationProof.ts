@@ -22,6 +22,7 @@ import type {
   StartDesktopBackendOptions,
 } from '../src/runtime/backendProcess.js';
 import type { DesktopReleaseInfo } from '../src/release/desktopReleaseInfo.js';
+import { readAcceptedBusinessBuild } from '../src/update/acceptedBuildMetadata.js';
 import { AcceptedBuildMetadataStore } from '../src/update/acceptedBuildMetadataStore.js';
 import { DirectSetupMigrationRecoveryStore } from '../src/update/directSetupMigrationRecoveryStore.js';
 import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimePaths.js';
@@ -286,7 +287,8 @@ async function proveMixedScenario(input: {
           ]);
         preparedBeforeBackend =
           journal?.state === 'prepared' &&
-          acceptedBuild?.appVersion === input.build.sourceVersion &&
+          acceptedBuild !== undefined &&
+          readAcceptedBusinessBuild(acceptedBuild)?.appVersion === input.build.sourceVersion &&
           workspaceFirstStartProofSnapshotsEqual(
             registry,
             stores.registryBefore,
@@ -398,7 +400,8 @@ async function proveMixedScenario(input: {
       ),
     preparedBeforeBackend,
     targetAcceptedAfterRegistryTransition:
-      acceptedAfter?.appVersion === input.build.targetRelease.appVersion &&
+      acceptedAfter !== undefined &&
+      readAcceptedBusinessBuild(acceptedAfter)?.appVersion === input.build.targetRelease.appVersion &&
       invalidRegistryEntry?.lifecycleState === 'recoveryRequired' &&
       compatibleRegistryEntry?.lifecycleState === 'ready',
   });
@@ -447,7 +450,8 @@ async function proveAllCurrentScenario(input: {
       ]);
       journalAbsentBeforeBackend = journal === undefined;
       acceptedSourceBuildBeforeBackend =
-        acceptedBuild?.appVersion === input.build.sourceVersion;
+        acceptedBuild !== undefined &&
+        readAcceptedBusinessBuild(acceptedBuild)?.appVersion === input.build.sourceVersion;
       registryPreservedBeforeBackend = workspaceFirstStartProofSnapshotsEqual(
         registry,
         stores.registryBefore,
@@ -487,7 +491,8 @@ async function proveAllCurrentScenario(input: {
   const journalAbsentAfterBackend =
     journalAfter === undefined && (await stores.journal.read()) === undefined;
   const acceptedTargetBuildAfterBackend =
-    acceptedAfter?.appVersion === input.build.targetRelease.appVersion;
+    acceptedAfter !== undefined &&
+    readAcceptedBusinessBuild(acceptedAfter)?.appVersion === input.build.targetRelease.appVersion;
 
   await input.progress.enter('allCurrentComplete');
   return Object.freeze({

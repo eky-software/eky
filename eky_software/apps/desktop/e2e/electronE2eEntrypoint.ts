@@ -12,13 +12,11 @@ import {
   runSafeDesktopStartup,
 } from '../src/main/earlyStartup.js';
 import {
-  resolveActiveWorkspaceStartup,
-  type ActiveWorkspaceStartupPhase,
-} from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+  resolveElectronE2eWorkspaceStartup,
+} from './electronE2eWorkspaceStartup.js';
 import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
-import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { createElectronE2eStartupHold } from './electronE2eStartupHold.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
 import { createElectronSecretReplyHold } from './electronSecretReplyHold.js';
@@ -27,6 +25,9 @@ import { createFirstStartProofAdmission, createFirstStartProofObserver } from '.
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
+import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSelectorTestRelease.js';
+import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
+import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -48,7 +49,8 @@ if (configPath === undefined) {
 }
 const config = readElectronE2eConfig(configPath);
 app.setPath('userData', config.paths.userDataPath);
-const e2eAppVersion = app.getVersion();
+const selectorTestRelease = readSelectorTestRelease(config.scenarioId);
+const e2eAppVersion = selectorTestRelease?.appVersion ?? app.getVersion();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -72,11 +74,15 @@ const backendController = createElectronE2eBackendController(
   },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
+const selectorBackend = usesSelectorTestBackend(config.scenarioId)
+  ? observeSelectorTestBackend(startDesktopBackend) : undefined;
 app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');
 });
 let lifecycle: DesktopLifecycleHandle | undefined;
 let secondInstanceCount = 0;
+let runtimeSessionCount = 0;
+const createRuntimeSession = createElectronE2eRuntimeSessionFactory(config.backend.sessionSecret);
 let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefined;
 let secretShutdownProof: Promise<void> | undefined;
 let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
@@ -163,39 +169,28 @@ if (hasSingleInstanceLock) {
           appVersion: e2eAppVersion,
           buildCreatedAt: '2026-01-01T00:00:00.000Z',
           buildDirty: false,
-          buildRevision: 'development',
+          buildRevision: selectorTestRelease?.buildRevision ?? 'development',
           schemaVersion: 1,
         },
         dependencies: {
-          createRuntimeSession: () => config.backend.sessionSecret,
+          createRuntimeSession: () => {
+            runtimeSessionCount += 1;
+            return createRuntimeSession();
+          },
           openPath: nativeAdapters.openPath,
           showErrorBox: nativeAdapters.showErrorBox,
           showMessageBox: nativeAdapters.showMessageBox,
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
-          resolveActiveWorkspace: async (userDataRoot) => {
+          resolveActiveWorkspace: async (userDataRoot, options) => {
             startupObservation.record('workspaceResolutionStarted');
-            let activePhase: ActiveWorkspaceStartupPhase | undefined;
-            try {
-              const selection = await resolveActiveWorkspaceStartup(userDataRoot, {
-                reportProgress(progress) {
-                  activePhase =
-                    progress.state === 'started' ? progress.phase : undefined;
-                },
-              });
-              startupObservation.record('workspaceResolutionCompleted');
-              return selection;
-            } catch (error) {
-              throw new Error(
-                readSafeElectronE2eWorkspaceStartupFailureCode(
-                  error,
-                  activePhase,
-                ),
-              );
-            }
+            const selection = await resolveElectronE2eWorkspaceStartup(userDataRoot, options);
+            startupObservation.record('workspaceResolutionCompleted');
+            return selection;
           },
           async startBackend(options) {
             startupObservation.record('backendStartRequested');
+            if (selectorBackend !== undefined) return selectorBackend.startBackend(options);
             if (config.startupMode === 'backendStartFailure') {
               throw new Error('BACKEND_READINESS_TIMEOUT');
             }
@@ -224,7 +219,7 @@ if (hasSingleInstanceLock) {
           },
         },
         quitApplication: () => app.quit(),
-        releaseInfo: undefined,
+        releaseInfo: selectorTestRelease,
         relaunchApplication() {
           if (config.relaunchMode !== 'playwrightManaged') {
             throw new Error('ELECTRON_E2E_RELAUNCH_MODE_INVALID');
@@ -297,8 +292,10 @@ Object.assign(globalThis, {
     }),
     startupHold: () => startupHold.snapshot(),
     startupObservation: () => startupObservation.snapshot(),
-    backendIsRunning: () => backendController.isRunning(),
-    backendStartCount: () => backendController.getStartCount(),
+    backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning(),
+    backendStartCount: () => selectorBackend?.snapshot().starts ?? backendController.getStartCount(),
+    selectorBackendPort: () => selectorBackend?.snapshot().port,
+    runtimeSessionCount: () => runtimeSessionCount,
     closePdfPreviewWindows: () => {
       for (const window of getPdfPreviewWindows()) {
         window.close();
@@ -357,7 +354,7 @@ Object.assign(globalThis, {
     async runWorkspaceFirstStartLoadOrderDiagnostic() {
       return runFirstStartProof('releaseAfterProtocolRemoval');
     },
-    async runWorkspaceActivationMigrationProof() {
+    async runWorkspaceActivationMigrationProof(opening: 'selected' | 'selector' | 'selectorDeferred' = 'selected') {
       if (lifecycle === undefined) {
         throw new Error('WORKSPACE_ACTIVATION_MIGRATION_LIFECYCLE_MISSING');
       }
@@ -369,6 +366,7 @@ Object.assign(globalThis, {
         './workspaceActivationMigrationProof.js'
       );
       return runWorkspaceActivationMigrationProof({
+        opening,
         applicationPath: config.paths.applicationPath,
         appVersion: e2eAppVersion,
         resourcesPath: config.paths.resourcesPath,

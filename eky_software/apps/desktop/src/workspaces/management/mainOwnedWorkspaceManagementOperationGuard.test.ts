@@ -3,6 +3,7 @@ import {
   describe,
   expect,
   it,
+  vi,
 } from 'vitest';
 import {
   link,
@@ -20,6 +21,7 @@ import {
   transitionDirectSetupMigrationRecovery,
 } from '../../update/directSetupMigrationRecovery.js';
 import type { UpdateJournal } from '../../update/updateJournal.js';
+import * as journalSlots from '../persistence/readOnlyJournalSlots.js';
 import {
   createReadOnlyJournalSlotPaths,
   MainOwnedWorkspaceManagementOperationGuard,
@@ -29,6 +31,7 @@ import {
 const temporaryRoots: string[] = [];
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     temporaryRoots.splice(0).map((root) =>
       rm(root, { force: true, recursive: true }),
@@ -37,6 +40,37 @@ afterEach(async () => {
 });
 
 describe('main-owned workspace management operation guard', () => {
+  it('waits for all admitted journal reads after a rejection', async () => {
+    const fixture = await createFixture();
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(journalSlots, 'hasAnyJournalSlot').mockImplementation(async paths => {
+      if (paths === fixture.paths.adoptionJournal) throw new Error('synthetic first rejection');
+      if (paths === fixture.paths.switchJournal) await pending;
+      return false;
+    });
+    vi.spyOn(journalSlots, 'hasTerminalJournalConflict').mockResolvedValue(false);
+    let settled = false;
+    const result = fixture.guard.readRecoveryState().then(value => { settled = true; return value; });
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(settled).toBe(false);
+    } finally { release(); await result; }
+    expect(await result).toBe('recoveryRequired');
+  });
+
+  it('rejects a clear result that completes after disposal', async () => {
+    const fixture = await createFixture();
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    vi.spyOn(journalSlots, 'hasAnyJournalSlot').mockImplementation(async () => { await pending; return false; });
+    vi.spyOn(journalSlots, 'hasTerminalJournalConflict').mockResolvedValue(false);
+    const result = fixture.guard.readRecoveryState();
+    fixture.guard.dispose();
+    release();
+    await expect(result).resolves.toBe('recoveryRequired');
+  });
+
   it('reports clear when no operation slots exist', async () => {
     const fixture = await createFixture();
 

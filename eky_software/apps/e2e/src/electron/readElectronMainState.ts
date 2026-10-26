@@ -1,4 +1,5 @@
 import type { ElectronApplication } from '@playwright/test';
+import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 
 export interface ElectronMainState {
   backendIsRunning: boolean;
@@ -53,4 +54,21 @@ export function readElectronStartupObservation(
     ).__EKY_ELECTRON_E2E__;
     return controller?.startupObservation();
   });
+}
+
+export async function readSelectorTestBackendPort(electronApp: ElectronApplication): Promise<number | undefined> {
+  const observed = await electronApp.evaluate(() => {
+    const controller = (globalThis as unknown as { __EKY_ELECTRON_E2E__: {
+      scenarioId: string; backendIsRunning(): boolean; backendStartCount(): number;
+      selectorBackendPort(): number | undefined;
+    } }).__EKY_ELECTRON_E2E__;
+    return { scenarioId: controller.scenarioId, running: controller.backendIsRunning(),
+      starts: controller.backendStartCount(), port: controller.selectorBackendPort() };
+  });
+  if (usesSelectorTestBackend(observed.scenarioId)) {
+    if (observed.starts === 0 && observed.running === false && observed.port === undefined) return undefined;
+    if (observed.starts === 1 && observed.running === true && Number.isInteger(observed.port)
+      && observed.port! > 0 && observed.port! <= 65535) return observed.port;
+  }
+  throw new Error('E2E_SELECTOR_BACKEND_PORT_UNVERIFIED');
 }

@@ -43,6 +43,7 @@ const REQUIRED_FILES = [
   ['e2e/electronE2eBackendProcess.test.ts', 'vitest'],
   ['e2e/electronE2eBackendRunner.test.ts', 'vitest'],
   ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
+  ['e2e/electronE2eRuntimeSession.test.ts', 'vitest'],
   ['e2e/electronSecretReplyHold.test.ts', 'vitest'],
   ['e2e/electronE2eWorkspaceStartupFailure.test.ts', 'vitest'],
   ['scripts/electronE2eInspectionResource.test.ts', 'vitest'],

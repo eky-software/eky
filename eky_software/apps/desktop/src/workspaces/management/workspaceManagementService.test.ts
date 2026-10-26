@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
@@ -330,6 +331,141 @@ describe('workspace management service', () => {
     });
     expect(complete).toHaveBeenCalledTimes(1);
   });
+
+  it('seals every entry point without starting new readers or commands', async () => {
+    const readRegistry = vi.fn();
+    const readRecoveryState = vi.fn();
+    const command = vi.fn();
+    const service = createService({ readRegistry, readRecoveryState, create: command,
+      importBackup: command, replace: command, switchTo: command, rename: command });
+    service.closeAdmission();
+    const calls = [service.getStatus(), service.createEmpty('Synthetic'),
+      service.importBackupAsNew({ containerPath: 'private-path', password: 'synthetic', workspaceLabel: 'Synthetic' }),
+      service.replaceActiveFromBackup({ containerPath: 'private-path', password: 'synthetic', targetWorkspaceId: activeId }),
+      service.switchTo(activeId), service.rename(activeId, 'Synthetic')];
+    await expect(Promise.allSettled(calls)).resolves.toEqual(calls.map(() => ({
+      status: 'rejected', reason: expect.objectContaining({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' }),
+    })));
+    expect(readRegistry).not.toHaveBeenCalled();
+    expect(readRecoveryState).not.toHaveBeenCalled();
+    expect(command).not.toHaveBeenCalled();
+    const closing = service.shutdown();
+    expect(service.shutdown()).toBe(closing);
+    await closing;
+  });
+
+  it('does not start a command after a late admission result', async () => {
+    const guard = deferred<void>();
+    const create = vi.fn();
+    const service = createService({ create, assertNoUnresolvedOperations: () => guard.promise });
+    const operation = service.createEmpty('Synthetic');
+    const failed = expect(operation).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    let settled = false;
+    const closing = service.shutdown().then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    guard.resolve();
+    await failed;
+    await closing;
+    expect(create).not.toHaveBeenCalled();
+  });
+
+  it.each(['success', 'failure'] as const)('waits for a started command and preserves its %s', async outcome => {
+    const started = deferred<void>();
+    const operation = deferred<{ workspaceId: WorkspaceId; workspaceLabel: string }>();
+    const complete = vi.fn();
+    const service = createService({ create: () => { started.resolve(); return operation.promise; },
+      runtimeRelaunchCompletion: { complete } });
+    const result = service.createEmpty('Synthetic');
+    const cause = new Error('synthetic first cause');
+    const assertion = outcome === 'success'
+      ? expect(result).resolves.toMatchObject({ workspaceId: activeId })
+      : expect(result).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_CREATE_FAILED', cause });
+    await started.promise;
+    let settled = false;
+    const closing = service.shutdown().then(() => { settled = true; });
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    if (outcome === 'success') operation.resolve({ workspaceId: activeId, workspaceLabel: 'Synthetic' });
+    else operation.reject(cause);
+    await assertion;
+    await closing;
+    expect(complete).toHaveBeenCalledOnce();
+  });
+
+  it.each(['registry', 'recovery'] as const)(
+    'settles both status readers before shutdown and retains the first %s failure', async first => {
+      const registry = deferred<Awaited<ReturnType<WorkspaceRegistryPort['read']>>>();
+      const recovery = deferred<'clear'>();
+      const started = deferred<void>();
+      const service = createService({ readRegistry: () => registry.promise,
+        readRecoveryState: () => { started.resolve(); return recovery.promise; } });
+      const cause = new Error('synthetic first read failure');
+      const status = service.getStatus();
+      const failed = expect(status).rejects.toMatchObject({ cause });
+      await started.promise;
+      const initial = first === 'registry' ? registry : recovery;
+      const other = first === 'registry' ? recovery : registry;
+      initial.reject(cause);
+      let statusSettled = false;
+      void status.then(() => { statusSettled = true; }, () => { statusSettled = true; });
+      let closed = false;
+      const closing = service.shutdown().then(() => { closed = true; });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(statusSettled).toBe(false);
+      expect(closed).toBe(false);
+      other.reject(new Error('synthetic later read failure'));
+      await failed;
+      await closing;
+    },
+  );
+
+  it('tracks status reads before a synchronous callback requests shutdown', async () => {
+    const registry = deferred<Awaited<ReturnType<WorkspaceRegistryPort['read']>>>();
+    const started = deferred<void>();
+    let closing: Promise<void> | undefined;
+    const readRecoveryState = vi.fn(async () => 'clear' as const);
+    const service = createService({ readRecoveryState, readRegistry: () => {
+      closing = service.shutdown();
+      started.resolve();
+      return registry.promise;
+    } });
+    const status = service.getStatus();
+    const failed = expect(status).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    await started.promise;
+    expect(closing).toBeDefined();
+    let closed = false;
+    void closing!.then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    expect(readRecoveryState).not.toHaveBeenCalled();
+    registry.resolve(undefined);
+    await failed;
+    await closing;
+  });
+
+  it('publishes the current command before reentrant shutdown and does not await itself', async () => {
+    const started = deferred<void>();
+    const finish = deferred<void>();
+    let closing: Promise<void> | undefined;
+    const service = createService({ create: async () => {
+      closing = service.shutdown();
+      started.resolve();
+      await finish.promise;
+      return { workspaceId: activeId, workspaceLabel: 'Synthetic' };
+    } });
+    const result = service.createEmpty('Synthetic');
+    await started.promise;
+    expect(closing).toBeDefined();
+    let closed = false;
+    void closing!.then(() => { closed = true; });
+    await Promise.resolve();
+    expect(closed).toBe(false);
+    finish.resolve();
+    await expect(result).resolves.toMatchObject({ workspaceId: activeId });
+    await closing;
+  });
 });
 
 function createService(overrides: {
@@ -345,6 +481,8 @@ function createService(overrides: {
   }>;
   observer?: { record(event: unknown): void };
   recoveryState?: 'clear' | 'recoveryRequired';
+  readRegistry?: WorkspaceRegistryPort['read'];
+  readRecoveryState?: () => Promise<'clear' | 'recoveryRequired'>;
   rename?: (workspaceId: unknown, label: unknown) => Promise<{
     changed: boolean;
     workspaceId: WorkspaceId;
@@ -381,10 +519,10 @@ function createService(overrides: {
       assertNoUnresolvedOperations:
         overrides.assertNoUnresolvedOperations ??
         (async () => undefined),
-      readRecoveryState: async () => overrides.recoveryState ?? 'clear',
+      readRecoveryState: overrides.readRecoveryState ?? (async () => overrides.recoveryState ?? 'clear'),
     },
     registry: {
-      read: async () => ({
+      read: overrides.readRegistry ?? (async () => ({
         activeWorkspaceId: activeId,
         formatVersion: 1,
         workspaces: [
@@ -397,7 +535,7 @@ function createService(overrides: {
             workspaceLabel: 'Yritys A',
           },
         ],
-      }),
+      })),
     },
     renameWorkspace: {
       rename:
@@ -427,4 +565,11 @@ function createService(overrides: {
       switchTo: overrides.switchTo ?? (async () => undefined),
     },
   });
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => { resolve = yes; reject = no; });
+  return { promise, resolve, reject };
 }

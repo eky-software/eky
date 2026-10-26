@@ -35,6 +35,21 @@ afterEach(async () => {
 });
 
 describe('WorkspaceBackupImportCoordinator', () => {
+  it('publishes into a v2 selector without assigning its active workspace', async () => {
+    const fixture = createFixture({ emptyRegistry: true });
+    fixture.registry.value = { ...createTestImportRegistry(), formatVersion: 2 };
+
+    await fixture.coordinator.import(importInput);
+
+    expect(fixture.registry.value).toMatchObject({
+      formatVersion: 2,
+      activeWorkspaceId: null,
+      workspaces: [{ workspaceId: TEST_IMPORT_WORKSPACE_ID, lifecycleState: 'ready' }],
+    });
+    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.events.indexOf('lifecycle.ensure')).toBeLessThan(fixture.events.indexOf('journal.remove'));
+  });
+
   it.each(['active', 'unknown'] as const)('retains staged data and refuses restart when migration leaves ownership %s', async state => {
     const fixture = createFixture();
     vi.spyOn(fixture.candidate, 'migrate').mockImplementationOnce(async () => {
