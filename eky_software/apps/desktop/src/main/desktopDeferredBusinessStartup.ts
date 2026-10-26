@@ -8,6 +8,8 @@ import type { WorkspaceFirstStartMigrationCompositionOptions } from '../workspac
 import type { WorkspaceFirstStartMigrationOrchestration } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorTypes.js';
 import { calculateWorkspaceRegistrySha256, markPassiveWorkspacesRecoveryRequired } from '../workspaces/update/workspaceFirstStartMigrationRegistryTransitions.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../workspaces/management/workspaceManagementOperationGuard.js';
+import type { WorkspaceSelectorSwitchObservation, WorkspaceSelectorSwitchSettlement } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
+import { planWorkspaceSelectorSwitchSlots } from '../workspaces/switch/workspaceSelectorSwitchSlots.js';
 
 export type DesktopDeferredBusinessExternalState = Pick<DeferredBusinessLocalUpdateState,
   'metadata' | 'legacyMetadata' | 'updateJournal' | 'legacyUpdateJournal' | 'directSetupRecovery' | 'switchJournal'>;
@@ -22,6 +24,7 @@ export function createDesktopDeferredBusinessStartup(input: Readonly<{
 }>) {
   const prepared = structuredClone(input.prepared);
   const original = prepared.selectedState;
+  const hasSelectorSwitch = Object.values(original.switchJournal).some(slot => slot !== undefined);
   const assertStartup = input.assertCurrent.bind(input);
   const inspectExternal = input.inspectExternal.bind(input);
   let metadata = original.metadata;
@@ -31,6 +34,11 @@ export function createDesktopDeferredBusinessStartup(input: Readonly<{
   let firstStartBound = false;
   let preparationBound = false;
   let acceptanceStarted = false;
+  let selectorStage: 'none' | 'admitted' | 'settled' | 'cleared' = 'none';
+  let selectorHandoffPending = false;
+  let selectorSelection: WorkspaceSelectorSwitchObservation = {
+    registrySlots: original.registry, journalSlots: original.switchJournal,
+  };
   const operationId = randomUUID();
 
   function assertCurrent() {
@@ -46,9 +54,10 @@ export function createDesktopDeferredBusinessStartup(input: Readonly<{
   async function assertExternal() {
     await checked(async () => {
       const actual = await inspectExternal(!publishing);
-      for (const name of ['legacyMetadata', 'updateJournal', 'legacyUpdateJournal', 'directSetupRecovery', 'switchJournal'] as const) {
+      for (const name of ['legacyMetadata', 'updateJournal', 'legacyUpdateJournal', 'directSetupRecovery'] as const) {
         if (!isDeepStrictEqual(actual[name], original[name])) invalid();
       }
+      if (!isDeepStrictEqual(actual.switchJournal, selectorSelection.journalSlots)) invalid();
       // FirstStart alone owns metadata publication and checks its captured
       // identity within that write. Never inspect its in-flight slot files.
       if (!publishing && !isDeepStrictEqual(actual.metadata, metadata)) invalid();
@@ -62,7 +71,8 @@ export function createDesktopDeferredBusinessStartup(input: Readonly<{
       assertExternalSelection: assertExternal,
       async bindPreparation(journal) {
         await checked(async () => {
-          if (preparationBound || accepted || publishing || journal.operationId !== operationId ||
+          if (preparationBound || accepted || publishing || selectorHandoffPending ||
+              (hasSelectorSwitch && selectorStage !== 'settled') || journal.operationId !== operationId ||
               journal.activeWorkspaceId !== prepared.sourceRegistry.activeWorkspaceId ||
               journal.sourceBuild.appVersion !== prepared.selectorMetadata.businessBaseline.appVersion ||
               journal.sourceBuild.buildRevision !== prepared.selectorMetadata.businessBaseline.buildRevision ||
@@ -81,11 +91,55 @@ export function createDesktopDeferredBusinessStartup(input: Readonly<{
     authority,
     operationIdFactory: () => operationId,
     assertCurrent: assertExternal,
+    async admitSelectorSelection(observation: WorkspaceSelectorSwitchObservation) {
+      const selected = structuredClone(observation);
+      await checked(async () => {
+        if (selectorStage !== 'none' || firstStartBound || accepted || selectorHandoffPending ||
+            !hasSelectorSwitch ||
+            !isDeepStrictEqual(selected, selectorSelection)) invalid();
+        selectorStage = 'admitted';
+        await assertExternal();
+      });
+    },
+    async settleSelectorSelection(receipt: WorkspaceSelectorSwitchSettlement,
+      w6: Pick<WorkspaceFirstStartMigrationOrchestration, 'settleSelectorRegistry'>) {
+      const { phase } = receipt;
+      const before = structuredClone(receipt.before);
+      const after = structuredClone(receipt.after);
+      const assertOwner = receipt.assertCurrent.bind(receipt);
+      const settleRegistry = w6.settleSelectorRegistry.bind(w6);
+      await checked(async () => {
+        if (selectorHandoffPending || accepted || publishing || acceptanceStarted ||
+            !isDeepStrictEqual(before, selectorSelection)) invalid();
+        selectorHandoffPending = true;
+        if (phase === 'startup') {
+          if (selectorStage !== 'admitted' || preparationBound || firstStartBound) invalid();
+          const plan = planWorkspaceSelectorSwitchSlots(after.journalSlots, after.registrySlots);
+          if (plan.mode !== 'validateTarget' || after.registrySlots.next !== undefined ||
+              after.registrySlots.backup !== undefined || after.journalSlots.next !== undefined ||
+              after.journalSlots.backup !== undefined || !isDeepStrictEqual(plan.registry, prepared.sourceRegistry)) invalid();
+        } else if (phase === 'acceptedTarget') {
+          if (selectorStage !== 'settled' || !firstStartBound ||
+              !isDeepStrictEqual(before.registrySlots, after.registrySlots) ||
+              Object.values(after.journalSlots).some(slot => slot !== undefined)) invalid();
+        } else invalid();
+        await assertOwner();
+        selectorSelection = after;
+        await assertExternal();
+        if (phase === 'startup') await settleRegistry({ phase, before: structuredClone(before),
+          after: structuredClone(after), assertCurrent: assertOwner });
+        await assertOwner();
+        await assertExternal();
+        selectorStage = phase === 'startup' ? 'settled' : 'cleared';
+        selectorHandoffPending = false;
+      });
+    },
     async firstStartAuthority(w6: Pick<WorkspaceFirstStartMigrationOrchestration, 'assertDeferredBusinessReady'>,
       migrationChainIdentity: string): Promise<DeferredBusinessFirstStartAuthority> {
       const assertW6 = w6.assertDeferredBusinessReady.bind(w6);
       return checked(async () => {
-        if (accepted || firstStartBound || !/^[0-9a-f]{64}$/.test(migrationChainIdentity)) invalid();
+        if (accepted || firstStartBound || selectorHandoffPending ||
+            (hasSelectorSwitch && selectorStage !== 'settled') || !/^[0-9a-f]{64}$/.test(migrationChainIdentity)) invalid();
         firstStartBound = true;
         await assertExternal();
         await assertW6('beforeMigrations');
@@ -106,7 +160,8 @@ export function createDesktopDeferredBusinessStartup(input: Readonly<{
       const assertW6 = w6.assertDeferredBusinessReady.bind(w6);
       const acceptFirstStart = firstStart.acceptAfterBackendReady.bind(firstStart);
       await checked(async () => {
-        if (!firstStartBound || accepted || acceptanceStarted) invalid();
+        if (!firstStartBound || accepted || acceptanceStarted || selectorHandoffPending ||
+            (hasSelectorSwitch && selectorStage !== 'cleared')) invalid();
         acceptanceStarted = true;
         await assertExternal();
         await assertW6('beforeAcceptance');

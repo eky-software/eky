@@ -18,7 +18,7 @@ import {
 import {
   createWorkspaceSelectorSwitchJournal, createWorkspaceSelectorSwitchRegistryVariants,
 } from './workspaceSelectorSwitchState.js';
-import { resolveWorkspaceSelectorSwitchStartup, type WorkspaceSelectorSwitchStartupAuthority } from './workspaceSelectorSwitchStartup.js';
+import { resolveWorkspaceSelectorSwitchStartup, type WorkspaceSelectorSwitchSettlement, type WorkspaceSelectorSwitchStartupAuthority } from './workspaceSelectorSwitchStartup.js';
 import {
   createSwitchJournal, createSwitchRegistry, TEST_SWITCH_CREATED_AT, TEST_SWITCH_OPERATION_ID,
   TEST_TARGET_WORKSPACE_ID,
@@ -420,6 +420,130 @@ it.for(['mixed', 'threeSlots', 'wrongOrder', 'initialNextSelected'] as const)(
   },
 );
 
+it('hands off the owner-verified settled identities before invalid-root rejection', async test => {
+  const f = await fixture(test);
+  await f.setJournal({ current: prepared });
+  await rm(deriveWorkspaceRoot(f.root, TEST_TARGET_WORKSPACE_ID, 1).workspaceRoot, { recursive: true });
+  const original = { registrySlots: await f.registry.inspectSlots(), journalSlots: await f.journal.inspectSlots() };
+  const events: string[] = [];
+  f.authority.admitSelection = async selection => { expect(selection).toEqual(original); events.push('admitted'); };
+  f.authority.didSettleSelection = async receipt => {
+    expect(receipt.before).toEqual(original);
+    expect(receipt.phase).toBe('startup');
+    expect(receipt.after.journalSlots).toEqual(await f.journal.inspectSlots());
+    expect(receipt.after.journalSlots.current?.value).toEqual(selected);
+    await receipt.assertCurrent();
+    events.push('settled');
+  };
+  f.proveTerminal.mockImplementationOnce(async () => {
+    expect(events).toEqual(['admitted', 'settled']);
+    throw new Error('NO_TERMINAL_PROOF');
+  });
+  await expect(f.resolve()).rejects.toThrow('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+  expect(await f.registry.inspect()).toEqual(variants.selected);
+  expect((await f.journal.inspectSlots()).current?.value).toEqual(selected);
+});
+
+it('denies initial admission before any switch publication', async test => {
+  const f = await fixture(test);
+  await f.setJournal({ current: prepared });
+  const before = await f.snapshot();
+  f.authority.admitSelection = async () => { throw new Error('INITIAL_SELECTION_CHANGED'); };
+  await expect(f.resolve()).rejects.toThrow('INITIAL_SELECTION_CHANGED');
+  expect(await f.snapshot()).toEqual(before);
+  expect(f.proveTerminal).not.toHaveBeenCalled();
+});
+
+it('captures handoff callbacks and does not share mutable observation bytes with them', async test => {
+  const f = await fixture(test);
+  const replacement = vi.fn(async () => {});
+  const receipts: WorkspaceSelectorSwitchSettlement[] = [];
+  f.authority.admitSelection = async selection => {
+    selection.journalSlots.current!.bytes.fill(0);
+    f.authority.didSettleSelection = replacement;
+  };
+  f.authority.didSettleSelection = async receipt => {
+    await receipt.assertCurrent();
+    receipts.push(receipt);
+    receipt.after.registrySlots.current!.bytes.fill(0);
+  };
+  const startup = await f.resolve();
+  if (startup.mode === 'selector') throw new Error('unexpected selector');
+  await startup.accept(profileId);
+  expect(receipts.map(receipt => receipt.phase)).toEqual(['startup', 'acceptedTarget']);
+  expect(receipts[1]!.after.journalSlots.current).toBeUndefined();
+  expect(replacement).not.toHaveBeenCalled();
+  await expect(receipts[1]!.assertCurrent()).rejects.toThrow();
+  expect(await f.registry.inspect()).toEqual(variants.selected);
+});
+
+it('preserves the durable result and seals acceptance when its handoff reply is lost', async test => {
+  const f = await fixture(test);
+  const first = new Error('SETTLEMENT_ACK_LOST');
+  f.authority.didSettleSelection = async receipt => {
+    if (receipt.phase === 'acceptedTarget') throw first;
+  };
+  const startup = await f.resolve();
+  if (startup.mode === 'selector') throw new Error('unexpected selector');
+  await expect(startup.accept(profileId)).rejects.toBe(first);
+  expect((await f.journal.inspectSlots()).current).toBeUndefined();
+  await expect(startup.recoverFromFailure()).rejects.toThrow();
+  expect(await f.registry.inspect()).toEqual(variants.selected);
+});
+
+it('invalidates a retained startup receipt when its consumer rejects the handoff', async test => {
+  const f = await fixture(test);
+  let retained: WorkspaceSelectorSwitchSettlement | undefined;
+  f.authority.didSettleSelection = async receipt => {
+    retained = receipt;
+    throw new Error('STARTUP_HANDOFF_REJECTED');
+  };
+  const before = await f.snapshot();
+  await expect(f.resolve()).rejects.toThrow('STARTUP_HANDOFF_REJECTED');
+  await expect(retained!.assertCurrent()).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('does not let a retained startup receipt authorize the later cleared switch state', async test => {
+  const f = await fixture(test);
+  let startupReceipt: WorkspaceSelectorSwitchSettlement | undefined;
+  f.authority.didSettleSelection = async receipt => {
+    if (receipt.phase === 'startup') startupReceipt = receipt;
+    else await startupReceipt!.assertCurrent();
+  };
+  const startup = await f.resolve();
+  if (startup.mode === 'selector') throw new Error('unexpected selector');
+  await expect(startup.accept(profileId)).rejects.toThrow();
+  expect((await f.journal.inspectSlots()).current).toBeUndefined();
+  expect(await f.registry.inspect()).toEqual(variants.selected);
+  await expect(startup.recoverFromFailure()).rejects.toThrow();
+});
+
+it('seals the switch owner even when a consumer catches a receipt inspection failure', async test => {
+  const f = await fixture(test);
+  let retained: WorkspaceSelectorSwitchSettlement | undefined;
+  f.authority.didSettleSelection = async receipt => {
+    retained = receipt;
+    vi.spyOn(f.journal, 'inspectSlots').mockRejectedValueOnce(new Error('RECEIPT_READ_FAILED'));
+    await receipt.assertCurrent().catch(() => undefined);
+  };
+  const before = await f.snapshot();
+  await expect(f.resolveSwitch()).rejects.toThrow();
+  await expect(retained!.assertCurrent()).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('rejects replacement during handoff rather than returning a usable startup owner', async test => {
+  const f = await fixture(test);
+  f.authority.didSettleSelection = async () => {
+    const bytes = await readFile(f.registryPath);
+    await rename(f.registryPath, f.registryPath + '.retained');
+    await writeFile(f.registryPath, bytes, { flag: 'wx' });
+  };
+  await expect(f.resolve()).rejects.toThrow('WORKSPACE_SWITCH_INVALID');
+  expect(await readFile(f.registryPath)).toEqual(await readFile(f.registryPath + '.retained'));
+});
+
 async function fixture(test: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-selector-startup-'));
   test.onTestFinished(async () => { if (test.task.result?.state === 'pass') await rm(root, { recursive: true, force: true }); });
@@ -436,7 +560,7 @@ async function fixture(test: TestContext) {
   const assertCurrent = () => { if (!state.current) throw new Error('startup expired'); };
   const assertTerminal = () => { if (!state.terminalCurrent) throw new Error('terminal expired'); };
   const proveTerminal = vi.fn<WorkspaceSelectorSwitchStartupAuthority['proveTerminal']>(async () => ({ assertCurrent: assertTerminal }));
-  const authority = { assertCurrent, proveTerminal };
+  const authority: WorkspaceSelectorSwitchStartupAuthority = { assertCurrent, proveTerminal };
   return Object.assign(state, {
     root, registryPath, registry, journal, journalPaths, assertCurrent, assertTerminal, proveTerminal, authority,
     resolve: () => resolveActiveWorkspaceStartup(root, { selectorAuthority: authority }),

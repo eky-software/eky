@@ -47,10 +47,11 @@ export function createWorkspaceFirstStartMigrationComposition(
   const journalStore = new WorkspaceFirstStartMigrationJournalStore({
     userDataPath: options.userDataRoot,
   });
-  const { registry, journal } = options.deferredBusiness === undefined
+  const persistence = options.deferredBusiness === undefined
     ? { registry: registryStore, journal: journalStore }
     : createWorkspaceFirstStartSelectedPersistence({ registry: registryStore, journal: journalStore },
       options.deferredBusiness.persistence);
+  const { registry, journal } = persistence;
   const inspectAccepted = options.acceptedBuildStore.inspectSlots.bind(options.acceptedBuildStore);
   const acceptedBuild = options.deferredBusiness === undefined ? options.acceptedBuildStore : {
     async read() {
@@ -95,6 +96,7 @@ export function createWorkspaceFirstStartMigrationComposition(
       buildRevision: options.buildInfo.buildRevision,
     }),
     transitions,
+    ...('settleSelectorRegistry' in persistence ? { settleSelectorRegistry: persistence.settleSelectorRegistry } : {}),
   });
 }
 

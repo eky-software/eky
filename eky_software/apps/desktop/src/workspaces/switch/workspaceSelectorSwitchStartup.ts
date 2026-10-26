@@ -2,13 +2,14 @@ import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.j
 import { sameCrashSafeFileSlotIdentity, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
-import type { LocalWorkspaceRegistryV2 } from '../registry/workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry, LocalWorkspaceRegistryV2 } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceSelectorActivationAuthority } from '../update/workspaceActivationMigrationGuard.js';
 import { WorkspaceSwitchError } from './workspaceSwitchError.js';
 import {
   serializeVersionedWorkspaceSwitchJournal,
   type WorkspaceSwitchJournalStore,
   type WorkspaceSwitchJournalV2,
+  type WorkspaceSwitchJournal,
 } from './workspaceSwitchJournal.js';
 import {
   captureWorkspaceSelectorSwitchSelection,
@@ -20,11 +21,25 @@ import { createWorkspaceSelectorSwitchRegistryVariants } from './workspaceSelect
 export interface WorkspaceSelectorSwitchStartupAuthority {
   // Bound by main to the current startup generation and installation admission.
   assertCurrent(): void;
+  admitSelection?(selection: WorkspaceSelectorSwitchObservation): Promise<void>;
+  didSettleSelection?(receipt: WorkspaceSelectorSwitchSettlement): Promise<void>;
   proveTerminal(request: Readonly<{
     purpose: 'selectorReturn' | 'acceptedTarget';
     journal: Readonly<WorkspaceSwitchJournalV2> | undefined;
     registry: Readonly<LocalWorkspaceRegistryV2>;
   }>): Promise<Readonly<{ assertCurrent(): void }>>;
+}
+
+export interface WorkspaceSelectorSwitchObservation {
+  readonly registrySlots: ReadOnlyJournalSlots<LocalWorkspaceRegistry>;
+  readonly journalSlots: ReadOnlyJournalSlots<WorkspaceSwitchJournal>;
+}
+
+export interface WorkspaceSelectorSwitchSettlement {
+  readonly phase: 'startup' | 'acceptedTarget';
+  readonly before: WorkspaceSelectorSwitchObservation;
+  readonly after: WorkspaceSelectorSwitchObservation;
+  assertCurrent(): Promise<void>;
 }
 
 export interface WorkspaceSelectorStartupSelection {
@@ -46,12 +61,18 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
   const assertStartup = input.authority.assertCurrent.bind(input.authority);
   const assertInitialSelection = input.selection.assertAuthority.bind(input.selection);
   const proveTerminal = input.authority.proveTerminal.bind(input.authority);
+  const admitSelection = input.authority.admitSelection?.bind(input.authority);
+  const didSettleSelection = input.authority.didSettleSelection?.bind(input.authority);
   const assertAuthority = () => {
     if (!usable) invalid();
     assertSynchronous(assertStartup);
     assertSynchronous(assertInitialSelection);
   };
   let captured = captureWorkspaceSelectorSwitchSelection({ ...input.selection, assertAuthority });
+  const observation = (): WorkspaceSelectorSwitchObservation => structuredClone({
+    registrySlots: captured.registrySlots, journalSlots: captured.journalSlots,
+  });
+  let lastObservation = observation();
   const readJournal = () => input.journal.inspectSlots();
   const selection = (): WorkspaceSelectorSwitchSelection => ({
     journalSlots: captured.journalSlots, registrySlots: captured.registrySlots,
@@ -63,6 +84,24 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
     captured.assertJournalSelection(await readJournal());
     await captured.guard.assertExternalSelection();
     captured.assertJournalSelection(await readJournal());
+  };
+  const deliverSettlement = async (phase: WorkspaceSelectorSwitchSettlement['phase']) => {
+    try {
+      await assertSelection();
+      const after = observation();
+      const receiptSelection = captured;
+      const assertReceiptCurrent = async () => {
+        try {
+          if (captured !== receiptSelection) invalid();
+          await assertSelection();
+          if (captured !== receiptSelection) invalid();
+        } catch (error) { usable = false; throw error; }
+      };
+      await didSettleSelection?.(Object.freeze({ phase, before: structuredClone(lastObservation),
+        after: structuredClone(after), assertCurrent: assertReceiptCurrent }));
+      await assertSelection();
+      lastObservation = after;
+    } catch (error) { usable = false; throw error; }
   };
   const readBack = async (
     expectedRegistry: LocalWorkspaceRegistryV2,
@@ -121,6 +160,8 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
     } });
 
   await assertSelection();
+  await admitSelection?.(observation());
+  await assertSelection();
   if (Object.values(captured.journalSlots).every(value => value === undefined)) {
     const registry = captured.registrySlots.current?.value;
     if (registry?.formatVersion !== 2 || registry.activeWorkspaceId !== null ||
@@ -146,6 +187,7 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
     await readBack(plan.registry, next, 'journal', identity);
     plan = planWorkspaceSelectorSwitchSlots(captured.journalSlots, captured.registrySlots);
   }
+  await deliverSettlement('startup');
   if (plan.mode !== 'validateTarget') {
     const proof = await terminal('selectorReturn', plan.registry, plan.journal);
     if (plan.mode === 'completeReturn') {
@@ -199,6 +241,8 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
       const proof = await terminal('acceptedTarget', registry, journal);
       await input.journal.clearSelector(selection(), proof);
       await readBack(registry, undefined, 'journal');
+      proof.assertCurrent();
+      await deliverSettlement('acceptedTarget');
       proof.assertCurrent();
       usable = false;
     }),

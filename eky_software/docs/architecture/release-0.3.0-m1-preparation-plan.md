@@ -40,8 +40,9 @@ Aiempi jatkamisteksti säilyy muuttamattomana
 hallintatila. Rekisterin, metadatan ja käynnistyksen tilavalmistelun osarajat
 on toteutettu ja kohdennetusti todennettu. Main kytkee nyt W6:n ja
 FirstStartin vaihekohtaisen valtuuden jo valitun yrityksen deferred-avaukseen.
-Seuraavana on source-null-avauksen todellinen terminal-valtuus ja
-switch-omistajan tiedostovalinnan siirto, sitten valitsimen käyttöliittymä
+Switch-omistajan varmennetun tiedostovalinnan luovutusrajapinta on toteutettu;
+mainin source-null-kutsuja tarvitsee vielä todellisen terminal-valtuuden ja
+näiden rajojen yhteisen kytkennän. Sen jälkeen tulevat valitsimen käyttöliittymä
 ja native-/pakettitodennus. W7.2:n tuotantokytkentä ei ole valmis.
 [Pysyvä valinta ja versioraja](local-company-workspace-plan.md#pysyvä-yritysvalinta-ja-versioraja),
 [valitsimesta avauksen jatko](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
@@ -216,10 +217,17 @@ ja compositionia mutta ohjattuja native-/Electron-rajoja; tämä ei ole
 SQLite-/Electron- tai pakettihyväksyntä. Aiemman passiivisen siirtymän
 aikakatkaisun tarkka syy säilyy avoimena.
 
-**Seuraava työ:** source-null-avauksen switch-valinnan täsmällinen siirto
-sekä todellinen terminal-valtuus ennen valitsimeen paluuta tai hyväksyntää.
-Nykyinen main-kytkentä säilyttää alkuperäiset switch-slotit eikä vielä
-valtuuta niiden muuttamista. W6:n nykyisen compositionin deferred-haaran registry- ja
+**Seuraava työ:** source-null-avauksen todellinen terminal-valtuus ennen
+valitsimeen paluuta tai hyväksyntää sekä sen main-kytkentä. Omistajien
+luovutusrajapinta välittää alkuperäiset ja kirjoittajan varmentamat switch-/
+registry-havainnot ennen työtilajuuren tarkistusta ja hyväksytyn switch-poiston
+jälkeen. W6 hyväksyy vain saman rekisterisisällön kertaluonteisen siirron ennen
+valmisteluaan. Tämän osan 531 vaikutusalueen testiä sekä 235 main-käynnistyksen
+ja järjestysrajan testiä läpäisivät; ne eivät vielä ole terminal-, SQLite-/
+Electron- tai paketoitu näyttö. Katselmuksen vanhentuneen kuitin ja käsitellyn
+tarkistusvirheen jatkamisen puutteet toistettiin ja korjattiin regressioineen.
+Rajattu riippumaton jälkikatselmus ei jättänyt avoimia P1/P2-havaintoja.
+W6:n nykyisen compositionin deferred-haaran registry- ja
 journal-kutsut käyttävät nyt kirjoituksen sisällä uusittavaa valtuutta ja
 kirjoittajan tiedostoidentiteetin takaisinlukua; metadataluku ei korjaa
 sivuslotteja. Rajatun katselmuksen kaksi valtuus-/jatkamispuutetta toistettiin

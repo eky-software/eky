@@ -4,6 +4,8 @@ import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadat
 import { planDeferredBusinessLocalUpdateState, type DeferredBusinessLocalUpdateState } from '../update/deferredBusinessLocalUpdateState.js';
 import type { ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
 import { parseWorkspaceRegistryBytes } from '../workspaces/registry/workspaceRegistryBytes.js';
+import { createWorkspaceSelectorSwitchJournal } from '../workspaces/switch/workspaceSelectorSwitchState.js';
+import type { WorkspaceSelectorSwitchSettlement } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
 import { createDesktopDeferredBusinessStartup } from './desktopDeferredBusinessStartup.js';
 
 const at = '2026-10-26T12:00:00.000Z';
@@ -19,7 +21,7 @@ function record<T>(value: T, ino = 1) {
   const bytes = encode(value);
   return { value, bytes, identity: { dev: 1, ino, size: bytes.length, mtimeMs: 1, ctimeMs: 1 } };
 }
-function fixture() {
+function fixture(withSwitch = false) {
   // Only the main handoff is exercised here; disk and real-owner proof lives
   // in desktopRestoreStartup and the selected-persistence integration tests.
   const registry = parseWorkspaceRegistryBytes(encode({ formatVersion: 2,
@@ -33,6 +35,9 @@ function fixture() {
     legacyMetadata: empty(), updateJournal: empty(), legacyUpdateJournal: empty(), directSetupRecovery: empty(),
     switchJournal: empty(), firstStartJournal: empty(), runningBuild: target,
   };
+  if (withSwitch) Object.assign(state, { switchJournal: { ...empty(), current: record(createWorkspaceSelectorSwitchJournal(
+    { ...registry, formatVersion: 2, activeWorkspaceId: null }, registry.activeWorkspaceId!,
+    '55555555-5555-4555-8555-555555555555', at)) } });
   const inspectExternal = vi.fn(async (includeMetadata: boolean) => ({
     ...(includeMetadata ? { metadata: state.metadata } : {}), legacyMetadata: state.legacyMetadata,
     updateJournal: state.updateJournal, legacyUpdateJournal: state.legacyUpdateJournal,
@@ -140,5 +145,54 @@ it('does not adopt changed callback input or a same-byte replacement of the publ
       identity: { ...f.published.identity, ino: 9 } } } });
     return f.published;
   } }, f.w6)).rejects.toThrow();
+  await expect(f.subject.assertCurrent()).rejects.toThrow();
+});
+
+it.for(['originalChanged', 'ownerLost', 'registryRejected', 'journalReplaced'] as const)(
+  'seals main on a %s switch handoff without adopting a later observation', async fault => {
+    const f = fixture(true);
+    const before = { registrySlots: structuredClone(f.state.registry), journalSlots: structuredClone(f.state.switchJournal) };
+    if (fault === 'originalChanged') {
+      Object.assign(before.journalSlots.current!.identity!, { ino: 77 });
+      await expect(f.subject.admitSelectorSelection(before)).rejects.toThrow();
+    } else {
+      await f.subject.admitSelectorSelection(before);
+      const current = f.state.switchJournal.current!;
+      const journalSlots = { next: undefined, backup: undefined, current: record({ ...current.value, state: 'targetSelected' as const }, 3) };
+      const receipt: WorkspaceSelectorSwitchSettlement = { phase: 'startup', before,
+        after: { registrySlots: structuredClone(f.state.registry), journalSlots },
+        async assertCurrent() { if (fault === 'ownerLost') throw new Error('OWNER_LOST'); } };
+      Object.assign(f.state, { switchJournal: fault === 'journalReplaced'
+        ? { ...journalSlots, current: { ...journalSlots.current, identity: { ...journalSlots.current.identity, ino: 99 } } }
+        : journalSlots });
+      const settleSelectorRegistry = vi.fn(async () => { if (fault === 'registryRejected') throw new Error('REGISTRY_REJECTED'); });
+      await expect(f.subject.settleSelectorSelection(receipt, { settleSelectorRegistry })).rejects.toThrow();
+      expect(settleSelectorRegistry).toHaveBeenCalledTimes(fault === 'registryRejected' ? 1 : 0);
+    }
+    await expect(f.subject.assertCurrent()).rejects.toThrow();
+    await expect(f.subject.firstStartAuthority(f.w6, chain)).rejects.toThrow();
+    expect(f.w6.assertDeferredBusinessReady).not.toHaveBeenCalled();
+  },
+);
+
+it('does not publish deferred business acceptance before the successful switch-clear handoff', async () => {
+  const f = fixture(true);
+  const before = { registrySlots: structuredClone(f.state.registry), journalSlots: structuredClone(f.state.switchJournal) };
+  await f.subject.admitSelectorSelection(before);
+  const journalSlots = { next: undefined, backup: undefined, current: record({ ...f.state.switchJournal.current!.value, state: 'targetSelected' as const }, 3) };
+  Object.assign(f.state, { switchJournal: journalSlots });
+  await f.subject.settleSelectorSelection({ phase: 'startup', before,
+    after: { registrySlots: structuredClone(f.state.registry), journalSlots }, async assertCurrent() {} },
+  { async settleSelectorRegistry() {} });
+  await f.subject.firstStartAuthority(f.w6, chain);
+  const acceptAfterBackendReady = vi.fn(async () => f.published);
+  await expect(f.subject.accept({ acceptAfterBackendReady }, f.w6)).rejects.toThrow();
+  expect(acceptAfterBackendReady).not.toHaveBeenCalled();
+});
+
+it('does not bind FirstStart for a pending switch without its original selection admission', async () => {
+  const f = fixture(true);
+  await expect(f.subject.firstStartAuthority(f.w6, chain)).rejects.toThrow();
+  expect(f.w6.assertDeferredBusinessReady).not.toHaveBeenCalled();
   await expect(f.subject.assertCurrent()).rejects.toThrow();
 });

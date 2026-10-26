@@ -573,6 +573,21 @@ estää delegoinnin vanhalle korjaavalle lukijalle. Null-valinta ei myöskään
 ohita olemassa olevaa legacy-adoption palautusomistajaa; sen ja v2-switchin
 ristiriita säilyttää aineiston ja estää jatkon.
 
+Source-null-omistajien välinen luovutus käyttää switch-omistajan seuraamia
+alkuperäisiä ja kirjoituksen jälkeen varmennettuja slotteja. Mainin alkuperäisen
+valinnan admission edeltää switch-palautusta. Valmistuneen valinnan kuittaus
+edeltää myös työtilajuuren tarkistusta, sillä jo se voi vaatia turvallista
+valitsimeen paluuta. W6 saa ennen omaa valmisteluaan yhden saman rekisterisisällön
+tiedostoidentiteetin siirron; se ei saa vaihtaa valittua yritystä tai historiatietoa.
+Siirron keskeneräisyys estää W6-valmistelun ja peruutuksen. Switchin hyväksytty
+poisto välittää oman kuittinsa ennen W6-siirtymää. Kadonnut kuittaus, muuttunut
+tiedosto tai vanhentunut omistaja sulkee kyseisen kytkennän jatkon, ei anna lupaa
+ottaa myöhempää tiedostolukua uudeksi lähtökohdaksi. Tämä nykyisten omistajien
+luovutusrajapinta ei itsessään todista prosessien päättymistä tai paluuvaltuutta.
+Kuitin tarkistus sidotaan juuri sen omaan valintaan: se ei seuraa myöhempää
+journalin poistoa tai muuta seuraajatilaa. Hylätty kuitin tarkistus sulkee
+omistajan, vaikka kutsuja käsittelisi poikkeuksen itse.
+
 Mainin lopullinen valitsinkytkentä ei vielä toimita tätä valtuutta tai
 terminal-todistetta. Tiedostotallentimien, resolverin, guardin ja
 startup-/inspector-luokkien yhteiset regressiot käyttävät ohjattuja prosessi-

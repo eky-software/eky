@@ -9,6 +9,7 @@ import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySeriali
 import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import type { WorkspaceSelectorSwitchSettlement } from '../switch/workspaceSelectorSwitchStartup.js';
 import {
   parseWorkspaceFirstStartMigrationJournalBytes,
   serializeWorkspaceFirstStartMigrationJournal,
@@ -169,6 +170,27 @@ export function createWorkspaceFirstStartSelectedPersistence(
     removeTransitioned: id => removeJournal(id, 'registryTransitioned'),
   };
   return {
+    async settleSelectorRegistry(receipt: WorkspaceSelectorSwitchSettlement) {
+      await checked(async () => {
+        const { phase } = receipt;
+        const before = capture(receipt.before.registrySlots, parseWorkspaceRegistryBytes);
+        const after = capture(receipt.after.registrySlots, parseWorkspaceRegistryBytes);
+        const assertOwner = receipt.assertCurrent.bind(receipt);
+        await mutate(async () => {
+          if (phase !== 'startup' || after.current?.value.formatVersion !== 2 ||
+              after.current.value.activeWorkspaceId === null || hasSides(after)) invalid();
+          assertSame(before, registry);
+          const original = registry.current ?? registry.backup;
+          if (original === undefined || !Buffer.from(original.bytes).equals(after.current.bytes)) invalid();
+          await assertOwner();
+          await inspectJournal();
+          assertSame(await stores.registry.inspectSlots(), after);
+          await assertOwner();
+          await external();
+          registry = after;
+        });
+      });
+    },
     journal: journalPort,
     registry: {
       read: readRegistry,

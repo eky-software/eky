@@ -16,6 +16,7 @@ import type {
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import type { WorkspaceSelectorSwitchSettlement } from '../switch/workspaceSelectorSwitchStartup.js';
 import { assertWorkspaceFirstStartMigrationJournalTransition } from './workspaceFirstStartMigrationJournalCodec.js';
 import { resolveWorkspaceFirstStartMigrationPlan } from './resolveWorkspaceFirstStartMigrationPlan.js';
 import type {
@@ -64,6 +65,7 @@ interface WorkspaceFirstStartMigrationOrchestratorOptions {
   readonly now?: () => Date;
   readonly operationIdFactory?: () => string;
   readonly registry: WorkspaceRegistryInspectionPort;
+  readonly settleSelectorRegistry?: (receipt: WorkspaceSelectorSwitchSettlement) => Promise<void>;
   readonly runningBuild: Readonly<WorkspaceFirstStartBuildIdentity>;
   readonly transitions: Pick<
     WorkspaceFirstStartMigrationTransitionCoordinator,
@@ -97,6 +99,8 @@ export class WorkspaceFirstStartMigrationOrchestrator
   private preparationPending = false;
   private registryTransitionStarted = false;
   private deferredRegistry: Readonly<LocalWorkspaceRegistry> | undefined;
+  private selectorSettlementStarted = false;
+  private selectorSettlementPending = false;
 
   constructor(
     private readonly options: Readonly<
@@ -172,12 +176,25 @@ export class WorkspaceFirstStartMigrationOrchestrator
   async prepareBeforeBackend(
     context: Readonly<WorkspaceFirstStartPreparationContext>,
   ): Promise<WorkspaceFirstStartPreparationOutcome> {
-    if (!this.recoveryCompleted || this.preparation !== undefined || this.preparationPending || this.selectorReturnStarted) {
+    if (!this.recoveryCompleted || this.preparation !== undefined || this.preparationPending ||
+        this.selectorReturnStarted || this.selectorSettlementPending) {
       return invalidOrchestration();
     }
     this.preparationPending = true;
     try { return await this.prepare(context); }
     finally { this.preparationPending = false; }
+  }
+
+  async settleSelectorRegistry(receipt: WorkspaceSelectorSwitchSettlement): Promise<void> {
+    const settle = this.options.settleSelectorRegistry;
+    if (this.options.deferredBusiness === undefined || settle === undefined || !this.recoveryCompleted ||
+        this.preparation !== undefined || this.preparationPending || this.selectorReturnStarted ||
+        this.registryTransitionStarted || this.completed || this.selectorSettlementStarted) return invalidOrchestration();
+    this.selectorSettlementStarted = true;
+    this.selectorSettlementPending = true;
+    await settle(receipt);
+    // A failed or lost handoff remains pending: no subsequent preparation.
+    this.selectorSettlementPending = false;
   }
 
   private async prepare(context: Readonly<WorkspaceFirstStartPreparationContext>): Promise<WorkspaceFirstStartPreparationOutcome> {
@@ -363,7 +380,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   }
 
   async cancelBeforeSelectorReturn(authority: WorkspaceFirstStartSelectorReturnAuthority): Promise<void> {
-    if (this.options.deferredBusiness === undefined || !this.recoveryCompleted || this.preparationPending ||
+    if (this.options.deferredBusiness === undefined || !this.recoveryCompleted || this.preparationPending || this.selectorSettlementPending ||
         this.registryTransitionStarted || this.completed || this.selectorReturnStarted ||
         this.preparation?.kind === 'rollbackOnly') return invalidOrchestration();
     // Even a lost cancellation reply seals this instance. Restart rereads durable state.

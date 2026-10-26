@@ -4,6 +4,8 @@ import { join } from 'node:path';
 import { expect, it, vi, type TestContext } from 'vitest';
 
 import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import { createDesktopDeferredBusinessStartup } from '../../main/desktopDeferredBusinessStartup.js';
+import { planDeferredBusinessLocalUpdateState, type DeferredBusinessLocalUpdateState } from '../../update/deferredBusinessLocalUpdateState.js';
 import { AcceptedBuildMetadataStore, acceptedBuildMetadataFileName } from '../../update/acceptedBuildMetadataStore.js';
 import { DirectSetupMigrationRecoveryStore, directSetupMigrationRecoveryFileName } from '../../update/directSetupMigrationRecoveryStore.js';
 import { UpdateJournalStore, updateJournalFileName } from '../../update/updateJournalStore.js';
@@ -11,7 +13,10 @@ import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
-import { createWorkspaceFirstStartMigrationComposition } from './workspaceFirstStartMigrationComposition.js';
+import { createWorkspaceFirstStartMigrationComposition, type WorkspaceFirstStartMigrationCompositionOptions } from './workspaceFirstStartMigrationComposition.js';
+import { createWorkspaceSelectorSwitchJournal } from '../switch/workspaceSelectorSwitchState.js';
+import { resolveWorkspaceSelectorSwitchStartup, type WorkspaceSelectorSwitchSettlement } from '../switch/workspaceSelectorSwitchStartup.js';
+import { createWorkspaceSwitchJournalPaths, WorkspaceSwitchJournalStore, serializeVersionedWorkspaceSwitchJournal } from '../switch/workspaceSwitchJournal.js';
 import { serializeWorkspaceFirstStartMigrationJournal, validateWorkspaceFirstStartMigrationJournal } from './workspaceFirstStartMigrationJournalCodec.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from './workspaceFirstStartMigrationJournalPaths.js';
 import { WorkspaceFirstStartMigrationJournalStore } from './workspaceFirstStartMigrationJournalStore.js';
@@ -32,6 +37,7 @@ const activeId = validateWorkspaceId('11111111-1111-4111-8111-111111111111');
 const passiveId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
 const operationId = '33333333-3333-4333-8333-333333333333';
 const context = { activeWorkspaceId: activeId, workspaceState: 'publishedRegistry' as const };
+const absentSlots = { current: undefined, next: undefined, backup: undefined };
 
 it('uses selected persistence in the real W6 composition through preparation, transition and completion', async test => {
   const f = await fixture(test);
@@ -219,6 +225,129 @@ it.for((['registry', 'journal'] as const).flatMap(owner =>
   },
 );
 
+it('carries real switch recovery and acceptance receipts into main and W6 without recapturing identity', async test => {
+  const f = await fixture(test);
+  const switchStore = new WorkspaceSwitchJournalStore(f.root);
+  const switchPaths = createWorkspaceSwitchJournalPaths(f.root);
+  const switchJournal = createWorkspaceSelectorSwitchJournal({ ...f.initial, formatVersion: 2, activeWorkspaceId: null },
+    activeId, '44444444-4444-4444-8444-444444444444', at);
+  await mkdir(switchPaths.directoryPath, { recursive: true });
+  await writeFile(switchPaths.currentPath, serializeVersionedWorkspaceSwitchJournal(switchJournal));
+  await rename(f.registryPath, f.registryPath + '.backup');
+  const absent = { current: undefined, next: undefined, backup: undefined };
+  const state: DeferredBusinessLocalUpdateState = {
+    metadata: await f.accepted.inspectSlots(), legacyMetadata: absent,
+    updateJournal: absent, legacyUpdateJournal: absent, directSetupRecovery: absent,
+    registry: await f.registry.inspectSlots(), switchJournal: await switchStore.inspectSlots(),
+    firstStartJournal: await f.journal.inspectSlots(), runningBuild: target,
+  };
+  const main = createDesktopDeferredBusinessStartup({
+    prepared: { ...planDeferredBusinessLocalUpdateState(state), selectedState: state }, assertCurrent: f.guard.assertCurrent,
+    async inspectExternal(includeMetadata) {
+      return { ...(includeMetadata ? { metadata: await f.accepted.inspectSlots() } : {}),
+        legacyMetadata: absent, updateJournal: absent, legacyUpdateJournal: absent, directSetupRecovery: absent,
+        switchJournal: await switchStore.inspectSlots() };
+    },
+  });
+  const w6 = f.composition(main.authority, main.operationIdFactory);
+  await expect(w6.recoverBeforeWorkspaceResolution()).resolves.toBe('noJournal');
+  const startup = await resolveWorkspaceSelectorSwitchStartup({
+    registry: f.registry, journal: switchStore,
+    selection: { registrySlots: state.registry, journalSlots: state.switchJournal,
+      readRegistrySlots: () => f.registry.inspectSlots(), assertAuthority: f.guard.assertCurrent },
+    authority: { assertCurrent: f.guard.assertCurrent,
+      admitSelection: main.admitSelectorSelection,
+      didSettleSelection: receipt => main.settleSelectorSelection(receipt, w6),
+      // Native/process terminal proof is intentionally controlled in this owner-chain test.
+      async proveTerminal() { return { assertCurrent: f.guard.assertCurrent }; } },
+  });
+  if (startup.mode === 'selector') throw new Error('UNEXPECTED_SELECTOR');
+  expect((await f.registry.inspectSlots()).current?.identity?.ino).toBe(state.registry.backup?.identity?.ino);
+  const inventory = vi.spyOn(WorkspaceMigrationInventoryCoordinator.prototype, 'inspect').mockResolvedValue({
+    activeWorkspaceId: activeId, entries: [
+      { workspaceId: activeId, isActive: true, appliedMigrationCount: 38, pendingMigrationCount: 1, status: 'compatiblePending' },
+      { workspaceId: passiveId, isActive: false, appliedMigrationCount: 0, pendingMigrationCount: 0, status: 'invalidHistory' },
+    ],
+  });
+  test.onTestFinished(() => inventory.mockRestore());
+  await mkdir(join(f.root, 'backend/dist/database/migrations'), { recursive: true });
+  await mkdir(join(f.root, 'desktop-runtime/runtime'), { recursive: true });
+  await writeFile(join(f.root, 'desktop-runtime/runtime/workspaceCandidateRunner.js'), 'synthetic');
+  await expect(w6.prepareBeforeBackend(context)).resolves.toBe('prepared');
+  await main.firstStartAuthority(w6, 'c'.repeat(64));
+  await startup.accept('a'.repeat(64));
+  await main.assertCurrent();
+  await w6.transitionRegistryAfterActiveWorkspaceAcceptance();
+  await w6.assertDeferredBusinessReady('beforeAcceptance');
+  expect(await f.registry.inspect()).toEqual(f.transitioned);
+  expect((await switchStore.inspectSlots()).current).toBeUndefined();
+  // Real FirstStart/native validation is separate; this controlled publication
+  // checks the complete main/W6 handoff against the persisted metadata record.
+  await main.accept({ async acceptAfterBackendReady() {
+    await f.accepted.write(createBusinessAcceptedBuildMetadata(selector, target));
+    return (await f.accepted.inspectSlots()).current;
+  } }, w6);
+  await w6.completeAfterTargetAcceptance();
+  await main.assertCurrent();
+  expect(await f.journal.inspect()).toBeUndefined();
+});
+
+it.for(['semanticChange', 'wrongOriginal', 'foreignIdentity', 'ownerLost'] as const)(
+  'rejects %s during the narrow registry settlement and seals the persistence owner', async (fault, test) => {
+    const f = await fixture(test);
+    await rename(f.registryPath, f.registryPath + '.backup');
+    const before = await f.registry.inspectSlots();
+    const ports = await f.ports();
+    await f.registry.recoverSelected({
+      expectedSlots: { current: undefined, next: undefined, backup: before.backup!.bytes },
+      expectedIdentities: { current: undefined, next: undefined, backup: before.backup!.identity },
+      assertAuthority: f.guard.assertCurrent, assertExternalSelection: f.guard.assertExternalSelection,
+    });
+    const after = await f.registry.inspectSlots();
+    const receipt: WorkspaceSelectorSwitchSettlement = { phase: 'startup',
+      before: { registrySlots: structuredClone(before), journalSlots: absentSlots },
+      after: { registrySlots: structuredClone(after), journalSlots: absentSlots }, async assertCurrent() {} };
+    if (fault === 'semanticChange') {
+      await f.registry.write({ ...f.initial, activeWorkspaceId: null });
+      Object.assign(receipt.after, { registrySlots: await f.registry.inspectSlots() });
+    }
+    if (fault === 'wrongOriginal') Object.assign(receipt.before, { registrySlots: after });
+    if (fault === 'foreignIdentity') {
+      const bytes = await readFile(f.registryPath);
+      await rename(f.registryPath, f.registryPath + '.retained');
+      await writeFile(f.registryPath, bytes, { flag: 'wx' });
+    }
+    if (fault === 'ownerLost') Object.assign(receipt, { async assertCurrent() { throw new Error('OWNER_LOST'); } });
+    const bytes = await readFile(f.registryPath);
+    await expect(ports.settleSelectorRegistry(receipt)).rejects.toThrow();
+    await expect(ports.registry.read()).rejects.toThrow();
+    expect(await readFile(f.registryPath)).toEqual(bytes);
+    expect(await f.journal.inspect()).toBeUndefined();
+  },
+);
+
+it('allows the registry handoff only once before W6 preparation and excludes cancellation while it is pending', async test => {
+  const f = await fixture(test);
+  const w6 = f.composition();
+  await w6.recoverBeforeWorkspaceResolution();
+  const slots = await f.registry.inspectSlots();
+  let release!: () => void;
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  const receipt: WorkspaceSelectorSwitchSettlement = { phase: 'startup',
+    before: { registrySlots: slots, journalSlots: absentSlots }, after: { registrySlots: slots, journalSlots: absentSlots },
+    async assertCurrent() { entered(); await pending; } };
+  const settled = w6.settleSelectorRegistry(receipt);
+  await started;
+  try {
+    await expect(w6.prepareBeforeBackend(context)).rejects.toThrow();
+    await expect(w6.cancelBeforeSelectorReturn({ assertCurrent() {}, async assertTerminal() {} })).rejects.toThrow();
+  } finally { release(); }
+  await settled;
+  await expect(w6.settleSelectorRegistry(receipt)).rejects.toThrow();
+});
+
 async function fixture(test: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-w6-selected-composition-'));
   test.onTestFinished(async () => { if (test.task.result?.state === 'pass') await rm(root, { recursive: true, force: true }); });
@@ -249,17 +378,19 @@ async function fixture(test: TestContext) {
   };
   return { root, registry, registryPath, journal, journalPath: paths.currentPath,
     accepted, initial, transitioned, prepared, state, guard,
-    composition() {
+    composition(deferred: WorkspaceFirstStartMigrationCompositionOptions['deferredBusiness'] = {
+      acceptedBuild: selector, assertCurrent: guard.assertExternalSelection, persistence: guard,
+    }, operationIdFactory = () => operationId) {
       return createWorkspaceFirstStartMigrationComposition({
         acceptedBuildStore: accepted, admission: 'exactAcceptedBuild',
-        deferredBusiness: { acceptedBuild: selector, assertCurrent: guard.assertExternalSelection, persistence: guard },
+        deferredBusiness: deferred,
         buildInfo: { schemaVersion: 1, appVersion: target.appVersion, buildRevision: target.buildRevision,
           buildCreatedAt: at, buildDirty: false },
         directSetupRecoveryStore: new DirectSetupMigrationRecoveryStore(join(root, directSetupMigrationRecoveryFileName)),
         releaseInfo: undefined, resourcesPath: root, userDataRoot: root,
         reservationOwner: { bindCandidate() { throw new Error('UNEXPECTED_PROCESS'); } },
         updateJournalStore: new UpdateJournalStore(join(root, updateJournalFileName)),
-        operationIdFactory: () => operationId,
+        operationIdFactory,
       });
     },
     async ports() {
