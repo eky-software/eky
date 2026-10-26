@@ -5,6 +5,42 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n business-avauskytkennän osatodennus 26.10.2026
+
+Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Valitsimen
+oikean käyttöliittymäketjun uusin näyttö ja seuraava työ ovat M1:n alussa.
+
+**Uusin osaraja:** business-hyväksytty metadata v1/v2 voi nyt jatkaa
+source-null-yritysavausta normaalin FirstStartin kautta. Main sitoo
+muuttumattoman metadatan ja mahdollisen hyväksytyn C-journalin lukuun,
+joka ei korjaa tai poista ristiriitaisia slotteja. W6 säilyttää normaalin
+`noJournal`/`notRequired`-ratkaisunsa; uutta lykättyä business-hyväksyntää
+ei muodosteta. Switch ja runtime omistavat edelleen sisällön,
+käynnistyksen, sulun ja valinnan lopulliset kirjoitukset.
+
+**Todennettu nyt:** 54 main-kohdetapausta ja erillinen 277 testin
+viereisten omistajien sarja läpäisivät. Mukana ovat molemmat
+metadataformaatit, hyväksytty C-journal, prepared-/backup-valinta,
+kesken käynnistyksen muuttunut metadata tai palautustila, omistajuuden
+menetys sekä turvallisen paluun ja epävarman prosessisulun ero.
+Vanhan ei-null-avauksen ja lykätyn business-avauksen kontrollit säilyvät.
+Desktopin tyyppitarkistus läpäisi. Näyttö käyttää oikeita tiedostoja ja
+main/composition-koodia mutta ohjattuja Electron-/native-rajoja;
+se ei korvaa oikean prosessin tai paketin hyväksyntää.
+
+Rajattu katselmus löysi liian aikaisen korjaavan C-journalin luvun sekä
+palautustilan tuoreen tarkistuksen puuttumisen switch-journalin poistossa.
+Korjaukset ja niiden regressiot on tehty nykyisiin omistajiin.
+Jälkikatselmukseen ei jäänyt vahvistettua puutetta.
+Hyväksyttyäkään Direct Setup -palautusta ei piiloteta normaaliksi
+avaukseksi: ristiriitainen polku säilyttää aineiston eikä avaa businessia.
+Sen oma olemassa oleva palautusomistaja säilyy erillisenä.
+
+Aiemman null-paluun näyttö ja avoimet viivehavainnot säilyvät
+[historiassa](release-0.3.0-integration-history.md#w72n-keskeytyneen-paluun-osatodennus-26102026).
+Ensimmäiset hylkäykset pidetään erillään, eikä päällekkäisiä kohdeajoja
+lasketa yhdeksi hyväksyntämääräksi.
+
 ## W7.2:n keskeytyneen paluun osatodennus 26.10.2026
 
 Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Nykyinen

@@ -65,6 +65,7 @@ import {
   type ElectronCleanupResult,
   type ElectronPreparationFailureEvidence,
 } from './reportElectronLifecycleEvidence.js';
+import { prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -105,6 +106,7 @@ interface IsolatedElectronOptions {
     | 'workspaceBackupReplacement';
   e2eWorkspaceBackupFixture: 'activeReplacement' | 'none' | 'synthetic';
   e2eLegacyInvoiceProfile: 'none' | 'sent';
+  e2eSelectorProfile: 'none' | ElectronSelectorProfileState;
 }
 
 const MAX_ELECTRON_LAUNCH_OBSERVATIONS = 64;
@@ -123,6 +125,7 @@ export const test = base.extend<
   e2eNativeOpenDialogPurpose: ['invoicePdfArchive', { option: true }],
   e2eWorkspaceBackupFixture: ['none', { option: true }],
   e2eLegacyInvoiceProfile: ['none', { option: true }],
+  e2eSelectorProfile: ['none', { option: true }],
   e2eElectron: async (
     {
       e2eBackendStartupFault,
@@ -132,6 +135,7 @@ export const test = base.extend<
       e2eNativeOpenDialogPurpose,
       e2eWorkspaceBackupFixture,
       e2eLegacyInvoiceProfile,
+      e2eSelectorProfile,
     },
     use,
     testInfo,
@@ -145,6 +149,9 @@ export const test = base.extend<
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
     if (e2eLegacyInvoiceProfile !== 'none' && e2eWorkspaceBackupFixture !== 'none') {
       throw new Error('Legacy invoice and backup fixtures cannot share a profile.');
+    }
+    if (e2eSelectorProfile !== 'none' && (e2eLegacyInvoiceProfile !== 'none' || e2eWorkspaceBackupFixture !== 'none')) {
+      throw new Error('Selector preparation requires its own empty test profile.');
     }
     if (
       e2eWorkspaceBackupFixture === 'synthetic' &&
@@ -357,6 +364,12 @@ export const test = base.extend<
     }
 
     try {
+      if (e2eSelectorProfile !== 'none') {
+        await prepareElectronSelectorProfile(
+          { runRoot, userDataPath: runtime.userDataPath, state: e2eSelectorProfile },
+          createElectronEnvironment({ configPath: runtime.configPath, profile: runtime.profile, runRoot: runtime.runtimeRoot }),
+        );
+      }
       const launched = await launchCurrentRuntime();
       api = await createElectronApi(backendPort, runtime.sessionSecret);
 

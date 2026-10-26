@@ -12,13 +12,11 @@ import {
   runSafeDesktopStartup,
 } from '../src/main/earlyStartup.js';
 import {
-  resolveActiveWorkspaceStartup,
-  type ActiveWorkspaceStartupPhase,
-} from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+  resolveElectronE2eWorkspaceStartup,
+} from './electronE2eWorkspaceStartup.js';
 import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
 import { readElectronE2eConfig } from './electronE2eConfig.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
-import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { createElectronE2eStartupHold } from './electronE2eStartupHold.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
 import { createElectronSecretReplyHold } from './electronSecretReplyHold.js';
@@ -77,6 +75,7 @@ app.once('browser-window-created', () => {
 });
 let lifecycle: DesktopLifecycleHandle | undefined;
 let secondInstanceCount = 0;
+let runtimeSessionCount = 0;
 let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefined;
 let secretShutdownProof: Promise<void> | undefined;
 let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
@@ -167,32 +166,20 @@ if (hasSingleInstanceLock) {
           schemaVersion: 1,
         },
         dependencies: {
-          createRuntimeSession: () => config.backend.sessionSecret,
+          createRuntimeSession: () => {
+            runtimeSessionCount += 1;
+            return config.backend.sessionSecret;
+          },
           openPath: nativeAdapters.openPath,
           showErrorBox: nativeAdapters.showErrorBox,
           showMessageBox: nativeAdapters.showMessageBox,
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
-          resolveActiveWorkspace: async (userDataRoot) => {
+          resolveActiveWorkspace: async (userDataRoot, options) => {
             startupObservation.record('workspaceResolutionStarted');
-            let activePhase: ActiveWorkspaceStartupPhase | undefined;
-            try {
-              const selection = await resolveActiveWorkspaceStartup(userDataRoot, {
-                reportProgress(progress) {
-                  activePhase =
-                    progress.state === 'started' ? progress.phase : undefined;
-                },
-              });
-              startupObservation.record('workspaceResolutionCompleted');
-              return selection;
-            } catch (error) {
-              throw new Error(
-                readSafeElectronE2eWorkspaceStartupFailureCode(
-                  error,
-                  activePhase,
-                ),
-              );
-            }
+            const selection = await resolveElectronE2eWorkspaceStartup(userDataRoot, options);
+            startupObservation.record('workspaceResolutionCompleted');
+            return selection;
           },
           async startBackend(options) {
             startupObservation.record('backendStartRequested');
@@ -299,6 +286,7 @@ Object.assign(globalThis, {
     startupObservation: () => startupObservation.snapshot(),
     backendIsRunning: () => backendController.isRunning(),
     backendStartCount: () => backendController.getStartCount(),
+    runtimeSessionCount: () => runtimeSessionCount,
     closePdfPreviewWindows: () => {
       for (const window of getPdfPreviewWindows()) {
         window.close();

@@ -43,39 +43,32 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Uusin osaraja:** business-hyväksytty metadata v1/v2 voi nyt jatkaa
-source-null-yritysavausta normaalin FirstStartin kautta. Main sitoo
-muuttumattoman metadatan ja mahdollisen hyväksytyn C-journalin lukuun,
-joka ei korjaa tai poista ristiriitaisia slotteja. W6 säilyttää normaalin
-`noJournal`/`notRequired`-ratkaisunsa; uutta lykättyä business-hyväksyntää
-ei muodosteta. Switch ja runtime omistavat edelleen sisällön,
-käynnistyksen, sulun ja valinnan lopulliset kirjoitukset.
+**Uusin osatodiste:** backendittoman valitsimen kolme oikeaa Electron-
+käyttäjäpolkua läpäisivät: tyhjä lista, avaamaton ready-yritys ja pelkät
+recovery-kohteet. IPC-nimenmuutos ja null-valinta säilyivät restartissa;
+business-reitit estyivät ilman backendin tai mainin yrityssession luontia.
+Samassa ajossa vanhan business-tilan siltaeristyskontrolli läpäisi.
+Testiaineistossa ei ole yritystietokantaa: tämä ei todista yritysavausta,
+historiallista migraatiota, release-hyväksyntää tai paketoitua palautusta.
 
-**Todennettu nyt:** 54 main-kohdetapausta ja erillinen 277 testin
-viereisten omistajien sarja läpäisivät. Mukana ovat molemmat
-metadataformaatit, hyväksytty C-journal, prepared-/backup-valinta,
-kesken käynnistyksen muuttunut metadata tai palautustila, omistajuuden
-menetys sekä turvallisen paluun ja epävarman prosessisulun ero.
-Vanhan ei-null-avauksen ja lykätyn business-avauksen kontrollit säilyvät.
-Desktopin tyyppitarkistus läpäisi. Näyttö käyttää oikeita tiedostoja ja
-main/composition-koodia mutta ohjattuja Electron-/native-rajoja;
-se ei korvaa oikean prosessin tai paketin hyväksyntää.
+Nykyinen Electron-fixture säilyttää prosessien omistajuuden ja siivouksen.
+Testikäynnistin välittää mainin täsmällisen valtuuden resolverille;
+uutta testialustaa tai terveystodisteen korviketta ei lisätty.
+Resolverin 10 kohdetestiä ja fixturen 53 kohdekontrollia läpäisivät,
+samoin E2E-tyyppitarkistus ja puhdas Electron-valmistelu.
+Rajatussa katselmuksessa löydetty testivalmistelun polkupoikkeama
+korjattiin tiedostotavut säilyttävällä regressiolla. Jälkikatselmukseen
+ei jäänyt vahvistettua puutetta.
 
-Rajattu katselmus löysi liian aikaisen korjaavan C-journalin luvun sekä
-palautustilan tuoreen tarkistuksen puuttumisen switch-journalin poistossa.
-Korjaukset ja niiden regressiot on tehty nykyisiin omistajiin.
-Jälkikatselmukseen ei jäänyt vahvistettua puutetta.
-Hyväksyttyäkään Direct Setup -palautusta ei piiloteta normaaliksi
-avaukseksi: ristiriitainen polku säilyttää aineiston eikä avaa businessia.
-Sen oma olemassa oleva palautusomistaja säilyy erillisenä.
-
-Aiemman null-paluun näyttö ja avoimet viivehavainnot säilyvät
-[historiassa](release-0.3.0-integration-history.md#w72n-keskeytyneen-paluun-osatodennus-26102026).
-Ensimmäiset hylkäykset pidetään erillään, eikä päällekkäisiä kohdeajoja
+Ensimmäisten ajojen väärä synteettinen tunnistemuoto ja väärä testireitti
+säilyvät erillisinä hylkäyksinä; korjaukset koskivat testiaineistoa ja
+tarkistusta, eivät sovelluksen hyväksyntäehtoja. Aiempi
+[business-avauskytkennän näyttö](release-0.3.0-integration-history.md#w72n-business-avauskytkennän-osatodennus-26102026)
+ja avoimet viivehavainnot säilyvät historiassa. Päällekkäisiä ajoja ei
 lasketa yhdeksi hyväksyntämääräksi.
 
-**Seuraava työ:** todenna avaus ja valitsin oikeassa SQLite/Electron-,
-preload/UI- ja paketoidussa palautusketjussa. Erota normaali hyväksytty
+**Seuraava työ:** todenna yritysavaus oikeassa SQLite/Electron- ja
+paketoidussa palautusketjussa. Erota normaali hyväksytty
 avaus, kopioaktivoinnin uudelleenkäynnistys ja mahdollinen aiempi
 Direct Setup -palautus; palautusomistajaa ei saa ohittaa. Sen jälkeen
 rajattu katselmus sekä täsmällisen

@@ -78,6 +78,20 @@ säilyttää aineiston ja `legacyInvoiceProfile`-vaiheen nykyisessä
 `electron-lifecycle`-liitteessä; raportointivirhe ei korvaa ensivirhettä.
 Tämä ei lisää tuotantoon testiohjausta tai muodosta uutta testipohjaa.
 
+Backendittoman yritysvalitsimen testi käyttää saman fixturen
+`e2eSelectorProfile: 'empty' | 'ready' | 'recoveryRequired'` -valintaa.
+[Desktopin testivalmistelija](../../apps/desktop/e2e/electronSelectorProfileFixture.ts)
+kirjoittaa tyhjään testiprofiiliin vain validoidun null-valinnan rekisterin
+ja synteettisen business-metadatan. Se ei luo tietokantaa tai työtilajuuriä
+eikä todista buildin hyväksyntää. E2E-merkki, kanoninen oma `run-*`-juuri,
+linkittömät kansiot ja tyhjä kohde vaaditaan ennen kirjoitusta; `..`- tai
+linkkipolku ei saa erottaa tarkistuksen ja kirjoituksen kohdetta.
+Valintaa ei yhdistetä legacy-/backup-valmisteluun eikä sitä kylvetä
+uudelleen restartissa. Testikäynnistin välittää resolverille mainin
+antaman valtuuden eikä keksi sitä. Valitsimen IPC/UI, HTTP-esto ja restart
+käyttävät nykyistä prosessiomistajaa, virheaineistoa ja siivousta;
+yrityksen oikea avaus ja paketoitu palautus ovat erillisiä portteja.
+
 Legacy-uudelleenlähetyksen PDF-esikatselu suljetaan vasta nykyisen
 avauspainikkeen valmistumistilan jälkeen: painike on käytettävissä,
 `aria-busy` on `false` eikä avausvirhettä näy. Esikatselun URL yksin
