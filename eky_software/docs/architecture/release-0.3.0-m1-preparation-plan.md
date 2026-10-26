@@ -56,8 +56,41 @@ slot-valinta ja historiallinen adoptio säilyvät. Korjauksen 557 kohdetestiä
 ja rajattu riippumaton katselmus läpäisivät. Korjattu kokonaisuus läpäisi
 myös uuden koko työtilan kierroksen: 13 470 testiä ja 22 määriteltyä ohitusta.
 Tyyppitarkistus, auditointi, rekisteriallekirjoitukset ja ohjelinkit läpäisivät.
-Uusi puhdas paketti ja desktop-kuormitusportti läpäisivät. 30 minuutin
-kestoajo sekä PR/main-portit ovat vielä hyväksymättä.
+Uusi puhdas paketti, desktop-kuormitusportti ja 30 minuutin kestoajo
+läpäisivät. PR/main-portit ovat vielä hyväksymättä.
+
+**Avoin integraatio:** [PR #321](https://github.com/eky-software/eky/pull/321),
+ensimmäisen kierroksen head `9a24b64d2289c8cb26fc42b983c89a8d9367f198`.
+[Ensimmäinen V2-kierros](https://github.com/eky-software/eky/actions/runs/40391648974)
+hylkäsi core-työn ja siitä riippuvan koonnin; 36 muuta valittua työtä
+läpäisi ja kuusi diagnostiikkatyötä jäi tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40391648728)
+läpäisi. Core-hylkäyksen rajattu syy on viiden testitiedoston valmistelun
+liian avoin kansio-oikeus POSIX-järjestelmässä. Korjaus vastaa tuotannon
+yksityistä kansiota; lukijan turvatarkistusta ei muuteta. Kohdekorjauksen
+katselmus ja tyyppitarkistus läpäisivät, mutta koko Linux-sarjan uusi
+todennus puuttuu. Kaksi erillistä W7.2:n yhdistelmätestiä aikakatkaisi
+kohdetarkistuksessa myös yhdessä sallitussa uusinnassa: cold-rollbackin
+main-kytkentä ja switch-main-W6-hyväksyntäketju. Niiden syytä tai
+korjausta ei vielä ole todistettu. Omistaja hyväksyi vain näiden kahden
+tapauksen yhden vaiheistetun mittauskokeen kymmenen sekunnin koerajalla;
+pysyviä aikarajoja, tuotantokoodia tai CI:n kokonaisrajoja ei muutettu.
+Mittauskoe läpäisi molemmat nimetyt tapaukset sisältö- ja lopputarkistuksineen.
+Väliaikaiset mittauslisäykset poistettiin ja testitiedostojen tavut varmennettiin
+mittausta edeltäneiksi. Tämä ei yksin selitä aiempia aikakatkaisuja.
+Omistaja hyväksyi tämän jälkeen pysyvän kymmenen sekunnin rajan vain
+näille kahdelle tapaukselle. [Testausohje](../ai/testing-rules.md#palautustestin-erillinen-valmistelu)
+omistaa tarkan rajauksen; muut variantit, sovelluksen aikarajat, CI:n
+kokonaisrajat ja kaikki tarkistukset säilyvät. Rajattu riippumaton
+katselmus, tyyppitarkistus ja ohjelinkit läpäisivät. Neljä kohdetiedostoa
+läpäisi 85 testiä; POSIX-koe oli Windowsissa tarkoituksella ohitettu.
+Main-käynnistyksen tiedosto läpäisi 315 testiä yhdessä sallitussa uusinnassa,
+mutta ensimmäisen ajon muuttumattoman `publishReturn`-kuittauskatkotestin
+aikakatkaisu ja sen aiheuttama keskeneräisen työn esto säilyvät avoimina.
+Näitä osin päällekkäisiä ajoja ei lasketa uudeksi koko työtilan läpäisyksi.
+Seuraavaksi uusi täsmällinen PR-revisio käy normaalit portit, myös koko
+työtilan ja Linuxin tarkistukset. Ensivirheet ja salattu aineisto säilyvät;
+PR/main- tai koko W7.2:n hyväksyntää ei vielä ole.
 
 **Uusin pakettitodiste 26.10.2026:** puhdas lähderevisio
 `9d7a2badc6797cd806f3d13ec5020508224fa394` läpäisi hardened Windows

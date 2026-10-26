@@ -38,6 +38,7 @@ const passiveId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
 const operationId = '33333333-3333-4333-8333-333333333333';
 const context = { activeWorkspaceId: activeId, workspaceState: 'publishedRegistry' as const };
 const absentSlots = { current: undefined, next: undefined, backup: undefined };
+const selectedPersistenceCompositionTimeoutMs = 10_000;
 
 it('uses selected persistence in the real W6 composition through preparation, transition and completion', async test => {
   const f = await fixture(test);
@@ -231,7 +232,7 @@ it('carries real switch recovery and acceptance receipts into main and W6 withou
   const switchPaths = createWorkspaceSwitchJournalPaths(f.root);
   const switchJournal = createWorkspaceSelectorSwitchJournal({ ...f.initial, formatVersion: 2, activeWorkspaceId: null },
     activeId, '44444444-4444-4444-8444-444444444444', at);
-  await mkdir(switchPaths.directoryPath, { recursive: true });
+  await mkdir(switchPaths.directoryPath, { recursive: true, mode: 0o700 });
   await writeFile(switchPaths.currentPath, serializeVersionedWorkspaceSwitchJournal(switchJournal));
   await rename(f.registryPath, f.registryPath + '.backup');
   const absent = { current: undefined, next: undefined, backup: undefined };
@@ -292,7 +293,7 @@ it('carries real switch recovery and acceptance receipts into main and W6 withou
   await w6.completeAfterTargetAcceptance();
   await main.assertCurrent();
   expect(await f.journal.inspect()).toBeUndefined();
-});
+}, selectedPersistenceCompositionTimeoutMs);
 
 it.for(['semanticChange', 'wrongOriginal', 'foreignIdentity', 'ownerLost'] as const)(
   'rejects %s during the narrow registry settlement and seals the persistence owner', async (fault, test) => {
@@ -400,7 +401,7 @@ async function fixture(test: TestContext) {
       return createWorkspaceFirstStartSelectedPersistence({ registry, journal }, guard);
     },
     async seedJournal(value: WorkspaceFirstStartMigrationJournalV1, slot: 'current' | 'next' = 'current') {
-      await mkdir(paths.directoryPath, { recursive: true });
+      await mkdir(paths.directoryPath, { recursive: true, mode: 0o700 });
       await writeFile(paths[`${slot}Path`], serializeWorkspaceFirstStartMigrationJournal(value), { flag: 'wx' });
     },
   };

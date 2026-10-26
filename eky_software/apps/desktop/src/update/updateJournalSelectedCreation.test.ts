@@ -42,7 +42,7 @@ describe('selected initial journal publication', () => {
 
   it.for(['', '.next', '.backup'] as const)('refuses an existing $0 slot without deleting it', async (slot, context) => {
     const f = await fixture(context);
-    await fs.mkdir(dirname(f.path));
+    await fs.mkdir(dirname(f.path), { mode: 0o700 });
     await fs.writeFile(`${f.path}${slot}`, bytes);
     await expect(f.store.createSelected(journal, f.assertAuthority)).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
     expect(await fs.readFile(`${f.path}${slot}`)).toEqual(bytes);
@@ -175,7 +175,7 @@ describe('selected journal synchronization', () => {
 
   it('rejects a new slot during absence confirmation', async context => {
     const f = await fixture(context);
-    await fs.mkdir(dirname(f.path));
+    await fs.mkdir(dirname(f.path), { mode: 0o700 });
     await fs.writeFile(`${f.path}.backup`, bytes);
     await expect(f.store.confirmAbsent(f.assertAuthority)).rejects.toThrow('UPDATE_JOURNAL_CONFLICT');
     expect(await fs.readFile(`${f.path}.backup`)).toEqual(bytes);

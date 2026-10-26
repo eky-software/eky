@@ -20,7 +20,7 @@ async function fixture(context: TestContext,
   context.onTestFinished(async ({ task }) => {
     if (task.result?.state === 'pass') await rm(root, { recursive: true, force: true });
   });
-  await mkdir(join(root, 'runtime'));
+  await mkdir(join(root, 'runtime'), { mode: 0o700 });
   const path = join(root, 'runtime', acceptedBuildMetadataFileName);
   const paths = { current: path, next: `${path}.next`, backup: `${path}.backup` };
   for (const name of names) if (values[name] !== undefined) await writeFile(paths[name], encode(values[name]), { mode: 0o600 });

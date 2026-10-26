@@ -243,9 +243,9 @@ function beginTrackedStartupTest(context: TestContext) {
 }
 
 describe('selector candidate rollback main handoff', () => {
-  it.for(['noActivation', 'rolledBack', 'wrongReceipt', 'foreignProfile', 'contentFailure', 'ownerStillActive', 'releaseFailure',
-    'anchorReleaseFailure', 'duplicate', 'duplicateAtRootRemoval', 'secretDrainFailure', 'inspectionDrainFailure', 'changedTarget'] as const)(
-    'validates $0 with the existing cold owner before returning from the main callback', async (scenario, context) => {
+  for (const scenario of ['noActivation', 'rolledBack', 'wrongReceipt', 'foreignProfile', 'contentFailure', 'ownerStillActive', 'releaseFailure',
+    'anchorReleaseFailure', 'duplicate', 'duplicateAtRootRemoval', 'secretDrainFailure', 'inspectionDrainFailure', 'changedTarget'] as const) {
+    it(`validates '${scenario}' with the existing cold owner before returning from the main callback`, async context => {
       const lifetime = beginTrackedStartupTest(context);
       await lifetime.run(async () => {
         const recoverSource = vi.fn(async () => 'relaunchRequired' as const);
@@ -368,8 +368,8 @@ describe('selector candidate rollback main handoff', () => {
           await f.assertRegistryUnchanged();
         });
       });
-    },
-  );
+    }, scenario === 'rolledBack' ? restoreStartupCompositionTimeoutMs : undefined);
+  }
 });
 
 describe('business-accepted selector startup', () => {
@@ -579,7 +579,7 @@ describe('backendless selector main composition', () => {
         const paths = createWorkspaceSwitchJournalPaths(f.fixture.root);
         const state = scenario === 'uncommitted' || scenario === 'unpublished' ? 'prepared'
           : ['completeReturn', 'returnNext', 'registryReturnBackup'].includes(scenario) ? 'targetSelected' : 'rollbackSelected';
-        await mkdir(dirname(paths.currentPath), { recursive: true });
+        await mkdir(dirname(paths.currentPath), { recursive: true, mode: 0o700 });
         await writeFile(scenario === 'unpublished' ? paths.nextPath : scenario === 'backup' ? paths.backupPath : paths.currentPath,
           serializeVersionedWorkspaceSwitchJournal({ ...journal, state }));
         if (scenario === 'registryBackup') {
@@ -624,7 +624,7 @@ describe('backendless selector main composition', () => {
         const paths = createWorkspaceSwitchJournalPaths(f.fixture.root);
         const journal = { ...createWorkspaceSelectorSwitchJournal(registry, workspaceId, operationId,
           '2026-10-25T12:00:00.000Z'), state: 'targetSelected' as const };
-        await mkdir(dirname(paths.currentPath), { recursive: true });
+        await mkdir(dirname(paths.currentPath), { recursive: true, mode: 0o700 });
         await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal(journal));
         const fault = new Error('SYNTHETIC_SELECTOR_RETURN_ACK_LOST');
         const method = scenario === 'publishReturn' ? 'writeSelector' : 'clearSelector';
@@ -678,7 +678,7 @@ describe('backendless selector main composition', () => {
         const journal = { ...createWorkspaceSelectorSwitchJournal(registry, workspaceId, operationId,
           '2026-10-25T12:00:00.000Z'), state: scenario === 'restoreAtPublish' || scenario === 'restoreAtRegistryRepair'
           ? 'targetSelected' as const : 'rollbackSelected' as const };
-        await mkdir(dirname(paths.currentPath), { recursive: true });
+        await mkdir(dirname(paths.currentPath), { recursive: true, mode: 0o700 });
         await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal(journal));
         if (scenario === 'restoreAtRegistryRepair') await writeFile(`${join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME)}.backup`,
           JSON.stringify(createWorkspaceSelectorSwitchRegistryVariants(registry, workspaceId).selected));
@@ -3998,7 +3998,7 @@ async function createSelectorStartupFixture(ownedRoots: string[], state: 'accept
   };
   const paths = createLocalUpdateRuntimePaths({ userDataPath: fixture.root,
     legacyRuntimeRoot: createDesktopProfilePaths(fixture.root).runtimeRoot });
-  await mkdir(dirname(paths.legacyAcceptedBuildMetadataPath), { recursive: true });
+  await mkdir(dirname(paths.legacyAcceptedBuildMetadataPath), { recursive: true, mode: 0o700 });
   await writeFile(paths.legacyAcceptedBuildMetadataPath, JSON.stringify(metadata));
   await writeFile(paths.legacyJournalPath, JSON.stringify(terminal));
   await rm(paths.acceptedBuildMetadataPath);
@@ -4052,7 +4052,7 @@ async function seedSelectorTarget(f: Awaited<ReturnType<typeof createFixture>>) 
   const journal = createWorkspaceSelectorSwitchJournal({ ...registry, formatVersion: 2, activeWorkspaceId: null },
     workspaceId, operationId, '2026-10-26T12:00:00.000Z');
   const paths = createWorkspaceSwitchJournalPaths(f.root);
-  await mkdir(paths.directoryPath, { recursive: true });
+  await mkdir(paths.directoryPath, { recursive: true, mode: 0o700 });
   await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal({ ...journal, state: 'targetSelected' }), { flag: 'wx' });
   return new WorkspaceSwitchJournalStore(f.root);
 }

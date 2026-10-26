@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { chmod, lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -28,6 +28,20 @@ afterEach(async context => {
 });
 
 describe('accepted build metadata store', () => {
+  it.skipIf(process.platform === 'win32')('rejects a non-private directory without repairing its permissions or slots', async () => {
+    const filePath = await createPath();
+    await writeSlot(filePath, metadata);
+    await chmod(dirname(filePath), 0o755);
+    const before = await readFile(filePath);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    await expect(store.inspectStartup()).rejects.toThrow('CRASH_SAFE_FILE_SLOT_INVALID');
+    await expect(store.inspectSlots()).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    expect((await lstat(dirname(filePath))).mode & 0o777).toBe(0o755);
+    expect(await readFile(filePath)).toEqual(before);
+    await expect(lstat(`${filePath}.next`)).rejects.toMatchObject({ code: 'ENOENT' });
+    await expect(lstat(`${filePath}.backup`)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it.each(['', '{'])('observes v1 without consuming its partial next %j', async partial => {
     const filePath = await createPath();
     await writeSlot(filePath, metadata);
@@ -268,6 +282,6 @@ async function createPath(): Promise<string> {
 }
 
 async function writeSlot(path: string, value: unknown): Promise<void> {
-  await mkdir(dirname(path), { recursive: true });
+  await mkdir(dirname(path), { recursive: true, mode: 0o700 });
   await writeFile(path, `${JSON.stringify(value)}\n`, { mode: 0o600 });
 }
