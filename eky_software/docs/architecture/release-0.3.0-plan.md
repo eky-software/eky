@@ -24,7 +24,7 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | Tunnus | Tehtävä ja tavoite | Tila |
 | --- | --- | --- |
 | R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1 hyväksytty PR #317:n ja uuden mainin omilla porteilla 24.10.2026. Tarkka näyttö ja avoimeksi jäänyt ensimmäinen Electron-timeout ovat M1:n jatkamiskohdassa. |
-| R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | W7.0:n sopimus-/koevaihe valmis. W7.1:n nimirajat ja historiallinen recovery hyväksytty PR #320:n ja mainin omilla porteilla. W7.2:n yritysvalinta työn alla; W7.3-W7.5:n poisto ja sen näyttö avoinna. |
+| R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | W7.0:n sopimus-/koevaihe valmis. W7.1:n nimirajat ja historiallinen recovery hyväksytty PR #320:n ja mainin omilla porteilla. W7.2:n yritysvalinta hyväksytty PR #321:n ja mainin omilla porteilla; W7.3-W7.5:n poisto ja sen näyttö avoinna. |
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | M4.2 hyväksytty PR #318:n ja uuden mainin omilla porteilla 24.10.2026. Nimeämis- ja palautusnäyttö sekä rajatun runtime-tietoturvapäivityksen hyväksyntä ovat M1:n jatkamiskohdassa. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
@@ -477,11 +477,11 @@ luottamusrajavalidoinnin poistamiseksi.
 
 ### M4: Sovittu 0.3.0-käyttäjäkokemus
 
-**Tila 25.10.2026:** M4.1-M4.3 hyväksytty omine PR/main-portteineen.
+**Tila 27.10.2026:** M4.1-M4.3 hyväksytty omine PR/main-portteineen.
 W7.0:n tekninen sopimus ja pienet katselmoidut kokeet ovat valmiit:
 yritysvalinta ilman aktiivista backendia, poiston inventaario, vahvistuksen
-sidonta ja keskeytysrecovery. W7.1 on hyväksytty omilla PR/main-porteillaan.
-Seuraavaksi W7.2-W7.5:n rajattu tuotantototeutus hyväksytyn W7-P4:n ehdoin;
+sidonta ja keskeytysrecovery. W7.1 ja W7.2 on hyväksytty omilla PR/main-porteillaan.
+Seuraavaksi W7.3-W7.5:n rajattu tuotantototeutus hyväksytyn W7-P4:n ehdoin;
 suunnittelunäyttö ei ole tuotannon hyväksyntä.
 Tarkka nykykoodikartta on
 [työtilasuunnitelmassa](local-company-workspace-plan.md#w70n-lähtökartta-24102026).
