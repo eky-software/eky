@@ -8,6 +8,7 @@ import type { BrowserWindow } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from 'vitest';
 
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
+import { ProfileSnapshotInspectionClient } from '../profileBackup/profileSnapshotInspectionClient.js';
 import * as snapshotInspection from '../profileBackup/runProfileSnapshotInspection.js';
 import * as profileBackupComposition from '../profileBackup/profileBackupComposition.js';
 import { createProfileBackupIpcChannel } from '../profileBackup/portableProfileBackupTypes.js';
@@ -68,6 +69,8 @@ import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/repl
 import { WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
 import { ActiveWorkspaceStartupRelaunchRequiredError, resolveActiveWorkspaceStartup } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceFirstStartMigrationOrchestrator } from '../workspaces/update/workspaceFirstStartMigrationOrchestrator.js';
+import * as activationComposition from '../workspaces/update/workspaceActivationMigrationComposition.js';
+import type { WorkspaceActivationMigrationRecoveryReceipt } from '../workspaces/update/workspaceActivationMigrationCoordinator.js';
 import { WorkspaceMigrationInventoryCoordinator } from '../workspaces/update/workspaceMigrationInventoryCoordinator.js';
 import { WorkspaceFirstStartMigrationJournalStore } from '../workspaces/update/workspaceFirstStartMigrationJournalStore.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
@@ -87,6 +90,7 @@ const electronBoundary = vi.hoisted(() => ({
   portClosed: vi.fn(),
   reservationReleased: vi.fn(),
   reservationAcquired: vi.fn(),
+  reservationIdentityRead: vi.fn(),
   loseReservation: undefined as (() => void) | undefined,
 }));
 
@@ -145,7 +149,10 @@ vi.mock('../update/windowsInstallerHandoff.js', () => ({
 }));
 vi.mock('../runtime/workspaceProcessReservation.js', async (importOriginal) => ({
   ...await importOriginal<typeof import('../runtime/workspaceProcessReservation.js')>(),
-  readWorkspaceProcessReservationIdentity: async () => 'a'.repeat(64),
+  readWorkspaceProcessReservationIdentity: async (root: string) => {
+    await electronBoundary.reservationIdentityRead(root);
+    return 'a'.repeat(64);
+  },
   async acquireWorkspaceProcessReservation(
     options: Parameters<typeof import('../runtime/workspaceProcessReservation.js').acquireWorkspaceProcessReservation>[0],
   ) {
@@ -181,6 +188,7 @@ beforeEach(() => {
   const ownedClients: ProfileSnapshotBrokerClient[] = [];
   clients = ownedClients;
   electronBoundary.reservationAcquired.mockReset();
+  electronBoundary.reservationIdentityRead.mockReset();
   electronBoundary.loseReservation = undefined;
   electronBoundary.reservationReleased.mockReset();
   electronBoundary.removeHandler.mockReset();
@@ -227,6 +235,136 @@ function beginTrackedStartupTest(context: TestContext) {
   trackedStartupTest = lifetime;
   return lifetime;
 }
+
+describe('selector candidate rollback main handoff', () => {
+  it.for(['noActivation', 'rolledBack', 'wrongReceipt', 'foreignProfile', 'contentFailure', 'ownerStillActive', 'releaseFailure',
+    'anchorReleaseFailure', 'duplicate', 'duplicateAtRootRemoval', 'secretDrainFailure', 'inspectionDrainFailure', 'changedTarget'] as const)(
+    'validates $0 with the existing cold owner before returning from the main callback', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const recoverSource = vi.fn(async () => 'relaunchRequired' as const);
+        const resolve: NonNullable<StartDesktopCompositionOptions['dependencies']>['resolveActiveWorkspace'] = async root => {
+          const current = await resolveActiveWorkspaceStartup(root);
+          // Only switch selection is injected; main, journal bytes and cold ownership stay real.
+          return { ...current, mode: 'targetValidation', recoverFromFailure: recoverSource, switchContext: {
+            operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId, targetProfileId: originalProfileId,
+          } };
+        };
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, resolveActiveWorkspace: resolve,
+        }));
+        const paths = deriveWorkspaceBackupReplacementRuntimePaths(f.root, workspaceId);
+        const journal = new ProfileRestoreActivationJournalStore(paths.activationJournalPath);
+        const transaction = new ProfileRestoreActivationTransaction({ journalStore: journal, paths: {
+          activeDatabasePath: f.databasePath, activeDocumentsRoot: createDesktopProfilePaths(deriveWorkspaceRoot(f.root, workspaceId, 1).workspaceRoot).invoiceDocumentStorageRoot,
+          failedRoot: paths.activationFailedRoot, rollbackRoot: paths.activationRollbackRoot, stagingRoot: paths.activationStagingRoot,
+        } });
+        const boundary = new Error('SYNTHETIC_SELECTOR_CALLBACK_BOUNDARY');
+        const fault = new Error('SYNTHETIC_SELECTOR_CALLBACK_FAULT');
+        let completed = false;
+        let selected: WorkspaceActivationMigrationRecoveryReceipt | undefined;
+        let callbackFailure: unknown;
+        let rollbackClaimReleased = false;
+        let finalIdentityInterrupted = false;
+        if (scenario === 'duplicateAtRootRemoval') electronBoundary.reservationReleased.mockImplementation(async root => {
+          if (root === join(paths.activationRollbackRoot, operationId)) rollbackClaimReleased = true;
+        });
+        if (scenario === 'secretDrainFailure') {
+          const start = secretBrokerMain.startSecretBrokerMain;
+          vi.spyOn(secretBrokerMain, 'startSecretBrokerMain').mockImplementationOnce(options => {
+            const handle = start(options); let drains = 0;
+            return { ...handle, async sealAndDrain() {
+              if (++drains === 2) throw fault;
+              await handle.sealAndDrain();
+            } };
+          });
+        }
+        if (scenario === 'inspectionDrainFailure') vi.spyOn(ProfileSnapshotInspectionClient.prototype, 'shutdown').mockRejectedValueOnce(fault);
+        if (scenario === 'contentFailure') vi.mocked(originalInspection.runProfileRestoreOriginalInspection).mockRejectedValue(fault);
+        if (scenario === 'releaseFailure' || scenario === 'anchorReleaseFailure') electronBoundary.reservationReleased.mockImplementation(async root => {
+          if (root === join(scenario === 'releaseFailure' ? paths.activationRollbackRoot : paths.activationFailedRoot, operationId)) throw fault;
+        });
+        vi.spyOn(activationComposition, 'createWorkspaceActivationMigrationComposition').mockImplementation(async options => ({
+          async prepareBeforeBackend() { return { status: 'migrationRequired', migrationStartupPolicy: 'restoreCompatible' }; },
+          async beforeMigrations(_inspection: unknown, control: { stopStartupRuntime(): Promise<void> }) {
+            if (scenario !== 'ownerStillActive') await control.stopStartupRuntime();
+            if (scenario === 'foreignProfile') await f.journal.write({ formatVersion: 1, operationId,
+              phase: 'rolledBack', revision: 1, hadActiveDatabase: true, hadActiveDocuments: true });
+            if (['rolledBack', 'wrongReceipt', 'contentFailure', 'releaseFailure', 'anchorReleaseFailure', 'duplicateAtRootRemoval'].includes(scenario)) {
+              const staging = join(paths.activationStagingRoot, operationId);
+              const stagedPdf = join(staging, 'activation', 'storage', 'invoices', 'company-1', 'invoice-1', 'approved-invoice.pdf');
+              await mkdir(dirname(stagedPdf), { recursive: true });
+              await writeFile(join(staging, 'profile.sqlite'), f.restoredBytes);
+              await writeFile(stagedPdf, '%PDF-1.7 restored pdf');
+              await transaction.prepare(operationId);
+              await transaction.advanceToValidation();
+              const rolledBack = await transaction.rollback();
+              selected = { kind: 'rolledBack', journal: { ...rolledBack,
+                revision: rolledBack.revision + (scenario === 'wrongReceipt' ? 1 : 0) } };
+            } else selected = { kind: 'noActivation' };
+            if (scenario === 'duplicateAtRootRemoval') {
+              let releasedIdentityReads = 0;
+              electronBoundary.reservationIdentityRead.mockImplementation(async root => {
+                if (root === join(paths.activationRollbackRoot, operationId) && rollbackClaimReleased && ++releasedIdentityReads === 2) {
+                  finalIdentityInterrupted = true;
+                  await expect(options.completeSelectorRollback!(selected!)).rejects.toThrow();
+                }
+              });
+            }
+            if (scenario === 'changedTarget') Object.assign(options.activeWorkspace.switchContext!, { targetProfileId: foreignProfileId });
+            try {
+              await options.completeSelectorRollback!(selected);
+              if (scenario === 'duplicate') await options.completeSelectorRollback!(selected);
+              completed = true;
+            }
+            catch (error) {
+              callbackFailure = error;
+              const failure = new DesktopBackendStartupError('BACKEND_MIGRATION_STARTUP_GATE_FAILED', {
+                processState: scenario === 'ownerStillActive' ? 'unknown' : 'absent',
+                migrationGateSettled: true, reservationReclaimed: scenario !== 'ownerStillActive',
+              });
+              failure.cause = error;
+              throw failure;
+            }
+            throw boundary;
+          },
+        }) as unknown as Awaited<ReturnType<typeof activationComposition.createWorkspaceActivationMigrationComposition>>);
+        const observe = vi.fn();
+        await lifetime.step('startup', async () => { await expect(f.start(observe)).rejects.toThrow(); });
+        const succeeds = scenario === 'noActivation' || scenario === 'rolledBack';
+        expect(completed).toBe(succeeds);
+        expect(f.relaunch).not.toHaveBeenCalled();
+        expect(recoverSource).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        if (succeeds) {
+          expect(observe.mock.calls.some(([error]) => hasErrorCause(error, boundary))).toBe(true);
+          expect(callbackFailure).toBeUndefined();
+          await expect(journal.peek()).resolves.toBeUndefined();
+        } else {
+          expect(callbackFailure).toBeInstanceOf(Error);
+          expect(observe.mock.calls.some(([error]) => hasErrorCause(error, callbackFailure as Error))).toBe(true);
+          if (['contentFailure', 'releaseFailure', 'anchorReleaseFailure', 'secretDrainFailure', 'inspectionDrainFailure'].includes(scenario)) {
+            expect(hasErrorCause(callbackFailure, fault)).toBe(true);
+          }
+          if (scenario === 'anchorReleaseFailure') {
+            await expect(journal.peek()).resolves.toBeUndefined();
+            expect(await readdir(paths.activationFailedRoot)).toContain(operationId);
+          } else if (selected?.kind === 'rolledBack') await expect(journal.peek()).resolves.toMatchObject({ phase: 'rolledBack' });
+          if (scenario === 'foreignProfile') await expect(f.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack' });
+          if (scenario === 'duplicateAtRootRemoval') {
+            expect(finalIdentityInterrupted).toBe(true);
+            expect(await readdir(paths.activationRollbackRoot)).toContain(operationId);
+          }
+        }
+        await lifetime.step('restoredContentCheck', async () => {
+          expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+          expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+          await f.assertRegistryUnchanged();
+        });
+      });
+    },
+  );
+});
 
 describe('selector installation-state startup wiring', () => {
   it('settles concurrent deferred admission readers before propagating their first failure', async context => {

@@ -145,7 +145,7 @@ import { RecoveryPointStore } from '../profileBackup/recoveryPoint/recoveryPoint
 import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
 import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
-import { profileRestoreForwardActivationPhases } from '../profileBackup/restore/profileRestoreActivationJournal.js';
+import { assertProfileRestoreActivationJournalMatches, captureProfileRestoreActivationJournal, profileRestoreForwardActivationPhases } from '../profileBackup/restore/profileRestoreActivationJournal.js';
 import { prepareProfileRestoreColdForwardRecovery } from '../profileBackup/restore/prepareProfileRestoreColdForwardRecovery.js';
 import { prepareProfileRestoreColdRollbackRecovery, withProfileRestoreColdRollbackAuthority } from '../profileBackup/restore/prepareProfileRestoreColdRollbackRecovery.js';
 import { createProfileRestoreOriginalContentAdmission } from '../profileBackup/restore/createProfileRestoreOriginalContentAdmission.js';
@@ -236,6 +236,7 @@ import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/up
 import { validateWorkspaceFirstStartMigrationJournal, WORKSPACE_FIRST_START_MIGRATION_JOURNAL_MAX_BYTES } from '../workspaces/update/workspaceFirstStartMigrationJournalCodec.js';
 import type { WorkspaceFirstStartMigrationOrchestration } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorTypes.js';
 import { createWorkspaceActivationMigrationComposition } from '../workspaces/update/workspaceActivationMigrationComposition.js';
+import type { WorkspaceActivationMigrationRecoveryReceipt } from '../workspaces/update/workspaceActivationMigrationCoordinator.js';
 import type { WorkspaceCandidateReservationOwner } from '../workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
 
 export interface DesktopLifecycleHandle {
@@ -1125,6 +1126,9 @@ async function startDesktopCompositionRuntime({
 }: DesktopCompositionRuntimeOptions): Promise<
   DesktopLifecycleHandle | undefined
 > {
+  const selectorCandidateTarget = activeWorkspace.switchContext?.sourceWorkspaceId === null
+    ? Object.freeze({ ...activeWorkspace.switchContext, workspaceId: activeWorkspace.workspaceId,
+        workspaceRoot: activeWorkspace.workspaceRoot }) : undefined;
   const startupExceptionObservation = options.observeStartupException === undefined ? {} : {
     observeStartupException: (error: unknown) =>
       options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]),
@@ -1277,6 +1281,7 @@ async function startDesktopCompositionRuntime({
     layout: Parameters<typeof createProfileRestoreOriginalContentAdmission>[0]['layout'],
     journal: Parameters<ProfileRestoreRollbackAcceptance>[0],
     use: Parameters<ProfileRestoreRollbackAcceptance>[1],
+    additionalAuthority?: { assertCurrent(): void; assertExternal(): Promise<void> },
   ): Promise<void> {
     try {
       const validationOwner = activeValidationOwner;
@@ -1287,7 +1292,10 @@ async function startDesktopCompositionRuntime({
       await withProfileRestoreColdRollbackAuthority({
         journal, journalStore, transaction, maintenanceLease: workspaceMaintenanceLease,
         ...(validationOwner === undefined ? {} : { assertBorrowedRestoreOwner: validationOwner.assertCurrent }),
-        assertAuthority: assertStartupAuthority,
+        assertAuthority() {
+          assertStartupAuthority();
+          additionalAuthority?.assertCurrent();
+        },
         assertContent: createProfileRestoreOriginalContentAdmission({
           operationId: journal.operationId, workspaceRoot: activeWorkspace.workspaceRoot, failedRoot, layout,
           journalStore, transaction, runnerPath: profileInspectionRunnerPath, deployment: profileInspectionDeployment,
@@ -1295,6 +1303,7 @@ async function startDesktopCompositionRuntime({
         }),
         async assertMainOwned() {
           assertStartupAuthority();
+          await additionalAuthority?.assertExternal();
           await workspaceReservation.assertMainOwned();
           await updateRollbackTerminalValidation?.assertCurrent();
           assertStartupAuthority();
@@ -1562,7 +1571,7 @@ async function startDesktopCompositionRuntime({
       !isDeepStrictEqual(pendingUpdateJournal, rollbackStartupAdmission.selectedJournal)) {
     throw new Error('UPDATE_JOURNAL_CONFLICT');
   }
-  let startupRecoveryAuthority;
+  let startupRecoveryAuthority: ReturnType<typeof resolveStartupRecoveryAuthority>;
   try {
     startupRecoveryAuthority = resolveStartupRecoveryAuthority({
       profileRestoreJournal: pendingProfileRestoreJournal,
@@ -1740,6 +1749,81 @@ async function startDesktopCompositionRuntime({
   ) {
     throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
   }
+  let selectorCandidateRollbackState: 'unused' | 'active' | 'complete' | 'failed' = 'unused';
+  let drainSelectorCandidateSecrets: (() => Promise<void>) | undefined;
+  async function completeSelectorCandidateRollback(receipt: WorkspaceActivationMigrationRecoveryReceipt): Promise<void> {
+    try {
+      assertStartupAuthority();
+      if (selectorCandidateRollbackState !== 'unused' || startupRecoveryAuthority !== 'none' ||
+          pendingProfileRestoreJournal !== undefined || pendingWorkspaceReplacementJournal !== undefined ||
+          profileRestoreStartupMode !== 'normal' || selectorCandidateTarget === undefined ||
+          selectorCandidateTarget.targetWorkspaceId !== selectorCandidateTarget.workspaceId ||
+          profileRestoreStartupRecovery.readAcceptanceState() !== 'notStarted' ||
+          workspaceReplacementStartupRecovery.recovery.readAcceptanceState() !== 'notStarted' ||
+          drainSelectorCandidateSecrets === undefined ||
+          (receipt.kind !== 'noActivation' && receipt.kind !== 'rolledBack')) {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+      }
+      selectorCandidateRollbackState = 'active';
+      const selected = receipt.kind === 'rolledBack' ? captureProfileRestoreActivationJournal(receipt.journal) : undefined;
+      if (selected !== undefined && (selected.operationId !== selectorCandidateTarget.operationId ||
+          selected.phase !== 'rolledBack' || !selected.hadActiveDatabase)) {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+      }
+      const assertCandidateSelection = () => {
+        assertStartupAuthority();
+        if (selectorCandidateRollbackState !== 'active') throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+        if (activeWorkspace.workspaceId !== selectorCandidateTarget.workspaceId ||
+            activeWorkspace.workspaceRoot !== selectorCandidateTarget.workspaceRoot ||
+            !isDeepStrictEqual(activeWorkspace.switchContext, {
+              operationId: selectorCandidateTarget.operationId, sourceWorkspaceId: null,
+              targetWorkspaceId: selectorCandidateTarget.targetWorkspaceId,
+              targetProfileId: selectorCandidateTarget.targetProfileId,
+            })) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+        activeWorkspace.assertCanAccept(selectorCandidateTarget.targetProfileId);
+      };
+      const assertCandidateCurrent = async () => {
+        assertCandidateSelection();
+        if (await profileRestoreActivationJournalStore.peek() !== undefined) {
+          throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+        }
+        assertCandidateSelection();
+      };
+      await drainSelectorCandidateSecrets();
+      await profileSnapshotInspectionClient.shutdown();
+      await workspaceReservation.assertMainOwned();
+      await assertCandidateCurrent();
+      const observed = await workspaceReplacementStartupRecovery.journalStore.peek();
+      await assertCandidateCurrent();
+      if (selected === undefined) {
+        if (observed !== undefined) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+      } else {
+        assertProfileRestoreActivationJournalMatches(selected, observed);
+        await withRestoreRollbackAuthority(workspaceReplacementStartupRecovery.activation.transaction,
+          workspaceReplacementStartupRecovery.journalStore, workspaceReplacementRuntimePaths.activationFailedRoot,
+          'workspaceReplacement', selected, async admission => {
+            await assertCandidateCurrent();
+            assertProfileRestoreActivationJournalMatches(selected, admission.journal);
+            const mode = await workspaceReplacementStartupRecovery.recovery.prepareBeforeBackend(admission, selected);
+            await assertCandidateCurrent();
+            if (mode !== 'validateRolledBackProfile') throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+            await workspaceReplacementStartupRecovery.recovery.completeRolledBackBeforeSelectorReturn(admission);
+          }, { assertCurrent: assertCandidateSelection, assertExternal: assertCandidateCurrent });
+      }
+      // The cold wrapper must also finish releasing its claims, not just delete the journal.
+      await workspaceReservation.assertMainOwned();
+      await assertCandidateCurrent();
+      if (await workspaceReplacementStartupRecovery.journalStore.peek() !== undefined) {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+      }
+      await assertCandidateCurrent();
+      selectorCandidateRollbackState = 'complete';
+    } catch (error) {
+      selectorCandidateRollbackState = 'failed';
+      restoreRuntimeRecoveryBlocked = true;
+      throw error;
+    }
+  }
   const workspaceActivationMigration =
     activeWorkspace.mode === 'targetValidation' &&
     startupRecoveryAuthority === 'none'
@@ -1747,6 +1831,8 @@ async function startDesktopCompositionRuntime({
           activeWorkspace,
           appVersion: desktopAppVersion,
           buildRevision: options.buildInfo.buildRevision,
+          ...(activeWorkspace.switchContext?.sourceWorkspaceId === null
+            ? { completeSelectorRollback: completeSelectorCandidateRollback } : {}),
           maintenanceLease: workspaceMaintenanceLease,
           recoveryPointService,
           recoveryPointStagingRoot: profileSnapshotPaths.stagingRoot,
@@ -1852,6 +1938,7 @@ async function startDesktopCompositionRuntime({
     protector: safeStorageStringProtector,
     transport: createMainSecretBrokerTransport(secretBrokerChannel.port1),
   });
+  drainSelectorCandidateSecrets = () => secretBrokerHandle.sealAndDrain();
   const invoicePdfArchivePaths =
     createInvoicePdfArchiveRuntimePaths(workspaceRuntimeRoot);
   let backendHandle: DesktopBackendHandle | undefined;

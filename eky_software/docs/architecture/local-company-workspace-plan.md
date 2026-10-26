@@ -515,6 +515,17 @@ Virhe tai päällekkäinen kutsu sulkee jatkon. Tämä kytkentä ei korvaa
 terminal-valtuutta, tuoretta sisältötarkistusta eikä W6:n peruutusta.
 Myös `noActivation` vaatii mainilta tuoreen journal-poissaolon tarkistuksen.
 
+Mainin nimetty loppukäsittelijä sitoo kuitin ennen odotuksia kaapattuun
+switch-operaatioon, yritykseen, profiiliin ja työtilajuureen. Se päättää
+salaisuus- ja tarkistustyöt, todentaa prosessiomistajuuden ja torjuu vieraan
+palautusjournalin. Vain täsmällinen palautuskuitti saa valmistella vielä
+käyttämättömän replacement-palautusomistajan cold-loppusiivouksen.
+Virhe sulkee myös yleisen source-recovery-jatkon. Elävä synkroninen
+valinta- ja kertakutsutarkistus kulkee viimeiseen juuren poistotarkistukseen;
+pelkkä aikaisempi asynkroninen tarkistus ei riitä. Onnistuminen edellyttää
+myös cold-varauksien loppuvapautusta ja tuoretta journal-poissaoloa.
+Tämä kuittikäsittely ei yksin anna switchin terminal- tai W6-peruutusvaltuutta.
+
 Palautuksen nykyisen startup-omistajan nimetty cold-loppusiivous vaatii jo
 valitun täsmällisen `rolledBack`-journalin ja tuoreen alkuperäissisällön
 valtuuden. Se ei avaa tai migroi business-runtimea. Keskeneräinen aiempi

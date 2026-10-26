@@ -42,11 +42,20 @@ on toteutettu ja kohdennetusti todennettu. Main kytkee nyt W6:n ja
 FirstStartin vaihekohtaisen valtuuden jo valitun yrityksen deferred-avaukseen.
 Switch-omistajan varmennetun tiedostovalinnan luovutusrajapinta on toteutettu;
 palautuksen omistaja sisältää nyt erillisen alkuperäissisällön cold-loppurajan
-ja vaihtovarauksen luovutuksen. Kopioaktivoinnin tarkka palautuskuitti
-välittyy nykyisen source-recovery-portin kautta. Mainin source-null-kutsuja tarvitsee vielä
-todellisen terminal-valtuuden ja näiden rajojen yhteisen kytkennän.
+ja vaihtovarauksen luovutuksen. Main käsittelee nyt kopioaktivoinnin tarkan
+palautuskuitin nykyisellä cold-omistajalla ja odottaa myös I/O:n sekä
+varausten sulkeutumisen. Sen uusi virhepolku estää yleisen source-recoveryn
+ohituksen. Mainin source-null-kutsuja tarvitsee vielä koko switch/W6-ketjun
+terminal-valtuuden ja käynnistysratkaisijan kytkennän.
 Sen jälkeen tulevat valitsimen käyttöliittymä
 ja native-/pakettitodennus. W7.2:n tuotantokytkentä ei ole valmis.
+
+Mainin palautuskuitin kytkentä läpäisi 239 käynnistys-/palautustestiä,
+206 viereisten omistajien regressiota ja rajatun katselmuksen. Uusi
+kilpailutilanneregressio toisti ja korjauksen jälkeen esti palautusjuuren
+poiston viimeisen luennan aikana menetetyllä valtuudella. Näyttö käyttää
+synteettisiä tiedostotavuja ja hallittuja prosessi-/sisältövalidointirajoja;
+se ei ole oikean SQLite/Electron- tai paketoidun ketjun hyväksyntä.
 
 Cold-loppurajan vaikutusalueen yhdistetyssä ajossa yhdeksän tiedostoa
 läpäisi (475 testiä). Mainin käynnistystiedoston yksi tapaus aikakatkaisi
