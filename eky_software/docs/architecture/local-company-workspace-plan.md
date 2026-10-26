@@ -419,7 +419,8 @@ se tarkistetaan aina yrityksen omista tavuista nykyisillä tarkistimilla.
 
 W7.2:n aloituksessa FirstStartin täsmäävä A valitsi `normal`-haaran, joka ei
 hyväksynyt uutta business-versiota. Uusi selector-arvo torjutaan nyt vanhasta
-haarasta; nimetty deferred-jatko odottaa startup-kytkentää. `targetValidation`-startup valitsee
+haarasta; nimetty deferred-jatko on kytketty mainin jo valittuun yritysavaukseen,
+mutta source-null-liitos on vielä kesken. `targetValidation`-startup valitsee
 W6A.3:n aktivointimigraation, jolloin sen `beforeMigrations` ohittaa
 FirstStartin vastaavan kutsun. Molempien migraatio-omistajien käynnistäminen
 ei ratkaise tätä. Sovellusadmissionia ei myöskään saa esittää virheellisesti
@@ -520,7 +521,8 @@ omia keskeneräisiä slotteja. Metadatan tarkistus ja julkaisu kuuluvat
 tallentimelle. Peruutus- ja julkaisuvaltuuden alkuperäiset funktiot
 kaapataan ennen ensimmäistä asynkronista rajaa; niiden vaihtaminen kesken
 operaation ei anna uutta valtuutta. Vanhat C-/Direct Setup -kirjoittajat säilyttävät sopimuksensa.
-Tämäkään osaraja ei vielä todista mainin ulkoisen valtuuden kytkentää.
+Mainin jo valitun yrityksen avaus käyttää tätä ulkoista valtuutta.
+Source-null-avauksen terminal- ja switch-siirto vaativat vielä oman kytkentänsä.
 
 Palautuksen `unverified`/`committed`-hyväksyntä tai jo päätetty switch ei
 anna enää uutta rollback- tai null-paluuvaltuutta. Kadonnut hyväksyntäkuittaus
@@ -594,8 +596,8 @@ kun sloteissa on selector-hyväksyntä. Ensimmäiset metadatatavut ja identiteet
 säilyvät valmisteluun; ensimmäinen rekisterivalinta ja installation-varaus
 tarkistetaan uudelleen. Toimitetun buildin portti edeltää palautuskirjoitusta.
 Vierasta create/import/adoption-omistajaa tai epäselvää palautustilaa ei
-ohiteta vanhaan korjaavaan lukijaan. Tämä kytkentä ei vielä toimita
-W6:n tai FirstStartin myöhempien muutosten valtuutta.
+ohiteta vanhaan korjaavaan lukijaan. Main säilyttää tämän valmistelun
+valitut havainnot W6:n ja FirstStartin myöhempien muutosten valtuudessa.
 Metadatan sivuvaikutukseton aloitusluokitus säilyttää v1:n aiemman osittaisen
 sivukirjoituksen käsittelyn myös v2-rekisterissä. Täydellinen v2-slotin arvo
 ei kuitenkaan saa kadota vanhaan korjaavaan lukuun ristiriitaisessa
@@ -611,7 +613,8 @@ sitoman `deferredBusiness`-valtuuden. Sovellusadmission säilyy
 lykättyä business-haaraa. Valtuus sitoo täsmällisen selector-metadatan ja
 käynnissä olevan kohdebuildin. Startup vastaa valtuuden sitomisesta elävään
 käynnistyssukupolveen, valittuun yritykseen, operaatioon ja sallittuun
-rekisterisiirtymään. Rajapinnan olemassaolo ei todista tätä startup-kytkentää.
+rekisterisiirtymään. Main toimittaa valtuuden jo valitun yrityksen
+deferred-haarassa; source-null-switchin siirto ei sisälly vielä kytkentään.
 
 Ennen inventaarion tuloksen käyttöä lähdemetadata, rekisteri ja mahdollinen
 journal tarkistetaan uudelleen. Sama `prepared`-journal saa jatkua myös
@@ -644,12 +647,19 @@ tallennuskytkennän jatkon; häiriön katoaminen ei valtuuta samaa instanssia
 uudelleen. Alkuperäinen virhe ja toteutuneet tiedostot säilyvät. Metadataluku
 tässä haarassa on sivuvaikutukseton ja hylkää uudet sivuslotit. Nämä portit
 ovat nykyisen W6-compositionin käytössä vain erikseen toimitetulla
-deferred-valtuudella; mainin lopullinen vaihekohtainen sidonta on yhä avoin.
+deferred-valtuudella. Mainin vaihekohtainen sidonta tarkistaa myös saman
+valmistelun ja W6-vaiheen asynkronisten lukujen jälkeen. FirstStartin
+business-julkaisun takaisinluku kuljettaa kirjoittajan identiteetin mainille;
+myöhempi sattumanvarainen tiedoston lukeminen ei korvaa sitä. Valittu
+callback, käynnistyksen voimassaolo ja kertakäyttöisyys säilyvät koko kutsun
+yli. Mainin ulkoiset lukijat päättyvät kaikki ennen virheen palautumista.
 
 Pysyvät testit käyttävät nykyisiä tiedostotallentimia ja v1/v2-rekistereitä.
 Inventaario ja startup-valtuus ovat niissä ohjattuja; ne eivät todista oikeaa
 SQLite-/Electron- tai paketoitua ketjua. Valitsimen ja source-null-avauksen
-tuotantokutsuja ei vielä käytä tätä W6-valtuutta. Ajantasainen testinäyttö
+tuotantokutsuja ei vielä käytä tätä W6-valtuutta. Jo valitun yrityksen
+main-/FirstStart-kytkentä on todennettu ohjatuilla native-rajoilla.
+Ajantasainen testinäyttö
 ja jäljellä oleva kytkentä kirjataan M1:n jatkamiskohtaan.
 
 ## Muuttumattomat rajat W1-W6:ssa

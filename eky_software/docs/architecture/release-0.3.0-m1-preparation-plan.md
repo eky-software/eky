@@ -38,10 +38,11 @@ Aiempi jatkamisteksti säilyy muuttamattomana
 
 **Nykyinen työ:** W7.2:n rekisteri v2, pysyvä yritysvalinta ja backenditon
 hallintatila. Rekisterin, metadatan ja käynnistyksen tilavalmistelun osarajat
-on toteutettu ja kohdennetusti todennettu. W6-composition käyttää nyt
-deferred-haarassa valittuihin tiedostoihin sidottua tallennusta. Seuraavana
-on sen ja FirstStartin yhteinen vaihekohtainen valtuus mainissa;
-W7.2:n tuotantokytkentä ei ole valmis.
+on toteutettu ja kohdennetusti todennettu. Main kytkee nyt W6:n ja
+FirstStartin vaihekohtaisen valtuuden jo valitun yrityksen deferred-avaukseen.
+Seuraavana on source-null-avauksen todellinen terminal-valtuus ja
+switch-omistajan tiedostovalinnan siirto, sitten valitsimen käyttöliittymä
+ja native-/pakettitodennus. W7.2:n tuotantokytkentä ei ole valmis.
 [Pysyvä valinta ja versioraja](local-company-workspace-plan.md#pysyvä-yritysvalinta-ja-versioraja),
 [valitsimesta avauksen jatko](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 ja [W7.0-W7.5:n työjako](local-company-workspace-plan.md#koottu-toteutusehdotus)
@@ -198,14 +199,32 @@ avoimia P1/P2-havaintoja. Päällekkäisiä kohdesarjoja ei lasketa määrään
 lisänä. Tämä ei vielä kytke mainin todellista terminal-valtuutta eikä hyväksy
 native-/paketoitua ketjua.
 
-**Seuraava työ:** FirstStart- ja W6-valtuuksien yhteinen kytkentä mainiin,
-mukaan lukien täsmällinen sallittu rekisterisiirtymä ja todellinen
-terminal-valtuus. W6:n nykyisen compositionin deferred-haaran registry- ja
+**Uusin osatodennus (26.10.2026):** main käyttää tilavalmistelun valittuja
+tiedostotavuja ja identiteettejä W6:n sekä FirstStartin yhteisessä
+vaihekohtaisessa valtuudessa. Deferred-admission ei kutsu korjaavaa lukijaa.
+FirstStart palauttaa oman julkaisunsa varmennetun identiteetin; main ei ota
+myöhemmin löytyvää samantavuista tiedostoa omakseen. Ulkoiset tarkistukset
+eivät lue omistajan keskeneräisiä kirjoitusslotteja. Kaikki rinnakkain
+aloitetut ulkoiset lukijat päättyvät myös yhden lukijan virheessä.
+Koko käynnistys-/palautustiedoston 226 testiä sekä viiden tiedoston 141
+sopimustestiä läpäisivät. Viereisten kuluttajien lopullinen sarja läpäisi
+729 testiä 37 tiedostossa; yksi alustakohtainen tapaus jäi ajamatta.
+Päällekkäisiä kohdesarjoja ei lasketa yhteen. Desktopin, Electron-koetoteutuksen ja E2E:n
+tyyppitarkistukset läpäisivät. Rajatussa riippumattomassa jälkikatselmuksessa
+ei jäänyt vahvistettuja P1/P2-havaintoja. Testit käyttävät oikeita tiedostoja
+ja compositionia mutta ohjattuja native-/Electron-rajoja; tämä ei ole
+SQLite-/Electron- tai pakettihyväksyntä. Aiemman passiivisen siirtymän
+aikakatkaisun tarkka syy säilyy avoimena.
+
+**Seuraava työ:** source-null-avauksen switch-valinnan täsmällinen siirto
+sekä todellinen terminal-valtuus ennen valitsimeen paluuta tai hyväksyntää.
+Nykyinen main-kytkentä säilyttää alkuperäiset switch-slotit eikä vielä
+valtuuta niiden muuttamista. W6:n nykyisen compositionin deferred-haaran registry- ja
 journal-kutsut käyttävät nyt kirjoituksen sisällä uusittavaa valtuutta ja
 kirjoittajan tiedostoidentiteetin takaisinlukua; metadataluku ei korjaa
 sivuslotteja. Rajatun katselmuksen kaksi valtuus-/jatkamispuutetta toistettiin
-ja korjattiin vastatesteillä. Tämä ei vielä ole mainin lopullisen valtuuden,
-SQLite/Electronin tai paketoidun ketjun näyttö.
+ja korjattiin vastatesteillä. Tämä aiempi tallennusosaraja ei yksin ollut
+mainin, SQLite/Electronin tai paketoidun ketjun näyttö.
 Vaikutusalueen lopullinen sarja läpäisi 908 testiä 35 tiedostossa; yksi
 alustakohtainen tapaus jäi ajamatta. Desktopin, Electron-koetiedostojen ja
 E2E-kuluttajien tyyppitarkistukset sekä ohjeiden linkkitarkistus läpäisivät.
@@ -241,11 +260,10 @@ Electron-koetoteutuksen ja E2E:n tyyppitarkistukset läpäisivät. Rajattu
 riippumaton katselmus ei jättänyt avoimia P1/P2-havaintoja. Tämä on
 käynnistysvaltuuden osatodiste, ei native- tai pakettihyväksyntä.
 Osittainen rekisterituki ei anna muunnosvaltuutta.
-FirstStartin uusi tila ei vielä ole tuotannon startupin käyttämä haara.
-W6:n nimetty jatko tarvitsee vielä startup-omistajan todellisen kutsun,
-ei yleistä B-baselinen store-adapteria tai teeskenneltyä uutta päivitystä.
-Todellinen v2-julkaisu, historiallisen palautuksen terminal-kytkentä ja
-source-null-composition jäävät pysyvien regressioiden ja integraation porteiksi.
+FirstStartin uusi tila ja W6:n nimetty jatko ovat nyt mainin käytössä
+jo valitun yrityksen deferred-haarassa, ilman yleistä B-baselinen
+store-adapteria tai teeskenneltyä uutta päivitystä. Historiallisen palautuksen
+terminal-kytkentä ja source-null-composition jäävät integraation porteiksi.
 Valitsimen readiness ei ole business-hyväksyntä, null-valinta ei luo
 oletusyritystä eikä epävarma prosessisulku avaa uusia hallintakirjoituksia.
 Sitten pysyvät regressiot ja oikean käynnistysketjun todistus ennen saman

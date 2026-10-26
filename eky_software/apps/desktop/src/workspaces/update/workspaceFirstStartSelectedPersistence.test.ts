@@ -51,17 +51,22 @@ it('uses selected persistence in the real W6 composition through preparation, tr
   const subject = f.composition();
   expect(await subject.recoverBeforeWorkspaceResolution()).toBe('noJournal');
   expect(await subject.prepareBeforeBackend(context)).toBe('prepared');
+  await subject.assertDeferredBusinessReady('beforeMigrations');
+  await expect(subject.assertDeferredBusinessReady('beforeAcceptance')).rejects.toThrow();
   expect(f.guard.bindPreparation).toHaveBeenCalledOnce();
   const prepared = (await f.journal.inspect())!.value;
   expect(prepared.operationId).toBe(operationId);
   expect(prepared.passiveRecoveryWorkspaceIds).toEqual([passiveId]);
   expect(oldWrite).not.toHaveBeenCalled();
   await subject.transitionRegistryAfterActiveWorkspaceAcceptance();
+  await subject.assertDeferredBusinessReady('beforeAcceptance');
+  await expect(subject.assertDeferredBusinessReady('beforeMigrations')).rejects.toThrow();
   await expect(subject.completeAfterTargetAcceptance()).rejects.toThrow();
   expect((await f.journal.inspect())?.value.state).toBe('registryTransitioned');
   // Business acceptance is controlled here; real FirstStart/native proof is separate.
   await f.accepted.write(createBusinessAcceptedBuildMetadata(selector, target));
   await subject.completeAfterTargetAcceptance();
+  await expect(subject.assertDeferredBusinessReady('beforeAcceptance')).rejects.toThrow();
   expect(await f.journal.inspect()).toBeUndefined();
   expect(await f.registry.inspect()).toEqual(f.transitioned);
   expect(selectedWrite).toHaveBeenCalledTimes(2);

@@ -30,6 +30,7 @@ export interface WorkspaceFirstStartMigrationOrchestration {
   ): Promise<WorkspaceFirstStartPreparationOutcome>;
   transitionRegistryAfterActiveWorkspaceAcceptance(): Promise<void>;
   completeAfterTargetAcceptance(): Promise<void>;
+  assertDeferredBusinessReady(phase: 'beforeMigrations' | 'beforeAcceptance'): Promise<void>;
   cancelBeforeSelectorReturn(authority: WorkspaceFirstStartSelectorReturnAuthority): Promise<void>;
 }
 

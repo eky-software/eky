@@ -306,7 +306,8 @@ export class FirstStartUpdateCoordinator {
     }
   }
 
-  async acceptAfterBackendReady(): Promise<void> {
+  async acceptAfterBackendReady(): Promise<Readonly<ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>> | undefined> {
+    let acceptedRecord: Readonly<ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata>> | undefined;
     const mode = this.mode;
     if (!this.migrationGateCompleted || mode === undefined) {
       throw new FirstStartUpdateError();
@@ -401,6 +402,7 @@ export class FirstStartUpdateCoordinator {
             throw new FirstStartUpdateError();
           }
           await mode.authority.assertCurrent();
+          acceptedRecord = structuredClone(observed);
         } else await this.dependencies.acceptedBuildStore.write(published);
       }
 
@@ -448,6 +450,7 @@ export class FirstStartUpdateCoordinator {
 
     await this.releaseRecoveryPointProtectionAfterAcceptance(mode);
     this.notifyOperationCompleted();
+    return acceptedRecord;
   }
 
   async recoverFromStartupFailure(): Promise<boolean> {

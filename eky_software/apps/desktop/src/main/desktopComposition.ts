@@ -173,9 +173,11 @@ import { DirectSetupMigrationRecoveryStore, maximumDirectSetupMigrationRecoveryB
 import { parseDirectSetupMigrationRecovery } from '../update/directSetupMigrationRecovery.js';
 import { migrateLegacyLocalUpdateState, prepareSelectorLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
-import { prepareDeferredBusinessLocalUpdateState, type DeferredBusinessLocalUpdatePlan } from '../update/deferredBusinessLocalUpdateState.js';
+import { prepareDeferredBusinessLocalUpdateState, type PreparedDeferredBusinessLocalUpdate } from '../update/deferredBusinessLocalUpdateState.js';
+import { createDesktopDeferredBusinessStartup } from './desktopDeferredBusinessStartup.js';
 import { readAcceptedApplicationBuild } from '../update/acceptedBuildMetadata.js';
 import {
+  classifyPreWorkspaceBuildAdmission,
   PreWorkspaceBuildAdmissionError,
   requirePreWorkspaceBuildAdmission,
 } from '../update/preWorkspaceBuildAdmission.js';
@@ -612,23 +614,40 @@ export async function startDesktopComposition(
     let installationUpdateState = await createInstallationUpdateState({
       ...installationStateInput, coldRecoveryAdmission,
     });
-    const rollbackStartupAdmission = options.releaseInfo === undefined ? undefined
+    const createDeferredStartup = () => installationUpdateState.deferredBusiness === undefined ? undefined
+      : createDesktopDeferredBusinessStartup({
+        prepared: installationUpdateState.deferredBusiness,
+        assertCurrent: assertStartupAuthority,
+        inspectExternal: installationUpdateState.inspectDeferredExternal,
+      });
+    let deferredBusinessStartup = createDeferredStartup();
+    const readBuildAdmission = async () => {
+      if (deferredBusinessStartup !== undefined) {
+        await deferredBusinessStartup.assertCurrent();
+        if (options.releaseInfo === undefined) return 'development' as const;
+        const result = classifyPreWorkspaceBuildAdmission({
+          buildInfo: options.buildInfo, releaseInfo: options.releaseInfo,
+          acceptedBuild: installationUpdateState.deferredBusiness!.metadata,
+          directSetupRecovery: undefined, journal: undefined,
+        });
+        if (result.status === 'rejected') throw new PreWorkspaceBuildAdmissionError(result.reason);
+        return result.admission;
+      }
+      return requirePreWorkspaceBuildAdmission({
+        buildInfo: options.buildInfo, releaseInfo: options.releaseInfo,
+        stores: { acceptedBuild: installationUpdateState.acceptedBuildMetadataStore,
+          directSetupRecovery: installationUpdateState.directSetupMigrationRecoveryStore,
+          journal: installationUpdateState.updateJournalStore },
+      });
+    };
+    const rollbackStartupAdmission = options.releaseInfo === undefined || deferredBusinessStartup !== undefined ? undefined
       : await prepareUpdateBusinessRollbackStartupAdmission({
         journalStore: installationUpdateState.updateJournalStore,
         releaseInfo: options.releaseInfo,
         selectedJournal: await installationUpdateState.updateJournalStore.readForLiveOwner(),
         assertAuthority: assertStartupAuthority,
       });
-    let preWorkspaceBuildAdmission = await requirePreWorkspaceBuildAdmission({
-      buildInfo: options.buildInfo,
-      releaseInfo: options.releaseInfo,
-      stores: {
-        acceptedBuild: installationUpdateState.acceptedBuildMetadataStore,
-        directSetupRecovery:
-          installationUpdateState.directSetupMigrationRecoveryStore,
-        journal: installationUpdateState.updateJournalStore,
-      },
-    });
+    let preWorkspaceBuildAdmission = await readBuildAdmission();
     await recoverWorkspaceManagementBeforeRuntime({
       admission: coldRecoveryAdmission,
       async assertRecoveryAdmission() {
@@ -667,15 +686,15 @@ export async function startDesktopComposition(
       installationUpdateState = await createInstallationUpdateState({
         ...installationStateInput, coldRecoveryAdmission: 'none',
       });
-      preWorkspaceBuildAdmission = await requirePreWorkspaceBuildAdmission({
-        buildInfo: options.buildInfo, releaseInfo: options.releaseInfo,
-        stores: { acceptedBuild: installationUpdateState.acceptedBuildMetadataStore,
-          directSetupRecovery: installationUpdateState.directSetupMigrationRecoveryStore,
-          journal: installationUpdateState.updateJournalStore },
-      });
+      deferredBusinessStartup = createDeferredStartup();
+      preWorkspaceBuildAdmission = await readBuildAdmission();
     }
-    const workspaceFirstStartMigration =
+    const createWorkspaceMigration = () =>
       createWorkspaceFirstStartMigrationComposition({
+        ...(deferredBusinessStartup === undefined ? {} : {
+          deferredBusiness: deferredBusinessStartup.authority,
+          operationIdFactory: deferredBusinessStartup.operationIdFactory,
+        }),
         acceptedBuildStore:
           installationUpdateState.acceptedBuildMetadataStore,
         admission: preWorkspaceBuildAdmission,
@@ -688,7 +707,16 @@ export async function startDesktopComposition(
         updateJournalStore: installationUpdateState.updateJournalStore,
         userDataRoot: options.userDataPath,
       });
+    let workspaceFirstStartMigration = createWorkspaceMigration();
     await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution();
+    if (installationUpdateState.deferredBusiness?.businessAccepted) {
+      // Recovery has completed the already-published business target. Subsequent
+      // startup is the normal accepted-build path, not a second deferred migration.
+      await deferredBusinessStartup!.assertCurrent();
+      deferredBusinessStartup = undefined;
+      workspaceFirstStartMigration = createWorkspaceMigration();
+      await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution();
+    }
     const workspaceStartup = await resolveDesktopWorkspaceStartup({
       assertStartupCurrent: assertStartupAuthority,
       createRuntimeSession: dependencies.createRuntimeSession,
@@ -744,6 +772,7 @@ export async function startDesktopComposition(
       } }),
     });
     await rollbackAdmission?.assertCurrent();
+    await deferredBusinessStartup?.assertCurrent();
     assertStartupAuthority();
     const lifecycle = await startDesktopCompositionRuntime({
       activeWorkspace,
@@ -762,6 +791,7 @@ export async function startDesktopComposition(
       rollbackStartupAdmission: rollbackAdmission,
       smokeMode,
       workspaceFirstStartMigration,
+      deferredBusinessStartup,
       workspaceMaintenanceLease,
       workspaceReservation,
       startupReservationOwner,
@@ -844,6 +874,7 @@ interface DesktopCompositionRuntimeOptions {
   rollbackStartupAdmission: Readonly<UpdateBusinessRollbackStartupAdmission> | undefined;
   smokeMode: boolean;
   workspaceFirstStartMigration: WorkspaceFirstStartMigrationOrchestration;
+  deferredBusinessStartup: ReturnType<typeof createDesktopDeferredBusinessStartup> | undefined;
   workspaceMaintenanceLease: InMemoryWorkspaceMaintenanceLease;
   workspaceReservation: DesktopWorkspaceReservation;
   startupReservationOwner: WorkspaceCandidateReservationOwner;
@@ -855,7 +886,8 @@ interface InstallationUpdateState {
   directSetupMigrationRecoveryStore: DirectSetupMigrationRecoveryStore;
   localUpdateRuntimePaths: ReturnType<typeof createLocalUpdateRuntimePaths>;
   updateJournalStore: UpdateJournalStore;
-  deferredBusiness?: Readonly<DeferredBusinessLocalUpdatePlan>;
+  deferredBusiness?: Readonly<PreparedDeferredBusinessLocalUpdate>;
+  inspectDeferredExternal: Parameters<typeof createDesktopDeferredBusinessStartup>[0]['inspectExternal'];
 }
 
 async function createInstallationUpdateState(input: {
@@ -908,7 +940,7 @@ async function createInstallationUpdateState(input: {
   const adoptionPending = selection?.activeWorkspaceId === null &&
     await hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath));
   input.assertAuthority();
-  let deferredBusiness: Readonly<DeferredBusinessLocalUpdatePlan> | undefined;
+  let deferredBusiness: Readonly<PreparedDeferredBusinessLocalUpdate> | undefined;
   // Scoped metadata selects its own admission, regardless of registry version.
   // The historical v1 reader retains its interrupted-unselected-write policy.
   if (selection?.activeWorkspaceId !== null ||
@@ -1035,6 +1067,31 @@ async function createInstallationUpdateState(input: {
   }
   input.assertAuthority();
   return {
+    async inspectDeferredExternal(includeMetadata) {
+      const reads = [
+        readColdWorkspaceRecoveryAdmissionFromRoot(input.userDataPath),
+        hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath)),
+        includeMetadata ? acceptedBuildMetadataStore.inspectSlots() : Promise.resolve(undefined),
+        stores.acceptedBuild.legacy.inspectSlots(),
+        updateJournalStore.inspectSlots(),
+        stores.journal.legacy.inspectSlots(),
+        readOnlyJournalSlots(createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.directSetupMigrationRecoveryPath),
+          maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery, { includeIdentity: true }),
+        new WorkspaceSwitchJournalStore(input.userDataPath).inspectSlots(),
+      ] as const;
+      // These readers do not mutate slots. Settle every started reader before
+      // propagating a failure so no read outlives this ownership check.
+      await Promise.allSettled(reads);
+      const [coldRecovery, adoption, metadata, legacyMetadata, updateJournal,
+        legacyUpdateJournal, directSetupRecovery, switchJournal] = await Promise.all(reads);
+      if (coldRecovery !== 'none' || adoption) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
+      return {
+        ...(metadata === undefined ? {} : { metadata }),
+        legacyMetadata, updateJournal, legacyUpdateJournal, directSetupRecovery, switchJournal,
+      };
+    },
     acceptedBuildMetadataStore,
     directSetupMigrationRecoveryStore,
     localUpdateRuntimePaths,
@@ -1060,6 +1117,7 @@ async function startDesktopCompositionRuntime({
   rollbackStartupAdmission,
   smokeMode,
   workspaceFirstStartMigration,
+  deferredBusinessStartup,
   workspaceMaintenanceLease,
   workspaceReservation,
   startupReservationOwner,
@@ -2038,10 +2096,14 @@ async function startDesktopCompositionRuntime({
         if (firstStartUpdateCoordinator === undefined) {
           return;
         }
-        await firstStartUpdateCoordinator.beforeMigrations(inspection, {
+        await firstStartUpdateCoordinator.beforeMigrations(inspection, deferredBusinessStartup === undefined ? {
           migrationAuthority: restoredProfileMigrationAuthorized
             ? 'profileRestore'
             : 'update',
+        } : {
+          migrationAuthority: 'deferredBusiness',
+          authority: await deferredBusinessStartup.firstStartAuthority(workspaceFirstStartMigration,
+            inspection.migrationChainIdentity),
         });
         w6b2PackagedFaultInjection?.failActiveWorkspaceFirstStartIfRequested();
       }),
@@ -2158,7 +2220,8 @@ async function startDesktopCompositionRuntime({
     await workspaceFirstStartMigration.transitionRegistryAfterActiveWorkspaceAcceptance();
     await w6b2PackagedFaultInjection?.interruptAfterRegistryTransitionIfRequested();
     if (firstStartUpdateCoordinator !== undefined) {
-      await firstStartUpdateCoordinator.acceptAfterBackendReady();
+      if (deferredBusinessStartup === undefined) await firstStartUpdateCoordinator.acceptAfterBackendReady();
+      else await deferredBusinessStartup.accept(firstStartUpdateCoordinator, workspaceFirstStartMigration);
     }
     targetBuildAccepted = true;
     await workspaceFirstStartMigration.completeAfterTargetAcceptance();

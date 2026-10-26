@@ -60,6 +60,9 @@ it.for([
   expect(result.metadata).toEqual(values.current ?? selector);
   expect(result.businessAccepted).toBe(values.current === business);
   const stored = await f.metadataStore.inspectSlots();
+  expect(result.selectedState.metadata).toEqual(stored);
+  expect(result.selectedState.registry).toEqual((await f.externalRead()).registry);
+  expect(result.selectedState.metadata.current?.identity).toBeDefined();
   expect(stored.current?.value).toEqual(result.metadata);
   expect(stored.next).toBeUndefined();
   expect(stored.backup).toBeUndefined();

@@ -40,7 +40,7 @@ describe('desktop first-start boundaries', () => {
       'utf8',
     );
     const admission = source.indexOf(
-      'await requirePreWorkspaceBuildAdmission',
+      'let preWorkspaceBuildAdmission = await readBuildAdmission()',
     );
     const workspaceStartup = source.indexOf(
       'await resolveDesktopWorkspaceStartup',
@@ -48,6 +48,13 @@ describe('desktop first-start boundaries', () => {
 
     expect(admission).toBeGreaterThan(-1);
     expect(workspaceStartup).toBeGreaterThan(admission);
+    const reader = source.indexOf('const readBuildAdmission = async () => {');
+    expect(reader).toBeGreaterThan(-1);
+    expect(reader).toBeLessThan(admission);
+    const branches = source.slice(reader, admission);
+    expect(branches).toContain('await deferredBusinessStartup.assertCurrent();');
+    expect(branches).toContain('classifyPreWorkspaceBuildAdmission({');
+    expect(branches).toContain('return requirePreWorkspaceBuildAdmission({');
   });
 
   it('rechecks a current selector target and continues to FirstStart unless activation relaunches', async () => {
@@ -70,7 +77,7 @@ describe('desktop first-start boundaries', () => {
       'utf8',
     );
     const admission = source.indexOf(
-      'await requirePreWorkspaceBuildAdmission',
+      'let preWorkspaceBuildAdmission = await readBuildAdmission()',
     );
     const firstStartRecovery = source.indexOf(
       'await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution()',
@@ -85,6 +92,7 @@ describe('desktop first-start boundaries', () => {
       'backendHandle = await dependencies.startBackend',
     );
 
+    expect(admission).toBeGreaterThan(-1);
     expect(firstStartRecovery).toBeGreaterThan(admission);
     expect(workspaceStartup).toBeGreaterThan(firstStartRecovery);
     expect(firstStartPreparation).toBeGreaterThan(workspaceStartup);

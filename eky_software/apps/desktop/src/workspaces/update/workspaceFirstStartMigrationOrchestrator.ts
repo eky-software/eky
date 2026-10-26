@@ -16,6 +16,7 @@ import type {
   WorkspaceId,
 } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import { assertWorkspaceFirstStartMigrationJournalTransition } from './workspaceFirstStartMigrationJournalCodec.js';
 import { resolveWorkspaceFirstStartMigrationPlan } from './resolveWorkspaceFirstStartMigrationPlan.js';
 import type {
   WorkspaceFirstStartAcceptedBuildReader,
@@ -95,6 +96,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
   private selectorReturnStarted = false;
   private preparationPending = false;
   private registryTransitionStarted = false;
+  private deferredRegistry: Readonly<LocalWorkspaceRegistry> | undefined;
 
   constructor(
     private readonly options: Readonly<
@@ -240,6 +242,7 @@ export class WorkspaceFirstStartMigrationOrchestrator
         sourceBuild,
         targetBuild: this.options.runningBuild,
       });
+      if (this.options.deferredBusiness !== undefined) this.deferredRegistry = structuredClone(registry);
 
       if (this.resumedJournal !== undefined) {
         this.assertResumedPlan(
@@ -327,6 +330,36 @@ export class WorkspaceFirstStartMigrationOrchestrator
       targetBuild: journal.targetBuild,
     });
     this.completed = true;
+  }
+
+  // Checks W6's own settled selection without re-entering FirstStart's metadata
+  // writer. Main supplies the external lifetime/foreign-owner guard on the ports.
+  async assertDeferredBusinessReady(phase: 'beforeMigrations' | 'beforeAcceptance'): Promise<void> {
+    const preparation = this.requirePreparation();
+    const assertStage = () => {
+      if (this.requirePreparation() !== preparation || this.options.deferredBusiness === undefined ||
+          this.deferredRegistry === undefined || this.completed || this.preparationPending ||
+          preparation.kind === 'rollbackOnly' ||
+          this.registryTransitionStarted !== (phase === 'beforeAcceptance')) return invalidOrchestration();
+    };
+    assertStage();
+    const registry = await this.readRequiredRegistry();
+    const record = await this.options.journal.inspect();
+    assertStage();
+    if (preparation.kind === 'notRequired') {
+      if (record !== undefined || !isDeepStrictEqual(registry, this.deferredRegistry)) return recoveryRequired();
+      return;
+    }
+    if (preparation.kind === 'rollbackOnly') return invalidOrchestration();
+    const expected = preparation.operation.journal;
+    const transitioned = phase === 'beforeAcceptance';
+    if (record === undefined || preparation.operation.registryTransitioned !== transitioned) return recoveryRequired();
+    if (transitioned) {
+      assertWorkspaceFirstStartMigrationJournalTransition(expected, record.value);
+      if (record.value.state !== 'registryTransitioned') return recoveryRequired();
+    } else if (!isDeepStrictEqual(record.value, expected)) return recoveryRequired();
+    if (calculateWorkspaceRegistrySha256(registry) !==
+        (transitioned ? expected.transitionedRegistrySha256 : expected.sourceRegistrySha256)) return recoveryRequired();
   }
 
   async cancelBeforeSelectorReturn(authority: WorkspaceFirstStartSelectorReturnAuthority): Promise<void> {

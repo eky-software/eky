@@ -63,10 +63,29 @@ it('inventories an all-current deferred opening without creating a journal', asy
   expect(await subject.prepareBeforeBackend(context)).toBe('notRequired');
   expect(f.inspect).toHaveBeenCalledOnce();
   expect(await f.journal.read()).toBeUndefined();
+  await subject.assertDeferredBusinessReady('beforeMigrations');
   await subject.transitionRegistryAfterActiveWorkspaceAcceptance();
+  await subject.assertDeferredBusinessReady('beforeAcceptance');
   await expect(subject.completeAfterTargetAcceptance()).rejects.toThrow();
   await f.accepted.write(createBusinessAcceptedBuildMetadata(selector, target));
   await subject.completeAfterTargetAcceptance();
+});
+
+it('rejects a W6 phase that changed while its readiness read was pending', async test => {
+  const f = await fixture(test);
+  f.state.pending = false;
+  const subject = f.subject();
+  await subject.recoverBeforeWorkspaceResolution();
+  await subject.prepareBeforeBackend(context);
+  const inspect = f.journal.inspect.bind(f.journal);
+  vi.spyOn(f.journal, 'inspect').mockImplementationOnce(async () => {
+    const observed = await inspect();
+    await subject.transitionRegistryAfterActiveWorkspaceAcceptance();
+    return observed;
+  });
+  await expect(subject.assertDeferredBusinessReady('beforeMigrations')).rejects.toThrow();
+  expect(await f.accepted.read()).toEqual(selector);
+  expect(await f.journal.inspect()).toBeUndefined();
 });
 
 it.for(['prepared', 'registryTransitioned'] as const)(

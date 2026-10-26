@@ -59,9 +59,13 @@ export interface DeferredBusinessLocalUpdatePreparation {
   assertAuthority(): void;
 }
 
+export interface PreparedDeferredBusinessLocalUpdate extends DeferredBusinessLocalUpdatePlan {
+  readonly selectedState: Readonly<DeferredBusinessLocalUpdateState>;
+}
+
 export async function prepareDeferredBusinessLocalUpdateState(
   input: DeferredBusinessLocalUpdatePreparation,
-): Promise<Readonly<DeferredBusinessLocalUpdatePlan>> {
+): Promise<Readonly<PreparedDeferredBusinessLocalUpdate>> {
   const authority = input.assertAuthority.bind(input);
   const assertAuthority = () => assertUpdateJournalAuthority(authority);
   const inspectExternalState = input.inspectExternalState.bind(input);
@@ -103,7 +107,8 @@ export async function prepareDeferredBusinessLocalUpdateState(
       !Buffer.from(recovered.current.bytes).equals(selected.bytes)) invalid();
   await assertExternalSelection();
   // This readback is not business readiness or permission for another mutation.
-  return Object.freeze({ ...plan, metadataSlot: 'current' });
+  return Object.freeze({ ...plan, metadataSlot: 'current',
+    selectedState: structuredClone({ ...external, metadata: recovered }) });
 }
 
 // Read admission only. Main must preserve these observations and renew its

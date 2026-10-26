@@ -29,8 +29,10 @@ it('publishes business-v2 only after fresh content, secret and authority checks'
   await f.start();
   expect(await f.store.read()).toEqual(selector);
   expect(f.publish).not.toHaveBeenCalled();
-  await f.subject.acceptAfterBackendReady();
+  const acceptedRecord = await f.subject.acceptAfterBackendReady();
   expect(await f.store.read()).toEqual(createBusinessAcceptedBuildMetadata(selector, target));
+  expect(acceptedRecord).toEqual((await f.store.inspectSlots()).current);
+  expect(acceptedRecord?.identity).toBeDefined();
   expect(f.validate).toHaveBeenCalledOnce();
   expect(f.secret).toHaveBeenCalledTimes(2);
   expect(f.publish).toHaveBeenCalledOnce();

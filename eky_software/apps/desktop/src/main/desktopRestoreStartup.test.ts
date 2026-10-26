@@ -36,6 +36,8 @@ import * as updateObservation from '../update/updateOperationalObserver.js';
 import { launchWindowsInstallerForUpdate } from '../update/windowsInstallerHandoff.js';
 import { UpdateJournalStore } from '../update/updateJournalStore.js';
 import { UpdateBinaryRollbackCoordinator } from '../update/updateBinaryRollbackCoordinator.js';
+import { FirstStartUpdateCoordinator } from '../update/firstStartUpdateCoordinator.js';
+import * as deferredPreparation from '../update/deferredBusinessLocalUpdateState.js';
 import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/profileRestoreActivationJournalStore.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
@@ -66,6 +68,8 @@ import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/repl
 import { WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
 import { ActiveWorkspaceStartupRelaunchRequiredError, resolveActiveWorkspaceStartup } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceFirstStartMigrationOrchestrator } from '../workspaces/update/workspaceFirstStartMigrationOrchestrator.js';
+import { WorkspaceMigrationInventoryCoordinator } from '../workspaces/update/workspaceMigrationInventoryCoordinator.js';
+import { WorkspaceFirstStartMigrationJournalStore } from '../workspaces/update/workspaceFirstStartMigrationJournalStore.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
@@ -225,6 +229,218 @@ function beginTrackedStartupTest(context: TestContext) {
 }
 
 describe('selector installation-state startup wiring', () => {
+  it('settles concurrent deferred admission readers before propagating their first failure', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots));
+      let release!: () => void;
+      let entered!: () => void;
+      let rejected!: () => void;
+      const slow = new Promise<void>(resolve => { release = resolve; });
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      const failed = new Promise<void>(resolve => { rejected = resolve; });
+      context.signal.addEventListener('abort', release, { once: true });
+      const first = new Error('SYNTHETIC_DEFERRED_READ_FAILURE');
+      const prepare = deferredPreparation.prepareDeferredBusinessLocalUpdateState;
+      vi.spyOn(deferredPreparation, 'prepareDeferredBusinessLocalUpdateState').mockImplementationOnce(async input => {
+        const prepared = await prepare(input);
+        vi.spyOn(AcceptedBuildMetadataStore.prototype, 'inspectSlots').mockImplementation(async () => { rejected(); throw first; });
+        const read = UpdateJournalStore.prototype.inspectSlots;
+        vi.spyOn(UpdateJournalStore.prototype, 'inspectSlots').mockImplementation(async function (this: UpdateJournalStore) {
+          entered(); await slow; return read.call(this);
+        });
+        return prepared;
+      });
+      const observe = vi.fn();
+      let settled = false;
+      const outcome = f.fixture.start(observe).then(value => { settled = true; return value; }, error => {
+        settled = true; return error;
+      });
+      try {
+        await failed;
+        await started;
+        expect(settled).toBe(false);
+      } finally {
+        release();
+        context.signal.removeEventListener('abort', release);
+      }
+      expect(await outcome).toMatchObject({ message: 'DESKTOP_START_FAILED' });
+      expect(observe).toHaveBeenCalledWith(first, 'compositionStartup', []);
+      expect(f.resolve).not.toHaveBeenCalled();
+      expect(f.fixture.events).toEqual([]);
+    });
+  });
+
+  it.for(['metadata', 'directSetup', 'update'] as const)(
+    'preserves a late $0 side slot before deferred build admission', async (owner, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots));
+        const prepare = deferredPreparation.prepareDeferredBusinessLocalUpdateState;
+        const path = `${owner === 'metadata' ? f.paths.acceptedBuildMetadataPath
+          : owner === 'directSetup' ? f.paths.directSetupMigrationRecoveryPath : f.paths.journalPath}.next`;
+        const evidence = owner === 'metadata'
+          ? JSON.stringify(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild))
+          : 'synthetic incomplete foreign write';
+        vi.spyOn(deferredPreparation, 'prepareDeferredBusinessLocalUpdateState').mockImplementationOnce(async input => {
+          const prepared = await prepare(input);
+          await writeFile(path, evidence, { flag: 'wx' });
+          return prepared;
+        });
+        const read = vi.spyOn(AcceptedBuildMetadataStore.prototype, 'read');
+        await lifetime.step('startup', async () => { await expect(f.fixture.start()).rejects.toThrow(); });
+        expect(read).not.toHaveBeenCalled();
+        expect(await readFile(path, 'utf8')).toBe(evidence);
+        expect(f.resolve).not.toHaveBeenCalled();
+        expect(f.fixture.events).toEqual([]);
+        expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it.for([false, true])('accepts deferred business through real main and FirstStart (passive transition: %s)', async (passiveTransition, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+      const initial = (await f.fixture.registry.inspect())!;
+      const passiveId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
+      if (passiveTransition) {
+        await f.fixture.registry.write({ ...initial, workspaces: [...initial.workspaces, {
+          ...initial.workspaces[0]!, workspaceId: passiveId, workspaceLabel: 'Synthetic passive',
+          lineageIdentity: { formatVersion: 1, profileId: foreignProfileId },
+        }] });
+      }
+      vi.spyOn(WorkspaceMigrationInventoryCoordinator.prototype, 'inspect').mockResolvedValue({
+        activeWorkspaceId: workspaceId, entries: [
+          { workspaceId, isActive: true, appliedMigrationCount: 1, pendingMigrationCount: 0, status: 'current' },
+          ...(passiveTransition ? [{ workspaceId: passiveId, isActive: false, appliedMigrationCount: 0,
+            pendingMigrationCount: 0, status: 'invalidHistory' as const }] : []),
+        ],
+      });
+      const publishOriginal = AcceptedBuildMetadataStore.prototype.publishSelected;
+      const publish = vi.spyOn(AcceptedBuildMetadataStore.prototype, 'publishSelected')
+        .mockImplementation(async function (this: AcceptedBuildMetadataStore, ...args) {
+          expect(f.fixture.events).toContain('backendStarted');
+          const journal = await new WorkspaceFirstStartMigrationJournalStore({ userDataPath: f.fixture.root }).inspect();
+          if (passiveTransition) expect(journal?.value.state).toBe('registryTransitioned');
+          else expect(journal).toBeUndefined();
+          return publishOriginal.apply(this, args);
+        });
+      const observe = vi.fn();
+      const lifecycle = await lifetime.step('startup', () => f.fixture.start(observe).catch(error => {
+        throw observe.mock.calls[0]?.[0] ?? error;
+      }));
+      expect(lifecycle).toBeDefined();
+      try {
+        expect(observe).not.toHaveBeenCalled();
+        expect(publish).toHaveBeenCalledOnce();
+        expect(await f.fixture.acceptedBuild.inspectSlots()).toMatchObject({ current: { value: {
+          formatVersion: 2, acceptanceScope: 'business', acceptedBuild: expect.objectContaining({ appVersion: '0.2.8' }),
+          businessBaseline: expect.objectContaining({ appVersion: '0.2.8' }),
+        } }, next: undefined, backup: undefined });
+        const registry = (await f.fixture.registry.inspect())!;
+        expect(registry.activeWorkspaceId).toBe(workspaceId);
+        expect(registry.workspaces[0]).toEqual(initial.workspaces[0]);
+        if (passiveTransition) expect(registry.workspaces[1]?.lifecycleState).toBe('recoveryRequired');
+        expect(await new WorkspaceFirstStartMigrationJournalStore({ userDataPath: f.fixture.root }).inspect()).toBeUndefined();
+        expect(await f.fixture.updateJournal.read()).toBeUndefined();
+        expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+        expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+      } finally { await lifecycle?.shutdown(); }
+    });
+  });
+
+  it('continues an already-published deferred business target without republishing it', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+      const business = createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild);
+      await rename(f.paths.acceptedBuildMetadataPath, `${f.paths.acceptedBuildMetadataPath}.backup`);
+      await writeFile(f.paths.acceptedBuildMetadataPath, JSON.stringify(business));
+      const publish = vi.spyOn(AcceptedBuildMetadataStore.prototype, 'publishSelected');
+      const observe = vi.fn();
+      const lifecycle = await lifetime.step('startup', () => f.fixture.start(observe).catch(error => {
+        throw observe.mock.calls[0]?.[0] ?? error;
+      }));
+      expect(lifecycle).toBeDefined();
+      try {
+        expect(publish).not.toHaveBeenCalled();
+        expect(await f.fixture.acceptedBuild.inspectSlots()).toMatchObject({ current: { value: business },
+          next: undefined, backup: undefined });
+        expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+        expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+      } finally { await lifecycle?.shutdown(); }
+    });
+  });
+
+  it.for(['metadataReplacement', 'foreignRecovery', 'pendingMigration', 'contentChanged',
+    'publicationLostReply', 'publicationReplacement', 'ownerLost'] as const)(
+    'preserves deferred startup evidence on $0 without opening business', async (fault, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+        const originalMetadata = await readFile(f.paths.acceptedBuildMetadataPath);
+        const first = new Error('SYNTHETIC_DEFERRED_PUBLICATION_REPLY_LOST');
+        const inspect = vi.mocked(snapshotInspection.runProfileSnapshotInspection).getMockImplementation()!;
+        let inspections = 0;
+        vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockImplementation(async input => {
+          const result = await inspect(input);
+          inspections++;
+          if (inspections === 1 && fault === 'metadataReplacement') {
+            await rename(f.paths.acceptedBuildMetadataPath, `${f.paths.acceptedBuildMetadataPath}.retained`);
+            await writeFile(f.paths.acceptedBuildMetadataPath, originalMetadata);
+          }
+          if (inspections === 1 && fault === 'foreignRecovery') {
+            await writeFile(f.paths.directSetupMigrationRecoveryPath, JSON.stringify(createAcceptedDirectSetupFixture()));
+          }
+          if (inspections === 2 && fault === 'contentChanged') {
+            return { ...result, validation: { ...result.validation, migrationChainIdentity: 'f'.repeat(64) } };
+          }
+          if (inspections === 2 && fault === 'ownerLost') {
+            f.fixture.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('SYNTHETIC_STARTUP_OWNER_LOST'); });
+          }
+          return result;
+        });
+        if (fault === 'pendingMigration') {
+          const before = FirstStartUpdateCoordinator.prototype.beforeMigrations;
+          vi.spyOn(FirstStartUpdateCoordinator.prototype, 'beforeMigrations')
+            .mockImplementation(function (this: FirstStartUpdateCoordinator, inspection, options) {
+              return before.call(this, { ...inspection, pendingMigrationCount: 1 }, options);
+            });
+        }
+        const write = AcceptedBuildMetadataStore.prototype.publishSelected;
+        const publish = vi.spyOn(AcceptedBuildMetadataStore.prototype, 'publishSelected')
+          .mockImplementation(async function (this: AcceptedBuildMetadataStore, ...args) {
+            const identity = await write.apply(this, args);
+            if (fault === 'publicationLostReply') throw first;
+            if (fault === 'publicationReplacement') {
+              const bytes = await readFile(f.paths.acceptedBuildMetadataPath);
+              await rename(f.paths.acceptedBuildMetadataPath, `${f.paths.acceptedBuildMetadataPath}.retained`);
+              await writeFile(f.paths.acceptedBuildMetadataPath, bytes);
+            }
+            return identity;
+          });
+        const observe = vi.fn();
+        await lifetime.step('startup', async () => { await expect(f.fixture.start(observe)).rejects.toThrow(); });
+        expect(observe).toHaveBeenCalled();
+        if (fault === 'publicationLostReply') expect(observe.mock.calls.some(([error]) => hasErrorCause(error, first))).toBe(true);
+        expect(publish).toHaveBeenCalledTimes(fault.startsWith('publication') ? 1 : 0);
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        expect(f.fixture.relaunch).not.toHaveBeenCalled();
+        expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+        expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        expect(await f.fixture.updateJournal.inspectSlots()).toEqual({ current: undefined, next: undefined, backup: undefined });
+        if (fault.startsWith('publication')) expect((await f.fixture.acceptedBuild.inspectSlots()).current?.value)
+          .toMatchObject({ formatVersion: 2, acceptanceScope: 'business' });
+        else expect(await readFile(f.paths.acceptedBuildMetadataPath)).toEqual(originalMetadata);
+        if (fault === 'foreignRecovery') expect(await readFile(f.paths.directSetupMigrationRecoveryPath, 'utf8'))
+          .toBe(JSON.stringify(createAcceptedDirectSetupFixture()));
+        if (fault.endsWith('Replacement')) expect(await readFile(`${f.paths.acceptedBuildMetadataPath}.retained`)).toBeDefined();
+      });
+    },
+  );
+
   it('does not open runtime resources after installation authority expires during preparation', async context => {
     const lifetime = beginTrackedStartupTest(context);
     await lifetime.run(async () => {
@@ -2870,10 +3086,21 @@ async function createSelectorStartupFixture(ownedRoots: string[], state: 'accept
   return { fixture, paths, metadata, boundary, resolve };
 }
 
-async function createDeferredStartupFixture(ownedRoots: string[]) {
-  const resolve = vi.fn(async () => { throw new Error('unexpected workspace resolution'); });
+async function createDeferredStartupFixture(ownedRoots: string[], completeStartup = false) {
+  if (completeStartup) {
+    electronBoundary.fetch.mockImplementation(async input => String(input).endsWith('/customers')
+      ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+    vi.spyOn(WorkspaceMigrationInventoryCoordinator.prototype, 'inspect').mockResolvedValue({
+      activeWorkspaceId: workspaceId, entries: [{ workspaceId, isActive: true,
+        appliedMigrationCount: 1, pendingMigrationCount: 0, status: 'current' }],
+    });
+  }
+  const resolve = vi.fn(async (root: string) => {
+    if (completeStartup) return resolveActiveWorkspaceStartup(root);
+    throw new Error('unexpected workspace resolution');
+  });
   const fixture = await createFixture(originalProfileId, {
-    ownedRoots, update: true, skipRestore: true, resolveActiveWorkspace: resolve,
+    ownedRoots, update: true, skipRestore: true, completeStartup, resolveActiveWorkspace: resolve,
   });
   await fixture.registry.write({ ...(await fixture.registry.read())!, formatVersion: 2 });
   const target = (await fixture.acceptedBuild.read())! as Readonly<AcceptedBuildMetadata>;
