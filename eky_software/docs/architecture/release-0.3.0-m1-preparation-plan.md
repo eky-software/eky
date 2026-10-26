@@ -38,8 +38,10 @@ Aiempi jatkamisteksti säilyy muuttamattomana
 
 **Nykyinen työ:** W7.2:n rekisteri v2, pysyvä yritysvalinta ja backenditon
 hallintatila. Rekisterin, metadatan ja käynnistyksen tilavalmistelun osarajat
-on toteutettu ja kohdennetusti todennettu. Seuraavana on W6:n ja FirstStartin
-todellinen yhteinen valtuusketju; W7.2:n tuotantokytkentä ei ole valmis.
+on toteutettu ja kohdennetusti todennettu. W6-composition käyttää nyt
+deferred-haarassa valittuihin tiedostoihin sidottua tallennusta. Seuraavana
+on sen ja FirstStartin yhteinen vaihekohtainen valtuus mainissa;
+W7.2:n tuotantokytkentä ei ole valmis.
 [Pysyvä valinta ja versioraja](local-company-workspace-plan.md#pysyvä-yritysvalinta-ja-versioraja),
 [valitsimesta avauksen jatko](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 ja [W7.0-W7.5:n työjako](local-company-workspace-plan.md#koottu-toteutusehdotus)
@@ -198,7 +200,17 @@ native-/paketoitua ketjua.
 
 **Seuraava työ:** FirstStart- ja W6-valtuuksien yhteinen kytkentä mainiin,
 mukaan lukien täsmällinen sallittu rekisterisiirtymä ja todellinen
-terminal-valtuus. Ensimmäisen yritysavauksen tilavalmistelu on nyt kytketty
+terminal-valtuus. W6:n nykyisen compositionin deferred-haaran registry- ja
+journal-kutsut käyttävät nyt kirjoituksen sisällä uusittavaa valtuutta ja
+kirjoittajan tiedostoidentiteetin takaisinlukua; metadataluku ei korjaa
+sivuslotteja. Rajatun katselmuksen kaksi valtuus-/jatkamispuutetta toistettiin
+ja korjattiin vastatesteillä. Tämä ei vielä ole mainin lopullisen valtuuden,
+SQLite/Electronin tai paketoidun ketjun näyttö.
+Vaikutusalueen lopullinen sarja läpäisi 908 testiä 35 tiedostossa; yksi
+alustakohtainen tapaus jäi ajamatta. Desktopin, Electron-koetiedostojen ja
+E2E-kuluttajien tyyppitarkistukset sekä ohjeiden linkkitarkistus läpäisivät.
+Rajattuun jälkikatselmukseen ei jäänyt avoimia P1/P2-havaintoja.
+Ensimmäisen yritysavauksen tilavalmistelu on nyt kytketty
 pääprosessiin ennen korjaavia lukijoita: alkuperäiset metadatahavainnot,
 rekisterivalinta, toimitettu build ja installation-valtuus tarkistetaan
 ennen muutoksia. Vanhan v1-lukijan yhteensopivuus säilyy myös v2-rekisterissä;

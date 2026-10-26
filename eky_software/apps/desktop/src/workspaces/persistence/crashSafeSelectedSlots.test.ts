@@ -54,6 +54,49 @@ it.for([{ next: 'unpublished' }, { current: 'new', backup: 'old', next: 'other' 
   },
 );
 
+it('promotes an explicitly admitted initial next with its original identity', async test => {
+  const f = await fixture(test, { next: 'initial' });
+  const selected = await f.selection();
+  const identity = await f.store.promoteInitialSelected(selected);
+  expect(identity.ino).toBe(selected.expectedIdentities.next?.ino);
+  expect(identity).toEqual((await f.selection()).expectedIdentities.current);
+  expect(await f.snapshot()).toEqual({ current: bytes('initial'), next: undefined, backup: undefined });
+});
+
+it.for([{}, { current: 'old', next: 'new' }, { backup: 'old', next: 'new' }] as const)(
+  'never promotes an initial next over another selection %#', async (initial, test) => {
+    const f = await fixture(test, initial);
+    const before = await f.snapshot();
+    await expect(f.store.promoteInitialSelected(await f.selection())).rejects.toThrow();
+    expect(await f.snapshot()).toEqual(before);
+  },
+);
+
+it.for(['external', 'identity', 'move', 'sync'] as const)(
+  'preserves the initial publication on %s failure', async (phase, test) => {
+    const f = await fixture(test, { next: 'initial' });
+    const selection = await f.selection();
+    let live = true;
+    if (phase === 'external') selection.assertExternalSelection = async () => { throw new Error('EXTERNAL_CHANGED'); };
+    if (phase === 'identity') {
+      await rename(f.path('next'), join(f.root, 'original'));
+      await writeFile(f.path('next'), bytes('initial'), { flag: 'wx' });
+    }
+    if (phase === 'move') {
+      const move = f.fs.moveSlot.bind(f.fs);
+      vi.spyOn(f.fs, 'moveSlot').mockImplementation(async (...args) => { await move(...args); live = false; });
+    }
+    if (phase === 'sync') vi.spyOn(f.fs, 'syncDirectory').mockRejectedValue(new Error('SYNC_FAILED'));
+    await expect(f.store.promoteInitialSelected({ ...selection,
+      assertAuthority() { if (!live) throw new Error('EXPIRED'); },
+    })).rejects.toThrow();
+    const published = phase === 'move' || phase === 'sync';
+    expect(await f.snapshot()).toEqual({ current: published ? bytes('initial') : undefined,
+      next: published ? undefined : bytes('initial'), backup: undefined });
+    if (phase === 'identity') expect(await readFile(join(f.root, 'original'))).toEqual(bytes('initial'));
+  },
+);
+
 it.for(['replace', 'recover', 'clear'] as const)('rejects changed own bytes before %s', async (operation, test) => {
   const f = await fixture(test, { current: 'old' });
   const selection = await f.selection();

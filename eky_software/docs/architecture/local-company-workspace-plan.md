@@ -627,6 +627,25 @@ palautetaan tai päätetään nykyisellä journalilla. Virhe ei luo uutta
 C-/Direct Setup -palautusta eikä alenna sovellushyväksyntää. Vanhat kutsujat
 ilman nimettyä valtuutta säilyttävät nykyisen käsittelyn.
 
+W6:n deferred-composition käyttää nykyisten registry- ja journal-tallentimien
+valittuja operaatioita. Mainin toimittamat alkuperäiset slot-tavut ja
+tiedostoidentiteetit säilyvät lukemisen, palautuksen, kirjoituksen ja poiston
+yli. Journalin muutos tarkistaa rekisterin ja rekisterin muutos journalin;
+mainin ulkoinen guard ei lue näiden tallentimien keskeneräisiä omia slotteja.
+Julkaisun takaisinluku hyväksyy vain kirjoittajan seuraaman identiteetin.
+Ensimmäisen valmistelujournalin sidonta tapahtuu ennen kirjoitusta, ja main
+voi varata operaatiotunnisteen nykyisen orchestraattorin factory-portilla.
+Next-only-valmistelun palautus on journal-omistajan erikseen validoima haara,
+ei yleinen lupa julkaista muiden tallentimien next-tiedostoja.
+
+Valtuus on synkroninen myös kääreiden läpi: Promise-paluu ei ole hyväksyntä.
+Hylätty valtuus- tai valintaluku sekä epävarma kirjoitus sulkevat tämän
+tallennuskytkennän jatkon; häiriön katoaminen ei valtuuta samaa instanssia
+uudelleen. Alkuperäinen virhe ja toteutuneet tiedostot säilyvät. Metadataluku
+tässä haarassa on sivuvaikutukseton ja hylkää uudet sivuslotit. Nämä portit
+ovat nykyisen W6-compositionin käytössä vain erikseen toimitetulla
+deferred-valtuudella; mainin lopullinen vaihekohtainen sidonta on yhä avoin.
+
 Pysyvät testit käyttävät nykyisiä tiedostotallentimia ja v1/v2-rekistereitä.
 Inventaario ja startup-valtuus ovat niissä ohjattuja; ne eivät todista oikeaa
 SQLite-/Electron- tai paketoitua ketjua. Valitsimen ja source-null-avauksen

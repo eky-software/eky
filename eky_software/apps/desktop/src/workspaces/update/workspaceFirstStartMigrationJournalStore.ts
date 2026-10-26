@@ -3,6 +3,7 @@ import { isDeepStrictEqual } from 'node:util';
 import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
+  type CrashSafeByteSlotSelection,
 } from '../persistence/crashSafeByteSlotStore.js';
 import {
   CrashSafeFileSlotError,
@@ -10,7 +11,7 @@ import {
   type CrashSafeFileSlotFileSystem,
   type CrashSafeFileSlotIdentity,
 } from '../persistence/crashSafeFileSlot.js';
-import type { ReadOnlyJournalSlotRecord } from '../persistence/readOnlyJournalSlots.js';
+import type { ReadOnlyJournalSlotRecord, ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import {
   assertWorkspaceFirstStartMigrationJournalTransition,
   parseWorkspaceFirstStartMigrationJournalBytes,
@@ -73,6 +74,64 @@ export class WorkspaceFirstStartMigrationJournalStore
       if (identity === undefined) throw new WorkspaceFirstStartMigrationJournalValidationError();
       return Object.freeze({ bytes: Uint8Array.from(current), identity,
         value: parseWorkspaceFirstStartMigrationJournalBytes(current) });
+    });
+  }
+
+  inspectSlots(): Promise<ReadOnlyJournalSlots<WorkspaceFirstStartMigrationJournalV1>> {
+    return this.runExclusive(async () => {
+      const slots: Record<'current' | 'next' | 'backup', ReadOnlyJournalSlotRecord<WorkspaceFirstStartMigrationJournalV1> | undefined> = {
+        current: undefined, next: undefined, backup: undefined,
+      };
+      for (const slot of ['current', 'next', 'backup'] as const) {
+        let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+        const bytes = await this.fileSystem.readSlot(slot, value => { identity = Object.freeze({ ...value }); });
+        if (bytes === undefined) continue;
+        if (identity === undefined) throw new WorkspaceFirstStartMigrationJournalValidationError();
+        slots[slot] = Object.freeze({ bytes: Uint8Array.from(bytes), identity,
+          value: parseWorkspaceFirstStartMigrationJournalBytes(bytes) });
+      }
+      return Object.freeze(slots);
+    });
+  }
+
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    return this.runExclusive(async () => {
+      const next = validateWorkspaceFirstStartMigrationJournal(value);
+      const slots = parseSelectedJournalSlots(selection);
+      if (slots.next !== undefined || slots.backup !== undefined) {
+        throw new WorkspaceFirstStartMigrationJournalValidationError();
+      }
+      assertWorkspaceFirstStartMigrationJournalTransition(slots.current, next);
+      return this.byteStore.replaceSelected(serializeWorkspaceFirstStartMigrationJournal(next), selection);
+    });
+  }
+
+  recoverSelected(selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    return this.runExclusive(async () => {
+      const slots = parseSelectedJournalSlots(selection);
+      if (slots.current !== undefined && slots.next !== undefined && slots.backup !== undefined) {
+        throw new WorkspaceFirstStartMigrationJournalValidationError();
+      }
+      if (slots.backup !== undefined && slots.current !== undefined) {
+        assertWorkspaceFirstStartMigrationJournalTransition(slots.backup, slots.current);
+      }
+      const selected = slots.current ?? slots.backup;
+      if (slots.next !== undefined) assertWorkspaceFirstStartMigrationJournalTransition(selected, slots.next);
+      if (selected === undefined && slots.next !== undefined) {
+        return this.byteStore.promoteInitialSelected(selection);
+      }
+      return this.byteStore.recoverSelected(selection);
+    });
+  }
+
+  removeSelected(operationId: string, state: 'prepared' | 'registryTransitioned', selection: CrashSafeByteSlotSelection): Promise<void> {
+    return this.runExclusive(async () => {
+      const slots = parseSelectedJournalSlots(selection);
+      if (slots.next !== undefined || slots.backup !== undefined || slots.current === undefined ||
+          slots.current.operationId !== operationId || slots.current.state !== state) {
+        throw new WorkspaceFirstStartMigrationJournalValidationError();
+      }
+      await this.byteStore.clearSelected(selection);
     });
   }
 
@@ -182,4 +241,12 @@ export class WorkspaceFirstStartMigrationJournalStore
     }
     return new WorkspaceFirstStartMigrationJournalStoreError('unavailable');
   }
+}
+
+function parseSelectedJournalSlots(selection: CrashSafeByteSlotSelection) {
+  return {
+    current: selection.expectedSlots.current === undefined ? undefined : parseWorkspaceFirstStartMigrationJournalBytes(selection.expectedSlots.current),
+    next: selection.expectedSlots.next === undefined ? undefined : parseWorkspaceFirstStartMigrationJournalBytes(selection.expectedSlots.next),
+    backup: selection.expectedSlots.backup === undefined ? undefined : parseWorkspaceFirstStartMigrationJournalBytes(selection.expectedSlots.backup),
+  };
 }

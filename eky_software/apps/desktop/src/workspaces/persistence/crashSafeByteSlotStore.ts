@@ -117,6 +117,20 @@ export class CrashSafeByteSlotStore {
     await guard.beforeMutation();
   }
 
+  // Only a journal owner that admits an interrupted initial publication may
+  // choose next without current/backup. Ordinary selected recovery never does.
+  async promoteInitialSelected(selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    const selected = captureSelectedSlots(selection);
+    if (selected.slots.current !== undefined || selected.slots.backup !== undefined ||
+        selected.slots.next === undefined) throw new CrashSafeByteSlotStoreError();
+    const guard = this.selectedGuard(selected);
+    await guard.beforeMutation();
+    await this.moveSelected('next', 'current', selected, guard);
+    await this.fileSystem.syncDirectory(guard);
+    await guard.beforeMutation();
+    return publishedIdentity(selected);
+  }
+
   private selectedGuard(selected: ReturnType<typeof captureSelectedSlots>): CrashSafeFileSlotMutationGuard {
     const assertAuthority = selected.assertAuthority;
     return {
