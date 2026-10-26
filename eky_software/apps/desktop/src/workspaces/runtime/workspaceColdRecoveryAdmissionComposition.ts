@@ -158,9 +158,11 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
     const registry = (await new CrashSafeByteSlotStore(
       createNodeWorkspaceRegistryFileSystem(registryPaths),
     ).inspect(parseWorkspaceRegistryBytes))?.value;
+    // The journal does not record the registry version or its other entries.
+    if (registry === undefined) throw new WorkspaceManagementRecoveryRequiredError();
     const workspaceIds = new Set<WorkspaceId>([
       journal.workspaceId,
-      ...registry?.workspaces.map((entry) => entry.workspaceId) ?? [],
+      ...registry.workspaces.map((entry) => entry.workspaceId),
     ]);
     if (journal.previousActiveWorkspaceId !== null) {
       workspaceIds.add(journal.previousActiveWorkspaceId);

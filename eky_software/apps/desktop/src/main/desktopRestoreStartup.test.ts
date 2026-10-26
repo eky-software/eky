@@ -1713,6 +1713,44 @@ describe('selector installation-state startup wiring', () => {
     });
   });
 
+  it.for((['creation', 'import'] as const).flatMap(kind =>
+    (['prepared', 'rootPublished'] as const).map(state => ({ kind, state }))))(
+    'preserves cold $kind/$state evidence when all selector registry slots are missing', async ({ kind, state }, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+        }));
+        await fixture.registry.write({ ...(await fixture.registry.read())!, formatVersion: 2, activeWorkspaceId: null });
+        const pending = await prepareColdJournal(fixture.root, kind, { state, previousActiveWorkspaceId: null });
+        const payload = await preparePlaintext(fixture.root);
+        const evidencePaths = [pending.paths.currentPath, fixture.databasePath, fixture.pdfPath, payload,
+          state === 'prepared' ? pending.candidateFile : pending.publishedFile];
+        const before: Buffer[] = [];
+        for (const path of evidencePaths) before.push(await readFile(path));
+        const registryPaths = ['', '.next', '.backup'].map(suffix =>
+          join(fixture.root, WORKSPACE_REGISTRY_FILE_NAME + suffix));
+        for (const path of registryPaths) await rm(path, { force: true });
+
+        await lifetime.step('startup', async () => {
+          await expect(fixture.start()).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+        });
+
+        for (const [index, path] of evidencePaths.entries()) {
+          await expect(readFile(path)).resolves.toEqual(before[index]);
+        }
+        for (const path of registryPaths) {
+          await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+        }
+        expect(fixture.events).toEqual([]);
+        expect(fixture.createRuntimeSession).not.toHaveBeenCalled();
+        expect(electronBoundary.fork).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        expect(fixture.relaunch).not.toHaveBeenCalled();
+      });
+    },
+  );
+
   it('preserves the legacy adoption recovery owner with a null selection', async context => {
     const lifetime = beginTrackedStartupTest(context);
     await lifetime.run(async () => {

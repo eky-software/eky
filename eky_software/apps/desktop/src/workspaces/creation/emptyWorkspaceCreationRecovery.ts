@@ -88,6 +88,9 @@ export class EmptyWorkspaceCreationRecovery {
         journal.workspaceId,
       );
       const registrySnapshot = await this.readRegistry();
+      if (this.options.completionMode === 'beforeRuntimeStart' && registrySnapshot === undefined) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
       const registryValue = readCreationRegistry(registrySnapshot);
       const registry = this.options.completionMode === 'beforeRuntimeStart'
         ? validateWorkspaceRegistry(registryValue)

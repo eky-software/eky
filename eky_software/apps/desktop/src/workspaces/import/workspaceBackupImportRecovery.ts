@@ -88,10 +88,6 @@ export class WorkspaceBackupImportRecovery {
         throw new WorkspaceManagementRecoveryRequiredError();
       }
       if (journal === undefined) return 'nothingToRecover';
-      if (this.options.completionMode === 'beforeRuntimeStart') {
-        await this.assertRuntimeAbsent();
-        await this.recoverPlaintextQuarantine();
-      }
       await this.assertRuntimeAbsent();
 
       const paths = deriveWorkspaceBackupImportPaths(
@@ -100,10 +96,17 @@ export class WorkspaceBackupImportRecovery {
         journal.workspaceId,
       );
       const registrySnapshot = await this.readRegistry();
+      if (this.options.completionMode === 'beforeRuntimeStart' && registrySnapshot === undefined) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
       const registryValue = readWorkspaceBackupImportRegistry(registrySnapshot);
       const registry = this.options.completionMode === 'beforeRuntimeStart'
         ? validateWorkspaceRegistry(registryValue)
         : registryValue;
+      if (this.options.completionMode === 'beforeRuntimeStart') {
+        await this.assertRuntimeAbsent();
+        await this.recoverPlaintextQuarantine();
+      }
       const entry = findImportedWorkspaceEntry(registry, journal.workspaceId);
       const presence = await this.options.rootStore.readPresence(paths);
 

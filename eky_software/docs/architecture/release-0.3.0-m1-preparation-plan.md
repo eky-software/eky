@@ -43,6 +43,21 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
+**Yhteiskatselmuksen jatko 26.10.2026:** puhtaan revision
+`f5e65d2874fe7dd8f26a49ab15c874fb31dce3a0` koko työtilan testikierros
+läpäisi 13 446 testiä; 22 määriteltyä ohitusta eivät ole läpäisyjä.
+Katselmus löysi silti kattamattoman puutteen: puuttuva rekisteri voitiin
+rakentaa uudelleen keskeytyneen luonnin tai tuonnin julkaisun yhteydessä,
+jolloin muiden yritysten merkinnät ja valitsimen null-tila eivät säilyneet.
+Regressio toisti virheen. Admission ja molemmat palautusomistajat vaativat
+nyt olemassa olevan rekisterin ennen aineiston siivousta. Puuttuminen
+säilyttää aineiston ja estää käynnistyksen; kelvollinen tyhjä rekisteri,
+slot-valinta ja historiallinen adoptio säilyvät. Korjauksen 557 kohdetestiä
+ja rajattu riippumaton katselmus läpäisivät. Korjattu kokonaisuus läpäisi
+myös uuden koko työtilan kierroksen: 13 470 testiä ja 22 määriteltyä ohitusta.
+Tyyppitarkistus, auditointi, rekisteriallekirjoitukset ja ohjelinkit läpäisivät.
+Uusi puhdas paketti, kestoajo sekä PR/main-portit ovat vielä todentamatta.
+
 **Uusin pakettitodiste 26.10.2026:** puhdas lähderevisio
 `3404719c5aa4eef8e5f49f8c1c5cd53cb4453ad8` läpäisi hardened Windows
 -paketoinnin, sisältöinventaarion ja backup -> inspect -> restore -> restart
@@ -125,10 +140,10 @@ muuttumaton fake-varavaihtoehto. Sen ja istuntogeneraattorin 24 regressiota
 läpäisivät. Muut desktopin 5 846 testiä läpäisivät; viisi alustakohtaista
 tapausta jäi ohitetuksi. Tämä ei ole koko työtilan hyväksyntä, eikä
 muiden pakettien tai tekemättä jääneen jatkovaiheen läpäisyä oleteta.
-Uusi yhtenäinen kierros vaaditaan lopullisen katselmuksen jälkeen.
+Myöhempi yhtenäinen kierros ja katselmuksen korjaustarve on eroteltu yllä.
 
-**Seuraava työ:** viimeistele W7.2:n hyväksyntämatriisin ja vaikutusalueen
-laajan testinäytön tarkistus ennen integraatiota. Säilytä vanhan
+**Seuraava työ:** todenna katselmuksessa korjattu kokonaisuus laajasti ja
+samasta puhtaasta lähteestä paketoituna ennen integraatiota. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
 palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.

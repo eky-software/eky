@@ -278,6 +278,13 @@ yrityksen valinnan, v2 säilyttää aiemman valinnan myös sen ollessa null.
 Kylmäpalautuksen null-jatko vaatii todellisen v2-rekisterin, sen koko sisällön
 muuttumattomuuden ja kutsujan nykyisen runtime-poissaolotodisteen ennen
 journalin poistoa. Puuttuva rekisteri ei ole tämä jatko.
+Luonnin ja tuonnin kylmäpalautuksen admission sekä kumpikin palautusomistaja
+vaativat olemassa olevan, nykyisen slot-sopimuksen mukaan valitun rekisterin
+ennen kohteen tai tuonnin väliaineiston siivousta. Journal ei sisällä koko
+rekisteriä tai sen versiota eikä siksi oikeuta rekonstruoimaan puuttuvaa
+rekisteriä. Puuttuminen säilyttää journalin ja aineiston sekä estää avauksen.
+Kelvollinen tyhjä v1/v2-rekisteri ja current/backup/next-valinta säilyvät
+tuettuina; historiallinen adoptio käyttää edelleen omaa ensialustusvaltuuttaan.
 Rajattu riippumaton katselmus ei jättänyt löydöksiä osarajaan; kohdesarja
 läpäisi 810 testiä, kaksi alustakohtaista tapausta jäi ajamatta ja
 tyyppitarkistus läpäisi. Koko slot-admission, v1 -> v2 -muunnosvaltuus,

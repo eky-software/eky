@@ -156,6 +156,30 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
   const errorCode = kind === 'creation' ? 'WORKSPACE_CREATION_RECOVERY_REQUIRED' : 'WORKSPACE_IMPORT_RECOVERY_REQUIRED';
 
   it.each([
+    { state: 'prepared', empty: true },
+    { state: 'prepared', empty: false },
+    { state: 'rootPublished', empty: true },
+    { state: 'rootPublished', empty: false },
+  ] as const)('preserves recovery evidence if the v2 registry is missing ($state/$empty)', async ({ state, empty }) => {
+    const fixture = await createFixture(kind, {
+      state, published: state === 'rootPublished', registryFormatVersion: 2,
+      firstWorkspace: empty, selector: !empty,
+    });
+    const before = fixture.journal.current;
+    fixture.registry.value = undefined;
+    await expect(fixture.recovery.recover()).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(fixture.registry.value).toBeUndefined();
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.journal.current).toEqual(before);
+    expect(fixture.rootStore.finalExists).toBe(state === 'rootPublished');
+    expect(fixture.rootStore.candidateExists).toBe(state === 'prepared');
+    expect(fixture.quarantine.stalePayloadCount).toBe(1);
+    expect(fixture.events).not.toContain('journal.remove');
+    expect(fixture.events).not.toContain('lifecycle.ensure');
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it.each([
     { state: 'candidateValidated', registryPublished: false },
     { state: 'rootPublished', registryPublished: false },
     { state: 'rootPublished', registryPublished: true },
@@ -474,27 +498,28 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     expect(fixture.lease.held).toBe(false);
   });
 
-  it.each(['absentToEmpty', 'emptyToAbsent'] as const)(
-    'preserves the registry when first publication observes %s', async (change) => {
-      const fixture = await createFixture(kind, { state: 'rootPublished', published: true,
-        firstWorkspace: true,
-        afterPublishedValidation: () => {
-          fixture.registry.value = change === 'absentToEmpty' ? createTestRegistry() : undefined;
-        },
-      });
-      if (change === 'absentToEmpty') fixture.registry.value = undefined;
-      await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
-      expect(fixture.registry.value).toEqual(change === 'absentToEmpty' ? createTestRegistry() : undefined);
-      expect(fixture.registry.writes).toHaveLength(0);
-      expect(fixture.journal.current?.state).toBe('rootPublished');
-    },
-  );
+  it('rejects registry disappearance during first publication validation', async () => {
+    const fixture = await createFixture(kind, { state: 'rootPublished', published: true,
+      firstWorkspace: true,
+      afterPublishedValidation: () => {
+        fixture.registry.value = undefined;
+      },
+    });
+    await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
+    expect(fixture.registry.value).toBeUndefined();
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.journal.current?.state).toBe('rootPublished');
+  });
 
-  it('publishes the first workspace when the original registry remains absent', async () => {
-    const fixture = await createFixture(kind, { state: 'rootPublished', published: true, firstWorkspace: true });
-    fixture.registry.value = undefined;
+  it.each([1, 2] as const)('publishes from a present empty v%s registry without changing its version', async registryFormatVersion => {
+    const fixture = await createFixture(kind, {
+      state: 'rootPublished', published: true, firstWorkspace: true, registryFormatVersion,
+    });
     await expect(fixture.recovery.recover()).resolves.toBe('completedPublication');
-    expect((await fixture.registry.read())?.activeWorkspaceId).toBe(fixture.targetEntry.workspaceId);
+    expect(await fixture.registry.read()).toEqual({ formatVersion: registryFormatVersion,
+      activeWorkspaceId: registryFormatVersion === 1 ? fixture.targetEntry.workspaceId : null,
+      workspaces: [fixture.targetEntry],
+    });
     expect(fixture.journal.current).toBeUndefined();
   });
 
