@@ -43,46 +43,42 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Uusin osaraja:** keskeytynyt null-paluu käyttää nykyistä switch-omistajaa
-ennen uuden yritysavauksen valmistelua. Tuore main-varaus, täsmällinen
-valinta ja build-admission sekä muiden palautusten poissaolo vaaditaan
-ennen korjaavaa kirjoitusta. Oma valittu switch-journal voidaan päättää;
-muita palautusjournaleja ei ohiteta. Metadataa tai yrityksen sisältöä ei
-muuteta. Kadonnut kirjoituskuittaus säilyy virheenä ja seuraava käynnistys
-todistaa jatkon uudelleen.
+**Uusin osaraja:** business-hyväksytty metadata v1/v2 voi nyt jatkaa
+source-null-yritysavausta normaalin FirstStartin kautta. Main sitoo
+muuttumattoman metadatan ja mahdollisen hyväksytyn C-journalin lukuun,
+joka ei korjaa tai poista ristiriitaisia slotteja. W6 säilyttää normaalin
+`noJournal`/`notRequired`-ratkaisunsa; uutta lykättyä business-hyväksyntää
+ei muodosteta. Switch ja runtime omistavat edelleen sisällön,
+käynnistyksen, sulun ja valinnan lopulliset kirjoitukset.
 
-**Todennettu nyt:** paluun slot- ja keskeytystilat, ristiriidassa säilyvät
-tavut, omistajuuden menetys sekä kaksi aiempaa deferred-avauspolkua
-läpäisivät 43 tapauksen main-kohdeajon yhdellä sallitulla uusinnalla.
-Ensimmäisessä ajossa julkaisu-kuittauksen katoamista ja uutta käynnistystä
-yhdistävä testi aikakatkaisi; keskeneräisen työn suoja esti jatkotapaukset.
-Työn päättyminen ja yhteisten resurssien vapautus havaittiin myöhemmin,
-aineisto säilytettiin. Viiveen syy jää avoimeksi; uusinta ei korjaa sitä.
-Vieressä olevat omistajat läpäisivät erillisen 385 testin sarjan.
-Sen jälkeen testien myöhäisen lifecycle-kahvan talteenotto korjattiin
-ennen aikakatkaisusignaalin tarkistusta. Sen 28 kohdetapausta läpäisivät,
-mukaan lukien hallittu keskeytys ja sulun päättymisen odotus.
-Desktopin ja Electron-testien tyyppitarkistukset läpäisivät.
-Näyttö käyttää oikeita tiedostoja ja main/composition-koodia mutta
-ohjattuja Electron-/native-rajoja.
-Se ei korvaa todellisen prosessin tai paketin hyväksyntää. Aiempi
-[valitsinkuluttajan näyttö](release-0.3.0-integration-history.md#w72n-valitsinkuluttajan-osatodennus-26102026)
-säilyy historiassa; päällekkäisiä kohdeajoja ei lasketa yhteen.
+**Todennettu nyt:** 54 main-kohdetapausta ja erillinen 277 testin
+viereisten omistajien sarja läpäisivät. Mukana ovat molemmat
+metadataformaatit, hyväksytty C-journal, prepared-/backup-valinta,
+kesken käynnistyksen muuttunut metadata tai palautustila, omistajuuden
+menetys sekä turvallisen paluun ja epävarman prosessisulun ero.
+Vanhan ei-null-avauksen ja lykätyn business-avauksen kontrollit säilyvät.
+Desktopin tyyppitarkistus läpäisi. Näyttö käyttää oikeita tiedostoja ja
+main/composition-koodia mutta ohjattuja Electron-/native-rajoja;
+se ei korvaa oikean prosessin tai paketin hyväksyntää.
 
-Rajattu katselmus löysi ulkoisen palautuseston vanhenemisen journalin
-poistossa ja rekisterin korjaavassa kirjoituksessa. Molemmat toistettiin
-ja korjattiin liittämällä ulkoisten ehtojen tarkistus nykyisen valitun
-kirjoittajan molempiin vartijalukijoihin. Jälkikatselmukseen ei jäänyt
-vahvistettua puutetta.
-Uusi palautusjournal, muuttunut metadata tai menetetty omistajuus
-kirjoituksen rajalla säilyttävät alkuperäisen switch-journalin sekä
-rekisterin korjauksessa sen alkuperäiset slotit.
-Ensimmäiset hylkäykset säilyvät erillisinä.
+Rajattu katselmus löysi liian aikaisen korjaavan C-journalin luvun sekä
+palautustilan tuoreen tarkistuksen puuttumisen switch-journalin poistossa.
+Korjaukset ja niiden regressiot on tehty nykyisiin omistajiin.
+Jälkikatselmukseen ei jäänyt vahvistettua puutetta.
+Hyväksyttyäkään Direct Setup -palautusta ei piiloteta normaaliksi
+avaukseksi: ristiriitainen polku säilyttää aineiston eikä avaa businessia.
+Sen oma olemassa oleva palautusomistaja säilyy erillisenä.
 
-**Seuraava työ:** viimeistele business-hyväksytyn metadatan source-null-
-avaus nykyisissä omistajissa. Sen aiempi esto ja tavut säilyttävät regressiot
-säilyvät, kunnes tämä erillinen avaus on todennettu. Sen jälkeen oikea SQLite/Electron-,
-preload/UI- ja paketoitu palautusketju, rajattu katselmus sekä täsmällisen
+Aiemman null-paluun näyttö ja avoimet viivehavainnot säilyvät
+[historiassa](release-0.3.0-integration-history.md#w72n-keskeytyneen-paluun-osatodennus-26102026).
+Ensimmäiset hylkäykset pidetään erillään, eikä päällekkäisiä kohdeajoja
+lasketa yhdeksi hyväksyntämääräksi.
+
+**Seuraava työ:** todenna avaus ja valitsin oikeassa SQLite/Electron-,
+preload/UI- ja paketoidussa palautusketjussa. Erota normaali hyväksytty
+avaus, kopioaktivoinnin uudelleenkäynnistys ja mahdollinen aiempi
+Direct Setup -palautus; palautusomistajaa ei saa ohittaa. Sen jälkeen
+rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
 [Toteutussopimus ja puuttuvat liitokset](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä

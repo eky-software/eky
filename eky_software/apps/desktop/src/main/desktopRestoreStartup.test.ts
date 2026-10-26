@@ -372,6 +372,197 @@ describe('selector candidate rollback main handoff', () => {
   );
 });
 
+describe('business-accepted selector startup', () => {
+  it.for([
+    { version: 1, source: 'current' }, { version: 2, source: 'current' },
+    { version: 2, source: 'acceptedUpdate' }, { version: 2, source: 'prepared' },
+    { version: 2, source: 'backup' },
+  ] as const)('opens business metadata v$version from $source through normal FirstStart', async ({ version, source }, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+      const metadata = version === 1 ? f.metadata.acceptedBuild
+        : createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild);
+      // Seed the historical format directly; production correctly forbids v2 -> v1.
+      await writeFile(f.paths.acceptedBuildMetadataPath, `${JSON.stringify(metadata)}\n`);
+      if (source === 'acceptedUpdate') await seedAcceptedUpdateJournal(f);
+      const journal = await seedSelectorTarget(f.fixture);
+      const switchPaths = createWorkspaceSwitchJournalPaths(f.fixture.root);
+      if (source === 'prepared') {
+        await writeFile(switchPaths.currentPath, serializeVersionedWorkspaceSwitchJournal({
+          ...(await journal.inspectSlots()).current!.value, state: 'prepared',
+        }));
+      } else if (source === 'backup') await rename(switchPaths.currentPath, switchPaths.backupPath);
+      const before = await f.fixture.acceptedBuild.inspectSlots();
+      const update = await f.fixture.updateJournal.inspectSlots();
+      const registry = await f.fixture.registry.inspect();
+      const firstStart = vi.spyOn(FirstStartUpdateCoordinator.prototype, 'beforeMigrations');
+      const publish = vi.spyOn(AcceptedBuildMetadataStore.prototype, 'publishSelected');
+      const observed = vi.fn();
+      let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+      try {
+        await lifetime.step('startup', async () => {
+          lifecycle = await f.fixture.start(observed).catch(error => { throw observed.mock.calls[0]?.[0] ?? error; });
+        });
+        expect(lifecycle).toBeDefined();
+        expect(observed).not.toHaveBeenCalled();
+        expect(firstStart).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ pendingMigrationCount: 0 }),
+          { migrationAuthority: 'update' });
+        expect(WorkspaceMigrationInventoryCoordinator.prototype.inspect).not.toHaveBeenCalled();
+        expect(publish).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+        expect(f.fixture.events).toContain('backendStarted');
+        expect(await f.fixture.acceptedBuild.inspectSlots()).toEqual(before);
+        expect(await f.fixture.updateJournal.inspectSlots()).toEqual(update);
+        expect(await f.fixture.registry.inspect()).toEqual(registry);
+        expect(await journal.inspectSlots()).toEqual({ current: undefined, next: undefined, backup: undefined });
+        expect(await new WorkspaceFirstStartMigrationJournalStore({ userDataPath: f.fixture.root }).inspect()).toBeUndefined();
+        expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+        expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+      } finally { await lifecycle?.shutdown(); }
+    });
+  });
+
+  it.for(['metadataNext', 'updateNext', 'directSetupNext', 'w6Next', 'metadataAtW6', 'metadataAtClear', 'ownerAtClear',
+    'restoreAtClear', 'updateAtRollback'] as const)(
+    'preserves original and newly conflicting evidence at $0', async (fault, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+        await f.fixture.acceptedBuild.write(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+        if (fault === 'updateAtRollback') await seedAcceptedUpdateJournal(f);
+        const journal = await seedSelectorTarget(f.fixture);
+        const before = { metadata: await readFile(f.paths.acceptedBuildMetadataPath),
+          registry: await f.fixture.registry.inspectSlots(), journal: await journal.inspectSlots() };
+        const path = fault === 'updateNext' || fault === 'updateAtRollback' ? `${f.paths.journalPath}.next`
+          : fault === 'directSetupNext' ? `${f.paths.directSetupMigrationRecoveryPath}.next`
+            : fault === 'w6Next' ? createWorkspaceFirstStartMigrationJournalPaths(f.fixture.root).nextPath
+              : fault === 'restoreAtClear' ? f.fixture.journalPath
+              : `${f.paths.acceptedBuildMetadataPath}.next`;
+        let injected = false;
+        const inject = async () => {
+          injected = true;
+          if (fault === 'ownerAtClear') f.fixture.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('SYNTHETIC_OWNER_LOST'); });
+          else { await mkdir(dirname(path), { recursive: true }); await writeFile(path, '{synthetic conflicting slot'); }
+        };
+        if (fault === 'metadataAtW6') {
+          const recover = WorkspaceFirstStartMigrationOrchestrator.prototype.recoverBeforeWorkspaceResolution;
+          vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'recoverBeforeWorkspaceResolution')
+            .mockImplementationOnce(async function (this: WorkspaceFirstStartMigrationOrchestrator) {
+              await inject(); return recover.call(this);
+            });
+        } else if (fault === 'updateAtRollback') {
+          const start = UpdateBinaryRollbackCoordinator.prototype.startIfRequired;
+          vi.spyOn(UpdateBinaryRollbackCoordinator.prototype, 'startIfRequired').mockImplementationOnce(async function (this: UpdateBinaryRollbackCoordinator) {
+            injected = true;
+            await writeFile(path, await readFile(f.paths.journalPath));
+            return start.call(this);
+          });
+        } else if (fault.endsWith('AtClear')) {
+          const clear = WorkspaceSwitchJournalStore.prototype.clearSelector;
+          vi.spyOn(WorkspaceSwitchJournalStore.prototype, 'clearSelector').mockImplementationOnce(async function (this: WorkspaceSwitchJournalStore, ...args) {
+            await inject(); return clear.apply(this, args);
+          });
+        } else {
+          const beforeMigrations = FirstStartUpdateCoordinator.prototype.beforeMigrations;
+          vi.spyOn(FirstStartUpdateCoordinator.prototype, 'beforeMigrations').mockImplementationOnce(async function (this: FirstStartUpdateCoordinator, ...args) {
+            await inject(); return beforeMigrations.apply(this, args);
+          });
+        }
+        let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+        const observed = vi.fn();
+        let startupFailure: unknown;
+        try {
+          await lifetime.step('startup', async () => {
+            try { lifecycle = await f.fixture.start(observed); }
+            catch (error) { startupFailure = error; }
+          });
+          if (!injected && observed.mock.calls.length > 0) throw observed.mock.calls[0]![0];
+          expect(injected).toBe(true);
+          expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+          expect(f.fixture.relaunch).not.toHaveBeenCalled();
+          expect(await readFile(f.paths.acceptedBuildMetadataPath)).toEqual(before.metadata);
+          expect(await f.fixture.registry.inspectSlots()).toEqual(before.registry);
+          expect(await journal.inspectSlots()).toEqual(before.journal);
+          if (fault === 'updateAtRollback') expect(await readFile(path)).toEqual(await readFile(f.paths.journalPath));
+          else if (fault !== 'ownerAtClear') expect(await readFile(path, 'utf8')).toBe('{synthetic conflicting slot');
+          expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+          expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+          expect(startupFailure).toBeInstanceOf(Error);
+        } finally { await lifecycle?.shutdown(); }
+      });
+    },
+  );
+
+  it('preserves an accepted Direct Setup recovery instead of disguising it as normal startup', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+      await f.fixture.acceptedBuild.write(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+      const journal = await seedSelectorTarget(f.fixture);
+      await mkdir(dirname(f.paths.directSetupMigrationRecoveryPath), { recursive: true });
+      const directSetup = JSON.stringify(createAcceptedDirectSetupFixture());
+      await writeFile(f.paths.directSetupMigrationRecoveryPath, directSetup);
+      const before = { metadata: await f.fixture.acceptedBuild.inspectSlots(),
+        registry: await f.fixture.registry.inspectSlots(), journal: await journal.inspectSlots() };
+      const firstStart = vi.spyOn(FirstStartUpdateCoordinator.prototype, 'beforeMigrations');
+      await lifetime.step('startup', async () => { await expect(f.fixture.start()).rejects.toThrow(); });
+      expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+      expect(firstStart).not.toHaveBeenCalled();
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+      expect(await f.fixture.acceptedBuild.inspectSlots()).toEqual(before.metadata);
+      expect(await f.fixture.registry.inspectSlots()).toEqual(before.registry);
+      expect(await journal.inspectSlots()).toEqual(before.journal);
+      expect(await readFile(f.paths.directSetupMigrationRecoveryPath, 'utf8')).toBe(directSetup);
+      expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+      expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+    });
+  });
+
+  it.for(['missingRoot', 'health', 'residualPending'] as const)(
+    'requires accepted content and real owner settlement before selector return: $0', async (fault, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+        await f.fixture.acceptedBuild.write(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+        const metadata = await f.fixture.acceptedBuild.inspectSlots();
+        const journal = await seedSelectorTarget(f.fixture);
+        const originalSelection = { registry: await f.fixture.registry.inspectSlots(), journal: await journal.inspectSlots() };
+        if (fault === 'missingRoot') await rm(deriveWorkspaceRoot(f.fixture.root, workspaceId, 1).workspaceRoot, { recursive: true });
+        if (fault === 'health') electronBoundary.fetch.mockImplementation(async () => new Response(null, { status: 500 }));
+        if (fault === 'residualPending') {
+          const before = FirstStartUpdateCoordinator.prototype.beforeMigrations;
+          vi.spyOn(FirstStartUpdateCoordinator.prototype, 'beforeMigrations').mockImplementationOnce(async function (this: FirstStartUpdateCoordinator, inspection, options) {
+            return before.call(this, { ...inspection, pendingMigrationCount: 1 }, options);
+          });
+        }
+        await lifetime.step('startup', async () => {
+          if (fault === 'residualPending') await expect(f.fixture.start()).rejects.toThrow();
+          else await expect(f.fixture.start()).resolves.toBeUndefined();
+        });
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        expect(await f.fixture.acceptedBuild.inspectSlots()).toEqual(metadata);
+        if (fault === 'residualPending') {
+          // This mock supplies no stopped-startup receipt on gate failure.
+          // Absence must not be inferred merely from a missing backend handle.
+          expect(f.fixture.relaunch).not.toHaveBeenCalled();
+          expect(await f.fixture.registry.inspectSlots()).toEqual(originalSelection.registry);
+          expect(await journal.inspectSlots()).toEqual(originalSelection.journal);
+        } else {
+          expect(f.fixture.relaunch).toHaveBeenCalledOnce();
+          expect((await f.fixture.registry.inspect())?.activeWorkspaceId).toBeNull();
+          expect((await journal.inspectSlots()).current?.value.state).toBe('rollbackSelected');
+        }
+        if (fault === 'missingRoot') expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+        else {
+          if (fault === 'health') expect(f.fixture.events).toContain('backendStopped');
+          expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+        }
+      });
+    },
+  );
+});
+
 describe('backendless selector main composition', () => {
   it.for(['uncommitted', 'unpublished', 'completeReturn', 'returned', 'rejected', 'backup', 'registryBackup',
     'businessMetadata', 'returnNext', 'returnBackup', 'registryReturnBackup'] as const)(
@@ -574,11 +765,12 @@ describe('backendless selector main composition', () => {
   );
 
   it.for(['currentPath', 'nextPath', 'backupPath'] as const)(
-    'rejects an unsupported business-metadata source-null opening before recovery from $0', async (slot, context) => {
+    'preserves source-null evidence with conflicting business-metadata slots before recovery from $0', async (slot, context) => {
       const lifetime = beginTrackedStartupTest(context);
       await lifetime.run(async () => {
         const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
         await f.fixture.acceptedBuild.write(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+        await writeFile(`${f.paths.acceptedBuildMetadataPath}.next`, await readFile(f.paths.acceptedBuildMetadataPath));
         const journal = await seedSelectorTarget(f.fixture);
         const paths = createWorkspaceSwitchJournalPaths(f.fixture.root);
         if (slot !== 'currentPath') await rename(paths.currentPath, paths[slot]);
@@ -3801,6 +3993,15 @@ async function createDeferredStartupFixture(ownedRoots: string[], completeStartu
   const paths = createLocalUpdateRuntimePaths({ userDataPath: fixture.root,
     legacyRuntimeRoot: createDesktopProfilePaths(fixture.root).runtimeRoot });
   return { fixture, paths, metadata, resolve };
+}
+
+async function seedAcceptedUpdateJournal(f: Awaited<ReturnType<typeof createDeferredStartupFixture>>) {
+  // The C helper seeds historical metadata; preserve the test's selected format.
+  const metadata = await readFile(f.paths.acceptedBuildMetadataPath);
+  await writeFile(f.paths.acceptedBuildMetadataPath, JSON.stringify(f.metadata.acceptedBuild));
+  await prepareUpdateBusinessRollback(f.fixture, 'businessRollbackStarting', false);
+  await writeFile(f.paths.acceptedBuildMetadataPath, metadata);
+  await f.fixture.updateJournal.write({ ...(await f.fixture.updateJournal.read())!, state: 'accepted', revision: 9 });
 }
 
 async function seedSelectorTarget(f: Awaited<ReturnType<typeof createFixture>>) {

@@ -20,10 +20,19 @@ import { WorkspaceMigrationInventoryCoordinator } from './workspaceMigrationInve
 import type { WorkspaceFirstStartDeferredBusinessAuthority } from './workspaceFirstStartDeferredBusiness.js';
 import { createWorkspaceFirstStartSelectedPersistence, type WorkspaceFirstStartSelectedPersistenceAuthority } from './workspaceFirstStartSelectedPersistence.js';
 import { WorkspaceFirstStartMigrationTransitionError } from './workspaceFirstStartMigrationJournalError.js';
+import type { VersionedAcceptedBuildMetadata } from '../../update/acceptedBuildMetadata.js';
+import type { WorkspaceFirstStartMigrationJournalPort } from './workspaceFirstStartMigrationJournalTypes.js';
 
 export interface WorkspaceFirstStartMigrationCompositionOptions {
   readonly acceptedBuildStore: AcceptedBuildMetadataStore;
   readonly admission: PreWorkspaceBuildAdmission;
+  // Main admits an exact business build and the absence of W6 work. Both
+  // existing owners read that bound observation without legacy slot repair.
+  readonly acceptedSelector?: Readonly<{
+    readAcceptedBuild(): Promise<VersionedAcceptedBuildMetadata>;
+    readFirstStartJournal: WorkspaceFirstStartMigrationJournalPort['read'];
+    rejectWrite(): Promise<never>;
+  }>;
   readonly deferredBusiness?: WorkspaceFirstStartDeferredBusinessAuthority & {
     readonly persistence: WorkspaceFirstStartSelectedPersistenceAuthority;
   };
@@ -40,6 +49,10 @@ export interface WorkspaceFirstStartMigrationCompositionOptions {
 export function createWorkspaceFirstStartMigrationComposition(
   options: Readonly<WorkspaceFirstStartMigrationCompositionOptions>,
 ): WorkspaceFirstStartMigrationOrchestration {
+  const acceptedSelector = options.acceptedSelector;
+  if (acceptedSelector !== undefined && (options.admission !== 'exactAcceptedBuild' || options.deferredBusiness !== undefined)) {
+    throw new WorkspaceFirstStartMigrationTransitionError('recoveryRequired');
+  }
   const registryStore = new WorkspaceRegistryStore({
     filePath: join(options.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
     installationRoot: options.userDataRoot,
@@ -47,13 +60,23 @@ export function createWorkspaceFirstStartMigrationComposition(
   const journalStore = new WorkspaceFirstStartMigrationJournalStore({
     userDataPath: options.userDataRoot,
   });
-  const persistence = options.deferredBusiness === undefined
+  const persistence = acceptedSelector !== undefined ? {
+    registry: { inspect: registryStore.inspect.bind(registryStore),
+      read: registryStore.inspect.bind(registryStore), write: acceptedSelector.rejectWrite },
+    journal: {
+      read: acceptedSelector.readFirstStartJournal,
+      async inspect() { await acceptedSelector.readFirstStartJournal(); return undefined; },
+      write: acceptedSelector.rejectWrite, discardPrepared: acceptedSelector.rejectWrite,
+      removeTransitioned: acceptedSelector.rejectWrite,
+    },
+  } : options.deferredBusiness === undefined
     ? { registry: registryStore, journal: journalStore }
     : createWorkspaceFirstStartSelectedPersistence({ registry: registryStore, journal: journalStore },
       options.deferredBusiness.persistence);
   const { registry, journal } = persistence;
   const inspectAccepted = options.acceptedBuildStore.inspectSlots.bind(options.acceptedBuildStore);
-  const acceptedBuild = options.deferredBusiness === undefined ? options.acceptedBuildStore : {
+  const acceptedBuild = acceptedSelector !== undefined ? { read: acceptedSelector.readAcceptedBuild }
+    : options.deferredBusiness === undefined ? options.acceptedBuildStore : {
     async read() {
       const slots = await inspectAccepted();
       if (slots.current?.identity === undefined || slots.next !== undefined || slots.backup !== undefined) {

@@ -177,6 +177,7 @@ import { migrateLegacyLocalUpdateState, prepareSelectorLocalUpdateState } from '
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
 import { prepareDeferredBusinessLocalUpdateState, type PreparedDeferredBusinessLocalUpdate } from '../update/deferredBusinessLocalUpdateState.js';
 import { createDesktopDeferredBusinessStartup, type DesktopSelectorTerminalRequest, type DesktopSelectorRuntimeTerminalProof } from './desktopDeferredBusinessStartup.js';
+import { prepareDesktopAcceptedSelectorStartup } from './desktopAcceptedSelectorStartup.js';
 import { readAcceptedApplicationBuild } from '../update/acceptedBuildMetadata.js';
 import {
   classifyPreWorkspaceBuildAdmission,
@@ -187,7 +188,8 @@ import { readEncryptedSecretStorageIdentity } from '../update/encryptedSecretSto
 import { FirstStartUpdateCoordinator } from '../update/firstStartUpdateCoordinator.js';
 import { createProfileProtectionComposition } from '../update/profileProtectionComposition.js';
 import { validateUpdateActiveProfile } from '../update/validateUpdateActiveProfile.js';
-import { UpdateJournalStore } from '../update/updateJournalStore.js';
+import { maximumUpdateJournalBytes, UpdateJournalStore } from '../update/updateJournalStore.js';
+import { parseUpdateJournal } from '../update/updateJournal.js';
 import { readUpdateProtectedRecoveryPointReferences } from '../update/updateRecoveryPointProtection.js';
 import { createUpdateOperationalObserver } from '../update/updateOperationalObserver.js';
 import { LocalUpdateHandoffCoordinator } from '../update/localUpdateHandoffCoordinator.js';
@@ -614,6 +616,7 @@ export async function startDesktopComposition(
         workspaceReservation.assertMainCurrent();
       },
       assertMainOwned: workspaceReservation.assertMainOwned,
+      assertStartupCurrent: assertStartupAuthority,
     };
     let installationUpdateState = await createInstallationUpdateState({
       ...installationStateInput, coldRecoveryAdmission,
@@ -626,6 +629,10 @@ export async function startDesktopComposition(
       });
     let deferredBusinessStartup = createDeferredStartup();
     const readBuildAdmission = async () => {
+      if (installationUpdateState.acceptedSelectorStartup !== undefined) {
+        await installationUpdateState.acceptedSelectorStartup.assertCurrent();
+        return 'exactAcceptedBuild' as const;
+      }
       if (deferredBusinessStartup !== undefined) {
         await deferredBusinessStartup.assertCurrent();
         if (options.releaseInfo === undefined) return 'development' as const;
@@ -644,7 +651,8 @@ export async function startDesktopComposition(
           journal: installationUpdateState.updateJournalStore },
       });
     };
-    const rollbackStartupAdmission = options.releaseInfo === undefined || deferredBusinessStartup !== undefined ? undefined
+    const rollbackStartupAdmission = options.releaseInfo === undefined || deferredBusinessStartup !== undefined ||
+      installationUpdateState.acceptedSelectorStartup !== undefined ? undefined
       : await prepareUpdateBusinessRollbackStartupAdmission({
         journalStore: installationUpdateState.updateJournalStore,
         releaseInfo: options.releaseInfo,
@@ -695,6 +703,9 @@ export async function startDesktopComposition(
     }
     const createWorkspaceMigration = () =>
       createWorkspaceFirstStartMigrationComposition({
+        ...(installationUpdateState.acceptedSelectorStartup === undefined ? {} : {
+          acceptedSelector: installationUpdateState.acceptedSelectorStartup,
+        }),
         ...(deferredBusinessStartup === undefined ? {} : {
           deferredBusiness: deferredBusinessStartup.authority,
           operationIdFactory: deferredBusinessStartup.operationIdFactory,
@@ -724,10 +735,43 @@ export async function startDesktopComposition(
     let runtimeEntered = false;
     let proveRuntimeTerminal: ((request: DesktopSelectorTerminalRequest) => Promise<Readonly<DesktopSelectorRuntimeTerminalProof>>) | undefined;
     const selectorStartup = deferredBusinessStartup;
+    const acceptedSelectorStartup = installationUpdateState.acceptedSelectorStartup;
     const selectorMigration = workspaceFirstStartMigration;
     const hasDeferredSelectorSwitch = selectorStartup !== undefined &&
       Object.values(installationUpdateState.deferredBusiness!.selectedState.switchJournal).some(slot => slot !== undefined);
-    const selectorAuthority: WorkspaceSelectorSwitchStartupAuthority = !hasDeferredSelectorSwitch
+    const proveSelectorRuntime = async (selected: DesktopSelectorTerminalRequest): Promise<Readonly<DesktopSelectorRuntimeTerminalProof>> => {
+      if (runtimeEntered) {
+        if (proveRuntimeTerminal === undefined) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+        return proveRuntimeTerminal(selected);
+      }
+      // Invalid-root rejection may precede construction, never substitute for
+      // a missing terminal receipt after runtime construction has begun.
+      const target = selected.registry.workspaces.find(entry => entry.workspaceId === selected.journal?.targetWorkspaceId);
+      if (selected.purpose !== 'selectorReturn' || target === undefined) {
+        throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+      }
+      const root = deriveWorkspaceRoot(options.userDataPath, target.workspaceId, target.layoutVersion).workspaceRoot;
+      const profilePaths = createProfileSnapshotRuntimePaths(createDesktopProfilePaths(root).runtimeRoot);
+      const replacement = deriveWorkspaceBackupReplacementRuntimePaths(options.userDataPath, target.workspaceId);
+      const assertCurrent = () => {
+        assertStartupAuthority();
+        if (runtimeEntered) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+        workspaceReservation.assertMainCurrent();
+      };
+      const assertExternal = async () => {
+        assertCurrent();
+        await workspaceReservation.assertMainOwned();
+        if (await new ProfileRestoreActivationJournalStore(profilePaths.restoreActivationJournalPath).peek() !== undefined ||
+            await new ProfileRestoreActivationJournalStore(replacement.activationJournalPath).peek() !== undefined) {
+          throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+        }
+        assertCurrent();
+      };
+      await assertExternal();
+      return Object.freeze({ assertCurrent, assertExternal });
+    };
+    const selectorAuthority: WorkspaceSelectorSwitchStartupAuthority = acceptedSelectorStartup !== undefined
+      ? acceptedSelectorStartup.createSwitchAuthority(proveSelectorRuntime) : !hasDeferredSelectorSwitch
       ? {
         assertCurrent: assertStartupAuthority,
         async admitSelection(selected) {
@@ -764,37 +808,7 @@ export async function startDesktopComposition(
         assertCurrent: assertStartupAuthority,
         admitSelection: selectorStartup!.admitSelectorSelection,
         didSettleSelection: receipt => selectorStartup!.settleSelectorSelection(receipt, selectorMigration),
-        proveTerminal: request => selectorStartup!.proveSelectorTerminal(request, selectorMigration, async selected => {
-          if (runtimeEntered) {
-            if (proveRuntimeTerminal === undefined) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
-            return proveRuntimeTerminal(selected);
-          }
-          // Invalid-root rejection can precede runtime construction. Only this
-          // branch may prove absence without a runtime-owned terminal receipt.
-          const target = selected.registry.workspaces.find(entry => entry.workspaceId === selected.journal?.targetWorkspaceId);
-          if (selected.purpose !== 'selectorReturn' || target === undefined) {
-            throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
-          }
-          const root = deriveWorkspaceRoot(options.userDataPath, target.workspaceId, target.layoutVersion).workspaceRoot;
-          const profilePaths = createProfileSnapshotRuntimePaths(createDesktopProfilePaths(root).runtimeRoot);
-          const replacement = deriveWorkspaceBackupReplacementRuntimePaths(options.userDataPath, target.workspaceId);
-          const assertCurrent = () => {
-            assertStartupAuthority();
-            if (runtimeEntered) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
-            workspaceReservation.assertMainCurrent();
-          };
-          const assertExternal = async () => {
-            assertCurrent();
-            await workspaceReservation.assertMainOwned();
-            if (await new ProfileRestoreActivationJournalStore(profilePaths.restoreActivationJournalPath).peek() !== undefined ||
-                await new ProfileRestoreActivationJournalStore(replacement.activationJournalPath).peek() !== undefined) {
-              throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
-            }
-            assertCurrent();
-          };
-          await assertExternal();
-          return Object.freeze({ assertCurrent, assertExternal });
-        }),
+        proveTerminal: request => selectorStartup!.proveSelectorTerminal(request, selectorMigration, proveSelectorRuntime),
       };
     const workspaceStartup = await resolveDesktopWorkspaceStartup({
       assertStartupCurrent: assertStartupAuthority,
@@ -885,7 +899,7 @@ export async function startDesktopComposition(
       workspaceReservation,
       startupReservationOwner,
       assertStartupAuthority,
-      ...(!hasDeferredSelectorSwitch ? {} : { bindSelectorTerminal(prove: NonNullable<typeof proveRuntimeTerminal>) {
+      ...(!hasDeferredSelectorSwitch && acceptedSelectorStartup === undefined ? {} : { bindSelectorTerminal(prove: NonNullable<typeof proveRuntimeTerminal>) {
         assertStartupAuthority();
         if (proveRuntimeTerminal !== undefined) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
         proveRuntimeTerminal = prove;
@@ -982,6 +996,7 @@ interface InstallationUpdateState {
   localUpdateRuntimePaths: ReturnType<typeof createLocalUpdateRuntimePaths>;
   updateJournalStore: UpdateJournalStore;
   deferredBusiness?: Readonly<PreparedDeferredBusinessLocalUpdate>;
+  acceptedSelectorStartup?: Awaited<ReturnType<typeof prepareDesktopAcceptedSelectorStartup>>;
   inspectDeferredExternal: Parameters<typeof createDesktopDeferredBusinessStartup>[0]['inspectExternal'];
 }
 
@@ -993,6 +1008,7 @@ async function createInstallationUpdateState(input: {
   releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
   assertAuthority(): void;
   assertMainOwned(): Promise<void>;
+  assertStartupCurrent(): void;
 }): Promise<InstallationUpdateState> {
   const localUpdateRuntimePaths = createLocalUpdateRuntimePaths({
     legacyRuntimeRoot: input.installationRuntimeRoot,
@@ -1026,6 +1042,28 @@ async function createInstallationUpdateState(input: {
     installationRoot: input.userDataPath,
     filePath: join(input.userDataPath, WORKSPACE_REGISTRY_FILE_NAME),
   });
+  async function inspectDeferredExternal(includeMetadata: boolean,
+    { includeSwitch = true, includeUpdateIdentity = false } = {}) {
+    const reads = [
+      readColdWorkspaceRecoveryAdmissionFromRoot(input.userDataPath),
+      hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath)),
+      includeMetadata ? acceptedBuildMetadataStore.inspectSlots() : Promise.resolve(undefined),
+      stores.acceptedBuild.legacy.inspectSlots(),
+      includeUpdateIdentity ? readOnlyJournalSlots(createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.journalPath),
+        maximumUpdateJournalBytes, parseUpdateJournal, { includeIdentity: true }) : updateJournalStore.inspectSlots(),
+      stores.journal.legacy.inspectSlots(),
+      readOnlyJournalSlots(createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.directSetupMigrationRecoveryPath),
+        maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery, { includeIdentity: true }),
+      includeSwitch ? new WorkspaceSwitchJournalStore(input.userDataPath).inspectSlots()
+        : Promise.resolve({ current: undefined, next: undefined, backup: undefined }),
+    ] as const;
+    await Promise.allSettled(reads);
+    const [coldRecovery, adoption, metadata, legacyMetadata, updateJournal,
+      legacyUpdateJournal, directSetupRecovery, switchJournal] = await Promise.all(reads);
+    if (coldRecovery !== 'none' || adoption) throw new WorkspaceManagementRecoveryRequiredError();
+    return { ...(metadata === undefined ? {} : { metadata }),
+      legacyMetadata, updateJournal, legacyUpdateJournal, directSetupRecovery, switchJournal };
+  }
   input.assertAuthority();
   await input.assertMainOwned();
   const selection = await registry.inspect();
@@ -1142,9 +1180,53 @@ async function createInstallationUpdateState(input: {
       });
     }
   }
+  let acceptedSelectorStartup: InstallationUpdateState['acceptedSelectorStartup'];
+  if (deferredBusiness === undefined) {
+    const switchJournal = new WorkspaceSwitchJournalStore(input.userDataPath);
+    const switchInspection = await switchJournal.inspectStartup();
+    if (switchInspection.mode === 'selector' && Object.values(switchInspection.slots).some(slot => slot !== undefined)) {
+      const releaseInfo = input.releaseInfo;
+      if (input.coldRecoveryAdmission !== 'none' || adoptionPending || releaseInfo === undefined) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
+      const registrySlots = await registry.inspectSlots();
+      if (!isDeepStrictEqual((registrySlots.current ?? registrySlots.backup ?? registrySlots.next)?.value, selection)) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
+      acceptedSelectorStartup = await prepareDesktopAcceptedSelectorStartup({
+        selection: { registrySlots, journalSlots: switchInspection.slots },
+        async inspectSelection() {
+          return { registrySlots: await registry.inspectSlots(), journalSlots: await switchJournal.inspectSlots() };
+        },
+        async inspectExternal() {
+          // Switch separately guards its own in-flight slots. This reader is
+          // also called inside those writes and observes only other owners.
+          const { switchJournal: _switch, ...external } = await inspectDeferredExternal(true,
+            { includeSwitch: false, includeUpdateIdentity: true });
+          if (external.metadata === undefined) throw new WorkspaceManagementRecoveryRequiredError();
+          const firstStartJournal = await readOnlyJournalSlots(
+            createWorkspaceFirstStartMigrationJournalPaths(input.userDataPath), WORKSPACE_FIRST_START_MIGRATION_JOURNAL_MAX_BYTES,
+            validateWorkspaceFirstStartMigrationJournal, { includeIdentity: true });
+          return { ...external, metadata: external.metadata, firstStartJournal };
+        },
+        assertCurrent: input.assertStartupCurrent,
+        assertMainOwned: input.assertMainOwned,
+        async assertBuildAdmission(metadata, journal) {
+          const result = classifyPreWorkspaceBuildAdmission({
+            buildInfo: input.buildInfo, releaseInfo,
+            acceptedBuild: metadata?.value, journal: journal?.value, directSetupRecovery: undefined,
+          });
+          if (result.status === 'rejected' || result.admission !== 'exactAcceptedBuild') {
+            throw new WorkspaceManagementRecoveryRequiredError();
+          }
+          input.assertAuthority();
+        },
+      });
+    }
+  }
   // Deferred preparation has already recovered exactly the admitted selection;
   // a rejected preparation never falls back to the legacy repairing reader.
-  if (deferredBusiness === undefined && selection?.activeWorkspaceId === null &&
+  if (deferredBusiness === undefined && acceptedSelectorStartup === undefined && selection?.activeWorkspaceId === null &&
       input.coldRecoveryAdmission === 'none' && !adoptionPending) {
     let directSetupObserved = false;
     let directSetupBytes: Buffer | undefined;
@@ -1191,41 +1273,18 @@ async function createInstallationUpdateState(input: {
         input.assertAuthority();
       },
     });
-  } else if (deferredBusiness === undefined) {
+  } else if (deferredBusiness === undefined && acceptedSelectorStartup === undefined) {
     await migrateLegacyLocalUpdateState(stores);
   }
   input.assertAuthority();
   return {
-    async inspectDeferredExternal(includeMetadata) {
-      const reads = [
-        readColdWorkspaceRecoveryAdmissionFromRoot(input.userDataPath),
-        hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath)),
-        includeMetadata ? acceptedBuildMetadataStore.inspectSlots() : Promise.resolve(undefined),
-        stores.acceptedBuild.legacy.inspectSlots(),
-        updateJournalStore.inspectSlots(),
-        stores.journal.legacy.inspectSlots(),
-        readOnlyJournalSlots(createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.directSetupMigrationRecoveryPath),
-          maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery, { includeIdentity: true }),
-        new WorkspaceSwitchJournalStore(input.userDataPath).inspectSlots(),
-      ] as const;
-      // These readers do not mutate slots. Settle every started reader before
-      // propagating a failure so no read outlives this ownership check.
-      await Promise.allSettled(reads);
-      const [coldRecovery, adoption, metadata, legacyMetadata, updateJournal,
-        legacyUpdateJournal, directSetupRecovery, switchJournal] = await Promise.all(reads);
-      if (coldRecovery !== 'none' || adoption) {
-        throw new WorkspaceManagementRecoveryRequiredError();
-      }
-      return {
-        ...(metadata === undefined ? {} : { metadata }),
-        legacyMetadata, updateJournal, legacyUpdateJournal, directSetupRecovery, switchJournal,
-      };
-    },
+    inspectDeferredExternal,
     acceptedBuildMetadataStore,
     directSetupMigrationRecoveryStore,
     localUpdateRuntimePaths,
     updateJournalStore,
     ...(deferredBusiness === undefined ? {} : { deferredBusiness }),
+    ...(acceptedSelectorStartup === undefined ? {} : { acceptedSelectorStartup }),
   };
 }
 
@@ -1290,6 +1349,9 @@ async function startDesktopCompositionRuntime({
     localUpdateRuntimePaths,
     updateJournalStore,
   } = installationUpdateState;
+  const acceptedSelectorStartup = installationUpdateState.acceptedSelectorStartup;
+  const readStartupUpdateJournal = acceptedSelectorStartup === undefined
+    ? () => updateJournalStore.read() : acceptedSelectorStartup.readUpdateJournal;
   const profileRecoveryOperationalObserver =
     createProfileRecoveryOperationalObserver({
       operationalIdentity: desktopOperationalIdentity,
@@ -1598,11 +1660,18 @@ async function startDesktopCompositionRuntime({
     options.releaseInfo === undefined || localUpdatePackageCache === undefined
       ? undefined
       : new FirstStartUpdateCoordinator({
-          acceptedBuildStore: acceptedBuildMetadataStore,
+          acceptedBuildStore: acceptedSelectorStartup === undefined ? acceptedBuildMetadataStore : {
+            read: acceptedSelectorStartup.readAcceptedBuild, write: acceptedSelectorStartup.rejectWrite,
+          },
           buildInfo: options.buildInfo,
           cache: localUpdatePackageCache,
-          directSetupRecoveryStore: directSetupMigrationRecoveryStore,
-          journalStore: updateJournalStore,
+          directSetupRecoveryStore: acceptedSelectorStartup === undefined ? directSetupMigrationRecoveryStore : {
+            read: acceptedSelectorStartup.readDirectSetupRecovery,
+            write: acceptedSelectorStartup.rejectWrite, clear: acceptedSelectorStartup.rejectWrite,
+          },
+          journalStore: acceptedSelectorStartup === undefined ? updateJournalStore : {
+            read: acceptedSelectorStartup.readUpdateJournal, write: acceptedSelectorStartup.rejectWrite,
+          },
           observer: updateObserver,
           ...startupExceptionObservation,
           profileProtection: updateProfileProtection,
@@ -1624,7 +1693,9 @@ async function startDesktopCompositionRuntime({
       ? undefined
       : new UpdateBinaryRollbackCoordinator({
           cache: localUpdatePackageCache,
-          journalStore: updateJournalStore,
+          journalStore: acceptedSelectorStartup === undefined ? updateJournalStore : {
+            read: acceptedSelectorStartup.readUpdateJournal, write: acceptedSelectorStartup.rejectWrite,
+          },
           launchInstaller: ({ failedPackage, rollbackPackage }) =>
             Promise.resolve().then(() => {
               w6b2PackagedFaultInjection?.failBinaryRollbackLaunchIfRequested();
@@ -1696,7 +1767,7 @@ async function startDesktopCompositionRuntime({
   ] =
     await Promise.all([
       profileRestoreActivationJournalStore.peek(),
-      updateJournalStore.read(),
+      readStartupUpdateJournal(),
       workspaceReplacementStartupRecovery.journalStore.peek(),
     ]);
   await rollbackStartupAdmission?.assertCurrent();
@@ -2410,7 +2481,7 @@ async function startDesktopCompositionRuntime({
           } catch (error) {
             const proofConfiguration =
               options.w6b2PackagedProof?.configuration;
-            const journalAfterFailure = await updateJournalStore.read();
+            const journalAfterFailure = await readStartupUpdateJournal();
             if (
               proofConfiguration?.controlFormatVersion === 2 &&
               proofConfiguration.faultScenario === 'binaryRollbackFailure' &&
@@ -2577,6 +2648,7 @@ async function startDesktopCompositionRuntime({
       if (deferredBusinessStartup === undefined) await firstStartUpdateCoordinator.acceptAfterBackendReady();
       else await deferredBusinessStartup.accept(firstStartUpdateCoordinator, workspaceFirstStartMigration);
     }
+    await acceptedSelectorStartup?.assertCurrent();
     targetBuildAccepted = true;
     await workspaceFirstStartMigration.completeAfterTargetAcceptance();
     await recoveryPointScheduler.start();

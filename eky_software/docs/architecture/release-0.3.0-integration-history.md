@@ -5,6 +5,47 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n keskeytyneen paluun osatodennus 26.10.2026
+
+Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Nykyinen
+business-metadatan avaus ja sen puuttuvat todisteet ovat M1:n alussa.
+
+**Uusin osaraja:** keskeytynyt null-paluu käyttää nykyistä switch-omistajaa
+ennen uuden yritysavauksen valmistelua. Tuore main-varaus, täsmällinen
+valinta ja build-admission sekä muiden palautusten poissaolo vaaditaan
+ennen korjaavaa kirjoitusta. Oma valittu switch-journal voidaan päättää;
+muita palautusjournaleja ei ohiteta. Metadataa tai yrityksen sisältöä ei
+muuteta. Kadonnut kirjoituskuittaus säilyy virheenä ja seuraava käynnistys
+todistaa jatkon uudelleen.
+
+**Todennettu nyt:** paluun slot- ja keskeytystilat, ristiriidassa säilyvät
+tavut, omistajuuden menetys sekä kaksi aiempaa deferred-avauspolkua
+läpäisivät 43 tapauksen main-kohdeajon yhdellä sallitulla uusinnalla.
+Ensimmäisessä ajossa julkaisu-kuittauksen katoamista ja uutta käynnistystä
+yhdistävä testi aikakatkaisi; keskeneräisen työn suoja esti jatkotapaukset.
+Työn päättyminen ja yhteisten resurssien vapautus havaittiin myöhemmin,
+aineisto säilytettiin. Viiveen syy jää avoimeksi; uusinta ei korjaa sitä.
+Vieressä olevat omistajat läpäisivät erillisen 385 testin sarjan.
+Sen jälkeen testien myöhäisen lifecycle-kahvan talteenotto korjattiin
+ennen aikakatkaisusignaalin tarkistusta. Sen 28 kohdetapausta läpäisivät,
+mukaan lukien hallittu keskeytys ja sulun päättymisen odotus.
+Desktopin ja Electron-testien tyyppitarkistukset läpäisivät.
+Näyttö käyttää oikeita tiedostoja ja main/composition-koodia mutta
+ohjattuja Electron-/native-rajoja.
+Se ei korvaa todellisen prosessin tai paketin hyväksyntää. Aiempi
+[valitsinkuluttajan näyttö](release-0.3.0-integration-history.md#w72n-valitsinkuluttajan-osatodennus-26102026)
+säilyy historiassa; päällekkäisiä kohdeajoja ei lasketa yhteen.
+
+Rajattu katselmus löysi ulkoisen palautuseston vanhenemisen journalin
+poistossa ja rekisterin korjaavassa kirjoituksessa. Molemmat toistettiin
+ja korjattiin liittämällä ulkoisten ehtojen tarkistus nykyisen valitun
+kirjoittajan molempiin vartijalukijoihin. Jälkikatselmukseen ei jäänyt
+vahvistettua puutetta.
+Uusi palautusjournal, muuttunut metadata tai menetetty omistajuus
+kirjoituksen rajalla säilyttävät alkuperäisen switch-journalin sekä
+rekisterin korjauksessa sen alkuperäiset slotit.
+Ensimmäiset hylkäykset säilyvät erillisinä.
+
 ## W7.2:n valitsinkuluttajan osatodennus 26.10.2026
 
 Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Se ei ole

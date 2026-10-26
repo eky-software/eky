@@ -660,8 +660,9 @@ Tämä tarkistetaan jo resolverin valinnan admissionissa, ennen sen
 korjaavia slot-lukuja tai session luontia; pelkkä myöhempi terminal-esto
 ei riitä. Nyky-, next- ja backup-journalien regressiot säilyttävät tavut.
 Keskeytyneen null-paluun main-liitos on nyt toteutettu alla kuvatulla
-rajauksella. Business-metadatan source-null-avaus on vielä puuttuva liitos;
-sen estoa ei saa ohittaa luomalla business-sessionia. Ohjatun prosessi- ja
+rajauksella. Business-metadatan source-null-avaus käyttää nyt alla kuvattua
+normaalin FirstStartin lukukytkentää. Sen ristiriitaestoa ei saa ohittaa
+luomalla business-sessionia. Ohjatun prosessi- ja
 sisältörajan regressiot eivät korvaa SQLite/Electron- tai paketoitua näyttöä.
 Koko kytkennän hyväksyntä ja avoimet testihavainnot ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
@@ -676,8 +677,21 @@ yleisenä lupana yrittää toista palautuspolkua.
 | --- | --- |
 | Null ilman switchiä, main-kytkentä toteutettu | Nykyinen valitsimen tilavalmistelu ja `resolveWorkspaceSelectorSwitchStartup` saavat mainin installation-/prosessipoissaolovaltuuden. Ready-, tyhjä- ja recovery-only-rekisteri on todennettu ohjatulla native-rajalla ilman session, backendin, brokerin tai oletusyrityksen luontia. SQLite/Electron- ja pakettinäyttö puuttuvat. |
 | Keskeytynyt paluu, main-liitos toteutettu | Switchin nykyiset `selectorUncommitted`, `unpublishedPreparation`, `completeReturn` ja `selectorReturned` käsitellään ennen uuden avauksen valmistelua. Tuore main-varaus, täsmällinen null-valinta, build-admission ja muiden palautusten poissaolo suojaavat valitun journalin päättämistä. Main-, slot-, kadonneen kuittauksen ja ristiriidassa säilyvien tavujen regressiot läpäisivät; native-/pakettinäyttö puuttuu. |
-| Business-hyväksytty metadata ja source-null | Sovellusadmission ja W6:n nykyinen aktivointitarkistus säilyvät; olematonta lykättyä business-siirtymää ei rakenneta valtuuden saamiseksi. Todista kohteen todellinen schema-/lineage-tarkistus, normaali FirstStart sekä onnistuvan avauksen ja turvallisen paluun erilliset lopputilat. |
+| Business-hyväksytty metadata ja source-null, main-liitos toteutettu | Täsmällinen business-hyväksytty build v1/v2 käyttää normaalia FirstStartia ja W6:n nykyistä aktivointitarkistusta. Lukukytkentä estää ristiriitaisten metadata-/C-/W6-slottien korjaamisen sivuvaikutuksena. Muuttumattoman hyväksytyn C-journalin läsnäolo sallitaan; Direct Setup ja keskeneräinen C/W6 säilyvät erillisinä omistajina. Onnistuvan avauksen, turvallisen paluun ja aineiston säilymisen main-regressiot läpäisivät ohjatulla native-rajalla. Oikea schema-/lineage-, restart- ja pakettinäyttö vaaditaan erikseen. |
 | Valitsintuloksen kuluttaja, kytkentä toteutettu | `resolveDesktopWorkspaceStartup` palauttaa erillisen selector-tuloksen ilman session luontia. Main liittää sen backendittomaan käyttöliittymään ja hallintaan nykyisen lifecycle-kahvan kautta. Ohjatut sulku- ja UI-testit eivät korvaa todellista Electron-ketjua. Valitsimen näkyminen ei todista yritystietokannan terveyttä. |
+
+Business-metadatan [lukukytkentä](../../apps/desktop/src/main/desktopAcceptedSelectorStartup.ts)
+ei julkaise metadataa tai muuta hyväksyntäformaattia. Se sitoo nykyiset
+FirstStart-, binary-rollback- ja W6-lukijat tuoreesti varmennettuihin
+tavuihin ja tiedostoidentiteetteihin. Yhtäaikaiset FirstStart-lukijat
+jakavat vain keskeneräisen havainnon, eivät valmistunutta välimuistia.
+Switchin omaa keskeneräistä kirjoitusta ei lueta ulkoisena ristiriitana;
+sen omat valitut vartijat tarkistavat sen. Runtime tarkistaa sisäkkäisten
+palautusten ja elävän backendin tilan myös terminalin jälkeisissä
+valituissa kirjoituksissa. Hyväksytyn settlement-kuitin jälkeen tämä
+kertakäyttöinen runtime-valtuus ei korvaa tavallista FirstStartia.
+Paluu valitsimeen tarvitsee edelleen todistetun sulun, ei vain puuttuvaa
+backend-kahvaa tai epäonnistunutta terveyskyselyä.
 
 Valitsimen hallinnan [rajattu elinkaaritoteutus](../../apps/desktop/src/workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.ts) toteuttaa nykyiset
 `ActiveWorkspaceLifecyclePort`- ja `WorkspaceRuntimeAbsencePort`-portit
