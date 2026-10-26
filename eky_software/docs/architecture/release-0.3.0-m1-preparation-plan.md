@@ -43,7 +43,16 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Uusin osatodiste:** `DESK-SELECTOR-CREATE-001` läpäisi oikean UI:n,
+**Uusin pakettitodiste 26.10.2026:** puhdas lähderevisio
+`3404719c5aa4eef8e5f49f8c1c5cd53cb4453ad8` läpäisi hardened Windows
+-paketoinnin, sisältöinventaarion ja backup -> inspect -> restore -> restart
+-> compare -smoken. Samat pakettitavut läpäisivät myös historiallisen
+038-backupin sekä keskeytyneen luonnin ja tuonnin palautuskokeet.
+ASAR:n sisältö vastasi valmisteltuja tiedostoja; koko paketin inventaario
+ja lähdeidentiteetti varmistettiin muuttumattomiksi kokeiden jälkeen.
+Tämä ei vielä ole PR/main- tai koko W7.2:n hyväksyntä.
+
+**Yritysavauksen osatodiste:** `DESK-SELECTOR-CREATE-001` läpäisi oikean UI:n,
 tuotannon backend-käynnistimen ja FirstStartin kautta. Yritys luodaan
 valitsimessa ilman automaattista valintaa; nimenomainen avaus käynnistää
 business-runtimen. Synteettinen asiakas, yritysvalinta ja hyväksyntämetadata
@@ -93,11 +102,11 @@ tarkistus läpäisivät.
 
 Hyväksyttyjen rajamuutosten jälkeen paketti-inventaarion 67 regressiota ja
 koko palautuksen käynnistystiedoston 311 testiä läpäisivät. Ohjelinkit ja
-rajattu riippumaton katselmus läpäisivät. Tämä ei vielä ole uuden puhtaan
-paketin sisältö- tai palautusnäyttö.
+rajattu riippumaton katselmus läpäisivät. Uuden puhtaan paketin näyttö
+on kirjattu erikseen yllä; aiempaa pakettihylkäystä ei muuteta onnistuneeksi.
 
-**Seuraava työ:** todenna saman uuden puhtaan paketin palautusketju ennen
-integraatiota. Säilytä vanhan
+**Seuraava työ:** viimeistele W7.2:n hyväksyntämatriisin ja vaikutusalueen
+laajan testinäytön tarkistus ennen integraatiota. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
 palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.

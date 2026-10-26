@@ -93,6 +93,11 @@ eheysvaatimukset säilyvät. Raja-arvo- ja ylitysregressiot sekä puhtaan
 revision uusi paketti-inventaario vaaditaan. Jaeltavaa artifactia ei rakenneta
 dirty-työpuusta; tutkimuksen sisältö-/kokomittaus ei ole release-hyväksyntä.
 
+Tämä budjetti rajaa sovellukseen paketoitavaa omaa sisältöä, ei koko
+Electron-asennusta tai testien virheaineistoa. Salattujen lokien ja raporttien
+64/128 MiB:n tiedostorajat sekä 512 MiB:n yhteisbudjetti ovat erillinen
+[tutkimusaineiston säilytyssopimus](ci-encrypted-evidence.md#workspace-keräys-ja-tulokset).
+
 ### Valmistuneen komennon lokitulostetesti
 
 `blockedEvidence`-sopimustesti lukee prosessin päättymisen ja validoidun
