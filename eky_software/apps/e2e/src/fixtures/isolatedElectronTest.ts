@@ -66,6 +66,7 @@ import {
   type ElectronPreparationFailureEvidence,
 } from './reportElectronLifecycleEvidence.js';
 import { prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
+import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -77,6 +78,7 @@ export interface IsolatedElectronHarness {
   paths: E2eWorkerPaths;
   performRelaunchingOperation(
     operation: () => Promise<void>,
+    options?: { expectSelectorRecovery: true },
   ): Promise<{
     previousRuntimeInstanceId: string;
     previousSessionSecret: string;
@@ -373,7 +375,7 @@ export const test = base.extend<
       const launched = await launchCurrentRuntime();
       api = await createElectronApi(backendPort, runtime.sessionSecret);
 
-      async function launchNextRuntime(): Promise<void> {
+      async function prepareNextRuntime(): Promise<void> {
         backendPort = await reserveLoopbackPort();
         runtime = createElectronE2eRuntime({
           backendPort,
@@ -387,6 +389,10 @@ export const test = base.extend<
             ? {}
             : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
         });
+      }
+
+      async function launchNextRuntime(): Promise<void> {
+        await prepareNextRuntime();
         const restarted = await launchCurrentRuntime();
         api = await createElectronApi(backendPort, runtime.sessionSecret);
         harness.api = api;
@@ -411,7 +417,7 @@ export const test = base.extend<
         },
         page: launched.page,
         paths,
-        async performRelaunchingOperation(operation) {
+        async performRelaunchingOperation(operation, options) {
           const previousRuntimeInstanceId = runtime.runtimeInstanceId;
           const previousSessionSecret = runtime.sessionSecret;
           const previousRelaunchCount = countWorkspaceRelaunchRequests(
@@ -447,6 +453,24 @@ export const test = base.extend<
             );
           }
 
+          if (options?.expectSelectorRecovery === true) {
+            await prepareNextRuntime();
+            currentOutput = { bridge: undefined, generation: ++startupGeneration };
+            try {
+              await runElectronSelectorRecoveryStartup({
+                runtime, runRoot, lifetime, scenarioId,
+                readRelaunchCount: () => countWorkspaceRelaunchRequests(runtime.observationsPath),
+                captureOutput(output) { currentOutput.bridge = output; },
+              });
+            } catch (error) {
+              firstFailedLaunch ??= { ...currentOutput };
+              if (!(error instanceof DirectElectronRunFailure) || error.processTree !== 'stopped') {
+                runtimeCleanupUnverified = true;
+              }
+              throw error;
+            }
+            await releaseCurrentPort();
+          }
           await launchNextRuntime();
           return { previousRuntimeInstanceId, previousSessionSecret };
         },

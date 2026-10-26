@@ -25,6 +25,7 @@ import { createFirstStartProofAdmission, createFirstStartProofObserver } from '.
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
+import { readSelectorRecoveryRelease } from './electronSelectorRecoveryRelease.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -46,7 +47,8 @@ if (configPath === undefined) {
 }
 const config = readElectronE2eConfig(configPath);
 app.setPath('userData', config.paths.userDataPath);
-const e2eAppVersion = app.getVersion();
+const selectorRecoveryRelease = readSelectorRecoveryRelease(config.scenarioId);
+const e2eAppVersion = selectorRecoveryRelease?.appVersion ?? app.getVersion();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -162,7 +164,7 @@ if (hasSingleInstanceLock) {
           appVersion: e2eAppVersion,
           buildCreatedAt: '2026-01-01T00:00:00.000Z',
           buildDirty: false,
-          buildRevision: 'development',
+          buildRevision: selectorRecoveryRelease?.buildRevision ?? 'development',
           schemaVersion: 1,
         },
         dependencies: {
@@ -211,7 +213,7 @@ if (hasSingleInstanceLock) {
           },
         },
         quitApplication: () => app.quit(),
-        releaseInfo: undefined,
+        releaseInfo: selectorRecoveryRelease,
         relaunchApplication() {
           if (config.relaunchMode !== 'playwrightManaged') {
             throw new Error('ELECTRON_E2E_RELAUNCH_MODE_INVALID');

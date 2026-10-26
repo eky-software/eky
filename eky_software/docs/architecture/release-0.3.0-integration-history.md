@@ -5,6 +5,36 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n valitsimesta avauksen native-osatodennus 26.10.2026
+
+Alla oleva edellisen osarajan teksti säilyy muuttamattomana. M1:n alku
+omistaa uudemman virhepaluun näytön ja jäljellä olevan hyväksyntätyön.
+
+**Uusin osatodiste:** nykyisen avauskokeen valitsinvariantit läpäisivät
+oikealla SQLitellä, Electronilla ja preload/IPC-ketjulla. Business-hyväksytty
+build sekä valitsimessa hyväksytyn päivityksen lykätty business-avaus
+käyttävät historialliselle kohteelle nykyistä kopioaktivointia. Valitsimen
+alussa ei synny backendia tai yrityssessiota; valinta ei muuta tietokantoja
+eikä hyväksyntämetadataa. Lykätyn avauksen business-hyväksyntä syntyy vasta
+oikeiden tarkistusten jälkeen, ja metadata säilyy seuraavassa käynnistyksessä.
+
+Todisteen käynnistykset ovat compositionin uudelleenkäynnistyksiä samassa
+Electron-prosessissa. Edeltävä asennuspäivitys ja valitsinhyväksyntä ovat
+synteettinen lähtötila. Myöhemmät virhe- ja rollback-kontrollit käyttävät
+ei-null-lähdettä; ne eivät todista source-null-virheen paluuta valitsimeen.
+Fyysinen restart, tämä virhehaara ja puhtaan paketin todennus erotetaan
+edelleen tästä näytöstä.
+
+Valitun rekisteriformaatin, ensivirheen ja epävarman siivouksen säilymisen
+regressiot sekä molemmat E2E-tyyppitarkistukset läpäisivät. Rajattu
+katselmus ei korjausten jälkeen löytänyt vahvistettua puutetta.
+Lopullisen testilähteen vanha FirstStart-/Direct Setup -kontrolli,
+ei-null-aktivointi ja business-hyväksytty valitsinavaus läpäisivät.
+Ensimmäiset testivalmistelun ja tyyppitarkistuksen hylkäykset säilyvät
+erillisinä; päällekkäisiä ajoja ei lasketa yhdeksi hyväksyntämääräksi.
+[Aiempi valitsimen UI-näyttö](release-0.3.0-integration-history.md#w72n-valitsimen-native-ui-osatodennus-26102026)
+ja avoimet viivehavainnot säilyvät historiassa.
+
 ## W7.2:n valitsimen native-UI-osatodennus 26.10.2026
 
 Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Yritysavauksen

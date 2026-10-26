@@ -566,6 +566,19 @@ uudelleenkäynnistys samassa Electron-prosessissa ei ole fyysisen restartin
 tai paketin todiste. [Testimatriisi](r0-e2e-test-matrix.md)
 erottaa avaus-, lähtömetadatan ja virhehaaran näytön.
 
+`DESK-SELECTOR-RETURN-001` käyttää registry-only-fixturen puuttuvaa
+työtilajuurta ja täsmällistä synteettistä business-hyväksyntää. Tavallinen
+tuotannon build-admission säilyy. Testi vahvistaa avauksen UI:ssa, odottaa
+ensimmäisen prosessin poistumista, ajaa yhden ennalta odotetun ikkunattoman
+palautuskäynnistyksen nykyisellä Windows-omistajalla ja avaa sitten uuden
+valitsimen. Tämä ei ole epäonnistuneen käynnistyksen retry. Exit 0, täsmälleen
+yksi relaunch-pyyntö, koko puun siivous ja portin vapautuminen vaaditaan.
+Nykyinen rajattu tulostelukija säilyy yksityiseen virheraporttiin myös ilman
+palautettua prosessikahvaa. Testiadapteri välittää aidon tyypitetyn
+palautus-/relaunch-tuloksen mainille muuttumattomana; muut virheet luokitellaan
+edelleen turvallisesti. Todiste kattaa source-null-virhepaluun ja erillisen
+fyysisen restartin, ei business-avauksen jälkeistä rollbackia tai pakettia.
+
 Electronin julkisen sulun jälkeen suoritetaan aina omistajan stop ja
 koko puun poistumisen varmennus, myös sovelluksen jo sulkeuduttua tai
 Playwright-sulun epäonnistuttua. Tämä ei ole pelkkä puuttuvan root-exitin

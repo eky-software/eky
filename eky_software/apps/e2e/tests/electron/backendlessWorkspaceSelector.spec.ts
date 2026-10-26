@@ -2,6 +2,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../../desktop/src/workspaces/registry/workspaceRegistryPaths.js';
+import { acceptedBuildMetadataFileName } from '../../../desktop/src/update/acceptedBuildMetadataStore.js';
 import { expect, test, type IsolatedElectronHarness } from '../../src/fixtures/isolatedElectronTest.js';
 
 for (const state of ['empty', 'ready', 'recoveryRequired'] as const) {
@@ -49,6 +50,42 @@ for (const state of ['empty', 'ready', 'recoveryRequired'] as const) {
     });
   });
 }
+
+test.describe('selector opening failure', () => {
+  test.use({ e2eSelectorProfile: 'ready' });
+
+  test('DESK-SELECTOR-RETURN-001 @critical @security returns to the selector in a new process after an absent workspace', async ({ e2eElectron }) => {
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    await assertNoBusinessRuntime(e2eElectron);
+    const registryBefore = JSON.parse(readRegistry(e2eElectron));
+    const metadataPath = join(e2eElectron.runtime.userDataPath, 'update-state', acceptedBuildMetadataFileName);
+    const metadataBefore = readFileSync(metadataPath);
+    const previousPid = await e2eElectron.electronApp.evaluate(() => process.pid);
+    await e2eElectron.page.getByRole('button', { name: 'Avaa yritys', exact: true }).click();
+    const previous = await e2eElectron.performRelaunchingOperation(async () => {
+      await e2eElectron.page.getByRole('button', { name: 'Vaihda yritys', exact: true }).click();
+    }, { expectSelectorRecovery: true });
+
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    await expect(e2eElectron.page.getByText('Synthetic selector company', { exact: true })).toBeVisible();
+    await expect(e2eElectron.page.getByRole('button', { name: 'Avaa yritys', exact: true })).toBeDisabled();
+    await assertNoBusinessRuntime(e2eElectron);
+    expect(await e2eElectron.electronApp.evaluate(() => process.pid)).not.toBe(previousPid);
+    expect(e2eElectron.runtime.runtimeInstanceId).not.toBe(previous.previousRuntimeInstanceId);
+    expect(e2eElectron.runtime.sessionSecret).not.toBe(previous.previousSessionSecret);
+    expect(readFileSync(metadataPath).equals(metadataBefore)).toBe(true);
+    const registryAfter = readRegistry(e2eElectron);
+    expect(JSON.parse(registryAfter)).toEqual({
+      ...registryBefore, activeWorkspaceId: null,
+      workspaces: registryBefore.workspaces.map((entry: Record<string, unknown>) => ({ ...entry, lifecycleState: 'recoveryRequired' })),
+    });
+    await e2eElectron.restart();
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    await assertNoBusinessRuntime(e2eElectron);
+    expect(readRegistry(e2eElectron)).toBe(registryAfter);
+    expect(readFileSync(metadataPath).equals(metadataBefore)).toBe(true);
+  });
+});
 
 async function assertNoBusinessRuntime(harness: IsolatedElectronHarness): Promise<void> {
   const state = await harness.electronApp.evaluate(() => {

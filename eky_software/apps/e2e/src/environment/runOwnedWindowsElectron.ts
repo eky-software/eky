@@ -6,6 +6,7 @@ import type { E2eFixtureLifetime } from './e2eFixtureLifetime.js';
 import type { E2eProcessStartupState } from './e2eProcessStartupObservation.js';
 import { OwnedWindowsElectronStartupFailure, startOwnedWindowsElectron } from './startOwnedWindowsElectron.js';
 import type { ObservedWindowsService, OwnedWindowsServiceStartupFailureCode } from './startOwnedWindowsService.js';
+import type { ProcessOutput } from './boundedProcessOutput.js';
 
 type FailureCode = 'startupFailed' | 'exitDeadlineExceeded' | 'observationLost' | 'exitCodeUnavailable' | 'unexpectedExitCode' | 'cleanupFailed';
 export class DirectElectronRunFailure extends Error {
@@ -32,6 +33,7 @@ const defaults: Dependencies = {
 export async function runOwnedWindowsElectron(input: {
   runtime: ElectronE2eRuntime; runRoot: string; lifetime: E2eFixtureLifetime; timeoutMilliseconds: number;
   expectedExitCode: 0 | 1;
+  captureOutput?(output: ProcessOutput): void;
 }, overrides: Partial<Dependencies> = {}): Promise<{ exitCode: number; output: string }> {
   const dependencies = { ...defaults, ...overrides };
   let owned: ObservedWindowsService | undefined;
@@ -51,6 +53,7 @@ export async function runOwnedWindowsElectron(input: {
     owned = await dependencies.start({ repositoryRoot: resolve(import.meta.dirname, '../../../..'),
       runRoot: input.runRoot, runtimeRoot: input.runtime.runtimeRoot, runtimeConfigPath: input.runtime.configPath,
       environment, lifetime, startupDeadline: deadline, redactedValues: [input.runtime.sessionSecret] });
+    input.captureOutput?.(owned);
     failure = await waitForExit(owned, deadline, dependencies);
     if (failure === undefined) {
       exitCode = owned.workload.readExitCode();
@@ -61,6 +64,9 @@ export async function runOwnedWindowsElectron(input: {
     failure = 'startupFailed';
     if (error instanceof OwnedWindowsElectronStartupFailure) {
       processTree = error.evidence.processTree; ownerFailure = error.evidence.startupFailure;
+      try { input.captureOutput?.(error); } catch {
+        // A secondary evidence-sink failure cannot replace startup/cleanup proof.
+      }
     }
   }
   if (owned !== undefined) {

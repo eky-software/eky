@@ -681,6 +681,17 @@ yleisenä lupana yrittää toista palautuspolkua.
 | Lykätty business-hyväksyntä ja source-null, native-osatodennus | `DESK-SELECTOR-DEFERRED-001` aloittaa synteettisestä selector-hyväksynnästä ja vanhasta business-baselinesta. Oikea kopioaktivointi ei julkaise business-hyväksyntää; vasta seuraavan composition-käynnistyksen nykyiset portit julkaisevat business-scopen ja A = B = T. Metadata säilyy seuraavassa composition-restartissa, W6/Direct Setup -slotit ovat lopussa tyhjät. Tämä ei todista edeltävää asennuspäivitystä, kaikkia välikirjoitusten järjestyksiä tai lykätyn avauksen virhepaluita. |
 | Valitsintuloksen kuluttaja, kytkentä toteutettu | `resolveDesktopWorkspaceStartup` palauttaa erillisen selector-tuloksen ilman session luontia. Main liittää sen backendittomaan käyttöliittymään ja hallintaan nykyisen lifecycle-kahvan kautta. Todellinen Electron/preload/UI-ketju ja vanhan business-sillan kontrolli läpäisivät; valitsimen näkyminen ei todista yritystietokannan terveyttä tai release-hyväksyntää. |
 
+`DESK-SELECTOR-RETURN-001` täydentää taulukon source-null-virhepaluita:
+oikea UI-vahvistus valitsee yrityksen, jonka työtilajuuri puuttuu. Seuraava
+Electron-prosessi käyttää nykyistä palautusomistajaa ja päättyy hallitusti;
+uusi valitsin näyttää kohteen `recoveryRequired`-tilassa. Null-valinta ja
+muuttumaton hyväksyntämetadata säilyvät vielä fyysisessä restartissa.
+Testiadapteri säilyttää tuotannon tyypitetyn relaunch-tuloksen, ja nykyinen
+prosessiomistaja todistaa puun ja portin sulun ennen seuraavaa käynnistystä.
+Synteettinen lähtö käy todellisen build-admissionin läpi. Tämä näyttö ei
+kata tietokannan avaamisen jälkeistä rollbackia, lykättyä migraatiota tai
+paketoidun sovelluksen hyväksyntää; taulukon muut näyttörajat säilyvät.
+
 Business-metadatan [lukukytkentä](../../apps/desktop/src/main/desktopAcceptedSelectorStartup.ts)
 ei julkaise metadataa tai muuta hyväksyntäformaattia. Se sitoo nykyiset
 FirstStart-, binary-rollback- ja W6-lukijat tuoreesti varmennettuihin

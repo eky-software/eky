@@ -2,14 +2,43 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { readSafeElectronE2eWorkspaceStartupFailureCode } from './electronE2eWorkspaceStartupFailure.js';
 import { resolveElectronE2eWorkspaceStartup } from './electronE2eWorkspaceStartup.js';
-import type { ActiveWorkspaceStartupOptions } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import { ActiveWorkspaceStartupRelaunchRequiredError, type ActiveWorkspaceStartupOptions } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import { resolveDesktopWorkspaceStartup } from '../src/main/resolveDesktopWorkspaceStartup.js';
 
 const resolveStartup = vi.hoisted(() => vi.fn());
-vi.mock('../src/workspaces/runtime/resolveActiveWorkspaceStartup.js', () => ({
+vi.mock('../src/workspaces/runtime/resolveActiveWorkspaceStartup.js', async importOriginal => ({
+  ...await importOriginal<typeof import('../src/workspaces/runtime/resolveActiveWorkspaceStartup.js')>(),
   resolveActiveWorkspaceStartup: resolveStartup,
 }));
 
 describe('Electron E2E workspace authority forwarding', () => {
+  it('preserves the completed recovery signal through the real main resolution owner', async () => {
+    const signal = new ActiveWorkspaceStartupRelaunchRequiredError();
+    signal.cause = new Error('synthetic private root failure');
+    const relaunchApplication = vi.fn();
+    const createRuntimeSession = vi.fn();
+    resolveStartup.mockImplementationOnce(async (_root: string, options: ActiveWorkspaceStartupOptions) => {
+      options.reportProgress?.({ phase: 'workspaceRootInspection', state: 'started' });
+      throw signal;
+    });
+    await expect(resolveDesktopWorkspaceStartup({
+      userDataRoot: 'synthetic-root', resolveActiveWorkspace: resolveElectronE2eWorkspaceStartup,
+      assertStartupCurrent: vi.fn(), relaunchApplication, createRuntimeSession,
+    })).resolves.toEqual({ status: 'relaunching' });
+    expect(relaunchApplication).toHaveBeenCalledOnce();
+    expect(createRuntimeSession).not.toHaveBeenCalled();
+  });
+
+  it('does not promote an error with the same message to a recovery receipt', async () => {
+    resolveStartup.mockRejectedValueOnce(new Error(new ActiveWorkspaceStartupRelaunchRequiredError().message));
+    const relaunchApplication = vi.fn();
+    await expect(resolveDesktopWorkspaceStartup({
+      userDataRoot: 'synthetic-root', resolveActiveWorkspace: resolveElectronE2eWorkspaceStartup,
+      assertStartupCurrent: vi.fn(), relaunchApplication, createRuntimeSession: vi.fn(),
+    })).rejects.not.toBeInstanceOf(ActiveWorkspaceStartupRelaunchRequiredError);
+    expect(relaunchApplication).not.toHaveBeenCalled();
+  });
+
   it('passes the exact main-owned authority and returns its selector result unchanged', async () => {
     const authority: NonNullable<ActiveWorkspaceStartupOptions['selectorAuthority']> = {
       assertCurrent: vi.fn(), admitSelection: vi.fn(), proveTerminal: vi.fn(),

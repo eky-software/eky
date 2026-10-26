@@ -1,4 +1,5 @@
 import {
+  ActiveWorkspaceStartupRelaunchRequiredError,
   resolveActiveWorkspaceStartup,
   type ActiveWorkspaceStartupOptions,
   type ActiveWorkspaceStartupPhase,
@@ -22,6 +23,9 @@ export async function resolveElectronE2eWorkspaceStartup(
           ...options, selectorAuthority: options.selectorAuthority, reportProgress,
         }));
   } catch (error) {
+    // This is the production owner's completed recovery handoff, not a startup
+    // failure. Its identity must reach resolveDesktopWorkspaceStartup intact.
+    if (error instanceof ActiveWorkspaceStartupRelaunchRequiredError) throw error;
     throw new Error(readSafeElectronE2eWorkspaceStartupFailureCode(error, phase));
   }
 }

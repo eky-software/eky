@@ -43,33 +43,33 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Uusin osatodiste:** nykyisen avauskokeen valitsinvariantit läpäisivät
-oikealla SQLitellä, Electronilla ja preload/IPC-ketjulla. Business-hyväksytty
-build sekä valitsimessa hyväksytyn päivityksen lykätty business-avaus
-käyttävät historialliselle kohteelle nykyistä kopioaktivointia. Valitsimen
-alussa ei synny backendia tai yrityssessiota; valinta ei muuta tietokantoja
-eikä hyväksyntämetadataa. Lykätyn avauksen business-hyväksyntä syntyy vasta
-oikeiden tarkistusten jälkeen, ja metadata säilyy seuraavassa käynnistyksessä.
+**Uusin osatodiste:** `DESK-SELECTOR-RETURN-001` läpäisi oikeassa Electron-
+prosessiketjussa. Valitsimessa vahvistettu avaus kohtaa puuttuvan
+työtilajuuren; nykyinen palautusomistaja palauttaa null-valinnan ja uuden
+valitsinprosessin. Yritys jää `recoveryRequired`-tilaan, hyväksyntämetadata
+säilyy eikä puuttuvaa yritystietokantaa luoda. Vielä yksi fyysinen restart
+säilyttää tuloksen. Jokaisen prosessin puu ja portti suljetaan ennen jatkoa.
+Synteettinen release-identiteetti käy tuotannon build-admissionin läpi.
 
-Todisteen käynnistykset ovat compositionin uudelleenkäynnistyksiä samassa
-Electron-prosessissa. Edeltävä asennuspäivitys ja valitsinhyväksyntä ovat
-synteettinen lähtötila. Myöhemmät virhe- ja rollback-kontrollit käyttävät
-ei-null-lähdettä; ne eivät todista source-null-virheen paluuta valitsimeen.
-Fyysinen restart, tämä virhehaara ja puhtaan paketin todennus erotetaan
-edelleen tästä näytöstä.
+Testiadapterista korjattiin tyypitetyn uudelleenkäynnistyspyynnön muuttuminen
+tavalliseksi virheeksi. Tuotannon palautuslogiikkaa tai aikarajoja ei muutettu.
+Regressio kulkee mainin todellisen resolverin läpi; samanniminen tavallinen
+virhe ei kelpaa palautuskuitiksi. Testin aiempi puuttuva UI-vahvistus sekä
+adapterin hylkäys säilyvät erillisinä ensimmäisinä epäonnistumisina.
+Rajatut järjestelmä- ja adapteritestit, molemmat E2E-tyyppitarkistukset,
+viisi vanhaa Electron-kontrollia ja riippumaton katselmus läpäisivät.
+Prosessituloste käyttää nykyistä rajattua yksityistä keräystä, ei lupausta
+jokaisen alkuperäisen poikkeuksen täydellisestä talteenotosta.
 
-Valitun rekisteriformaatin, ensivirheen ja epävarman siivouksen säilymisen
-regressiot sekä molemmat E2E-tyyppitarkistukset läpäisivät. Rajattu
-katselmus ei korjausten jälkeen löytänyt vahvistettua puutetta.
-Lopullisen testilähteen vanha FirstStart-/Direct Setup -kontrolli,
-ei-null-aktivointi ja business-hyväksytty valitsinavaus läpäisivät.
-Ensimmäiset testivalmistelun ja tyyppitarkistuksen hylkäykset säilyvät
-erillisinä; päällekkäisiä ajoja ei lasketa yhdeksi hyväksyntämääräksi.
-[Aiempi valitsimen UI-näyttö](release-0.3.0-integration-history.md#w72n-valitsimen-native-ui-osatodennus-26102026)
-ja avoimet viivehavainnot säilyvät historiassa.
+Tämä todistaa puuttuvan juuren hylkäyksen ennen business-käynnistystä,
+ei tietokannan avaamisen jälkeistä rollbackia tai paketin hyväksyntää.
+[Aiempi onnistuvan avauksen ja lykätyn hyväksynnän näyttö](release-0.3.0-integration-history.md#w72n-valitsimesta-avauksen-native-osatodennus-26102026)
+säilyy: sen composition-restartit ovat samassa prosessissa ja edeltävä
+asennuspäivitys on synteettinen lähtötila. Vanhoja viiveitä ei merkitä
+korjatuiksi eikä päällekkäisiä ajoja lasketa yhteen.
 
-**Seuraava työ:** viimeistele source-null-virhepaluu sekä fyysisen
-uudelleenkäynnistyksen ja paketoidun palautusketjun näyttö. Säilytä vanhan
+**Seuraava työ:** viimeistele onnistuvan business-avauksen fyysisen
+uudelleenkäynnistyksen ja saman puhtaan paketin palautusketjun näyttö. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
 palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
