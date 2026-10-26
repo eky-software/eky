@@ -37,33 +37,47 @@ Aiempi jatkamisteksti säilyy muuttamattomana
 [historiassa](release-0.3.0-integration-history.md#w71n-integraatiota-edeltävä-jatkamiskohta-25102026).
 
 **Nykyinen työ:** W7.2:n rekisteri v2, pysyvä yritysvalinta ja backenditon
-hallintatila. Rekisterin, metadatan, käynnistysvalmistelun ja tarkan
-kopioaktivoinnin palautuskuitin osarajat on toteutettu. Mainin
-deferred-source-null-avauksen switch/W6-terminal-valtuus ja resolverin
-kytkentä ovat nyt toteutettuina, mutta eivät vielä kokonaan todennettuina.
-Pelkkä null-valinta, `rollbackSelected`-restart, business-metadatan vastaava
-avaus ja valitsimen käyttöliittymä ovat seuraavia kytkentöjä, eivät tämän
-osarajan läpäisynäyttöä. Native-/paketti- ja PR/main-portit ovat tekemättä.
+hallintatila. Rekisterin, metadatan, tilavalmistelun, source-null-avauksen
+terminal-valtuuden ja hallinnan omistajat ovat toteutettuina. Mainin
+tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
+business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
+Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Todennettu hallinnan osaraja:** nykyinen composition rakentaa backendittoman
-hallinnan samoilla luonti-, tuonti-, nimenmuutos- ja vaihtoomistajilla.
-Se ei luo aktiivista yritystä, business-sessionia tai korvauspalvelua.
-Source-null-vaihto julkaisee valitun journalin ja rekisterin nykyisillä
-tallentimilla sekä vapauttaa huoltovarauksen ennen relaunch-pyyntöä.
-Katselmuksessa toistetut tilaluvun virheellinen ristiriita ja myöhäisen
-nimenmuutoksen vanhentunut valtuus on korjattu; rajattu jälkikatselmus
-ei löytänyt uutta P1/P2-puutetta. Vaikutusalueen 569 testiä läpäisivät.
-Sen jälkeen vain testeihin tehty tyyppikorjaus ja neljä lisäreunatapausta
-läpäisivät 51 testin kohdeajon sekä desktopin tyyppitarkistuksen.
-Päällekkäisiä ajomääriä ei lasketa yhteen. Ensivirheet säilyvät erillisinä.
+**Uusin osaraja:** main liittää nykyiset hallintapalvelun, IPC:n,
+native-salasanavalinnan ja fyysisen prosessivarauksen sulkuportit samaan
+valitsimen elinkaareen. Sulku estää uuden työn, odottaa jo aloitettuja
+komentoja ja native-valintoja sekä varmentaa varauksen ennen vapautusta.
+Myöhäinen tiedostovalinta ei käynnistä tuontia. Epävarma sulku säilyttää
+varauksen. Web käyttää nykyistä yrityshallinnan käyttöliittymää ilman
+business-API-clientia; main torjuu business-HTTP-reitit. Nykyinen H5:n
+lokitushäiriöpalkki säilyy myös valitsimessa.
 
-**Seuraava kytkentä:** liitä tämä hallinta ja aiemmin todennetut palvelun/IPC:n
-sulkuportit mainin valitsinkuluttajaan. Mainin nykyinen selector-esto säilyy
-siihen asti; valitsinikkunaa ei vielä avata. Luonti-/tuontireititys on tässä
-composition-testissä ohjattu komentorajalta, ei SQLite/Electron-todiste.
-Native-/paketti- ja PR/main-portit sekä alla olevat avaushaarat ovat vielä
-tekemättä. Aiempien sulkutestien checkpoint säilyy
-[historiassa](release-0.3.0-integration-history.md#w72n-hallinnan-sulkuporttien-checkpoint-26102026).
+**Todennettu nyt:** valitsimen ja vanhan business-polun kohderegressiot,
+vieressä olevat hallinta-/sulkuomistajat, protokolla, resolveri ja webin
+koostaminen on tarkistettu. Desktopin, webin ja Electron-testien
+tyyppitarkistukset sekä web-build läpäisivät. Näyttö käyttää oikeaa
+main/composition-koodia ja tiedostoja mutta ohjattuja Electron-/native-
+rajoja; web-testit eivät vielä ole oikean selaimen tai Electron-ikkunan
+hyväksyntä. Päällekkäisiä kohdeajomääriä ei lasketa yhteen.
+Ensimmäiset hylkäykset säilyvät.
+
+Rajattu katselmus löysi liian myöhäisen eston vielä keskeneräiselle
+business-metadatan source-null-avaukselle. Se toistettiin ja korjattiin:
+tavallinen null-valtuus hylkää journalia sisältävän avauksen jo ennen
+resolverin korjaavia lukuja tai session luontia. Kolmen journal-slotin
+regressiot varmentavat myös rekisteri-, journal- ja metadatatavujen
+säilymisen. Korjauksen jälkeinen 27 tapauksen main-kohdeajo ja
+tyyppitarkistus läpäisivät; rajattu jälkikatselmus ei jättänyt löydöstä.
+
+**Seuraava työ:** viimeistele keskeytyneen valitsimeen paluun
+`rollbackSelected`-/return-haarat ja business-hyväksytyn metadatan
+source-null-avaus nykyisissä omistajissa. Näiden estoja ei poisteta vain
+valitsimen näkyvyyden perusteella. Sen jälkeen oikea SQLite/Electron-,
+preload/UI- ja paketoitu palautusketju, rajattu katselmus sekä täsmällisen
+PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
+[Toteutussopimus ja puuttuvat liitokset](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
+omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä
+ei toteuteta uudelleen ilman omaa regressiota.
 
 **Avoin ennen seuraavaa laajaa ajoa:** passiivisen yrityksen siirtymän
 variantti `passive: true, source-null: false` ylitti muuttumattoman
@@ -85,265 +99,9 @@ omistaa täsmällisen rajauksen. Alkuperäisen mittausavun virhe ja aiemmat
 aikakatkaisut säilyvät erillisinä
 [historiallisina havaintoina](release-0.3.0-integration-history.md#w72n-testibudjetin-mittaus-26102026).
 
-**Rajattu näyttö:** terminal-helperin, resolverin ja valitun W6-persistenssin
-68 testiä läpäisivät. Todellisen main-ketjun kaksi virhekontrollia säilyttivät
-palautusaineiston ja estivät valitsimeen paluun sisältö- tai vapautusvirheessä.
-Katselmuksen viimeisen poistovartijan puute toistettiin ja korjattiin:
-runtime-valtuus tarkistetaan nyt myös W6-journalin viimeisessä synkronisessa
-poistovartijassa. Desktopin, Electron-testien ja E2E:n tyyppitarkistukset
-läpäisivät; rajatun tuotantodeltan katselmuksessa ei jäänyt vahvistettua
-avointa löydöstä. Tämä on ohjattujen native-rajojen ja synteettisten tavujen
-näyttöä, ei koko käynnistyssarjan tai W7.2:n hyväksyntä. Aiempi
-[palautuskuitin checkpoint](release-0.3.0-integration-history.md#w72n-palautuskuitin-checkpoint-26102026)
-säilyy historiassa. Päällekkäisiä testimääriä ei lasketa yhteen.
-
-Cold-loppurajan vaikutusalueen yhdistetyssä ajossa yhdeksän tiedostoa
-läpäisi (475 testiä). Mainin käynnistystiedoston yksi tapaus aikakatkaisi
-käynnistysvaiheen jälkeen, jolloin keskeneräisen työn suoja esti muut
-tapaukset. Sen yksi sallittu kohdeuusinta läpäisi 226 testiä samalla
-lähteellä. Ensivirhe ja epävarma loppusiivous säilyvät avoimina; yhdistettyä
-ajoa ei merkitä läpäistyksi eikä uusinta todista viiveen korjaantuneen.
-Tämä ei ole W7.2:n integraatiohyväksyntä.
-[Pysyvä valinta ja versioraja](local-company-workspace-plan.md#pysyvä-yritysvalinta-ja-versioraja),
-[valitsimesta avauksen jatko](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
-ja [W7.0-W7.5:n työjako](local-company-workspace-plan.md#koottu-toteutusehdotus)
-omistavat sopimukset. V1-tavut, vanhat backupit, W7.1:n nimirajat ja
-C/K/W6:n sisältö-, sulku- ja palautusportit säilyvät.
-
-**Valmisteltu 25.10.2026:** hyväksytty kopioon perustuvan ensimmäisen
-yritysavauksen suunnittelu ja keskeytyskoe läpäisivät 28 sopimuskoetta,
-tyyppitarkistuksen ja rajatun riippumattoman katselmuksen. Tämä valmistelukoe ei
-muuttanut tuotantokoodia. [Täsmällinen toteutussopimus ja kokeen rajat](local-company-workspace-plan.md#rajatun-kokeen-mukainen-toteutussopimus)
-erottavat oikeat nykyiset journal-/tiedosto-omistajat injektoiduista
-SQLite-, prosessi-, health- ja v2-metadataosuuksista. Katselmuksen koemallin
-valinta- ja sukupolvisidonnan puutteet korjattiin vastatesteineen; niitä ei
-nimetä nykyisen v1-tuotantopolun vioiksi.
-
-**Tuotantokytkentä hyväksytty 25.10.2026:** omistaja hyväksyi rajatun
-ensimmäisen yritysavauksen kytkennän sekä pysyvät regressiot, oikean
-SQLite/Electron-ketjun, paketoidun palautuksen todennuksen ja katselmuksen.
-Hyväksyntä ei ole toteutuksen tai koko W7.2:n läpäisynäyttö.
-
-**Toteutettu osaraja 25.10.2026:** rekisterin v1/v2-esitys ja version säilyttävät
-kirjoittajat sekä luonnin/tuonnin kylmäpalautuksen v2/null-jatko on toteutettu.
-V1:n kanoniset tavut ja vanha valintakäyttäytyminen säilyvät. V2:n julkaisu
-ei valitse yritystä; downgrade estetään. Rajattu sarja läpäisi 810 testiä
-43 tiedostossa; kaksi alustakohtaista tapausta jäi ajamatta. Desktopin
-tyyppitarkistus ja rajattu riippumaton lähdekatselmus läpäisivät.
-Näyttö ei ole backendittoman compositionin, SQLite/Electron-ketjun,
-paketoidun palautuksen tai W7.2:n PR/main-hyväksyntä. Vanhojen ja uusien
-päällekkäisten kohdesarjojen määriä ei lasketa yhteen.
-
-**Hyväksyntäketjun osaraja:** nykyinen tallennin ja lukijat säilyttävät
-versionmukaisen arvon. Sovellusadmission käyttää sovellushyväksyntää,
-palautuksen business-lähde baselinea ja valmistumistodisteet oikeaa
-business-hyväksyntää. FirstStartin nimetty `deferredBusiness`-tila tarkistaa
-tuoreen valtuuden ja sisällön ennen business-hyväksyntää; hylätty avaus ei
-muuta vierasta palautusjournalia. Rajattu sarja läpäisi 515 testiä 26
-tiedostossa, desktopin ja E2E:n tyyppitarkistukset sekä rajattu riippumaton
-katselmus läpäisivät. Todiste käyttää oikeita metadatatavuja mutta injektoituja
-profiili-, salaisuus- ja valtuusportteja: käynnistysketjun kytkentä ja
-SQLite/Electron/paketoitu näyttö ovat yhä tekemättä. Aiempi 146 testin
-codec-todiste ei ole erillinen lisäkattavuus.
-
-Tallentimien seuraava osaraja on paikallisesti todennettu: metadatan ja
-C-journalin kaikkien slottien sivuvaikutukseton tarkastus sekä C-journalin
-täsmälliseen tiedostovalintaan sidottu poisto. Sen 219 testin vaikutusalueen
-sarja, desktop/E2E-tyypit ja rajattu riippumaton katselmus läpäisivät. Tässä
-aiemmassa osarajassa rajapintoja ei vielä käytetty startupissa;
-slottihavainto yksin ei anna muutosvaltuutta.
-Metadatan vastaava valintaan sidottu kirjoitus ja poisto ovat nyt toteutettuina:
-ne säilyttävät keskeytyneet tavut ja alkuperäisen syyn myös sulkuvirheessä.
-Vaikutusalueen 587 testiä 28 tiedostossa, desktop/E2E-tyypit ja rajatun
-katselmuksen jälkitarkistus läpäisivät. Päällekkäisiä kohdesarjoja ei lasketa
-yhteen. Tämä ei vielä ole oikean SQLite/Electron-käynnistyksen tai paketoidun
-palautuksen näyttö.
-
-**Tilavalmistelun seuraava osaraja:** nykyisen sijaintimuunnoksen omistajan
-nimetty valitsinhaara tarkistaa kaikki metadata-/journal-/registry-slotit
-ennen muutoksia. Legacy-kopio ja sen synkronointi varmennetaan ennen lähteen
-poistoa, myös kadonneen kuittauksen jälkeen. Journalin terminalit sidotaan
-sovellushyväksyntään, eivät business-baselineen. Vanhat korjaavat lukupolut
-säilyvät erillään. Vaikutusalueen sarja läpäisi 677 testiä 24 tiedostossa;
-yksi alustakohtainen tapaus jäi ajamatta. Rajatun katselmuksen havaitsemat
-kopion synkronointi-, duplikaattiavain- ja poistovaltuuspuutteet korjattiin
-regressioineen; jälkitarkistukseen ei jäänyt avoimia löydöksiä.
-Desktopin ja E2E:n tyyppitarkistukset läpäisivät. Tämä on oikeiden
-tiedostotavujen ja injektoidun valtuuden näyttö, ei native-prosessin tai
-paketoidun palautuksen todiste. Tämä aiempi osaraja ei vielä kytkenyt startupia.
-
-**Käynnistyskytkennän osaraja:** nykyinen startup käyttää nyt nimettyä
-tilavalmistelua ja tuoretta installation-/recovery-valtuutta ennen
-valitsinhaaran korjaavia lukuja. Build-admission sidotaan saman tarkistuksen
-metadataan ja DSR-tavuihin. Vanha adoptio sekä create/import-palautus säilyvät;
-palautuksen jälkeinen valinta ja build-admission luetaan uudelleen.
-Vaikutusalueen 710 testiä 14 tiedostossa sekä desktop/E2E-tyypit läpäisivät.
-Rajattu riippumaton lähdekatselmus korjauksineen on valmis.
-Todiste kattaa oikean compositionin ja tiedostotavut ohjatuilla native- ja
-Electron-rajoilla, ei valitsimen käyttöliittymää tai paketoitua ketjua.
-
-**W6:n nimetty jatko:** lykkääntynyt business-hyväksyntä on toteutettu
-nykyisiin suunnittelu-, journal- ja siirtymäomistajiin erillisellä
-startup-valtuudella. Sovellusadmissionia ei muuteta uudeksi päivitykseksi.
-Pysyvä keskeytys-/v1/v2-todennus ja vanhojen kutsujien vaikutusalueen sarja
-läpäisivät 451 testiä 19 tiedostossa. Rajattu katselmus löysi korjaavan
-lukemisen valtuusjärjestyksen puutteen; korjaus ja sivuslottien säilymisen
-regressiot läpäisivät jälkitarkistuksen. Desktopin ja E2E:n tyyppitarkistukset
-sekä ohjeiden linkkitarkistus läpäisivät. Tämä ei ole SQLiten, Electronin
-tai koko yritysavauksen tuotantokytkennän näyttö.
-
-**Valitsinavauksen lukuraja:** nykyinen switch-omistaja osaa tarkastaa
-source-null-journalin v2:n ja rekisterin kaikki slotit muuttamatta niitä.
-Yhteinen tilaluokitus tarkistaa koko rekisterin sidonnan ja omistajien
-julkaisujärjestyksen; julkaisematon initial-next ei anna avausvaltuutta.
-V1:n tavut ja vanhat tallennusmetodit säilyvät. Vaikutusalueen 931 testiä
-30 tiedostossa ja desktopin tyyppitarkistus läpäisivät. Rajatussa
-riippumattomassa lähdekatselmuksessa ei löytynyt korjattavaa virhettä.
-Tämä on lukurajan näyttö, ei kirjoitus-/poistovaltuus tai valmis yritysavaus.
-
-**Valitun tallennuksen osaraja:** nykyinen byte-slot-tallennin sekä registry-
-ja switch-omistajat sitovat kirjoituksen, palautuksen ja siivouksen
-tarkkoihin tavuihin, tiedostoidentiteettiin ja tuoreeseen valtuuteen.
-Rajatut regressiot ja riippumaton katselmus korjauksineen läpäisivät.
-Kuluttajien yhdistetyissä ajoissa palautustestit aikakatkaisivat; kahden
-testipolun ennenaikainen siivous liitettiin nykyiseen elinkaarisuojaan.
-Korjattu palautustiedosto ja sen tukiregressiot läpäisivät 200 testiä.
-Alkuperäisen viiveen syy on edelleen avoin eikä yhdistettyjä hylkäyksiä
-muuteta onnistumisiksi. Tämä ei ole koko startupin tai paketoidun ketjun
-hyväksyntä.
-
-**Kopioaktivoinnin valintaraja:** nykyiseen migraatiosuojaan on lisätty
-source-null-avauksen täsmällinen rekisteri-/journal-/lineage-/valtuussidonta.
-Tarkastus ei korjaa sivuslotteja tai käytä vanhan käynnistyksen kuittia.
-Current-kohteen tarkistus jatkaa FirstStartiin; pending-kohde käyttää
-nykyistä yhtä kopioaktivointia. Katselmuksessa havaittu vanhentuneen
-valtuuden siivouspolku toistettiin ja suojattiin nykyisessä koordinaattorissa.
-Päivitys- ja switch-kuluttajien lopullinen 376 testin sarja 21 tiedostossa
-läpäisi. Mukana on oikeiden tallentimien, guardin ja startup-/inspector-
-luokkien yhteinen koe ohjatuilla prosessi- ja sisältöporteilla sekä
-koordinaattorin valtuudenmenetysten regressiot. Aiemmat osajoukot eivät ole
-lisänä tähän testimäärään.
-Rajattu riippumaton jälkikatselmus ei jättänyt avoimia P1/P2-havaintoja.
-Tämä aiempi osaraja ei vielä muodostanut valtuutta valitsimen startupissa.
-Se ei ole SQLiten, Electronin tai koko W7.2:n integraatiohyväksyntä.
-
-**Valitsinavauksen startup:** workspace-resolverin uusi versionmukainen
-haara sovittaa v2-slotit nykyisillä tallentimilla ja välittää valinnan
-aktivoinnin suojaan. Yrityksetön tulos erotetaan ennen business-sessionin
-luontia. Paluu, kohteen hylkäys ja hyväksyntä vaativat nykyisen päättymis-
-todisteen; epävarma tai vanhentunut valtuus säilyttää aineiston. Kadonnut
-kirjoituskuittaus ratkaistaan uuden käynnistyksen pysyvästä tilasta.
-Katselmuksen identiteetti- ja vanhan v1-journalin keskeytystapaukset
-toistettiin ja korjattiin; jälkiluku ei ota vierasta samantavuista tiedostoa
-omakseen. Todellisen compositionin testi toisti myös legacy-adoption
-ohittamisen null-valinnassa, ja aiempi palautusomistaja säilytettiin.
-Lopullinen tallennus-/switch-/aktivointikuluttajien sarja läpäisi 700 testiä
-35 tiedostossa; yksi alustakohtainen tapaus jäi ajamatta. Käynnistys- ja
-palautuscompositionin erillinen sarja läpäisi 228 testiä. Osajoukkoja ei
-lasketa näihin lisänä. Rajattu riippumaton jälkikatselmus ei jättänyt
-avoimia P1/P2-havaintoja tähän osarajaan.
-Tämän osarajan testit käyttävät oikeita tiedostoja ja ohjattuja terminal-
-portteja. Main ei vielä toimita lopullista valtuutta: valitsimen ikkuna,
-FirstStart/W6-kytkentä ja native-/paketoitu näyttö ovat edelleen avoinna.
-
-**Peruutuksen ja julkaisun osaraja (26.10.2026):** W6:n valmistelu voidaan
-perua vain tuoreen terminal-valtuuden sekä täsmällisten journal-tavujen ja
-tiedostoidentiteetin perusteella. FirstStartin deferred-haara käyttää
-korjaamattomia metadatalukuja ja alkuperäiseen tiedostoidentiteettiin sidottua
-julkaisua nykyisen tallentimen kautta. Takaisinluku vaatii kirjoittajan
-seuraaman identiteetin. Kummankaan rajan valtuusfunktioita ei vaihdeta kesken
-operaation. Katselmuksen tiedosto- ja callback-vaihdot toistettiin ja
-korjattiin vastatesteineen. Lopullinen kuluttajasarja läpäisi 1 194 testiä
-65 tiedostossa; desktopin ja E2E:n tyyppitarkistukset sekä ohjeiden linkit
-läpäisivät. Rajattu riippumaton jälkikatselmus ei jättänyt tähän osarajaan
-avoimia P1/P2-havaintoja. Päällekkäisiä kohdesarjoja ei lasketa määrään
-lisänä. Tämä ei vielä kytke mainin todellista terminal-valtuutta eikä hyväksy
-native-/paketoitua ketjua.
-
-**Uusin osatodennus (26.10.2026):** main käyttää tilavalmistelun valittuja
-tiedostotavuja ja identiteettejä W6:n sekä FirstStartin yhteisessä
-vaihekohtaisessa valtuudessa. Deferred-admission ei kutsu korjaavaa lukijaa.
-FirstStart palauttaa oman julkaisunsa varmennetun identiteetin; main ei ota
-myöhemmin löytyvää samantavuista tiedostoa omakseen. Ulkoiset tarkistukset
-eivät lue omistajan keskeneräisiä kirjoitusslotteja. Kaikki rinnakkain
-aloitetut ulkoiset lukijat päättyvät myös yhden lukijan virheessä.
-Koko käynnistys-/palautustiedoston 226 testiä sekä viiden tiedoston 141
-sopimustestiä läpäisivät. Viereisten kuluttajien lopullinen sarja läpäisi
-729 testiä 37 tiedostossa; yksi alustakohtainen tapaus jäi ajamatta.
-Päällekkäisiä kohdesarjoja ei lasketa yhteen. Desktopin, Electron-koetoteutuksen ja E2E:n
-tyyppitarkistukset läpäisivät. Rajatussa riippumattomassa jälkikatselmuksessa
-ei jäänyt vahvistettuja P1/P2-havaintoja. Testit käyttävät oikeita tiedostoja
-ja compositionia mutta ohjattuja native-/Electron-rajoja; tämä ei ole
-SQLite-/Electron- tai pakettihyväksyntä. Aiemman passiivisen siirtymän
-aikakatkaisun tarkka syy säilyy avoimena.
-
-**Seuraava työ:** source-null-avauksen todellinen terminal-valtuus ennen
-valitsimeen paluuta tai hyväksyntää sekä sen main-kytkentä. Uuden candidaten
-rollbackin kirjoittajan tarkka journal-kuitti välittyy nyt compositionille;
-mainin on kytkettävä sen loppukäsittely nykyiseen palautuksen omistajaan.
-Myöhempi luku vain tarkistaa valinnan, ei valitse sitä uudelleen.
-Alkuperäisen normaalin startup-tilan perusteella ei saa olettaa myöhemmin
-syntyneen palautusjournalin puuttumista. Lopputarkistusten jälkeen perutaan
-W6:n oma valmistelu ennen null-valinnan julkaisua. Omistajien
-luovutusrajapinta välittää alkuperäiset ja kirjoittajan varmentamat switch-/
-registry-havainnot ennen työtilajuuren tarkistusta ja hyväksytyn switch-poiston
-jälkeen. W6 hyväksyy vain saman rekisterisisällön kertaluonteisen siirron ennen
-valmisteluaan. Tämän osan 531 vaikutusalueen testiä sekä 235 main-käynnistyksen
-ja järjestysrajan testiä läpäisivät; ne eivät vielä ole terminal-, SQLite-/
-Electron- tai paketoitu näyttö. Katselmuksen vanhentuneen kuitin ja käsitellyn
-tarkistusvirheen jatkamisen puutteet toistettiin ja korjattiin regressioineen.
-Rajattu riippumaton jälkikatselmus ei jättänyt avoimia P1/P2-havaintoja.
-W6:n nykyisen compositionin deferred-haaran registry- ja
-journal-kutsut käyttävät nyt kirjoituksen sisällä uusittavaa valtuutta ja
-kirjoittajan tiedostoidentiteetin takaisinlukua; metadataluku ei korjaa
-sivuslotteja. Rajatun katselmuksen kaksi valtuus-/jatkamispuutetta toistettiin
-ja korjattiin vastatesteillä. Tämä aiempi tallennusosaraja ei yksin ollut
-mainin, SQLite/Electronin tai paketoidun ketjun näyttö.
-Vaikutusalueen lopullinen sarja läpäisi 908 testiä 35 tiedostossa; yksi
-alustakohtainen tapaus jäi ajamatta. Desktopin, Electron-koetiedostojen ja
-E2E-kuluttajien tyyppitarkistukset sekä ohjeiden linkkitarkistus läpäisivät.
-Rajattuun jälkikatselmukseen ei jäänyt avoimia P1/P2-havaintoja.
-Ensimmäisen yritysavauksen tilavalmistelu on nyt kytketty
-pääprosessiin ennen korjaavia lukijoita: alkuperäiset metadatahavainnot,
-rekisterivalinta, toimitettu build ja installation-valtuus tarkistetaan
-ennen muutoksia. Vanhan v1-lukijan yhteensopivuus säilyy myös v2-rekisterissä;
-ristiriitainen uusi hyväksyntä tai puuttuva rekisteri ei pääse siivoavaan
-vanhaan polkuun. Lopullinen seitsemän tiedoston vaikutusalueen sarja läpäisi
-362 testiä. Desktopin, Electron-koetoteutuksen ja E2E:n tyyppitarkistukset
-sekä ohjeiden linkkitarkistus läpäisivät. Rajattu riippumaton jälkikatselmus ei jättänyt tähän osarajaan
-avoimia P1/P2-havaintoja. Testit käyttävät oikeaa compositionia ja tiedostoja,
-mutta ohjattuja native-/Electron-rajoja. Tämä ei vielä todista W6:n ja
-FirstStartin myöhempiä mutaatioita tai koko yritysavausta.
-Nimetty tilavalmistelu on toteutettu nykyisen metadatatallentimen päälle:
-se tarkistaa keskeytysten yhteisen kirjoitusjärjestyksen ja säilyttää valitut
-tavut sekä tiedostoidentiteetit myös palautuksen omassa keskeytyksessä.
-Lopullinen kymmenen tiedoston vaikutusalueen sarja läpäisi 370 testiä;
-nykyisen palautuscompositionin erillinen sarja läpäisi 191 testiä.
-Rajattu riippumaton katselmus ja korjausten vastatestit on tehty.
-Nämä aiemmat oikeiden tiedostojen kokeet eivät vielä todistaneet mainin
-kutsua. SQLiten/Electronin ketju ja paketoitu palautus ovat yhä avoinna.
-Mainin käynnistyksen voimassaolo on nyt sidottu nykyisen varausomistajan
-elinkaareen myös hallitun lapsisiirron aikana. Yritysvalinnan myöhäinen
-tulos ei ohita tätä tarkistusta session, relaunchin tai runtime-resurssien
-avauksessa. Fyysinen varaus, kertakäyttöinen työlupa ja palautuksen
-päättymistodiste säilyvät erillisinä vaatimuksina
-[desktopin omistajasopimuksessa](local-desktop-implementation-plan.md#prosessivarauksen-adapteri-r18).
-Tämän kytkennän kuuden tiedoston kohdesarja läpäisi 323 testiä. Viimeisen
-testiadapterin paluuarvokorjauksen jälkeen kohdekoe sekä desktopin,
-Electron-koetoteutuksen ja E2E:n tyyppitarkistukset läpäisivät. Rajattu
-riippumaton katselmus ei jättänyt avoimia P1/P2-havaintoja. Tämä on
-käynnistysvaltuuden osatodiste, ei native- tai pakettihyväksyntä.
-Osittainen rekisterituki ei anna muunnosvaltuutta.
-FirstStartin uusi tila ja W6:n nimetty jatko ovat nyt mainin käytössä
-jo valitun yrityksen deferred-haarassa, ilman yleistä B-baselinen
-store-adapteria tai teeskenneltyä uutta päivitystä. Historiallisen palautuksen
-terminal-kytkentä ja source-null-composition jäävät integraation porteiksi.
-Valitsimen readiness ei ole business-hyväksyntä, null-valinta ei luo
-oletusyritystä eikä epävarma prosessisulku avaa uusia hallintakirjoituksia.
-Sitten pysyvät regressiot ja oikean käynnistysketjun todistus ennen saman
-puhtaan paketin sekä täsmällisen PR/mainin portteja.
-W7-P1-P4:n hyväksyttyjä päätöksiä tai jo katselmoituja kokeita ei aloiteta
-uudelleen ilman omaa havaintoa. Uusi nimeämätön päätös kysytään ennen kytkentää.
+Aiemmat valmistelu- ja osatodennukset säilyvät muuttamattomina
+[W7.2:n kytkentähistoriassa](release-0.3.0-integration-history.md#w72n-valitsinkuluttajaa-edeltävä-jatkamiskohta-26102026).
+Ne eivät ole rinnakkaisia nykytiloja tai nykyisen revision PR/main-todisteita.
 
 W7.3-W7.5:n vahvistus, lopullinen poisto ja backenditon tukilaajennus jäävät
 erillisiksi paloiksi; suunnittelunäyttö ei ole tuotannon hyväksyntä.

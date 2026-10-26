@@ -29,6 +29,47 @@ const status: WorkspaceManagementStatus = {
 };
 
 describe('runWorkspaceManagementOperation', () => {
+  it.each(['create', 'import', 'rename'] as const)(
+    'refreshes %s from null selection without automatically opening a workspace', async (mode) => {
+      const selectorStatus: WorkspaceManagementStatus = {
+        ...status,
+        activeWorkspaceId: null,
+        workspaces: [otherWorkspace],
+      };
+      const getStatus = vi.fn(async () => selectorStatus);
+      const switchTo = vi.fn(async () => 'relaunching' as const);
+      const capability = createCapability({
+        getStatus,
+        importBackupAsNew: vi.fn(async () => 'completed' as const),
+        switchTo,
+      });
+
+      await expect(runWorkspaceManagementOperation({
+        capability,
+        mode,
+        selectedWorkspace: otherWorkspace,
+        status: selectorStatus,
+        workspaceLabel: 'New name',
+      })).resolves.toEqual({ status: selectorStatus, type: 'refreshed' });
+      expect(getStatus).toHaveBeenCalledOnce();
+      expect(switchTo).not.toHaveBeenCalled();
+    },
+  );
+
+  it('opens an explicitly chosen workspace from null selection through the existing switch', async () => {
+    const getStatus = vi.fn(async () => status);
+    const switchTo = vi.fn(async () => 'relaunching' as const);
+    await expect(runWorkspaceManagementOperation({
+      capability: createCapability({ getStatus, switchTo }),
+      mode: 'confirmSwitch',
+      selectedWorkspace: otherWorkspace,
+      status: { ...status, activeWorkspaceId: null, workspaces: [otherWorkspace] },
+      workspaceLabel: '',
+    })).resolves.toEqual({ type: 'relaunching' });
+    expect(switchTo).toHaveBeenCalledWith(otherWorkspaceId);
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
   it('refreshes a completed create and preserves relaunch as terminal busy state', async () => {
     const getStatus = vi.fn(async () => status);
     const completedCapability = createCapability({ getStatus });

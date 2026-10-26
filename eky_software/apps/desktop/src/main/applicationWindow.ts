@@ -50,9 +50,12 @@ export function createApplicationWindow(
 
 export async function loadApplicationWindow(
   window: BrowserWindow,
+  mode: 'business' | 'selector' = 'business',
 ): Promise<void> {
   try {
-    await window.loadURL('eky://app/index.html');
+    // This is presentation only; main's protocol and capabilities own authority.
+    await window.loadURL(mode === 'selector'
+      ? 'eky://app/index.html#workspace-selector' : 'eky://app/index.html');
   } catch {
     throw new Error('DESKTOP_SMOKE_RENDERER_FAILED');
   }

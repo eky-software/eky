@@ -653,9 +653,15 @@ hyväksyttyä lineagea vasten, ei loppuun käytetyn switch-valtuuden kautta.
 Palautettu terminal-valtuus säilyy luvallisten switch-kirjoitusten yli;
 se ei vaadi niitä edeltävän slot-kuvan säilymistä.
 
-Pelkkä null-valinta ilman switchiä, `rollbackSelected`-uudelleenkäynnistys
-ja business-metadatan source-null-avaus eivät vielä kuulu tähän kytkentään.
-Niitä ei saa ohittaa luomalla business-sessionia. Ohjatun prosessi- ja
+Pelkkä null-valinta ilman switchiä käyttää nyt mainin fyysistä varausta
+ja journalien poissaolotarkistusta ennen valitsinkuluttajaa. Sen tuore
+valtuus ei hyväksy journalia tai jo aloitettua business-runtimea.
+Tämä tarkistetaan jo resolverin valinnan admissionissa, ennen sen
+korjaavia slot-lukuja tai session luontia; pelkkä myöhempi terminal-esto
+ei riitä. Nyky-, next- ja backup-journalien regressiot säilyttävät tavut.
+`rollbackSelected`-uudelleenkäynnistys ja business-metadatan source-null-
+avaus ovat vielä erillisiä puuttuvia liitoksia. Niitä ei saa ohittaa
+luomalla business-sessionia. Ohjatun prosessi- ja
 sisältörajan regressiot eivät korvaa SQLite/Electron- tai paketoitua näyttöä.
 Koko kytkennän hyväksyntä ja avoimet testihavainnot ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
@@ -666,12 +672,12 @@ haaran ennen business-valmistelua. `planDeferredBusinessLocalUpdateState`
 säilyy lykätyn business-avauksen omistajana; sen hylkäystä ei käsitellä
 yleisenä lupana yrittää toista palautuspolkua.
 
-| Puuttuva liitos | Säilyvä omistaja ja vaadittu regressio |
+| Liitos ja sen tila | Säilyvä omistaja ja vaadittu regressio |
 | --- | --- |
-| Null ilman switchiä | Nykyinen valitsimen tilavalmistelu ja `resolveWorkspaceSelectorSwitchStartup` saavat mainin todellisen installation-/prosessipoissaolovaltuuden. Todista ready-, tyhjä- ja recovery-only-rekisteri ilman session, backendin, brokerin tai oletusyrityksen luontia sekä muuttuneen valinnan hylkäys. |
+| Null ilman switchiä, main-kytkentä toteutettu | Nykyinen valitsimen tilavalmistelu ja `resolveWorkspaceSelectorSwitchStartup` saavat mainin installation-/prosessipoissaolovaltuuden. Ready-, tyhjä- ja recovery-only-rekisteri on todennettu ohjatulla native-rajalla ilman session, backendin, brokerin tai oletusyrityksen luontia. SQLite/Electron- ja pakettinäyttö puuttuvat. |
 | Keskeytynyt paluu | Switchin nykyiset `selectorUncommitted`, `unpublishedPreparation`, `completeReturn` ja `selectorReturned` erotetaan `validateTarget`/`completeSelection`-avauksesta. Ennen valitun journalin poistoa vaaditaan tuore omistajuus ja sisäkkäisten palautusten loppuminen; aiemman prosessin kuittaus ei siirry restartiin. Todista jokainen sallittu tila ja ristiriidassa säilyvät tavut. |
 | Business-hyväksytty metadata ja source-null | Sovellusadmission ja W6:n nykyinen aktivointitarkistus säilyvät; olematonta lykättyä business-siirtymää ei rakenneta valtuuden saamiseksi. Todista kohteen todellinen schema-/lineage-tarkistus, normaali FirstStart sekä onnistuvan avauksen ja turvallisen paluun erilliset lopputilat. |
-| Valitsintuloksen kuluttaja | `resolveDesktopWorkspaceStartup` palauttaa jo erillisen selector-tuloksen ilman session luontia. Mainin nykyinen estävä välivaihe korvataan backendittoman käyttöliittymän ja hallinnan kytkennällä vasta niiden omistajuus- ja sulkutestien mukana. Valitsimen näkyminen ei todista yritystietokannan terveyttä. |
+| Valitsintuloksen kuluttaja, kytkentä toteutettu | `resolveDesktopWorkspaceStartup` palauttaa erillisen selector-tuloksen ilman session luontia. Main liittää sen backendittomaan käyttöliittymään ja hallintaan nykyisen lifecycle-kahvan kautta. Ohjatut sulku- ja UI-testit eivät korvaa todellista Electron-ketjua. Valitsimen näkyminen ei todista yritystietokannan terveyttä. |
 
 Valitsimen hallinnan [rajattu elinkaaritoteutus](../../apps/desktop/src/workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.ts) toteuttaa nykyiset
 `ActiveWorkspaceLifecyclePort`- ja `WorkspaceRuntimeAbsencePort`-portit
@@ -681,9 +687,8 @@ elinikään jo kutsuhetkellä ennen ensimmäistä odotusta ja tarkistaa
 molemmat myös fyysisen varaustarkistuksen jälkeen.
 Candidate-käynnin jälkeen poissaolo vaatii uuden varaustarkistuksen;
 aiempaa sulkutulosta ei käytetä sen korvikkeena. Epävarma tulos estää
-jatkon ja uudelleenkäynnistyspyynnön. Tämä porttitoteutus ei vielä kytke
-valitsinikkunaa tai todista koko hallintatyön päättymistä sovellusta
-suljettaessa; mainin guard säilyy ennen varsinaista kuluttajakytkentää.
+jatkon ja uudelleenkäynnistyspyynnön. Mainin valitsinkuluttaja käyttää
+tätä porttia yhdessä alla kuvattujen hallinnan sulkuomistajien kanssa.
 Kohderegressiot sekä mainin nykyisen varausomistajan kanssa tehty
 ohjattu kytkentätesti läpäisivät. Katselmuksen löytämä liian myöhäinen
 huoltovarauksen sidonta toistettiin ja korjattiin; jälkikatselmus ei
@@ -708,8 +713,8 @@ Mainin ulkoinen sulku odottaa molemmat omistajat ennen oman fyysisen
 varauksensa vapautusta; pelkkä `dispose` tai valmis odotus ei korvaa
 varaus- ja prosessipoissaolotarkistusta. Tämä järjestys on todennettu
 olemassa olevien IPC-, palvelu-, luonti- ja elinkaariomistajien yhteisessä
-testissä ohjatuilla native-rajoilla. Valitsinikkunan varsinaisen sulun
-kytkentä mainiin ja paketoitu todistus ovat edelleen tekemättä.
+testissä ohjatuilla native-rajoilla. Mainin valitsinikkunan sulkukytkentä
+on nyt toteutettu; todellisen Electronin ja paketin näyttö on tekemättä.
 
 **Backendittoman hallinnan composition:** nykyinen
 `createWorkspaceManagementComposition` erottaa selector- ja active-vaihtoehdot.
@@ -734,8 +739,28 @@ sidotaan samoihin rekisteritavuihin, identiteetteihin ja elävään valtuuteen.
 Fyysinen prosessipoissaolo tarkistetaan, ja huoltovaraus vapautetaan ennen
 nykyisen relaunch-omistajan pyyntöä. Epävarma kirjoitus tai vapautus säilyttää
 aineiston ja estää jatkon. Valinta ei ole yrityksen FirstStart-hyväksyntä.
-Mainin valitsinkuluttaja ei vielä käytä tätä compositionia; alemman tason
-regressiot eivät yksin avaa valitsinta tai sulje W7.2:n hyväksyntää.
+Mainin valitsinkuluttaja käyttää tätä compositionia ilman aktiivisen
+yrityksen polkujen tai salaisuusbrokerin muodostamista. Alempien rajojen
+regressiot eivät yksin sulje W7.2:n hyväksyntää.
+
+**Valitsinikkuna ja sovelluksen sulku:** mainin erillinen
+`desktopSelectorComposition` kokoaa vain nykyiset hallinta-, native-valinta-,
+permission-, ikkuna- ja H5-häiriöilmoitusrajat. Web-sisältö luetaan samasta
+sovelluspaketin web-juuresta kuin business-tilassa. URL:n valitsinfragmentti
+valitsee vain esityksen, ei valtuutta: main ei luo business-sessionia ja
+protokolla torjuu business-reitit. Renderer ei voi vaihtaa tätä tilaa tai
+käynnistää business-palvelinta URL:lla. Aktiivisen yrityksen korvausta ei
+tarjota. W7.5:n backenditon tukipaketti on erillinen jatko.
+
+Mainin sama jaettu sulkutehtävä sulkee admissionin heti, odottaa palvelun
+ja IPC:n jo aloittamat työt sekä tarkistaa fyysisen varauksen ennen sen
+vapautusta. Yhden omistajan sulkuvirhe ei estä toisen odottamista eikä
+muutu puhtaaksi suluksi. Myöhäinen native-tiedostovalinta ei avaa
+salasanaikkunaa tai aloita tuontia. Startupin valintakuittia ei käytetä
+pitkäikäisen valitsinruntimen valtuutena. Rendererin latauksen epäonnistuminen
+käyttää samaa sulkuomistajaa ennen quit-pyyntöä; lifecycle palautetaan jo
+ennen latauksen valmistumista, kuten business-polussa. Tekninen
+`desktop.started` ei kirjoita business-hyväksyntää.
 
 Switchin nykyiset alempien rajojen testit käyttävät injektoitua terminal-
 valtuutta. Ne eivät todista näiden main-liitosten valmistumista. Nykyinen

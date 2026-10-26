@@ -15,6 +15,6 @@ const composition = createWebAppComposition();
 
 createRoot(rootElement).render(
   <StrictMode>
-    <App apiClient={composition.apiClient} />
+    <App {...composition} />
   </StrictMode>,
 );

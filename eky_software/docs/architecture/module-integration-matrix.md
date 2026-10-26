@@ -80,7 +80,12 @@ huoltovaraukseen; tilalukijat eivät jaa kirjoittajan sisäistä lukkoa.
 Odotus ei anna native-poissaolo- tai siivousvaltuutta.
 [Omistava sulkusopimus](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 ja [M1:n nykytila](release-0.3.0-m1-preparation-plan.md#jatka-tästä) erottavat
-todennetut osarajat vielä puuttuvasta main-/valitsinkytkennästä.
+todennetut osarajat vielä puuttuvista keskeytyneen avauksen liitoksista ja
+native-/pakettihyväksynnästä. Mainin valitsinkuluttaja käyttää nyt näitä
+omistajia ilman business-backendia, sessionia tai brokeria. Web avaa vain
+nykyisen yrityshallinnan näkymän ja H5-häiriöpalkin; mainin protokolla torjuu
+business-HTTP-reitit. Ohjatut composition-/UI-testit eivät ole koko
+SQLite/Electron-ketjun näyttö.
 
 Desktopin H5-häiriöilmoitus ei muuta Diagnosticsin omistajuutta:
 mainin nykyinen failure sink omistaa prosessikohtaisen häiriöhavainnon ja

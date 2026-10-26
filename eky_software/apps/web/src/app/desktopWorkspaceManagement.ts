@@ -40,6 +40,11 @@ export interface WorkspaceManagementCapability {
   switchTo(workspaceId: string): Promise<'completed' | 'relaunching'>;
 }
 
+export type WorkspaceSelectorCapability = Pick<
+  WorkspaceManagementCapability,
+  'createEmpty' | 'getStatus' | 'importBackupAsNew' | 'rename' | 'switchTo'
+>;
+
 export function getDesktopWorkspaceManagement(
   target: Pick<Window, 'ekyDesktop'> = window,
 ): WorkspaceManagementCapability | undefined {

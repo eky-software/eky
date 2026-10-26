@@ -121,6 +121,7 @@ import {
 } from './desktopStartupCompletion.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
+import { startDesktopSelectorComposition } from './desktopSelectorComposition.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
@@ -558,6 +559,7 @@ export async function startDesktopComposition(
 
   let startupSessionSecret: string | undefined;
   let reservation: DesktopWorkspaceReservation | undefined;
+  let selectorOwnsReservation = false;
   let startupActive = true;
   const assertStartupAuthority = () => {
     if (!startupActive) throw new WorkspaceProcessReservationError('lost');
@@ -722,13 +724,46 @@ export async function startDesktopComposition(
     let proveRuntimeTerminal: ((request: DesktopSelectorTerminalRequest) => Promise<Readonly<DesktopSelectorRuntimeTerminalProof>>) | undefined;
     const selectorStartup = deferredBusinessStartup;
     const selectorMigration = workspaceFirstStartMigration;
-    const selectorAuthority: WorkspaceSelectorSwitchStartupAuthority | undefined = selectorStartup === undefined ||
-      !Object.values(installationUpdateState.deferredBusiness!.selectedState.switchJournal).some(slot => slot !== undefined)
-      ? undefined : {
+    const hasDeferredSelectorSwitch = selectorStartup !== undefined &&
+      Object.values(installationUpdateState.deferredBusiness!.selectedState.switchJournal).some(slot => slot !== undefined);
+    const selectorAuthority: WorkspaceSelectorSwitchStartupAuthority = !hasDeferredSelectorSwitch
+      ? {
         assertCurrent: assertStartupAuthority,
-        admitSelection: selectorStartup.admitSelectorSelection,
-        didSettleSelection: receipt => selectorStartup.settleSelectorSelection(receipt, selectorMigration),
-        proveTerminal: request => selectorStartup.proveSelectorTerminal(request, selectorMigration, async selected => {
+        async admitSelection(selected) {
+          assertStartupAuthority();
+          const registry = selected.registrySlots.current?.value;
+          // This owner admits only the stable, journal-free selector. Reject
+          // pending business openings before recovery can publish or create a session.
+          if (runtimeEntered || registry?.formatVersion !== 2 || registry.activeWorkspaceId !== null ||
+              selected.registrySlots.next !== undefined || selected.registrySlots.backup !== undefined ||
+              Object.values(selected.journalSlots).some(slot => slot !== undefined)) {
+            throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+          }
+        },
+        async proveTerminal(selected) {
+          // Plain selector startup has no prior business owner or switch to
+          // recover. Journal-bearing paths require their separate terminal proof.
+          if (runtimeEntered || selected.purpose !== 'selectorReturn' || selected.journal !== undefined ||
+              selected.registry.activeWorkspaceId !== null) {
+            throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+          }
+          const assertCurrent = () => {
+            assertStartupAuthority();
+            if (runtimeEntered) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+            workspaceReservation.assertMainCurrent();
+          };
+          assertCurrent();
+          await workspaceReservation.assertMainOwned();
+          await assertNoSelectorWorkspaceRecoveryFromRoot(options.userDataPath, selected.registry);
+          await workspaceReservation.assertMainOwned();
+          assertCurrent();
+          return Object.freeze({ assertCurrent });
+        },
+      } : {
+        assertCurrent: assertStartupAuthority,
+        admitSelection: selectorStartup!.admitSelectorSelection,
+        didSettleSelection: receipt => selectorStartup!.settleSelectorSelection(receipt, selectorMigration),
+        proveTerminal: request => selectorStartup!.proveSelectorTerminal(request, selectorMigration, async selected => {
           if (runtimeEntered) {
             if (proveRuntimeTerminal === undefined) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
             return proveRuntimeTerminal(selected);
@@ -765,7 +800,7 @@ export async function startDesktopComposition(
       createRuntimeSession: dependencies.createRuntimeSession,
       relaunchApplication: options.relaunchApplication,
       resolveActiveWorkspace: dependencies.resolveActiveWorkspace,
-      ...(selectorAuthority === undefined ? {} : { selectorAuthority }),
+      selectorAuthority,
       userDataRoot: options.userDataPath,
     });
     if (workspaceStartup.status === 'relaunching') {
@@ -773,8 +808,16 @@ export async function startDesktopComposition(
       return undefined;
     }
     if (workspaceStartup.status === 'selector') {
-      // Business composition must never turn a backendless selection into a session.
-      throw new WorkspaceManagementRecoveryRequiredError();
+      // Transfer the reservation to the selector's real settlement owner. The
+      // outer catch must not release it after an uncertain selector close.
+      selectorOwnsReservation = true;
+      return await startDesktopSelectorComposition({
+        options, dependencies, selection: workspaceStartup.selection,
+        reservation: workspaceReservation, maintenanceLease: workspaceMaintenanceLease,
+        localUpdateRuntimePaths: installationUpdateState.localUpdateRuntimePaths,
+        operationalIdentity: desktopOperationalIdentity, operationalLogger: desktopOperationalLogger,
+        failureSink: operationalLogFailureSink, startedAt: desktopStartedAt,
+      });
     }
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
     startupSessionSecret = runtimeSessionSecret;
@@ -841,7 +884,7 @@ export async function startDesktopComposition(
       workspaceReservation,
       startupReservationOwner,
       assertStartupAuthority,
-      ...(selectorAuthority === undefined ? {} : { bindSelectorTerminal(prove: NonNullable<typeof proveRuntimeTerminal>) {
+      ...(!hasDeferredSelectorSwitch ? {} : { bindSelectorTerminal(prove: NonNullable<typeof proveRuntimeTerminal>) {
         assertStartupAuthority();
         if (proveRuntimeTerminal !== undefined) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
         proveRuntimeTerminal = prove;
@@ -867,7 +910,7 @@ export async function startDesktopComposition(
     };
   } catch (error) {
     // Closing refuses unresolved transfers; their reservation stays held until exit.
-    await reservation?.close().catch(() => undefined);
+    if (!selectorOwnsReservation) await reservation?.close().catch(() => undefined);
     try { options.observeStartupException?.(error, 'compositionStartup', startupSessionSecret === undefined ? [] : [startupSessionSecret]); } catch { /* Optional private evidence. */ }
     const errorCode = readSafeStartupFailureCode(error);
     try {
