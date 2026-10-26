@@ -85,7 +85,10 @@ native-/pakettihyväksynnästä. Mainin valitsinkuluttaja käyttää nyt näitä
 omistajia ilman business-backendia, sessionia tai brokeria. Web avaa vain
 nykyisen yrityshallinnan näkymän ja H5-häiriöpalkin; mainin protokolla torjuu
 business-HTTP-reitit. Ohjatut composition-/UI-testit eivät ole koko
-SQLite/Electron-ketjun näyttö.
+SQLite/Electron-ketjun näyttö. Keskeytyneen null-paluun main-liitos käyttää
+nykyistä valittua switch-palautusta ennen business-valmistelua. Se vaatii
+tuoreen main-varauksen ja muiden palautusten poissaolon, ei peri aiempaa
+terveystodistetta eikä muuta accepted-build-metadatan hyväksyntää.
 
 Desktopin H5-häiriöilmoitus ei muuta Diagnosticsin omistajuutta:
 mainin nykyinen failure sink omistaa prosessikohtaisen häiriöhavainnon ja

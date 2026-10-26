@@ -86,6 +86,7 @@ import {
   loadApplicationWindow,
 } from './applicationWindow.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import { recoverDesktopSelectorReturn } from './recoverDesktopSelectorReturn.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { createSecretSafeMigrationGate } from './secretSafeMigrationGate.js';
 import { readSafeStartupFailureCode } from './earlyStartup.js';
@@ -1029,6 +1030,40 @@ async function createInstallationUpdateState(input: {
   await input.assertMainOwned();
   const selection = await registry.inspect();
   input.assertAuthority();
+  if (selection?.formatVersion === 2 && selection.activeWorkspaceId === null &&
+      await hasAnyJournalSlot(createWorkspaceSwitchJournalPaths(input.userDataPath))) {
+    const switchJournal = new WorkspaceSwitchJournalStore(input.userDataPath);
+    await recoverDesktopSelectorReturn({
+      userDataRoot: input.userDataPath, registry, journal: switchJournal, metadata: acceptedBuildMetadataStore,
+      expectedRegistry: selection,
+      selection: { registrySlots: await registry.inspectSlots(), journalSlots: await switchJournal.inspectSlots() },
+      assertCurrent: input.assertAuthority, assertMainOwned: input.assertMainOwned,
+      async assertNoUpdateRecovery() {
+        for (const paths of [
+          createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.legacyAcceptedBuildMetadataPath),
+          createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.journalPath),
+          createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.legacyJournalPath),
+          createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.directSetupMigrationRecoveryPath),
+        ]) {
+          if (await hasAnyJournalSlot(paths)) throw new WorkspaceManagementRecoveryRequiredError();
+        }
+      },
+      async assertBuildAdmission(metadata) {
+        const admission = await requirePreWorkspaceBuildAdmission({
+          buildInfo: input.buildInfo, releaseInfo: input.releaseInfo,
+          stores: {
+            acceptedBuild: { async read() { return metadata; } },
+            journal: { async read() { return undefined; } },
+            directSetupRecovery: { async read() { return undefined; } },
+          },
+        });
+        input.assertAuthority();
+        if (admission !== 'exactAcceptedBuild') throw new WorkspaceManagementRecoveryRequiredError();
+      },
+    });
+    input.assertAuthority();
+    if (!isDeepStrictEqual(await registry.inspect(), selection)) throw new WorkspaceManagementRecoveryRequiredError();
+  }
   // The existing cold create/import and adoption owners keep their recovery
   // route. A rejected selector preparation never falls back to repairing reads.
   const adoptionPending = selection?.activeWorkspaceId === null &&

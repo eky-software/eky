@@ -5,6 +5,37 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n valitsinkuluttajan osatodennus 26.10.2026
+
+Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Se ei ole
+nykyinen työjono; keskeytyneen paluun jatko on M1:n alussa.
+
+**Uusin osaraja:** main liittää nykyiset hallintapalvelun, IPC:n,
+native-salasanavalinnan ja fyysisen prosessivarauksen sulkuportit samaan
+valitsimen elinkaareen. Sulku estää uuden työn, odottaa jo aloitettuja
+komentoja ja native-valintoja sekä varmentaa varauksen ennen vapautusta.
+Myöhäinen tiedostovalinta ei käynnistä tuontia. Epävarma sulku säilyttää
+varauksen. Web käyttää nykyistä yrityshallinnan käyttöliittymää ilman
+business-API-clientia; main torjuu business-HTTP-reitit. Nykyinen H5:n
+lokitushäiriöpalkki säilyy myös valitsimessa.
+
+**Todennettu nyt:** valitsimen ja vanhan business-polun kohderegressiot,
+vieressä olevat hallinta-/sulkuomistajat, protokolla, resolveri ja webin
+koostaminen on tarkistettu. Desktopin, webin ja Electron-testien
+tyyppitarkistukset sekä web-build läpäisivät. Näyttö käyttää oikeaa
+main/composition-koodia ja tiedostoja mutta ohjattuja Electron-/native-
+rajoja; web-testit eivät vielä ole oikean selaimen tai Electron-ikkunan
+hyväksyntä. Päällekkäisiä kohdeajomääriä ei lasketa yhteen.
+Ensimmäiset hylkäykset säilyvät.
+
+Rajattu katselmus löysi liian myöhäisen eston vielä keskeneräiselle
+business-metadatan source-null-avaukselle. Se toistettiin ja korjattiin:
+tavallinen null-valtuus hylkää journalia sisältävän avauksen jo ennen
+resolverin korjaavia lukuja tai session luontia. Kolmen journal-slotin
+regressiot varmentavat myös rekisteri-, journal- ja metadatatavujen
+säilymisen. Korjauksen jälkeinen 27 tapauksen main-kohdeajo ja
+tyyppitarkistus läpäisivät; rajattu jälkikatselmus ei jättänyt löydöstä.
+
 ## W7.2:n valitsinkuluttajaa edeltävä jatkamiskohta 26.10.2026
 
 Alla oleva aiempi jatkamisteksti säilyy muuttamattomana. Nykyinen valitsin-

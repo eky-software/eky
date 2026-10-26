@@ -21,6 +21,9 @@ import { createWorkspaceSelectorSwitchRegistryVariants } from './workspaceSelect
 export interface WorkspaceSelectorSwitchStartupAuthority {
   // Bound by main to the current startup generation and installation admission.
   assertCurrent(): void;
+  // Non-repairing checks for other owners, renewed inside selected writes.
+  // It must not inspect this switch writer's in-flight journal slots.
+  assertExternal?(): Promise<void>;
   admitSelection?(selection: WorkspaceSelectorSwitchObservation): Promise<void>;
   didSettleSelection?(receipt: WorkspaceSelectorSwitchSettlement): Promise<void>;
   proveTerminal(request: Readonly<{
@@ -59,6 +62,7 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
   let usable = true;
   let busy = false;
   const assertStartup = input.authority.assertCurrent.bind(input.authority);
+  const assertExternal = input.authority.assertExternal?.bind(input.authority);
   const assertInitialSelection = input.selection.assertAuthority.bind(input.selection);
   const proveTerminal = input.authority.proveTerminal.bind(input.authority);
   const admitSelection = input.authority.admitSelection?.bind(input.authority);
@@ -68,15 +72,31 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
     assertSynchronous(assertStartup);
     assertSynchronous(assertInitialSelection);
   };
-  let captured = captureWorkspaceSelectorSwitchSelection({ ...input.selection, assertAuthority });
+  const readRegistrySlots = assertExternal === undefined ? () => input.registry.inspectSlots() : async () => {
+    assertAuthority();
+    await assertExternal();
+    const slots = await input.registry.inspectSlots();
+    await assertExternal();
+    assertAuthority();
+    return slots;
+  };
+  let captured = captureWorkspaceSelectorSwitchSelection({ ...input.selection,
+    ...(assertExternal === undefined ? {} : { readRegistrySlots }), assertAuthority });
   const observation = (): WorkspaceSelectorSwitchObservation => structuredClone({
     registrySlots: captured.registrySlots, journalSlots: captured.journalSlots,
   });
   let lastObservation = observation();
-  const readJournal = () => input.journal.inspectSlots();
+  const readJournal = assertExternal === undefined ? () => input.journal.inspectSlots() : async () => {
+    assertAuthority();
+    await assertExternal();
+    const slots = await input.journal.inspectSlots();
+    await assertExternal();
+    assertAuthority();
+    return slots;
+  };
   const selection = (): WorkspaceSelectorSwitchSelection => ({
     journalSlots: captured.journalSlots, registrySlots: captured.registrySlots,
-    readRegistrySlots: () => input.registry.inspectSlots(), assertAuthority,
+    readRegistrySlots, assertAuthority,
   });
   const assertSelection = async () => {
     assertAuthority();
@@ -126,7 +146,7 @@ export async function resolveWorkspaceSelectorSwitchStartup(input: Readonly<{
     if (publishedIdentity === undefined ? changedIdentity !== undefined
       : changedIdentity === undefined || !sameCrashSafeFileSlotIdentity(publishedIdentity, changedIdentity)) invalid();
     captured = captureWorkspaceSelectorSwitchSelection({
-      journalSlots, registrySlots, readRegistrySlots: () => input.registry.inspectSlots(), assertAuthority,
+      journalSlots, registrySlots, readRegistrySlots, assertAuthority,
     });
     await assertSelection();
   };

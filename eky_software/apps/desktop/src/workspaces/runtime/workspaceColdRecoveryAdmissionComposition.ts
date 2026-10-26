@@ -59,16 +59,38 @@ export async function assertNoSelectorWorkspaceRecoveryFromRoot(
   userDataRoot: string,
   registry: Readonly<LocalWorkspaceRegistry>,
 ): Promise<void> {
+  return assertSelectorWorkspaceRecoveryFromRoot(userDataRoot, registry, async () => {
+    if (await hasAnyJournalSlot(createWorkspaceSwitchJournalPaths(userDataRoot))) {
+      throw new WorkspaceManagementRecoveryRequiredError();
+    }
+  });
+}
+
+// This is only the OTHER owners' census, including W6 and profile recovery.
+// The selected switch writer separately owns exact registry/journal guards,
+// also during its own partial writes. This census is not mutation authority.
+export async function assertSelectorReturnRecoveryConflictsFromRoot(
+  userDataRoot: string,
+  registry: Readonly<LocalWorkspaceRegistry>,
+): Promise<void> {
+  await assertSelectorWorkspaceRecoveryFromRoot(userDataRoot, registry);
+}
+
+async function assertSelectorWorkspaceRecoveryFromRoot(
+  userDataRoot: string,
+  registry: Readonly<LocalWorkspaceRegistry>,
+  assertSwitchSelection?: () => Promise<void>,
+): Promise<void> {
   try {
     const selected = validateWorkspaceRegistry(registry);
     if (selected.activeWorkspaceId !== null) throw new WorkspaceManagementRecoveryRequiredError();
+    await assertSwitchSelection?.();
     const legacyRuntimeRoot = createDesktopProfilePaths(userDataRoot).runtimeRoot;
     const updatePaths = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot, legacyRuntimeRoot });
     const pending = [
       createWorkspaceLegacyAdoptionJournalPaths(userDataRoot),
       createWorkspaceCreationJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME)),
       createWorkspaceBackupImportJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME)),
-      createWorkspaceSwitchJournalPaths(userDataRoot),
       createWorkspaceFirstStartMigrationJournalPaths(userDataRoot),
       createReadOnlyJournalSlotPaths(createProfileSnapshotRuntimePaths(legacyRuntimeRoot).restoreActivationJournalPath),
       ...selected.workspaces.flatMap(entry => {
@@ -93,6 +115,7 @@ export async function assertNoSelectorWorkspaceRecoveryFromRoot(
     for (const paths of pending) {
       if (await hasAnyJournalSlot(paths)) throw new WorkspaceManagementRecoveryRequiredError();
     }
+    await assertSwitchSelection?.();
   } catch (error) {
     if (error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
     throw new WorkspaceManagementRecoveryRequiredError();

@@ -156,6 +156,47 @@ describe('restore startup test evidence ownership', () => {
     }
   });
 
+  it('retains a late startup handle until its owned shutdown settles after cancellation', async context => {
+    const completion = captureCompletion(context);
+    const release = vi.fn();
+    const lifetime = createRestoreStartupTestLifetime(completion.context, release);
+    const startup = createGate();
+    const closing = createGate();
+    const closeEntered = createGate();
+    const shutdown = vi.fn(async () => { closeEntered.resolve(); await closing.promise; });
+    const root = await createRoot();
+    let handle: { shutdown(): Promise<void> } | undefined;
+    const pending = lifetime.run(async () => {
+      lifetime.roots.push(root);
+      try {
+        await lifetime.step('startup', async () => {
+          await startup.promise;
+          handle = { shutdown };
+        });
+      } finally { await handle?.shutdown(); }
+    });
+    const outcome = pending.then(() => undefined, (error: unknown) => error);
+    try {
+      completion.abort();
+      lifetime.releaseWhenSettled();
+      await completion.finish('fail');
+      startup.resolve();
+      await closeEntered.promise;
+      expect(shutdown).toHaveBeenCalledTimes(1);
+      expect(release).not.toHaveBeenCalled();
+      expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
+      closing.resolve();
+      expect(await outcome).toBe(completion.context.signal.reason);
+      lifetime.assertSharedStateReleased();
+      expect(release).toHaveBeenCalledTimes(1);
+      await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
+    } finally {
+      startup.resolve();
+      closing.resolve();
+      await outcome;
+    }
+  });
+
   it('keeps a failed preparation as the first failure and does not permit a body', async context => {
     const completion = captureCompletion(context);
     const release = vi.fn();

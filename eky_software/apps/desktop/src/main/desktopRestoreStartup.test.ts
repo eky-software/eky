@@ -67,8 +67,9 @@ import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistry
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceSwitchJournalPaths, serializeVersionedWorkspaceSwitchJournal, WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
-import { createWorkspaceSelectorSwitchJournal } from '../workspaces/switch/workspaceSelectorSwitchState.js';
+import { createWorkspaceSelectorSwitchJournal, createWorkspaceSelectorSwitchRegistryVariants } from '../workspaces/switch/workspaceSelectorSwitchState.js';
 import { ActiveWorkspaceStartupRelaunchRequiredError, resolveActiveWorkspaceStartup, type ActiveWorkspaceStartupOptions } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import * as selectorRecoveryAdmission from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
 import { WorkspaceFirstStartMigrationOrchestrator } from '../workspaces/update/workspaceFirstStartMigrationOrchestrator.js';
 import * as activationComposition from '../workspaces/update/workspaceActivationMigrationComposition.js';
 import { WorkspaceActivationMigrationInspector } from '../workspaces/update/workspaceActivationMigrationInspector.js';
@@ -372,6 +373,206 @@ describe('selector candidate rollback main handoff', () => {
 });
 
 describe('backendless selector main composition', () => {
+  it.for(['uncommitted', 'unpublished', 'completeReturn', 'returned', 'rejected', 'backup', 'registryBackup',
+    'businessMetadata', 'returnNext', 'returnBackup', 'registryReturnBackup'] as const)(
+    'recovers an interrupted selector return through main: $0', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+        if (scenario === 'businessMetadata') await f.fixture.acceptedBuild.write(
+          createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+        const before = { ...(await f.fixture.registry.read())!, formatVersion: 2 as const, activeWorkspaceId: null };
+        const journal = createWorkspaceSelectorSwitchJournal(before, workspaceId, operationId, '2026-10-25T12:00:00.000Z');
+        const registry = scenario === 'rejected' ? createWorkspaceSelectorSwitchRegistryVariants(before, workspaceId).rejected : before;
+        await f.fixture.registry.write(registry);
+        const paths = createWorkspaceSwitchJournalPaths(f.fixture.root);
+        const state = scenario === 'uncommitted' || scenario === 'unpublished' ? 'prepared'
+          : ['completeReturn', 'returnNext', 'registryReturnBackup'].includes(scenario) ? 'targetSelected' : 'rollbackSelected';
+        await mkdir(dirname(paths.currentPath), { recursive: true });
+        await writeFile(scenario === 'unpublished' ? paths.nextPath : scenario === 'backup' ? paths.backupPath : paths.currentPath,
+          serializeVersionedWorkspaceSwitchJournal({ ...journal, state }));
+        if (scenario === 'registryBackup') {
+          const registryPath = join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME);
+          await rename(registryPath, `${registryPath}.backup`);
+        }
+        if (scenario === 'returnNext') await writeFile(paths.nextPath,
+          serializeVersionedWorkspaceSwitchJournal({ ...journal, state: 'rollbackSelected' }));
+        if (scenario === 'returnBackup') await writeFile(paths.backupPath,
+          serializeVersionedWorkspaceSwitchJournal({ ...journal, state: 'targetSelected' }));
+        if (scenario === 'registryReturnBackup') await writeFile(`${join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME)}.backup`,
+          JSON.stringify(createWorkspaceSelectorSwitchRegistryVariants(before, workspaceId).selected));
+        const metadataBefore = await f.fixture.acceptedBuild.inspectSlots();
+        let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+        try {
+          await lifetime.step('startup', async () => { lifecycle = await f.fixture.start(); });
+          expect(lifecycle).toBeDefined();
+          expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+          expect(electronBoundary.fork).not.toHaveBeenCalled();
+          expect(f.fixture.events).toEqual([]);
+          expect(electronBoundary.loadWindow).toHaveBeenCalledExactlyOnceWith(f.fixture.mainWindow, 'selector');
+          expect(f.fixture.relaunch).not.toHaveBeenCalled();
+          await expect(f.fixture.registry.read()).resolves.toEqual(registry);
+          await expect(new WorkspaceSwitchJournalStore(f.fixture.root).inspectSlots()).resolves.toEqual({
+            current: undefined, next: undefined, backup: undefined,
+          });
+          await expect(f.fixture.acceptedBuild.inspectSlots()).resolves.toEqual(metadataBefore);
+          expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+          expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        } finally { await lifecycle?.shutdown(); }
+      });
+    },
+  );
+
+  it.for(['publishReturn', 'clearReturn'] as const)(
+    'restarts selector return after the selected writer loses its acknowledgement: $0', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+        const registry = { ...(await f.fixture.registry.read())!, formatVersion: 2 as const, activeWorkspaceId: null };
+        await f.fixture.registry.write(registry);
+        const paths = createWorkspaceSwitchJournalPaths(f.fixture.root);
+        const journal = { ...createWorkspaceSelectorSwitchJournal(registry, workspaceId, operationId,
+          '2026-10-25T12:00:00.000Z'), state: 'targetSelected' as const };
+        await mkdir(dirname(paths.currentPath), { recursive: true });
+        await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal(journal));
+        const fault = new Error('SYNTHETIC_SELECTOR_RETURN_ACK_LOST');
+        const method = scenario === 'publishReturn' ? 'writeSelector' : 'clearSelector';
+        if (method === 'writeSelector') {
+          const write = WorkspaceSwitchJournalStore.prototype.writeSelector;
+          vi.spyOn(WorkspaceSwitchJournalStore.prototype, 'writeSelector').mockImplementationOnce(async function (this: WorkspaceSwitchJournalStore, ...args) {
+            await write.apply(this, args);
+            throw fault;
+          });
+        } else {
+          const clear = WorkspaceSwitchJournalStore.prototype.clearSelector;
+          vi.spyOn(WorkspaceSwitchJournalStore.prototype, 'clearSelector').mockImplementationOnce(async function (this: WorkspaceSwitchJournalStore, ...args) {
+            await clear.apply(this, args);
+            throw fault;
+          });
+        }
+        const observed = vi.fn();
+        await lifetime.step('startup', async () => { await expect(f.fixture.start(observed)).rejects.toThrow(); });
+        expect(observed.mock.calls.some(([error]) => hasErrorCause(error, fault))).toBe(true);
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+        const afterFailure = await new WorkspaceSwitchJournalStore(f.fixture.root).inspectSlots();
+        expect(afterFailure.current?.value.state).toBe(scenario === 'publishReturn' ? 'rollbackSelected' : undefined);
+        let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+        try {
+          await lifetime.step('startup', async () => { lifecycle = await f.fixture.start(); });
+          expect(lifecycle).toBeDefined();
+          expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+          expect(electronBoundary.fork).not.toHaveBeenCalled();
+          await expect(f.fixture.registry.read()).resolves.toEqual(registry);
+          await expect(new WorkspaceSwitchJournalStore(f.fixture.root).inspectSlots()).resolves.toEqual({
+            current: undefined, next: undefined, backup: undefined,
+          });
+          expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+          expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        } finally { await lifecycle?.shutdown(); }
+      });
+    },
+  );
+
+  it.for(['profileRestore', 'replacement', 'w6', 'update', 'directSetup', 'legacyMetadata', 'metadataBackup',
+    'metadataDuplicate', 'wrongBuild', 'registryChanged', 'metadataChanged', 'ownershipLost', 'lateRestore',
+    'restoreAtClear', 'metadataAtClear', 'ownershipAtClear', 'restoreAtPublish', 'restoreAtRegistryRepair'] as const)(
+    'preserves an interrupted selector return when authority is uncertain: $0', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
+        const registry = { ...(await f.fixture.registry.read())!, formatVersion: 2 as const, activeWorkspaceId: null };
+        await f.fixture.registry.write(registry);
+        const paths = createWorkspaceSwitchJournalPaths(f.fixture.root);
+        const journal = { ...createWorkspaceSelectorSwitchJournal(registry, workspaceId, operationId,
+          '2026-10-25T12:00:00.000Z'), state: scenario === 'restoreAtPublish' || scenario === 'restoreAtRegistryRepair'
+          ? 'targetSelected' as const : 'rollbackSelected' as const };
+        await mkdir(dirname(paths.currentPath), { recursive: true });
+        await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal(journal));
+        if (scenario === 'restoreAtRegistryRepair') await writeFile(`${join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME)}.backup`,
+          JSON.stringify(createWorkspaceSelectorSwitchRegistryVariants(registry, workspaceId).selected));
+        const update = createLocalUpdateRuntimePaths({ userDataPath: f.fixture.root,
+          legacyRuntimeRoot: createDesktopProfilePaths(f.fixture.root).runtimeRoot });
+        const workspaceRoot = deriveWorkspaceRoot(f.fixture.root, workspaceId, 1).workspaceRoot;
+        const restorePath = createProfileSnapshotRuntimePaths(createDesktopProfilePaths(workspaceRoot).runtimeRoot).restoreActivationJournalPath;
+        const conflicts: Record<string, string> = {
+          profileRestore: restorePath,
+          replacement: deriveWorkspaceBackupReplacementRuntimePaths(f.fixture.root, workspaceId).activationJournalPath,
+          w6: createWorkspaceFirstStartMigrationJournalPaths(f.fixture.root).currentPath,
+          update: update.journalPath, directSetup: update.directSetupMigrationRecoveryPath,
+          legacyMetadata: update.legacyAcceptedBuildMetadataPath,
+          metadataBackup: `${update.acceptedBuildMetadataPath}.backup`,
+        };
+        const putConflict = async (path: string) => {
+          await mkdir(dirname(path), { recursive: true });
+          await writeFile(path, 'synthetic conflicting owner');
+        };
+        if (conflicts[scenario] !== undefined) await putConflict(conflicts[scenario]!);
+        if (scenario === 'wrongBuild') await f.fixture.acceptedBuild.write({ ...f.metadata,
+          acceptedBuild: { ...f.metadata.acceptedBuild, buildRevision: 'f'.repeat(40) } });
+        if (scenario === 'metadataDuplicate') {
+          const bytes = await readFile(update.acceptedBuildMetadataPath, 'utf8');
+          await writeFile(update.acceptedBuildMetadataPath, bytes.replace('{', '{"formatVersion":2,'));
+        }
+        if (['registryChanged', 'metadataChanged', 'ownershipLost', 'lateRestore'].includes(scenario)) {
+          const inspect = selectorRecoveryAdmission.assertSelectorReturnRecoveryConflictsFromRoot;
+          let calls = 0;
+          vi.spyOn(selectorRecoveryAdmission, 'assertSelectorReturnRecoveryConflictsFromRoot').mockImplementation(async (...args) => {
+            await inspect(...args);
+            if (++calls !== 3) return;
+            if (scenario === 'registryChanged') await f.fixture.registry.write({ ...registry,
+              workspaces: registry.workspaces.map(entry => ({ ...entry, workspaceLabel: 'Changed selection' })) });
+            if (scenario === 'metadataChanged') await f.fixture.acceptedBuild.write(
+              createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+            if (scenario === 'ownershipLost') electronBoundary.loseReservation!();
+            if (scenario === 'lateRestore') await putConflict(restorePath);
+          });
+        }
+        if (['restoreAtClear', 'metadataAtClear', 'ownershipAtClear'].includes(scenario)) {
+          const clear = WorkspaceSwitchJournalStore.prototype.clearSelector;
+          vi.spyOn(WorkspaceSwitchJournalStore.prototype, 'clearSelector').mockImplementationOnce(async function (this: WorkspaceSwitchJournalStore, ...args) {
+            if (scenario === 'restoreAtClear') await putConflict(restorePath);
+            if (scenario === 'metadataAtClear') await f.fixture.acceptedBuild.write(
+              createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild));
+            if (scenario === 'ownershipAtClear') electronBoundary.loseReservation!();
+            return clear.apply(this, args);
+          });
+        }
+        if (scenario === 'restoreAtPublish') {
+          const write = WorkspaceSwitchJournalStore.prototype.writeSelector;
+          vi.spyOn(WorkspaceSwitchJournalStore.prototype, 'writeSelector').mockImplementationOnce(async function (this: WorkspaceSwitchJournalStore, ...args) {
+            await putConflict(restorePath);
+            return write.apply(this, args);
+          });
+        }
+        if (scenario === 'restoreAtRegistryRepair') {
+          const recover = WorkspaceRegistryStore.prototype.recoverSelected;
+          vi.spyOn(WorkspaceRegistryStore.prototype, 'recoverSelected').mockImplementationOnce(async function (this: WorkspaceRegistryStore, ...args) {
+            await putConflict(restorePath);
+            return recover.apply(this, args);
+          });
+        }
+        const originalJournal = await readFile(paths.currentPath);
+        const originalRegistry = await f.fixture.registry.inspectSlots();
+        let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+        try {
+          await lifetime.step('startup', async () => {
+            await expect((async () => { lifecycle = await f.fixture.start(); })()).rejects.toThrow();
+          });
+          expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+          expect(electronBoundary.fork).not.toHaveBeenCalled();
+          expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+          expect(await readFile(paths.currentPath)).toEqual(originalJournal);
+          if (scenario === 'restoreAtRegistryRepair') await expect(f.fixture.registry.inspectSlots()).resolves.toEqual(originalRegistry);
+          expect(await readFile(f.fixture.databasePath, 'utf8')).toBe(f.fixture.originalBytes);
+          expect(await readFile(f.fixture.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+          if (conflicts[scenario] !== undefined) expect(await readFile(conflicts[scenario]!, 'utf8')).toBe('synthetic conflicting owner');
+          if (['lateRestore', 'restoreAtClear', 'restoreAtPublish'].includes(scenario)) expect(await readFile(restorePath, 'utf8')).toBe('synthetic conflicting owner');
+        } finally { await lifecycle?.shutdown(); }
+      });
+    },
+  );
+
   it.for(['currentPath', 'nextPath', 'backupPath'] as const)(
     'rejects an unsupported business-metadata source-null opening before recovery from $0', async (slot, context) => {
       const lifetime = beginTrackedStartupTest(context);
