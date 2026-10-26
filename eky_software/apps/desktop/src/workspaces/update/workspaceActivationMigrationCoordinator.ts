@@ -1,4 +1,5 @@
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import { assertProfileRestoreActivationJournalMatches, captureProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
 import type { WorkspaceBackupCandidatePort } from '../import/workspaceBackupImportPorts.js';
 import {
   validateWorkspaceBackupCandidateReadiness,
@@ -21,8 +22,12 @@ import type { WorkspaceActivationMigrationRecoveryPoint } from './workspaceActiv
 
 const sha256Pattern = /^[0-9a-f]{64}$/;
 
+export type WorkspaceActivationMigrationRecoveryReceipt =
+  | Readonly<{ kind: 'noActivation' }>
+  | Readonly<{ kind: 'rolledBack'; journal: Readonly<ProfileRestoreActivationJournal> }>;
+
 export interface WorkspaceActivationMigrationSourceRecoveryPort {
-  recoverFromFailure(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
+  recoverFromFailure(candidate?: WorkspaceActivationMigrationRecoveryReceipt): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
   requireRecovery(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
 }
 
@@ -87,6 +92,7 @@ export class WorkspaceActivationMigrationCoordinator {
     let runtimeStopAttempted = false;
     let runtimeStopped = false;
     let selectorReturnPending = false;
+    let selectorRecoveryReceipt: WorkspaceActivationMigrationRecoveryReceipt | undefined;
     let activationFailure: unknown;
     let outcome: WorkspaceActivationMigrationResult;
 
@@ -157,7 +163,7 @@ export class WorkspaceActivationMigrationCoordinator {
       outcome = 'relaunchRequired';
     } catch (error) {
       activationFailure = error;
-      outcome = await this.recoverFailure(
+      selectorRecoveryReceipt = await this.recoverFailure(
         {
           authority,
           operationId,
@@ -170,6 +176,7 @@ export class WorkspaceActivationMigrationCoordinator {
         error,
       );
       selectorReturnPending = input.proof.sourceWorkspaceId === null;
+      outcome = 'relaunchRequired';
     }
 
     try {
@@ -191,7 +198,8 @@ export class WorkspaceActivationMigrationCoordinator {
         await this.options.guard.reprove(input.proof);
         await this.assertRuntimeAbsent();
         await this.options.guard.reprove(input.proof);
-        await this.recoverSource();
+        if (selectorRecoveryReceipt === undefined) throw new Error('selector-recovery-receipt-missing');
+        await this.recoverSource(selectorRecoveryReceipt);
       }
       this.options.requestRelaunch();
       return outcome;
@@ -210,8 +218,8 @@ export class WorkspaceActivationMigrationCoordinator {
     context: Readonly<MigrationFailureContext>,
     runtimeStopAttempted: boolean,
     runtimeStopped: boolean,
-    _originalError: unknown,
-  ): Promise<WorkspaceActivationMigrationResult> {
+    originalError: unknown,
+  ): Promise<WorkspaceActivationMigrationRecoveryReceipt | undefined> {
     try {
       if (runtimeStopAttempted && !runtimeStopped) {
         throw new Error('runtime-stop-ambiguous');
@@ -224,7 +232,9 @@ export class WorkspaceActivationMigrationCoordinator {
       // Runtime shutdown is still allowed, but a stale selector cannot grant
       // repairing reads, rollback, removal or another persistent selection.
       if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
-      const journal = await context.authority.journalStore.read();
+      const observed = await context.authority.journalStore.read();
+      const journal = context.proof.sourceWorkspaceId === null && observed !== undefined
+        ? captureProfileRestoreActivationJournal(observed) : observed;
       if (
         journal !== undefined &&
         journal.operationId !== context.operationId
@@ -232,11 +242,13 @@ export class WorkspaceActivationMigrationCoordinator {
         throw new Error('foreign-activation-journal');
       }
 
+      let candidate: WorkspaceActivationMigrationRecoveryReceipt = Object.freeze({ kind: 'noActivation' });
       if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       if (journal === undefined) {
         await this.options.rootStore.discardBeforeActivation(context.paths);
       } else {
-        await this.rollbackTarget(context.authority, journal);
+        const rolledBack = await this.rollbackTarget(context.authority, journal, context.proof.sourceWorkspaceId === null);
+        if (rolledBack !== undefined) candidate = Object.freeze({ kind: 'rolledBack', journal: rolledBack });
       }
       if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       await this.options.recoveryPoint
@@ -244,11 +256,17 @@ export class WorkspaceActivationMigrationCoordinator {
         .catch(() => undefined);
       if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
       if (context.proof.sourceWorkspaceId !== null) await this.recoverSource();
-      return 'relaunchRequired';
-    } catch {
-      await this.requireRecovery(context.proof);
+      return context.proof.sourceWorkspaceId === null ? candidate : undefined;
+    } catch (error) {
+      const failures = [originalError, error];
+      try {
+        await this.requireRecovery(context.proof);
+      } catch (markingError) {
+        failures.push(markingError);
+      }
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+        { cause: new AggregateError(failures, 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED') },
       );
     }
   }
@@ -256,15 +274,28 @@ export class WorkspaceActivationMigrationCoordinator {
   private async rollbackTarget(
     authority: Readonly<WorkspaceReplacementActivationAuthority>,
     journal: Readonly<ProfileRestoreActivationJournal>,
-  ): Promise<void> {
+    selector: boolean,
+  ): Promise<Readonly<ProfileRestoreActivationJournal> | undefined> {
     if (journal.phase === 'accepted' || journal.phase === 'failedSafe') {
       throw new Error('activation-not-rollbackable');
     }
-    await authority.transaction.rollback();
+    if (!selector) {
+      await authority.transaction.rollback();
+      return undefined;
+    }
+    const selected = captureProfileRestoreActivationJournal(journal);
+    if (!selected.hadActiveDatabase) throw new Error('activation-original-database-missing');
+    const rolledBack = captureProfileRestoreActivationJournal(await authority.transaction.rollback(selected));
+    assertProfileRestoreActivationJournalMatches({ ...selected, phase: 'rolledBack',
+      revision: selected.revision + (selected.phase === 'rolledBack' ? 0 : selected.phase === 'rollbackStarting' ? 1 : 2),
+    }, rolledBack);
+    return rolledBack;
   }
 
-  private async recoverSource(): Promise<void> {
-    const outcome = await this.options.sourceRecovery.recoverFromFailure();
+  private async recoverSource(candidate?: WorkspaceActivationMigrationRecoveryReceipt): Promise<void> {
+    const outcome = await (candidate === undefined
+      ? this.options.sourceRecovery.recoverFromFailure()
+      : this.options.sourceRecovery.recoverFromFailure(candidate));
     if (outcome !== 'relaunchRequired') {
       throw new Error('source-recovery-not-terminal');
     }

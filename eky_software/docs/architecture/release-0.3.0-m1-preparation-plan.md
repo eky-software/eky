@@ -42,7 +42,8 @@ on toteutettu ja kohdennetusti todennettu. Main kytkee nyt W6:n ja
 FirstStartin vaihekohtaisen valtuuden jo valitun yrityksen deferred-avaukseen.
 Switch-omistajan varmennetun tiedostovalinnan luovutusrajapinta on toteutettu;
 palautuksen omistaja sisältää nyt erillisen alkuperäissisällön cold-loppurajan
-ja vaihtovarauksen luovutuksen. Mainin source-null-kutsuja tarvitsee vielä
+ja vaihtovarauksen luovutuksen. Kopioaktivoinnin tarkka palautuskuitti
+välittyy nykyisen source-recovery-portin kautta. Mainin source-null-kutsuja tarvitsee vielä
 todellisen terminal-valtuuden ja näiden rajojen yhteisen kytkennän.
 Sen jälkeen tulevat valitsimen käyttöliittymä
 ja native-/pakettitodennus. W7.2:n tuotantokytkentä ei ole valmis.
@@ -229,8 +230,9 @@ aikakatkaisun tarkka syy säilyy avoimena.
 
 **Seuraava työ:** source-null-avauksen todellinen terminal-valtuus ennen
 valitsimeen paluuta tai hyväksyntää sekä sen main-kytkentä. Uuden candidaten
-rollbackin kirjoittajan tarkka journal-kuitti pitää välittää palautuksen
-omistajalle; myöhempi luku vain tarkistaa valinnan, ei valitse sitä uudelleen.
+rollbackin kirjoittajan tarkka journal-kuitti välittyy nyt compositionille;
+mainin on kytkettävä sen loppukäsittely nykyiseen palautuksen omistajaan.
+Myöhempi luku vain tarkistaa valinnan, ei valitse sitä uudelleen.
 Alkuperäisen normaalin startup-tilan perusteella ei saa olettaa myöhemmin
 syntyneen palautusjournalin puuttumista. Lopputarkistusten jälkeen perutaan
 W6:n oma valmistelu ennen null-valinnan julkaisua. Omistajien

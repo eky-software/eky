@@ -504,6 +504,17 @@ restore-varausta; switch-varausta ei nimetä restore-valtuudeksi. Vanha
 ei-null-vaihto säilyttää aiemman järjestyksensä. Vapautus- tai paluuvirhe
 ei peitä alkuperäistä aktivointivirhettä eikä anna relaunch-lupaa.
 
+Aktivointikoordinaattorin nykyinen source-recovery-portti välittää
+source-null-kutsussa joko nimenomaisen `noActivation`-tuloksen tai
+`rollback(selectedJournal)`-kirjoittajan palauttaman muuttumattoman
+`rolledBack`-kuitin. Operaation, alkuperäisen sisällön läsnäolon ja tarkan
+revisiosiirtymän pitää täsmätä; kadonnut kuittaus ei muutu aktivoinnin
+puuttumiseksi. Composition vaatii ennen työn aloitusta mainin nimetyn
+loppukäsittelijän ja odottaa sen valmistumista ennen switch-palautusta.
+Virhe tai päällekkäinen kutsu sulkee jatkon. Tämä kytkentä ei korvaa
+terminal-valtuutta, tuoretta sisältötarkistusta eikä W6:n peruutusta.
+Myös `noActivation` vaatii mainilta tuoreen journal-poissaolon tarkistuksen.
+
 Palautuksen nykyisen startup-omistajan nimetty cold-loppusiivous vaatii jo
 valitun täsmällisen `rolledBack`-journalin ja tuoreen alkuperäissisällön
 valtuuden. Se ei avaa tai migroi business-runtimea. Keskeneräinen aiempi
