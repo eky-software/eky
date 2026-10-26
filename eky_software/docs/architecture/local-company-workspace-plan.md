@@ -579,6 +579,21 @@ todistusta. Todellisen startup-sukupolven, A/B-tilan, W6:n ja palautuksen
 terminal-valtuuden liitos on edelleen W7.2:n portti. Business-composition
 ei saa käyttää puuttuvaa valitsinkytkentää syynä session luomiseen.
 
+Lykätyn business-avauksen nimetty tilavalmistelu tarkistaa metadatan,
+rekisterin ja W6-/switch-journalin yhteisen keskeytysjärjestyksen ennen
+korjaavaa metadatalukua. Nykyinen tallennin palauttaa vain valitut tavut
+ja tiedostoidentiteetit tuoreen ulkoisen valtuuden suojassa. Julkaisematon
+business-next ei ole hyväksyntä; jo julkaistua business-currentia ei
+alenneta selector-varakappaleen vuoksi. Myös palautuksen oma keskeytys
+voi jättää jatkettavan varakappaleen. Vieras palautusoperaatio, puuttuva
+tiedostoidentiteetti tai ristiriitainen kirjoitusjärjestys säilyttää aineiston.
+Valmistelun tulos ei ole prosessipoissaolon, business-readinessin tai
+seuraavan muutoksen valtuus. Mainin tulee kutsua tätä nimettyä valmistelua
+ennen vanhoja korjaavia lukijoita; pelkkä rajattu tallennintodennus ei vielä
+osoita tätä kytkentää. Business-current ilman selector-varakappaletta kuuluu
+nykyiseen hyväksytyn kohteen palautukseen, ei kadonneen selector-tiedon
+uudelleen muodostamiseen.
+
 **Nimetty W6-jatko:** nykyinen W6-composition voi ottaa mainin erikseen
 sitoman `deferredBusiness`-valtuuden. Sovellusadmission säilyy
 `exactAcceptedBuild`-arvona; vain W6:n suunnittelija käyttää nimettyä

@@ -4,7 +4,8 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 
 import { readOnlyJournalSlots, type ReadOnlyJournalSlotRecord, type ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
-import { CrashSafeByteSlotStore } from '../workspaces/persistence/crashSafeByteSlotStore.js';
+import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection } from '../workspaces/persistence/crashSafeByteSlotStore.js';
+import { assertNoDuplicateWorkspaceRegistryKeys } from '../workspaces/registry/workspaceRegistryDuplicateKeys.js';
 import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotIdentity } from '../workspaces/persistence/crashSafeFileSlot.js';
 import { parseVersionedAcceptedBuildMetadata, type VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
 
@@ -54,6 +55,27 @@ export class AcceptedBuildMetadataStore {
 
   read(): Promise<VersionedAcceptedBuildMetadata | undefined> {
     return this.runExclusive(() => this.readStored());
+  }
+
+  // The installation owner admits the joint state before requesting recovery.
+  // The shared byte store renews exact slot identities and external authority.
+  recoverSelected(selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    return this.runExclusive(async () => {
+      try {
+        for (const bytes of Object.values(selection.expectedSlots)) {
+          if (bytes === undefined) continue;
+          if (bytes.byteLength < 1 || bytes.byteLength > maximumBytes) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+          const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          assertNoDuplicateWorkspaceRegistryKeys(source);
+          parseVersionedAcceptedBuildMetadata(JSON.parse(source));
+        }
+        const byteStore = new CrashSafeByteSlotStore(createNodeCrashSafeFileSlotFileSystem({
+          directoryPath: dirname(this.filePath), currentPath: this.filePath,
+          nextPath: this.nextPath, backupPath: this.backupPath,
+        }, maximumBytes));
+        return await byteStore.recoverSelected(selection);
+      } catch (error) { throw selectedMutationError(error); }
+    });
   }
 
   private async readStored(): Promise<VersionedAcceptedBuildMetadata | undefined> {

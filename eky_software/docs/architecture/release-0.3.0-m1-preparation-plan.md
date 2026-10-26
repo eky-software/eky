@@ -195,8 +195,16 @@ avoimia P1/P2-havaintoja. Päällekkäisiä kohdesarjoja ei lasketa määrään
 lisänä. Tämä ei vielä kytke mainin todellista terminal-valtuutta eikä hyväksy
 native-/paketoitua ketjua.
 
-**Seuraava työ:** ensimmäisen yritysavauksen kytkentä
-nykyisiin FirstStart- ja W6-valtuuksiin.
+**Seuraava työ:** ensimmäisen yritysavauksen tilavalmistelun sekä
+FirstStart- ja W6-valtuuksien kytkentä mainiin ennen korjaavia lukijoita.
+Nimetty tilavalmistelu on toteutettu nykyisen metadatatallentimen päälle:
+se tarkistaa keskeytysten yhteisen kirjoitusjärjestyksen ja säilyttää valitut
+tavut sekä tiedostoidentiteetit myös palautuksen omassa keskeytyksessä.
+Lopullinen kymmenen tiedoston vaikutusalueen sarja läpäisi 370 testiä;
+nykyisen palautuscompositionin erillinen sarja läpäisi 191 testiä.
+Rajattu riippumaton katselmus ja korjausten vastatestit on tehty.
+Rajatut oikeiden tiedostojen kokeet ja omistajien regressiot eivät vielä
+todista mainin kutsua, SQLiten/Electronin ketjua tai paketoitua palautusta.
 Mainin käynnistyksen voimassaolo on nyt sidottu nykyisen varausomistajan
 elinkaareen myös hallitun lapsisiirron aikana. Yritysvalinnan myöhäinen
 tulos ei ohita tätä tarkistusta session, relaunchin tai runtime-resurssien
