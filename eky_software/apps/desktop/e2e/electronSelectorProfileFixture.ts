@@ -9,8 +9,24 @@ import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimeP
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
 import { serializeWorkspaceRegistry } from '../src/workspaces/registry/workspaceRegistrySerializer.js';
 import { validateWorkspaceRegistry } from '../src/workspaces/registry/workspaceRegistryValidation.js';
+import { selectorImportScenarioId } from './electronSelectorTestRelease.js';
 
 export type ElectronSelectorProfileState = 'empty' | 'ready' | 'recoveryRequired';
+
+export function assertElectronSelectorFixtureCombination(input: {
+  scenarioId: string;
+  state: ElectronSelectorProfileState | 'none';
+  hasLegacyInvoiceProfile: boolean;
+  backup: 'none' | 'synthetic' | 'activeReplacement';
+  nativeDialogPurpose: string;
+}): void {
+  if (input.state === 'none') return;
+  const isolatedImport = input.scenarioId === selectorImportScenarioId && input.state === 'empty'
+    && input.backup === 'synthetic' && input.nativeDialogPurpose === 'workspaceBackupImport';
+  if (input.hasLegacyInvoiceProfile || (input.backup !== 'none' && !isolatedImport)) {
+    throw new Error('E2E_SELECTOR_PROFILE_COMBINATION_INVALID');
+  }
+}
 
 // Offline registry-only input: absence of workspace roots proves that listing
 // and renaming do not open a database. This is not business/build acceptance.

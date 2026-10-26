@@ -105,6 +105,28 @@ koko palautuksen käynnistystiedoston 311 testiä läpäisivät. Ohjelinkit ja
 rajattu riippumaton katselmus läpäisivät. Uuden puhtaan paketin näyttö
 on kirjattu erikseen yllä; aiempaa pakettihylkäystä ei muuteta onnistuneeksi.
 
+**Tuonnin lisänäyttö:** `DESK-SELECTOR-IMPORT-001` läpäisi backendittoman
+valitsimen todellisen salatun tuonnin, native-salasanaikkunan, erikseen
+vahvistetun yritysavauksen ja fyysisen business-restartin. Asiakas, lasku,
+PDF ja metadata säilyivät, lähdebackup ja -tietokanta pysyivät muuttumattomina.
+Testiadapterin laajennus on rajattu nimettyyn tapaukseen; tuotantokoodi,
+riippuvuudet ja aikarajat säilyvät. Tyyppitarkistus, kymmenen
+skenaario-/eristysregressiota ja viisi viereistä valitsimen native-kontrollia
+läpäisivät. Katselmus tarkensi salaisuuksien näkymättömyyden tarkistuksen
+jo tuonnin jälkeiseen valitsimeen sekä molempiin business-sukupolviin;
+vahvistettu tuontitesti läpäisi. Tämä on testin kattavuustäsmennys,
+ei havaittu salaisuusvuoto.
+
+**Laajan ajon havainto:** työtilan ensimmäinen testikierros hylkäsi
+desktopin yhden vanhentuneen testiohjaimen rakenneassertion. Se oletti
+aina fake-backendin, vaikka nimetty luontitesti käyttää jo oikeaa backendia.
+Assertion päivitettiin tarkistamaan sekä oikean backendin havainto että
+muuttumaton fake-varavaihtoehto. Sen ja istuntogeneraattorin 24 regressiota
+läpäisivät. Muut desktopin 5 846 testiä läpäisivät; viisi alustakohtaista
+tapausta jäi ohitetuksi. Tämä ei ole koko työtilan hyväksyntä, eikä
+muiden pakettien tai tekemättä jääneen jatkovaiheen läpäisyä oleteta.
+Uusi yhtenäinen kierros vaaditaan lopullisen katselmuksen jälkeen.
+
 **Seuraava työ:** viimeistele W7.2:n hyväksyntämatriisin ja vaikutusalueen
 laajan testinäytön tarkistus ennen integraatiota. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;

@@ -1,5 +1,5 @@
 import type { ElectronApplication } from '@playwright/test';
-import { selectorCreateScenarioId } from '../../../desktop/e2e/electronSelectorTestRelease.js';
+import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 
 export interface ElectronMainState {
   backendIsRunning: boolean;
@@ -65,7 +65,7 @@ export async function readSelectorTestBackendPort(electronApp: ElectronApplicati
     return { scenarioId: controller.scenarioId, running: controller.backendIsRunning(),
       starts: controller.backendStartCount(), port: controller.selectorBackendPort() };
   });
-  if (observed.scenarioId === selectorCreateScenarioId) {
+  if (usesSelectorTestBackend(observed.scenarioId)) {
     if (observed.starts === 0 && observed.running === false && observed.port === undefined) return undefined;
     if (observed.starts === 1 && observed.running === true && Number.isInteger(observed.port)
       && observed.port! > 0 && observed.port! <= 65535) return observed.port;

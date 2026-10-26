@@ -579,9 +579,9 @@ palautus-/relaunch-tuloksen mainille muuttumattomana; muut virheet luokitellaan
 edelleen turvallisesti. Todiste kattaa source-null-virhepaluun ja erillisen
 fyysisen restartin, ei business-avauksen jälkeistä rollbackia tai pakettia.
 
-`DESK-SELECTOR-CREATE-001` käyttää samaa eristettyä Electron-fixtureä,
-mutta vain tämä täsmällinen skenaario delegoi backendin käynnistyksen
-tuotannon `startDesktopBackend`-omistajalle. Tavallinen fake-backend ei
+`DESK-SELECTOR-CREATE-001` ja `DESK-SELECTOR-IMPORT-001` käyttävät samaa
+eristettyä Electron-fixtureä, mutta vain nämä täsmälliset skenaariot
+delegoivat backendin käynnistyksen tuotannon `startDesktopBackend`-omistajalle. Tavallinen fake-backend ei
 suorita FirstStartin tarvitsemaa migraatioporttia. Havaintodekoraattori
 välittää alkuperäiset vaihtoehdot, sulkutulokset ja exit-ilmoitukset;
 se ei ole toinen prosessiomistaja. Fixture tallettaa kunkin käynnistyksen
@@ -596,6 +596,18 @@ Istuntojen vertailu tuottaa vain totuusarvon, ei avainta assertion-tulosteeseen.
 Testi todentaa nykyversion luonnin, UI-valinnan, business-käytön ja fyysisen
 restartin sekä vanhojen avainten hylkäyksen. Synteettinen release-lähtö ei
 todista asennuspäivitystä tai paketoitua palautusta.
+
+Nimetyn IMPORT-tapauksen lähtö on tyhjä null-valitsin. Nykyinen synteettinen
+backup-valmistelija käyttää erillistä lähdehakemistoa saman testijuuren
+sisällä ja todistaa lähdebackendin sekä sen portin päättyneen ennen tuontia.
+Kohteen `userData` ei saa lähteen tietokantaa tai aktiivista yritystä.
+Vain tämä tapaus saa yhdistää tyhjän valitsimen synteettiseen tuontilähteeseen;
+legacy-profiili, replacement-fixture, muu valitsintila tai muu dialogitarkoitus
+estetään ennen valmistelua. Tuonti käyttää oikeaa native-salasanaikkunaa.
+Uusi yritys jää valitsimeen, kunnes käyttäjä avaa sen nimenomaisesti.
+Testi vertaa lähdebackupin ja -tietokannan muuttumattomuutta sekä tuodun
+asiakkaan, laskun ja PDF:n säilymistä business-restartissa. Tämä ei ole
+historiallisen backup-formaatin tai asennuspäivityksen oma hyväksyntänäyttö.
 
 Electronin julkisen sulun jälkeen suoritetaan aina omistajan stop ja
 koko puun poistumisen varmennus, myös sovelluksen jo sulkeuduttua tai

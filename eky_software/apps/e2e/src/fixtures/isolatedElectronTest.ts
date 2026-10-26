@@ -65,9 +65,9 @@ import {
   type ElectronCleanupResult,
   type ElectronPreparationFailureEvidence,
 } from './reportElectronLifecycleEvidence.js';
-import { prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
+import { assertElectronSelectorFixtureCombination, prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
 import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
-import { selectorCreateScenarioId } from '../../../desktop/e2e/electronSelectorTestRelease.js';
+import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -153,9 +153,9 @@ export const test = base.extend<
     if (e2eLegacyInvoiceProfile !== 'none' && e2eWorkspaceBackupFixture !== 'none') {
       throw new Error('Legacy invoice and backup fixtures cannot share a profile.');
     }
-    if (e2eSelectorProfile !== 'none' && (e2eLegacyInvoiceProfile !== 'none' || e2eWorkspaceBackupFixture !== 'none')) {
-      throw new Error('Selector preparation requires its own empty test profile.');
-    }
+    assertElectronSelectorFixtureCombination({ scenarioId, state: e2eSelectorProfile,
+      hasLegacyInvoiceProfile: e2eLegacyInvoiceProfile !== 'none', backup: e2eWorkspaceBackupFixture,
+      nativeDialogPurpose: e2eNativeOpenDialogPurpose });
     if (
       e2eWorkspaceBackupFixture === 'synthetic' &&
       e2eNativeOpenDialogPurpose !== 'workspaceBackupImport' &&
@@ -275,7 +275,7 @@ export const test = base.extend<
       electronApp = undefined;
       applicationClosed = false;
       ownership = undefined;
-      selectorBackendPortUnobserved = scenarioId === selectorCreateScenarioId;
+      selectorBackendPortUnobserved = usesSelectorTestBackend(scenarioId);
       const launched = await launchElectronRuntime({
         async launch() {
           // Retain cleanup ownership before awaiting Playwright admission.

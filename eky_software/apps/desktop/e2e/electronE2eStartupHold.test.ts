@@ -209,8 +209,9 @@ describe('Electron E2E startup hold structure boundary', () => {
     expect(source).toContain('startupHold: () => startupHold.snapshot()');
     const controller = source.slice(source.indexOf('__EKY_ELECTRON_E2E__:'));
     expect(controller).not.toContain('startupHold.afterAppReady');
-    expect(controller).toContain('backendIsRunning: () => backendController.isRunning()');
-    expect(controller).toContain('backendStartCount: () => backendController.getStartCount()');
+    expect(controller).toContain('backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning()');
+    expect(controller).toContain('backendStartCount: () => selectorBackend?.snapshot().starts ?? backendController.getStartCount()');
+    expect(controller).toContain('selectorBackendPort: () => selectorBackend?.snapshot().port');
     expect(controller).toContain('windowCount: () => BrowserWindow.getAllWindows().length');
   });
 });

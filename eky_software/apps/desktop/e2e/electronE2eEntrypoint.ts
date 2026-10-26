@@ -25,7 +25,7 @@ import { createFirstStartProofAdmission, createFirstStartProofObserver } from '.
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
-import { readSelectorTestRelease, selectorCreateScenarioId } from './electronSelectorTestRelease.js';
+import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSelectorTestRelease.js';
 import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
 
@@ -74,7 +74,7 @@ const backendController = createElectronE2eBackendController(
   },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
-const selectorBackend = config.scenarioId === selectorCreateScenarioId
+const selectorBackend = usesSelectorTestBackend(config.scenarioId)
   ? observeSelectorTestBackend(startDesktopBackend) : undefined;
 app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');

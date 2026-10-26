@@ -1,6 +1,6 @@
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
-import { readSelectorTestRelease, selectorCreateScenarioId, selectorRecoveryScenarioId } from '../../../desktop/e2e/electronSelectorTestRelease.js';
+import { readSelectorTestRelease, selectorCreateScenarioId, selectorImportScenarioId, selectorRecoveryScenarioId, usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 import { observeSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestBackend.js';
 import type { DesktopBackendHandle, StartDesktopBackendOptions } from '../../../desktop/src/runtime/backendProcess.js';
 import type { ElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
@@ -11,11 +11,13 @@ import { readSelectorTestBackendPort } from '../../src/electron/readElectronMain
 
 test('SYS-SELECTOR-RECOVERY-RUN-001 @security limits synthetic release admission to the named scenarios', () => {
   expect(readSelectorTestRelease('DESK-SELECTOR-READY-001')).toBeUndefined();
-  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId]) {
+  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, selectorImportScenarioId]) {
     expect(readSelectorTestRelease(`${scenarioId}-OTHER`)).toBeUndefined();
     expect(readSelectorTestRelease(scenarioId)).toMatchObject({
       appVersion: '0.2.0', buildRevision: 'a'.repeat(40), releaseChannel: 'pilot',
     });
+    expect(usesSelectorTestBackend(scenarioId)).toBe(scenarioId !== selectorRecoveryScenarioId);
+    expect(usesSelectorTestBackend(`${scenarioId}-OTHER`)).toBe(false);
   }
 });
 
@@ -54,7 +56,7 @@ test('SYS-SELECTOR-RECOVERY-RUN-002 @security requires one expected relaunch and
 });
 
 test('SYS-SELECTOR-RECOVERY-RUN-003 @security refuses stale observations or another scenario before launch', async () => {
-  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, 'DESK-OTHER-001']) {
+  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, selectorImportScenarioId, 'DESK-OTHER-001']) {
     let calls = 0;
     await expect(runElectronSelectorRecoveryStartup({
       scenarioId, runtime: {} as ElectronE2eRuntime, runRoot: 'synthetic',
@@ -120,19 +122,21 @@ test('SYS-SELECTOR-BACKEND-002 @security preserves startup failure and unexpecte
 });
 
 test('SYS-SELECTOR-BACKEND-003 @security accepts only a bound real port or a backendless selector observation', async () => {
-  const selector = { scenarioId: selectorCreateScenarioId, starts: 0, running: false, port: undefined };
-  const business = { ...selector, starts: 1, running: true, port: 12345 };
-  const application = (observation: unknown) => ({ evaluate: async () => observation }) as unknown as ElectronApplication;
-  expect(await readSelectorTestBackendPort(application(selector))).toBeUndefined();
-  expect(await readSelectorTestBackendPort(application(business))).toBe(12345);
-  for (const observation of [
-    { ...selector, port: 12345 }, { ...business, running: false }, { ...business, starts: 2 },
-    { ...business, scenarioId: selectorRecoveryScenarioId },
-    ...[undefined, 0, -1, 1.5, 65536, '12345'].map(port => ({ ...business, port })),
-  ]) {
-    await expect(readSelectorTestBackendPort(application(observation))).rejects.toThrow('PORT_UNVERIFIED');
+  for (const scenarioId of [selectorCreateScenarioId, selectorImportScenarioId]) {
+    const selector = { scenarioId, starts: 0, running: false, port: undefined };
+    const business = { ...selector, starts: 1, running: true, port: 12345 };
+    const application = (observation: unknown) => ({ evaluate: async () => observation }) as unknown as ElectronApplication;
+    expect(await readSelectorTestBackendPort(application(selector))).toBeUndefined();
+    expect(await readSelectorTestBackendPort(application(business))).toBe(12345);
+    for (const observation of [
+      { ...selector, port: 12345 }, { ...business, running: false }, { ...business, starts: 2 },
+      { ...business, scenarioId: selectorRecoveryScenarioId },
+      ...[undefined, 0, -1, 1.5, 65536, '12345'].map(port => ({ ...business, port })),
+    ]) {
+      await expect(readSelectorTestBackendPort(application(observation))).rejects.toThrow('PORT_UNVERIFIED');
+    }
+    const original = new Error('synthetic observation failure');
+    await expect(readSelectorTestBackendPort({ evaluate: async () => { throw original; } } as unknown as ElectronApplication))
+      .rejects.toBe(original);
   }
-  const original = new Error('synthetic observation failure');
-  await expect(readSelectorTestBackendPort({ evaluate: async () => { throw original; } } as unknown as ElectronApplication))
-    .rejects.toBe(original);
 });

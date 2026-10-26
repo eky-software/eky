@@ -4,12 +4,30 @@ import { join, sep } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { prepareElectronSelectorProfile } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
+import { assertElectronSelectorFixtureCombination, prepareElectronSelectorProfile } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
+import { selectorImportScenarioId } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 import { acceptedBuildMetadataFileName } from '../../../desktop/src/update/acceptedBuildMetadataStore.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../../desktop/src/workspaces/registry/workspaceRegistryPaths.js';
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 
 const syntheticEnvironment = { EKY_E2E: '1' };
+
+test('SYS-SELECTOR-FIXTURE-004 @security allows only the named empty selector to use an isolated synthetic import source', () => {
+  const input = { scenarioId: selectorImportScenarioId, state: 'empty' as const,
+    hasLegacyInvoiceProfile: false, backup: 'synthetic' as const, nativeDialogPurpose: 'workspaceBackupImport' };
+  expect(() => assertElectronSelectorFixtureCombination(input)).not.toThrow();
+  for (const state of ['empty', 'ready', 'recoveryRequired'] as const) {
+    expect(() => assertElectronSelectorFixtureCombination({ ...input, state, backup: 'none' })).not.toThrow();
+  }
+  for (const changed of [
+    { scenarioId: `${selectorImportScenarioId}-OTHER` }, { scenarioId: 'DESK-SELECTOR-CREATE-001' },
+    { state: 'ready' as const }, { state: 'recoveryRequired' as const },
+    { hasLegacyInvoiceProfile: true }, { backup: 'activeReplacement' as const },
+    { nativeDialogPurpose: 'workspaceBackupReplacement' }, { nativeDialogPurpose: 'invoicePdfArchive' },
+  ]) {
+    expect(() => assertElectronSelectorFixtureCombination({ ...input, ...changed })).toThrow('COMBINATION_INVALID');
+  }
+});
 
 test('SYS-SELECTOR-FIXTURE-001 @security creates only an unselected synthetic registry and metadata', async () => {
   for (const state of ['empty', 'ready', 'recoveryRequired'] as const) {

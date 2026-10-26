@@ -9,6 +9,7 @@ import { createSyntheticCustomerInput } from '../../src/data/syntheticBusinessIn
 import { readSelectorTestBackendPort } from '../../src/electron/readElectronMainState.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { expect, test, type IsolatedElectronHarness } from '../../src/fixtures/isolatedElectronTest.js';
+import { readWorkspaceBackupInvoiceDocument, resolveWorkspaceBackupStoragePath, sha256File } from '../../src/workspaces/workspaceBackupSystemTestSupport.js';
 
 for (const state of ['empty', 'ready', 'recoveryRequired'] as const) {
   test.describe(`backendless ${state} selector`, () => {
@@ -133,6 +134,90 @@ test.describe('selector business opening', () => {
   });
 });
 
+test.describe('selector backup import', () => {
+  test.use({ e2eSelectorProfile: 'empty', e2eWorkspaceBackupFixture: 'synthetic',
+    e2eNativeOpenDialogPurpose: 'workspaceBackupImport' });
+
+  test('DESK-SELECTOR-IMPORT-001 @critical @recovery @security imports without selecting and preserves the imported data across business restart', async ({ e2eElectron }) => {
+    const fixture = e2eElectron.workspaceBackupFixture;
+    if (fixture === undefined) throw new Error('Synthetic workspace backup is unavailable.');
+    const label = 'Synthetic selector import';
+    const observationPaths = [e2eElectron.runtime.observationsPath];
+    const sessions = [e2eElectron.runtime.sessionSecret];
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    await assertNoBusinessRuntime(e2eElectron);
+    const metadataPath = join(e2eElectron.runtime.userDataPath, 'update-state', acceptedBuildMetadataFileName);
+    const metadataBefore = readFileSync(metadataPath);
+    expect(await sha256File(fixture.backupPath)).toBe(fixture.backupSha256);
+    expect(await sha256File(fixture.sourceDatabaseFilePath)).toBe(fixture.sourceDatabaseSha256);
+
+    await e2eElectron.page.getByRole('button', { name: 'Tuo yritys varmuuskopiosta' }).click();
+    await e2eElectron.page.getByRole('textbox', { name: 'Yrityksen nimi' }).fill(label);
+    const imported = await e2eElectron.performRelaunchingOperation(async () => {
+      const passwordWindowPromise = e2eElectron.electronApp.waitForEvent('window');
+      await e2eElectron.page.getByRole('button', { name: 'Valitse varmuuskopio' }).click();
+      const passwordWindow = await passwordWindowPromise;
+      await passwordWindow.locator('#password').fill(fixture.password);
+      const closed = passwordWindow.waitForEvent('close');
+      await passwordWindow.locator('#submit').click();
+      await closed;
+    });
+    expect(e2eElectron.runtime.sessionSecret !== imported.previousSessionSecret).toBe(true);
+    observationPaths.push(e2eElectron.runtime.observationsPath);
+    sessions.push(e2eElectron.runtime.sessionSecret);
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    await expect(e2eElectron.page.getByText(label, { exact: true })).toBeVisible();
+    await expectBusinessRuntime(e2eElectron, false);
+    const importedRegistry = JSON.parse(readRegistry(e2eElectron));
+    expect(importedRegistry).toMatchObject({ formatVersion: 2, activeWorkspaceId: null });
+    expect(importedRegistry.workspaces).toHaveLength(1);
+    expect(importedRegistry.workspaces[0]).toMatchObject({ workspaceLabel: label, lifecycleState: 'ready' });
+    expect(readFileSync(metadataPath).equals(metadataBefore)).toBe(true);
+    expect(await e2eElectron.page.evaluate(async () => (await fetch('/health')).status)).toBe(503);
+    await assertSelectorImportSecrecy(e2eElectron, fixture, sessions, observationPaths);
+
+    await e2eElectron.page.getByRole('button', { name: 'Avaa yritys', exact: true }).click();
+    const opened = await e2eElectron.performRelaunchingOperation(async () => {
+      await e2eElectron.page.getByRole('button', { name: 'Vaihda yritys', exact: true }).click();
+    });
+    expect(e2eElectron.runtime.sessionSecret !== opened.previousSessionSecret).toBe(true);
+    observationPaths.push(e2eElectron.runtime.observationsPath);
+    sessions.push(e2eElectron.runtime.sessionSecret);
+    const brand = () => e2eElectron.page.getByRole('button', {
+      name: `Vaihda yritystä. Aktiivinen yritys: ${label}`, exact: true,
+    });
+    await expect(brand()).toBeVisible();
+    await expectBusinessRuntime(e2eElectron, true);
+    const active = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath);
+    expect(active.workspaceId).toBe(importedRegistry.workspaces[0].workspaceId);
+    await assertSelectorImportSecrecy(e2eElectron, fixture, sessions, observationPaths);
+    const selectedRegistry = readRegistry(e2eElectron);
+    expect(JSON.parse(selectedRegistry)).toEqual({ ...importedRegistry, activeWorkspaceId: active.workspaceId });
+    const beforeRestart = await e2eElectron.restart();
+    expect(e2eElectron.runtime.sessionSecret !== beforeRestart.previousSessionSecret).toBe(true);
+    observationPaths.push(e2eElectron.runtime.observationsPath);
+    sessions.push(e2eElectron.runtime.sessionSecret);
+    await expect(brand()).toBeVisible();
+    await expectBusinessRuntime(e2eElectron, true);
+    expect(readRegistry(e2eElectron)).toBe(selectedRegistry);
+    expect(readFileSync(metadataPath).equals(metadataBefore)).toBe(true);
+    expect(readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath)).toEqual(active);
+    const content = await e2eElectron.page.evaluate(async invoiceId => ({
+      customers: await (await fetch('/customers')).text(),
+      invoiceStatus: (await fetch(`/invoices/${invoiceId}`)).status,
+    }), fixture.invoiceId);
+    expect(content.customers).toContain(fixture.customerName);
+    expect(content.invoiceStatus).toBe(200);
+    const invoiceDocument = readWorkspaceBackupInvoiceDocument(active.databaseFilePath, fixture.invoiceId);
+    const pdfHash = await sha256File(resolveWorkspaceBackupStoragePath(active.documentsRoot, invoiceDocument.storagePath));
+    expect(pdfHash).toBe(invoiceDocument.sha256);
+    expect(pdfHash).toBe(fixture.pdfSha256);
+    expect(await sha256File(fixture.backupPath)).toBe(fixture.backupSha256);
+    expect(await sha256File(fixture.sourceDatabaseFilePath)).toBe(fixture.sourceDatabaseSha256);
+    await assertSelectorImportSecrecy(e2eElectron, fixture, sessions, observationPaths);
+  });
+});
+
 test.describe('selector opening failure', () => {
   test.use({ e2eSelectorProfile: 'ready' });
 
@@ -174,6 +259,23 @@ async function assertNoBusinessRuntime(harness: IsolatedElectronHarness): Promis
   // The fixture intentionally has registry entries but no business roots.
   expect(existsSync(join(harness.runtime.userDataPath, 'workspaces'))).toBe(false);
   expect(existsSync(join(harness.runtime.userDataPath, 'runtime', 'data', 'eky.sqlite'))).toBe(false);
+}
+
+async function assertSelectorImportSecrecy(
+  harness: IsolatedElectronHarness,
+  fixture: NonNullable<IsolatedElectronHarness['workspaceBackupFixture']>,
+  sessions: readonly string[],
+  observationPaths: readonly string[],
+): Promise<void> {
+  const renderer = await harness.page.evaluate(() => JSON.stringify({
+    text: document.documentElement.textContent,
+    bridge: Object.keys((window as typeof window & { ekyDesktop?: unknown }).ekyDesktop ?? {}),
+  }));
+  const observations = observationPaths.map(file => existsSync(file) ? readFileSync(file, 'utf8') : '').join('\n');
+  for (const value of [fixture.backupPath, fixture.sourceDatabaseFilePath, fixture.password, fixture.profileId, ...sessions]) {
+    expect(renderer.includes(value)).toBe(false);
+    expect(observations.includes(value)).toBe(false);
+  }
 }
 
 async function expectBusinessRuntime(harness: IsolatedElectronHarness, running: boolean): Promise<void> {

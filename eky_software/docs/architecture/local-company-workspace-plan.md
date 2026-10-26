@@ -701,6 +701,16 @@ backend-portti sekä koko prosessipuu vapautetaan ennen jatkoa. Tämä käyttä�
 luonnin nykyistä tietokantaversiota, ei korvaa historiallisen kopioaktivoinnin,
 lykätyn päivityksen tai saman puhtaan paketin palautusportteja.
 
+`DESK-SELECTOR-IMPORT-001` täydentää backendittoman tuonnin onnistumispolun:
+nykyinen salattu synteettinen backup tuodaan native-salasanaikkunan kautta
+tyhjään null-valitsimeen. Tuonti ei avaa yritystä automaattisesti. Vasta
+UI-vahvistettu avaus käynnistää tuotannon backendin ja FirstStartin;
+tuotu asiakas, lasku ja samat PDF-tavut säilyvät fyysisessä restartissa.
+Lähdebackup ja -tietokanta säilyvät muuttumattomina. Testifixturen
+valitsin-/backup-yhdistelmä sallitaan vain tälle täsmälliselle tapaukselle
+erillisellä lähdejuurella; korvausbackup ja legacy-profiilin yhdistäminen
+estetään. Tämä ei korvaa historiallisen backupin tai asennuspäivityksen portteja.
+
 Business-metadatan [lukukytkentä](../../apps/desktop/src/main/desktopAcceptedSelectorStartup.ts)
 ei julkaise metadataa tai muuta hyväksyntäformaattia. Se sitoo nykyiset
 FirstStart-, binary-rollback- ja W6-lukijat tuoreesti varmennettuihin
