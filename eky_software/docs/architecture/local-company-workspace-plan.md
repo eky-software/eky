@@ -535,7 +535,8 @@ varaus vapautetaan vasta sen nimetyllä poistokohdalla, ja alkuperäinen
 juuri-identiteetti sekä elävä synkroninen valtuus tarkistetaan viimeisen
 luvun jälkeen ennen poistoa. Ankkurin ja muiden varausten päättymisen pitää
 onnistua ennen paluuvaltuutta. Journalin puuttuminen yksin ei todista sitä.
-Nämä osarajat eivät vielä kytke mainin kaikkia terminal-kutsujia.
+Mainin nykyinen kytkentä kattaa alla rajatun deferred-source-null-avauksen;
+se ei vielä kata kaikkia valitsimen terminal-kutsujia.
 
 Nykyisen W6-orchestraattorin `cancelBeforeSelectorReturn` toteuttaa tämän
 peruutusrajan nimetylle deferred-avaukselle. Kutsuja toimittaa elävän
@@ -546,8 +547,9 @@ kaapatut tavut ja tiedostoidentiteetti kulkevat nykyisen slot-tallentimen
 poistovartijaan asti. Lukutarkistus ei korjaa sivuslotteja. Keskeneräinen
 valmistelu, alkanut rekisterisiirtymä, muuttunut valinta tai kadonnut
 kuittaus estää saman instanssin jatkon. A/B-metadataa ja rekisteriä ei
-muuteta peruutuksessa. Tämä osaraja ei vielä todista mainin terminal-
-kytkentää tai oikean prosessin päättymistä.
+muuteta peruutuksessa. Main käyttää tätä peruutusta alla nimetyssä
+terminal-kytkennässä. Ohjatun prosessirajan regressiot eivät todista oikean
+native-prosessin päättymistä.
 
 FirstStartin nimetyn deferred-haaran metadataluvut eivät korjaa tai poista
 keskeytysslotteja. Alkuperäisen havainnon tavut ja tiedostoidentiteetti
@@ -562,8 +564,8 @@ omia keskeneräisiä slotteja. Metadatan tarkistus ja julkaisu kuuluvat
 tallentimelle. Peruutus- ja julkaisuvaltuuden alkuperäiset funktiot
 kaapataan ennen ensimmäistä asynkronista rajaa; niiden vaihtaminen kesken
 operaation ei anna uutta valtuutta. Vanhat C-/Direct Setup -kirjoittajat säilyttävät sopimuksensa.
-Mainin jo valitun yrityksen avaus käyttää tätä ulkoista valtuutta.
-Source-null-avauksen terminal- ja switch-siirto vaativat vielä oman kytkentänsä.
+Mainin jo valitun yrityksen avaus ja alla rajattu source-null-kytkentä
+käyttävät tätä ulkoista valtuutta.
 
 Palautuksen `unverified`/`committed`-hyväksyntä tai jo päätetty switch ei
 anna enää uutta rollback- tai null-paluuvaltuutta. Kadonnut hyväksyntäkuittaus
@@ -629,13 +631,118 @@ Kuitin tarkistus sidotaan juuri sen omaan valintaan: se ei seuraa myöhempää
 journalin poistoa tai muuta seuraajatilaa. Hylätty kuitin tarkistus sulkee
 omistajan, vaikka kutsuja käsittelisi poikkeuksen itse.
 
-Mainin lopullinen valitsinkytkentä ei vielä toimita tätä valtuutta tai
-terminal-todistetta. Tiedostotallentimien, resolverin, guardin ja
-startup-/inspector-luokkien yhteiset regressiot käyttävät ohjattuja prosessi-
-ja sisältöportteja; ne eivät korvaa SQLite-/Electron- tai paketoitua
-todistusta. Todellisen startup-sukupolven, A/B-tilan, W6:n ja palautuksen
-terminal-valtuuden liitos on edelleen W7.2:n portti. Business-composition
-ei saa käyttää puuttuvaa valitsinkytkentää syynä session luomiseen.
+**Mainin terminal-kytkennän rajaus:** deferred-metadatan kanssa jatkettava
+`validateTarget`/`completeSelection` käyttää nyt resolverille välitettyä
+mainin valtuutta. Alkuperäinen valinta, switchin kirjoittajakuitti, W6 ja
+runtime sidotaan samaan käynnistykseen. Main todistaa terminalin kerran;
+sen synkroninen valtuus tarkistetaan uudelleen myös viimeisen odotuksen
+jälkeen ennen W6-journalin poistoa. Valitsimeen paluu ei vaadi kohteen
+business-readinessia, mutta vaatii salaisuus- ja tarkistustöiden sulun,
+todetun prosessiomistajuuden, sisäkkäisen palautuksen loppumisen ja W6:n
+peruutuksen ennen null-valintaa. Aiemmin valittu rollback säilyttää oman
+palautusomistajansa; valmiiksi käsiteltyä candidate-kuittia ei käsitellä
+uudelleen journalin poissaolon perusteella.
+
+Viallisen työtilajuuren hylkäys voi tapahtua ennen runtimen rakentamista.
+Tällöin main tarkistaa oman varauksensa ja palautusjournalien poissaolon.
+Kun runtimen rakentaminen on alkanut, tätä haaraa ei enää saa käyttää
+puuttuvan runtime-todisteen korvikkeena. Hyväksyntä puolestaan vaatii
+validoidun elävän backendin ja päättyneen palautushyväksynnän. Kuitatun
+switch-hyväksynnän jälkeen FirstStart tarkistaa tuoreen sisällön jo
+hyväksyttyä lineagea vasten, ei loppuun käytetyn switch-valtuuden kautta.
+Palautettu terminal-valtuus säilyy luvallisten switch-kirjoitusten yli;
+se ei vaadi niitä edeltävän slot-kuvan säilymistä.
+
+Pelkkä null-valinta ilman switchiä, `rollbackSelected`-uudelleenkäynnistys
+ja business-metadatan source-null-avaus eivät vielä kuulu tähän kytkentään.
+Niitä ei saa ohittaa luomalla business-sessionia. Ohjatun prosessi- ja
+sisältörajan regressiot eivät korvaa SQLite/Electron- tai paketoitua näyttöä.
+Koko kytkennän hyväksyntä ja avoimet testihavainnot ovat
+[M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+**Jäljellä olevien avaushaarojen lähdevertailu:** tämä on nykyisen sopimuksen
+kytkentäjako, ei uusi palautusmalli tai lupa ohittaa estoa. Main valitsee
+haaran ennen business-valmistelua. `planDeferredBusinessLocalUpdateState`
+säilyy lykätyn business-avauksen omistajana; sen hylkäystä ei käsitellä
+yleisenä lupana yrittää toista palautuspolkua.
+
+| Puuttuva liitos | Säilyvä omistaja ja vaadittu regressio |
+| --- | --- |
+| Null ilman switchiä | Nykyinen valitsimen tilavalmistelu ja `resolveWorkspaceSelectorSwitchStartup` saavat mainin todellisen installation-/prosessipoissaolovaltuuden. Todista ready-, tyhjä- ja recovery-only-rekisteri ilman session, backendin, brokerin tai oletusyrityksen luontia sekä muuttuneen valinnan hylkäys. |
+| Keskeytynyt paluu | Switchin nykyiset `selectorUncommitted`, `unpublishedPreparation`, `completeReturn` ja `selectorReturned` erotetaan `validateTarget`/`completeSelection`-avauksesta. Ennen valitun journalin poistoa vaaditaan tuore omistajuus ja sisäkkäisten palautusten loppuminen; aiemman prosessin kuittaus ei siirry restartiin. Todista jokainen sallittu tila ja ristiriidassa säilyvät tavut. |
+| Business-hyväksytty metadata ja source-null | Sovellusadmission ja W6:n nykyinen aktivointitarkistus säilyvät; olematonta lykättyä business-siirtymää ei rakenneta valtuuden saamiseksi. Todista kohteen todellinen schema-/lineage-tarkistus, normaali FirstStart sekä onnistuvan avauksen ja turvallisen paluun erilliset lopputilat. |
+| Valitsintuloksen kuluttaja | `resolveDesktopWorkspaceStartup` palauttaa jo erillisen selector-tuloksen ilman session luontia. Mainin nykyinen estävä välivaihe korvataan backendittoman käyttöliittymän ja hallinnan kytkennällä vasta niiden omistajuus- ja sulkutestien mukana. Valitsimen näkyminen ei todista yritystietokannan terveyttä. |
+
+Valitsimen hallinnan [rajattu elinkaaritoteutus](../../apps/desktop/src/workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.ts) toteuttaa nykyiset
+`ActiveWorkspaceLifecyclePort`- ja `WorkspaceRuntimeAbsencePort`-portit
+mainin nykyisen prosessivarauksen avulla. Se sitoo yhden `create`-,
+`import`- tai `switch`-huoltovarauksen täsmällisen kahvan valitsimen
+elinikään jo kutsuhetkellä ennen ensimmäistä odotusta ja tarkistaa
+molemmat myös fyysisen varaustarkistuksen jälkeen.
+Candidate-käynnin jälkeen poissaolo vaatii uuden varaustarkistuksen;
+aiempaa sulkutulosta ei käytetä sen korvikkeena. Epävarma tulos estää
+jatkon ja uudelleenkäynnistyspyynnön. Tämä porttitoteutus ei vielä kytke
+valitsinikkunaa tai todista koko hallintatyön päättymistä sovellusta
+suljettaessa; mainin guard säilyy ennen varsinaista kuluttajakytkentää.
+Kohderegressiot sekä mainin nykyisen varausomistajan kanssa tehty
+ohjattu kytkentätesti läpäisivät. Katselmuksen löytämä liian myöhäinen
+huoltovarauksen sidonta toistettiin ja korjattiin; jälkikatselmus ei
+löytänyt uutta vahvistettua puutetta. Native-porttien ohjaus ei korvaa
+todellisen Electron-prosessin tai paketoidun palautuksen näyttöä.
+
+**Hallinnan työn päättyminen:** nykyinen `WorkspaceManagementService`
+estää uudet komennot ja tilaluvut heti `closeAdmission`-kutsussa.
+`shutdown` odottaa sen jo aloittamat työt; se ei todista muutoksen
+onnistumista, native-prosessin poistumista tai siivousvaltuutta.
+Myös epäonnistuvan tilaluvun rinnakkaiset registry- ja journaliluvut
+odotetaan loppuun. Ensimmäinen sisäinen syy säilyy, ja suljettu vartija
+ei hyväksy myöhäistä tulosta. Nykyinen compositionin `dispose` sulkee
+pääsyn synkronisesti: oman luonti-/tuontikomennon sisäinen sulku ei saa
+odottaa itseään.
+
+Sama nykyinen hallintakyvykkyys tarjoaa erillisen `shutdown`-odotuksen
+IPC-töille ja native-valinnoille. Valinnan, salasanan tai vahvistuksen
+myöhäinen vastaus ei aloita seuraavaa vaihetta suljetussa kyvykkyydessä
+tai vanhassa main framessa. Jo alkanut komento säilyttää oman tuloksensa.
+Mainin ulkoinen sulku odottaa molemmat omistajat ennen oman fyysisen
+varauksensa vapautusta; pelkkä `dispose` tai valmis odotus ei korvaa
+varaus- ja prosessipoissaolotarkistusta. Tämä järjestys on todennettu
+olemassa olevien IPC-, palvelu-, luonti- ja elinkaariomistajien yhteisessä
+testissä ohjatuilla native-rajoilla. Valitsinikkunan varsinaisen sulun
+kytkentä mainiin ja paketoitu todistus ovat edelleen tekemättä.
+
+**Backendittoman hallinnan composition:** nykyinen
+`createWorkspaceManagementComposition` erottaa selector- ja active-vaihtoehdot.
+Selector ei tarvitse aktiivisen yrityksen tunnistetta, profiilin palautuspolkua
+tai recovery point -palvelua. Se käyttää samoja luonti- ja tuontikomentoja sekä
+candidate-runtimea; aktiivisen yrityksen korvaus puuttuu ja hylätään turvallisesti.
+Tilaluku ja komentojen admission käyttävät omia sivuvaikutuksettomia lukijoitaan,
+jotta samanaikainen tilaluku ei aiheuta kirjoittajan sisäisen lukon vuoksi
+virheellistä recovery-tilaa. Rekisterin kaikkien slottien, null-valinnan,
+palautusjournalien ja mainin eliniän tarkistukset säilyvät.
+
+Nimenmuutoksen selector-haara kaappaa täsmällisen huoltovarauksen ennen
+admission-odotusta. Nykyinen valittu rekisterikirjoitus tarkistaa elävän
+valtuuden, tavut ja tiedostoidentiteetin myös odotusten yli. Muuttumaton nimi
+vaatii sekin tuoreen takaisinluvun. Kadonnut kirjoituskuittaus ei oikeuta
+uusintaan tai rekisterin palauttamiseen arvaamalla. Active-haaran sopimus säilyy.
+
+Source-null-vaihto käyttää nykyisen switch-koordinaattorin nimettyä
+[komentoa](../../apps/desktop/src/workspaces/switch/workspaceSelectorSwitchCommand.ts):
+valittu journalin `prepared`-tila, kohdeosoittimen julkaisu ja `targetSelected`
+sidotaan samoihin rekisteritavuihin, identiteetteihin ja elävään valtuuteen.
+Fyysinen prosessipoissaolo tarkistetaan, ja huoltovaraus vapautetaan ennen
+nykyisen relaunch-omistajan pyyntöä. Epävarma kirjoitus tai vapautus säilyttää
+aineiston ja estää jatkon. Valinta ei ole yrityksen FirstStart-hyväksyntä.
+Mainin valitsinkuluttaja ei vielä käytä tätä compositionia; alemman tason
+regressiot eivät yksin avaa valitsinta tai sulje W7.2:n hyväksyntää.
+
+Switchin nykyiset alempien rajojen testit käyttävät injektoitua terminal-
+valtuutta. Ne eivät todista näiden main-liitosten valmistumista. Nykyinen
+kaikki journalit torjuva valitsimen konfliktitarkistus säilyy tavallisessa
+null-haarassa; se ei sellaisenaan kelpaa oman valitun paluujournalin
+poistovaltuudeksi. Ristiriidat muiden palautusomistajien kanssa säilyvät
+estävinä myös nimetyn paluuhaaran toteutuksessa.
 
 Lykätyn business-avauksen nimetty tilavalmistelu tarkistaa metadatan,
 rekisterin ja W6-/switch-journalin yhteisen keskeytysjärjestyksen ennen
@@ -670,7 +777,7 @@ lykättyä business-haaraa. Valtuus sitoo täsmällisen selector-metadatan ja
 käynnissä olevan kohdebuildin. Startup vastaa valtuuden sitomisesta elävään
 käynnistyssukupolveen, valittuun yritykseen, operaatioon ja sallittuun
 rekisterisiirtymään. Main toimittaa valtuuden jo valitun yrityksen
-deferred-haarassa; source-null-switchin siirto ei sisälly vielä kytkentään.
+deferred-haarassa sekä yllä rajatussa source-null-switchin jatkossa.
 
 Ennen inventaarion tuloksen käyttöä lähdemetadata, rekisteri ja mahdollinen
 journal tarkistetaan uudelleen. Sama `prepared`-journal saa jatkua myös
@@ -712,9 +819,9 @@ yli. Mainin ulkoiset lukijat päättyvät kaikki ennen virheen palautumista.
 
 Pysyvät testit käyttävät nykyisiä tiedostotallentimia ja v1/v2-rekistereitä.
 Inventaario ja startup-valtuus ovat niissä ohjattuja; ne eivät todista oikeaa
-SQLite-/Electron- tai paketoitua ketjua. Valitsimen ja source-null-avauksen
-tuotantokutsuja ei vielä käytä tätä W6-valtuutta. Jo valitun yrityksen
-main-/FirstStart-kytkentä on todennettu ohjatuilla native-rajoilla.
+SQLite-/Electron- tai paketoitua ketjua. Jo valitun yrityksen main-/FirstStart-
+kytkentä on todennettu ohjatuilla native-rajoilla; rajatun source-null-jatkon
+kytkentä on toteutettu, mutta sen kokonaisverifiointi on vielä kesken.
 Ajantasainen testinäyttö
 ja jäljellä oleva kytkentä kirjataan M1:n jatkamiskohtaan.
 

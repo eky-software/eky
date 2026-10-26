@@ -16,8 +16,10 @@ import {
   type WorkspaceSwitchJournalPort,
   type WorkspaceSwitchJournalV1,
 } from './workspaceSwitchJournal.js';
+import { switchFromWorkspaceSelector, type WorkspaceSelectorSwitchCommandOptions } from './workspaceSelectorSwitchCommand.js';
 
 export interface WorkspaceSwitchCoordinatorOptions {
+  readonly mode?: 'active';
   readonly activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
   readonly generateOperationId?: () => string;
   readonly journal: WorkspaceSwitchJournalPort;
@@ -32,13 +34,16 @@ export class WorkspaceSwitchCoordinator {
   private readonly now: () => Date;
 
   constructor(
-    private readonly options: Readonly<WorkspaceSwitchCoordinatorOptions>,
+    private readonly options: Readonly<WorkspaceSwitchCoordinatorOptions | WorkspaceSelectorSwitchCommandOptions>,
   ) {
     this.generateOperationId = options.generateOperationId ?? randomUUID;
     this.now = options.now ?? (() => new Date());
   }
 
   async switchTo(targetWorkspaceId: WorkspaceId): Promise<void> {
+    if (this.options.mode === 'selector') {
+      return switchFromWorkspaceSelector(this.options, targetWorkspaceId, this.generateOperationId, this.now);
+    }
     const lease = await this.options.maintenanceLease
       .acquire('switch')
       .catch((error) => {
@@ -94,6 +99,7 @@ export class WorkspaceSwitchCoordinator {
       }
     } catch (error) {
       operationError = await this.recoverBeforeReturning(
+        this.options,
         mapWorkspaceSwitchError(error),
         journal,
         sourceWorkspaceId,
@@ -114,6 +120,7 @@ export class WorkspaceSwitchCoordinator {
   }
 
   private async recoverBeforeReturning(
+    options: Readonly<WorkspaceSwitchCoordinatorOptions>,
     originalError: WorkspaceSwitchError,
     journal: Readonly<WorkspaceSwitchJournalV1> | undefined,
     sourceWorkspaceId: WorkspaceId | undefined,
@@ -122,34 +129,35 @@ export class WorkspaceSwitchCoordinator {
     let recoveryFailed = false;
     if (journal !== undefined && sourceWorkspaceId !== undefined) {
       try {
-        await this.rollbackBeforeRelaunch(journal);
+        await this.rollbackBeforeRelaunch(options, journal);
       } catch {
         recoveryFailed = true;
       }
     }
     if (lifecycleTransitionStarted && sourceWorkspaceId !== undefined) {
       try {
-        await this.options.activeWorkspaceLifecycle
+        await options.activeWorkspaceLifecycle
           .ensurePreviousWorkspaceRunning(sourceWorkspaceId);
       } catch {
         recoveryFailed = true;
       }
     }
     if (recoveryFailed) {
-      await this.markRecoveryRequired(journal);
+      await this.markRecoveryRequired(options, journal);
       return new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
     }
     return originalError;
   }
 
   private async rollbackBeforeRelaunch(
+    options: Readonly<WorkspaceSwitchCoordinatorOptions>,
     journal: Readonly<WorkspaceSwitchJournalV1>,
   ): Promise<void> {
-    const registry = await this.options.registry.read();
+    const registry = await options.registry.read();
     if (registry === undefined) {
       throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
     }
-    const current = await this.options.journal.read();
+    const current = await options.journal.read();
     if (
       current === undefined ||
       current.operationId !== journal.operationId
@@ -157,14 +165,14 @@ export class WorkspaceSwitchCoordinator {
       throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
     }
     if (registry.activeWorkspaceId === journal.targetWorkspaceId) {
-      await this.options.registry.write(
+      await options.registry.write(
         selectActiveWorkspace(
           registry,
           journal.targetWorkspaceId,
           journal.sourceWorkspaceId,
         ),
       );
-      await this.options.journal.write({
+      await options.journal.write({
         ...current,
         state: 'rollbackSelected',
       });
@@ -174,23 +182,24 @@ export class WorkspaceSwitchCoordinator {
       throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
     }
     if (current.state === 'prepared') {
-      await this.options.journal.clear(journal.operationId);
+      await options.journal.clear(journal.operationId);
       return;
     }
-    await this.options.journal.write({
+    await options.journal.write({
       ...current,
       state: 'rollbackSelected',
     });
   }
 
   private async markRecoveryRequired(
+    options: Readonly<WorkspaceSwitchCoordinatorOptions>,
     journal: Readonly<WorkspaceSwitchJournalV1> | undefined,
   ): Promise<void> {
     if (journal === undefined) return;
     try {
-      const current = await this.options.journal.read();
+      const current = await options.journal.read();
       if (current?.operationId !== journal.operationId) return;
-      await this.options.journal.write({
+      await options.journal.write({
         ...current,
         state: 'recoveryRequired',
       });

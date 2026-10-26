@@ -8,6 +8,18 @@ import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup
 import type { ResolveDesktopWorkspaceStartupOptions } from './resolveDesktopWorkspaceStartup.js';
 
 describe('desktop workspace startup boundary', () => {
+  it.each([false, true])('forwards only the supplied selector authority (present: %s)', async present => {
+    const resolveActiveWorkspace = vi.fn<ResolveDesktopWorkspaceStartupOptions['resolveActiveWorkspace']>(async () => createSelection());
+    const selectorAuthority = { assertCurrent: vi.fn(), proveTerminal: vi.fn(async () => ({ assertCurrent: vi.fn() })) };
+    await resolveDesktopWorkspaceStartup({
+      assertStartupCurrent: vi.fn(), createRuntimeSession: () => 'synthetic-session', relaunchApplication: vi.fn(),
+      resolveActiveWorkspace, userDataRoot: 'synthetic-root', ...(present ? { selectorAuthority } : {}),
+    });
+    expect(resolveActiveWorkspace).toHaveBeenCalledExactlyOnceWith('synthetic-root',
+      ...(present ? [{ selectorAuthority }] : []));
+    if (present) expect(resolveActiveWorkspace.mock.calls[0]?.[1]?.selectorAuthority).toBe(selectorAuthority);
+  });
+
   it('relaunches before creating a runtime session after safe target rollback', async () => {
     const createRuntimeSession = vi.fn(() => 'unused-session');
     const relaunchApplication = vi.fn();

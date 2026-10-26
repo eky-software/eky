@@ -259,7 +259,9 @@ it('carries real switch recovery and acceptance receipts into main and W6 withou
       admitSelection: main.admitSelectorSelection,
       didSettleSelection: receipt => main.settleSelectorSelection(receipt, w6),
       // Native/process terminal proof is intentionally controlled in this owner-chain test.
-      async proveTerminal() { return { assertCurrent: f.guard.assertCurrent }; } },
+      proveTerminal: request => main.proveSelectorTerminal(request, w6, async () => ({
+        assertCurrent: f.guard.assertCurrent, assertExternal: f.guard.assertExternalSelection,
+      })) },
   });
   if (startup.mode === 'selector') throw new Error('UNEXPECTED_SELECTOR');
   expect((await f.registry.inspectSlots()).current?.identity?.ino).toBe(state.registry.backup?.identity?.ino);

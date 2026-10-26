@@ -70,6 +70,18 @@ erottaa hyväksytyn toteutuksen ja sen omat PR/main-portit myöhemmästä työst
 | Mobile Sync | planned | open | Ei saa ohittaa module application-, permission- tai tenant-rajoja | open | open | open | open | open | open | open | open | open | open | open | open | open | open | open | mobile planned | open |
 | AI Agent Coordination | planned | Agenttien rajattu toimijuus ja jäljitettävä orchestration päätetään myöhemmin | Ei saa ohittaa domain-, permission-, tenant-, audit- tai API-rajoja | open | open | open | open | Vain omistavan moduulin application-sopimusten kautta | open | open | open | open | open | open | open | open | open | open | backend/cloud planned | open |
 
+W7.2:n keskeneräinen backenditon hallinta käyttää nykyistä workspace-
+hallintapalvelua ja IPC-kyvykkyyttä. Niiden pääsyn sulku ja aloitetun työn
+odotus ovat erillisiä; journalilukijan virhe ei jätä rinnakkaisia lukuja
+omistajansa odotuksen ulkopuolelle. Selector-composition käyttää samoja
+luonti-/tuontiomistajia ilman aktiivisen yrityksen korvauspalvelua. Source-null-
+vaihto ja nimenmuutos sitovat nykyisten tallentimien kirjoitukset elävään
+huoltovaraukseen; tilalukijat eivät jaa kirjoittajan sisäistä lukkoa.
+Odotus ei anna native-poissaolo- tai siivousvaltuutta.
+[Omistava sulkusopimus](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
+ja [M1:n nykytila](release-0.3.0-m1-preparation-plan.md#jatka-tästä) erottavat
+todennetut osarajat vielä puuttuvasta main-/valitsinkytkennästä.
+
 Desktopin H5-häiriöilmoitus ei muuta Diagnosticsin omistajuutta:
 mainin nykyinen failure sink omistaa prosessikohtaisen häiriöhavainnon ja
 minimoidun incident-yrityksen; App-kuori näyttää vain turvallisen boolean-

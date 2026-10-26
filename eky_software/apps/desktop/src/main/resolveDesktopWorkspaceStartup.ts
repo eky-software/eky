@@ -1,8 +1,9 @@
 import {
   ActiveWorkspaceStartupRelaunchRequiredError,
+  type ActiveWorkspaceStartupOptions,
   type ActiveWorkspaceStartupSelection,
 } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
-import type { WorkspaceSelectorStartupSelection } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
+import type { WorkspaceSelectorStartupSelection, WorkspaceSelectorSwitchStartupAuthority } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
 
 export type DesktopWorkspaceStartupResolution =
   | Readonly<{
@@ -19,7 +20,9 @@ export interface ResolveDesktopWorkspaceStartupOptions {
   readonly relaunchApplication: () => void;
   readonly resolveActiveWorkspace: (
     userDataRoot: string,
+    options?: Readonly<ActiveWorkspaceStartupOptions>,
   ) => Promise<Readonly<ActiveWorkspaceStartupSelection> | WorkspaceSelectorStartupSelection>;
+  readonly selectorAuthority?: WorkspaceSelectorSwitchStartupAuthority;
   readonly userDataRoot: string;
 }
 
@@ -29,12 +32,14 @@ export async function resolveDesktopWorkspaceStartup(
   const assertStartupCurrent = options.assertStartupCurrent.bind(options);
   const createRuntimeSession = options.createRuntimeSession.bind(options);
   const relaunchApplication = options.relaunchApplication.bind(options);
+  const resolveActiveWorkspace = options.resolveActiveWorkspace.bind(options);
+  const selectorAuthority = options.selectorAuthority;
   assertStartupCurrent();
   let activeWorkspace: Readonly<ActiveWorkspaceStartupSelection> | WorkspaceSelectorStartupSelection;
   try {
-    activeWorkspace = await options.resolveActiveWorkspace(
-      options.userDataRoot,
-    );
+    activeWorkspace = await (selectorAuthority === undefined
+      ? resolveActiveWorkspace(options.userDataRoot)
+      : resolveActiveWorkspace(options.userDataRoot, { selectorAuthority }));
   } catch (error) {
     if (error instanceof ActiveWorkspaceStartupRelaunchRequiredError) {
       assertStartupCurrent();

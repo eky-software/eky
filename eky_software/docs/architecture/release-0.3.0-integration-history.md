@@ -5,6 +5,66 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n hallinnan sulkuporttien checkpoint 26.10.2026
+
+Alla oleva aiempi jatkamisteksti säilyy muuttamattomana. Hallinnan
+compositionin myöhempi osanäyttö ja seuraava liitos ovat M1:n alussa.
+
+**Seuraava kytkentä:** valitsimen rajattu elinkaariportti on toteutettu
+nykyisen huolto- ja prosessivarauksen varaan. Nykyinen hallintapalvelu ja
+IPC-kyvykkyys estävät uuden työn sulussa ja tarjoavat aloitetun työn
+päättymisen odotuksen. Myöhäiset native-vastaukset eivät aloita uutta
+tuontia tai korvausta. Journalilukujen liian aikainen palautuminen ja
+suljetun vartijan myöhäinen hyväksyntä toistettiin ja korjattiin.
+Vaikutusalueen 262 testiä, mainin 17 valittua sammutusregressiota sekä
+desktopin tyyppitarkistus läpäisivät; rajattu jälkikatselmus valmistui.
+Ensimmäisen uuden testin järjestysoletus korjattiin testissä, eikä sen
+epäonnistumista tai vanhoja aikakatkaisuja kirjata onnistumisiksi.
+Mainin varauskoodi on testissä todellinen, native-portit ohjattuja.
+Seuraavaksi liitetään backenditon hallinta ja nämä sulkuportit mainin
+valitsinkuluttajaan. Valitsinikkunaa ei vielä avata eikä tätä pidetä koko
+W7.2:n hyväksyntänä.
+
+## W7.2:n testibudjetin mittaus 26.10.2026
+
+Mainin terminal-kytkennän onnistuvan avauksen passiivisiirtymän ja valitun
+kopion rollbackin yhdistelmätestit ylittivät nykyisen testirajan. Ensivirheet
+ja epävarma siivoustila säilyivät avoimina; yksi kohdeuusinta ei sulkenut
+havaintoa. Ensimmäinen hyväksytty kahden nimetyn tapauksen mittauskoe ei
+antanut kelvollista kestotodistetta: ylimääräinen mittausapu ja testi
+korvasivat saman metodin, jolloin syntyi itseään kutsuva ketju. Toinen
+tapaus estyi keskeneräisen työn suojassa. Mittausvirhe toistettiin pienellä
+kontrollilla, eikä sitä tulkittu aiempien sovellusviiveiden syyksi.
+
+Hyväksytty korjattu mittaus ilman ylimääräisiä koukkuja läpäisi molemmat
+tapaukset. Omistaja hyväksyi pysyvän kymmenen sekunnin testirajan vain
+source-null-avauksen passiivisiirtymälle ja onnistuneelle kopioaktivoinnin
+rollbackille. Ne läpäisivät myös normaalilla testiasetuksella. Tyypit ja
+rajattu riippumaton katselmus läpäisivät; testirunkojen sisältö säilyi.
+
+Seitsemän variantin kohdeajo pysähtyi silti muuttumattoman
+`passive: true, source-null: false` -tapauksen rajaan. Kaksi tapausta läpäisi,
+yksi aikakatkaisi ja neljä estyi keskeneräisen työn suojassa. Erillinen
+mittaus läpäisi kolmannen tapauksen kokeen rajalla. Se ei muuttanut sen
+pysyvää rajaa eikä hyväksynyt koko käynnistyssarjaa. Kaikki aiemmat
+hylkäykset säilytettiin erillisinä; seuraavan päätöksen omistaa M1.
+
+## W7.2:n palautuskuitin checkpoint 26.10.2026
+
+Terminal-kytkentää edeltävä mainin palautuskuitin kytkentä läpäisi
+239 käynnistys-/palautustestiä, 206 viereisten omistajien regressiota ja
+rajatun katselmuksen. Kilpailutilanneregressio toisti ja korjauksen jälkeen
+esti palautusjuuren poiston viimeisen luennan aikana menetetyllä valtuudella.
+Main käsitteli kopioaktivoinnin tarkan palautuskuitin nykyisellä cold-
+omistajalla ja odotti myös I/O:n sekä varausten sulkeutumisen. Virhepolku
+esti yleisen source-recoveryn ohituksen. Source-null-kutsujan koko switch/W6-
+terminal-valtuus ja resolverikytkentä olivat seuraava työ.
+
+Näyttö käytti synteettisiä tiedostotavuja ja hallittuja prosessi-/sisältö-
+validointirajoja, ei oikeaa SQLite/Electron- tai paketoitua ketjua.
+W7.2:n tuotantokytkentä ja integraatio eivät olleet valmiit.
+Aiemmat aikakatkaisut ja epävarmat siivoustilat säilyivät avoimina.
+
 ## W7.1:n integraatiota edeltävä jatkamiskohta 25.10.2026
 
 Seuraava aiempi M1-jatkamisteksti säilytetään muuttamattomana. Sen

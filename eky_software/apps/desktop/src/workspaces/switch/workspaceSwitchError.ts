@@ -5,8 +5,8 @@ export type WorkspaceSwitchSafeErrorCode =
   | 'WORKSPACE_SWITCH_STORAGE_FAILED';
 
 export class WorkspaceSwitchError extends Error {
-  constructor(readonly code: WorkspaceSwitchSafeErrorCode) {
-    super(code);
+  constructor(readonly code: WorkspaceSwitchSafeErrorCode, options?: ErrorOptions) {
+    super(code, options);
     this.name = 'WorkspaceSwitchError';
   }
 }

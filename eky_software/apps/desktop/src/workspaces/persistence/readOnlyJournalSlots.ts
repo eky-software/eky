@@ -58,11 +58,7 @@ export async function readOnlyJournalSlots<T>(
 export async function hasAnyJournalSlot(
   paths: Readonly<ReadOnlyJournalSlotPaths>,
 ): Promise<boolean> {
-  const presence = await Promise.all([
-    inspectSlotPresence(paths.currentPath),
-    inspectSlotPresence(paths.nextPath),
-    inspectSlotPresence(paths.backupPath),
-  ]);
+  const presence = await inspectJournalPresence(paths);
   return presence.some(Boolean);
 }
 
@@ -72,11 +68,7 @@ export async function hasTerminalJournalConflict<T>(
   parse: (value: unknown) => Readonly<T>,
   isTerminal: (value: Readonly<T>) => boolean,
 ): Promise<boolean> {
-  const [currentExists, nextExists, backupExists] = await Promise.all([
-    inspectSlotPresence(paths.currentPath),
-    inspectSlotPresence(paths.nextPath),
-    inspectSlotPresence(paths.backupPath),
-  ]);
+  const [currentExists, nextExists, backupExists] = await inspectJournalPresence(paths);
   if (nextExists || backupExists) return true;
   if (!currentExists) return false;
   // readSlot is a bounded read, unlike the byte store's recoverAndRead.
@@ -90,6 +82,23 @@ export async function hasTerminalJournalConflict<T>(
   const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
   const current = parse(JSON.parse(source));
   return !isTerminal(current);
+}
+
+async function inspectJournalPresence(paths: Readonly<ReadOnlyJournalSlotPaths>): Promise<readonly boolean[]> {
+  let firstFailure: { cause: unknown } | undefined;
+  const observations = await Promise.allSettled(
+    [paths.currentPath, paths.nextPath, paths.backupPath].map(path =>
+      inspectSlotPresence(path).catch((cause: unknown) => {
+        firstFailure ??= { cause };
+        throw cause;
+      })),
+  );
+  // Rejection must not leave sibling reads running beyond their owner's close.
+  if (firstFailure !== undefined) throw firstFailure.cause;
+  return observations.map(observation => {
+    if (observation.status === 'rejected') throw observation.reason;
+    return observation.value;
+  });
 }
 
 async function inspectSlotPresence(path: string): Promise<boolean> {

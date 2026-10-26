@@ -93,7 +93,7 @@ describe('workspace management composition boundaries', () => {
         workspaceComposition,
         'maintenanceLease: options.maintenanceLease,',
       ),
-    ).toBe(6);
+    ).toBe(7); // Active and selector switch branches bind the same existing lease.
     expect(workspaceComposition).toContain("completionMode: 'beforeRuntimeStart' as const");
     expect(workspaceComposition).toContain('assertRecoveryAdmission: options.assertRecoveryAdmission,');
     expect(workspaceComposition).toContain('workspaceRuntimeAbsence: options.workspaceRuntimeAbsence,');

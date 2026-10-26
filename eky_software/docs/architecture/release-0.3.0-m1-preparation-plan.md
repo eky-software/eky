@@ -37,25 +37,65 @@ Aiempi jatkamisteksti säilyy muuttamattomana
 [historiassa](release-0.3.0-integration-history.md#w71n-integraatiota-edeltävä-jatkamiskohta-25102026).
 
 **Nykyinen työ:** W7.2:n rekisteri v2, pysyvä yritysvalinta ja backenditon
-hallintatila. Rekisterin, metadatan ja käynnistyksen tilavalmistelun osarajat
-on toteutettu ja kohdennetusti todennettu. Main kytkee nyt W6:n ja
-FirstStartin vaihekohtaisen valtuuden jo valitun yrityksen deferred-avaukseen.
-Switch-omistajan varmennetun tiedostovalinnan luovutusrajapinta on toteutettu;
-palautuksen omistaja sisältää nyt erillisen alkuperäissisällön cold-loppurajan
-ja vaihtovarauksen luovutuksen. Main käsittelee nyt kopioaktivoinnin tarkan
-palautuskuitin nykyisellä cold-omistajalla ja odottaa myös I/O:n sekä
-varausten sulkeutumisen. Sen uusi virhepolku estää yleisen source-recoveryn
-ohituksen. Mainin source-null-kutsuja tarvitsee vielä koko switch/W6-ketjun
-terminal-valtuuden ja käynnistysratkaisijan kytkennän.
-Sen jälkeen tulevat valitsimen käyttöliittymä
-ja native-/pakettitodennus. W7.2:n tuotantokytkentä ei ole valmis.
+hallintatila. Rekisterin, metadatan, käynnistysvalmistelun ja tarkan
+kopioaktivoinnin palautuskuitin osarajat on toteutettu. Mainin
+deferred-source-null-avauksen switch/W6-terminal-valtuus ja resolverin
+kytkentä ovat nyt toteutettuina, mutta eivät vielä kokonaan todennettuina.
+Pelkkä null-valinta, `rollbackSelected`-restart, business-metadatan vastaava
+avaus ja valitsimen käyttöliittymä ovat seuraavia kytkentöjä, eivät tämän
+osarajan läpäisynäyttöä. Native-/paketti- ja PR/main-portit ovat tekemättä.
 
-Mainin palautuskuitin kytkentä läpäisi 239 käynnistys-/palautustestiä,
-206 viereisten omistajien regressiota ja rajatun katselmuksen. Uusi
-kilpailutilanneregressio toisti ja korjauksen jälkeen esti palautusjuuren
-poiston viimeisen luennan aikana menetetyllä valtuudella. Näyttö käyttää
-synteettisiä tiedostotavuja ja hallittuja prosessi-/sisältövalidointirajoja;
-se ei ole oikean SQLite/Electron- tai paketoidun ketjun hyväksyntä.
+**Todennettu hallinnan osaraja:** nykyinen composition rakentaa backendittoman
+hallinnan samoilla luonti-, tuonti-, nimenmuutos- ja vaihtoomistajilla.
+Se ei luo aktiivista yritystä, business-sessionia tai korvauspalvelua.
+Source-null-vaihto julkaisee valitun journalin ja rekisterin nykyisillä
+tallentimilla sekä vapauttaa huoltovarauksen ennen relaunch-pyyntöä.
+Katselmuksessa toistetut tilaluvun virheellinen ristiriita ja myöhäisen
+nimenmuutoksen vanhentunut valtuus on korjattu; rajattu jälkikatselmus
+ei löytänyt uutta P1/P2-puutetta. Vaikutusalueen 569 testiä läpäisivät.
+Sen jälkeen vain testeihin tehty tyyppikorjaus ja neljä lisäreunatapausta
+läpäisivät 51 testin kohdeajon sekä desktopin tyyppitarkistuksen.
+Päällekkäisiä ajomääriä ei lasketa yhteen. Ensivirheet säilyvät erillisinä.
+
+**Seuraava kytkentä:** liitä tämä hallinta ja aiemmin todennetut palvelun/IPC:n
+sulkuportit mainin valitsinkuluttajaan. Mainin nykyinen selector-esto säilyy
+siihen asti; valitsinikkunaa ei vielä avata. Luonti-/tuontireititys on tässä
+composition-testissä ohjattu komentorajalta, ei SQLite/Electron-todiste.
+Native-/paketti- ja PR/main-portit sekä alla olevat avaushaarat ovat vielä
+tekemättä. Aiempien sulkutestien checkpoint säilyy
+[historiassa](release-0.3.0-integration-history.md#w72n-hallinnan-sulkuporttien-checkpoint-26102026).
+
+**Avoin ennen seuraavaa laajaa ajoa:** passiivisen yrityksen siirtymän
+variantti `passive: true, source-null: false` ylitti muuttumattoman
+testikohtaisen rajan. Seitsemän tapauksen kohdeajossa kaksi läpäisi, tämä
+tapaus aikakatkaisi ja keskeneräisen työn suoja esti neljän seuraavan
+aloituksen. Yksi erillinen mittaus läpäisi kyseisen variantin kokeen
+rajalla; se ei ole normaalin testirajan läpäisy. Mahdollinen pysyvä
+rajamuutos on erillisessä päätöksessä. Aineisto ja epävarma siivoustila
+säilyvät; koko sarjaa tai vanhaa viivettä ei merkitä korjatuksi.
+
+**Hyväksytty testirajaus 26.10.2026:** pysyvä kymmenen sekunnin testiraja
+on toteutettu vain source-null-avauksen passiivisiirtymälle ja onnistuneelle
+kopioaktivoinnin rollbackille. Molemmat läpäisivät normaalilla asetuksella,
+tyyppitarkistus läpäisi ja rajatussa riippumattomassa katselmuksessa ei
+löytynyt puutetta. Testirungot ja tarkistukset säilyvät, samoin muiden
+varianttien, sovelluksen ja CI:n aikarajat.
+[Testausohje](../ai/testing-rules.md#palautustestin-erillinen-valmistelu)
+omistaa täsmällisen rajauksen. Alkuperäisen mittausavun virhe ja aiemmat
+aikakatkaisut säilyvät erillisinä
+[historiallisina havaintoina](release-0.3.0-integration-history.md#w72n-testibudjetin-mittaus-26102026).
+
+**Rajattu näyttö:** terminal-helperin, resolverin ja valitun W6-persistenssin
+68 testiä läpäisivät. Todellisen main-ketjun kaksi virhekontrollia säilyttivät
+palautusaineiston ja estivät valitsimeen paluun sisältö- tai vapautusvirheessä.
+Katselmuksen viimeisen poistovartijan puute toistettiin ja korjattiin:
+runtime-valtuus tarkistetaan nyt myös W6-journalin viimeisessä synkronisessa
+poistovartijassa. Desktopin, Electron-testien ja E2E:n tyyppitarkistukset
+läpäisivät; rajatun tuotantodeltan katselmuksessa ei jäänyt vahvistettua
+avointa löydöstä. Tämä on ohjattujen native-rajojen ja synteettisten tavujen
+näyttöä, ei koko käynnistyssarjan tai W7.2:n hyväksyntä. Aiempi
+[palautuskuitin checkpoint](release-0.3.0-integration-history.md#w72n-palautuskuitin-checkpoint-26102026)
+säilyy historiassa. Päällekkäisiä testimääriä ei lasketa yhteen.
 
 Cold-loppurajan vaikutusalueen yhdistetyssä ajossa yhdeksän tiedostoa
 läpäisi (475 testiä). Mainin käynnistystiedoston yksi tapaus aikakatkaisi

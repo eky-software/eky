@@ -13,6 +13,8 @@ import {
   type WorkspaceProcessReservation,
 } from '../runtime/workspaceProcessReservation.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
+import { MainOwnedSelectorWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.js';
 import { acquireDesktopWorkspaceReservation } from './desktopComposition.js';
 
 vi.mock('electron', () => ({
@@ -75,6 +77,76 @@ beforeEach(() => {
   waitForRelease.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => { vi.restoreAllMocks(); });
+
+describe('selector lifecycle with the desktop reservation owner', () => {
+  async function selectorFixture() {
+    const f = await fixture();
+    // Discard the fixture's unused binding without releasing its main reservation.
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    const relaunch = vi.fn();
+    const runtimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(relaunch);
+    const lifecycle = new MainOwnedSelectorWorkspaceLifecycle({
+      assertSelectorCurrent: f.owner.assertInstallationCurrent,
+      reservation: f.owner,
+      maintenanceLease: f.lease,
+      runtimeRelaunch,
+    });
+    await lifecycle.quiesceWrites(null);
+    await lifecycle.stopAndProveHandlesClosed(null);
+    return { ...f, lifecycle, runtimeRelaunch, relaunch };
+  }
+
+  it('proves the reclaimed main reservation before returning to the selector', async () => {
+    const f = await selectorFixture();
+    const transfer = f.owner.bind(randomUUID(), f.lease.captureCurrentOwner(['create']));
+    try {
+      await transfer.prepare(f.signal.signal);
+      await transfer.assertGrant(f.signal.signal);
+      transfer.assertCurrent();
+      expect(() => f.owner.assertMainCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      // The process fixture reports exit; the real owner performs reclaim/readback.
+      await transfer.reclaimAfterExit(f.signal.signal);
+      const before = f.reclaimed.handle.assertOwned.mock.calls.length;
+      await f.lifecycle.assertNoActiveWorkspaceRuntime();
+      expect(f.reclaimed.handle.assertOwned.mock.calls.length).toBeGreaterThan(before);
+      await f.lifecycle.ensurePreviousWorkspaceRunning(null);
+      expect(f.relaunch).not.toHaveBeenCalled();
+      await f.handle.release();
+      f.runtimeRelaunch.complete();
+      expect(f.relaunch).toHaveBeenCalledOnce();
+    } finally { await f.owner.close(); }
+  });
+
+  it.each(['bound', 'granted'] as const)('does not reuse stop evidence while a candidate is %s', async phase => {
+    const f = await selectorFixture();
+    const transfer = f.owner.bind(randomUUID(), f.lease.captureCurrentOwner(['create']));
+    try {
+      if (phase === 'granted') {
+        await transfer.prepare(f.signal.signal);
+        await transfer.assertGrant(f.signal.signal);
+        transfer.assertCurrent();
+      }
+      await expect(f.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    } finally { await transfer.reclaimAfterExit(f.signal.signal); }
+    try {
+      await f.owner.assertMainOwned();
+      await expect(f.lifecycle.ensurePreviousWorkspaceRunning(null)).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(f.runtimeRelaunch.isRequested()).toBe(false);
+    } finally { await f.handle.release(); await f.owner.close(); }
+  });
+
+  it('does not authorize selector return after the physical reservation is lost', async () => {
+    const f = await selectorFixture();
+    f.initial.loss.abort();
+    try {
+      await expect(f.lifecycle.ensurePreviousWorkspaceRunning(null)).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(f.runtimeRelaunch.isRequested()).toBe(false);
+    } finally {
+      await f.handle.release();
+      await expect(f.owner.close()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    }
+  });
+});
 
 describe('desktop composition workspace reservation owner', () => {
   it('keeps installation validity repeatable without granting main ownership or consuming a child grant', async () => {

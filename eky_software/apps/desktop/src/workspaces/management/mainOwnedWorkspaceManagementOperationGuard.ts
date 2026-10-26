@@ -17,6 +17,7 @@ import {
 } from './workspaceManagementOperationGuard.js';
 
 export interface MainOwnedWorkspaceManagementOperationGuardOptions {
+  readonly mode?: 'active';
   readonly adoptionJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly creationJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly directSetupRecovery: Readonly<ReadOnlyJournalSlotPaths>;
@@ -25,6 +26,11 @@ export interface MainOwnedWorkspaceManagementOperationGuardOptions {
   readonly replacementJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly switchJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly updateJournal: Readonly<ReadOnlyJournalSlotPaths>;
+}
+
+export interface SelectorWorkspaceManagementOperationGuardOptions {
+  readonly mode: 'selector';
+  assertNoUnresolvedSelectorOperations(): Promise<void>;
 }
 
 export function createReadOnlyJournalSlotPaths(
@@ -50,7 +56,7 @@ export class MainOwnedWorkspaceManagementOperationGuard
   private disposed = false;
 
   constructor(
-    private readonly options: Readonly<MainOwnedWorkspaceManagementOperationGuardOptions>,
+    private readonly options: Readonly<MainOwnedWorkspaceManagementOperationGuardOptions | SelectorWorkspaceManagementOperationGuardOptions>,
   ) {}
 
   async assertNoUnresolvedOperations(): Promise<void> {
@@ -62,7 +68,11 @@ export class MainOwnedWorkspaceManagementOperationGuard
   async readRecoveryState(): Promise<WorkspaceManagementRecoveryState> {
     if (this.disposed) return 'recoveryRequired';
     try {
-      const unresolved = await Promise.all([
+      if (this.options.mode === 'selector') {
+        await this.options.assertNoUnresolvedSelectorOperations();
+        return this.disposed ? 'recoveryRequired' : 'clear';
+      }
+      const unresolved = await Promise.allSettled([
         hasAnyJournalSlot(this.options.adoptionJournal),
         hasAnyJournalSlot(this.options.creationJournal),
         hasTerminalJournalConflict(
@@ -82,7 +92,8 @@ export class MainOwnedWorkspaceManagementOperationGuard
           (journal) => isTerminalUpdateJournalState(journal.state),
         ),
       ]);
-      return unresolved.some(Boolean) ? 'recoveryRequired' : 'clear';
+      return this.disposed || unresolved.some(result => result.status === 'rejected' || result.value)
+        ? 'recoveryRequired' : 'clear';
     } catch {
       return 'recoveryRequired';
     }
