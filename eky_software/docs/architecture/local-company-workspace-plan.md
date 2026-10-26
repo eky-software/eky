@@ -496,6 +496,25 @@ eteenpäinmigraatiota; sen tarkistus on nimetty palautustarkistus, ei
 business-readiness. Jos turvallista loppua ei voida todistaa, journalit ja
 aineisto säilyvät recovery-tilassa eikä valitsimeen paluuta luvata.
 
+Source-null-kopion epäonnistumisen tiedostopalautus säilyttää nykyisen
+switch-varauksen. Vasta valmistuneen palautuksen ja kuitatun vapautuksen
+jälkeen uusitaan valinta- ja prosessipoissaolotodiste ja kutsutaan valitsimeen
+paluun omistajaa. Sen alkuperäissisällön loppuvalidointi käyttää omaa
+restore-varausta; switch-varausta ei nimetä restore-valtuudeksi. Vanha
+ei-null-vaihto säilyttää aiemman järjestyksensä. Vapautus- tai paluuvirhe
+ei peitä alkuperäistä aktivointivirhettä eikä anna relaunch-lupaa.
+
+Palautuksen nykyisen startup-omistajan nimetty cold-loppusiivous vaatii jo
+valitun täsmällisen `rolledBack`-journalin ja tuoreen alkuperäissisällön
+valtuuden. Se ei avaa tai migroi business-runtimea. Keskeneräinen aiempi
+startup-operaatio, alkanut hyväksyntä tai epävarma päätös estää kutsun;
+aloitettu loppusiivous sulkee saman instanssin muut jatkot. Palautusjuuren
+varaus vapautetaan vasta sen nimetyllä poistokohdalla, ja alkuperäinen
+juuri-identiteetti sekä elävä synkroninen valtuus tarkistetaan viimeisen
+luvun jälkeen ennen poistoa. Ankkurin ja muiden varausten päättymisen pitää
+onnistua ennen paluuvaltuutta. Journalin puuttuminen yksin ei todista sitä.
+Nämä osarajat eivät vielä kytke mainin kaikkia terminal-kutsujia.
+
 Nykyisen W6-orchestraattorin `cancelBeforeSelectorReturn` toteuttaa tämän
 peruutusrajan nimetylle deferred-avaukselle. Kutsuja toimittaa elävän
 käynnistysvaltuuden ja todellisen töiden päättymistarkistuksen; metodi ei

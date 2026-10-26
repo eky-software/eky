@@ -81,6 +81,19 @@ export interface ProfileRestoreTerminalMutationAuthority {
   assertCurrent(journal: Readonly<ProfileRestoreActivationJournal>, removed: ReadonlySet<string>): Promise<void>;
 }
 
+export interface ProfileRestoreRollbackRootRemovalAuthority {
+  readonly identity: string;
+  assertCurrent(): void;
+}
+
+export function assertSynchronousRollbackRootAuthority(assertCurrent: () => void): void {
+  const result: unknown = assertCurrent();
+  if (result !== undefined) {
+    void Promise.resolve(result).catch(() => undefined);
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+}
+
 export class ProfileRestoreActivationTransaction {
   private readonly paths: ProfileRestoreActivationPaths;
   private readonly terminalCensuses = new WeakSet<ProfileRestoreTerminalCleanupCensus>();
@@ -556,6 +569,7 @@ export class ProfileRestoreActivationTransaction {
   async clearRolledBack(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
+    beforeRollbackRootRemoval?: (journal: Readonly<ProfileRestoreActivationJournal>) => Promise<ProfileRestoreRollbackRootRemovalAuthority>,
   ): Promise<void> {
     const journal = await this.requireTerminalJournal(expected, assertRecoveryAuthority);
     if (journal.phase !== 'rolledBack') {
@@ -569,6 +583,18 @@ export class ProfileRestoreActivationTransaction {
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
       await assertEmptyRollbackOperationStructure(root);
       if (!(await inspectRecoverySlot(path, 'directory'))) continue;
+      if (path === root && beforeRollbackRootRemoval !== undefined) {
+        const proof = await beforeRollbackRootRemoval(journal);
+        const identity = proof.identity;
+        const assertRootOwner = proof.assertCurrent.bind(proof);
+        await this.assertRollbackMutation(journal, assertRecoveryAuthority);
+        await this.assertJournalMutation(journal, assertRecoveryAuthority);
+        await assertEmptyRollbackOperationStructure(root);
+        if (await readWorkspaceProcessReservationIdentity(root) !== identity) {
+          throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+        }
+        assertSynchronousRollbackRootAuthority(assertRootOwner);
+      }
       try {
         // A late entry must stop cleanup, never be recursively removed.
         await fileSystem.rmdir(path);

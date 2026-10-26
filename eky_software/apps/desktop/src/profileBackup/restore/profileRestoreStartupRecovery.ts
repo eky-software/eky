@@ -5,7 +5,8 @@ import {
   type ProfileRecoveryOperationalObserver,
 } from '../profileRecoveryOperationalObserver.js';
 import type { ProfileRestoreActivationJournalStore } from './profileRestoreActivationJournalStore.js';
-import type { ProfileRestoreActivationTransaction, ProfileRestoreTerminalMutationAuthority } from './profileRestoreActivationTransaction.js';
+import type { ProfileRestoreActivationTransaction, ProfileRestoreRollbackRootRemovalAuthority, ProfileRestoreTerminalMutationAuthority } from './profileRestoreActivationTransaction.js';
+import { assertSynchronousRollbackRootAuthority } from './profileRestoreActivationTransaction.js';
 import {
   assertProfileRestoreActivationJournalMatches,
   captureProfileRestoreActivationJournal,
@@ -23,6 +24,7 @@ export interface ProfileRestoreColdForwardAdmission {
 export interface ProfileRestoreColdRollbackAdmission extends ProfileRestoreColdForwardAdmission {
   readonly kind: 'rollback';
   beforeStagingMove(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+  beforeRollbackRootRemoval?(journal: Readonly<ProfileRestoreActivationJournal>): Promise<ProfileRestoreRollbackRootRemovalAuthority>;
 }
 
 export type ProfileRestoreStartupMode =
@@ -67,12 +69,21 @@ export class ProfileRestoreStartupRecovery {
   private selectedJournal: Readonly<ProfileRestoreActivationJournal> | undefined;
   private restoredProfileAwaitingDecision = false;
   private acceptanceState: 'notStarted' | 'unverified' | 'committed' = 'notStarted';
+  private selectorReturnState: 'unused' | 'active' | 'complete' | 'failed' = 'unused';
+  private activeStartupOperations = 0;
 
   constructor(
     private readonly dependencies: ProfileRestoreStartupRecoveryDependencies,
   ) {}
 
   async prepareBeforeBackend(
+    admission?: ProfileRestoreColdForwardAdmission | ProfileRestoreColdRollbackAdmission,
+    selected?: Readonly<ProfileRestoreActivationJournal>,
+  ): Promise<ProfileRestoreStartupMode> {
+    return this.runStartupOperation(() => this.prepareStartup(admission, selected));
+  }
+
+  private async prepareStartup(
     admission?: ProfileRestoreColdForwardAdmission | ProfileRestoreColdRollbackAdmission,
     selected?: Readonly<ProfileRestoreActivationJournal>,
   ): Promise<ProfileRestoreStartupMode> {
@@ -185,6 +196,12 @@ export class ProfileRestoreStartupRecovery {
     stopBackend(): Promise<void>;
     validateActiveProfile(): Promise<void>;
   }): Promise<ProfileRestoreStartupValidationResult> {
+    return this.runStartupOperation(() => this.validateStartup(input));
+  }
+
+  private async validateStartup(
+    input: Parameters<ProfileRestoreStartupRecovery['validateAfterBackend']>[0],
+  ): Promise<ProfileRestoreStartupValidationResult> {
     if (input.mode === 'normal') {
       this.activeCorrelationId = undefined;
       return 'ready';
@@ -257,23 +274,98 @@ export class ProfileRestoreStartupRecovery {
   async acceptValidatedRestoredProfile(input: {
     assertTargetCanAccept(): void;
   }): Promise<void> {
-    this.assertRestoredProfileAwaitingDecision();
-    input.assertTargetCanAccept();
-    await this.finishAcceptance();
-    this.restoredProfileAwaitingDecision = false;
-    this.activeCorrelationId = undefined;
+    return this.runStartupOperation(async () => {
+      this.assertRestoredProfileAwaitingDecision();
+      input.assertTargetCanAccept();
+      await this.finishAcceptance();
+      this.restoredProfileAwaitingDecision = false;
+      this.activeCorrelationId = undefined;
+    });
   }
 
   async rollbackValidatedRestoredProfile(): Promise<void> {
-    this.assertRestoredProfileAwaitingDecision();
-    if (this.acceptanceState !== 'notStarted') throw new Error('PROFILE_RESTORE_DECISION_INVALID');
-    await this.rollbackAfterStoppedBackend();
-    this.restoredProfileAwaitingDecision = false;
-    this.assertOriginalDatabasePresent();
+    return this.runStartupOperation(async () => {
+      this.assertRestoredProfileAwaitingDecision();
+      if (this.acceptanceState !== 'notStarted') throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+      await this.rollbackAfterStoppedBackend();
+      this.restoredProfileAwaitingDecision = false;
+      this.assertOriginalDatabasePresent();
+    });
   }
 
   readAcceptanceState(): 'notStarted' | 'unverified' | 'committed' {
     return this.acceptanceState;
+  }
+
+  /** Cold original-content validation grants selector return, not business readiness. */
+  async completeRolledBackBeforeSelectorReturn(admission: ProfileRestoreColdRollbackAdmission): Promise<void> {
+    this.assertStartupContinuation();
+    if (this.activeStartupOperations !== 0) throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+    this.selectorReturnState = 'active';
+    try {
+      const selected = this.requireSelectedJournal();
+      if (selected.phase !== 'rolledBack' || !selected.hadActiveDatabase || admission.kind !== 'rollback' ||
+          admission.beforeRollbackRootRemoval === undefined) {
+        throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+      }
+      assertProfileRestoreActivationJournalMatches(selected, admission.journal);
+      const assertCurrent = admission.assertCurrent.bind(admission);
+      const assertContent = admission.assertContent.bind(admission);
+      const releaseRollbackRoot = admission.beforeRollbackRootRemoval.bind(admission);
+      const assertSelected = () => {
+        if (this.selectorReturnState !== 'active' || this.selectedJournal !== selected ||
+            this.acceptanceState !== 'notStarted' || this.restoredProfileAwaitingDecision) {
+          throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+        }
+      };
+      const assertAuthority = async () => {
+        assertSelected();
+        await assertCurrent();
+        assertSelected();
+      };
+      const assertOriginal = async () => {
+        await assertAuthority();
+        await assertContent(selected);
+        await assertAuthority();
+      };
+      await assertOriginal();
+      await this.dependencies.transaction.clearRolledBack(selected, assertOriginal, async journal => {
+        assertProfileRestoreActivationJournalMatches(selected, journal);
+        await assertOriginal();
+        const proof = await releaseRollbackRoot(selected);
+        const identity = proof.identity;
+        const assertRootOwner = proof.assertCurrent.bind(proof);
+        await assertAuthority();
+        return Object.freeze({ identity, assertCurrent() {
+          assertSelected(); assertSynchronousRollbackRootAuthority(assertRootOwner);
+        } });
+      });
+      await assertAuthority();
+      const remaining = await this.dependencies.journalStore.peek();
+      await assertAuthority();
+      if (remaining !== undefined) throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      this.selectedJournal = undefined;
+      this.activeCorrelationId = undefined;
+      this.selectorReturnState = 'complete';
+    } catch (error) {
+      this.selectorReturnState = 'failed';
+      this.observeRecoveryRequired('rolledBackProfile');
+      throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED', { cause: error });
+    }
+  }
+
+  private assertStartupContinuation(): void {
+    if (this.selectorReturnState !== 'unused') {
+      this.selectorReturnState = 'failed';
+      throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+    }
+  }
+
+  private async runStartupOperation<T>(operation: () => Promise<T>): Promise<T> {
+    this.assertStartupContinuation();
+    this.activeStartupOperations++;
+    try { return await operation(); }
+    finally { this.activeStartupOperations--; }
   }
 
   private async finishAcceptance(): Promise<void> {

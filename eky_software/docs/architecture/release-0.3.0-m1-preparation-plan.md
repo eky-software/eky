@@ -41,9 +41,19 @@ hallintatila. Rekisterin, metadatan ja käynnistyksen tilavalmistelun osarajat
 on toteutettu ja kohdennetusti todennettu. Main kytkee nyt W6:n ja
 FirstStartin vaihekohtaisen valtuuden jo valitun yrityksen deferred-avaukseen.
 Switch-omistajan varmennetun tiedostovalinnan luovutusrajapinta on toteutettu;
-mainin source-null-kutsuja tarvitsee vielä todellisen terminal-valtuuden ja
-näiden rajojen yhteisen kytkennän. Sen jälkeen tulevat valitsimen käyttöliittymä
+palautuksen omistaja sisältää nyt erillisen alkuperäissisällön cold-loppurajan
+ja vaihtovarauksen luovutuksen. Mainin source-null-kutsuja tarvitsee vielä
+todellisen terminal-valtuuden ja näiden rajojen yhteisen kytkennän.
+Sen jälkeen tulevat valitsimen käyttöliittymä
 ja native-/pakettitodennus. W7.2:n tuotantokytkentä ei ole valmis.
+
+Cold-loppurajan vaikutusalueen yhdistetyssä ajossa yhdeksän tiedostoa
+läpäisi (475 testiä). Mainin käynnistystiedoston yksi tapaus aikakatkaisi
+käynnistysvaiheen jälkeen, jolloin keskeneräisen työn suoja esti muut
+tapaukset. Sen yksi sallittu kohdeuusinta läpäisi 226 testiä samalla
+lähteellä. Ensivirhe ja epävarma loppusiivous säilyvät avoimina; yhdistettyä
+ajoa ei merkitä läpäistyksi eikä uusinta todista viiveen korjaantuneen.
+Tämä ei ole W7.2:n integraatiohyväksyntä.
 [Pysyvä valinta ja versioraja](local-company-workspace-plan.md#pysyvä-yritysvalinta-ja-versioraja),
 [valitsimesta avauksen jatko](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 ja [W7.0-W7.5:n työjako](local-company-workspace-plan.md#koottu-toteutusehdotus)
@@ -218,7 +228,12 @@ SQLite-/Electron- tai pakettihyväksyntä. Aiemman passiivisen siirtymän
 aikakatkaisun tarkka syy säilyy avoimena.
 
 **Seuraava työ:** source-null-avauksen todellinen terminal-valtuus ennen
-valitsimeen paluuta tai hyväksyntää sekä sen main-kytkentä. Omistajien
+valitsimeen paluuta tai hyväksyntää sekä sen main-kytkentä. Uuden candidaten
+rollbackin kirjoittajan tarkka journal-kuitti pitää välittää palautuksen
+omistajalle; myöhempi luku vain tarkistaa valinnan, ei valitse sitä uudelleen.
+Alkuperäisen normaalin startup-tilan perusteella ei saa olettaa myöhemmin
+syntyneen palautusjournalin puuttumista. Lopputarkistusten jälkeen perutaan
+W6:n oma valmistelu ennen null-valinnan julkaisua. Omistajien
 luovutusrajapinta välittää alkuperäiset ja kirjoittajan varmentamat switch-/
 registry-havainnot ennen työtilajuuren tarkistusta ja hyväksytyn switch-poiston
 jälkeen. W6 hyväksyy vain saman rekisterisisällön kertaluonteisen siirron ennen

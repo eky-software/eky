@@ -86,6 +86,8 @@ export class WorkspaceActivationMigrationCoordinator {
     const lease = await this.acquireLease();
     let runtimeStopAttempted = false;
     let runtimeStopped = false;
+    let selectorReturnPending = false;
+    let activationFailure: unknown;
     let outcome: WorkspaceActivationMigrationResult;
 
     try {
@@ -154,6 +156,7 @@ export class WorkspaceActivationMigrationCoordinator {
       if (input.proof.sourceWorkspaceId === null) await this.options.guard.reprove(input.proof);
       outcome = 'relaunchRequired';
     } catch (error) {
+      activationFailure = error;
       outcome = await this.recoverFailure(
         {
           authority,
@@ -166,24 +169,39 @@ export class WorkspaceActivationMigrationCoordinator {
         runtimeStopped,
         error,
       );
+      selectorReturnPending = input.proof.sourceWorkspaceId === null;
     }
 
     try {
       await lease.release();
-    } catch {
+    } catch (error) {
       await this.requireRecovery(input.proof).catch(() => undefined);
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+        { cause: activationFailure === undefined ? error : new AggregateError(
+          [activationFailure, error], 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+        ) },
       );
     }
 
     try {
+      if (selectorReturnPending) {
+        // Candidate rollback holds switch ownership; cold terminal validation
+        // must acquire its own restore owner after that work has settled.
+        await this.options.guard.reprove(input.proof);
+        await this.assertRuntimeAbsent();
+        await this.options.guard.reprove(input.proof);
+        await this.recoverSource();
+      }
       this.options.requestRelaunch();
       return outcome;
-    } catch {
+    } catch (error) {
       await this.requireRecovery(input.proof).catch(() => undefined);
       throw new WorkspaceActivationMigrationError(
         'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+        { cause: activationFailure === undefined ? error : new AggregateError(
+          [activationFailure, error], 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+        ) },
       );
     }
   }
@@ -225,7 +243,7 @@ export class WorkspaceActivationMigrationCoordinator {
         .removeStaging(context.proof.operationId)
         .catch(() => undefined);
       if (context.proof.sourceWorkspaceId === null) await this.options.guard.reprove(context.proof);
-      await this.recoverSource();
+      if (context.proof.sourceWorkspaceId !== null) await this.recoverSource();
       return 'relaunchRequired';
     } catch {
       await this.requireRecovery(context.proof);

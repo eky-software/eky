@@ -22,10 +22,14 @@ import {
   profileRestoreActivationJournalFileName,
   ProfileRestoreActivationJournalStore,
 } from './profileRestoreActivationJournalStore.js';
-import { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
+import { ProfileRestoreActivationTransaction, type ProfileRestoreRollbackRootRemovalAuthority } from './profileRestoreActivationTransaction.js';
 import { ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
 import { ProfileRestoreActivationService } from './profileRestoreActivationService.js';
 import { PreparedProfileRestoreOwner } from './preparedProfileRestoreOwner.js';
+import { withProfileRestoreColdRollbackAuthority } from './prepareProfileRestoreColdRollbackRecovery.js';
+import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
+import * as processReservations from '../../runtime/workspaceProcessReservation.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 import * as fileMoves from './profileRestoreFileMove.js';
 import * as cleanupCensus from './profileRestoreTerminalCleanupCensus.js';
 
@@ -1110,6 +1114,98 @@ describe('profile restore activation transaction', () => {
     expect(await readFile(fixture.activeDatabasePath, 'utf8')).toBe('old database');
   });
 
+  it.each([false, true])('finishes cold selector return with a real rollback root (already removed: %s)', async removed => {
+    const f = await createColdSelectorReturnFixture();
+    if (removed) await rm(f.rollbackOperationRoot, { recursive: true });
+    await f.complete();
+    expect(await f.base.journalStore.peek()).toBeUndefined();
+    await expect(readFile(f.base.activeDatabasePath, 'utf8')).resolves.toBe('old database');
+    await expect(readFile(f.base.activePdfPath, 'utf8')).resolves.toBe('old pdf');
+    await expect(readFile(join(f.base.failedRoot, operationId, 'active', 'data', 'eky.sqlite'), 'utf8'))
+      .resolves.toBe('new database');
+    expect(f.closed).toContain(join(f.base.failedRoot, operationId));
+    expect(f.closed.includes(f.rollbackOperationRoot)).toBe(!removed);
+    expect(f.lease.readState()).toBe('idle');
+    expect(f.recovery.readAcceptanceState()).toBe('notStarted');
+  });
+
+  it.each(['replacement', 'emptyReplacement', 'content', 'closeFailure'] as const)(
+    'preserves the journal when rollback-root release encounters %s', async fault => {
+      const f = await createColdSelectorReturnFixture();
+      const retained = join(f.base.rollbackRoot, 'preserved-original');
+      f.beforeClose.mockImplementation(async root => {
+        if (root !== f.rollbackOperationRoot) return;
+        if (fault === 'closeFailure') throw new Error('synthetic rollback claim close failure');
+        if (fault === 'content') await writeFile(f.base.activeDatabasePath, 'changed original');
+        else {
+          await rename(root, retained);
+          await mkdir(root);
+          if (fault === 'replacement') await writeFile(join(root, 'retained-evidence'), 'foreign contents');
+        }
+      });
+      await expect(f.complete()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      expect(await f.base.journalStore.peek()).toEqual(f.selected);
+      if (fault === 'replacement') {
+        await expect(readFile(join(f.rollbackOperationRoot, 'retained-evidence'), 'utf8')).resolves.toBe('foreign contents');
+        expect(await readdir(retained)).toEqual([]);
+      }
+      if (fault === 'emptyReplacement') {
+        expect(await readdir(f.rollbackOperationRoot)).toEqual([]);
+        expect(await readdir(retained)).toEqual([]);
+      }
+      await expect(readFile(f.base.activeDatabasePath, 'utf8'))
+        .resolves.toBe(fault === 'content' ? 'changed original' : 'old database');
+      await expect(readFile(f.base.activePdfPath, 'utf8')).resolves.toBe('old pdf');
+    },
+  );
+
+  it('fails selector completion if the stationary claim cannot close after journal clearance', async () => {
+    const f = await createColdSelectorReturnFixture();
+    f.beforeClose.mockImplementation(async root => {
+      if (root === join(f.base.failedRoot, operationId)) throw new Error('synthetic anchor close failure');
+    });
+    await expect(f.complete()).rejects.toMatchObject({ cause: { message: 'synthetic anchor close failure' } });
+    expect(await f.base.journalStore.peek()).toBeUndefined();
+    await expect(readFile(f.base.activeDatabasePath, 'utf8')).resolves.toBe('old database');
+    await expect(f.recovery.prepareBeforeBackend()).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
+  });
+
+  it('preserves the rollback root when authority expires during its final identity read', async () => {
+    const f = await createColdSelectorReturnFixture();
+    const readIdentity = processReservations.readWorkspaceProcessReservationIdentity;
+    let released = false; let reads = 0; let expired = false;
+    f.beforeClose.mockImplementation(async root => { if (root === f.rollbackOperationRoot) released = true; });
+    f.assertAuthority.mockImplementation(() => { if (expired) throw new Error('synthetic lifetime expired'); });
+    vi.spyOn(processReservations, 'readWorkspaceProcessReservationIdentity').mockImplementation(async root => {
+      const identity = await readIdentity(root);
+      if (root === f.rollbackOperationRoot && released && ++reads === 2) expired = true;
+      return identity;
+    });
+    await expect(f.complete()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(expired).toBe(true);
+    expect(await readdir(f.rollbackOperationRoot)).toEqual([]);
+    expect(await f.base.journalStore.peek()).toEqual(f.selected);
+  });
+
+  it.each([false, true].flatMap(wrapped => ['pending', 'rejected', 'resolved'].map(state => ({ wrapped, state }))))(
+    'rejects a $state asynchronous root authority (startup wrapper: $wrapped)', async ({ state, wrapped }) => {
+      const f = await createColdSelectorReturnFixture();
+      const assertCurrent = () => state === 'pending' ? new Promise<void>(() => {})
+        : state === 'rejected' ? Promise.reject(new Error('synthetic asynchronous proof')) : Promise.resolve();
+      let result: Promise<void>;
+      if (wrapped) {
+        f.rootProof.mockImplementation(proof => ({ ...proof, assertCurrent }));
+        result = f.complete();
+      } else {
+        const identity = await readWorkspaceProcessReservationIdentity(f.rollbackOperationRoot);
+        result = f.base.transaction.clearRolledBack(f.selected, async () => {}, async () => ({ identity, assertCurrent }));
+      }
+      await expect(result).rejects.toThrow();
+      expect(await readdir(f.rollbackOperationRoot)).toEqual([]);
+      expect(await f.base.journalStore.peek()).toEqual(f.selected);
+    },
+  );
+
   it('rejects rollback ancestor replacement during the last external removal check', async () => {
     const fixture = await createFixture();
     const selected = await beginInterruptedRollback(fixture);
@@ -2104,6 +2200,52 @@ async function beginInterruptedRollback(fixture: Awaited<ReturnType<typeof creat
   };
   await fixture.journalStore.write(selected);
   return selected;
+}
+
+async function createColdSelectorReturnFixture() {
+  const base = await createFixture();
+  const selected = await base.transaction.rollback(await beginInterruptedRollback(base));
+  const transaction = base.createTransaction();
+  const recovery = new ProfileRestoreStartupRecovery({ journalStore: base.journalStore, transaction });
+  const lease = new InMemoryWorkspaceMaintenanceLease();
+  const rollbackOperationRoot = join(base.rollbackRoot, operationId);
+  const closed: string[] = [];
+  const assertAuthority = vi.fn(() => {});
+  const beforeClose = vi.fn(async (_root: string) => {});
+  const rootProof = vi.fn((proof: ProfileRestoreRollbackRootRemovalAuthority) => proof);
+  const complete = () => withProfileRestoreColdRollbackAuthority({
+    journal: selected, journalStore: base.journalStore, transaction, maintenanceLease: lease,
+    assertAuthority, async assertMainOwned() {},
+    async assertContent(context) {
+      await context.assertCurrent();
+      if (await readFile(base.activeDatabasePath, 'utf8') !== 'old database' ||
+          await readFile(base.activePdfPath, 'utf8') !== 'old pdf') {
+        throw new Error('synthetic original content mismatch');
+      }
+      await context.assertCurrent();
+    },
+    async acquireReservation(root, identity) {
+      let active = true;
+      const assertCurrent = () => { if (!active) throw new Error('synthetic closed claim'); };
+      const assertMainOwned = async () => {
+        assertCurrent();
+        if (await readWorkspaceProcessReservationIdentity(root) !== identity) throw new Error('synthetic changed root');
+        assertCurrent();
+      };
+      await assertMainOwned();
+      return { assertMainOwned, assertMainCurrent: assertCurrent,
+        async close() { assertCurrent(); await beforeClose(root); active = false; closed.push(root); },
+        invalidate() { active = false; }, bind() { throw new Error('no native child in this filesystem regression'); },
+      };
+    },
+  }, async admission => {
+    expect(await recovery.prepareBeforeBackend(admission)).toBe('validateRolledBackProfile');
+    const releaseRoot = admission.beforeRollbackRootRemoval!.bind(admission);
+    await recovery.completeRolledBackBeforeSelectorReturn({ ...admission,
+      async beforeRollbackRootRemoval(journal) { return rootProof(await releaseRoot(journal)); },
+    });
+  });
+  return { base, selected, recovery, lease, rollbackOperationRoot, closed, beforeClose, rootProof, assertAuthority, complete };
 }
 
 async function simulateRollbackMoves(fixture: Awaited<ReturnType<typeof createFixture>>, count: number) {

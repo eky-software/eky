@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import { InMemoryWorkspaceMaintenanceLease, type WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { deriveWorkspaceBackupReplacementPaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
@@ -223,6 +224,112 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     expect(fixture.requestRelaunch).not.toHaveBeenCalled();
   });
 
+  it.each([{ failCandidateMigration: true }, { failActivationAdvance: true }])(
+    'hands selector rollback from the switch owner to a real restore owner %#', async failure => {
+      const lease = new InMemoryWorkspaceMaintenanceLease();
+      const f = createFixture({ ...failure, selector: true, maintenanceLease: lease });
+      f.sourceRecovery.recoverFromFailure.mockImplementation(async () => {
+        const terminal = await lease.acquire('restore');
+        try {
+          lease.captureCurrentOwner(['restore'])();
+          f.events.push('source.recover');
+          return 'relaunchRequired';
+        } finally { await terminal.release(); }
+      });
+
+      await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+      const release = f.events.indexOf('lease.release');
+      expect(f.events.slice(release)).toEqual([
+        'lease.release', 'guard.reprove', 'runtime.absent', 'guard.reprove', 'source.recover', 'runtime.relaunch',
+      ]);
+      expect(release).toBeGreaterThan(f.events.indexOf(failure.failActivationAdvance
+        ? 'activation.rollback' : 'candidate.discard'));
+      expect(lease.readState()).toBe('idle');
+    },
+  );
+
+  it('keeps non-null source recovery under its original switch owner', async () => {
+    const lease = new InMemoryWorkspaceMaintenanceLease();
+    const f = createFixture({ failCandidateMigration: true, maintenanceLease: lease });
+    f.sourceRecovery.recoverFromFailure.mockImplementation(async () => {
+      lease.captureCurrentOwner(['switch'])();
+      f.events.push('source.recover');
+      return 'relaunchRequired';
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+    expect(f.events.indexOf('source.recover')).toBeLessThan(f.events.indexOf('lease.release'));
+    expect(lease.readState()).toBe('idle');
+  });
+
+  it('does not return to the selector before lease release has settled', async () => {
+    let release!: () => void;
+    let releasing!: () => void;
+    const started = new Promise<void>(resolve => { releasing = resolve; });
+    const f = createFixture({ selector: true, failCandidateMigration: true, maintenanceLease: {
+      async acquire() { return { async release() {
+        releasing(); await new Promise<void>(resolve => { release = resolve; });
+      } }; },
+    } });
+    const result = f.coordinator.migrateAndActivate(f.input);
+    try {
+      await started;
+      expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+      expect(f.requestRelaunch).not.toHaveBeenCalled();
+    } finally { release(); }
+    await expect(result).resolves.toBe('relaunchRequired');
+  });
+
+  it('preserves the first activation failure when selector handoff release fails', async () => {
+    const f = createFixture({ selector: true, failCandidateMigration: true, failLeaseRelease: true });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+      cause: { errors: [expect.objectContaining({ message: 'migration-failed' }),
+        expect.objectContaining({ message: 'release-failed' })] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it.each(['lease.release', 'runtime.absent'])(
+    'rejects selector authority lost at the post-rollback %s boundary', async expireAt => {
+      const f = createFixture({ selector: true, failCandidateMigration: true, expireAt,
+        ...(expireAt === 'runtime.absent' ? { expireOccurrence: 3 } : {}) });
+      await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+        code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+      });
+      expect(f.events.indexOf('selector.expired')).toBeGreaterThan(f.events.indexOf('candidate.discard'));
+      expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+      expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+      expect(f.requestRelaunch).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects physical ownership lost after switch release before selector recovery', async () => {
+    const f = createFixture({ selector: true, failCandidateMigration: true });
+    f.workspaceRuntimeAbsence.assertNoActiveWorkspaceRuntime.mockImplementation(async () => {
+      f.events.push('runtime.absent');
+      if (f.events.includes('lease.release')) throw new Error('synthetic reservation lost');
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      cause: { errors: [expect.objectContaining({ message: 'migration-failed' }),
+        expect.objectContaining({ message: 'synthetic reservation lost' })] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('retains selector recovery failure after release without relaunching', async () => {
+    const f = createFixture({ selector: true, failCandidateMigration: true });
+    const failure = new Error('synthetic original content failure');
+    f.sourceRecovery.recoverFromFailure.mockRejectedValueOnce(failure);
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      cause: { errors: [expect.objectContaining({ message: 'migration-failed' }), failure] },
+    });
+    expect(f.sourceRecovery.recoverFromFailure).toHaveBeenCalledOnce();
+    expect(f.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
   it.each([
     { expireAt: 'lease.acquire' }, { expireAt: 'activation.read' },
     { expireAt: 'recovery.createAndStage' }, { expireAt: 'candidate.prepareRoot' },
@@ -271,6 +378,7 @@ interface FixtureOptions {
   readonly selector?: boolean;
   readonly expireAt?: string;
   readonly expireOccurrence?: number;
+  readonly maintenanceLease?: WorkspaceMaintenanceLease;
 }
 
 function createFixture(options: FixtureOptions = {}) {
@@ -373,6 +481,9 @@ function createFixture(options: FixtureOptions = {}) {
     }),
     removeImportStaging: vi.fn(async () => undefined),
   };
+  const workspaceRuntimeAbsence = {
+    assertNoActiveWorkspaceRuntime: vi.fn(async () => { record('runtime.absent'); }),
+  };
   const coordinator = new WorkspaceActivationMigrationCoordinator({
     activationAuthorityFactory: {
       create: () => activation,
@@ -404,12 +515,14 @@ function createFixture(options: FixtureOptions = {}) {
     maintenanceLease: {
       acquire: vi.fn(async () => {
         record('lease.acquire');
+        const held = await options.maintenanceLease?.acquire('switch');
         return {
           release: vi.fn(async () => {
             record('lease.release');
             if (options.failLeaseRelease) {
               throw new Error('release-failed');
             }
+            await held?.release();
           }),
         };
       }),
@@ -438,11 +551,7 @@ function createFixture(options: FixtureOptions = {}) {
     rootStore,
     sourceRecovery,
     userDataRoot,
-    workspaceRuntimeAbsence: {
-      assertNoActiveWorkspaceRuntime: vi.fn(async () => {
-        record('runtime.absent');
-      }),
-    },
+    workspaceRuntimeAbsence,
   });
 
   return {
@@ -458,6 +567,7 @@ function createFixture(options: FixtureOptions = {}) {
     rootStore,
     sourceRecovery,
     stopTargetStartupRuntime,
+    workspaceRuntimeAbsence,
   };
 }
 

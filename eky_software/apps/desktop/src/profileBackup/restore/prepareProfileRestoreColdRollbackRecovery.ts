@@ -1,5 +1,6 @@
 import type { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { profileInspectionWorkMilliseconds } from '../../runtime/profileInspectionMessages.js';
+import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 import { waitForInspectionPhase } from '../inspectOwnedEncryptedProfileBackup.js';
 import {
   noOpProfileRecoveryOperationalObserver, observeProfileRecoverySafely, type ProfileRecoveryOperationalObserver,
@@ -48,7 +49,7 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
       : selected.phase === 'rolledBack' ? ['rolledBack'] : [];
   if (phases.length === 0) throw required();
   const cancellation = new AbortController();
-  const sources: { role: 'staging' | 'rollback'; reservation: Reservation; released: boolean }[] = [];
+  const sources: { role: 'staging' | 'rollback'; root: string; identity: string; reservation: Reservation; released: boolean }[] = [];
   let anchor: Reservation | undefined;
   let lease: Awaited<ReturnType<typeof input.maintenanceLease.acquire>> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
@@ -99,7 +100,7 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
       for (const source of selectedSources) {
         await assertCurrent();
         const reservation = await input.acquireReservation(source.root, source.identity, cancellation.signal);
-        sources.push({ role: source.role, reservation, released: false });
+        sources.push({ ...source, reservation, released: false });
         await assertCurrent();
       }
     }, assertCurrent);
@@ -131,6 +132,21 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
         await source.reservation.close();
         source.released = true;
         await assertCurrent();
+      },
+      async beforeRollbackRootRemoval(current) {
+        if (current.phase !== 'rolledBack') throw required();
+        await assertContent(current);
+        await assertCurrent();
+        const source = sources.find(source => source.role === 'rollback');
+        if (source === undefined || source.released) throw required();
+        await source.reservation.close();
+        source.released = true;
+        await assertCurrent();
+        if (await read(() => readWorkspaceProcessReservationIdentity(source.root)) !== source.identity) throw required();
+        await assertCurrent();
+        return Object.freeze({ identity: source.identity, assertCurrent() {
+          assertAuthority(); anchor!.assertMainCurrent();
+        } });
       },
     });
     completed = true;
