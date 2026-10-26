@@ -7,262 +7,68 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty lähtö (25.10.2026):** W7.1 on hyväksytty
-[PR #320:n loppupäätöksellä](https://github.com/eky-software/eky/pull/320#issuecomment-6397583475)
-mainiin `8c762e5a4d85ab7ed9f73ea6c715cec3b02c6a27`.
-Mainin puu vastaa katselmoitua PR-headia
-`6612e01ec0bdc746c31b666f758c2a8d960b5c32`.
-T/A/B/C/K/D/E/F/G/H/I, M4.1-M4.3 ja W7.1 säilyvät hyväksyttyinä
-omissa rajauksissaan; niitä ei toteuteta uudelleen ilman omaa regressiota.
+**Hyväksytty toteutus (27.10.2026):** W7.2 on yhdistetty
+[PR #321:llä](https://github.com/eky-software/eky/pull/321)
+mainiin `e1f6ea0b186186efa4b93b9f1b8acc9b7c527e91`.
+Mergepuu vastaa täsmälleen katselmoitua PR-headia
+`ad82c3c191f9d1221918851030dc27a8b882bd83`.
+Sen omat PR- ja main-portit on varmennettu. Tämä ei sulje W7.3-W7.5:tä
+tai koko 0.3.0-julkaisua.
 
-| Tarkistus | Hyväksytty näyttö |
+| Tarkistus | Näyttö |
 | --- | --- |
-| PR #320 | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40187931375) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40187931257) läpäisivät: kaikki 27 valittua työtä, 11 perhettä, viisi fault-skenaariota, riskin yksi toisto ja pakolliset askeleet varmennettiin. |
-| Mainin omat portit | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40190293742) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40190321199) läpäisivät: kaikki 38 valittua työtä, 11 perhettä, viisi fault-skenaariota, molemmat toistot sekä auditointi-/allekirjoitusaskeleet varmennettiin. Audit käynnistettiin mainille nykyisen push-polkurajauksen vuoksi manuaalisesti. |
+| PR #321:n lopullinen head | [V2, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40404212069) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40404211829) läpäisivät. |
+| Mainin omat portit | [V2, suoritusyritys 2](https://github.com/eky-software/eky/actions/runs/40408634962/attempts/2) ja [riippuvuustarkistus, suoritusyritys 1](https://github.com/eky-software/eky/actions/runs/40408634583) läpäisivät. |
 
-Kummassakin V2-ajossa kuusi diagnostiikkatyötä jätettiin tarkoituksella
-valitsematta; ne eivät ole läpäisyjä. CI-uusintaa tai uutta hyväksyntäpoikkeusta
-ei tarvittu. Aiemmat avoimet havainnot alla säilyvät avoimina.
+Kummankin V2:n kaikki 38 valittua työtä, 11 perhettä, viisi fault-skenaariota,
+molemmat toistot sekä pakolliset askeleet varmennettiin. Kuusi tarkoituksella
+valitsematonta diagnostiikkatyötä eivät ole läpäisyjä. Koko työtilan testit,
+tyypit, buildit ja Linuxin eristetty tarkistusketju läpäisivät lopullisessa
+PR-kierroksessa; ensimmäisen kierroksen fixture-oikeuspuute korjattiin
+muuttamatta tuotannon lukijan suojaa.
 
-W7.1 estää uusien nimikaksoiskappaleiden luonnin, tuonnin ja nimenmuutoksen,
-mutta säilyttää vanhat nimet ja jo julkaistun create/import-kohteen
-turvallisen palautumisen. Kohde-/core-/tyyppitestit, oikeat Electron- ja
-diagnostiikan HTTP-polut sekä rajattu riippumaton katselmus läpäisivät.
-Puhdas sovelluslähde `e8bfc387f7530c391b7d955b26ffec14b1eada47` läpäisi
+W7.2 toteuttaa rekisteri v2:n, pysyvän null-valinnan sekä backendittoman
+yritysvalinnan ja hallinnan. Luonti ja tuonti eivät avaa yritystä
+automaattisesti. Nimenomainen avaus, palautuminen ja FirstStart käyttävät
+nykyisiä omistajia; valitsimen näkyminen ei ole yrityksen terveystodiste.
+[W7.2:n omistava sopimus](local-company-workspace-plan.md#w72n-toteutusraja)
+erottaa synteettiset rajakokeet todellisista UI-/IPC-/prosessi- ja pakettitodisteista.
+
+Puhdas sovelluslähde `9d7a2badc6797cd806f3d13ec5020508224fa394` läpäisi
 saman hardened Windows-paketin backup -> inspect -> restore -> restart ->
-compare -ketjun; sen jälkeinen delta päivitti vain M1:n näyttöä.
-[W7.1:n sopimus](local-company-workspace-plan.md#w71n-toteutusraja)
-erottaa tuotantotodisteet injektoiduista testirajoista.
-Aiempi jatkamisteksti säilyy muuttamattomana
-[historiassa](release-0.3.0-integration-history.md#w71n-integraatiota-edeltävä-jatkamiskohta-25102026).
+compare -ketjun, historiallisen 038-backupin sekä cold-create/import-kontrollit.
+Stress- ja 30 minuutin kestoajo läpäisivät. Tämän lähteen jälkeinen
+PR-delta muutti vain testejä ja ohjeita, ei paketoitavaa sovelluskoodia.
+Mainin omat portit varmennettiin erikseen samalla sisältöpuulla.
 
-**Nykyinen työ:** W7.2:n rekisteri v2, pysyvä yritysvalinta ja backenditon
-hallintatila. Rekisterin, metadatan, tilavalmistelun, source-null-avauksen
-terminal-valtuuden ja hallinnan omistajat ovat toteutettuina. Mainin
-tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
-business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
-Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
+Mainin yksi rajattu kohdeuusinta säilytti 31 aiempaa onnistunutta suoritusta
+ja yhdeksän valmista artifactia muuttumattomina. Se läpäisi web-criticalin,
+legacy-core1:n, workspace-success1:n ja pakolliset jatkot. Legacy-producer
+muodosti vasta silloin ensimmäisen valmiin pakettinsa; molemmat kuluttajat
+läpäisivät. Ensimmäistä yritystä ei muuteta onnistuneeksi.
 
-**Yhteiskatselmuksen jatko 26.10.2026:** puhtaan revision
-`f5e65d2874fe7dd8f26a49ab15c874fb31dce3a0` koko työtilan testikierros
-läpäisi 13 446 testiä; 22 määriteltyä ohitusta eivät ole läpäisyjä.
-Katselmus löysi silti kattamattoman puutteen: puuttuva rekisteri voitiin
-rakentaa uudelleen keskeytyneen luonnin tai tuonnin julkaisun yhteydessä,
-jolloin muiden yritysten merkinnät ja valitsimen null-tila eivät säilyneet.
-Regressio toisti virheen. Admission ja molemmat palautusomistajat vaativat
-nyt olemassa olevan rekisterin ennen aineiston siivousta. Puuttuminen
-säilyttää aineiston ja estää käynnistyksen; kelvollinen tyhjä rekisteri,
-slot-valinta ja historiallinen adoptio säilyvät. Korjauksen 557 kohdetestiä
-ja rajattu riippumaton katselmus läpäisivät. Korjattu kokonaisuus läpäisi
-myös uuden koko työtilan kierroksen: 13 470 testiä ja 22 määriteltyä ohitusta.
-Tyyppitarkistus, auditointi, rekisteriallekirjoitukset ja ohjelinkit läpäisivät.
-Uusi puhdas paketti, desktop-kuormitusportti ja 30 minuutin kestoajo
-läpäisivät. PR/main-portit ovat vielä hyväksymättä.
+**Avoimet havainnot säilyvät:** W7.2:n aikakatkaisut, alkuperäinen
+`publishReturn`-kuittauskatkotestin hylkäys sekä vanhemmat MSI-, Electron-,
+API- ja siivousepävarmuudet eivät muutu korjatuiksi myöhempien läpäisyjen vuoksi.
+Ensivirheet ja nykyiset aineistot säilytetään. Hyväksytyt nimetyt testibudjetit
+omistaa [testausohje](../ai/testing-rules.md#palautustestin-erillinen-valmistelu);
+ohjehuolto ei uusi käytettyjä uusintalupia.
+[Edeltävä jatkamisteksti ja näyttö](release-0.3.0-integration-history.md#w72n-integraatiota-edeltävä-jatkamiskohta-27102026)
+säilyvät muuttamattomina historiassa.
 
-**Avoin integraatio:** [PR #321](https://github.com/eky-software/eky/pull/321),
-ensimmäisen kierroksen head `9a24b64d2289c8cb26fc42b983c89a8d9367f198`.
-[Ensimmäinen V2-kierros](https://github.com/eky-software/eky/actions/runs/40391648974)
-hylkäsi core-työn ja siitä riippuvan koonnin; 36 muuta valittua työtä
-läpäisi ja kuusi diagnostiikkatyötä jäi tarkoituksella valitsematta.
-[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40391648728)
-läpäisi. Core-hylkäyksen rajattu syy on viiden testitiedoston valmistelun
-liian avoin kansio-oikeus POSIX-järjestelmässä. Korjaus vastaa tuotannon
-yksityistä kansiota; lukijan turvatarkistusta ei muuteta. Kohdekorjauksen
-katselmus ja tyyppitarkistus läpäisivät, mutta koko Linux-sarjan uusi
-todennus puuttuu. Kaksi erillistä W7.2:n yhdistelmätestiä aikakatkaisi
-kohdetarkistuksessa myös yhdessä sallitussa uusinnassa: cold-rollbackin
-main-kytkentä ja switch-main-W6-hyväksyntäketju. Niiden syytä tai
-korjausta ei vielä ole todistettu. Omistaja hyväksyi vain näiden kahden
-tapauksen yhden vaiheistetun mittauskokeen kymmenen sekunnin koerajalla;
-pysyviä aikarajoja, tuotantokoodia tai CI:n kokonaisrajoja ei muutettu.
-Mittauskoe läpäisi molemmat nimetyt tapaukset sisältö- ja lopputarkistuksineen.
-Väliaikaiset mittauslisäykset poistettiin ja testitiedostojen tavut varmennettiin
-mittausta edeltäneiksi. Tämä ei yksin selitä aiempia aikakatkaisuja.
-Omistaja hyväksyi tämän jälkeen pysyvän kymmenen sekunnin rajan vain
-näille kahdelle tapaukselle. [Testausohje](../ai/testing-rules.md#palautustestin-erillinen-valmistelu)
-omistaa tarkan rajauksen; muut variantit, sovelluksen aikarajat, CI:n
-kokonaisrajat ja kaikki tarkistukset säilyvät. Rajattu riippumaton
-katselmus, tyyppitarkistus ja ohjelinkit läpäisivät. Neljä kohdetiedostoa
-läpäisi 85 testiä; POSIX-koe oli Windowsissa tarkoituksella ohitettu.
-Main-käynnistyksen tiedosto läpäisi 315 testiä yhdessä sallitussa uusinnassa,
-mutta ensimmäisen ajon muuttumattoman `publishReturn`-kuittauskatkotestin
-aikakatkaisu ja sen aiheuttama keskeneräisen työn esto säilyvät avoimina.
-Näitä osin päällekkäisiä ajoja ei lasketa uudeksi koko työtilan läpäisyksi.
-Seuraavaksi uusi täsmällinen PR-revisio käy normaalit portit, myös koko
-työtilan ja Linuxin tarkistukset. Ensivirheet ja salattu aineisto säilyvät;
-PR/main- tai koko W7.2:n hyväksyntää ei vielä ole.
-
-**Uusin pakettitodiste 26.10.2026:** puhdas lähderevisio
-`9d7a2badc6797cd806f3d13ec5020508224fa394` läpäisi hardened Windows
--paketoinnin, sisältöinventaarion ja backup -> inspect -> restore -> restart
--> compare -smoken. Samat pakettitavut läpäisivät myös historiallisen
-038-backupin sekä keskeytyneen luonnin ja tuonnin palautuskokeet.
-ASAR:n sisältö vastasi valmisteltuja tiedostoja; koko paketin inventaario
-ja lähdeidentiteetti varmistettiin muuttumattomiksi kokeiden jälkeen.
-Tämä ei vielä ole PR/main- tai koko W7.2:n hyväksyntä.
-Aiempi pakettitodiste lähteestä
-`3404719c5aa4eef8e5f49f8c1c5cd53cb4453ad8` säilyy sitä koskevana näyttönä;
-sitä ei käytetä korjatun lähteen uutena todisteena. Tämä viimeinen
-jatkamiskohtapäivitys ei muuta paketoitua sovelluskoodia.
-
-**Yritysavauksen osatodiste:** `DESK-SELECTOR-CREATE-001` läpäisi oikean UI:n,
-tuotannon backend-käynnistimen ja FirstStartin kautta. Yritys luodaan
-valitsimessa ilman automaattista valintaa; nimenomainen avaus käynnistää
-business-runtimen. Synteettinen asiakas, yritysvalinta ja hyväksyntämetadata
-säilyvät kokonaan uudessa Electron-prosessissa. Vanhat valitsin- ja
-business-istunnot hylätään oikeassa backendissä.
-
-Testiadapterin kiinteä istunto esti FirstStartin tarkoituksellisen
-väärän istunnon kokeen, eikä tavallinen fake-backend suorita migraatioporttia.
-Korjaukset käyttävät nykyistä istuntogeneraattoria ja vain nimetylle
-tapaukselle tuotannon backend-omistajaa; sovelluskoodia tai aikarajoja
-ei muutettu. Katselmuksen porttihavainto korjattiin nykyiseen fixtureen:
-todellinen backend-portti varmennetaan puun sulun jälkeen ennen restartia
-tai aineiston poistoa. Puuttuva havainto ei kelpaa siivoustodisteeksi.
-Rajatut järjestelmä- ja adapteritestit sekä E2E-tyyppitarkistus läpäisivät.
-
-Nykyinen 11 tapauksen Electron-kohdesarja läpäisi kymmenen tapausta,
-myös uuden luontipolun ja vanhat FirstStart-/migraatio-/eristyskontrollit.
-Virhepaluutestin käyttäjäpolku valmistui, mutta viimeisen prosessin
-Playwright-sulku aikakatkaisi. Ulompi omistaja todisti puun poistumisen ja
-portti vapautui; fixture säilytti hylkäyksen ja aineiston. Sulun tarkka syy
-on avoin. Yksi sallittu kohdeuusinta läpäisi samalla lähteellä ja
-varmennetulla siivouksella; koko ensimmäistä sarjaa tai vanhaa sulkua
-ei merkitä hyväksytyksi sen perusteella. Rajattu riippumaton katselmus
-läpäisi porttikorjauksen jälkeen.
-
-Tämä on nykyisen tietokantaversion business-ketjun näyttö, ei asennuspäivitys
-tai paketoitu palautus. [Aiempi virhepaluu](release-0.3.0-integration-history.md#w72n-valitsimen-virhepaluun-osatodennus-26102026)
-ja [historiallisen kohteen avaus](release-0.3.0-integration-history.md#w72n-valitsimesta-avauksen-native-osatodennus-26102026)
-säilyvät erillisinä todisteina. Ensimmäiset adapterihylkäykset ja avoimet
-viiveet säilytetään; päällekkäisiä ajoja ei lasketa yhteen. Nykyinen rajattu
-yksityinen keräys ei takaa jokaisen alkuperäisen poikkeuksen talteenottoa.
-
-**Hyväksytty pakettirajaus 26.10.2026:** sovellusosan budjetti on enintään
-448 tiedostoa ja 3,25 MiB; vain täsmällinen `resources/app.asar` saa saman
-3,25 MiB:n tiedostorajan. Muut sisältö-, koko- ja eheysvaatimukset säilyvät.
-[Omistava pakettisopimus](windows-installer-acceptance-harness-v2.md#sovellusosan-pakettibudjetti)
-vaatii rajatestit, sisältökatselmuksen ja uuden puhtaan paketin todennuksen.
-Puhtaan aiemman osarevision
-`7d2ee2a1ecc9b364d4149157bd9b2c0a6b793f70` paketointi läpäisi käännökset
-ja native-ajurin valmistelun, mutta sovellusosan tiedostomääräraja hylkäsi
-inventaarion ennen paketin valmistumista. Rajattu jatkotarkistus osoitti
-myös kokonaisbudjetin ylittymisen; tiedostonimi- ja tiedostotyyppitarkistus
-ei havainnut kiellettyä sisältöä. Tämä ei ole valmis paketti tai koko
-sisältövalidoinnin hyväksyntä. Alkuperäinen hylkäys säilyy erillisenä.
-Koko työtilan tyyppitarkistus, riippuvuusauditointi ja rekisteriallekirjoitusten
-tarkistus läpäisivät.
-
-Hyväksyttyjen rajamuutosten jälkeen paketti-inventaarion 67 regressiota ja
-koko palautuksen käynnistystiedoston 311 testiä läpäisivät. Ohjelinkit ja
-rajattu riippumaton katselmus läpäisivät. Uuden puhtaan paketin näyttö
-on kirjattu erikseen yllä; aiempaa pakettihylkäystä ei muuteta onnistuneeksi.
-
-**Tuonnin lisänäyttö:** `DESK-SELECTOR-IMPORT-001` läpäisi backendittoman
-valitsimen todellisen salatun tuonnin, native-salasanaikkunan, erikseen
-vahvistetun yritysavauksen ja fyysisen business-restartin. Asiakas, lasku,
-PDF ja metadata säilyivät, lähdebackup ja -tietokanta pysyivät muuttumattomina.
-Testiadapterin laajennus on rajattu nimettyyn tapaukseen; tuotantokoodi,
-riippuvuudet ja aikarajat säilyvät. Tyyppitarkistus, kymmenen
-skenaario-/eristysregressiota ja viisi viereistä valitsimen native-kontrollia
-läpäisivät. Katselmus tarkensi salaisuuksien näkymättömyyden tarkistuksen
-jo tuonnin jälkeiseen valitsimeen sekä molempiin business-sukupolviin;
-vahvistettu tuontitesti läpäisi. Tämä on testin kattavuustäsmennys,
-ei havaittu salaisuusvuoto.
-
-**Laajan ajon havainto:** työtilan ensimmäinen testikierros hylkäsi
-desktopin yhden vanhentuneen testiohjaimen rakenneassertion. Se oletti
-aina fake-backendin, vaikka nimetty luontitesti käyttää jo oikeaa backendia.
-Assertion päivitettiin tarkistamaan sekä oikean backendin havainto että
-muuttumaton fake-varavaihtoehto. Sen ja istuntogeneraattorin 24 regressiota
-läpäisivät. Muut desktopin 5 846 testiä läpäisivät; viisi alustakohtaista
-tapausta jäi ohitetuksi. Tämä ei ole koko työtilan hyväksyntä, eikä
-muiden pakettien tai tekemättä jääneen jatkovaiheen läpäisyä oleteta.
-Myöhempi yhtenäinen kierros ja katselmuksen korjaustarve on eroteltu yllä.
-
-**Seuraava työ:** viimeistele kestoajo sekä täsmällisen PR-headin ja uuden
-mainin omat portit. Laaja korjauksenjälkeinen sarja ja puhtaan paketin
-palautuskontrollit on todennettu yllä. Säilytä vanhan
-ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
-palautusomistajaa ei saa ohittaa. Katselmus on tehty, mutta integraatioportit
-ovat vielä tekemättä; W7.2 ei ole hyväksytty.
-[Toteutussopimus ja puuttuvat liitokset](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
-omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä
-ei toteuteta uudelleen ilman omaa regressiota.
-
-**Avoin aiempi viivehavainto:** passiivisen yrityksen siirtymän
-variantti `passive: true, source-null: false` ylitti muuttumattoman
-testikohtaisen rajan. Seitsemän tapauksen kohdeajossa kaksi läpäisi, tämä
-tapaus aikakatkaisi ja keskeneräisen työn suoja esti neljän seuraavan
-aloituksen. Yksi erillinen mittaus läpäisi kyseisen variantin kokeen
-rajalla; se ei ole aiemman normaalin testirajan läpäisy. Omistaja hyväksyi
-myös tämän variantin pysyvän kymmenen sekunnin rajan 26.10.2026.
-Aineisto ja epävarma siivoustila
-säilyvät; koko sarjaa tai vanhaa viivettä ei merkitä korjatuksi.
-
-**Hyväksytty testirajaus 26.10.2026:** pysyvä kymmenen sekunnin testiraja
-on toteutettu passiivisiirtymän molemmille source-null-varianteille ja
-onnistuneelle kopioaktivoinnin rollbackille. Aiemmin hyväksytyt
-source-null-avaus ja rollback läpäisivät normaalilla asetuksella,
-tyyppitarkistus läpäisi ja rajatussa riippumattomassa katselmuksessa ei
-löytynyt puutetta. Testirungot ja tarkistukset säilyvät, samoin muiden
-varianttien, sovelluksen ja CI:n aikarajat.
-[Testausohje](../ai/testing-rules.md#palautustestin-erillinen-valmistelu)
-omistaa täsmällisen rajauksen. Alkuperäisen mittausavun virhe ja aiemmat
-aikakatkaisut säilyvät erillisinä
-[historiallisina havaintoina](release-0.3.0-integration-history.md#w72n-testibudjetin-mittaus-26102026).
-
-Aiemmat valmistelu- ja osatodennukset säilyvät muuttamattomina
-[W7.2:n kytkentähistoriassa](release-0.3.0-integration-history.md#w72n-valitsinkuluttajaa-edeltävä-jatkamiskohta-26102026).
-Ne eivät ole rinnakkaisia nykytiloja tai nykyisen revision PR/main-todisteita.
-
-W7.3-W7.5:n vahvistus, lopullinen poisto ja backenditon tukilaajennus jäävät
-erillisiksi paloiksi; suunnittelunäyttö ei ole tuotannon hyväksyntä.
-R030-06:n laajempi ensiasennusmuutos ja M5 ovat edelleen erillisiä.
-Yksi asennusversio koskee kaikkia yrityksiä, mutta passiivisen yrityksen
-DB-migraatio ja myöhemmän avauksen portit eivät ohitu.
-
-**Avoimet M4.3-havainnot:** PR:n ensimmäisen kylmän MSI-ikkunahavainnon
-hylkäys sekä workspace-faultin MSI:n vastausodotus säilyvät avoimina.
-Jälkimmäisen prosessien poissaolo, asenninsiivous ja business-datan säilyminen
-varmennettiin, mutta estävää prosessia ei tunnistettu varmasti. Mainin
-ensimmäinen legacy-core hylkäsi kaksi osittaista MSI-ikkunahavaintoa.
-Alkuperäiset native-poikkeukset säilyivät salatussa aineistossa; poikkeuspolun
-koko jälkeläispuun siivouksesta ei saatu erillistä lopputodistetta.
-PR:n 35 ja mainin 33 aiempaa onnistunutta suoritusta säilyivät uusinnassa;
-valmiiden producer-artifactien identiteetit ja tavut eivät muuttuneet.
-Mainin legacy-paketti syntyi vasta toisessa yrityksessä, minkä jälkeen sen
-molemmat kuluttajat läpäisivät. Alkuperäisiä hylkäyksiä tai puuttuvia
-siivoustodisteita ei muuteta onnistumisiksi. Tarkka näyttö on loppupäätöksessä.
-
-**Avoimet havainnot:** M4.1:n mainin ensimmäinen Electron-yritys aikakatkaisi
-ennen ensimmäistä ikkunaa. Sen automaattinen uusinta läpäisi, mutta ajo jäi
-oikein flaky-hylkäykseksi. Ensivirheen salattu aineisto säilyi ja siivous
-varmennettiin; viimeinen migraatiovaihe ei osoita juurisyytä.
-Omistajan erikseen hyväksymä yksi Electron-/koontiuusinta läpäisi samalla
-lähteellä. Muut 36 onnistunutta suoritusta ja neljä valmista producer-
-artifactia säilyivät; Electron valmisteli oman saman lähteen pakettinsa,
-ei todistetusti ensimmäisen Electron-yrityksen samoja tavuja.
-Alkuperäinen syy jää avoimeksi, ei korjatuksi. I:n ensimmäisen native-valmistelun viiveen tarkka
-syy jää avoimeksi. Sen omistettu käännösprosessipuu todettiin poistuneeksi,
-mutta myöhemmin katkaistun koko työn loppusiivousta ei varmennettu.
-Ensimmäinen legacy-pakettirakennus hylättiin ilman talteen jäänyttä
-alkuperäistä syytä tai loppusiivoustodistetta. Omistajan erikseen hyväksymä
-lisäuusinta tuotti ensimmäisen valmiin legacy-paketin; molemmat kuluttajat
-varmensivat sisällön, toisen käynnistyksen ja siivouksen. Kolme aiempaa
-valmista pakettia ja 34 onnistunutta suoritusta säilyivät ennallaan.
-Loppupäätös hyväksyy rajatun etenemisen, ei ensihylkäyksiä korjatuiksi.
-Myös aiempi API-katkoksen syy sekä H/G:n ja vanhempien pakettien syy- ja
-siivousepävarmuudet säilyvät niiden omissa checkpointteissa. Aineistoa ei
-poisteta eikä käytettyä uusintalupaa uusita dokumentoinnin perusteella.
-[I:n aiempi jatkamiskohta ja suunnitelma](release-0.3.0-integration-history.md#in-integraatiota-edeltävä-jatkamiskohta-23102026)
-sekä H:n aiemmat kierrokset säilyvät historiassa.
+**Seuraava toteutuspala:** W7.3:n poistovahvistuksen ja sulun valmistelu
+nykyisen työtilasuunnitelman mukaan, erillisenä tehtävänä. W7.4:n lopullinen
+poisto ja W7.5:n palaute-/tukilaajennus eivät ole vielä tuotantototeutuksia.
+R030-06, M5 ja 0.3.0-julkaisu säilyvät erillisinä. Tämä ohjehuolto ei aloita
+niitä eikä muuta hyväksyttyjä sopimuksia.
+T/A/B/C/K/D/E/F/G/H/I, M4.1-M4.3 ja W7.1-W7.2 säilyvät hyväksyttyinä omissa
+rajauksissaan; niitä ei avata uudelleen ilman omaa regressiota.
 
 ### M4 / Käyttäjäkokemuksen valmistelu
 
-**Tila 25.10.2026:** M4.1-M4.3 ja W7.1 hyväksytty omine PR/main-portteineen.
+**Tila 27.10.2026:** M4.1-M4.3 ja W7.1-W7.2 hyväksytty omine PR/main-portteineen.
 W7.0:n tekninen sopimus ja pienet kokeet ovat valmiit; poistokoodin
-tuotantototeutus ja integraatiotodennus ovat erilliset W7.2-W7.5-vaiheet.
+tuotantototeutus ja integraatiotodennus ovat erilliset W7.3-W7.5-vaiheet.
 Roadmap omistaa
 julkaisuun sovitut R030-01, R030-02/W7, R030-03 ja R030-08.
 R030-04/R030-05:n palaute ja käyttöohjeet kulkevat jokaisen palan mukana.
@@ -274,7 +80,7 @@ se ei ole rinnakkainen roadmap.
 | M4.1 / R030-01 | Yhteinen tilaton `LoadingStatus` käyttää featureiden nykyisiä tiloja. | Hyväksytty PR #317:n rajauksessa. Säilytä saavutettavuus ja nykyiset PDF-/SMTP-/backup-tilakoneet; vanha Electron-timeout jää avoimeksi. |
 | M4.2 / R030-03 | Main lukee saman backup-leasen sisällä tuoreen validoidun aktiivisen yrityksen nimen native-dialogin ehdotukseen. | Hyväksytty PR #318:n rajauksessa turvallisine nimimuunnoksineen ja palautusnäyttöineen. Ei uutta toteutusjonoa. |
 | M4.3 / R030-08 | Readerin rajattu jatkohaku korvaa tapahtumalistan vanhan tail-otoksen; summary ja tukipaketti säilyvät erillisinä. | Hyväksytty [PR #319:n loppupäätöksellä](https://github.com/eky-software/eky/pull/319#issuecomment-6385011410). Sopimus ja pysyvät regressiot säilyvät; ensihylkäykset eivät muutu korjatuiksi. |
-| M4.4 / R030-02/W7 | Capability ja maintenance eivät vielä tunne poistoa. Registry v1 sallii null-aktiivisen vain ilman yhtään `ready`-entryä; nykyinen startup ja management-composition tarvitsevat aktiivisen kohteen. | W7.0:n [katselmoitu sopimus ja pienet kokeet](local-company-workspace-plan.md#w70n-jäljellä-olevat-sopimustäsmennykset) valmiit. Seuraavaksi W7.1-W7.5 nykyisten omistajien pohjalta; ei uutta testialustaa. |
+| M4.4 / R030-02/W7 | Registry v2, pysyvä null-valinta ja backenditon hallinta ovat toteutettuina. Lopullisen poiston capability- ja sulkukytkentä sekä fyysinen poisto ovat vielä erillisiä. | W7.0:n [katselmoitu sopimus ja pienet kokeet](local-company-workspace-plan.md#w70n-jäljellä-olevat-sopimustäsmennykset) sekä W7.1-W7.2 hyväksytty. Seuraavaksi W7.3-W7.5 nykyisten omistajien pohjalta; ei uutta testialustaa. |
 
 Kartoitus on edustava lähdeluku, ei kaikkien odotustilojen tai koko
 sovelluksen katselmus. Suositus on M4.1 -> M4.2 -> M4.3 -> M4.4;
@@ -369,9 +175,9 @@ ovat tämän jälkeen erikseen; laaja rakennesiivous ei kuulu M4:ään.
 
 #### Koottu toteutusjärjestys
 
-**Järjestys, päivitetty 25.10.2026:** M4.1-M4.3 on hyväksytty ja W7.0:n
-sopimus-/koevaihe valmis. Seuraava toteutus alkaa W7.1:n nimirajasta ja
-etenee W7.2:n yritysvalintaan, tästä valmistelu-Goalista erillään.
+**Järjestys, päivitetty 27.10.2026:** M4.1-M4.3 on hyväksytty ja W7.0:n
+sopimus-/koevaihe valmis. W7.1:n nimirajat ja W7.2:n yritysvalinta ovat
+hyväksyttyjä; seuraava erillinen toteutuspala on W7.3:n vahvistus ja sulku.
 Omistajan roadmap-jatkovaltuus ja palakohtaiset hyväksyntäportit säilyvät;
 uusia formaatteja tai turvarajojen lievennyksiä ei johdeta pelkästä
 jatkovaltuudesta.
@@ -385,9 +191,9 @@ jatkovaltuudesta.
    lukija -> service/HTTP -> strict-client -> käyttöliittymä -ketju.
    Älä korvaa koko historian selausta suuremmalla taililla.
 4. **M4.4/W7:** W7.0:n inventaario-, sulku-, keskeytys- ja formaattisopimus
-   sekä pienet kokeet on katselmoitu. Seuraava
-   tuotantokytkentä kattaa W7.1-W7.5:n nimet, backendittoman
-   valinnan, poiston, automaattijatkon ja todellisen palaute-/tukiketjun.
+   sekä pienet kokeet on katselmoitu. W7.1:n nimet ja W7.2:n backenditon
+   valinta ovat hyväksyttyjä. Seuraava tuotantokytkentä kattaa W7.3-W7.5:n
+   vahvistuksen, sulun, lopullisen poiston, automaattijatkon ja palaute-/tukiketjun.
 5. **Hyväksyntä:** jokaisen palan kohdetestit, käyttäjäpalaute, diagnostiikka,
    ohjeet ja korvattujen polkujen poisto samassa checkpointissa. Käytä
    nykyisen riskipolitiikan PR-portteja ja vaikutusalueen paketoituja
