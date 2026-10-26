@@ -43,6 +43,41 @@ export class AcceptedBuildMetadataStore {
     return this.runExclusive(() => this.inspectStoredSlots());
   }
 
+  // Observation only. V1 owns its interrupted unselected write; any complete
+  // v2 slot instead requires joint admission before the repairing reader.
+  inspectStartup(): Promise<Readonly<{ mode: 'legacy' }> | Readonly<{
+    mode: 'scoped'; slots: ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>;
+  }>> {
+    return this.runExclusive(async () => {
+      const fileSystem = createNodeCrashSafeFileSlotFileSystem({ directoryPath: dirname(this.filePath),
+        currentPath: this.filePath, nextPath: this.nextPath, backupPath: this.backupPath }, maximumBytes);
+      const slots: Record<'current' | 'next' | 'backup', ReadOnlyJournalSlotRecord<VersionedAcceptedBuildMetadata> | undefined> = {
+        current: undefined, next: undefined, backup: undefined,
+      };
+      let selected: 'current' | 'backup' | 'next' | undefined;
+      let failure: unknown;
+      for (const slot of ['current', 'backup', 'next'] as const) {
+        let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+        const bytes = await fileSystem.readSlot(slot, value => { identity = value; }, 'allowEmptyObservation');
+        if (bytes === undefined) continue;
+        selected ??= slot;
+        try {
+          const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+          assertNoDuplicateWorkspaceRegistryKeys(source);
+          const value = parseVersionedAcceptedBuildMetadata(JSON.parse(source));
+          if (identity === undefined) throw new Error('ACCEPTED_BUILD_METADATA_INVALID');
+          slots[slot] = Object.freeze({ bytes, value, identity });
+        } catch (error) { failure ??= error; }
+      }
+      const hasScoped = Object.values(slots).some(slot => slot?.value.formatVersion === 2);
+      if (!hasScoped && (selected === undefined || slots[selected]?.value.formatVersion === 1)) {
+        return Object.freeze({ mode: 'legacy' });
+      }
+      if (failure !== undefined) throw new Error('ACCEPTED_BUILD_METADATA_INVALID', { cause: failure });
+      return Object.freeze({ mode: 'scoped', slots: Object.freeze(slots) });
+    });
+  }
+
   private async inspectStoredSlots(): Promise<ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>> {
     try {
       return await readOnlyJournalSlots<VersionedAcceptedBuildMetadata>({

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -26,6 +26,7 @@ import {
   parseWorkspaceCandidateProcessCommand,
 } from '../runtime/workspaceCandidateMessages.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
+import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadata, type AcceptedBuildMetadata } from '../update/acceptedBuildMetadata.js';
 import { createDirectSetupMigrationRecovery } from '../update/directSetupMigrationRecovery.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
 import { LocalUpdatePackageCache } from '../update/localUpdatePackageCache.js';
@@ -47,7 +48,7 @@ import { encodeProfileInspectionDocumentBindings } from '../runtime/profileInspe
 import { createProfileSnapshotArtifactIdentity } from '../runtime/profileInspectionArtifactIdentity.js';
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
 import { createTestJournal } from '../workspaces/creation/emptyWorkspaceCreationTestSupport.js';
-import { WorkspaceLegacyAdoptionJournalStore } from '../workspaces/adoption/workspaceLegacyAdoptionJournal.js';
+import { createWorkspaceLegacyAdoptionJournalPaths, WorkspaceLegacyAdoptionJournalStore } from '../workspaces/adoption/workspaceLegacyAdoptionJournal.js';
 import { hasWorkspaceLabelConflict } from '../workspaces/registry/workspaceLabelComparison.js';
 import { createWorkspaceCreationJournalPaths, WORKSPACE_CREATION_JOURNAL_FILE_NAME } from '../workspaces/creation/workspaceCreationJournalPaths.js';
 import { WorkspaceCreationJournalStore } from '../workspaces/creation/workspaceCreationJournalStore.js';
@@ -65,6 +66,7 @@ import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/repl
 import { WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
 import { ActiveWorkspaceStartupRelaunchRequiredError, resolveActiveWorkspaceStartup } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceFirstStartMigrationOrchestrator } from '../workspaces/update/workspaceFirstStartMigrationOrchestrator.js';
+import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
@@ -381,7 +383,141 @@ describe('selector installation-state startup wiring', () => {
     },
   );
 
-  it('retains the old repairing read for a non-null business selection', async context => {
+  it.for(['current', 'currentNext', 'backupNext', 'backup', 'businessCurrent'] as const)(
+    'admits deferred metadata $0 before the actual W6 startup boundary', async (state, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots));
+        const accepted = createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild);
+        if (state === 'currentNext' || state === 'backupNext') {
+          await writeFile(`${f.paths.acceptedBuildMetadataPath}.next`, JSON.stringify(accepted));
+        }
+        if (state === 'backup' || state === 'backupNext' || state === 'businessCurrent') {
+          await rename(f.paths.acceptedBuildMetadataPath, `${f.paths.acceptedBuildMetadataPath}.backup`);
+        }
+        if (state === 'businessCurrent') await writeFile(f.paths.acceptedBuildMetadataPath, JSON.stringify(accepted));
+        const registryBytes = await readFile(join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME));
+        const boundary = new Error('synthetic W6 composition boundary');
+        const recover = vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'recoverBeforeWorkspaceResolution')
+          .mockRejectedValue(boundary);
+        const observe = vi.fn();
+        await lifetime.step('startup', async () => {
+          await expect(f.fixture.start(observe)).rejects.toThrow('DESKTOP_START_FAILED');
+        });
+        expect(observe).toHaveBeenCalledWith(boundary, 'compositionStartup', []);
+        expect(recover).toHaveBeenCalledOnce();
+        expect(f.resolve).not.toHaveBeenCalled();
+        const result = await f.fixture.acceptedBuild.inspectSlots();
+        expect(result.current?.value).toEqual(state === 'businessCurrent' ? accepted : f.metadata);
+        expect(result.next).toBeUndefined();
+        expect(result.backup).toBeUndefined();
+        await expect(readFile(join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME))).resolves.toEqual(registryBytes);
+        await expect(readFile(f.fixture.databasePath, 'utf8')).resolves.toBe(f.fixture.originalBytes);
+        expect(f.fixture.events).toEqual([]);
+        expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+        expect(electronBoundary.fork).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it.for(['legacyMetadata', 'directSetup', 'malformedW6', 'malformedMetadataNext', 'wrongBuild', 'lostOwner',
+    'changedSelection', 'changedInitialSelection', 'changedInitialMetadata', 'lateAdoption', 'legacyRegistry', 'missingRegistry',
+    'mixedBusinessNext', 'mixedBusinessBackup', 'legacyMixedBusinessNext'] as const)(
+    'preserves deferred evidence and blocks W6 on $0', async (fault, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots));
+        const metadataPath = f.paths.acceptedBuildMetadataPath;
+        const w6Path = createWorkspaceFirstStartMigrationJournalPaths(f.fixture.root).currentPath;
+        let evidencePath = metadataPath;
+        if (fault === 'legacyMetadata') {
+          evidencePath = f.paths.legacyAcceptedBuildMetadataPath;
+          await mkdir(dirname(evidencePath), { recursive: true });
+          await writeFile(evidencePath, JSON.stringify(f.metadata));
+        } else if (fault === 'directSetup') {
+          evidencePath = f.paths.directSetupMigrationRecoveryPath;
+          await writeFile(evidencePath, JSON.stringify(createAcceptedDirectSetupFixture()));
+        } else if (fault === 'malformedW6') {
+          evidencePath = `${w6Path}.next`;
+          await writeFile(evidencePath, '{');
+        } else if (fault === 'malformedMetadataNext') {
+          evidencePath = `${metadataPath}.next`;
+          await writeFile(evidencePath, '{');
+        } else if (fault === 'wrongBuild') {
+          await writeFile(metadataPath, JSON.stringify({ ...f.metadata,
+            acceptedBuild: { ...f.metadata.acceptedBuild, buildRevision: 'f'.repeat(12) } }));
+        } else if (fault === 'mixedBusinessNext' || fault === 'mixedBusinessBackup' || fault === 'legacyMixedBusinessNext') {
+          const path = fault === 'legacyMixedBusinessNext' ? f.paths.legacyAcceptedBuildMetadataPath : metadataPath;
+          await mkdir(dirname(path), { recursive: true });
+          await writeFile(metadataPath, JSON.stringify(f.metadata.businessBaseline));
+          await writeFile(path, JSON.stringify(f.metadata.businessBaseline));
+          evidencePath = `${path}${fault === 'mixedBusinessBackup' ? '.backup' : '.next'}`;
+          await writeFile(evidencePath, JSON.stringify(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild)));
+        } else if (fault === 'legacyRegistry' || fault === 'missingRegistry') {
+          if (fault === 'legacyRegistry') {
+            await writeFile(join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME), JSON.stringify({
+              ...(await f.fixture.registry.read())!, formatVersion: 1,
+            }));
+          } else await rm(join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME));
+          evidencePath = `${metadataPath}.next`;
+          await writeFile(evidencePath, JSON.stringify(createBusinessAcceptedBuildMetadata(f.metadata, f.metadata.acceptedBuild)));
+        }
+        const evidence = await readFile(evidencePath);
+        if (fault === 'changedInitialSelection' || fault === 'changedInitialMetadata') {
+          const inspect = AcceptedBuildMetadataStore.prototype.inspectStartup;
+          let replaced = false;
+          vi.spyOn(AcceptedBuildMetadataStore.prototype, 'inspectStartup').mockImplementation(async function (this: AcceptedBuildMetadataStore) {
+            const result = await inspect.call(this);
+            if (!replaced && result.mode === 'scoped' && result.slots.current?.value.formatVersion === 2) {
+              replaced = true;
+              if (fault === 'changedInitialSelection') {
+                const value = (await f.fixture.registry.read())!;
+                await f.fixture.registry.write({ ...value, workspaces: value.workspaces.map(entry => ({ ...entry,
+                  workspaceLabel: 'Changed before preparation' })) });
+              } else {
+                await writeFile(metadataPath, JSON.stringify({ ...f.metadata,
+                  businessBaseline: { ...f.metadata.businessBaseline, acceptedAt: '2026-08-19T10:00:00.000Z' } }));
+              }
+            }
+            return result;
+          });
+        }
+        if (fault === 'lostOwner' || fault === 'changedSelection' || fault === 'lateAdoption') {
+          const original = AcceptedBuildMetadataStore.prototype.recoverSelected;
+          vi.spyOn(AcceptedBuildMetadataStore.prototype, 'recoverSelected').mockImplementation(async function (
+            this: AcceptedBuildMetadataStore, selection,
+          ) {
+            if (fault === 'lostOwner') electronBoundary.loseReservation!();
+            else if (fault === 'lateAdoption') {
+              const path = createWorkspaceLegacyAdoptionJournalPaths(f.fixture.root).nextPath;
+              await mkdir(dirname(path), { recursive: true });
+              await writeFile(path, '{');
+            }
+            else {
+              const value = (await f.fixture.registry.read())!;
+              await f.fixture.registry.write({ ...value, workspaces: value.workspaces.map(entry => ({ ...entry,
+                workspaceLabel: 'Changed during admission' })) });
+            }
+            return original.call(this, selection);
+          });
+        }
+        const recover = vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'recoverBeforeWorkspaceResolution');
+        await lifetime.step('startup', async () => { await expect(f.fixture.start()).rejects.toThrow(); });
+        expect(recover).not.toHaveBeenCalled();
+        expect(f.resolve).not.toHaveBeenCalled();
+        if (fault === 'changedInitialMetadata') {
+          expect(JSON.parse(await readFile(evidencePath, 'utf8')).businessBaseline.acceptedAt)
+            .toBe('2026-08-19T10:00:00.000Z');
+        } else await expect(readFile(evidencePath)).resolves.toEqual(evidence);
+        await expect(readFile(f.fixture.databasePath, 'utf8')).resolves.toBe(f.fixture.originalBytes);
+        expect(f.fixture.events).toEqual([]);
+        expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+        expect(electronBoundary.fork).not.toHaveBeenCalled();
+      });
+    },
+  );
+
+  it.for([1, 2] as const)('retains the old repairing read for a non-null v$0 business selection', async (formatVersion, context) => {
     const lifetime = beginTrackedStartupTest(context);
     await lifetime.run(async () => {
       const boundary = new Error('synthetic workspace resolution boundary');
@@ -389,6 +525,8 @@ describe('selector installation-state startup wiring', () => {
       const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
         ownedRoots: lifetime.roots, skipRestore: true, update: true, resolveActiveWorkspace: resolve,
       }));
+      if (formatVersion === 2) await fixture.registry.write({ ...(await fixture.registry.read())!, formatVersion });
+      const registryBytes = await readFile(join(fixture.root, WORKSPACE_REGISTRY_FILE_NAME));
       const paths = createLocalUpdateRuntimePaths({ userDataPath: fixture.root,
         legacyRuntimeRoot: createDesktopProfilePaths(fixture.root).runtimeRoot });
       await writeFile(`${paths.acceptedBuildMetadataPath}.next`, '{');
@@ -399,7 +537,7 @@ describe('selector installation-state startup wiring', () => {
       });
       expect(resolve).toHaveBeenCalledOnce();
       expect(fixture.events).toEqual([]);
-      await fixture.assertRegistryUnchanged();
+      await expect(readFile(join(fixture.root, WORKSPACE_REGISTRY_FILE_NAME))).resolves.toEqual(registryBytes);
     });
   });
 
@@ -2730,6 +2868,21 @@ async function createSelectorStartupFixture(ownedRoots: string[], state: 'accept
   await rm(paths.acceptedBuildMetadataPath);
   await rm(paths.journalPath);
   return { fixture, paths, metadata, boundary, resolve };
+}
+
+async function createDeferredStartupFixture(ownedRoots: string[]) {
+  const resolve = vi.fn(async () => { throw new Error('unexpected workspace resolution'); });
+  const fixture = await createFixture(originalProfileId, {
+    ownedRoots, update: true, skipRestore: true, resolveActiveWorkspace: resolve,
+  });
+  await fixture.registry.write({ ...(await fixture.registry.read())!, formatVersion: 2 });
+  const target = (await fixture.acceptedBuild.read())! as Readonly<AcceptedBuildMetadata>;
+  const metadata = createSelectorAcceptedBuildMetadata({ ...target,
+    appVersion: '0.2.7', buildRevision: 'b'.repeat(12) }, target);
+  await fixture.acceptedBuild.write(metadata);
+  const paths = createLocalUpdateRuntimePaths({ userDataPath: fixture.root,
+    legacyRuntimeRoot: createDesktopProfilePaths(fixture.root).runtimeRoot });
+  return { fixture, paths, metadata, resolve };
 }
 
 function installCompletedColdCandidate() {

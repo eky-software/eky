@@ -588,9 +588,20 @@ alenneta selector-varakappaleen vuoksi. Myös palautuksen oma keskeytys
 voi jättää jatkettavan varakappaleen. Vieras palautusoperaatio, puuttuva
 tiedostoidentiteetti tai ristiriitainen kirjoitusjärjestys säilyttää aineiston.
 Valmistelun tulos ei ole prosessipoissaolon, business-readinessin tai
-seuraavan muutoksen valtuus. Mainin tulee kutsua tätä nimettyä valmistelua
-ennen vanhoja korjaavia lukijoita; pelkkä rajattu tallennintodennus ei vielä
-osoita tätä kytkentää. Business-current ilman selector-varakappaletta kuuluu
+seuraavan muutoksen valtuus. Main kutsuu nyt nimettyä valmistelua v2:n
+valitussa avauksessa tai keskeneräisen source-null-switchin yhteydessä,
+kun sloteissa on selector-hyväksyntä. Ensimmäiset metadatatavut ja identiteetit
+säilyvät valmisteluun; ensimmäinen rekisterivalinta ja installation-varaus
+tarkistetaan uudelleen. Toimitetun buildin portti edeltää palautuskirjoitusta.
+Vierasta create/import/adoption-omistajaa tai epäselvää palautustilaa ei
+ohiteta vanhaan korjaavaan lukijaan. Tämä kytkentä ei vielä toimita
+W6:n tai FirstStartin myöhempien muutosten valtuutta.
+Metadatan sivuvaikutukseton aloitusluokitus säilyttää v1:n aiemman osittaisen
+sivukirjoituksen käsittelyn myös v2-rekisterissä. Täydellinen v2-slotin arvo
+ei kuitenkaan saa kadota vanhaan korjaavaan lukuun ristiriitaisessa
+v1/v2-yhdistelmässä. Puuttuva tai vääränmuotoinen rekisteri ei anna
+selector-metadatalle muunnosvaltuutta. Nämä tapaukset säilyttävät aineiston.
+Business-current ilman selector-varakappaletta kuuluu
 nykyiseen hyväksytyn kohteen palautukseen, ei kadonneen selector-tiedon
 uudelleen muodostamiseen.
 

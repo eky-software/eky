@@ -52,6 +52,7 @@ export interface DeferredBusinessLocalUpdatePlan {
 
 export interface DeferredBusinessLocalUpdatePreparation {
   readonly metadataStore: Pick<AcceptedBuildMetadataStore, 'inspectSlots' | 'recoverSelected'>;
+  readonly observedMetadata?: ReadOnlyJournalSlots<VersionedAcceptedBuildMetadata>;
   // Main supplies non-repairing readers and proves writer absence. This
   // callback must not read metadata while its store is recovering its slots.
   inspectExternalState(): Promise<Omit<DeferredBusinessLocalUpdateState, 'metadata'>>;
@@ -66,8 +67,9 @@ export async function prepareDeferredBusinessLocalUpdateState(
   const inspectExternalState = input.inspectExternalState.bind(input);
   const inspectMetadata = input.metadataStore.inspectSlots.bind(input.metadataStore);
   const recoverMetadata = input.metadataStore.recoverSelected.bind(input.metadataStore);
+  const observedMetadata = input.observedMetadata === undefined ? undefined : structuredClone(input.observedMetadata);
   assertAuthority();
-  const metadata = structuredClone(await inspectMetadata());
+  const metadata = observedMetadata ?? structuredClone(await inspectMetadata());
   assertAuthority();
   const external = structuredClone(await inspectExternalState());
   assertAuthority();

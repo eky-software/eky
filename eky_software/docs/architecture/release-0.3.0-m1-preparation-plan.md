@@ -37,8 +37,9 @@ Aiempi jatkamisteksti säilyy muuttamattomana
 [historiassa](release-0.3.0-integration-history.md#w71n-integraatiota-edeltävä-jatkamiskohta-25102026).
 
 **Nykyinen työ:** W7.2:n rekisteri v2, pysyvä yritysvalinta ja backenditon
-hallintatila. Aloitus vertaa hyväksyttyä sopimusta ja katselmoituja W7.0:n
-koetuloksia nykyisiin tuotantokutsujiin; W7.2:n tuotantokytkentä ei ole valmis.
+hallintatila. Rekisterin, metadatan ja käynnistyksen tilavalmistelun osarajat
+on toteutettu ja kohdennetusti todennettu. Seuraavana on W6:n ja FirstStartin
+todellinen yhteinen valtuusketju; W7.2:n tuotantokytkentä ei ole valmis.
 [Pysyvä valinta ja versioraja](local-company-workspace-plan.md#pysyvä-yritysvalinta-ja-versioraja),
 [valitsimesta avauksen jatko](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 ja [W7.0-W7.5:n työjako](local-company-workspace-plan.md#koottu-toteutusehdotus)
@@ -195,16 +196,27 @@ avoimia P1/P2-havaintoja. Päällekkäisiä kohdesarjoja ei lasketa määrään
 lisänä. Tämä ei vielä kytke mainin todellista terminal-valtuutta eikä hyväksy
 native-/paketoitua ketjua.
 
-**Seuraava työ:** ensimmäisen yritysavauksen tilavalmistelun sekä
-FirstStart- ja W6-valtuuksien kytkentä mainiin ennen korjaavia lukijoita.
+**Seuraava työ:** FirstStart- ja W6-valtuuksien yhteinen kytkentä mainiin,
+mukaan lukien täsmällinen sallittu rekisterisiirtymä ja todellinen
+terminal-valtuus. Ensimmäisen yritysavauksen tilavalmistelu on nyt kytketty
+pääprosessiin ennen korjaavia lukijoita: alkuperäiset metadatahavainnot,
+rekisterivalinta, toimitettu build ja installation-valtuus tarkistetaan
+ennen muutoksia. Vanhan v1-lukijan yhteensopivuus säilyy myös v2-rekisterissä;
+ristiriitainen uusi hyväksyntä tai puuttuva rekisteri ei pääse siivoavaan
+vanhaan polkuun. Lopullinen seitsemän tiedoston vaikutusalueen sarja läpäisi
+362 testiä. Desktopin, Electron-koetoteutuksen ja E2E:n tyyppitarkistukset
+sekä ohjeiden linkkitarkistus läpäisivät. Rajattu riippumaton jälkikatselmus ei jättänyt tähän osarajaan
+avoimia P1/P2-havaintoja. Testit käyttävät oikeaa compositionia ja tiedostoja,
+mutta ohjattuja native-/Electron-rajoja. Tämä ei vielä todista W6:n ja
+FirstStartin myöhempiä mutaatioita tai koko yritysavausta.
 Nimetty tilavalmistelu on toteutettu nykyisen metadatatallentimen päälle:
 se tarkistaa keskeytysten yhteisen kirjoitusjärjestyksen ja säilyttää valitut
 tavut sekä tiedostoidentiteetit myös palautuksen omassa keskeytyksessä.
 Lopullinen kymmenen tiedoston vaikutusalueen sarja läpäisi 370 testiä;
 nykyisen palautuscompositionin erillinen sarja läpäisi 191 testiä.
 Rajattu riippumaton katselmus ja korjausten vastatestit on tehty.
-Rajatut oikeiden tiedostojen kokeet ja omistajien regressiot eivät vielä
-todista mainin kutsua, SQLiten/Electronin ketjua tai paketoitua palautusta.
+Nämä aiemmat oikeiden tiedostojen kokeet eivät vielä todistaneet mainin
+kutsua. SQLiten/Electronin ketju ja paketoitu palautus ovat yhä avoinna.
 Mainin käynnistyksen voimassaolo on nyt sidottu nykyisen varausomistajan
 elinkaareen myös hallitun lapsisiirron aikana. Yritysvalinnan myöhäinen
 tulos ei ohita tätä tarkistusta session, relaunchin tai runtime-resurssien

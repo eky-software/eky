@@ -28,6 +28,50 @@ afterEach(async context => {
 });
 
 describe('accepted build metadata store', () => {
+  it.each(['', '{'])('observes v1 without consuming its partial next %j', async partial => {
+    const filePath = await createPath();
+    await writeSlot(filePath, metadata);
+    await writeFile(`${filePath}.next`, partial);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    await expect(store.inspectStartup()).resolves.toEqual({ mode: 'legacy' });
+    await expect(readFile(`${filePath}.next`, 'utf8')).resolves.toBe(partial);
+    await expect(store.read()).resolves.toEqual(metadata);
+  });
+
+  it.each(['', '.backup', '.next'])('selects joint admission for a complete scoped slot %s', async suffix => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    if (suffix !== '') await writeSlot(filePath, metadata);
+    await writeSlot(`${filePath}${suffix}`, scoped);
+    const before = await readFile(`${filePath}${suffix}`);
+    const store = new AcceptedBuildMetadataStore(filePath);
+    const result = await store.inspectStartup();
+    expect(result.mode).toBe('scoped');
+    if (result.mode !== 'scoped') throw new Error('TEST_EXPECTED_SCOPED_OBSERVATION');
+    expect(result.slots[suffix === '' ? 'current' : suffix === '.backup' ? 'backup' : 'next']?.value).toEqual(scoped);
+    expect(result.slots[suffix === '' ? 'current' : suffix === '.backup' ? 'backup' : 'next']?.identity).toBeDefined();
+    await expect(readFile(`${filePath}${suffix}`)).resolves.toEqual(before);
+  });
+
+  it.each(['', '{'])('never ignores partial evidence %j beside scoped metadata', async partial => {
+    const filePath = await createPath();
+    const scoped = createSelectorAcceptedBuildMetadata(metadata, { ...metadata, appVersion: '0.3.0' });
+    await writeSlot(filePath, scoped);
+    await writeFile(`${filePath}.next`, partial);
+    await expect(new AcceptedBuildMetadataStore(filePath).inspectStartup()).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    await expect(readFile(`${filePath}.next`, 'utf8')).resolves.toBe(partial);
+  });
+
+  it('does not substitute a valid backup for invalid selected metadata during observation', async () => {
+    const filePath = await createPath();
+    await writeSlot(`${filePath}.backup`, metadata);
+    const before = await readFile(`${filePath}.backup`);
+    await writeFile(filePath, '{');
+    await expect(new AcceptedBuildMetadataStore(filePath).inspectStartup()).rejects.toThrow('ACCEPTED_BUILD_METADATA_INVALID');
+    await expect(readFile(filePath, 'utf8')).resolves.toBe('{');
+    await expect(readFile(`${filePath}.backup`)).resolves.toEqual(before);
+  });
+
   it('preserves canonical v1 bytes and reads scoped metadata from the same slots', async () => {
     const filePath = await createPath();
     const store = new AcceptedBuildMetadataStore(filePath);

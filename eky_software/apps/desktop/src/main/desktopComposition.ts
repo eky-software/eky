@@ -173,6 +173,7 @@ import { DirectSetupMigrationRecoveryStore, maximumDirectSetupMigrationRecoveryB
 import { parseDirectSetupMigrationRecovery } from '../update/directSetupMigrationRecovery.js';
 import { migrateLegacyLocalUpdateState, prepareSelectorLocalUpdateState } from '../update/migrateLegacyLocalUpdateState.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
+import { prepareDeferredBusinessLocalUpdateState, type DeferredBusinessLocalUpdatePlan } from '../update/deferredBusinessLocalUpdateState.js';
 import { readAcceptedApplicationBuild } from '../update/acceptedBuildMetadata.js';
 import {
   PreWorkspaceBuildAdmissionError,
@@ -203,6 +204,7 @@ import {
   type ActiveWorkspaceStartupSelection,
 } from '../workspaces/runtime/resolveActiveWorkspaceStartup.js';
 import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.js';
+import { createWorkspaceSwitchJournalPaths, WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { validateOwnedActiveProfile, type OwnedActiveProfileValidation } from '../profileBackup/validateOwnedActiveProfile.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
@@ -228,6 +230,8 @@ import {
 } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { createWorkspaceFirstStartMigrationComposition } from '../workspaces/update/workspaceFirstStartMigrationComposition.js';
 import { WorkspaceFirstStartMigrationOrchestratorError } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorError.js';
+import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
+import { validateWorkspaceFirstStartMigrationJournal, WORKSPACE_FIRST_START_MIGRATION_JOURNAL_MAX_BYTES } from '../workspaces/update/workspaceFirstStartMigrationJournalCodec.js';
 import type { WorkspaceFirstStartMigrationOrchestration } from '../workspaces/update/workspaceFirstStartMigrationOrchestratorTypes.js';
 import { createWorkspaceActivationMigrationComposition } from '../workspaces/update/workspaceActivationMigrationComposition.js';
 import type { WorkspaceCandidateReservationOwner } from '../workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js';
@@ -851,6 +855,7 @@ interface InstallationUpdateState {
   directSetupMigrationRecoveryStore: DirectSetupMigrationRecoveryStore;
   localUpdateRuntimePaths: ReturnType<typeof createLocalUpdateRuntimePaths>;
   updateJournalStore: UpdateJournalStore;
+  deferredBusiness?: Readonly<DeferredBusinessLocalUpdatePlan>;
 }
 
 async function createInstallationUpdateState(input: {
@@ -903,7 +908,83 @@ async function createInstallationUpdateState(input: {
   const adoptionPending = selection?.activeWorkspaceId === null &&
     await hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath));
   input.assertAuthority();
-  if (selection?.activeWorkspaceId === null && input.coldRecoveryAdmission === 'none' && !adoptionPending) {
+  let deferredBusiness: Readonly<DeferredBusinessLocalUpdatePlan> | undefined;
+  // Scoped metadata selects its own admission, regardless of registry version.
+  // The historical v1 reader retains its interrupted-unselected-write policy.
+  if (selection?.activeWorkspaceId !== null ||
+      await hasAnyJournalSlot(createWorkspaceSwitchJournalPaths(input.userDataPath))) {
+    const metadataInspection = await acceptedBuildMetadataStore.inspectStartup();
+    const legacyMetadataInspection = await stores.acceptedBuild.legacy.inspectStartup();
+    input.assertAuthority();
+    for (const inspection of [metadataInspection, legacyMetadataInspection]) {
+      if (inspection.mode === 'scoped' && Object.values(inspection.slots)
+        .some(slot => slot?.value.formatVersion === 1)) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
+    }
+    if ([metadataInspection, legacyMetadataInspection].some(inspection => inspection.mode === 'scoped' &&
+        Object.values(inspection.slots).some(slot => slot?.value.formatVersion === 2 && slot.value.acceptanceScope === 'selector'))) {
+      if (input.coldRecoveryAdmission !== 'none' || input.releaseInfo === undefined) {
+        throw new WorkspaceManagementRecoveryRequiredError();
+      }
+      if (metadataInspection.mode !== 'scoped') throw new WorkspaceManagementRecoveryRequiredError();
+      const metadataSlots = metadataInspection.slots;
+      // Validate the delivered build before recovery can remove any side slot.
+      // Other owners' actual slots are rejected by the joint admission below.
+      const observedMetadata = metadataSlots.current ?? metadataSlots.backup ?? metadataSlots.next;
+      const buildAdmission = await requirePreWorkspaceBuildAdmission({
+        buildInfo: input.buildInfo, releaseInfo: input.releaseInfo,
+        stores: {
+          acceptedBuild: { async read() { return observedMetadata?.value; } },
+          journal: { async read() { return undefined; } },
+          directSetupRecovery: { async read() { return undefined; } },
+        },
+      });
+      input.assertAuthority();
+      if (buildAdmission !== 'exactAcceptedBuild') throw new WorkspaceManagementRecoveryRequiredError();
+      const switchJournal = new WorkspaceSwitchJournalStore(input.userDataPath);
+      deferredBusiness = await prepareDeferredBusinessLocalUpdateState({
+        metadataStore: acceptedBuildMetadataStore,
+        observedMetadata: metadataSlots,
+        assertAuthority: input.assertAuthority,
+        async inspectExternalState() {
+          input.assertAuthority();
+          await input.assertMainOwned();
+          if (await readColdWorkspaceRecoveryAdmissionFromRoot(input.userDataPath) !== 'none' ||
+              await hasAnyJournalSlot(createWorkspaceLegacyAdoptionJournalPaths(input.userDataPath))) {
+            throw new WorkspaceManagementRecoveryRequiredError();
+          }
+          const external = {
+            legacyMetadata: await stores.acceptedBuild.legacy.inspectSlots(),
+            updateJournal: await stores.journal.current.inspectSlots(),
+            legacyUpdateJournal: await stores.journal.legacy.inspectSlots(),
+            directSetupRecovery: await readOnlyJournalSlots(
+              createReadOnlyJournalSlotPaths(localUpdateRuntimePaths.directSetupMigrationRecoveryPath),
+              maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery, { includeIdentity: true }),
+            registry: await registry.inspectSlots(),
+            switchJournal: await switchJournal.inspectSlots(),
+            firstStartJournal: await readOnlyJournalSlots(
+              createWorkspaceFirstStartMigrationJournalPaths(input.userDataPath),
+              WORKSPACE_FIRST_START_MIGRATION_JOURNAL_MAX_BYTES,
+              validateWorkspaceFirstStartMigrationJournal, { includeIdentity: true }),
+            runningBuild: { appVersion: input.buildInfo.appVersion,
+              buildRevision: input.buildInfo.buildRevision, releaseChannel: 'pilot' as const },
+          };
+          const selectedRegistry = external.registry.current ?? external.registry.backup ?? external.registry.next;
+          if (!isDeepStrictEqual(selectedRegistry?.value, selection)) {
+            throw new WorkspaceManagementRecoveryRequiredError();
+          }
+          await input.assertMainOwned();
+          input.assertAuthority();
+          return external;
+        },
+      });
+    }
+  }
+  // Deferred preparation has already recovered exactly the admitted selection;
+  // a rejected preparation never falls back to the legacy repairing reader.
+  if (deferredBusiness === undefined && selection?.activeWorkspaceId === null &&
+      input.coldRecoveryAdmission === 'none' && !adoptionPending) {
     let directSetupObserved = false;
     let directSetupBytes: Buffer | undefined;
     await prepareSelectorLocalUpdateState({
@@ -949,7 +1030,7 @@ async function createInstallationUpdateState(input: {
         input.assertAuthority();
       },
     });
-  } else {
+  } else if (deferredBusiness === undefined) {
     await migrateLegacyLocalUpdateState(stores);
   }
   input.assertAuthority();
@@ -958,6 +1039,7 @@ async function createInstallationUpdateState(input: {
     directSetupMigrationRecoveryStore,
     localUpdateRuntimePaths,
     updateJournalStore,
+    ...(deferredBusiness === undefined ? {} : { deferredBusiness }),
   };
 }
 
