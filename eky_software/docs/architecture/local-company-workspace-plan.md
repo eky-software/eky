@@ -692,6 +692,15 @@ Synteettinen lähtö käy todellisen build-admissionin läpi. Tämä näyttö ei
 kata tietokannan avaamisen jälkeistä rollbackia, lykättyä migraatiota tai
 paketoidun sovelluksen hyväksyntää; taulukon muut näyttörajat säilyvät.
 
+`DESK-SELECTOR-CREATE-001` todentaa onnistuvan fyysisen prosessiketjun:
+tyhjä v2/null-valitsin, UI-luonti, uusi valitsin ilman automaattista
+avausta, nimenomainen yritysavaus ja vielä business-restart. Tuotannon
+backend-käynnistin suorittaa FirstStartin; synteettinen asiakas, rekisteri
+ja hyväksyntämetadata säilyvät. Vanhat istunnot hylätään ja todellinen
+backend-portti sekä koko prosessipuu vapautetaan ennen jatkoa. Tämä käyttää
+luonnin nykyistä tietokantaversiota, ei korvaa historiallisen kopioaktivoinnin,
+lykätyn päivityksen tai saman puhtaan paketin palautusportteja.
+
 Business-metadatan [lukukytkentä](../../apps/desktop/src/main/desktopAcceptedSelectorStartup.ts)
 ei julkaise metadataa tai muuta hyväksyntäformaattia. Se sitoo nykyiset
 FirstStart-, binary-rollback- ja W6-lukijat tuoreesti varmennettuihin

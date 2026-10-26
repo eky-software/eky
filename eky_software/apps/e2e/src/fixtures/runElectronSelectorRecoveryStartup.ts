@@ -1,4 +1,4 @@
-import { selectorRecoveryScenarioId } from '../../../desktop/e2e/electronSelectorRecoveryRelease.js';
+import { selectorRecoveryScenarioId } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 import { runOwnedWindowsElectron } from '../environment/runOwnedWindowsElectron.js';
 import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLaunchBudgets.js';
 

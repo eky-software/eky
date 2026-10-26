@@ -5,6 +5,36 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.2:n valitsimen virhepaluun osatodennus 26.10.2026
+
+Alla oleva edellisen osarajan teksti säilyy muuttamattomana. Uusin
+business-avauksen fyysinen restart ja jäljellä oleva työ ovat M1:n alussa.
+
+**Uusin osatodiste:** `DESK-SELECTOR-RETURN-001` läpäisi oikeassa Electron-
+prosessiketjussa. Valitsimessa vahvistettu avaus kohtaa puuttuvan
+työtilajuuren; nykyinen palautusomistaja palauttaa null-valinnan ja uuden
+valitsinprosessin. Yritys jää `recoveryRequired`-tilaan, hyväksyntämetadata
+säilyy eikä puuttuvaa yritystietokantaa luoda. Vielä yksi fyysinen restart
+säilyttää tuloksen. Jokaisen prosessin puu ja portti suljetaan ennen jatkoa.
+Synteettinen release-identiteetti käy tuotannon build-admissionin läpi.
+
+Testiadapterista korjattiin tyypitetyn uudelleenkäynnistyspyynnön muuttuminen
+tavalliseksi virheeksi. Tuotannon palautuslogiikkaa tai aikarajoja ei muutettu.
+Regressio kulkee mainin todellisen resolverin läpi; samanniminen tavallinen
+virhe ei kelpaa palautuskuitiksi. Testin aiempi puuttuva UI-vahvistus sekä
+adapterin hylkäys säilyvät erillisinä ensimmäisinä epäonnistumisina.
+Rajatut järjestelmä- ja adapteritestit, molemmat E2E-tyyppitarkistukset,
+viisi vanhaa Electron-kontrollia ja riippumaton katselmus läpäisivät.
+Prosessituloste käyttää nykyistä rajattua yksityistä keräystä, ei lupausta
+jokaisen alkuperäisen poikkeuksen täydellisestä talteenotosta.
+
+Tämä todistaa puuttuvan juuren hylkäyksen ennen business-käynnistystä,
+ei tietokannan avaamisen jälkeistä rollbackia tai paketin hyväksyntää.
+[Aiempi onnistuvan avauksen ja lykätyn hyväksynnän näyttö](release-0.3.0-integration-history.md#w72n-valitsimesta-avauksen-native-osatodennus-26102026)
+säilyy: sen composition-restartit ovat samassa prosessissa ja edeltävä
+asennuspäivitys on synteettinen lähtötila. Vanhoja viiveitä ei merkitä
+korjatuiksi eikä päällekkäisiä ajoja lasketa yhteen.
+
 ## W7.2:n valitsimesta avauksen native-osatodennus 26.10.2026
 
 Alla oleva edellisen osarajan teksti säilyy muuttamattomana. M1:n alku

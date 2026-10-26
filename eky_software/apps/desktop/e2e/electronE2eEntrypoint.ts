@@ -25,7 +25,9 @@ import { createFirstStartProofAdmission, createFirstStartProofObserver } from '.
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
-import { readSelectorRecoveryRelease } from './electronSelectorRecoveryRelease.js';
+import { readSelectorTestRelease, selectorCreateScenarioId } from './electronSelectorTestRelease.js';
+import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
+import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -47,8 +49,8 @@ if (configPath === undefined) {
 }
 const config = readElectronE2eConfig(configPath);
 app.setPath('userData', config.paths.userDataPath);
-const selectorRecoveryRelease = readSelectorRecoveryRelease(config.scenarioId);
-const e2eAppVersion = selectorRecoveryRelease?.appVersion ?? app.getVersion();
+const selectorTestRelease = readSelectorTestRelease(config.scenarioId);
+const e2eAppVersion = selectorTestRelease?.appVersion ?? app.getVersion();
 
 const hasSingleInstanceLock = app.requestSingleInstanceLock();
 if (!hasSingleInstanceLock) {
@@ -72,12 +74,15 @@ const backendController = createElectronE2eBackendController(
   },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
+const selectorBackend = config.scenarioId === selectorCreateScenarioId
+  ? observeSelectorTestBackend(startDesktopBackend) : undefined;
 app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');
 });
 let lifecycle: DesktopLifecycleHandle | undefined;
 let secondInstanceCount = 0;
 let runtimeSessionCount = 0;
+const createRuntimeSession = createElectronE2eRuntimeSessionFactory(config.backend.sessionSecret);
 let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefined;
 let secretShutdownProof: Promise<void> | undefined;
 let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
@@ -164,13 +169,13 @@ if (hasSingleInstanceLock) {
           appVersion: e2eAppVersion,
           buildCreatedAt: '2026-01-01T00:00:00.000Z',
           buildDirty: false,
-          buildRevision: selectorRecoveryRelease?.buildRevision ?? 'development',
+          buildRevision: selectorTestRelease?.buildRevision ?? 'development',
           schemaVersion: 1,
         },
         dependencies: {
           createRuntimeSession: () => {
             runtimeSessionCount += 1;
-            return config.backend.sessionSecret;
+            return createRuntimeSession();
           },
           openPath: nativeAdapters.openPath,
           showErrorBox: nativeAdapters.showErrorBox,
@@ -185,6 +190,7 @@ if (hasSingleInstanceLock) {
           },
           async startBackend(options) {
             startupObservation.record('backendStartRequested');
+            if (selectorBackend !== undefined) return selectorBackend.startBackend(options);
             if (config.startupMode === 'backendStartFailure') {
               throw new Error('BACKEND_READINESS_TIMEOUT');
             }
@@ -213,7 +219,7 @@ if (hasSingleInstanceLock) {
           },
         },
         quitApplication: () => app.quit(),
-        releaseInfo: selectorRecoveryRelease,
+        releaseInfo: selectorTestRelease,
         relaunchApplication() {
           if (config.relaunchMode !== 'playwrightManaged') {
             throw new Error('ELECTRON_E2E_RELAUNCH_MODE_INVALID');
@@ -286,8 +292,9 @@ Object.assign(globalThis, {
     }),
     startupHold: () => startupHold.snapshot(),
     startupObservation: () => startupObservation.snapshot(),
-    backendIsRunning: () => backendController.isRunning(),
-    backendStartCount: () => backendController.getStartCount(),
+    backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning(),
+    backendStartCount: () => selectorBackend?.snapshot().starts ?? backendController.getStartCount(),
+    selectorBackendPort: () => selectorBackend?.snapshot().port,
     runtimeSessionCount: () => runtimeSessionCount,
     closePdfPreviewWindows: () => {
       for (const window of getPdfPreviewWindows()) {

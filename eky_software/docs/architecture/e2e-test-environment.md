@@ -579,6 +579,24 @@ palautus-/relaunch-tuloksen mainille muuttumattomana; muut virheet luokitellaan
 edelleen turvallisesti. Todiste kattaa source-null-virhepaluun ja erillisen
 fyysisen restartin, ei business-avauksen jälkeistä rollbackia tai pakettia.
 
+`DESK-SELECTOR-CREATE-001` käyttää samaa eristettyä Electron-fixtureä,
+mutta vain tämä täsmällinen skenaario delegoi backendin käynnistyksen
+tuotannon `startDesktopBackend`-omistajalle. Tavallinen fake-backend ei
+suorita FirstStartin tarvitsemaa migraatioporttia. Havaintodekoraattori
+välittää alkuperäiset vaihtoehdot, sulkutulokset ja exit-ilmoitukset;
+se ei ole toinen prosessiomistaja. Fixture tallettaa kunkin käynnistyksen
+todellisen portin ja varmentaa sen vapautumisen puun sulun jälkeen,
+ennen uutta käynnistystä tai juuren poistamista. Puuttuva tai ristiriitainen
+havainto estää siivouksen hyväksymisen. Muut skenaariot säilyvät ennallaan.
+
+Testisession ensimmäinen arvo tulee edelleen eristetystä konfiguraatiosta;
+myöhemmät arvot syntyvät nykyisellä tuotannon generaattorilla. Näin
+FirstStartin väärän session hylkäyskoe ei käytä aktiivista sessiota.
+Istuntojen vertailu tuottaa vain totuusarvon, ei avainta assertion-tulosteeseen.
+Testi todentaa nykyversion luonnin, UI-valinnan, business-käytön ja fyysisen
+restartin sekä vanhojen avainten hylkäyksen. Synteettinen release-lähtö ei
+todista asennuspäivitystä tai paketoitua palautusta.
+
 Electronin julkisen sulun jälkeen suoritetaan aina omistajan stop ja
 koko puun poistumisen varmennus, myös sovelluksen jo sulkeuduttua tai
 Playwright-sulun epäonnistuttua. Tämä ei ole pelkkä puuttuvan root-exitin

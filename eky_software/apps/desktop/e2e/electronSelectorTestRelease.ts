@@ -1,11 +1,12 @@
 import type { DesktopReleaseInfo } from '../src/release/desktopReleaseInfo.js';
 
 export const selectorRecoveryScenarioId = 'DESK-SELECTOR-RETURN-001';
+export const selectorCreateScenarioId = 'DESK-SELECTOR-CREATE-001';
 
 // Synthetic identity matching the registry-only fixture. Production build
 // admission still runs; ordinary development scenarios retain no release input.
-export function readSelectorRecoveryRelease(scenarioId: string): Readonly<DesktopReleaseInfo> | undefined {
-  if (scenarioId !== selectorRecoveryScenarioId) return undefined;
+export function readSelectorTestRelease(scenarioId: string): Readonly<DesktopReleaseInfo> | undefined {
+  if (scenarioId !== selectorRecoveryScenarioId && scenarioId !== selectorCreateScenarioId) return undefined;
   return Object.freeze({
     schemaVersion: 1, appIdentity: 'Eky', appVersion: '0.2.0',
     architecture: 'x64', platform: 'win32', releaseChannel: 'pilot',

@@ -41,7 +41,7 @@ import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
-import { readElectronStartupObservation } from '../electron/readElectronMainState.js';
+import { readElectronStartupObservation, readSelectorTestBackendPort } from '../electron/readElectronMainState.js';
 import {
   createElectronActiveWorkspaceReplacementFixture,
   createElectronWorkspaceBackupFixture,
@@ -67,6 +67,7 @@ import {
 } from './reportElectronLifecycleEvidence.js';
 import { prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
 import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
+import { selectorCreateScenarioId } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -252,6 +253,8 @@ export const test = base.extend<
     let runtimeCleanupUnverified = false;
     let publicCloseFailure: Parameters<typeof reportElectronLifecycleEvidence>[1]['publicCloseFailure'];
     let portReleaseUnverified = false;
+    let selectorBackendPort: number | undefined;
+    let selectorBackendPortUnobserved = false;
     let failure: { error: unknown } | undefined;
     const launchObservations: ElectronLaunchObservation[] = [];
     let observationsTruncated = false;
@@ -272,7 +275,8 @@ export const test = base.extend<
       electronApp = undefined;
       applicationClosed = false;
       ownership = undefined;
-      return launchElectronRuntime({
+      selectorBackendPortUnobserved = scenarioId === selectorCreateScenarioId;
+      const launched = await launchElectronRuntime({
         async launch() {
           // Retain cleanup ownership before awaiting Playwright admission.
           windowsBridge = startOwnedWindowsElectronBridge({
@@ -320,6 +324,11 @@ export const test = base.extend<
           }
         },
       });
+      if (selectorBackendPortUnobserved) {
+        selectorBackendPort = await readSelectorTestBackendPort(launched.electronApp);
+        selectorBackendPortUnobserved = false;
+      }
+      return launched;
     }
 
     async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
@@ -356,9 +365,13 @@ export const test = base.extend<
     async function releaseCurrentPort(): Promise<void> {
       try {
         await waitForLoopbackPortRelease(backendPort);
-        if (portReleaseUnverified) {
+        if (selectorBackendPort !== undefined && selectorBackendPort !== backendPort) {
+          await waitForLoopbackPortRelease(selectorBackendPort);
+        }
+        if (portReleaseUnverified || selectorBackendPortUnobserved) {
           throw new Error('E2E_ELECTRON_PORT_RELEASE_UNVERIFIED');
         }
+        selectorBackendPort = undefined;
       } catch {
         portReleaseUnverified = true;
         throw new Error('E2E_ELECTRON_PORT_RELEASE_UNVERIFIED');

@@ -43,33 +43,41 @@ tavallinen null-haara käyttää nyt erillistä valitsinikkunaa ilman
 business-sessionia, backendia, brokeria tai yritystietokannan avaamista.
 Valitsimen näkyminen ei ole yrityksen FirstStart- tai terveystodiste.
 
-**Uusin osatodiste:** `DESK-SELECTOR-RETURN-001` läpäisi oikeassa Electron-
-prosessiketjussa. Valitsimessa vahvistettu avaus kohtaa puuttuvan
-työtilajuuren; nykyinen palautusomistaja palauttaa null-valinnan ja uuden
-valitsinprosessin. Yritys jää `recoveryRequired`-tilaan, hyväksyntämetadata
-säilyy eikä puuttuvaa yritystietokantaa luoda. Vielä yksi fyysinen restart
-säilyttää tuloksen. Jokaisen prosessin puu ja portti suljetaan ennen jatkoa.
-Synteettinen release-identiteetti käy tuotannon build-admissionin läpi.
+**Uusin osatodiste:** `DESK-SELECTOR-CREATE-001` läpäisi oikean UI:n,
+tuotannon backend-käynnistimen ja FirstStartin kautta. Yritys luodaan
+valitsimessa ilman automaattista valintaa; nimenomainen avaus käynnistää
+business-runtimen. Synteettinen asiakas, yritysvalinta ja hyväksyntämetadata
+säilyvät kokonaan uudessa Electron-prosessissa. Vanhat valitsin- ja
+business-istunnot hylätään oikeassa backendissä.
 
-Testiadapterista korjattiin tyypitetyn uudelleenkäynnistyspyynnön muuttuminen
-tavalliseksi virheeksi. Tuotannon palautuslogiikkaa tai aikarajoja ei muutettu.
-Regressio kulkee mainin todellisen resolverin läpi; samanniminen tavallinen
-virhe ei kelpaa palautuskuitiksi. Testin aiempi puuttuva UI-vahvistus sekä
-adapterin hylkäys säilyvät erillisinä ensimmäisinä epäonnistumisina.
-Rajatut järjestelmä- ja adapteritestit, molemmat E2E-tyyppitarkistukset,
-viisi vanhaa Electron-kontrollia ja riippumaton katselmus läpäisivät.
-Prosessituloste käyttää nykyistä rajattua yksityistä keräystä, ei lupausta
-jokaisen alkuperäisen poikkeuksen täydellisestä talteenotosta.
+Testiadapterin kiinteä istunto esti FirstStartin tarkoituksellisen
+väärän istunnon kokeen, eikä tavallinen fake-backend suorita migraatioporttia.
+Korjaukset käyttävät nykyistä istuntogeneraattoria ja vain nimetylle
+tapaukselle tuotannon backend-omistajaa; sovelluskoodia tai aikarajoja
+ei muutettu. Katselmuksen porttihavainto korjattiin nykyiseen fixtureen:
+todellinen backend-portti varmennetaan puun sulun jälkeen ennen restartia
+tai aineiston poistoa. Puuttuva havainto ei kelpaa siivoustodisteeksi.
+Rajatut järjestelmä- ja adapteritestit sekä E2E-tyyppitarkistus läpäisivät.
 
-Tämä todistaa puuttuvan juuren hylkäyksen ennen business-käynnistystä,
-ei tietokannan avaamisen jälkeistä rollbackia tai paketin hyväksyntää.
-[Aiempi onnistuvan avauksen ja lykätyn hyväksynnän näyttö](release-0.3.0-integration-history.md#w72n-valitsimesta-avauksen-native-osatodennus-26102026)
-säilyy: sen composition-restartit ovat samassa prosessissa ja edeltävä
-asennuspäivitys on synteettinen lähtötila. Vanhoja viiveitä ei merkitä
-korjatuiksi eikä päällekkäisiä ajoja lasketa yhteen.
+Nykyinen 11 tapauksen Electron-kohdesarja läpäisi kymmenen tapausta,
+myös uuden luontipolun ja vanhat FirstStart-/migraatio-/eristyskontrollit.
+Virhepaluutestin käyttäjäpolku valmistui, mutta viimeisen prosessin
+Playwright-sulku aikakatkaisi. Ulompi omistaja todisti puun poistumisen ja
+portti vapautui; fixture säilytti hylkäyksen ja aineiston. Sulun tarkka syy
+on avoin. Yksi sallittu kohdeuusinta läpäisi samalla lähteellä ja
+varmennetulla siivouksella; koko ensimmäistä sarjaa tai vanhaa sulkua
+ei merkitä hyväksytyksi sen perusteella. Rajattu riippumaton katselmus
+läpäisi porttikorjauksen jälkeen.
 
-**Seuraava työ:** viimeistele onnistuvan business-avauksen fyysisen
-uudelleenkäynnistyksen ja saman puhtaan paketin palautusketjun näyttö. Säilytä vanhan
+Tämä on nykyisen tietokantaversion business-ketjun näyttö, ei asennuspäivitys
+tai paketoitu palautus. [Aiempi virhepaluu](release-0.3.0-integration-history.md#w72n-valitsimen-virhepaluun-osatodennus-26102026)
+ja [historiallisen kohteen avaus](release-0.3.0-integration-history.md#w72n-valitsimesta-avauksen-native-osatodennus-26102026)
+säilyvät erillisinä todisteina. Ensimmäiset adapterihylkäykset ja avoimet
+viiveet säilytetään; päällekkäisiä ajoja ei lasketa yhteen. Nykyinen rajattu
+yksityinen keräys ei takaa jokaisen alkuperäisen poikkeuksen talteenottoa.
+
+**Seuraava työ:** todenna saman puhtaan paketin palautusketju ja ratkaise
+alla oleva kolmannen yhdistelmätestin rajaus ennen laajaa ajoa. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
 palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
 PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
