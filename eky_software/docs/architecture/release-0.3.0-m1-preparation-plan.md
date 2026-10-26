@@ -56,16 +56,21 @@ slot-valinta ja historiallinen adoptio säilyvät. Korjauksen 557 kohdetestiä
 ja rajattu riippumaton katselmus läpäisivät. Korjattu kokonaisuus läpäisi
 myös uuden koko työtilan kierroksen: 13 470 testiä ja 22 määriteltyä ohitusta.
 Tyyppitarkistus, auditointi, rekisteriallekirjoitukset ja ohjelinkit läpäisivät.
-Uusi puhdas paketti, kestoajo sekä PR/main-portit ovat vielä todentamatta.
+Uusi puhdas paketti ja desktop-kuormitusportti läpäisivät. 30 minuutin
+kestoajo sekä PR/main-portit ovat vielä hyväksymättä.
 
 **Uusin pakettitodiste 26.10.2026:** puhdas lähderevisio
-`3404719c5aa4eef8e5f49f8c1c5cd53cb4453ad8` läpäisi hardened Windows
+`9d7a2badc6797cd806f3d13ec5020508224fa394` läpäisi hardened Windows
 -paketoinnin, sisältöinventaarion ja backup -> inspect -> restore -> restart
 -> compare -smoken. Samat pakettitavut läpäisivät myös historiallisen
 038-backupin sekä keskeytyneen luonnin ja tuonnin palautuskokeet.
 ASAR:n sisältö vastasi valmisteltuja tiedostoja; koko paketin inventaario
 ja lähdeidentiteetti varmistettiin muuttumattomiksi kokeiden jälkeen.
 Tämä ei vielä ole PR/main- tai koko W7.2:n hyväksyntä.
+Aiempi pakettitodiste lähteestä
+`3404719c5aa4eef8e5f49f8c1c5cd53cb4453ad8` säilyy sitä koskevana näyttönä;
+sitä ei käytetä korjatun lähteen uutena todisteena. Tämä viimeinen
+jatkamiskohtapäivitys ei muuta paketoitua sovelluskoodia.
 
 **Yritysavauksen osatodiste:** `DESK-SELECTOR-CREATE-001` läpäisi oikean UI:n,
 tuotannon backend-käynnistimen ja FirstStartin kautta. Yritys luodaan
@@ -142,11 +147,12 @@ tapausta jäi ohitetuksi. Tämä ei ole koko työtilan hyväksyntä, eikä
 muiden pakettien tai tekemättä jääneen jatkovaiheen läpäisyä oleteta.
 Myöhempi yhtenäinen kierros ja katselmuksen korjaustarve on eroteltu yllä.
 
-**Seuraava työ:** todenna katselmuksessa korjattu kokonaisuus laajasti ja
-samasta puhtaasta lähteestä paketoituna ennen integraatiota. Säilytä vanhan
+**Seuraava työ:** viimeistele kestoajo sekä täsmällisen PR-headin ja uuden
+mainin omat portit. Laaja korjauksenjälkeinen sarja ja puhtaan paketin
+palautuskontrollit on todennettu yllä. Säilytä vanhan
 ei-null-avauksen ja erillisen Direct Setup -palautuksen kontrollit;
-palautusomistajaa ei saa ohittaa. Sen jälkeen rajattu katselmus sekä täsmällisen
-PR:n ja uuden mainin omat portit. Ne ovat tekemättä; W7.2 ei ole hyväksytty.
+palautusomistajaa ei saa ohittaa. Katselmus on tehty, mutta integraatioportit
+ovat vielä tekemättä; W7.2 ei ole hyväksytty.
 [Toteutussopimus ja puuttuvat liitokset](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 omistavat rajat. Vanhoja palautuspolkuja tai hyväksyttyjä W7.0-päätöksiä
 ei toteuteta uudelleen ilman omaa regressiota.
