@@ -1,8 +1,10 @@
 import { OwnedProfileBackupInspectionError } from './inspectOwnedEncryptedProfileBackup.js';
 import { ProfileBackupInspectionError } from './profileBackupInspectionTypes.js';
-import type { OwnedProfileSnapshotValidator } from './profileSnapshotInspectionPort.js';
+import type { OwnedProfileSnapshotValidator, ProfileSnapshotEvidencePort } from './profileSnapshotInspectionPort.js';
 import type { ProfileBackupInspectionSummary } from './profileBackupInspectionTypes.js';
-import { stageValidatedProfileBackup } from './stageValidatedProfileBackup.js';
+import { stageValidatedProfileBackup, type StagedValidatedProfileBackup } from './stageValidatedProfileBackup.js';
+import type { ProfileInspectionReceipt, ProfileInspectionRequestIdentity } from '../runtime/profileInspectionMessages.js';
+import type { AuthenticatedBackupFileIdentity } from './container/decryptBackupPayload.js';
 
 export {
   ProfileBackupInspectionError,
@@ -18,22 +20,58 @@ export interface InspectedProfileBackup {
   summary: ProfileBackupInspectionSummary;
 }
 
-export async function inspectEncryptedProfileBackupWithIdentity(input: {
+export interface InspectedProfileBackupWithIdentity extends InspectedProfileBackup {
+  readonly authenticatedFileIdentity: AuthenticatedBackupFileIdentity;
+}
+
+interface InspectionInput {
   containerPath: string;
   operationId: string;
   password: string;
   quarantineRoot: string;
   stagingRoot: string;
   validator: ProfileSnapshotValidator;
-}): Promise<InspectedProfileBackup> {
+}
+
+export async function inspectEncryptedProfileBackupWithIdentity(input: InspectionInput): Promise<InspectedProfileBackupWithIdentity> {
+  return inspectAndCleanup(input, async staged => ({ containerSha256: staged.containerSha256,
+    authenticatedFileIdentity: staged.authenticatedFileIdentity, summary: staged.summary }));
+}
+
+export interface InspectedDeletionBackupContent extends InspectedProfileBackupWithIdentity {
+  readonly receipt: ProfileInspectionReceipt;
+  readonly identity: ProfileInspectionRequestIdentity;
+}
+
+/** Main-only content evidence; it grants no deletion or activation authority. */
+export async function inspectEncryptedProfileBackupContent(input: Omit<InspectionInput, 'validator'> & {
+  validator: ProfileSnapshotValidator & ProfileSnapshotEvidencePort;
+  onContentValidated?(content: InspectedDeletionBackupContent): void;
+}): Promise<InspectedDeletionBackupContent> {
+  if (typeof input.validator.withProfileSnapshotEvidence !== 'function') {
+    throw new ProfileBackupInspectionError('BACKUP_INSPECTION_UNAVAILABLE');
+  }
+  return inspectAndCleanup(input, async staged => {
+    const content = await input.validator.withProfileSnapshotEvidence(input.operationId,
+      async ({ receipt, identity }, assertCurrent) => {
+        await assertCurrent();
+        return { containerSha256: staged.containerSha256, authenticatedFileIdentity: staged.authenticatedFileIdentity,
+          summary: staged.summary, identity, receipt: Object.freeze({ ...receipt,
+            database: Object.freeze({ ...receipt.database }), artifactCatalog: Object.freeze({ ...receipt.artifactCatalog }) }) };
+      });
+    // Retention is not cleanup success or a deletion-authority publication.
+    input.onContentValidated?.(content);
+    return content;
+  });
+}
+
+async function inspectAndCleanup<T>(input: InspectionInput,
+  project: (staged: StagedValidatedProfileBackup) => Promise<T>): Promise<T> {
   let firstFailure: unknown;
-  let result: InspectedProfileBackup | undefined;
+  let result: T | undefined;
   try {
     const staged = await stageValidatedProfileBackup(input);
-    result = {
-      containerSha256: staged.containerSha256,
-      summary: staged.summary,
-    };
+    result = await project(staged);
   } catch (error) {
     firstFailure = error;
   }

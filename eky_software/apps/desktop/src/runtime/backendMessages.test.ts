@@ -143,7 +143,7 @@ describe('desktop backend process messages', () => {
     }
   });
 
-  it.each(['shutdownForUpdate', 'shutdownForRestore'] as const)(
+  it.each(['shutdownForUpdate', 'shutdownForRestore', 'shutdownForDelete'] as const)(
     'keeps ordinary shutdown exact and %s operation-bound', (type) => {
     const operationId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
     expect(parseDesktopBackendCommand({ type: 'shutdown' })).toEqual({

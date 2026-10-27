@@ -7,6 +7,7 @@ import {
 import {
   desktopBackendReadinessTimeoutMilliseconds,
   parseDesktopBackendStatus,
+  type DesktopBackendDeleteShutdownMessage,
   type DesktopBackendRestoreShutdownMessage,
   type DesktopBackendStartMessage,
   type DesktopBackendUpdateShutdownMessage,
@@ -68,6 +69,7 @@ export interface DesktopBackendHandle {
   stop(): Promise<BackendShutdownOutcome>;
   stopForUpdate(operationId: string): Promise<void>;
   stopForRestore(operationId: string): Promise<void>;
+  stopForDelete(operationId: string): Promise<void>;
 }
 
 export function startDesktopBackend(
@@ -259,7 +261,7 @@ export function startDesktopBackend(
 
     async function stopBackend(
       forceAfterTimeout: boolean,
-      protectedCommand?: DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage,
+      protectedCommand?: DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage | DesktopBackendDeleteShutdownMessage,
     ): Promise<BackendShutdownOutcome> {
       if (stopping) {
         throw new Error('BACKEND_STOP_ALREADY_STARTED');
@@ -457,6 +459,10 @@ export function startDesktopBackend(
         async stopForRestore(operationId) {
           if (!isOperationId(operationId)) throw new Error('BACKEND_STOP_OPERATION_INVALID');
           await stopBackend(false, { type: 'shutdownForRestore', operationId });
+        },
+        async stopForDelete(operationId) {
+          if (!isOperationId(operationId)) throw new Error('BACKEND_STOP_OPERATION_INVALID');
+          await stopBackend(false, { type: 'shutdownForDelete', operationId });
         },
       });
     });

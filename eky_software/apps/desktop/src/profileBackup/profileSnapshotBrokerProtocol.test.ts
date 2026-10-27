@@ -30,7 +30,7 @@ describe('profile snapshot broker protocol', () => {
       const request = createProfileSnapshotBrokerRequest({
         operation: 'readProfileInspectionContext', kind, operationId: randomUUID(), requestId: randomUUID(),
       });
-      expect(profileSnapshotBrokerProtocolVersion).toBe(12);
+      expect(profileSnapshotBrokerProtocolVersion).toBe(13);
       expect(parseProfileSnapshotBrokerRequest(request)).toEqual(request);
       for (const changed of [
         { kind: 'unknown' }, { kind: undefined }, { operationId: '../other' },

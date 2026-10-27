@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { promises as fileSystem } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -14,14 +14,19 @@ import {
 } from './container/backupContainerWriter.js';
 import {
   inspectEncryptedProfileBackup,
+  inspectEncryptedProfileBackupContent,
 } from './inspectEncryptedProfileBackup.js';
+import { profileInspectionProtocolVersion } from '../runtime/profileInspectionMessages.js';
+import type { ProfileSnapshotInspectionEvidence } from './profileSnapshotInspectionClient.js';
 
 const password = 'Eky inspector test password 2026!';
 const profileId = 'd'.repeat(64);
 const migrationChainIdentity = 'c'.repeat(64);
 const temporaryDirectories: string[] = [];
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  vi.restoreAllMocks();
+  if (task.result?.state !== 'pass') { temporaryDirectories.splice(0); return; }
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       fileSystem.rm(directory, { force: true, recursive: true }),
@@ -30,6 +35,77 @@ afterEach(async () => {
 });
 
 describe('encrypted profile backup inspector', () => {
+  it('returns full main-only evidence only after the existing final staging cleanup settles', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const originalIdentity = await fileSystem.lstat(fixture.containerPath, { bigint: true });
+    const remove = fixture.validator.removeProfileSnapshot.bind(fixture.validator);
+    const entered = deferred();
+    const allowCleanup = deferred();
+    const cleanup = vi.spyOn(fixture.validator, 'removeProfileSnapshot').mockImplementationOnce(async id => {
+      entered.resolve(); await allowCleanup.promise; await remove(id);
+    });
+    const published = vi.fn();
+    const pending = inspectEncryptedProfileBackupContent({ ...fixture, validator: fixture.validator })
+      .then(value => { published(value); return value; });
+    try {
+      await entered.promise;
+      expect(published).not.toHaveBeenCalled();
+      expect(await fileSystem.stat(join(fixture.stagingRoot, fixture.operationId))).toBeDefined();
+    } finally { allowCleanup.resolve(); await Promise.allSettled([pending]); }
+    const result = await pending;
+    expect(result.identity).toBe(fixture.validator.evidence.identity);
+    expect(result.receipt).toEqual(fixture.validator.evidence.receipt);
+    expect(Object.isFrozen(result.receipt)).toBe(true);
+    expect(Object.isFrozen(result.receipt.database)).toBe(true);
+    expect(Object.isFrozen(result.receipt.artifactCatalog)).toBe(true);
+    expect(originalIdentity).toMatchObject(result.authenticatedFileIdentity);
+    expect(result.summary).not.toHaveProperty('identity');
+    expect(result.summary).not.toHaveProperty('receipt');
+    expect(result.summary).not.toHaveProperty('authenticatedFileIdentity');
+    expect(cleanup).toHaveBeenCalledExactlyOnceWith(fixture.operationId);
+    await expect(fileSystem.readdir(fixture.stagingRoot)).resolves.toEqual([]);
+    await expect(fileSystem.readdir(fixture.quarantineRoot)).resolves.toEqual([]);
+  });
+
+  it('fails closed before staging when the main-only evidence port is missing', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const remove = vi.spyOn(fixture.validator, 'removeProfileSnapshot');
+    const validator = { validateProfileSnapshot: fixture.validator.validateProfileSnapshot.bind(fixture.validator),
+      removeProfileSnapshot: remove };
+    await expect(inspectEncryptedProfileBackupContent({ ...fixture,
+      validator: validator as unknown as Parameters<typeof inspectEncryptedProfileBackupContent>[0]['validator'] }))
+      .rejects.toMatchObject({ code: 'BACKUP_INSPECTION_UNAVAILABLE' });
+    expect(fixture.validator.operationIds).toEqual([]);
+    expect(remove).not.toHaveBeenCalled();
+    await expect(fileSystem.readdir(fixture.stagingRoot)).resolves.toEqual([]);
+  });
+
+  it('publishes no content evidence after the evidence consumer loses authority', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const first = new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    fixture.validator.assertCurrent.mockRejectedValueOnce(first);
+    const published = vi.fn();
+    await expect(inspectEncryptedProfileBackupContent(fixture).then(published)).rejects.toBe(first);
+    expect(published).not.toHaveBeenCalled();
+    await expect(fileSystem.readdir(fixture.stagingRoot)).resolves.toEqual([]);
+  });
+
+  it('preserves content evidence privately and does not retry an uncertain final cleanup', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const cleanup = vi.spyOn(fixture.validator, 'removeProfileSnapshot')
+      .mockRejectedValueOnce(new Error('synthetic cleanup unavailable'));
+    const published = vi.fn();
+    await expect(inspectEncryptedProfileBackupContent(fixture).then(published))
+      .rejects.toMatchObject({ code: 'BACKUP_INSPECTION_UNAVAILABLE', cleanupStatus: 'unverified' });
+    expect(published).not.toHaveBeenCalled();
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(await fileSystem.stat(join(fixture.stagingRoot, fixture.operationId))).toBeDefined();
+  });
+
   it('returns only a safe summary after authentication and backend validation', async () => {
     const fixture = await createFixture();
     await writeFixture(fixture);
@@ -304,6 +380,23 @@ class FakeValidator {
   constructor(private readonly stagingRoot: string) {}
   operationIds: string[] = [];
   profileId = 'd'.repeat(64);
+  assertCurrent = vi.fn(async () => {});
+  evidence!: ProfileSnapshotInspectionEvidence;
+
+  async withProfileSnapshotEvidence<T>(operationId: string, use: (
+    evidence: ProfileSnapshotInspectionEvidence, assertCurrent: () => Promise<void>,
+  ) => Promise<T>): Promise<T> {
+    this.evidence = Object.freeze({
+      identity: Object.freeze({ protocolVersion: profileInspectionProtocolVersion, operationId,
+        generationId: randomUUID(), runtimeSession: randomBytes(32).toString('base64url') }),
+      receipt: Object.freeze({ artifactCount: 1, artifactTotalByteSize: 30, artifactIdentity: 'a'.repeat(64),
+        databaseHealth: 'healthy' as const, migrationChainIdentity, profileId: this.profileId,
+        migrationPolicy: 'restoreCompatible' as const,
+        database: Object.freeze({ byteSize: 16, sha256: 'b'.repeat(64) }),
+        artifactCatalog: Object.freeze({ byteSize: 35, sha256: 'c'.repeat(64) }) }),
+    });
+    return use(this.evidence, this.assertCurrent);
+  }
 
   async removeProfileSnapshot(operationId: string) {
     await fileSystem.rm(join(this.stagingRoot, operationId), { force: true, recursive: true });
@@ -322,4 +415,10 @@ class FakeValidator {
       type: 'profileSnapshotValidation' as const,
     };
   }
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(fulfill => { resolve = fulfill; });
+  return { promise, resolve };
 }

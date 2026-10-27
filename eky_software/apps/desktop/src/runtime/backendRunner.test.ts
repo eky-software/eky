@@ -4,6 +4,9 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { ProfileMaintenanceState } from '../profileBackup/profileMaintenanceStateTestSupport.js';
+import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
+import type { ProfileSnapshotBrokerTransport } from '../profileBackup/profileSnapshotBrokerTransport.js';
 
 import { desktopBackendReadinessTimeoutMilliseconds } from './backendMessages.js';
 import { captureOwnedLocalDatabaseRecoverySelection, type OwnedLocalDatabaseRecovery } from './ownedLocalDatabaseRecovery.js';
@@ -25,6 +28,7 @@ const runtime = vi.hoisted(() => ({
   serverClose: vi.fn(),
   snapshotClose: vi.fn(),
   snapshotRegistration: vi.fn(),
+  snapshotOverride: vi.fn(),
   releaseReservation: vi.fn(),
   serverImport: vi.fn(),
   startServer: vi.fn(),
@@ -61,6 +65,8 @@ vi.mock('../profileBackup/electronProfileSnapshotBrokerTransport.js', () => ({
 vi.mock('../profileBackup/profileSnapshotBrokerBackend.js', () => ({
   startProfileSnapshotBrokerBackend: (input: unknown) => {
     runtime.snapshotRegistration(input);
+    const overridden = runtime.snapshotOverride(input);
+    if (overridden !== undefined) return overridden;
     return {
       assertRestoreMaintenance: runtime.assertRestore,
       assertUpdateMaintenance: runtime.assertUpdate,
@@ -75,15 +81,21 @@ let fixtureRoot: string | undefined;
 let fixtureControlKey: string | undefined;
 let stopFixture: (() => Promise<void>) | undefined;
 const originalParentPort = Object.getOwnPropertyDescriptor(process, 'parentPort');
+const fenceClosures: Array<() => void> = [];
 
 beforeEach(() => {
   vi.resetModules();
   vi.resetAllMocks();
 });
 
-afterEach(async () => {
-  await stopFixture?.();
+afterEach(async ({ task }) => {
+  let cleanupError: unknown;
+  const cleanup = async (action: () => unknown) => {
+    try { await action(); } catch (error) { cleanupError ??= error; }
+  };
+  await cleanup(() => stopFixture?.());
   stopFixture = undefined;
+  for (const close of fenceClosures.splice(0)) await cleanup(close);
   vi.useRealTimers();
   vi.restoreAllMocks();
   if (originalParentPort !== undefined) {
@@ -92,13 +104,16 @@ afterEach(async () => {
     Reflect.deleteProperty(process, 'parentPort');
   }
   if (fixtureRoot !== undefined) {
-    await rm(fixtureRoot, { force: true, recursive: true });
+    if (cleanupError === undefined && task.result?.state === 'pass') {
+      await cleanup(() => rm(fixtureRoot!, { force: true, recursive: true }));
+    }
     fixtureRoot = undefined;
   }
   if (fixtureControlKey !== undefined) {
     Reflect.deleteProperty(globalThis, fixtureControlKey);
     fixtureControlKey = undefined;
   }
+  if (cleanupError !== undefined) throw cleanupError;
 });
 
 describe('backend runner shutdown command boundary', () => {
@@ -475,6 +490,177 @@ describe('backend runner protected restore shutdown', () => {
     expect(runtime.assertRestore).not.toHaveBeenCalled();
   });
 });
+
+describe('named delete shutdown with the existing maintenance broker', () => {
+  it.each(['assertion', 'invalidation'] as const)('releases its test gate after an injected %s failure and joins the runner', async failure => {
+    const { fixture } = await startDeleteFixture();
+    const closing = deferred();
+    const original = new Error(`synthetic test ${failure} failure`);
+    runtime.serverClose.mockImplementationOnce(() => closing.promise);
+    const error = await (async () => {
+      fixture.send({ type: 'shutdownForDelete', operationId });
+      try {
+        if (failure === 'assertion') throw original;
+        await Promise.reject(original);
+      } finally { closing.resolve(); }
+    })().then(() => undefined, cause => cause);
+    expect(error).toBe(original);
+    await fixture.expectExit(0);
+    expect(runtime.serverClose).toHaveBeenCalledTimes(1);
+    fixture.expectBrokerCleanup();
+  });
+
+  it('checks the actual named fence before and after close, then invalidates it without reopening writes', async () => {
+    const { fixture, fence } = await startDeleteFixture();
+    const assertion = vi.spyOn(fence.backend, 'assertDeleteMaintenance');
+    const closing = deferred();
+    runtime.serverClose.mockImplementationOnce(() => closing.promise);
+    fixture.send({ type: 'shutdownForDelete', operationId });
+    try {
+      expect(assertion.mock.calls).toEqual([[operationId]]);
+      expect(fixture.exit).not.toHaveBeenCalled();
+      expect(fence.state.tryBeginBusinessWrite()).toBeUndefined();
+      fixture.send({ type: 'shutdown' });
+      fixture.send({ type: 'shutdownForDelete', operationId });
+    } finally { closing.resolve(); }
+    await fixture.expectExit(0);
+    expect(assertion.mock.calls).toEqual([[operationId], [operationId]]);
+    expect(runtime.assertUpdate).not.toHaveBeenCalled();
+    expect(runtime.assertRestore).not.toHaveBeenCalled();
+    expect(() => fence.backend.assertDeleteMaintenance(operationId)).toThrow();
+    expect(fence.state.tryBeginBusinessWrite()).toBeUndefined();
+    expect(runtime.releaseReservation).not.toHaveBeenCalled();
+    fixture.expectBrokerCleanup();
+  });
+
+  it.each(['wrongOwner', 'ordinary', 'update', 'restore', 'invalidated'] as const)(
+    'does not accept %s instead of the exact delete fence', async mode => {
+      const { fixture, fence } = await startDeleteFixture(mode === 'ordinary' || mode === 'update' || mode === 'restore' ? mode : 'delete');
+      if (mode === 'invalidated') await fence.client.invalidateDeleteMaintenance(operationId);
+      fixture.send({ type: 'shutdownForDelete', operationId: mode === 'wrongOwner' ? otherOperationId : operationId });
+      await fixture.expectExit(1);
+      expect(runtime.serverClose).not.toHaveBeenCalled();
+      fixture.expectBrokerCleanup();
+    },
+  );
+
+  it.each(['invalidate', 'disconnect', 'expire', 'reservationLoss'] as const)(
+    'rejects %s during server close instead of treating channel closure as success', async mode => {
+      const { fixture, fence } = await startDeleteFixture();
+      const closing = deferred();
+      runtime.serverClose.mockImplementationOnce(() => closing.promise);
+      fixture.send({ type: 'shutdownForDelete', operationId });
+      try {
+        expect(fixture.exit).not.toHaveBeenCalled();
+        if (mode === 'invalidate') await fence.client.invalidateDeleteMaintenance(operationId);
+        if (mode === 'disconnect') fence.client.close();
+        if (mode === 'expire') vi.spyOn(performance, 'now').mockReturnValue(performance.now() + 600_001);
+        if (mode === 'reservationLoss') fixture.loseReservation();
+      } finally { closing.resolve(); }
+      await fixture.expectExit(1);
+      expect(fence.state.tryBeginBusinessWrite()).toBeUndefined();
+      fixture.expectBrokerCleanup();
+    },
+  );
+
+  it.each([
+    ['shutdown', 'shutdownForDelete', operationId],
+    ['shutdownForUpdate', 'shutdownForDelete', operationId],
+    ['shutdownForRestore', 'shutdownForDelete', operationId],
+    ['shutdownForDelete', 'shutdownForUpdate', operationId],
+    ['shutdownForDelete', 'shutdownForRestore', operationId],
+    ['shutdownForDelete', 'shutdownForDelete', otherOperationId],
+  ] as const)('retains first intent %s and rejects conflicting %s', async (first, second, secondOwner) => {
+    const kind = first === 'shutdownForUpdate' ? 'update' : first === 'shutdownForRestore' ? 'restore' : 'delete';
+    const { fixture } = await startDeleteFixture(kind);
+    const closing = deferred();
+    runtime.serverClose.mockImplementationOnce(() => closing.promise);
+    fixture.send(first === 'shutdown' ? { type: first } : { type: first, operationId });
+    try {
+      fixture.send({ type: second, operationId: secondOwner });
+      fixture.send({ type: 'shutdown' });
+    } finally { closing.resolve(); }
+    await fixture.expectExit(1);
+    expect(runtime.serverClose).toHaveBeenCalledTimes(1);
+    fixture.expectBrokerCleanup();
+  });
+
+  it.each(['serverClose', 'secretAssertSettled', 'secretClose', 'archiveClose', 'snapshotClose'] as const)(
+    'does not lose %s failure while attempting the remaining closes', async name => {
+      const { fixture, fence } = await startDeleteFixture();
+      runtime[name].mockImplementationOnce(() => { throw new Error('synthetic private delete close failure'); });
+      fixture.send({ type: 'shutdownForDelete', operationId });
+      await fixture.expectExit(1);
+      fixture.expectBrokerCleanup();
+      // The real broker still closes even when its fixture observer throws.
+      expect(() => fence.backend.assertDeleteMaintenance(operationId)).toThrow();
+      expect(fence.state.tryBeginBusinessWrite()).toBeUndefined();
+    },
+  );
+
+  it('rejects deletion before completed business startup without starting the server', async () => {
+    const fixture = await startFixture(false);
+    fixture.send({ type: 'shutdownForDelete', operationId });
+    await fixture.expectExit(1);
+    fixture.grant();
+    expect(runtime.startServer).not.toHaveBeenCalled();
+    expect(runtime.snapshotOverride).not.toHaveBeenCalled();
+  });
+
+  it('does not interpret malformed deletion as ordinary shutdown', async () => {
+    const { fixture } = await startDeleteFixture();
+    fixture.send({ type: 'shutdownForDelete', operationId: 'invalid' });
+    fixture.send({ type: 'shutdownForDelete', operationId, path: 'forbidden' });
+    expect(runtime.serverClose).not.toHaveBeenCalled();
+    expect(fixture.exit).not.toHaveBeenCalled();
+    fixture.send({ type: 'shutdownForDelete', operationId });
+    await fixture.expectExit(0);
+  });
+});
+
+async function startDeleteFixture(kind: 'ordinary' | 'update' | 'restore' | 'delete' = 'delete') {
+  const fixture = await startFixture(false);
+  // Keep the runner's real named assertion and the previously reviewed broker/state.
+  // Transport, HTTP, native reservation and process.exit remain injected.
+  const { startProfileSnapshotBrokerBackend } = await vi.importActual<
+    typeof import('../profileBackup/profileSnapshotBrokerBackend.js')
+  >('../profileBackup/profileSnapshotBrokerBackend.js');
+  const state = new ProfileMaintenanceState();
+  const sides = [0, 1].map(() => ({ closed: false, messages: new Set<(value: unknown) => void>(), closes: new Set<() => void>() }));
+  const transports = sides.map((own, index): ProfileSnapshotBrokerTransport => {
+    const peer = sides[1 - index]!;
+    return {
+      close() {
+        if (own.closed) return;
+        own.closed = true; own.messages.clear();
+        for (const listener of [...peer.closes]) listener();
+      },
+      send(value) {
+        if (own.closed || peer.closed) throw new Error('closed');
+        const copy: unknown = JSON.parse(JSON.stringify(value));
+        queueMicrotask(() => { if (!peer.closed) for (const listener of peer.messages) listener(copy); });
+      },
+      subscribe(listener) { own.messages.add(listener); return () => own.messages.delete(listener); },
+      subscribeClose(listener) { own.closes.add(listener); return () => own.closes.delete(listener); },
+    };
+  });
+  const client = new ProfileSnapshotBrokerClient(transports[0]!);
+  const backend = startProfileSnapshotBrokerBackend({ maintenance: state, transport: transports[1]!, snapshot: {
+    readProfileInspectionContext: () => ({ activeProfileId: 'a'.repeat(64), activeProfileIsEmpty: false }),
+    createProfileSnapshot: async () => { throw new Error('not used by shutdown proof'); },
+  } });
+  fenceClosures.push(() => { client.close(); backend.close(); });
+  runtime.snapshotOverride.mockReturnValue({ ...backend, close() {
+    try { runtime.snapshotClose(); } finally { backend.close(); }
+  }, assertDeleteMaintenance(id: string) { backend.assertDeleteMaintenance(id); } });
+  await fixture.start();
+  await fixture.expectReady();
+  if (kind === 'ordinary') await client.beginMaintenance(operationId);
+  if (kind === 'update') await client.beginUpdateMaintenance(operationId);
+  if (kind === 'restore') await client.beginRestoreMaintenance(operationId);
+  if (kind === 'delete') await client.beginDeleteMaintenance(operationId);
+  return { fixture, fence: { state, backend, client } };
+}
 
 describe('backend runner reservation and work grant', () => {
   it('acquires the prepared identity but does not import until the matching grant', async () => {

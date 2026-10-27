@@ -98,6 +98,18 @@ export class ProfileSnapshotBrokerClient {
     return this.requestBusyMaintenance('invalidateRestoreMaintenance', operationId);
   }
 
+  beginDeleteMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('beginDeleteMaintenance', operationId);
+  }
+
+  assertDeleteMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('assertDeleteMaintenance', operationId);
+  }
+
+  invalidateDeleteMaintenance(operationId: string): Promise<'busy'> {
+    return this.requestBusyMaintenance('invalidateDeleteMaintenance', operationId);
+  }
+
   private requestBusyMaintenance(
     operation:
       | 'beginProfileMaintenance'
@@ -105,7 +117,10 @@ export class ProfileSnapshotBrokerClient {
       | 'assertUpdateMaintenance'
       | 'beginRestoreMaintenance'
       | 'assertRestoreMaintenance'
-      | 'invalidateRestoreMaintenance',
+      | 'invalidateRestoreMaintenance'
+      | 'beginDeleteMaintenance'
+      | 'assertDeleteMaintenance'
+      | 'invalidateDeleteMaintenance',
     operationId: string,
   ): Promise<'busy'> {
     return this.request(operation, operationId).then(
@@ -215,6 +230,7 @@ export class ProfileSnapshotBrokerClient {
   async readProfileInspectionContext(input: ContextRequestBoundary & {
     readonly operationId: string;
     readonly updateMaintenanceOperationId?: string;
+    readonly deleteMaintenanceOperationId?: string;
   }): Promise<ProfileInspectionBrokerContext> {
     const assertCurrent = this.captureInspectionAuthority();
     assertContextRequestCurrent(input);
@@ -222,7 +238,7 @@ export class ProfileSnapshotBrokerClient {
       throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
     }
     const result = await this.request('readProfileInspectionContext', input.operationId,
-      undefined, input.updateMaintenanceOperationId, input);
+      undefined, input.updateMaintenanceOperationId, input, input.deleteMaintenanceOperationId);
     assertContextRequestCurrent(input);
     assertCurrent();
     if (result.type !== 'profileInspectionContext') {
@@ -237,6 +253,7 @@ export class ProfileSnapshotBrokerClient {
     migrationPolicy?: ProfileSnapshotMigrationPolicy,
     updateMaintenanceOperationId?: string,
     contextBoundary?: ContextRequestBoundary,
+    deleteMaintenanceOperationId?: string,
   ): Promise<ProfileSnapshotBrokerSuccessResult> {
     if (contextBoundary === undefined) {
       await this.waitUntilReady();
@@ -260,6 +277,7 @@ export class ProfileSnapshotBrokerClient {
       ...(migrationPolicy === undefined ? {} : { migrationPolicy }),
       ...(operationId === undefined ? {} : { operationId }),
       ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
+      ...(deleteMaintenanceOperationId === undefined ? {} : { deleteMaintenanceOperationId }),
       requestId,
     });
 

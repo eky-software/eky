@@ -7,7 +7,7 @@ import {
   type ProfileBackupInspectionSummary,
 } from './profileBackupInspectionTypes.js';
 import { readDecryptedBackupPayload } from './container/backupContainerReader.js';
-import { decryptBackupPayload } from './container/decryptBackupPayload.js';
+import { decryptBackupPayload, type AuthenticatedBackupFileIdentity } from './container/decryptBackupPayload.js';
 import { extractBackupPayload } from './container/extractBackupPayload.js';
 
 const operationIdPattern =
@@ -21,6 +21,7 @@ interface ProfileSnapshotValidator {
 
 export interface StagedValidatedProfileBackup {
   containerSha256: string;
+  authenticatedFileIdentity: AuthenticatedBackupFileIdentity;
   operationRoot: string;
   summary: ProfileBackupInspectionSummary;
   validation: Awaited<
@@ -81,6 +82,7 @@ export async function stageValidatedProfileBackup(input: {
 
     return {
       containerSha256: decryptedPayload.containerSha256,
+      authenticatedFileIdentity: decryptedPayload.authenticatedFileIdentity,
       operationRoot,
       summary: {
         appVersion: parsed.manifest.appVersion,

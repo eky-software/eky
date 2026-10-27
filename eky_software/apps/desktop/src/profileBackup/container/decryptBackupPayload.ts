@@ -18,9 +18,14 @@ import { deriveBackupKey } from './deriveBackupKey.js';
 
 export interface DecryptBackupPayloadResult {
   containerSha256: string;
+  authenticatedFileIdentity: AuthenticatedBackupFileIdentity;
   header: BackupContainerHeader;
   plaintextByteLength: bigint;
 }
+
+/** Identity of the handle whose bytes authenticated, not a later path observation. */
+export type AuthenticatedBackupFileIdentity = Readonly<Pick<BigIntStats,
+  'dev' | 'ino' | 'size' | 'mtimeNs' | 'ctimeNs'>>;
 
 export async function decryptBackupPayload(input: {
   containerPath: string;
@@ -141,6 +146,8 @@ export async function decryptBackupPayload(input: {
     containerHash.update(authenticationTag);
     return {
       containerSha256: containerHash.digest('hex'),
+      authenticatedFileIdentity: Object.freeze({ dev: sourceMetadata.dev, ino: sourceMetadata.ino,
+        size: sourceMetadata.size, mtimeNs: sourceMetadata.mtimeNs, ctimeNs: sourceMetadata.ctimeNs }),
       header,
       plaintextByteLength: BigInt(destinationOffset),
     };

@@ -515,14 +515,121 @@ describe('MainOwnedActiveWorkspaceLifecycle', () => {
   });
 });
 
+describe('named deletion lifecycle', () => {
+  const operationId = '33333333-3333-4333-8333-333333333333';
+
+  it('joins secret, HTTP and archive drains before one strict stop without automatic return', async () => {
+    const f = createStopFixture(true);
+    const secret = deferred(); const archive = deferred();
+    const mutation = f.admission.begin('POST')!;
+    f.resources.sealAndDrainSecrets.mockImplementation(() => secret.promise);
+    f.deletion.sealAndDrainArchive.mockImplementation(() => archive.promise);
+    const preparing = f.lifecycle.quiesceForDelete(workspaceId, operationId);
+    try {
+      await Promise.resolve();
+      expect(f.resources.sealAndDrainSecrets).toHaveBeenCalledOnce();
+      expect(f.deletion.sealAndDrainArchive).toHaveBeenCalledOnce();
+      expect(f.admission.begin('POST')).toBeUndefined();
+      expect(f.deletion.stopBackend).not.toHaveBeenCalled();
+    } finally { secret.resolve(); archive.resolve(); mutation.release(); await preparing; }
+    await Promise.all([
+      f.lifecycle.stopForDelete(workspaceId, operationId),
+      f.lifecycle.stopAndProveHandlesClosed(workspaceId),
+    ]);
+    await f.lifecycle.assertNoActiveWorkspaceRuntime();
+    expect(f.deletion.stopBackend).toHaveBeenCalledExactlyOnceWith(operationId);
+    expect(f.resources.stopBackend).not.toHaveBeenCalled();
+    expect(f.resources.stopBackendForUpdate).not.toHaveBeenCalled();
+    expect(f.resources.markCleanShutdown).toHaveBeenCalledOnce();
+    expect(f.runtimeRelaunch.isRequested()).toBe(false);
+    await f.lifecycle.ensurePreviousWorkspaceRunning(workspaceId);
+    expect(f.runtimeRelaunch.isRequested()).toBe(true);
+  });
+
+  it.each(['secrets', 'archive'] as const)('waits for the other owned drain after %s fails', async phase => {
+    const f = createStopFixture(true); const pendingDrain = deferred();
+    if (phase === 'secrets') {
+      f.resources.sealAndDrainSecrets.mockRejectedValue(new Error('synthetic secret uncertainty'));
+      f.deletion.sealAndDrainArchive.mockImplementation(() => pendingDrain.promise);
+    } else {
+      f.deletion.sealAndDrainArchive.mockRejectedValue(new Error('synthetic archive uncertainty'));
+      f.resources.sealAndDrainSecrets.mockImplementation(() => pendingDrain.promise);
+    }
+    const outcome = f.lifecycle.stopForDelete(workspaceId, operationId).catch(error => error);
+    try {
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(f.resources.disposeCapabilities).not.toHaveBeenCalled();
+      expect(f.deletion.stopBackend).not.toHaveBeenCalled();
+      await expect(f.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+    } finally { pendingDrain.resolve(); await outcome; }
+    const failure = await outcome;
+    expect(failure).toMatchObject({ firstFailure: { phase, reason: 'operationFailed' } });
+    await expect(f.lifecycle.stopForDelete(workspaceId, operationId)).rejects.toBe(failure);
+    expect(f.deletion.stopBackend).toHaveBeenCalledOnce();
+    expect(f.resources.closeBrokers).toHaveBeenCalledOnce();
+    expect(f.resources.markCleanShutdown).not.toHaveBeenCalled();
+    await expect(f.lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow();
+  });
+
+  it('keeps a failed strict stop distinct from later cleanup failure and cannot change its owner', async () => {
+    const f = createStopFixture(true);
+    f.deletion.stopBackend.mockRejectedValue(new BackendGracefulShutdownTimeoutError());
+    f.resources.closeBrokers.mockRejectedValue(new Error('synthetic cleanup'));
+    await expect(f.lifecycle.stopForDelete(workspaceId, operationId)).rejects.toMatchObject({
+      firstFailure: { phase: 'backend', reason: 'gracefulTimeout' },
+      cleanupFailures: [{ phase: 'brokers', reason: 'operationFailed' }],
+    });
+    await expect(f.lifecycle.stopForUpdate(workspaceId, operationId)).rejects.toThrow();
+    await expect(f.lifecycle.stopForDelete(workspaceId, '44444444-4444-4444-8444-444444444444')).rejects.toThrow();
+    expect(f.deletion.stopBackend).toHaveBeenCalledOnce();
+    expect(f.resources.stopBackend).not.toHaveBeenCalled();
+    expect(f.resources.markCleanShutdown).not.toHaveBeenCalled();
+    await expect(f.lifecycle.assertNoActiveWorkspaceRuntime()).rejects.toThrow();
+  });
+
+  it.each([
+    ['ordinary', false], ['ordinary', true], ['update', false], ['update', true],
+  ] as const)('does not replace the first %s stop policy after failure=%s', async (kind, failed) => {
+    const f = createStopFixture(true);
+    if (failed) {
+      if (kind === 'ordinary') f.resources.stopBackend.mockRejectedValue(new BackendGracefulShutdownTimeoutError());
+      else f.resources.stopBackendForUpdate.mockRejectedValue(new BackendGracefulShutdownTimeoutError());
+    }
+    const first = kind === 'ordinary'
+      ? f.lifecycle.quiesceWrites(workspaceId).then(() => f.lifecycle.stopAndProveHandlesClosed(workspaceId))
+      : f.lifecycle.stopForUpdate(workspaceId, operationId);
+    if (failed) await expect(first).rejects.toThrow();
+    else await first;
+    await expect(f.lifecycle.quiesceForDelete(workspaceId, operationId)).rejects.toThrow();
+    await expect(f.lifecycle.stopForDelete(workspaceId, operationId)).rejects.toThrow();
+    expect(f.deletion.sealAndDrainArchive).not.toHaveBeenCalled();
+    expect(f.deletion.stopBackend).not.toHaveBeenCalled();
+    expect(f.resources.stopBackend).toHaveBeenCalledTimes(kind === 'ordinary' ? 1 : 0);
+    expect(f.resources.stopBackendForUpdate).toHaveBeenCalledTimes(kind === 'update' ? 1 : 0);
+  });
+
+  it('requires the named resource owner before closing any existing admission', async () => {
+    const f = createStopFixture();
+    await expect(f.lifecycle.quiesceForDelete(workspaceId, operationId)).rejects.toThrow();
+    expect(f.resources.sealAndDrainSecrets).not.toHaveBeenCalled();
+    const write = f.admission.begin('POST');
+    expect(write).toBeDefined(); write?.release();
+  });
+});
+
 function deferred() {
   let resolve!: () => void;
   const promise = new Promise<void>(complete => { resolve = complete; });
   return { promise, resolve };
 }
 
-function createStopFixture() {
+function createStopFixture(withDeletion = false) {
+  const deletion = {
+    sealAndDrainArchive: vi.fn(async (): Promise<void> => undefined),
+    stopBackend: vi.fn(async (_operationId: string): Promise<void> => undefined),
+  };
   const resources = {
+    ...(withDeletion ? { deletion } : {}),
     sealAndDrainSecrets: vi.fn(async (): Promise<void> => undefined),
     closeBrokers: vi.fn(async () => undefined),
     disposeCapabilities: vi.fn(async () => undefined),
@@ -532,10 +639,11 @@ function createStopFixture() {
     stopRecoveryPointScheduler: vi.fn(async () => undefined),
   };
   const admission = new BackendRequestQuiescence();
+  const runtimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(() => undefined);
   const lifecycle = new MainOwnedActiveWorkspaceLifecycle(
-    workspaceId, admission, resources, new DeferredWorkspaceRuntimeRelaunch(() => undefined),
+    workspaceId, admission, resources, runtimeRelaunch,
   );
-  return { admission, lifecycle, resources };
+  return { admission, lifecycle, resources, deletion, runtimeRelaunch };
 }
 
 function createResources(events: string[]) {

@@ -40,9 +40,28 @@ JSONL -> Diagnostics/tukipaketti/incident -> lukijavalidointi -ketjun.
 Osajoukkojen määriä ei lasketa yhteen; tämä ei ole koko poiston tai sen
 valtuuden hyväksyntä.
 
-**Seuraava työ:** kytke nimetty maintenance-/inspection-/backup-sopimus,
-sitten kohdevaltuus ja molemmat lifecycle-kutsujat
-omistavan suunnitelman järjestyksessä. Tavalliset kontrollit säilyvät.
+**V2:n nykyinen lähdepala:** nimetty maintenance-/inspection-/backup-
+sopimus ja molempien lifecycle-omistajien poistohaara ovat lähdetoteutuksessa.
+Poistosuoja säilyy caller-owned viennin yli. Täydet lähde-/vientikuitit,
+alkuperäinen autentikoitu tiedostoidentiteetti sekä tarkistussukupolvet
+pysyvät mainin sisäisinä; turvallinen yhteenveto ja tavallinen backup
+säilyvät. Yhdistetty 554 kohdetestin sarja ja backendin 22 kontrollia
+läpäisivät; eri ajokertojen määriä ei lasketa yhteen. Desktopin, sen
+tuotantorajan ja backendin tyyppitarkistukset läpäisivät. Tämä ei vielä ole
+todellisen prosessirajan, SQLite-/native-ketjun tai paketoidun sovelluksen
+hyväksyntä.
+
+Mainin tavallisten kontrollien kierroksella yksi vanha source-null-
+rollback-tapaus aikakatkaisi, ja jaetun tilan suoja esti seuraavat tapaukset.
+Yksi sallittu uusinta läpäisi kaikki 315 kontrollia samoilla aikarajoilla.
+Ensimmäinen tulos ja aineisto säilyvät, eikä alkuperäistä viivettä merkitä
+korjatuksi. Katselmuksen vientikopion säilytysvika toistettiin ja korjattiin:
+tarkistetun kopion säilytys erotetaan tarkistusstagingin siivouksesta.
+Epävarma siivous ei anna poistovaltuutta tai onnistunutta valmistelutulosta.
+Rajattu riippumaton jälkikatselmus ei jättänyt tähän korjaukseen löydöksiä.
+
+**Seuraava työ:** liitä täsmällinen kohdevaltuus ja kertakäyttöinen
+valmistelu molempiin composition-juuriin omistavan suunnitelman järjestyksessä.
 Management-palvelun valmistelukomento ei vielä ole composition-juurten
 tuotantokuluttaja. Arkiston `sealAndDrain` tarvitsee vielä saman omistajan
 todellisen sulkukytkennän; pelkkä uusi palvelurajapinta ei todista sitä.

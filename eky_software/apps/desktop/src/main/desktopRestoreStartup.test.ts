@@ -4332,7 +4332,9 @@ async function createFixture(
       database: { byteSize: database.length, sha256: hashFixtureBytes(database) },
       artifactCatalog: { byteSize: 2, sha256: hashFixtureBytes(Buffer.from('[]')) } };
     input.assertAuthority();
-    return { receipt, validation: { type: 'profileSnapshotValidation', activeProfileIsEmpty: false,
+    return { receipt, identity: { protocolVersion: profileInspectionProtocolVersion,
+      operationId: input.operationId, generationId: input.operationId,
+      runtimeSession: 'f'.repeat(43) }, validation: { type: 'profileSnapshotValidation', activeProfileIsEmpty: false,
       // The copy matches its source; registry lineage is checked separately by main.
       profileMatchesActive: true, ...receipt } };
   });
@@ -4464,6 +4466,7 @@ async function createFixture(
             port: 12345, stop: stopOwnedBackend, onUnexpectedExit: vi.fn(),
             stopForUpdate: stopOwnedBackendForUpdate,
             stopForRestore: async () => { throw new Error('RESTORE_FENCE_NOT_CONFIGURED_IN_FIXTURE'); },
+            stopForDelete: async () => { throw new Error('DELETE_FENCE_NOT_CONFIGURED_IN_FIXTURE'); },
           };
         },
       },

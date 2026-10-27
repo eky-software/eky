@@ -9,6 +9,7 @@ import {
 } from './backendMessages.js';
 import type {
   DesktopBackendFailureCode,
+  DesktopBackendDeleteShutdownMessage,
   DesktopBackendRestoreShutdownMessage,
   DesktopBackendShutdownMessage,
   DesktopBackendUpdateShutdownMessage,
@@ -149,6 +150,7 @@ let shutdownCommand:
   | DesktopBackendShutdownMessage
   | DesktopBackendUpdateShutdownMessage
   | DesktopBackendRestoreShutdownMessage
+  | DesktopBackendDeleteShutdownMessage
   | undefined;
 let shutdownFailed = false;
 let migrationGateDecision:
@@ -175,7 +177,7 @@ function rejectMigrationGate(): void {
 }
 
 function requestShutdown(
-  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage,
+  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage | DesktopBackendDeleteShutdownMessage,
 ): void {
   if (shutdownCommand !== undefined) {
     if (command.type !== 'shutdown' && (
@@ -332,7 +334,7 @@ async function createSmokePdf(
 }
 
 async function shutdownBackend(
-  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage,
+  command: DesktopBackendShutdownMessage | DesktopBackendUpdateShutdownMessage | DesktopBackendRestoreShutdownMessage | DesktopBackendDeleteShutdownMessage,
 ): Promise<void> {
   // Pre-import cancellation must not wait for stuck acquisition/assertion.
   // Once import can write, only settled startup and owned closes permit exit.
@@ -345,8 +347,10 @@ async function shutdownBackend(
       }
       if (command.type === 'shutdownForUpdate') {
         profileSnapshotBrokerHandle.assertUpdateMaintenance(command.operationId);
-      } else {
+      } else if (command.type === 'shutdownForRestore') {
         profileSnapshotBrokerHandle.assertRestoreMaintenance(command.operationId);
+      } else {
+        profileSnapshotBrokerHandle.assertDeleteMaintenance(command.operationId);
       }
     }
     await backendServer?.close();
@@ -355,6 +359,8 @@ async function shutdownBackend(
       profileSnapshotBrokerHandle!.assertUpdateMaintenance(command.operationId);
     } else if (command.type === 'shutdownForRestore') {
       profileSnapshotBrokerHandle!.assertRestoreMaintenance(command.operationId);
+    } else if (command.type === 'shutdownForDelete') {
+      profileSnapshotBrokerHandle!.assertDeleteMaintenance(command.operationId);
     }
   } catch {
     shutdownFailed = true;
@@ -377,7 +383,7 @@ utilityParentPort.on('message', (event) => {
   const command = parseDesktopBackendCommand(event.data);
 
   if (command?.type === 'shutdown' || command?.type === 'shutdownForUpdate' ||
-      command?.type === 'shutdownForRestore') {
+      command?.type === 'shutdownForRestore' || command?.type === 'shutdownForDelete') {
     requestShutdown(command);
     return;
   }

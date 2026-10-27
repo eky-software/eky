@@ -862,7 +862,7 @@ startup-hyväksynnän ja hardened-palautuksen nykytila on M1:n Jatka tästä
 
 ### W7.3:n nimetyn poistosulun valmistelu
 
-W7.3:n koeehdokas käyttää samoja command-, runner- ja process-omistajia
+W7.3:n lähdetoteutus käyttää samoja command-, runner- ja process-omistajia
 poiston omalla operaatiotunnisteella. Se ei lainaa update-/restore-suojaa
 eikä ota käyttöön uutta sammutusalgoritmia. Saman poistosuojan tarkistus
 ennen palvelinsulkua ja sen jälkeen, todellinen onnistunut exit sekä
@@ -871,9 +871,19 @@ mitätöi elävän suojan vasta viimeisen tarkistuksen jälkeen; kanavan
 puuttuminen ei todista onnistunutta sulkua. Nykyinen strict-budjetti ja
 tavallisen sulun sopimus säilyvät.
 
-Tämä on rajattu, katselmoitu osakoe, ei tuotantokytkentä. Mainin active-
-lifecycle, arkisto-/secret-/inspection-I/O, hallintapyynnön valtuus ja
-kertakäyttöinen backup-todiste on vielä yhdistettävä samaan ketjuun.
+Nimetyt `shutdownForDelete` ja `stopForDelete` käyttävät nykyistä strict-
+sulkua ilman forced-fallbackia. Active-lifecyclen poistohaara liittyy
+secret-/HTTP-/arkisto-drainiin ja odottaa kaikkien aloitettujen drainien
+päättymisen myös ensimmäisen hylkäyksen jälkeen. Aiemmin valittu tavallinen
+tai update-sulku ei muutu poistosuluksi; sama poistosulku ja sen lopputulos
+jaetaan, mutta vieras operation torjutaan. Backenditon valitsin käyttää
+vain omaa nykyistä main-varaustaan ja nimettyä delete-leasea, ei kuviteltua
+backend-exitiä. Paluuta ei pyydetä automaattisesti.
+
+Nämä omistajakohtaiset lähde- ja testikytkennät eivät vielä ole koko mainin
+poistovalmistelun tuotantokytkentä. Composition-juurten pitää edelleen
+yhdistää todellinen arkisto-/secret-/inspection-I/O, hallintapyynnön valtuus,
+täsmällinen kohde ja kertakäyttöinen backup-todiste samaan ketjuun.
 [W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
 omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
 

@@ -17,6 +17,10 @@ export interface MainOwnedWorkspaceRuntimeResources {
   disposeCapabilities(): Promise<void>;
   markCleanShutdown(): Promise<void>;
   sealAndDrainSecrets(): Promise<void>;
+  deletion?: Readonly<{
+    sealAndDrainArchive(): Promise<void>;
+    stopBackend(operationId: string): Promise<void>;
+  }>;
   stopBackend(): Promise<BackendShutdownOutcome>;
   stopBackendForUpdate(operationId: string): Promise<void>;
   stopRecoveryPointScheduler(): Promise<void>;
@@ -30,7 +34,7 @@ type WorkspaceRuntimeState =
   | 'stopFailed';
 
 export const workspaceRuntimeStopPhases = Object.freeze([
-  'quiescence', 'secrets', 'scheduler', 'capabilities', 'backend', 'brokers', 'cleanMarker',
+  'quiescence', 'secrets', 'archive', 'scheduler', 'capabilities', 'backend', 'brokers', 'cleanMarker',
 ] as const);
 export const workspaceRuntimeStopReasons = Object.freeze([
   'operationFailed', 'gracefulTimeout', 'forcedTimeout', 'unsuccessfulExit', 'notGraceful',
@@ -41,12 +45,16 @@ interface WorkspaceRuntimeStopFailure {
   readonly reason: (typeof workspaceRuntimeStopReasons)[number];
 }
 
+type ProtectedStop = Readonly<{ kind: 'update' | 'delete'; operationId: string }>;
+const sameStop = (left: ProtectedStop, right: ProtectedStop | undefined) =>
+  left.kind === right?.kind && left.operationId === right.operationId;
+
 export class WorkspaceRuntimeStopError extends Error {
   readonly firstFailure: Readonly<WorkspaceRuntimeStopFailure>;
   readonly cleanupFailures: readonly Readonly<WorkspaceRuntimeStopFailure>[];
 
   constructor(firstFailure: WorkspaceRuntimeStopFailure, cleanupFailures: readonly WorkspaceRuntimeStopFailure[] = []) {
-    super(firstFailure.phase === 'quiescence' || firstFailure.phase === 'secrets' || firstFailure.phase === 'scheduler'
+    super(firstFailure.phase === 'quiescence' || firstFailure.phase === 'secrets' || firstFailure.phase === 'archive' || firstFailure.phase === 'scheduler'
       ? 'WORKSPACE_RUNTIME_QUIESCE_FAILED' : 'WORKSPACE_RUNTIME_STOP_FAILED');
     this.name = 'WorkspaceRuntimeStopError';
     this.firstFailure = Object.freeze({ ...firstFailure });
@@ -60,7 +68,7 @@ export class MainOwnedActiveWorkspaceLifecycle
   private state: WorkspaceRuntimeState = 'active';
   private stopTask: Promise<BackendShutdownOutcome> | undefined;
   private quiesceTask: Promise<void> | undefined;
-  private updateStopOperationId: string | undefined;
+  private protectedStop: ProtectedStop | undefined;
 
   constructor(
     private readonly activeWorkspaceId: WorkspaceId,
@@ -76,6 +84,22 @@ export class MainOwnedActiveWorkspaceLifecycle
     await this.quiesceRuntime();
   }
 
+  async quiesceForDelete(previousActiveWorkspaceId: WorkspaceId, operationId: string): Promise<void> {
+    this.assertActiveWorkspace(previousActiveWorkspaceId);
+    this.claimDelete(operationId);
+    await this.quiesceRuntime();
+  }
+
+  private claimDelete(operationId: string): void {
+    const requested: ProtectedStop = { kind: 'delete', operationId };
+    if (!isOperationId(operationId) || this.resources.deletion === undefined ||
+        (this.protectedStop !== undefined && !sameStop(requested, this.protectedStop)) ||
+        (this.protectedStop === undefined && (this.state !== 'active' || this.quiesceTask !== undefined || this.stopTask !== undefined))) {
+      throw new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'notGraceful' });
+    }
+    this.protectedStop ??= Object.freeze(requested);
+  }
+
   private quiesceRuntime(): Promise<void> {
     if (this.quiesceTask !== undefined) return this.quiesceTask;
     if (this.state !== 'active') {
@@ -83,16 +107,26 @@ export class MainOwnedActiveWorkspaceLifecycle
     }
 
     this.quiesceTask = Promise.resolve().then(async () => {
-      const wait = async (phase: 'quiescence' | 'secrets' | 'scheduler', action: () => Promise<void>) => {
+      const wait = async (phase: 'quiescence' | 'secrets' | 'archive' | 'scheduler', action: () => Promise<void>) => {
         try { await action(); }
         catch { throw new WorkspaceRuntimeStopError({ phase, reason: 'operationFailed' }); }
       };
       try {
         // Both existing owners start their budgets together; neither wait extends the other.
-        await Promise.all([
+        const drains = [
           wait('secrets', () => this.resources.sealAndDrainSecrets()),
           wait('quiescence', () => this.requestQuiescence.quiesceAndWait()),
-        ]);
+        ];
+        if (this.protectedStop?.kind === 'delete') {
+          drains.push(wait('archive', () => this.resources.deletion!.sealAndDrainArchive()));
+          // Join the existing bounded owners; one early rejection cannot grant
+          // absence while another main-owned drain is still pending.
+          let firstFailure: unknown;
+          await Promise.allSettled(drains.map(task => task.catch(error => { firstFailure ??= error; throw error; })));
+          if (firstFailure !== undefined) throw firstFailure;
+        } else {
+          await Promise.all(drains);
+        }
         await wait('scheduler', () => this.resources.stopRecoveryPointScheduler());
         this.state = 'quiesced';
       } catch (error) {
@@ -102,7 +136,7 @@ export class MainOwnedActiveWorkspaceLifecycle
           : new WorkspaceRuntimeStopError({ phase: 'quiescence', reason: 'operationFailed' });
         // An update stop may already be awaiting this preparation; do not join it recursively.
         const cleanup = Promise.resolve().then(() => this.closeRuntimeResources(
-          this.updateStopOperationId, failure,
+          this.protectedStop, failure,
         ));
         this.stopTask ??= cleanup;
         await cleanup;
@@ -125,37 +159,49 @@ export class MainOwnedActiveWorkspaceLifecycle
     if (!isOperationId(operationId)) {
       throw new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'notGraceful' });
     }
-    if (await this.stopRuntime(operationId) !== 'exited') {
+    if (await this.stopRuntime({ kind: 'update', operationId }) !== 'exited') {
+      throw new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'notGraceful' });
+    }
+  }
+
+  async stopForDelete(previousActiveWorkspaceId: WorkspaceId, operationId: string): Promise<void> {
+    this.assertActiveWorkspace(previousActiveWorkspaceId);
+    this.claimDelete(operationId);
+    if (await this.stopRuntime({ kind: 'delete', operationId }) !== 'exited') {
       throw new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'notGraceful' });
     }
   }
 
   private stopRuntime(
-    operationId?: string,
+    requested?: ProtectedStop,
   ): Promise<BackendShutdownOutcome> {
     if (this.stopTask !== undefined) {
-      if (operationId !== undefined && operationId !== this.updateStopOperationId) {
+      if (requested !== undefined && !sameStop(requested, this.protectedStop)) {
         return Promise.reject(new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'notGraceful' }));
       }
       return this.stopTask;
     }
-    if (this.state !== 'quiesced' && !(operationId !== undefined && this.state === 'active')) {
+    if (requested !== undefined && this.protectedStop !== undefined && !sameStop(requested, this.protectedStop)) {
+      return Promise.reject(new WorkspaceRuntimeStopError({ phase: 'backend', reason: 'notGraceful' }));
+    }
+    const selected = this.protectedStop ?? requested;
+    if (this.state !== 'quiesced' && !(selected !== undefined && this.state === 'active')) {
       return Promise.reject(new Error('WORKSPACE_RUNTIME_LIFECYCLE_INVALID'));
     }
 
     // Share the first stop policy and its evidence before callbacks can re-enter.
-    this.updateStopOperationId = operationId;
+    this.protectedStop = selected === undefined ? undefined : Object.freeze({ ...selected });
     this.stopTask = Promise.resolve().then(async () => {
-      if (operationId !== undefined && this.state === 'active') {
+      if (selected !== undefined && this.state === 'active') {
         await this.quiesceRuntime();
       }
-      return this.closeRuntimeResources(operationId);
+      return this.closeRuntimeResources(selected);
     });
     return this.stopTask;
   }
 
   private async closeRuntimeResources(
-    operationId?: string,
+    selected?: ProtectedStop,
     preparationFailure?: WorkspaceRuntimeStopError,
   ): Promise<BackendShutdownOutcome> {
     if (preparationFailure === undefined) this.state = 'stopping';
@@ -172,8 +218,9 @@ export class MainOwnedActiveWorkspaceLifecycle
     for (const [phase, close] of [
       ['capabilities', () => this.resources.disposeCapabilities()],
       ['backend', async () => {
-        if (operationId !== undefined) {
-          await this.resources.stopBackendForUpdate(operationId);
+        if (selected !== undefined) {
+          if (selected.kind === 'delete') await this.resources.deletion!.stopBackend(selected.operationId);
+          else await this.resources.stopBackendForUpdate(selected.operationId);
           outcome = 'exited';
         } else {
           outcome = await this.resources.stopBackend();

@@ -10,10 +10,14 @@ import {
 } from './finalizePortableProfileBackup.js';
 import {
   inspectEncryptedProfileBackup,
+  inspectEncryptedProfileBackupContent,
+  type InspectedDeletionBackupContent,
   ProfileBackupInspectionError,
   type ProfileBackupInspectionSummary,
 } from './inspectEncryptedProfileBackup.js';
-import type { ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
+import type { ProfileSnapshotInspectionPort, ProfileDeletionSnapshotEvidencePort } from './profileSnapshotInspectionPort.js';
+import type { ProfileInspectionReceipt, ProfileInspectionRequestIdentity } from '../runtime/profileInspectionMessages.js';
+import { assertDeletionBackupCorrespondence } from './assertDeletionBackupCorrespondence.js';
 import { PortableProfileBackupCleanupError, PortableProfileBackupError } from './portableProfileBackupError.js';
 export { PortableProfileBackupCleanupError, PortableProfileBackupError, type PortableProfileBackupErrorCode } from './portableProfileBackupError.js';
 import type {
@@ -24,6 +28,18 @@ import type {
 const portableBackupExtension = '.ekybackup';
 const temporaryFileSuffix = '.partial';
 const backupFileNameLabelMaxBytes = 120;
+
+// Main's caller owns the named fence and exact installation lease for this scope.
+export interface DeletionBackupPreparationOwner {
+  readonly operationId: string;
+  assertCurrent(): Promise<void>;
+  assertValid(): void;
+}
+export interface DeletionBackupContent {
+  readonly sourceReceipt: ProfileInspectionReceipt;
+  readonly sourceIdentity: ProfileInspectionRequestIdentity;
+  readonly exported: InspectedDeletionBackupContent;
+}
 
 interface PortableProfileBackupDependencies {
   appVersion: string;
@@ -46,7 +62,7 @@ interface PortableProfileBackupDependencies {
     | 'withInspectionOperation'
     | 'withProfileSnapshot'
     | 'removeProfileSnapshot'
-  >;
+  > & Partial<ProfileDeletionSnapshotEvidencePort>;
   quarantineRoot: string;
   stagingRoot: string;
 }
@@ -67,12 +83,60 @@ export class PortableProfileBackupService {
     destinationPath: string;
     password: string;
   }): Promise<ProfileBackupInspectionSummary> {
+    return (await this.createShared(input)).summary;
+  }
+
+  async createForDeletion(input: { destinationPath: string; password: string },
+    owner: DeletionBackupPreparationOwner): Promise<DeletionBackupContent> {
+    const result = await this.createShared(input, owner);
+    try { owner.assertValid(); }
+    catch (error) { throw new PortableProfileBackupError('PROFILE_BACKUP_CREATE_FAILED', { cause: error }); }
+    if (result.content === undefined) throw new Error('PROFILE_BACKUP_CONTENT_MISSING');
+    return result.content;
+  }
+
+  private async createShared(input: { destinationPath: string; password: string },
+    owner?: DeletionBackupPreparationOwner): Promise<{
+      summary: ProfileBackupInspectionSummary; content?: DeletionBackupContent;
+    }> {
+    let authorityInvalid = false;
+    const assertOwner = async () => {
+      if (authorityInvalid) throw new Error('PROFILE_BACKUP_AUTHORITY_INVALID');
+      if (owner === undefined) return;
+      try { owner.assertValid(); await owner.assertCurrent(); owner.assertValid(); }
+      catch (error) { authorityInvalid = true; throw error; }
+    };
     return this.runExclusive('creating', async () => {
+      await assertOwner();
+      const client = this.dependencies.profileSnapshotClient;
+      const withEvidence = client.withProfileSnapshotEvidence?.bind(client);
+      const validateDeletion = client.validateDeletionProfileSnapshot?.bind(client);
+      if (owner !== undefined && (withEvidence === undefined || validateDeletion === undefined)) {
+        throw new PortableProfileBackupError('PROFILE_BACKUP_CREATE_FAILED', {
+          cause: new Error('PROFILE_BACKUP_EVIDENCE_PORT_MISSING'),
+        });
+      }
+      let sourceIdentity: ProfileInspectionRequestIdentity | undefined;
+      // The export has its own inspection ID but shares the caller's write fence.
+      const exportValidator = owner === undefined ? undefined : {
+        validateProfileSnapshot: (id: string) => validateDeletion!(id, owner.operationId),
+        removeProfileSnapshot: client.removeProfileSnapshot.bind(client),
+        withProfileSnapshotEvidence: withEvidence!,
+      };
+      const withSource = <T>(id: string, use: (
+        receipt: ProfileInspectionReceipt, assertCurrent?: () => Promise<void>,
+      ) => Promise<T>): Promise<T> => owner === undefined
+        ? client.withProfileSnapshot(id, receipt => use(receipt))
+        : withEvidence!(id, async (evidence, assertCurrent) => {
+            sourceIdentity = evidence.identity;
+            return use(evidence.receipt, assertCurrent);
+          });
       const destinationPath = await resolveSafeDestinationPath(
         input.destinationPath,
         this.dependencies.forbiddenRoots,
       );
-      const operationId = this.createOperationId();
+      await assertOwner();
+      const operationId = owner?.operationId ?? this.createOperationId();
       const inspectionOperationId = this.createOperationId();
       const operationRoot = join(
         this.dependencies.stagingRoot,
@@ -85,31 +149,45 @@ export class PortableProfileBackupService {
       let maintenanceStarted = false;
       let finalized = false;
       let completed = false;
+      let verifiedExport = false;
+      let content: DeletionBackupContent | undefined;
       let sourceCleanup: 'notAttempted' | 'completed' | 'unverified' = 'notAttempted';
       let firstFailure: unknown;
       let cleanupFailure: unknown;
 
       try {
-        await this.dependencies.profileSnapshotClient.beginMaintenance(
-          operationId,
-        );
-        maintenanceStarted = true;
+        if (owner === undefined) {
+          await this.dependencies.profileSnapshotClient.beginMaintenance(operationId);
+          maintenanceStarted = true;
+        }
+        await assertOwner();
         await this.dependencies.profileSnapshotClient.createProfileSnapshot(
           operationId,
           'exactCurrentManifest',
         );
-        const validation =
-          await this.dependencies.profileSnapshotClient.validateProfileSnapshot(
-            operationId,
-          );
+        await assertOwner();
+        const validation = owner === undefined
+          ? await client.validateProfileSnapshot(operationId)
+          : await validateDeletion!(operationId, owner.operationId);
+        await assertOwner();
         if (!validation.profileMatchesActive) {
           throw new Error('PROFILE_BACKUP_SOURCE_PROFILE_INVALID');
         }
 
-        const summary = await this.dependencies.profileSnapshotClient.withProfileSnapshot(
+        const summary = await withSource(
           operationId,
-          async receipt => {
+          async (receipt, assertSnapshotCurrent) => {
+            if (owner !== undefined) {
+              if (assertSnapshotCurrent === undefined) throw new Error('PROFILE_BACKUP_EVIDENCE_PORT_MISSING');
+              await assertSnapshotCurrent();
+              await assertOwner();
+              if (receipt.migrationPolicy !== 'exactCurrentManifest' || receipt.profileId !== validation.profileId ||
+                  receipt.migrationChainIdentity !== validation.migrationChainIdentity) {
+                throw new Error('PROFILE_BACKUP_SOURCE_RECEIPT_INVALID');
+              }
+            }
             const entries = await createProfileBackupSourceEntries(operationRoot);
+            await assertOwner();
             assertProfileBackupSourceReceipt(entries, receipt);
             await writeBackupContainer({
               destinationPath: temporaryPath,
@@ -122,18 +200,38 @@ export class PortableProfileBackupService {
               },
               password: input.password,
             });
+            await assertOwner();
             await finalizePortableProfileBackup(temporaryPath, destinationPath);
             finalized = true;
+            await assertOwner();
             await fileSystem.rm(temporaryPath, { force: true });
 
-            const inspected = await inspectEncryptedProfileBackup({
+            const inspectionInput = {
               containerPath: destinationPath,
               operationId: inspectionOperationId,
               password: input.password,
               quarantineRoot: this.dependencies.quarantineRoot,
               stagingRoot: this.dependencies.stagingRoot,
-              validator: this.dependencies.profileSnapshotClient,
-            });
+            };
+            const exported = exportValidator === undefined ? undefined
+              : await inspectEncryptedProfileBackupContent({ ...inspectionInput, validator: exportValidator,
+                  onContentValidated(candidate) {
+                    if (sourceIdentity === undefined || sourceIdentity.operationId !== operationId ||
+                        candidate.identity.operationId !== inspectionOperationId ||
+                        sourceIdentity.generationId === candidate.identity.generationId ||
+                        sourceIdentity.runtimeSession === candidate.identity.runtimeSession) {
+                      throw new Error('PROFILE_BACKUP_INSPECTION_IDENTITY_INVALID');
+                    }
+                    if (candidate.receipt.migrationPolicy !== 'restoreCompatible') throw new Error('PROFILE_BACKUP_EXPORT_POLICY_INVALID');
+                    assertDeletionBackupCorrespondence(receipt, candidate.receipt);
+                    if (candidate.summary.profileMatchStatus !== 'same' || candidate.summary.databaseHealth !== 'healthy' ||
+                        candidate.summary.documentCount !== validation.artifactCount) {
+                      throw new Error('PROFILE_BACKUP_SELF_INSPECTION_FAILED');
+                    }
+                    verifiedExport = true;
+                  },
+                });
+            const inspected = exported?.summary ?? await inspectEncryptedProfileBackup({ ...inspectionInput, validator: client });
             if (
               inspected.profileMatchStatus !== 'same' ||
               inspected.databaseHealth !== 'healthy' ||
@@ -141,6 +239,14 @@ export class PortableProfileBackupService {
             ) {
               throw new Error('PROFILE_BACKUP_SELF_INSPECTION_FAILED');
             }
+            if (exported !== undefined) {
+              if (sourceIdentity === undefined) throw new Error('PROFILE_BACKUP_INSPECTION_IDENTITY_INVALID');
+              content = Object.freeze({ sourceReceipt: Object.freeze({ ...receipt,
+                database: Object.freeze({ ...receipt.database }), artifactCatalog: Object.freeze({ ...receipt.artifactCatalog }) }),
+                sourceIdentity, exported: Object.freeze(exported) });
+              await assertSnapshotCurrent!();
+            }
+            await assertOwner();
             return inspected;
           },
         );
@@ -148,11 +254,11 @@ export class PortableProfileBackupService {
         sourceCleanup = 'unverified';
         await this.dependencies.profileSnapshotClient.removeProfileSnapshot(operationId);
         sourceCleanup = 'completed';
-
-        await this.dependencies.profileSnapshotClient.endMaintenance(
-          operationId,
-        );
-        maintenanceStarted = false;
+        await assertOwner();
+        if (owner === undefined) {
+          await this.dependencies.profileSnapshotClient.endMaintenance(operationId);
+          maintenanceStarted = false;
+        }
         completed = true;
         const completedAt = this.now().toISOString();
         this.latestSuccessfulPortableBackupAt = completedAt;
@@ -164,7 +270,8 @@ export class PortableProfileBackupService {
             validationStatus: 'validated',
           })
           .catch(() => undefined);
-        return summary;
+        await assertOwner();
+        return { summary, ...(content === undefined ? {} : { content }) };
       } catch (error) {
         firstFailure = error;
         if (
@@ -205,7 +312,7 @@ export class PortableProfileBackupService {
         await fileSystem
           .rm(temporaryPath, { force: true })
           .catch(() => undefined);
-        if (finalized && !completed) {
+        if (finalized && !completed && !verifiedExport) {
           await fileSystem
             .rm(destinationPath, { force: true })
             .catch(() => undefined);
@@ -214,7 +321,7 @@ export class PortableProfileBackupService {
           throw new PortableProfileBackupCleanupError(firstFailure ?? cleanupFailure);
         }
       }
-    });
+    }, owner === undefined ? undefined : assertOwner);
   }
 
   getStatus(): ProfileBackupStatus {
@@ -269,6 +376,7 @@ export class PortableProfileBackupService {
   private async runExclusive<T>(
     operationState: Exclude<ProfileBackupOperationState, 'idle'>,
     operation: () => Promise<T>,
+    assertSettledOwner?: () => Promise<void>,
   ): Promise<T> {
     if (this.operationState !== 'idle') {
       throw new PortableProfileBackupError('PROFILE_BACKUP_BUSY');
@@ -277,7 +385,13 @@ export class PortableProfileBackupService {
     this.lastSafeErrorCode = undefined;
 
     try {
-      return await this.dependencies.profileSnapshotClient.withInspectionOperation(operation);
+      const value = await this.dependencies.profileSnapshotClient.withInspectionOperation(operation);
+      // The operation's finally and the inspection scope can both await owned work.
+      if (assertSettledOwner !== undefined) {
+        try { await assertSettledOwner(); }
+        catch (error) { throw new PortableProfileBackupError('PROFILE_BACKUP_CREATE_FAILED', { cause: error }); }
+      }
+      return value;
     } catch (error) {
       this.lastSafeErrorCode = readSafeErrorCode(error);
       throw error;

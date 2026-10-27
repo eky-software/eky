@@ -1,6 +1,7 @@
 import {
   isProfileInspectionOperationId, isProfileInspectionMigrationPolicy, parseProfileInspectionActiveContext, parseProfileInspectionReceipt,
   type ProfileInspectionActiveContext, type ProfileInspectionDeployment, type ProfileInspectionMigrationPolicy, type ProfileInspectionReceipt,
+  type ProfileInspectionRequestIdentity,
 } from '../runtime/profileInspectionMessages.js';
 import { runProfileInspectionProcess } from '../runtime/profileInspectionProcess.js';
 import type { WorkspaceProcessReservationTransfer } from '../runtime/workspaceProcessReservation.js';
@@ -28,6 +29,7 @@ export interface ReadProfileInspectionContextInput {
   readonly operationId: string;
   readonly kind: 'inspect' | 'prepareRestoreActivation';
   readonly updateMaintenanceOperationId?: string;
+  readonly deleteMaintenanceOperationId?: string;
   readonly deadline: number;
   readonly signal: AbortSignal;
 }
@@ -38,6 +40,7 @@ export async function runProfileSnapshotInspection(input: {
   readonly kind: ReadProfileInspectionContextInput['kind'];
   readonly migrationPolicy: ProfileInspectionMigrationPolicy;
   readonly updateMaintenanceOperationId?: string;
+  readonly deleteMaintenanceOperationId?: string;
   readonly runnerPath: string;
   readonly deployment: ProfileInspectionDeployment;
   readonly reservation: ProfileSnapshotInspectionReservation;
@@ -46,12 +49,16 @@ export async function runProfileSnapshotInspection(input: {
   readonly signal: AbortSignal;
   /** A caller may include root acquisition in the same work budget, never extend it. */
   readonly deadline?: number;
-}): Promise<Readonly<{ validation: ProfileSnapshotInspectionValidation; receipt: ProfileInspectionReceipt }>> {
+}): Promise<Readonly<{ validation: ProfileSnapshotInspectionValidation; receipt: ProfileInspectionReceipt;
+  identity: ProfileInspectionRequestIdentity }>> {
   const readContext = async (control: OwnedProfileInspectionControl) => {
     const context = parseProfileInspectionActiveContext(await control.read(() => input.readActiveContext({
       operationId: input.operationId, kind: input.kind, deadline: control.deadline, signal: control.signal,
       ...(input.updateMaintenanceOperationId === undefined ? {} : {
         updateMaintenanceOperationId: input.updateMaintenanceOperationId,
+      }),
+      ...(input.deleteMaintenanceOperationId === undefined ? {} : {
+        deleteMaintenanceOperationId: input.deleteMaintenanceOperationId,
       }),
     })));
     if (context === undefined) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
@@ -61,7 +68,10 @@ export async function runProfileSnapshotInspection(input: {
     ...input,
     async prepare(control) {
       if (!isProfileInspectionMigrationPolicy(input.migrationPolicy) ||
-          (input.updateMaintenanceOperationId !== undefined && !isProfileInspectionOperationId(input.updateMaintenanceOperationId))) {
+          (input.updateMaintenanceOperationId !== undefined && !isProfileInspectionOperationId(input.updateMaintenanceOperationId)) ||
+          (input.deleteMaintenanceOperationId !== undefined && (
+            !isProfileInspectionOperationId(input.deleteMaintenanceOperationId) ||
+            input.updateMaintenanceOperationId !== undefined || input.kind !== 'inspect'))) {
         throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
       }
       await control.assertMainOwned();
@@ -69,11 +79,14 @@ export async function runProfileSnapshotInspection(input: {
       await control.assertMainOwned();
       return context;
     },
-    inspect: (_context, options) => runProfileInspectionProcess({ ...options,
-      kind: input.kind, migrationPolicy: input.migrationPolicy, runnerPath: input.runnerPath, deployment: input.deployment,
+    inspect: async (_context, options) => ({
+      receipt: await runProfileInspectionProcess({ ...options,
+        kind: input.kind, migrationPolicy: input.migrationPolicy, runnerPath: input.runnerPath, deployment: input.deployment,
+      }),
+      identity: options.identity,
     }),
     async accept(initialContext, returned, control) {
-      const receipt = parseProfileInspectionReceipt(returned);
+      const receipt = parseProfileInspectionReceipt(returned.receipt);
       if (receipt === undefined || receipt.migrationPolicy !== input.migrationPolicy) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
       await control.assertMainOwned();
       const finalContext = await readContext(control);
@@ -85,7 +98,7 @@ export async function runProfileSnapshotInspection(input: {
         databaseHealth: receipt.databaseHealth, migrationChainIdentity: receipt.migrationChainIdentity,
         profileId: receipt.profileId, profileMatchesActive: receipt.profileId === finalContext.activeProfileId,
       });
-      return Object.freeze({ validation, receipt });
+      return Object.freeze({ validation, receipt, identity: returned.identity });
     },
   });
 }

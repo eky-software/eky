@@ -31,7 +31,7 @@ interface DrainWaiter {
 
 interface MaintenanceOperation {
   operationId: string;
-  kind: 'ordinary' | 'update' | 'restore';
+  kind: 'ordinary' | 'update' | 'restore' | 'delete';
   invalidated: boolean;
   validUntil: number | undefined;
 }
@@ -69,7 +69,7 @@ export class ProfileMaintenanceState {
     operationId: string,
     timeoutMilliseconds: number,
     maximumDurationMilliseconds: number,
-    kind: 'update' | 'restore',
+    kind: 'update' | 'restore' | 'delete',
   ): Promise<void> {
     if (
       !Number.isFinite(maximumDurationMilliseconds) ||
@@ -94,9 +94,32 @@ export class ProfileMaintenanceState {
     this.assertProtectedOperation(operationId, 'restore');
   }
 
+  async beginDelete(
+    operationId: string,
+    timeoutMilliseconds: number,
+    maximumDurationMilliseconds: number,
+  ): Promise<void> {
+    await this.beginProtectedOperation(
+      operationId, timeoutMilliseconds, maximumDurationMilliseconds, 'delete',
+    );
+  }
+
+  assertDelete(operationId: string): void {
+    this.assertProtectedOperation(operationId, 'delete');
+  }
+
+  invalidateDelete(operationId: string): void {
+    const operation = this.activeOperation;
+    if (operation?.kind !== 'delete' || operation.operationId !== operationId) {
+      throw new ProfileMaintenanceOperationMismatchError();
+    }
+    operation.invalidated = true;
+    this.rejectDrainWaiters();
+  }
+
   private assertProtectedOperation(
     operationId: string,
-    kind: 'update' | 'restore',
+    kind: 'update' | 'restore' | 'delete',
   ): void {
     const operation = this.activeOperation;
     if (

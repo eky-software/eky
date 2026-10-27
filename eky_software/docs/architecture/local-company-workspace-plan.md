@@ -4022,7 +4022,8 @@ ennen kytkentää. Valmistelu ei käynnistä pitkää CI- tai asennusajoa.
 #### W7.3:n toteutussopimus
 
 **27.10.2026: V1:n toteutussopimus ja rajattu yhteiskytkentäkoe on
-katselmoitu. V2:n arkisto-/admission-pohja on lähdetoteutuksessa;
+katselmoitu. V2:n arkisto-/admission-pohja sekä nimetyt huolto-,
+backup-, inspection- ja lifecycle-portit ovat lähdetoteutuksessa;
 poistovaltuuden kokonaiskytkentä ja V3-hyväksyntä ovat tekemättä.** W7.0:n hyväksytyt
 [vahvistusrajat](#w70n-poistopyyntö--ja-vahvistussopimus),
 [backup-todiste](#poiston-backup-todisteen-vastaavuus) ja
@@ -4421,9 +4422,21 @@ nimettyihin omistajiin; uutta päätös- tai elinkaarikerrosta ei lisätä.
 | Lähtö on backenditon valitsin | Nykyinen selector-lifecycle todistaa saman delete-leasen ja mainin fyysisen varauksen. Se ei luo business-runtimea tai backend-exit-tulosta. Peruutuksen nimenomainen paluu säilyttää null-valinnan. Koko request-/vahvistusliitos ja oikea varaus todistetaan V2/V3:ssa. |
 | Kohteella on keskeytynyt palautus | W7.3 ei ohita yleistä journal-estoa. W7.4:n jo hyväksytty saman kohteen jäännös- ja omistajuustodistus tarvitaan ennen poikkeuksen kytkentää; tuntematonta tai asennustason tilaa ei hyväksytä. Pelkkä luotettavasti tunnistetun kohteen `recoveryRequired` ei itsessään muuta kohdetta toiseksi tai vaadi business-avausta. |
 
-**Toteutusjärjestys:** ensin arkisto-/management-admissionin rajatut
-muutokset ja nykyisten polkujen regressiot, sitten nimetyn maintenance-,
-inspection- ja backup-sopimuksen kytkentä. Tämän jälkeen target-reader,
+**Nykyinen lähdepala:** poiston oma maintenance-tilakone ja v13-broker,
+installation-lease, tarkistusomistajan elinikään sidotut täydet kuitit sekä
+caller-owned portable-vienti on yhdistetty nykyisillä tiedostotavuilla.
+Tavallinen vienti vapauttaa edelleen oman suojansa; poiston vienti ei.
+Alkuperäisen autentikoidun container-kahvan identiteetti säilyy, eikä
+samansisältöinen uusi tiedosto korvaa sitä. Nimetty backend-sulku tarkistaa
+saman suojan ennen palvelinsulkua ja sen jälkeen. Active-lifecycle liittyy
+kaikkien aloittamiensa drainien loppuun myös virheessä; valitsin käyttää
+nykyistä main-varaustaan ilman backendia. Nämä omistajaportit eivät vielä
+muodosta tuotannon poistovaltuutta: kohde, kertakulutus ja composition-
+juurten todelliset resurssikytkennät ovat kesken. SQLite, kuljetus, exit ja
+fyysinen varaus ovat tämän liitosnäytön kontrolloituja rajoja.
+
+**Toteutusjärjestys:** arkisto-/management-admissionin ja nimettyjen
+maintenance-/inspection-/backup-/lifecycle-porttien jälkeen target-reader,
 kertakäyttöinen valmistelu ja molemmat lifecycle-kutsujat liitetään nykyisiin
 composition-juuriin. Pyyntö-/tuloscodec ja UI-valmistelu testataan ilman
 tuotannon delete-kanavaa. Kukin pala säilyttää aiemmat kontrollit ja

@@ -39,7 +39,7 @@ async function stopped() {
 }
 
 describe('MainOwnedSelectorWorkspaceLifecycle', () => {
-  it.each(['create', 'import', 'switch'] as const)('requires real ownership for %s and defers relaunch to service completion', async purpose => {
+  it.each(['create', 'import', 'switch', 'delete'] as const)('requires real ownership for %s and defers relaunch to service completion', async purpose => {
     const f = await fixture(purpose);
     await f.lifecycle.quiesceWrites(null);
     await expect(f.lifecycle.stopAndProveHandlesClosed(null)).resolves.toEqual({ handlesClosed: true });
@@ -149,8 +149,9 @@ describe('MainOwnedSelectorWorkspaceLifecycle', () => {
   });
 
   for (const stage of ['quiesce', 'stop', 'absence', 'return'] as const) {
-    it.each(['selector', 'lease', 'reservation'] as const)(`rejects %s loss during ${stage} proof`, async loss => {
-      const f = await fixture();
+    for (const purpose of ['create', 'delete'] as const) {
+    it.each(['selector', 'lease', 'reservation'] as const)(`rejects %s loss during ${stage} proof for ${purpose}`, async loss => {
+      const f = await fixture(purpose);
       if (stage !== 'quiesce') await f.lifecycle.quiesceWrites(null);
       if (stage === 'absence' || stage === 'return') await f.lifecycle.stopAndProveHandlesClosed(null);
       const entered = deferred();
@@ -165,7 +166,7 @@ describe('MainOwnedSelectorWorkspaceLifecycle', () => {
       try {
         if (loss === 'selector') f.current.selector = false;
         if (loss === 'reservation') f.current.main = false;
-        if (loss === 'lease') { await f.handle?.release(); await f.lease.acquire('create'); }
+        if (loss === 'lease') { await f.handle?.release(); await f.lease.acquire(purpose); }
       } finally { gate.resolve(); }
       const result = await outcome;
       expect(result.ok).toBe(false);
@@ -176,7 +177,23 @@ describe('MainOwnedSelectorWorkspaceLifecycle', () => {
       await expect(f.lifecycle.ensurePreviousWorkspaceRunning(null)).rejects.toBe(result.error);
       expect(f.runtimeRelaunch.isRequested()).toBe(false);
     });
+    }
   }
+
+  it('does not automatically return from stopped deletion preparation without an explicit selection', async () => {
+    const f = await fixture('delete');
+    await f.lifecycle.quiesceWrites(null);
+    await f.lifecycle.stopAndProveHandlesClosed(null);
+    f.runtimeRelaunch.complete();
+    expect(f.runtimeRelaunch.isRequested()).toBe(false);
+    expect(f.relaunch).not.toHaveBeenCalled();
+    await expect(f.lifecycle.ensurePreviousWorkspaceRunning(workspaceId)).rejects.toThrow('WORKSPACE_RUNTIME_IDENTITY_MISMATCH');
+    await f.lifecycle.ensurePreviousWorkspaceRunning(null);
+    expect(f.relaunch).not.toHaveBeenCalled();
+    await f.handle?.release();
+    f.runtimeRelaunch.complete();
+    expect(f.relaunch).toHaveBeenCalledOnce();
+  });
 
   it('retains the first physical proof failure and prevents subsequent restart', async () => {
     const f = await fixture();

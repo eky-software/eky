@@ -640,7 +640,7 @@ Backup ei muuta business dataa, laskun statusta tai toimitustapahtumia.
 
 ### W7.3:n poiston valmistelun vientisopimus
 
-**Valmistelu, ei tuotantokytkentä:** poiston backup-haara käyttää samaa
+**Lähdetoteutus, koko poistoketjun kytkentä kesken:** poiston backup-haara käyttää samaa
 portable-vientialgoritmia, containeria ja nykyisiä siivousomistajia. Tavallinen
 `create()` hankkii ja vapauttaa edelleen oman maintenance-suojansa. Poiston
 kutsuja omistaa erikseen nimetyn suojan snapshotista todelliseen sulkuun;
@@ -686,6 +686,23 @@ vielä injektoituja. Yrityskohde, suojan luovutus todelliseen sulkuun sekä
 kuitin lopullinen kulutus vaativat oman kytkentänäyttönsä.
 Koetuloksen ja koko W7.3:n hyväksyntärajat ovat
 [työtilasuunnitelmassa](local-company-workspace-plan.md#w73n-toteutussopimus).
+
+Nimetty `createForDeletion` käyttää nyt tätä yhteistä vientipolkua. Se vaatii
+mainin kutsujan elävän omistajuuden sekä tarkistuksen erilliset
+`validateDeletionProfileSnapshot`- ja `withProfileSnapshotEvidence`-portit.
+Tavallisen `create()`-kutsun sopimus ei vaadi näitä portteja eikä julkaise
+sisäistä kuittia. Vientitodistus ei ole lopullisen poiston valtuus.
+Tarkistuksen v13-broker nimeää poistosuojan erikseen molempiin
+kontekstilukuihin. Suojalle ei ole saman runtimen vapautuskutsua;
+peruutus estää myös vielä jonossa olevan täsmällisen begin-pyynnön.
+Katkos, umpeutuminen tai epävarma drain säilyttää kirjoituseston.
+Vientikopion säilytys lukitaan vasta alkuperäisen autentikoidun tiedoston,
+lähde-/vientisisällön ja eri tarkistussidontojen onnistuneen vertailun
+jälkeen, ennen tarkistusstagingin loppusiivousta. Säilytyskuittaus ei anna
+poistovaltuutta: loppusiivouksen hylkäys estää sisällön palauttamisen
+valmistelutuloksena, vaikka varmennettu käyttäjän kopio säilyy.
+Kohteen, kertakulutuksen ja todellisen lifecycle-compositionin kytkentä
+sekä native-/pakettitodennus säilyvät W7.3:n avoimina portteina.
 
 ## Machine-local recovery point
 
@@ -794,7 +811,7 @@ sisältöön sidotun tuloksen; `withProfileSnapshot` pitää varauksen käytön 
 ja `removeProfileSnapshot` todistaa siivouksen. Testikuluttaja vertaa luetut
 tavut receiptiin eikä poista stagingia suoraan. Siivousvirhe hylkää myös
 muuten onnistuneen havainnon ja säilyttää ensisyyn erillään siivoustilasta.
-Private broker v12 sallii vain snapshotin muodostamisen, maintenance-
+Private broker v13 sallii vain snapshotin muodostamisen, maintenance-
 toiminnot ja rajatun aktiivikontekstin luvun. Korvatut raskaat tarkistus- ja
 aktivointivalmistelukomennot sekä niiden vastaukset hylätään; fallbackia ei
 ole. Tämä ei muuta backup-formaatteja tai historiallisten kopioiden tukea.
@@ -1049,10 +1066,10 @@ busy tai epäselvä juuri säilyy. Vanha staging tarkistetaan uudelleen:
 journal, ikä tai muistista puuttuva receipt ei hyväksy sitä. Tämä ei
 anna W3:n journalittomalle plaintextille tai v1:lle cold-recovery-lupaa.
 
-Private snapshot-brokerin nykyinen versio on 12. Komennot
+Private snapshot-brokerin nykyinen versio on 13. Komennot
 `validateProfileSnapshot`, `validateActiveProfile` ja
 `prepareProfileRestoreActivation` sekä niiden vastaukset on poistettu
-tästä brokerista. V9/V10/V11 eivät ole fallbackeja; samanniminen sisäinen
+tästä brokerista. V9/V10/V11/V12 eivät ole fallbackeja; samanniminen sisäinen
 tarkistusportti ei palauta poistettua broker-komentoa. Julkinen HTTP,
 renderer-capabilityt ja durable-formaatit eivät laajene.
 
