@@ -1,4 +1,5 @@
 import { link, open, rm, type FileHandle } from 'node:fs/promises';
+import { InvoicePdfArchiveError } from './invoicePdfArchiveTypes.js';
 
 export interface InvoicePdfArchiveFileOperations {
   link(existingPath: string, newPath: string): Promise<void>;
@@ -25,19 +26,30 @@ export async function finalizeInvoicePdfArchiveFile(
     ...operationOverrides,
   };
 
+  let closeUncertain = false;
+  let primaryFailure: unknown;
   try {
     const handle = await operations.open(input.temporaryPath, 'wx', 0o600);
 
     try {
       await handle.writeFile(input.content);
       await handle.sync();
+    } catch (error) {
+      primaryFailure = error;
+      throw error;
     } finally {
-      await handle.close();
+      try {
+        await handle.close();
+      } catch (error) {
+        closeUncertain = true;
+        throw new InvoicePdfArchiveError('ARCHIVE_STORAGE_FAILED', true, true,
+          primaryFailure ?? error);
+      }
     }
 
     await operations.link(input.temporaryPath, input.finalPath);
   } finally {
-    await operations
+    if (!closeUncertain) await operations
       .rm(input.temporaryPath, { force: true })
       .catch(() => undefined);
   }

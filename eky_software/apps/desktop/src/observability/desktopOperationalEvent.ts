@@ -79,7 +79,7 @@ export interface DesktopOperationalEventPayloadMap {
     operationId: WorkspaceManagementOperationId;
     retryable: boolean;
     sideEffectState: 'none' | 'unknown';
-    stage: 'admission' | 'operation' | 'lineageCheck';
+    stage: 'admission' | 'operation' | 'lineageCheck' | 'deletePreparation';
   };
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };

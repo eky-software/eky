@@ -461,12 +461,28 @@ omistaa [G-P1](release-0.3.0-m1-preparation-plan.md#g-p1-hyväksytty-projektiora
 
 `workspaceManagement.operationFailed` on desktop/workspaceManagement,
 error/failure. Sen pakolliset kentät ovat UUID-korrelaatio, ei-negatiivinen
-kokonaislukukesto, suljettu looginen `workspace.create|import|replace|switch|rename`
+kokonaislukukesto, suljettu looginen `workspace.create|import|replace|switch|rename|delete`
 -operationId, vaihe, virhekoodi, boolean-retryable ja `none|unknown`-sivuvaikutus.
 Koodi/toiminto/vaihe/retryable-yhdistelmät omistaa
 [G-P2:n suljettu taulukko](release-0.3.0-m1-preparation-plan.md#g-p2-hyväksytty-workspace-virheen-omistajuus).
 `operationId` ei ole työtilan tai yrityksen tunniste. Status-pollingia ja
 onnistumisia ei lisätä tähän julkiseen perheeseen.
+
+W7.3:n valmisteluraja lisää vain `workspace.delete`-operaation ja vaiheet
+`admission|deletePreparation`. Sen suljetut syyt ovat
+`WORKSPACE_MANAGEMENT_BUSY` (`retryable: true`),
+`WORKSPACE_MANAGEMENT_INVALID`, `WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN` ja
+`WORKSPACE_DELETE_FAILED` (muissa `retryable: false`). `none` sallitaan
+vain ennen komennon alkua (`admission`) tai busy-estossa ennen vaikutuksia;
+muun aloitetun valmistelun sivuvaikutus on `unknown`. Vaihe ei itsessään
+todista vaikutuksettomuutta. Muiden operaatioiden vaihe- ja syyrajat säilyvät.
+`deleteResume`, myöhemmät poistovaiheet ja muut W7.0:n poistosyyt eivät kuulu
+tähän toteutuspalaan. Valmistuminen, peruutus tai prepared-kuitti eivät
+todista poistoa eivätkä lisää onnistumistapahtumaa.
+[W7.0:n omistava sopimus](local-company-workspace-plan.md#w70n-poistopyyntö--ja-vahvistussopimus)
+ja [W7.3:n toimitusraja](local-company-workspace-plan.md#w73n-toteutussopimus)
+säilyttävät varsinaisen poiston jatkoehdot. Nykyinen salattu ensivirheen
+testikeräys säilyy erillään julkisesta tapahtumasta; raakakenttiä ei lisätä.
 
 W7.1 lisää samaan suljettuun sopimukseen nimiristiriidan koodit:
 

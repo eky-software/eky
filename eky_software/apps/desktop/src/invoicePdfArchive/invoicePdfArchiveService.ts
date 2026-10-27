@@ -16,6 +16,8 @@ import {
 import type { ResolveInvoicePdfArchiveDirectory } from './workspaceInvoicePdfArchiveDirectory.js';
 
 const maximumAutomaticRetryTasks = 10;
+export const archiveDrainMilliseconds = 5_000;
+export type ArchiveDrainResult = 'drained' | 'timedOut' | 'ioUncertain';
 const retryDelaysMilliseconds = [
   60_000,
   5 * 60_000,
@@ -38,6 +40,10 @@ export interface InvoicePdfArchiveObserver {
 
 export class InvoicePdfArchiveService {
   private operationQueue = Promise.resolve();
+  private sealed = false;
+  private ioCompletionUncertain = false;
+  private drainTask: Promise<ArchiveDrainResult> | undefined;
+  private readonly waitingOperations = new Set<() => void>();
 
   constructor(
     private readonly dependencies: {
@@ -51,12 +57,37 @@ export class InvoicePdfArchiveService {
     },
   ) {}
 
+  sealAndDrain(): Promise<ArchiveDrainResult> {
+    if (this.drainTask !== undefined) return this.drainTask;
+    this.sealed = true;
+    for (const cancel of this.waitingOperations) cancel();
+    this.waitingOperations.clear();
+    const deadline = performance.now() + archiveDrainMilliseconds;
+    this.drainTask = new Promise<ArchiveDrainResult>((resolve) => {
+      let finished = false;
+      const finish = (result: ArchiveDrainResult) => {
+        if (finished) return;
+        finished = true;
+        clearTimeout(timer);
+        resolve(result);
+      };
+      const timer = setTimeout(() => finish('timedOut'), archiveDrainMilliseconds);
+      void this.operationQueue.then(() => finish(
+        performance.now() >= deadline ? 'timedOut' :
+          this.ioCompletionUncertain ? 'ioUncertain' : 'drained',
+      ));
+    });
+    return this.drainTask;
+  }
+
   async chooseDirectory(directoryPath: string): Promise<InvoicePdfArchiveStatus> {
     return this.runExclusive(async () => {
       const archiveDirectory = await this.resolveArchiveDirectory(directoryPath);
+      this.assertOpen();
       await (
         this.dependencies.probeDirectory ?? probeInvoicePdfArchiveDirectory
       )(archiveDirectory);
+      this.assertOpen();
       await this.dependencies.configStore.enable(directoryPath);
       await this.retryPendingInternal(false);
       return this.getStatusInternal();
@@ -74,7 +105,8 @@ export class InvoicePdfArchiveService {
     return this.runExclusive(async () => {
       try {
         return (await this.dependencies.configStore.read())?.directoryPath ?? null;
-      } catch {
+      } catch (error) {
+        this.observeFailure(error);
         return null;
       }
     });
@@ -88,7 +120,8 @@ export class InvoicePdfArchiveService {
         return configuredRoot === null
           ? null
           : await this.resolveArchiveDirectory(configuredRoot);
-      } catch {
+      } catch (error) {
+        this.observeFailure(error);
         return null;
       }
     });
@@ -104,8 +137,9 @@ export class InvoicePdfArchiveService {
     return this.runExclusive(async () => {
       const config = await this.dependencies.configStore
         .read()
-        .catch(() => 'invalid' as const);
+        .catch((error) => { this.observeFailure(error); return 'invalid' as const; });
 
+      this.assertOpen();
       if (config === null) {
         return { archived: false, queued: false };
       }
@@ -139,16 +173,19 @@ export class InvoicePdfArchiveService {
   }
 
   private async attemptTask(task: InvoicePdfArchiveTask): Promise<boolean> {
+    if (this.sealed) return false;
     let config;
 
     try {
       config = await this.dependencies.configStore.read();
     } catch (error) {
-      await this.recordFailure(task, readSafeErrorCode(error));
+      const code = this.observeFailure(error);
+      if (this.ioCompletionUncertain) throw error;
+      await this.recordFailure(task, code);
       return false;
     }
 
-    if (config === null) {
+    if (config === null || this.sealed) {
       return false;
     }
 
@@ -158,6 +195,7 @@ export class InvoicePdfArchiveService {
       const archiveDirectory = await this.resolveArchiveDirectory(
         config.directoryPath,
       );
+      if (this.sealed) return false;
       await copyInvoicePdfToArchive({
         directoryPath: archiveDirectory,
         loadDocument: this.dependencies.loadDocument,
@@ -174,7 +212,8 @@ export class InvoicePdfArchiveService {
       });
       return true;
     } catch (error) {
-      const errorCode = readSafeErrorCode(error);
+      const errorCode = this.observeFailure(error);
+      if (this.ioCompletionUncertain) throw error;
       await this.recordFailure(task, errorCode);
       this.dependencies.observer?.copyFailed({
         attemptCount: task.attemptCount + 1,
@@ -203,7 +242,7 @@ export class InvoicePdfArchiveService {
         displayName: null,
         enabled: false,
         lastArchivedAt: journal.lastArchivedAt,
-        lastSafeErrorCode: readSafeErrorCode(error),
+        lastSafeErrorCode: this.observeFailure(error),
         pendingCount: journal.tasks.length,
       };
     }
@@ -252,17 +291,44 @@ export class InvoicePdfArchiveService {
       : eligible;
 
     for (const task of tasks) {
+      if (this.sealed) break;
       await this.attemptTask(task);
     }
   }
 
   private runExclusive<Result>(operation: () => Promise<Result>): Promise<Result> {
-    const result = this.operationQueue.then(operation, operation);
+    if (this.sealed || this.ioCompletionUncertain) return Promise.reject(
+      new InvoicePdfArchiveError('ARCHIVE_REQUEST_FAILED', false),
+    );
+    let cancel!: () => void;
+    const cancelledBeforeStart = new Promise<never>((_resolve, reject) => {
+      cancel = () => reject(new InvoicePdfArchiveError('ARCHIVE_REQUEST_FAILED', false));
+    });
+    this.waitingOperations.add(cancel);
+    const result = this.operationQueue.then(async () => {
+      this.waitingOperations.delete(cancel);
+      this.assertOpen();
+      try { return await operation(); }
+      catch (error) { this.observeFailure(error); throw error; }
+    });
     this.operationQueue = result.then(
       () => undefined,
       () => undefined,
     );
-    return result;
+    return Promise.race([result, cancelledBeforeStart]);
+  }
+
+  private assertOpen(): void {
+    if (this.sealed || this.ioCompletionUncertain) {
+      throw new InvoicePdfArchiveError('ARCHIVE_REQUEST_FAILED', false);
+    }
+  }
+
+  private observeFailure(error: unknown): InvoicePdfArchiveSafeErrorCode {
+    if (error instanceof InvoicePdfArchiveError && error.ioCompletionUncertain) {
+      this.ioCompletionUncertain = true;
+    }
+    return readSafeErrorCode(error);
   }
 }
 

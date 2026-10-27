@@ -4022,7 +4022,8 @@ ennen kytkentää. Valmistelu ei käynnistä pitkää CI- tai asennusajoa.
 #### W7.3:n toteutussopimus
 
 **27.10.2026: V1:n toteutussopimus ja rajattu yhteiskytkentäkoe on
-katselmoitu; V2-tuotantototeutus ja V3-hyväksyntä ovat tekemättä.** W7.0:n hyväksytyt
+katselmoitu. V2:n arkisto-/admission-pohja on lähdetoteutuksessa;
+poistovaltuuden kokonaiskytkentä ja V3-hyväksyntä ovat tekemättä.** W7.0:n hyväksytyt
 [vahvistusrajat](#w70n-poistopyyntö--ja-vahvistussopimus),
 [backup-todiste](#poiston-backup-todisteen-vastaavuus) ja
 [poistettava kokonaisuus](#vahvistus-sulku-ja-poistettava-kokonaisuus)
@@ -4377,6 +4378,37 @@ epäonnistuessa. Testien oma siivous raportoi epäonnistumisen.
 Prosessin exit, HTTP, fyysinen varaus, SQLite, native-dialogit ja viennin
 lopullinen uudelleenlukija ovat edelleen injektoituja. Tämä ei todista
 niiden tuotantokytkentää, W7.4:n julkaisua tai kaikkia kohdetiloja.
+
+**27.10.2026, V2:n ensimmäinen lähdepala:** arkistopalvelun pääsyn sulku,
+rajattu I/O-drain ja epävarman kahvasulun aineistonsäilytys sekä archive-
+capabilityn vanhentuneiden native-jatkojen esto on siirretty nykyisiin
+omistajiin pysyvin regressioin. Yrityshallinnan `closeAdmission()` estää
+uudet pyynnöt erillään lopullisesta disposesta; jo hyväksytyn työn
+settlement seurataan edelleen palvelun ja capabilityn omissa joukoissa.
+Navigointi/lataus sekä rendererin tai ikkunan päättyminen mitätöivät
+vanhan dokumentin jatkot myös sender-/frame-olion säilyessä samana.
+Mainin sisäinen `prepareDeletion` ottaa nykyisen mutaatiogaten ennen
+ensimmäistä odotusta ja validoi koko muuttumattoman version/id/typedLabel/
+backupChoice-pyynnön. Sen rajattu elinikä voi sulkea uusien pyyntöjen pääsyn
+vain omaa sulkutehtäväänsä varten. Ulkoinen `closeAdmission`, dispose,
+shutdown tai dokumentin vaihto mitätöi myös tämän säilytetyn valtuuden;
+valmistumisen jälkeen talteen jäänyt callback ei anna jatkolupaa.
+Palvelu seuraa valmistelutyön todellista päättymistä, mutta ei kirjaa
+`prepared`, `cancelled` tai `returnRequested` -tulosta valmiiksi poistoksi.
+Mainin sisäinen virhe säilyttää alkuperäisen syyketjun, julkiset kanavat
+vain turvallisen koodin. Komennon puuttuminen pysäyttää valmistelun;
+composition-juurten todellinen valmistelukuluttaja ei vielä ole kytketty.
+Nykyinen yhteinen kohdesarja läpäisi 499 tarkistusta. Erilliset 315
+main-kontrollia, backendin 69 ja API-clientin 39 lukijasopimusta läpäisivät;
+määriä ei lasketa yhteen aikaisempien osajoukkojen kanssa. Rajattu
+lähdekatselmus ja korjatun virheluokituksen jälkikatselmus valmistuivat.
+Konkreettisen registry/create/import-virheen alkuperäinen syy säilyy myös
+poistovalmistelussa ja saa sen suljetun koodin, ei toisen operaation koodia.
+Nykyinen observer, JSONL-/incident-kirjoittaja ja todelliset Diagnostics-,
+tukipaketti- sekä API-lukijat läpäisivät yhden liitoskokeen ilman
+raakavirheen tai kohdetietojen julkaisua. Koetta ei nimitetä oikeaksi
+Electron-/native-/SQLite- tai salatun toimituksen todistukseksi.
+Koko W7.3:n prosessi-, paketti- ja PR/main-portteja ei ole tällä suljettu.
 
 **V2:n kohde- ja omistajamatriisi:** seuraavat haarat toteutetaan samoihin
 nimettyihin omistajiin; uutta päätös- tai elinkaarikerrosta ei lisätä.

@@ -3,6 +3,10 @@ import {
   readWorkspaceCandidateCleanupCause,
 } from '../../runtime/workspaceCandidateFailure.js';
 import { classifyWorkspaceManagementFailure } from './workspaceManagementFailureClassification.js';
+import {
+  parseWorkspaceDeletionRequest,
+  type WorkspaceDeletionRequest,
+} from './workspaceManagementCapabilityProtocol.js';
 
 import type { EmptyWorkspaceCreationResult } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import type {
@@ -27,6 +31,8 @@ import type {
   WorkspaceManagementObserver,
   WorkspaceManagementOperationKind,
   WorkspaceManagementStatusV1,
+  WorkspaceDeletionPreparationLifetime,
+  WorkspaceDeletionPreparationOutcome,
 } from './workspaceManagementTypes.js';
 import type { WorkspaceLabelRenameResult } from './workspaceLabelRename.js';
 import type { WorkspaceRuntimeRelaunchCompletion } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
@@ -72,6 +78,12 @@ export interface WorkspaceManagementServiceOptions {
   readonly replaceActive?: WorkspaceBackupReplacementCommand;
   readonly runtimeRelaunchCompletion?: WorkspaceRuntimeRelaunchCompletion;
   readonly switchWorkspace: WorkspaceSwitchCommand;
+  readonly deletionPreparation?: {
+    prepare(
+      request: Readonly<WorkspaceDeletionRequest>,
+      lifetime: WorkspaceDeletionPreparationLifetime,
+    ): Promise<WorkspaceDeletionPreparationOutcome>;
+  };
 }
 
 export class WorkspaceManagementService {
@@ -181,6 +193,32 @@ export class WorkspaceManagementService {
     );
   }
 
+  prepareDeletion(
+    requestInput: unknown,
+    lifetime: WorkspaceDeletionPreparationLifetime,
+  ): Promise<WorkspaceDeletionPreparationOutcome> {
+    let request: Readonly<WorkspaceDeletionRequest>;
+    try {
+      request = parseWorkspaceDeletionRequest(requestInput);
+    } catch (cause) {
+      return Promise.reject(new WorkspaceManagementError(
+        'WORKSPACE_MANAGEMENT_INVALID', 'delete', { cause },
+      ));
+    }
+    return this.run('delete', async () => {
+      lifetime.assertCurrent();
+      if (this.options.deletionPreparation === undefined) {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
+      }
+      const outcome = await this.options.deletionPreparation.prepare(request, lifetime);
+      lifetime.assertCurrent();
+      if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
+        throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
+      }
+      return outcome;
+    });
+  }
+
   private run<T>(
     operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
     operation: () => Promise<T>,
@@ -218,17 +256,19 @@ export class WorkspaceManagementService {
       this.assertAdmissionOpen(operationKind);
       operationStarted = true;
       const result = await operation();
-      this.record({
-        correlationId,
-        durationMs: Math.max(0, this.now() - startedAt),
-        operationKind,
-        outcome: 'succeeded',
-        sideEffectState: 'completed',
-        stage: 'operation',
-      });
+      if (operationKind !== 'delete') {
+        this.record({
+          correlationId,
+          durationMs: Math.max(0, this.now() - startedAt),
+          operationKind,
+          outcome: 'succeeded',
+          sideEffectState: 'completed',
+          stage: 'operation',
+        });
+      }
       return result;
     } catch (error) {
-      const classification = operationStarted
+      const classification = operationStarted && operationKind !== 'delete'
         ? classifyWorkspaceManagementFailure(error, operationKind)
         : { lineageMismatch: false };
       const mapped = mapWorkspaceManagementError(error, operationKind);
@@ -248,11 +288,15 @@ export class WorkspaceManagementService {
         outcome: 'failed',
         retryable: mapped.code === 'WORKSPACE_MANAGEMENT_BUSY',
         sideEffectState:
-          mapped.code === 'WORKSPACE_MANAGEMENT_INVALID' ||
-          mapped.code === 'WORKSPACE_MANAGEMENT_BUSY'
+          (operationKind === 'delete'
+            ? !operationStarted
+            : mapped.code === 'WORKSPACE_MANAGEMENT_INVALID' ||
+              mapped.code === 'WORKSPACE_MANAGEMENT_BUSY')
             ? 'none'
             : 'unknown',
-        stage: classification.lineageMismatch ? 'lineageCheck' : 'operation',
+        stage: operationKind === 'delete'
+          ? operationStarted ? 'deletePreparation' : 'admission'
+          : classification.lineageMismatch ? 'lineageCheck' : 'operation',
       });
       throw mapped;
     } finally {
@@ -280,7 +324,12 @@ export class WorkspaceManagementService {
 
   private assertAdmissionOpen(operationKind: WorkspaceManagementOperationKind): void {
     if (this.admissionClosed) {
-      throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', operationKind);
+      throw new WorkspaceManagementError(
+        operationKind === 'delete'
+          ? 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'
+          : 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+        operationKind,
+      );
     }
   }
 

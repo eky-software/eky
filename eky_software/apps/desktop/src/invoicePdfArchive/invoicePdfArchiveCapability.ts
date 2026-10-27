@@ -40,6 +40,17 @@ export function createInvoicePdfArchiveCapability(
   options: InvoicePdfArchiveCapabilityOptions,
 ): InvoicePdfArchiveCapability {
   let operationInProgress = false;
+  let disposed = false;
+  let documentEpoch = 0;
+  const invalidateDocument = () => { documentEpoch += 1; };
+  const navigationStarted = (details: { isMainFrame: boolean }) => {
+    if (details.isMainFrame) invalidateDocument();
+  };
+  options.mainWindow.webContents.on('did-start-navigation', navigationStarted);
+  options.mainWindow.webContents.on('did-start-loading', invalidateDocument);
+  options.mainWindow.webContents.on('render-process-gone', invalidateDocument);
+  options.mainWindow.webContents.on('destroyed', invalidateDocument);
+  options.mainWindow.on('close', invalidateDocument);
   const channels = [
     getInvoicePdfArchiveStatusIpcChannel,
     chooseInvoicePdfArchiveDirectoryIpcChannel,
@@ -55,26 +66,33 @@ export function createInvoicePdfArchiveCapability(
   options.ipcMain.handle(
     getInvoicePdfArchiveStatusIpcChannel,
     async (event, ...args: unknown[]) => {
-      requireTrustedRequest(event, args, options.mainWindow);
-      return options.service.getStatus();
+      const assertCurrent = captureRequest(event, args);
+      const status = await options.service.getStatus();
+      assertCurrent();
+      return status;
     },
   );
   options.ipcMain.handle(
     chooseInvoicePdfArchiveDirectoryIpcChannel,
     async (event, ...args: unknown[]) =>
-      runExclusiveOperation(options, event, args, async () => {
+      runExclusiveOperation(options, event, args, async assertCurrent => {
         const current = await options.service.getStatus();
+        assertCurrent();
 
-        if (current.enabled && !(await options.confirmChange())) {
-          return current;
+        if (current.enabled) {
+          const confirmed = await options.confirmChange();
+          assertCurrent();
+          if (!confirmed) return current;
         }
         const directoryPath = await options.selectDirectory();
+        assertCurrent();
 
         if (directoryPath === null) {
           return current;
         }
         const nextStatus =
           await options.service.chooseDirectory(directoryPath);
+        assertCurrent();
         options.onConfigurationChanged?.('enabled');
         return nextStatus;
       }),
@@ -82,13 +100,15 @@ export function createInvoicePdfArchiveCapability(
   options.ipcMain.handle(
     openInvoicePdfArchiveDirectoryIpcChannel,
     async (event, ...args: unknown[]) =>
-      runExclusiveOperation(options, event, args, async () => {
+      runExclusiveOperation(options, event, args, async assertCurrent => {
         const directoryPath = await options.service.getOpenDirectoryPath();
+        assertCurrent();
 
         if (directoryPath === null) {
           throw new Error('INVOICE_PDF_ARCHIVE_NOT_CONFIGURED');
         }
         const errorMessage = await options.openPath(directoryPath);
+        assertCurrent();
 
         if (errorMessage.length > 0) {
           throw new Error('INVOICE_PDF_ARCHIVE_OPEN_FAILED');
@@ -98,13 +118,16 @@ export function createInvoicePdfArchiveCapability(
   options.ipcMain.handle(
     disableInvoicePdfArchiveIpcChannel,
     async (event, ...args: unknown[]) =>
-      runExclusiveOperation(options, event, args, async () => {
+      runExclusiveOperation(options, event, args, async assertCurrent => {
         const current = await options.service.getStatus();
+        assertCurrent();
 
-        if (!current.enabled || !(await options.confirmDisable())) {
-          return current;
-        }
+        if (!current.enabled) return current;
+        const confirmed = await options.confirmDisable();
+        assertCurrent();
+        if (!confirmed) return current;
         const nextStatus = await options.service.disable();
+        assertCurrent();
         options.onConfigurationChanged?.('disabled');
         return nextStatus;
       }),
@@ -119,19 +142,39 @@ export function createInvoicePdfArchiveCapability(
 
   return {
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      invalidateDocument();
       for (const channel of channels) {
         options.ipcMain.removeHandler(channel);
       }
+      options.mainWindow.webContents.off('did-start-navigation', navigationStarted);
+      options.mainWindow.webContents.off('did-start-loading', invalidateDocument);
+      options.mainWindow.webContents.off('render-process-gone', invalidateDocument);
+      options.mainWindow.webContents.off('destroyed', invalidateDocument);
+      options.mainWindow.off('close', invalidateDocument);
     },
   };
+
+  function captureRequest(event: IpcMainInvokeEvent, args: unknown[]): () => void {
+    const epoch = documentEpoch;
+    const assertCurrent = () => {
+      requireTrustedRequest(event, args, options.mainWindow);
+      if (disposed || documentEpoch !== epoch || options.mainWindow.webContents.isDestroyed()) {
+        throw new Error('INVOICE_PDF_ARCHIVE_FORBIDDEN');
+      }
+    };
+    assertCurrent();
+    return assertCurrent;
+  }
 
   async function runExclusiveOperation<Result>(
     capabilityOptions: InvoicePdfArchiveCapabilityOptions,
     event: IpcMainInvokeEvent,
     args: unknown[],
-    operation: () => Promise<Result>,
+    operation: (assertCurrent: () => void) => Promise<Result>,
   ): Promise<Result> {
-    requireTrustedRequest(event, args, capabilityOptions.mainWindow);
+    const assertCurrent = captureRequest(event, args);
 
     if (operationInProgress) {
       throw new Error('INVOICE_PDF_ARCHIVE_OPERATION_IN_PROGRESS');
@@ -139,9 +182,16 @@ export function createInvoicePdfArchiveCapability(
     operationInProgress = true;
 
     try {
-      return await operation();
+      const result = await operation(assertCurrent);
+      assertCurrent();
+      return result;
     } catch {
-      capabilityOptions.showSafeError();
+      try {
+        assertCurrent();
+        capabilityOptions.showSafeError();
+      } catch {
+        // A stale document must not receive a late native error dialog.
+      }
       throw new Error('INVOICE_PDF_ARCHIVE_OPERATION_FAILED');
     } finally {
       operationInProgress = false;

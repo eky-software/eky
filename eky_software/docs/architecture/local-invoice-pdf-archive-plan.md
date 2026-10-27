@@ -217,11 +217,30 @@ todettua päättymistä. Tarkka poisto- ja testisopimus on
 [työtilasuunnitelman hyväksytyssä poistoperiaatteessa](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate);
 tämä ei vielä ole poiston tuotantokytkentä.
 
-W7.3:n hyväksytty sulkukoe rajaa nykyisen arkisto-omistajan odotuksen
-enintään viiteen sekuntiin. Pääsyn sulku, alkanut tiedostotyö, epävarma
-kahvasulku ja kopioinnin onnistuminen erotetaan toisistaan. Aikarajan
-täyttyminen ei oikeuta sisäisen tilan poistamiseen. Kokeen nykytila ja
-tuotantokytkennältä edelleen vaadittava näyttö ovat
+W7.3:n arkisto-omistajan `sealAndDrain()` estää uudet komennot ja
+aloittamattomat jonotyöt heti. Se odottaa alkanutta tiedostotyötä,
+journalin viimeistelyä ja kahvojen sulkua enintään viisi sekuntia.
+Tulos on suljettu `drained | timedOut | ioUncertain`; sama kutsu palauttaa
+saman odotettavan tuloksen. `drained` tarkoittaa työn ja I/O:n päättymistä,
+ei jokaisen arkistokopion onnistumista. Valmistunut kopiointivirhe säilyttää
+normaalin retry-taskin. Aikaraja tai epävarma kahvasulku ei oikeuta sisäisen
+tilan poistamiseen, ja myöhäinen valmistuminen ei muuta hylättyä sulkua
+onnistuneeksi.
+
+Palvelu tarkistaa sulun myös retry-silmukan seuraavan kopion ja
+kansiokokeen jälkeisen asetuskirjoituksen edellä. Epävarmassa PDF-,
+journal- tai probe-kahvan sulussa sen aineisto säilytetään ja lisätyö
+estetään. Capability mitätöi myöhäisen native-jatkon dispose-, pääframen
+navigointi-/lataus-, rendererin päättymis- ja ikkunan sulkutapahtumissa.
+Vanha tulos ei käynnistä uutta kansiovalintaa, kirjoitusta, kansion avausta
+tai virheikkunaa uudessa dokumentissa. Sulun vuoksi jo päättynyt SMTP-
+toimitus ei muutu epäonnistuneeksi.
+
+Brokerin `close()` sulkee viestipääsyn, mutta ei yksin todista palvelun
+I/O:n päättymistä. W7.3:n nimetty lifecycle-kutsuja kytkee nämä omistajat
+toisiinsa erikseen; palvelun ja capabilityn kohdetestit eivät korvaa tätä
+tuotantokytkentää tai paketoidun sovelluksen hyväksyntää. Ajantasainen
+näyttö ja edelleen vaaditut portit ovat
 [W7.3:n toteutussopimuksessa](local-company-workspace-plan.md#w73n-toteutussopimus).
 
 Eristyksen hyväksyntä vaatii `WORKSPACE-ARCHIVE-001`-skenaarion ennen

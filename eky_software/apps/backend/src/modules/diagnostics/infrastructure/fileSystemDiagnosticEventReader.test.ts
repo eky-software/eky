@@ -23,6 +23,60 @@ describe('FileSystemDiagnosticEventReader', () => {
     }
   });
 
+  it.each(['admission', 'deletePreparation'].flatMap(stage =>
+    ['WORKSPACE_MANAGEMENT_BUSY', 'WORKSPACE_MANAGEMENT_INVALID',
+      'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_FAILED'].flatMap(errorCode => {
+      const retryable = errorCode === 'WORKSPACE_MANAGEMENT_BUSY';
+      return (stage === 'admission' || retryable ? ['none', 'unknown'] : ['unknown'])
+        .map(sideEffectState => ({ stage, errorCode, retryable, sideEffectState }));
+    }),
+  ))('reads deletion $errorCode at $stage/$sideEffectState through diagnostics and support', async entry => {
+    const logsRoot = createLogsRoot();
+    const event: Record<string, unknown> = {
+      ...createDesktopOperationalEventFixture({
+        category: 'workspaceManagement', errorCode: entry.errorCode, eventId: 'synthetic-delete-failure',
+        eventName: 'workspaceManagement.operationFailed', level: 'error', outcome: 'failure',
+        timestamp: '2026-07-27T10:04:00.000Z',
+      }),
+      ...entry, operationId: 'workspace.delete', correlationId: '22222222-2222-4222-8222-222222222222',
+    };
+    const invalidChanges = [
+      { operationId: 'workspace.deleteResume' }, { stage: 'operation' },
+      { stage: 'deleteAuthorization' }, { stage: 'deletePurge' },
+      { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
+      { errorCode: 'WORKSPACE_DELETE_IO_FAILED' }, { errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' },
+      { retryable: !entry.retryable }, { sideEffectState: 'completed' },
+      { eventName: 'workspaceManagement.operationCompleted' },
+      { workspaceId: 'synthetic-private-workspace' }, { workspaceLabel: 'synthetic-private-label' },
+      { inventory: [] }, { lineageIdentity: 'synthetic-private-lineage' },
+      { rawError: 'synthetic-private' }, { stack: 'synthetic-private' }, { cause: {} },
+      ...(entry.stage === 'deletePreparation' && !entry.retryable ? [{ sideEffectState: 'none' }] : []),
+    ];
+    writeLines(logsRoot, 'desktop', 'desktop-warning-error-2026-07-001.jsonl', [
+      event,
+      ...invalidChanges.map((change, index) => ({ ...event, ...change, eventId: `synthetic-invalid-${index}` })),
+    ]);
+    const diagnostic = await new FileSystemDiagnosticEventReader(logsRoot).listRecentDiagnosticEvents(10);
+    const support = await new FileSystemSupportBundleDiagnosticEventReader(logsRoot).readSupportBundleDiagnosticEvents({
+      earliestTimestamp: '2026-07-01T00:00:00.000Z', latestTimestamp: '2026-07-28T00:00:00.000Z',
+    });
+    const expected = {
+      appVersion: event.appVersion, buildRevision: event.buildRevision,
+      category: 'workspaceManagement', component: 'desktop',
+      correlationId: event.correlationId, durationMs: event.durationMs,
+      eventName: event.eventName, id: `desktop:${event.eventId}`,
+      level: 'error', occurredAt: event.timestamp, operationId: 'workspace.delete', outcome: 'failure',
+      runtimeInstanceId: event.runtimeInstanceId, ...entry,
+    };
+    for (const events of [diagnostic.diagnosticEvents, support.diagnosticEvents]) {
+      expect(events).toEqual([expected]);
+      expect(JSON.stringify(events)).not.toContain(logsRoot);
+      expect(JSON.stringify(events)).not.toMatch(/workspaceLabel|workspaceId|companyId|synthetic-private|rawError|stack|cause|inventory|lineageIdentity|path/);
+    }
+    expect(diagnostic.readState).toEqual({ status: 'partial', reasons: ['invalidEntries'] });
+    expect(support.sourceTruncated).toBe(true);
+  });
+
   it.each([
     ['workspace.create', 'WORKSPACE_CREATION_LABEL_EXISTS'],
     ['workspace.import', 'WORKSPACE_IMPORT_LABEL_EXISTS'],

@@ -4112,11 +4112,13 @@ async function createFixture(
   const root = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
   (options.ownedRoots ?? roots).push(root);
   let windowDestroyed = false;
-  const mainWindow = {
+  const mainWindow = Object.assign(new EventEmitter(), {
     destroy: vi.fn(() => { windowDestroyed = true; }),
     isDestroyed: () => windowDestroyed,
-    webContents: { mainFrame: {}, send: vi.fn(), isDestroyed: () => windowDestroyed },
-  };
+    webContents: Object.assign(new EventEmitter(), {
+      mainFrame: {}, send: vi.fn(), isDestroyed: () => windowDestroyed,
+    }),
+  });
   const quit = vi.fn();
   const showErrorBox = vi.fn();
   const showOpenDialog = vi.fn(async (): Promise<{ canceled: boolean; filePaths: string[] }> => ({ canceled: true, filePaths: [] }));

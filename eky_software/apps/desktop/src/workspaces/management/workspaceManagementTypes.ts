@@ -31,7 +31,19 @@ export type WorkspaceManagementOperationKind =
   | 'import'
   | 'replace'
   | 'switch'
-  | 'rename';
+  | 'rename'
+  | 'delete';
+
+export interface WorkspaceDeletionPreparationLifetime {
+  assertCurrent(): void;
+  closeAdmissionForOwnStop(): void;
+}
+
+// Main-only preparation, never a renderer's completed deletion result.
+export type WorkspaceDeletionPreparationOutcome =
+  | 'prepared'
+  | 'cancelled'
+  | 'returnRequested';
 
 export interface WorkspaceManagementOperationEvent {
   readonly correlationId: string;
@@ -43,7 +55,7 @@ export interface WorkspaceManagementOperationEvent {
   readonly outcome: 'succeeded' | 'failed';
   readonly retryable?: boolean;
   readonly sideEffectState?: 'none' | 'completed' | 'unknown';
-  readonly stage: 'admission' | 'operation' | 'lineageCheck' | 'status';
+  readonly stage: 'admission' | 'operation' | 'lineageCheck' | 'status' | 'deletePreparation';
 }
 
 export interface WorkspaceManagementObserver {

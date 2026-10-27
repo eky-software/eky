@@ -76,6 +76,8 @@ export class InvoicePdfArchiveAtomicJsonFile<Value> {
     }
 
     let currentMoved = false;
+    let closeUncertain = false;
+    let primaryFailure: unknown;
 
     try {
       await mkdir(this.directoryPath, { mode: 0o700, recursive: true });
@@ -86,8 +88,17 @@ export class InvoicePdfArchiveAtomicJsonFile<Value> {
       try {
         await handle.writeFile(serialized, 'utf8');
         await handle.sync();
+      } catch (error) {
+        primaryFailure = error;
+        throw error;
       } finally {
-        await handle.close();
+        try {
+          await handle.close();
+        } catch (error) {
+          closeUncertain = true;
+          throw new InvoicePdfArchiveError('ARCHIVE_STORAGE_FAILED', true, true,
+            primaryFailure ?? error);
+        }
       }
 
       await chmod(this.nextFilePath, 0o600);
@@ -115,10 +126,11 @@ export class InvoicePdfArchiveAtomicJsonFile<Value> {
       if (currentMoved) {
         await this.removeFile(this.backupFilePath);
       }
-    } catch {
-      throw new InvoicePdfArchiveError('ARCHIVE_STORAGE_FAILED', true);
+    } catch (error) {
+      if (error instanceof InvoicePdfArchiveError && error.ioCompletionUncertain) throw error;
+      throw new InvoicePdfArchiveError('ARCHIVE_STORAGE_FAILED', true, false, error);
     } finally {
-      await rm(this.nextFilePath, { force: true }).catch(() => undefined);
+      if (!closeUncertain) await rm(this.nextFilePath, { force: true }).catch(() => undefined);
     }
   }
 

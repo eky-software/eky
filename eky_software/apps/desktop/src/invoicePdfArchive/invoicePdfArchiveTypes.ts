@@ -58,8 +58,10 @@ export class InvoicePdfArchiveError extends Error {
   constructor(
     readonly code: InvoicePdfArchiveSafeErrorCode,
     readonly retryable: boolean,
+    readonly ioCompletionUncertain = false,
+    cause?: unknown,
   ) {
-    super(code);
+    super(code, cause === undefined ? undefined : { cause });
     this.name = 'InvoicePdfArchiveError';
   }
 }

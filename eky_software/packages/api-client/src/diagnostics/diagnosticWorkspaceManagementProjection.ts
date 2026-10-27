@@ -12,7 +12,7 @@ const failureOperations: Readonly<Record<string, string>> = {
   WORKSPACE_MANAGEMENT_SWITCH_FAILED: 'workspace.switch',
   WORKSPACE_MANAGEMENT_RENAME_FAILED: 'workspace.rename',
 };
-const operations = new Set(Object.values(failureOperations));
+const operations = new Set([...Object.values(failureOperations), 'workspace.delete']);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isWorkspaceManagementProjection(value: Record<string, unknown>): boolean {
@@ -24,6 +24,15 @@ export function isWorkspaceManagementProjection(value: Record<string, unknown>):
     typeof value.durationMs !== 'number' || !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 ||
     typeof value.operationId !== 'string' || !operations.has(value.operationId) ||
     (value.sideEffectState !== 'none' && value.sideEffectState !== 'unknown')) return false;
+  if (value.operationId === 'workspace.delete') {
+    if (value.stage !== 'admission' && value.stage !== 'deletePreparation') return false;
+    if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') return value.retryable === true;
+    return value.retryable === false &&
+      (value.stage === 'admission' || value.sideEffectState === 'unknown') &&
+      (value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' ||
+        value.errorCode === 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' ||
+        value.errorCode === 'WORKSPACE_DELETE_FAILED');
+  }
   if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') {
     return (value.stage === 'admission' || value.stage === 'operation') && value.retryable === true;
   }

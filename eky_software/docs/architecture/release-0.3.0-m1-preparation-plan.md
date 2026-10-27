@@ -25,15 +25,31 @@ päätöksiä. Kohde, pyyntö, backup ja käyttäjän valitsema paluu on yhdiste
 nykyisiin omistajiin koeehdokkaassa. Aiemmat osatodisteet ja korjaukset
 säilyvät omistavassa sopimuksessa; niiden määriä ei lasketa yhteen.
 
-**Seuraava työ:** aloita V2 arkiston pääsyn sulusta, todellisen I/O:n
-odottamisesta ja management-pyynnön eliniästä nykyisissä omistajissa.
-Säilytä tavallisen arkistoinnin, yrityshallinnan ja sulun kontrollit.
-Tämän jälkeen kytke nimetty maintenance-/backup-sopimus, kohdevaltuus
-ja molemmat lifecycle-kutsujat omistavan suunnitelman järjestyksessä.
+**V2:n aloitus:** arkiston pääsyn sulku, rajattu I/O-drain, epävarman
+kahvasulun aineistonsäilytys ja myöhäisten native-jatkojen esto ovat nyt
+lähdetoteutuksessa. Yrityshallinnan admission ja lopullinen disposal on
+erotettu; dokumentin sukupolvi mitätöi vanhat jatkot. Poiston mainin sisäinen
+valmistelupyyntö käyttää nyt täsmällistä muuttumatonta pyyntöä ja nykyistä
+mutaatiogatea. Vain oma admission-sulku säilyttää sen valtuuden; ulkoinen
+sulku tai dokumentin vaihto mitätöi sen. Rajattu katselmus ja sen
+virheluokituskorjauksen jälkikatselmus valmistuivat. Nykyinen 499 testin
+arkisto-/hallinta-/lokitus-/tukipakettisarja, 315 main-kontrollia,
+backendin 69 ja API-clientin 39 lukijasopimustestiä läpäisivät erillisinä
+ajoina. Yksi nykyisiä lähteitä käyttävä liitoskoe todisti virheen todellisen
+JSONL -> Diagnostics/tukipaketti/incident -> lukijavalidointi -ketjun.
+Osajoukkojen määriä ei lasketa yhteen; tämä ei ole koko poiston tai sen
+valtuuden hyväksyntä.
+
+**Seuraava työ:** kytke nimetty maintenance-/inspection-/backup-sopimus,
+sitten kohdevaltuus ja molemmat lifecycle-kutsujat
+omistavan suunnitelman järjestyksessä. Tavalliset kontrollit säilyvät.
+Management-palvelun valmistelukomento ei vielä ole composition-juurten
+tuotantokuluttaja. Arkiston `sealAndDrain` tarvitsee vielä saman omistajan
+todellisen sulkukytkennän; pelkkä uusi palvelurajapinta ei todista sitä.
 Menetyssuostumuksen, passiivisen/vikatilaisen kohteen ja null-valitsimen
 koko yhteiskytkentä sekä oikeat SQLite-, prosessi-, varaus-, native- ja
 vientilukijarajat ovat edelleen V2/V3:n todennusvelvoitteita.
-V2-tuotantokytkentää tai uutta CI-kierrosta ei ole aloitettu. Delete-IPC,
+Koko poistoketjun tuotantokytkentää tai uutta CI-kierrosta ei ole tehty. Delete-IPC,
 preload-metodi ja poistopainike pysyvät poissa tuotannosta W7.4:n
 todelliseen kuluttajaan asti. Valmistelu ei ole poiston `completed`-tulos.
 

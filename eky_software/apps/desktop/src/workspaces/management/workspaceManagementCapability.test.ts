@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { createWorkspaceManagementCapability } from './workspaceManagementCapability.js';
@@ -14,6 +15,8 @@ import {
 
 const activeWorkspaceId = '11111111-1111-4111-8111-111111111111';
 const otherWorkspaceId = '22222222-2222-4222-8222-222222222222';
+const capabilities: ReturnType<typeof createWorkspaceManagementCapability>[] = [];
+afterEach(() => { for (const capability of capabilities.splice(0)) capability.dispose(); });
 const status = Object.freeze({
   activeWorkspaceId,
   formatVersion: 1 as const,
@@ -478,6 +481,16 @@ describe('workspace management capability', () => {
     }
   });
 
+  it('keeps the renderer failure safe even when its native error dialog throws', async () => {
+    const fixture = createFixture({ createEmpty: async () => { throw new Error('Synthetic private failure'); } });
+    fixture.showSafeError.mockImplementationOnce(() => { throw new Error('Synthetic dialog failure'); });
+    const result = fixture.invoke(createEmptyWorkspaceIpcChannel, fixture.trustedEvent,
+      { workspaceLabel: 'Synthetic company' });
+    await expect(result).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FAILED');
+    await expect(result).rejects.not.toHaveProperty('cause');
+    expect(fixture.showSafeError).toHaveBeenCalledOnce();
+  });
+
   it('disposes terminally while allowing the current mutation to settle', async () => {
     const creation = createDeferred<unknown>();
     const fixture = createFixture({
@@ -613,6 +626,70 @@ describe('workspace management capability', () => {
     expect(fixture.showSafeError).not.toHaveBeenCalled();
   });
 
+  it.each(['navigation', 'loading', 'rendererGone', 'windowClose'] as const)(
+    'invalidates a pending native request after %s with unchanged frame identity', async invalidation => {
+      const entered = createDeferred<void>();
+      const finish = createDeferred<string | null>();
+      const fixture = createFixture({ selectBackupSource: async () => {
+        entered.resolve();
+        return finish.promise;
+      } });
+      const frame = fixture.webContents.mainFrame;
+      const result = fixture.invoke(importWorkspaceBackupAsNewIpcChannel, fixture.trustedEvent,
+        { workspaceLabel: 'Synthetic import' }).catch(error => error);
+      try {
+        await entered.promise;
+        if (invalidation === 'navigation') fixture.webContents.emit('did-start-navigation', { isMainFrame: true });
+        if (invalidation === 'loading') fixture.webContents.emit('did-start-loading');
+        if (invalidation === 'rendererGone') fixture.webContents.emit('render-process-gone');
+        if (invalidation === 'windowClose') fixture.mainWindow.emit('close');
+        expect(fixture.webContents.mainFrame).toBe(frame);
+        finish.resolve('synthetic-native-choice');
+        expect(await result).toMatchObject({ message: 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN' });
+        expect(fixture.requestPassword).not.toHaveBeenCalled();
+        expect(fixture.importBackupAsNew).not.toHaveBeenCalled();
+        expect(fixture.showSafeError).not.toHaveBeenCalled();
+      } finally { finish.resolve(null); await result; await fixture.capability.shutdown(); }
+    },
+  );
+
+  it('closes admission without losing the settlement of an admitted mutation', async () => {
+    const entered = createDeferred<void>();
+    const finish = createDeferred<unknown>();
+    const fixture = createFixture({ createEmpty: async () => { entered.resolve(); return finish.promise; } });
+    const cached = fixture.getHandler(createEmptyWorkspaceIpcChannel);
+    const operation = fixture.invoke(createEmptyWorkspaceIpcChannel, fixture.trustedEvent,
+      { workspaceLabel: 'Synthetic company' });
+    try {
+      await entered.promise;
+      fixture.capability.closeAdmission();
+      fixture.capability.closeAdmission();
+      await expect(cached(fixture.trustedEvent, { workspaceLabel: 'Another company' }))
+        .rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+      let settled = false;
+      const closing = fixture.capability.shutdown().then(() => { settled = true; });
+      await Promise.resolve();
+      expect(settled).toBe(false);
+      finish.resolve(undefined);
+      await expect(operation).resolves.toEqual({ formatVersion: 1, status: 'relaunching' });
+      await closing;
+      expect(fixture.createEmpty).toHaveBeenCalledOnce();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+    } finally { finish.resolve(undefined); await operation; await fixture.capability.shutdown(); }
+  });
+
+  it('releases document listeners only on terminal disposal', async () => {
+    const fixture = createFixture();
+    fixture.capability.closeAdmission();
+    expect(fixture.webContents.listenerCount('did-start-navigation')).toBe(1);
+    fixture.capability.dispose();
+    fixture.capability.dispose();
+    for (const event of ['did-start-navigation', 'did-start-loading', 'render-process-gone', 'destroyed']) {
+      expect(fixture.webContents.listenerCount(event)).toBe(0);
+    }
+    expect(fixture.mainWindow.listenerCount('close')).toBe(0);
+  });
+
   it('tracks a native callback before reentrant shutdown', async () => {
     const result = createDeferred<string | null>();
     const fixture = createFixture();
@@ -659,7 +736,8 @@ function createFixture(
   );
   const removeHandler = vi.fn((channel: string) => handlers.delete(channel));
   const mainFrame = {};
-  const webContents = { mainFrame };
+  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false });
+  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents });
   const createEmpty = vi.fn(
     options.createEmpty ??
       (async (workspaceLabel) => ({ workspaceId: otherWorkspaceId, workspaceLabel })),
@@ -699,7 +777,7 @@ function createFixture(
   const showSafeError = vi.fn();
   const capability = createWorkspaceManagementCapability({
     ipcMain: { handle, removeHandler } as never,
-    mainWindow: { isDestroyed: () => false, webContents } as never,
+    mainWindow: mainWindow as never,
     passwordWindow: { requestPassword },
     confirmActiveWorkspaceReplacement,
     selectBackupSource,
@@ -714,6 +792,7 @@ function createFixture(
     } as never,
     showSafeError,
   });
+  capabilities.push(capability);
 
   return {
     capability,
@@ -732,6 +811,7 @@ function createFixture(
       return handler(event, ...args);
     },
     mainFrame,
+    mainWindow,
     removeHandler,
     rename,
     replaceActiveFromBackup,
