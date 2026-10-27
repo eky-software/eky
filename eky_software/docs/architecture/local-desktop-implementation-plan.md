@@ -860,6 +860,23 @@ aktivointiaan tarkistajan drainissa. Offline/cold-valtuuden, lopullisen
 startup-hyväksynnän ja hardened-palautuksen nykytila on M1:n Jatka tästä
 -kohdassa; nämä säilyvät erillisinä hyväksyntävaatimuksina.
 
+### W7.3:n nimetyn poistosulun valmistelu
+
+W7.3:n koeehdokas käyttää samoja command-, runner- ja process-omistajia
+poiston omalla operaatiotunnisteella. Se ei lainaa update-/restore-suojaa
+eikä ota käyttöön uutta sammutusalgoritmia. Saman poistosuojan tarkistus
+ennen palvelinsulkua ja sen jälkeen, todellinen onnistunut exit sekä
+varauksen takaisinotto ovat erillisiä vaatimuksia. Brokerin sulkeminen
+mitätöi elävän suojan vasta viimeisen tarkistuksen jälkeen; kanavan
+puuttuminen ei todista onnistunutta sulkua. Nykyinen strict-budjetti ja
+tavallisen sulun sopimus säilyvät.
+
+Tämä on rajattu, katselmoitu osakoe, ei tuotantokytkentä. Mainin active-
+lifecycle, arkisto-/secret-/inspection-I/O, hallintapyynnön valtuus ja
+kertakäyttöinen backup-todiste on vielä yhdistettävä samaan ketjuun.
+[W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
+omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit

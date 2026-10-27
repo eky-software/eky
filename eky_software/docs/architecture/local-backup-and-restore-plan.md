@@ -638,6 +638,55 @@ pelkkä uuden viestioperaation olemassaolo ei todista niiden kytkentää.
 
 Backup ei muuta business dataa, laskun statusta tai toimitustapahtumia.
 
+### W7.3:n poiston valmistelun vientisopimus
+
+**Valmistelu, ei tuotantokytkentä:** poiston backup-haara käyttää samaa
+portable-vientialgoritmia, containeria ja nykyisiä siivousomistajia. Tavallinen
+`create()` hankkii ja vapauttaa edelleen oman maintenance-suojansa. Poiston
+kutsuja omistaa erikseen nimetyn suojan snapshotista todelliseen sulkuun;
+vientipalvelu ei saa vapauttaa sitä onnistumisessa tai virheessä eikä lainata
+update-/restore-valtuutta. Vain mainin nykyinen omistaja antaa tämän portin.
+
+Lähteen `exactCurrentManifest`-kuitti ja viennin `restoreCompatible`-kuitti
+säilytetään ennen turvalliseksi yhteenvedoksi projisointia ja stagingin
+siivousta. Niiden varsinaiset sisältökentät vertaillaan
+[W7.0:n vastaavuussäännön](local-company-workspace-plan.md#poiston-backup-todisteen-vastaavuus)
+mukaan. Alkuperäisen autentikoidun container-kahvan identiteetti säilyy
+tiivisteen rinnalla: myöhempi polun `stat` ei korvaa sitä. Tiedostoihin sidotun
+kuittitiedon palautus odottaa lukukahvojen sulut ja tarkistuksen oman siivouksen.
+Nykyinen tarkistusomistaja säilyttää itse luomansa muuttumattoman
+operation/generation/session-sidonnan hyväksytyn kuitin rinnalla. Nimetty
+mainin sisäinen evidence-luku käyttää samaa varattua kuluttajaelinkaarta;
+uudelleentarkistus tyhjentää aiemman sidonnan ja päättynyt kuluttaja menettää
+valtuutensa. Lähteen ja viennin tarkistukset ovat erilliset. Tunnisteita ei
+lisätä turvalliseen yhteenvetoon tai rendererille.
+Todettu vientisisältö ei itsessään ole poisto-, journal- tai paluuvaltuus.
+Kutsujan valtuus tarkistetaan myös viimeisen tiedostosiivouksen ja koko
+tarkistusoperaation omistajan paluun jälkeen, ennen sisältötodisteen palautusta.
+
+Jo varmennettu käyttäjän vientikopio säilyy, vaikka poiston valtuus katoaa
+myöhemmin tai lähdestagingin siivous jää epävarmaksi. Tällöin poiston
+valmistelu ei onnistu eikä epävarmaa siivousta uusita automaattisesti.
+Ennen varmennusta hylätty vienti ei kelpaa backup-todisteeksi. Salaisuus- ja
+paikallisten asetusten nykyiset poissulut sekä tavallisen backupin käyttäytyminen
+säilyvät.
+
+Lähdekoodista johdettu yksityinen koe käyttää oikeaa salattua containeria,
+tiedostoja ja synteettisiä PDF-tavuja. Yhdistetty koe käyttää nykyisen mainin
+tarkistusomistajan luomia tunnisteita sekä nykyistä kertakopion ja kuluttajan
+siivousta. Myöhempi liitoskoe yhdistää tähän nimetyn delete-maintenance-tilan,
+client/brokerin ja installation-leasen nykyisen muistissa olevan omistajan.
+Nimetty `validateDeletionProfileSnapshot` välittää poistosuojan omistajan
+sekä lähteen että eri tunnisteella tarkistettavan viennin alku- ja loppulukuun.
+Vientikutsun paikallinen sovitus käyttää samaa staging- ja tarkistusalgoritmia;
+yleistä muuttuvaa tarkistuskontekstia tai update-valtuutta ei käytetä.
+Väärä omistaja, kesken luvun peruttu suoja ja vaihtunut lease eivät anna kuittia.
+SQLite, snapshotin lähde, prosessiraja, kuljetus ja fyysinen varaus ovat
+vielä injektoituja. Yrityskohde, suojan luovutus todelliseen sulkuun sekä
+kuitin lopullinen kulutus vaativat oman kytkentänäyttönsä.
+Koetuloksen ja koko W7.3:n hyväksyntärajat ovat
+[työtilasuunnitelmassa](local-company-workspace-plan.md#w73n-toteutussopimus).
+
 ## Machine-local recovery point
 
 Palautuspiste käyttää samaa profiilisisällön inclusion/exclusion-sopimusta,

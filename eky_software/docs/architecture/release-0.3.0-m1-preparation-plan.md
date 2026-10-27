@@ -7,7 +7,37 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**Hyväksytty toteutus (27.10.2026):** W7.2 on yhdistetty
+**Nykyinen lähtö (27.10.2026):** hyväksytty main on
+`78e53e6c3bd16e0813b2f5e9b6f5213272a056ba`.
+[PR #322:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/322#issuecomment-6430656892)
+sekä tämän mainin omat
+[V2-portit](https://github.com/eky-software/eky/actions/runs/40422256156) ja
+[riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40422642826)
+läpäisivät ensimmäisellä suoritusyrityksellä. PR #322 päivitti W7.2:n
+jatkamiskohdan; alla oleva W7.2-näyttö säilyy erillisenä hyväksyntänä.
+
+**Aktiivinen työ:** W7.3:n vahvistuksen, backup-todisteen ja todellisen
+sulun [toteutussopimuksen](local-company-workspace-plan.md#w73n-toteutussopimus)
+V1-valmistelu on valmis rajatussa suunnittelumerkityksessä. Viimeisin
+aktiivisen kohteen liitoskoe läpäisi 52 tarkistusta ja tyyppitarkistuksen;
+riippumaton korjaus- ja loppukatselmus ei jättänyt toteutuksen estäviä
+päätöksiä. Kohde, pyyntö, backup ja käyttäjän valitsema paluu on yhdistetty
+nykyisiin omistajiin koeehdokkaassa. Aiemmat osatodisteet ja korjaukset
+säilyvät omistavassa sopimuksessa; niiden määriä ei lasketa yhteen.
+
+**Seuraava työ:** aloita V2 arkiston pääsyn sulusta, todellisen I/O:n
+odottamisesta ja management-pyynnön eliniästä nykyisissä omistajissa.
+Säilytä tavallisen arkistoinnin, yrityshallinnan ja sulun kontrollit.
+Tämän jälkeen kytke nimetty maintenance-/backup-sopimus, kohdevaltuus
+ja molemmat lifecycle-kutsujat omistavan suunnitelman järjestyksessä.
+Menetyssuostumuksen, passiivisen/vikatilaisen kohteen ja null-valitsimen
+koko yhteiskytkentä sekä oikeat SQLite-, prosessi-, varaus-, native- ja
+vientilukijarajat ovat edelleen V2/V3:n todennusvelvoitteita.
+V2-tuotantokytkentää tai uutta CI-kierrosta ei ole aloitettu. Delete-IPC,
+preload-metodi ja poistopainike pysyvät poissa tuotannosta W7.4:n
+todelliseen kuluttajaan asti. Valmistelu ei ole poiston `completed`-tulos.
+
+**Hyväksytty toteutus:** W7.2 on yhdistetty
 [PR #321:llä](https://github.com/eky-software/eky/pull/321)
 mainiin `e1f6ea0b186186efa4b93b9f1b8acc9b7c527e91`.
 Mergepuu vastaa täsmälleen katselmoitua PR-headia
@@ -56,11 +86,11 @@ ohjehuolto ei uusi käytettyjä uusintalupia.
 [Edeltävä jatkamisteksti ja näyttö](release-0.3.0-integration-history.md#w72n-integraatiota-edeltävä-jatkamiskohta-27102026)
 säilyvät muuttamattomina historiassa.
 
-**Seuraava toteutuspala:** W7.3:n poistovahvistuksen ja sulun valmistelu
-nykyisen työtilasuunnitelman mukaan, erillisenä tehtävänä. W7.4:n lopullinen
+**Rajaus:** W7.3:n poistovahvistuksen ja sulun valmistelu jatkuu
+nykyisen työtilasuunnitelman mukaan. W7.4:n lopullinen
 poisto ja W7.5:n palaute-/tukilaajennus eivät ole vielä tuotantototeutuksia.
 R030-06, M5 ja 0.3.0-julkaisu säilyvät erillisinä. Tämä ohjehuolto ei aloita
-niitä eikä muuta hyväksyttyjä sopimuksia.
+niitä eikä muuta aiempien pakettien hyväksyttyjä sopimuksia.
 T/A/B/C/K/D/E/F/G/H/I, M4.1-M4.3 ja W7.1-W7.2 säilyvät hyväksyttyinä omissa
 rajauksissaan; niitä ei avata uudelleen ilman omaa regressiota.
 

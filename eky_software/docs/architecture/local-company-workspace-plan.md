@@ -4019,6 +4019,428 @@ valtuuden, muuttuneen kohteen, osittaisen poiston ja toistetun restartin.
 Jos nykyinen omistaja ei riitä, puute ja pienin vaihtoehto tuodaan päätökseen
 ennen kytkentää. Valmistelu ei käynnistä pitkää CI- tai asennusajoa.
 
+#### W7.3:n toteutussopimus
+
+**27.10.2026: V1:n toteutussopimus ja rajattu yhteiskytkentäkoe on
+katselmoitu; V2-tuotantototeutus ja V3-hyväksyntä ovat tekemättä.** W7.0:n hyväksytyt
+[vahvistusrajat](#w70n-poistopyyntö--ja-vahvistussopimus),
+[backup-todiste](#poiston-backup-todisteen-vastaavuus) ja
+[poistettava kokonaisuus](#vahvistus-sulku-ja-poistettava-kokonaisuus)
+säilyvät. Tämä osio täsmentää niiden nykyiset tuotantokutsujat; se ei
+uusi vanhoja kokeita tai lisää W7.4:n purgea W7.3:een.
+
+Alla olevat päivätyt osakokeet kuvaavat valmistelun etenemistä. Niiden
+silloiset puutteet eivät ole rinnakkainen työjono: jäljellä oleva työ on
+koottu kohde-/omistajamatriisiin ja toteutusjärjestykseen tämän osion lopussa.
+
+**Toimitusraja:** W7.3 valmistelee vahvistuksen ja kertakäyttöisen valtuuden
+nykyisiin omistajiin sekä todentaa todellisen backup-/sulkuketjun.
+Käyttäjälle ei vielä rekisteröidä delete-IPC:tä, paljasteta preload-metodia
+tai tarjota poistopainiketta. Ne kytketään vasta W7.4:n todellisen
+journal-/poistokuluttajan kanssa. Testissä nimetty julkaisukuluttaja ei ole
+tuotannon poistaja eikä sen kuittaus oikeuta `completed`-tulokseen.
+W7.3:n PR hyväksyy vain tämän valmistelurajan ja sen regressiot.
+W7.4-W7.5 tarvitsevat edelleen koko poiston ja palautumisen näyttönsä.
+
+**Nykykoodista varmennetut liitoskohdat:**
+
+| Raja ja nykyinen omistaja | Rajattu toteutustarve |
+| --- | --- |
+| `workspaces/management/workspaceManagementCapability.ts`, `workspaceManagementService.ts`, `workspaceManagementComposition.ts` | Oma runtime-sulku kutsuu nyt myös hallinnan `dispose`a. Erota uusien pyyntöjen admission ja juuri hyväksytyn operaation elinikä; todellinen ulkoinen sulku tai dokumentin vaihto mitätöi valtuuden. Oman pyynnön `shutdown` ei saa odottaa itseään. |
+| `main/desktopComposition.ts`, `main/desktopSelectorComposition.ts`, `workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.ts` ja `mainOwnedSelectorWorkspaceLifecycle.ts` | Kytke sama täsmällinen operaatio nykyiseen quiescence-, exit-, inspection- ja varausketjuun. Valitsin ei saa keksiä business-runtimea tai terveystulosta; aktiivisen runtimen sulku ei saa antaa no-op-todistetta. |
+| `workspaces/maintenance/workspaceMaintenanceLease.ts`, backendin `runtime/profileMaintenance/profileMaintenanceState.ts` ja nykyinen snapshot-broker | Nimeä poiston oma lease ja suojattu backend-omistaja; update/restore-valtuutta ei lainata. Katkennut suoja mitätöi kuitin pysyvästi. Tavallisen backupin vapautus säilyy. |
+| `profileBackup/portableProfileBackup.ts` | Tavallinen `create()` vapauttaa maintenance-suojan ennen paluuta. Tee hyväksytty caller-owned-haara samoilla lähdetarkistimilla, container-kirjoittajalla ja siivousomistajilla; älä monista vientialgoritmia. |
+| `profileBackup/runProfileSnapshotInspection.ts`, `profileSnapshotInspectionClient.ts`, `profileSnapshotInspectionPort.ts`, `inspectEncryptedProfileBackup.ts` ja `container/decryptBackupPayload.ts` | Säilytä täydet lähde-/vientikuitit ja nykyisen tarkistusprosessin varmentamat operation/generation/session-sidonnat ennen projektioita ja staging-siivousta. Säilytä autentikoidun lopullisen tiedoston alkuperäinen identiteetti ja tiiviste. Uutta container-formaattia tai tarkistusprotokollaa ei tarvita. |
+| `invoicePdfArchive/invoicePdfArchiveService.ts`, `invoicePdfArchiveBrokerMain.ts` ja `invoicePdfArchiveCapability.ts` | Nykyinen brokerin `close()` ei odota palvelun sarjajonoa, eikä capabilityn dispose estä kaikkia jo avatun dialogin jatkoja. Lisää pääsyn sulku, myöhäisten jatkojen mitätöinti ja todellisen I/O:n päättymistodiste nykyisiin omistajiin. |
+| Webin `app/desktopWorkspaceManagement.ts`, `features/workspaces/workspaceManagementOperation.ts`, `useWorkspaceManagement.ts` ja nykyinen hallintadialogi | Säilytä suljettu delete-pyyntö/tulos erillään vanhasta yleisestä operaatiotuloksesta. Sido myös virhe/finally nykyiseen UI-sukupolveen. Valmistele ja testaa käyttöliittymä erillään tuotannon kytkennästä. |
+
+Desktop-polut ovat `apps/desktop/src/`, backend-polut `apps/backend/src/`
+ja web-polut `apps/web/src/`-juuresta. Uudet nimetyt apurit sijoitetaan
+näiden omistajien yhteyteen, ei yleiseen manageriin tai utilities-kerrokseen.
+
+**Valtuuden kulku:**
+
+1. Capability ottaa mutaatiovuoron ennen ensimmäistä odotusta ja kaappaa
+   mainin dokumentti-/hallintasukupolven. Palvelu ottaa täsmällisen
+   installation-leasen ja lukee kohteen samoista validoiduista
+   rekisteritavuista: workspaceId, label, lineage, juuren identiteetti sekä
+   aiempi aktiivinen valinta. Nimi tarkistetaan W7.0:n täsmällisellä
+   NFC-säännöllä, ei nimien yksilöllisyyden vertailulla.
+2. Jokainen native-, varaus-, tiedosto- ja backup-odotus tarkistaa saman
+   muuttumattoman kohteen ja elävän valtuuden uudelleen. Dokumentin
+   navigointi/lataus, oikea capability-disposal, ulkoinen shutdown,
+   kohdemuutos tai varauksen menetys mitätöi sen peruuttamattomasti.
+   Pelkkä saman mainFrame-olion tai workspaceId:n säilyminen ei riitä.
+3. Backup-haara käyttää poiston caller-owned suojaa ja vaatii päättyneen
+   secret-/business-työn sekä DB-auditin ennen snapshotia. Lähteen ja
+   viennin täydet nykyiset sisältökuitit vastaavat toisiaan; policyt
+   `exactCurrentManifest` ja `restoreCompatible` tarkistetaan rooleittain.
+   Tavallinen viimeisin backup tai yhteenveto ei anna kuittia. Passiivisen
+   tai vikatilaisen kohteen puuttuvaa snapshot-omistajaa ei korvata
+   aktiivisen yrityksen tiedoilla tai pakotetulla business-avauksella.
+4. Ilman tällaista kopiota tarvitaan hyväksytty eksplisiittinen
+   menetyssuostumus, kirjoitettu nimi ja saman pääikkunan native-vahvistus.
+   Vienti-/salasanavirhe tai peruutus ei vaihda haaraa käyttäjän puolesta.
+   Suostumus ei anna omistajuutta, exit-todistetta tai oikeutta ohittaa
+   toisen yrityksen tai asennuspäivityksen recoverya.
+5. Nykyinen lifecycle todistaa erikseen mainin I/O:n, tarkistuslapsen ja
+   backendin päättymisen sekä mainin fyysisen varauksen palautumisen.
+   Uusien hallintapyyntöjen sulkeminen oman operaation vuoksi ei yksin
+   tuhoa juuri sen kaapattua valtuutta. Se ei kuitenkaan oikeuta
+   jatkamaan oikean ikkunasulun tai ulkoisen shutdownin jälkeen.
+6. Backup-kuitin myöntäminen ja kulutus varataan kerran ennen ensimmäistä
+   ulkoista callbackia tai odotusta, myös synkroninen uudelleentulo torjuen.
+   Callbackin paluun jälkeen tarkistetaan sen aikana voinut mitätöinti.
+   Kulutus revalidoi lopullisen containerin identiteetin ja
+   tiivisteen sekä kaikki kohde-/lease-/exit-rajat ennen W7.4:n
+   `authorized`-julkaisua. Julkaisuvartija mitätöidään lopuksi myös
+   virheessä; talteen jäänyttä callbackia ei saa käyttää myöhemmin.
+   Kuittauskatko ei palauta kulutusoikeutta.
+7. Ennen julkaisuyritystä peruutus säilyttää yrityksen aineiston. Se ei
+   itsessään todista suljetun runtimen käyttökelpoisuutta tai avaa
+   suljettua secret-brokeria uudelleen. Julkaisuyrityksen jälkeen
+   epävarmuus on `recoveryRequired`; vahvistettu journal omistaa jatkon.
+   `completed` edellyttää W7.4:n kaikkien poistojen ja loppusiivouksen
+   todistusta. Valmistelun palautus normaaliin käyttöön ratkaistaan
+   nykyisen lifecycle-omistajan kautta, ei rinnakkaisella runtimella.
+
+**Sulun täsmennys:** arkistoinnin pääsyn sulku estää
+uudet kopioinnit ja myöhäisen native-valinnan jatkon. Aloittamattomat
+jonotyöt päätetään ilman uusien tiedostovaikutusten aloittamista;
+jo pysyvässä retry-journalissa olevat työt säilyvät. Aloitetun kirjoituksen,
+journal-päivityksen ja kahvojen sulun todellinen päättyminen pitää odottaa.
+Sulku tarkistetaan myös käynnissä olevan `retryPending`-silmukan ja
+`chooseDirectory`-jatkon sisällä ennen seuraavaa kopiointiyritystä:
+komennon aiempi aloitus ei anna lupaa aloittaa kaikkia sen jonotöitä.
+Arkistokopion epäonnistuminen ei muuta jo hyväksyttyä SMTP-toimitusta
+epäonnistuneeksi. Työn päättyminen, sen onnistuminen ja sulkuvaltuus ovat
+eri asioita.
+
+**Omistajan hyväksyntä 27.10.2026:** rajatun kokeen arkistosulun odotus on
+enintään viisi sekuntia. Se alkaa uuden työn sulkemisesta rinnakkain
+nykyisen secret-drainin kanssa. D2:n viittä sekuntia, HTTP-quiescencen
+30 sekuntia tai backendin omia rajoja ei nosteta. Odotuksen loppuminen
+ei peru käyttöjärjestelmän I/O:ta eikä anna poisto-/relaunch-valtuutta;
+epävarmuus säilyttää sisäiset tiedostot ja estää vaarallisen jatkon.
+Myöhäinen valmistuminen ei muuta epäonnistunutta yritystä onnistuneeksi.
+Hyväksyntä koskee budjettia ja rajattuja kokeita; tuotantokytkentää ei vielä
+väitetä todennetuksi. Kokeessa erotetaan tavallinen päättynyt kopiointivirhe
+epävarmasta tiedostokahvan sulusta. Jonon settlement ei yksin todista
+kaikkien kahvojen sulkeutumista. Hyväksytyn peruutuskäytöksen lähdekytkentä
+varmistetaan ennen vaikutusalueen tuotantototeutusta.
+
+**27.10.2026, arkistosulun rajattu koenäyttö:** nykyisestä arkistokoodista
+johdettu, tuotantoon kytkemätön ehdokas läpäisi 15 synteettistä tapausta
+ja tyyppitarkistuksen. Oikeilla tiedostotavuilla todennettiin alkanut kopio,
+journalin viimeistely, aloittamattomien pyyntöjen välitön hylkäys,
+retry-silmukan seuraavan kopion esto sekä PDF-/journal-/kansiokokeen
+epävarmassa kahvasulussa säilyvä aineisto. Tavallinen päättynyt kopiointivirhe
+ei ole sama tulos kuin epävarma sulku. Viiden sekunnin raja ja myöhäisen
+valmistumisen pysyvä hylkäys todennettiin hallitulla kellolla.
+Nykyistä capabilitya ja brokeria käyttävät kokeet erottivat myöhäisen
+native-valinnan ja brokerin `close()`-palautumisen varsinaisesta I/O-drainista.
+Ikkuna ja kuljetus olivat injektoituja: tämä ei ole oikean Electronin,
+runtime-sulun tai koko V1:n hyväksyntä. Capabilityn myöhäisten UI-callbackien
+mitätöinti ja lähdekoodin production-kytkentä ovat edelleen tekemättä.
+Ensikokeen kansiorajausvirhe ja katselmuksen löytämä jonopyyntöjen viive
+korjattiin koeehdokkaaseen; aiemmat tulokset säilyvät erillisinä.
+Rajattu riippumaton jälkikatselmus ei löytänyt korjatusta ehdokkaasta uutta
+huomautettavaa. Se ei korvaa jäljellä olevaa composition- tai tuotantonäyttöä.
+
+**Omistajan hyväksymä peruutuksen käyttötila 27.10.2026:** jos yhteydet on jo suljettu,
+näytetään poiston peruuntuminen ja tarjotaan käyttäjän valitsema hallittu
+paluu aiempaan yritykseen, tai valitsimeen jos aiempi valinta oli null.
+Paluu käyttää nykyistä lifecycle-/relaunch-ketjua: omistettujen töiden ja
+vanhan backendin päättyminen sekä fyysinen varaus todistetaan ensin.
+Suljettua secret-brokeria ei avata saman sukupolven sisällä. Epävarma sulku
+estää paluun; myöhäinen onnistuminen ei käynnistä sitä automaattisesti.
+Yrityksen tiedot ja valmis käyttäjän vientibackup säilyvät.
+Ennen yhteyksien sulkemista tehty vaikutukseton peruutus voi palata
+nykyiseen näkymään. Hyväksyntä koskee käyttäjän valitsemaa hallittua
+paluuta, ei automaattista restartia, epävarman sulun ohittamista tai
+jo julkaistun poistojournalin peruuttamista. Tuotantokytkentä ja koko
+peruutuspolun todentaminen ovat vielä tekemättä.
+
+**Paluun nykyinen kutsuketju:** `WorkspaceManagementService.runAdmitted`
+kutsuu `runtimeRelaunchCompletion.complete()`-metodia myös virheen ja
+peruutuksen jälkeisessä finallyssa. `DeferredWorkspaceRuntimeRelaunch`
+toteuttaa jo aiemmin pyydetyn paluun silloin kerran. Siksi poistosta paluun
+`request()` tehdään vasta erillisen käyttäjävalinnan, todellisen sulun ja
+tuoreen varaus-/rekisteritarkistuksen jälkeen, ei valmistelun varmuustoimena.
+Paluun valinta käsitellään saman mainin omistaman operaation sisällä ennen
+sen päättymistä; suljettua yleistä hallinta-admissionia ei avata sen vuoksi.
+Paluun suorittava main-kutsu tarkistaa vielä ulkoisen shutdownin ja
+valtuuden mitätöinnin, myös jos ne tapahtuvat requestin ja completen välissä.
+Tämä ei anna perutulle poistovaltuudelle uutta käyttökertaa. Rajattuun
+composition-näyttöön kuuluvat peruutus ilman paluuvalintaa, hyväksytty paluu,
+epävarma sulku, kadonnut varaus, null-valinta ja samanaikainen ulkoinen sulku.
+Nykyisen deferred-apurin yksikkötesti ei yksin todista tätä uutta kytkentää.
+
+**27.10.2026, hallintapyynnön rajattu koenäyttö:** nykyisistä capability- ja
+service-omistajista johdettu yksityinen ehdokas sekä nykyiset lifecycle-,
+quiescence-, deferred-relaunch- ja journal-vartijat läpäisivät 22 tapausta
+ja tyyppitarkistuksen. Oma sulku sulki uuden admissionin säilyttäen vain
+hyväksytyn pyynnön. Ulkoinen sulku, saman mainFrame-olion navigointi ja
+renderer-/ikkunasulku mitätöivät sen. Capabilityn native-odotus ja palvelun
+oma työ estivät kumpikin erikseen varauksen vapauttamisen. Odottava,
+kielteinen tai vanhentunut paluuvalinta ei pyytänyt relaunchia; viimeinen
+callback tarkisti valtuuden ja varauksen vielä erikseen.
+Katselmuksen kolme testinäytön aukkoa täydennettiin näillä erottelevilla
+kontrolleilla; rajattu jälkikatselmus ei löytänyt niistä uutta huomautettavaa.
+Luonnin, tuonnin ja korvauksen nykyinen välitys säilyi
+rajatussa kokeessa, mutta niiden koko koordinaattoriketjua ei ajettu.
+Backend, ikkuna ja fyysinen varaus olivat injektoituja; säilyvät tiedostot
+synteettisiä. Testin `prepared` ja `returnRequested` eivät ole tuotannon
+IPC-tuloksia, poistovalmius tai toteutunut paluu. Täydellinen kohde-/lease-
+ja backup-ketju, null-valitsimen paluu sekä oikea IPC/native/prosessinäyttö
+ovat edelleen avoimia. Poistokanavaa ei rekisteröity eikä tuotantokoodia muutettu.
+
+**27.10.2026, viennin rajattu koenäyttö:** nykyisestä portable-viennistä
+johdettu yksityinen ehdokas läpäisi 19 uutta tapausta ja tavallisen viennin
+22 kontrollia. Sama vientialgoritmi käytti oikeaa salattua containeria ja
+synteettisiä tiedostotavuja; PDF:n tavut ja aggregaatti säilyivät viennissä.
+Kutsujan suojan säilyminen, lähde-/vientikuittien ristiriidat, lähdepoiston
+epävarmuus, varmennetun vientikopion säilyttäminen ja alkuperäisen
+autentikoidun kahvan identiteetti erotettiin. Samansisältöinen uusi tiedosto
+ei korvannut alkuperäistä identiteettiä edes readerin viimeistelyn aikana;
+viivästetty kahvasulku esti tuloksen palauttamisen. Ensimmäisen kokeen
+kirjoitussuojatun fixtuurin muutosyritys korjattiin erilliseen turmeltuun kopioon.
+Tyyppitarkistus läpäisi vanhan kontrollifixtuurin porttityypin sovituksen jälkeen.
+Tämä ei ole SQLite-/native-/exit- tai koko backup-kuitin hyväksyntä:
+kirjoitussuojan ja tarkistimen omistajat olivat injektoituja. Vientisisältö ei
+ole tuotannon poistovaltuus. Katselmuksessa löytynyt viimeisen siivousodotuksen
+jälkeinen valtuusaukko korjattiin; erilliset kontrollit mitätöivät valtuuden
+sekä tiedostosiivouksen että tarkistusomistajan paluun aikana. Testien
+aloitettu työ odotetaan myös assertion-virheessä ennen mokkien palauttamista.
+Rajattu riippumaton jälkikatselmus ei löytänyt korjatusta ehdokkaasta uutta
+huomautettavaa. Tämä ei korvaa jäljellä olevaa koko V1:n kytkentänäyttöä.
+Omistava [vientisopimus](local-backup-and-restore-plan.md#w73n-poiston-valmistelun-vientisopimus)
+pitää normaalin backupin ja poiston caller-owned-haaran erillään.
+
+**Sisäisen sidonnan koesopimus:** nykyinen `runOwnedProfileInspection`
+luo pyynnön identiteetin, ja prosessilukija vaatii sen täsmäävän terminaliin.
+Snapshot-kutsuja säilyttää tämän identiteetin hyväksytyn receiptin rinnalla
+vasta nykyisen exit-/reclaim-/siivousketjun jälkeen. Clientin operaatiotietue
+omistaa molemmat ja luovuttaa ne vain saman varatun kuluttajan aikana;
+receiptin vaihto tai valtuuden menetys mitätöi myös sidonnan. Uutta sukupolvea
+ei arvata myöhemmän tiedostoluvun perusteella. Nykyinen turvallinen
+validation-yhteenveto ja muiden kuluttajien sopimus säilyvät.
+
+**27.10.2026, sidonnan rajattu koenäyttö:** tarkistusomistajan ehdokkaan
+106 tapausta ja tyyppitarkistus läpäisivät. Vientiin yhdistetty ehdokas
+läpäisi kahdeksan uutta tapausta, 22 tavallisen viennin kontrollia ja
+tyyppitarkistuksen. Nykyisen main-omistajan luomat erilliset lähde- ja
+vientitunnisteet säilyivät oikeiden salattujen tiedostotavujen yli;
+vanhentunut kuluttaja, väärä operaatio sekä sama generation/session hylättiin.
+Katselmuksen virhemuunnos ja kaksi puuttuvaa törmäyskontrollia korjattiin;
+rajattu jälkikatselmus ei jättänyt avoimia löydöksiä. SQLite, prosessiraja,
+fyysinen varaus ja poiston kirjoitussuoja olivat edelleen injektoituja.
+Tämä ei ole tuotantokytkentä tai koko V1:n hyväksyntä. Koenäyttö ei vielä
+kattanut nimettyä delete-suojaa, täsmällistä kohde-/lease-valtuutta tai
+backup/sulkuketjua.
+
+**Poiston nimetyn huoltosuojan koesopimus:** nykyinen maintenance-tila ja
+snapshot-broker saavat omat begin/assert/invalidate-operaatiot poistolle.
+Suoja käyttää nykyisiä drain- ja enimmäiskestorajoja; sille ei ole saman
+runtimen vapautuskutsua. Tavallinen backup, update tai restore ei saa
+vapauttaa sitä edes samalla operaatiotunnisteella. Katkos, umpeutuminen tai
+epävarma drain säilyttää kirjoituseston. Tarkistuskontekstin lähde- ja
+vientipyynnöt nimeävät saman poistosuojan erikseen; update-valtuutta ei
+lainata eikä poistosuoja oikeuta palautusaktivointiin. Koeehdokkaan nykyinen
+yksityinen snapshot-broker siirtyy versioon 13, mutta tarkistuslapsen
+protokolla ja backup-formaatti säilyvät.
+Peruutus estää myös täsmällisen jonossa olevan, vielä aloittamattoman
+poistopyynnön myöhemmän käynnistymisen. Ennen suojan hankintaa saatu
+invalidation-virhe ei ole suojan päättymiskuittaus; jonopyynnön oma lopputulos
+ja todellinen sulku tarkistetaan edelleen erikseen.
+
+**27.10.2026, huoltosuojan rajattu koenäyttö:** 28 uutta tapausta,
+88 nykyistä kontrollia ja tyyppitarkistus läpäisivät. Oikea maintenance-tila,
+client/broker ja installation-leasen muistissa oleva omistaja olivat mukana;
+kuljetus ja snapshot-palvelu olivat injektoituja. Katselmuksessa havaittu
+aloittamattoman pyynnön peruutusaukko toistettiin ja korjattiin ehdokkaassa.
+Rajattu jälkikatselmus ei jättänyt tähän muutokseen avoimia löydöksiä.
+Tämä ei vielä todista fyysistä varausta, oikeaa prosessirajaa tai suojan
+yhdistämistä vientiin ja runtime-sulkuun. Tuotantokytkentä ja V1:n
+kokonaiskatselmus ovat edelleen avoimia.
+
+**27.10.2026, suojan ja viennin liitoskoe:** 16 liitostapausta,
+22 tavallisen viennin kontrollia ja tyyppitarkistus läpäisivät. Nykyinen
+maintenance-tila, client/broker, installation-leasen muistissa oleva omistaja
+ja mainin tarkistusketju on yhdistetty samoihin salattuihin tiedostotavuihin.
+Eri lähde-/vientitunnisteet nimeävät saman poistosuojan molemmissa
+kontekstiluvuissa. Väärä omistaja ja peruutus jokaisessa neljässä lukukohdassa
+estävät todistuksen; uusi lease ei elvytä vanhaa valtuutta. Varmennettu vienti
+säilyy myöhäisen valtuusmenetyksen jälkeen, ja epävarman prosessisiivouksen
+aineisto säilytetään. Rajattu riippumaton katselmus ei jättänyt tähän
+liitokseen löydöksiä. Snapshotin lähde, SQLite, prosessiraja, kuljetus ja
+fyysinen varaus ovat injektoituja. Yrityskohteen, sulun, kertakulutuksen ja
+null-paluun yhteiskytkentä sekä V1:n loppukatselmus säilyvät avoimina.
+Koeehdokasta ei ole kytketty tuotantoon eikä käyttäjän poistopolkua avattu.
+
+**Kohteen ja kuitin sidonnan täsmennys:** main kaappaa ennen snapshotia
+rekisterin samat validoidut tavut ja slotti-identiteetit, kohteen labelin ja
+lineagen, aiemman valinnan, nykyisen lease-valtuuden sekä yritysjuuren
+nykyisellä varauslukijalla varmennetun identiteetin. Vahvistuksen luku ei
+kutsu rekisterin korjaavaa recovery-lukua. Epäselvä slottivalinta estää
+vahvistuksen; sitä ei korjata sivuvaikutuksena. Odotuksen aikana havaittu
+muutos mitätöi kaapatun valinnan pysyvästi.
+Lähteen ja viennin tarkistusprosessien tunnisteita ei anneta etukäteen:
+ne sidotaan kuittia myönnettäessä vain mainin tarkistusomistajan todella
+palauttamasta tuloksesta. Jatkuvuuden valvonta alkaa silti ennen snapshotia,
+ei jälkikäteen. Hyväksytyt lähde-/vientisidonnat säilyvät muuttumattomina
+myös myöhemmille sulku- ja siivoustarkistuksille. Elävän backendin nimetyn
+poistosuojan voimassaolo varmennetaan myös myönnössä ja kulutuksessa;
+pelkkä kanavan säilyminen avoimena ei riitä. Myöntö varataan ennen
+ensimmäistä odotusta, eikä epäonnistuminen palauta samaa myöntöoikeutta.
+Julkaisukuluttaja tarvitsee sekä synkronisen valtuusvartijan
+että tuoreen rekisteri-/juurivalinnan tarkistuksen omissa I/O-rajoissaan.
+Asynkronisen tarkistuksen paluun ja tilasiirtymän välissä tehdään vielä
+synkroninen valtuustarkistus: tarkistuksen lopussa jonoutunut mitätöinti
+ei saa elvyttää myöntöä tai hyväksyä kulutusta.
+
+**27.10.2026, kohteen ja kertakulutuksen liitoskoe:** 30 tapausta ja
+tyyppitarkistus läpäisivät. Nykyinen rekisterilukija, todelliset rekisteri-
+ja hakemistoidentiteetit sekä aiempi suojattu salattu vienti ovat mukana.
+Muuttunut nimi, lineage, valinta, slotti, samansisältöinen uusi tiedosto,
+vaihtunut yritysjuuri ja uusi samanlainen lease eivät elvytä vanhaa valtuutta.
+Kuitti torjuu väärät tarkistussidonnat, muuttuneen viennin, rinnakkaisen
+kulutuksen, kuittauskatkon ja myöhäisen julkaisuvartijan käytön.
+Null-valinta säilyy kohdetiedossa, mutta varsinainen null-paluu ei kuulu
+tähän kokeeseen. Omistajien päättyminen ja viennin lopullisen uudelleenluvun
+rajapinta ovat vielä injektoituja, samoin aiemman kokeen prosessi-/SQLite-
+ja fyysisen varauksen rajat. Katselmuksen kolme sidonta-/mitätöintipuutetta
+korjattiin koeehdokkaaseen. Nimetyn suojan mitätöinti toistui ennen korjausta
+kahdessa hylkäävässä kontrollissa; korjattu sarja sisältää ne sekä myönnön
+odotuksen aikaisen uudelleentulon ja peruutuksen. Myös tarkistuksen
+paluuhetken mitätöintikilpailu toistettiin kahdella hylkäävällä kontrollilla
+ennen korjausta. Rajattu jälkikatselmus ei jättänyt tähän muutokseen löydöksiä.
+Tämä ei ole V1:n kokonais- tai tuotantohyväksyntä.
+
+**Seuraava sulkuliitos:** toimivan broker-kanavan valtuus päättyy myös
+hallittuun backend-sulkuun. Sitä ei saa käyttää sulun jälkeen eikä korvata
+pelkällä kanavan puuttumisella. Nykyisen suojatun shutdown-ketjun pitää
+todistaa saman nimetyn poistosuojan kelpoisuus ennen sulkua ja sulun
+lopussa, varsinainen onnistunut exit sekä mainin I/O:n päättyminen ja
+varauksen palautuminen. Update-/restore-valtuutta ei lainata. Yhteyskatko,
+väärä operaatio, pakotettu exit tai epävarma sulku eivät anna jatkovaltuutta.
+Tämä liitos sekä capabilityn elinikä ja käyttäjän valitsema paluu ovat
+vielä todennettavia, eivät yllä olevan kohdekokeen tuloksia.
+
+**27.10.2026, nimetyn sulun osakoe:** nykyisistä `backendMessages`-,
+`backendRunner`- ja `backendProcess`-omistajista johdettu ehdokas lisää vain
+poiston oman `shutdownForDelete` / `stopForDelete` -haaran nykyiseen strict-
+sulkuun. Oikea maintenance-tila ja snapshot-broker tarkistavat saman
+poistosuojan ennen palvelinsulkua ja sen jälkeen. Väärä omistaja, eri
+huoltotarkoitus, umpeutuminen, katkos, varauksen menetys ja ristiriitainen
+seuraajapyyntö eivät anna onnistumista. Lähettäjä säilyttää todellisen
+exitin ja varauksen takaisinoton odotuksen eikä käytä forced-fallbackia.
+179 nykyistä ja uutta tarkistusta sekä tyyppitarkistus läpäisivät.
+Testikellon virhe korjattiin kokeeseen; katselmuksen löytämä testin
+odotusportin siivouspuute korjattiin ja katettiin virhekontrolleilla.
+Jälkikatselmus ei jättänyt tähän rajattuun muutokseen löydöksiä.
+HTTP-palvelin, kuljetus, prosessin exit ja fyysinen varaus ovat injektoituja;
+runnerin ja lähettäjän testit eivät vielä ole oikean utility-prosessin näyttö.
+
+**27.10.2026, valitsimen paluun osakoe:** nykyinen selector-lifecycle saa
+nimetyn delete-leasen nykyiseen sallittujen hallintatarkoitusten joukkoon.
+47 tarkistusta, tyyppitarkistus ja rajattu katselmus läpäisivät. Samanniminen
+uusi lease ei palauta vanhaa valtuutta; valitsimen tai varauksen menetys
+odotuksessa estää jatkon. Sulku ei pyydä paluuta automaattisesti eikä
+korvaa null-valintaa yrityksellä. Nimenomainen paluupyyntö käyttää nykyistä
+palvelun valmistumisen jälkeistä relaunch-omistajaa. Fyysinen varaus ja
+relaunch ovat tässä injektoituja: todellinen native-/UI-paluupolku säilyy
+V3:n vaatimuksena. Tuotantoon ei ole kytketty poistokanavaa.
+
+**Yhteiskytkennän valtuusraja:** nykyinen active-lifecycle välittää
+poiston oman sulkutarkoituksen samoille resursseille. Ennen sulkua
+poistokuitti vaatii elävän backendin named-fence-tarkistuksen. Oman sulun
+aikana kuittia ei voi kuluttaa. Sulun jälkeen valtuus perustuu vain saman
+pyynnön onnistuneeseen strict-exitiin, mainin I/O:n päättymiseen, varauksen
+palautumiseen ja edelleen voimassa olevaan kohde-/lease-valintaan.
+Ulkoinen mitätöinti säilyy pysyvänä myös oman sulun aikana; pelkkä onnistuva
+osakoe tai suljettu kanava ei muuta sitä jatkoluvaksi.
+
+**27.10.2026, aktiivisen yrityksen yhteiskytkentäkoe:** 52 tarkistusta
+(27 uutta ja 25 nykyistä lifecycle-kontrollia), tyyppitarkistus ja rajattu
+katselmus läpäisivät. Hallintapyynnön elinikä, todellinen rekisterivalinta,
+nimetty poistosuoja, salattu vienti, secret-/arkisto-drain ja active-lifecycle
+osallistuvat samaan kokeeseen. Oma sulku säilyttää vain alkuperäisen
+pyynnön; ulkoinen mitätöinti ei poistu exitin tai varauksen palautuessa.
+Peruutus pyytää paluuta vain käyttäjän erillisestä valinnasta.
+Valmistelun virhe liittyy samaan nimettyyn sulkutehtävään, ja ensimmäinen
+syy säilyy erillään mahdollisesta siivousvirheestä. Kuitin valmistumisen
+jälkeen tehdään tuore kohde- ja valtuustarkistus ennen native-vahvistusta.
+Katselmuksen vanhentuneen vahvistuksen aukko toistettiin ja korjattiin;
+tavallisen ja päivityssulun ensin valittu käytäntö säilyi myös niiden
+epäonnistuessa. Testien oma siivous raportoi epäonnistumisen.
+Prosessin exit, HTTP, fyysinen varaus, SQLite, native-dialogit ja viennin
+lopullinen uudelleenlukija ovat edelleen injektoituja. Tämä ei todista
+niiden tuotantokytkentää, W7.4:n julkaisua tai kaikkia kohdetiloja.
+
+**V2:n kohde- ja omistajamatriisi:** seuraavat haarat toteutetaan samoihin
+nimettyihin omistajiin; uutta päätös- tai elinkaarikerrosta ei lisätä.
+
+| Tilanne | Valmistelun sopimus ja jäljellä oleva todennus |
+| --- | --- |
+| Kohde on avoin yritys ja käyttäjä valitsee backupin | Yllä kokeiltu caller-owned vienti ja named-stop. Tuotannon prosessi-, varaus- ja lukijarajat korvaavat injektoidut rajat V2/V3:ssa. |
+| Käyttäjä valitsee erillisen menetyssuostumuksen | W7.0:n tiukka pyyntö, kirjoitettu nimi, erillinen riskivahvistus ja native-vahvistus sitoutuvat samaan valintaan. Sama kertakäyttöinen julkaisuraja ja kaikki omistajuus-/sulkutarkistukset säilyvät; backup-kuittia ei keksitä. Koko liitos testataan V2:ssa. |
+| Kohde ei ole aiemmin avoin yritys | Kohde ja `previousActiveWorkspaceId` pidetään eri arvoina. Nykyinen active-lifecycle sulkee aiemmin avoimen runtimen; target-reader ei vaihda kohdetta siihen. Ilman kohteen snapshot-omistajaa backup-haara palauttaa `backupUnavailable`, ei avaa kohdetta tai vaihda menetyssuostumukseen automaattisesti. |
+| Lähtö on backenditon valitsin | Nykyinen selector-lifecycle todistaa saman delete-leasen ja mainin fyysisen varauksen. Se ei luo business-runtimea tai backend-exit-tulosta. Peruutuksen nimenomainen paluu säilyttää null-valinnan. Koko request-/vahvistusliitos ja oikea varaus todistetaan V2/V3:ssa. |
+| Kohteella on keskeytynyt palautus | W7.3 ei ohita yleistä journal-estoa. W7.4:n jo hyväksytty saman kohteen jäännös- ja omistajuustodistus tarvitaan ennen poikkeuksen kytkentää; tuntematonta tai asennustason tilaa ei hyväksytä. Pelkkä luotettavasti tunnistetun kohteen `recoveryRequired` ei itsessään muuta kohdetta toiseksi tai vaadi business-avausta. |
+
+**Toteutusjärjestys:** ensin arkisto-/management-admissionin rajatut
+muutokset ja nykyisten polkujen regressiot, sitten nimetyn maintenance-,
+inspection- ja backup-sopimuksen kytkentä. Tämän jälkeen target-reader,
+kertakäyttöinen valmistelu ja molemmat lifecycle-kutsujat liitetään nykyisiin
+composition-juuriin. Pyyntö-/tuloscodec ja UI-valmistelu testataan ilman
+tuotannon delete-kanavaa. Kukin pala säilyttää aiemmat kontrollit ja
+todentaa virheen todellisen lukuketjun; V3:n yhteinen paketti ja PR/main-portit
+eivät korvaudu osakokeiden lukumäärällä. Koekopiot eivät jää tuotantoon
+rinnakkaisiksi omistajiksi.
+
+**V1:n loppukatselmus 27.10.2026:** riippumaton rajattu katselmus ei
+jättänyt toteutuksen aloittamista estävää päätöstä tai sopimusristiriitaa.
+Se hyväksyy suunnitteluvaiheen sulkemisen ja yllä vaiheistetun V2:n aloituksen,
+ei koko W7.3:a tai tuotannon poistovaltuutta. Aktiivisen kohteen backup-
+liitoksen näyttöä ei laajenneta menetyssuostumuksen, passiivisen/vikatilaisen
+kohteen tai backendittoman valitsimen valmiiksi yhteiskytkennäksi.
+
+**Toteutuspalat ja todennus:**
+
+| Pala | Muutos ja tarvittava näyttö |
+| --- | --- |
+| V1 / sopimus | Yksi rajattu riippumaton lähdekatselmus ja pieni nykyisiin omistajiin perustuva composition-koe omasta sulusta, ulkoisesta mitätöinnistä sekä caller-owned backupista. W7.0:n injektoituja kokeita ei nimetä uudelleen tuotantonäytöksi. Arkistosulun koe käyttää yllä hyväksyttyä budjettia. |
+| V2a / valtuus | Tiukat codec-/capability-/UI-sukupolvitestit, oikea rekisteri ja varaus; rinnakkainen pyyntö, reload, peruutus, nimeäminen ja myöhäinen callback. W7.3:n toimituksesta puuttuva delete-kanava ja painike todennetaan erikseen. |
+| V2b / backup | Nykyiset `portableProfileBackup.test.ts`, `profileSnapshotInspectionClient.test.ts` ja `profileMaintenanceState.test.ts`: todellinen synteettinen SQLite/container, lähde/vienti/siivous, muuttuneet tavut, samansisältöinen eri tiedosto ja suojan menetys. Tavallinen backup vapauttaa suojan edelleen; poistokuitti ei. |
+| V2c / sulku | Nykyiset arkiston service/broker/capability-testit, `workspaceManagementShutdown.test.ts` ja molemmat lifecycle-testit: oikean aloitettavan työn, jonon, native-jatkon, exitin ja varauksen erot. Oma sulku ei odota itseään; ulkoinen sulku ei vapauta omistajuutta liian aikaisin. Virheessä muutkin omistetut sulut yritetään. |
+| V3 / kokonaisuus | Oikea IPC/native/UI-ketju rajatulla testikuluttajalla sekä todellinen backup/inspection/exit-ketju; turvallinen syy ja alkuperäinen synteettinen virhe nykyiseen salattuun pakettiin, purkutodennus. Sama puhdas hardened Windows backup -> inspect -> restore -> restart -> compare, vaikutusalueen nykyiset stress/soak- ja PR/main-portit. Testikuluttaja ei korvaa W7.4:n todellista journal-/purge-todistetta. |
+
+**27.10.2026, rajatun suunnitelmakatselmuksen tulos:** valmistelun
+toimitusraja säilyttää W7.0:n sopimuksen. Kuitin callback-uudelleentulo ja
+arkistokomennon sisäiset uudet kopioinnit täsmennettiin yllä. Pakolliseen
+composition-kokeeseen kuuluu myös ulkoinen shutdown, joka liittyy jo
+käynnissä olevaan omaan sulkutehtävään: se mitätöi poistovaltuuden ennen
+julkaisua eikä ohita mitätöintiä shared-task-varhaispaluulla. Molempien
+hallintaomistajien sulku ei saa muodostaa itseensä palaavaa odotusketjua
+tai vapauttaa fyysistä varausta keskeneräisen työn alta. Yllä oleva
+hallintapyynnön koe todentaa rajatun omistajakytkennän; fyysisen varauksen,
+backup-kuitin ja koko peruutuspolun tuotantonäyttö säilyy avoinna.
+Arkistoinnin koebudjetti ja peruutuksen käyttövalinta on hyväksytty yllä.
+Katselmus ei ole koostumuskokeen tai tuotantotestien läpäisy.
+
+Nykyiset `workspaceManagement.operationFailed`-tapahtumat ja hyväksytyt
+W7.0:n suljetut operaatiot, vaiheet ja syyt palvelevat myös tätä muutosta.
+Diagnosticsin ja nykyisen tukipaketin lukijat sekä testin ensivirheen
+salattu keräys todennetaan kytkennästä, ei pelkästä logger-testistä.
+Backendittoman tukipaketin laajennus säilyy W7.5:ssä. Uutta
+business-audit-tapahtumaa, raakavirheiden julkaisua tai lokikehystä ei lisätä.
+
+Toteutuksen mukana päivitetään muuttuvien rajojen omistavat backup-,
+arkisto-, workspace-/ADR-, integraatiomatriisi- ja testiohjeet.
+Tuotantototeutus ei saa arvata uutta sulkubudjettia, ohittaa yleistä
+recovery-estoa tai nimetä valmistelua lopulliseksi poistoksi.
+
 #### Toteutusriippuvuudet ja vaiheistus
 
 - C todistaa katkeamattoman kirjoitussuojan, todellisen exitin, graceful-

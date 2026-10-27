@@ -217,6 +217,13 @@ todettua päättymistä. Tarkka poisto- ja testisopimus on
 [työtilasuunnitelman hyväksytyssä poistoperiaatteessa](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate);
 tämä ei vielä ole poiston tuotantokytkentä.
 
+W7.3:n hyväksytty sulkukoe rajaa nykyisen arkisto-omistajan odotuksen
+enintään viiteen sekuntiin. Pääsyn sulku, alkanut tiedostotyö, epävarma
+kahvasulku ja kopioinnin onnistuminen erotetaan toisistaan. Aikarajan
+täyttyminen ei oikeuta sisäisen tilan poistamiseen. Kokeen nykytila ja
+tuotantokytkennältä edelleen vaadittava näyttö ovat
+[W7.3:n toteutussopimuksessa](local-company-workspace-plan.md#w73n-toteutussopimus).
+
 Eristyksen hyväksyntä vaatii `WORKSPACE-ARCHIVE-001`-skenaarion ennen
 multi-workspace-releasea. W1:n alkuperäinen inertti registry-vaihe on
 historiaa; nykyisen hyväksynnän reitti on
