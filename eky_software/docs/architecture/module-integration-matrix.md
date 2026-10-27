@@ -70,6 +70,19 @@ erottaa hyväksytyn toteutuksen ja sen omat PR/main-portit myöhemmästä työst
 | Mobile Sync | planned | open | Ei saa ohittaa module application-, permission- tai tenant-rajoja | open | open | open | open | open | open | open | open | open | open | open | open | open | open | open | mobile planned | open |
 | AI Agent Coordination | planned | Agenttien rajattu toimijuus ja jäljitettävä orchestration päätetään myöhemmin | Ei saa ohittaa domain-, permission-, tenant-, audit- tai API-rajoja | open | open | open | open | Vain omistavan moduulin application-sopimusten kautta | open | open | open | open | open | open | open | open | open | open | backend/cloud planned | open |
 
+W7.3:n mainin sisäinen poistovalmistelu yhdistää rekisterin täsmällisen
+kohteen, saman huoltovarauksen, caller-owned backupin kertakäytön ja
+nykyiset lifecycle-omistajat. Backupin sisältösääntöä ei kopioida:
+valmistelu käyttää Profile Protectionin yhteistä vastaavuustarkistusta ja
+alkuperäiseen autentikoituun tiedostoon vertautuvaa rajattua uudelleenlukua.
+Active-lifecyclen nimetty resurssisulku erottaa oman pyynnön ulkoisesta
+shutdownista. Management-compositionin koko kuluttaja ja oikean prosessi- /
+native-ketjun näyttö ovat vielä kesken; rendererille ei julkaista
+poistovaltuutta tai delete-kanavaa ennen W7.4:ää.
+[W7.3:n omistava sopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
+ja [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+erottavat lähdepalat hyväksytystä kokonaisuudesta.
+
 W7.2:n keskeneräinen backenditon hallinta käyttää nykyistä workspace-
 hallintapalvelua ja IPC-kyvykkyyttä. Niiden pääsyn sulku ja aloitetun työn
 odotus ovat erillisiä; journalilukijan virhe ei jätä rinnakkaisia lukuja

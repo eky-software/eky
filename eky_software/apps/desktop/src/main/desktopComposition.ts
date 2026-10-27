@@ -3113,11 +3113,12 @@ async function startDesktopCompositionRuntime({
   );
 
   let disposeCapabilitiesTask: Promise<void> | undefined;
-  const disposeWorkspaceRuntimeCapabilities = (): Promise<void> => {
+  let managementAdmissionFailure: { cause: unknown } | undefined;
+  const disposeWorkspaceRuntimeCapabilities = (purpose?: 'delete'): Promise<void> => {
     profileSnapshotInspectionClient.closeAdmission();
     disposeCapabilitiesTask ??= Promise.resolve().then(async () => {
       const capabilities = [
-        workspaceManagementCapability,
+        purpose === 'delete' ? undefined : workspaceManagementCapability,
         pdfPreviewController,
         operationalLogFolderCapability,
         operationalLogFailureCapability,
@@ -3126,9 +3127,10 @@ async function startDesktopCompositionRuntime({
         localUpdateSelectionCapability,
         profileBackupCapability,
         backupPasswordWindowController,
-        workspaceManagementComposition,
+        purpose === 'delete' ? undefined : workspaceManagementComposition,
       ];
-      workspaceManagementCapability = undefined;
+      if (purpose === 'delete') workspaceManagementComposition.service.closeAdmission();
+      else workspaceManagementCapability = undefined;
       pdfPreviewController = undefined;
       operationalLogFolderCapability = undefined;
       operationalLogFailureCapability = undefined;
@@ -3137,7 +3139,7 @@ async function startDesktopCompositionRuntime({
       localUpdateSelectionCapability = undefined;
       profileBackupCapability = undefined;
       backupPasswordWindowController = undefined;
-      let failed = false;
+      let failed = managementAdmissionFailure !== undefined;
       for (const capability of capabilities) {
         try {
           capability?.dispose();
@@ -3147,7 +3149,9 @@ async function startDesktopCompositionRuntime({
       }
       try { await profileSnapshotInspectionClient.shutdown(); }
       catch { failed = true; }
-      if (failed) throw new Error('WORKSPACE_RUNTIME_STOP_FAILED');
+      if (failed) throw new Error('WORKSPACE_RUNTIME_STOP_FAILED', {
+        cause: managementAdmissionFailure?.cause,
+      });
     });
     return disposeCapabilitiesTask;
   };
@@ -3196,8 +3200,26 @@ async function startDesktopCompositionRuntime({
     {
       closeBrokers: closeWorkspaceRuntimeBrokers,
       disposeCapabilities: disposeWorkspaceRuntimeCapabilities,
-      markCleanShutdown: () => recoveryPointScheduler.markCleanShutdown(),
+      markCleanShutdown() {
+        if (managementAdmissionFailure !== undefined) {
+          throw new WorkspaceRuntimeStopError({ phase: 'capabilities', reason: 'operationFailed' });
+        }
+        return recoveryPointScheduler.markCleanShutdown();
+      },
       sealAndDrainSecrets: () => secretBrokerHandle.sealAndDrain(),
+      deletion: {
+        async sealAndDrainArchive() {
+          if (await invoicePdfArchiveService.sealAndDrain() !== 'drained') {
+            throw new Error('WORKSPACE_RUNTIME_QUIESCE_FAILED');
+          }
+        },
+        async stopBackend(operationId) {
+          backendStopAttempted = true;
+          await backendHandle.stopForDelete(operationId);
+          await workspaceReservation.assertMainOwned();
+          await acknowledgeFailedSecretMutation();
+        },
+      },
       async stopBackend() {
         backendStopAttempted = true;
         return backendHandle.stop();
@@ -3309,8 +3331,26 @@ async function startDesktopCompositionRuntime({
     },
   });
 
+  const revokeManagementAdmission = () => {
+    // An external stop revokes an admitted deletion even when joining its
+    // existing close task. Its own named stop does not call this entrypoint.
+    for (const close of [
+      () => workspaceManagementCapability?.closeAdmission(),
+      () => workspaceManagementComposition.service.closeAdmission(),
+    ]) {
+      try { close(); }
+      catch (cause) { managementAdmissionFailure ??= { cause }; }
+    }
+  };
   const shutdownRuntime = (request: { mode: 'ordinary' } | { mode: 'update'; operationId: string }): Promise<void> => {
     if (shutdownTask !== undefined) {
+      const previousAdmissionFailure = managementAdmissionFailure;
+      revokeManagementAdmission();
+      if (previousAdmissionFailure === undefined && managementAdmissionFailure !== undefined) {
+        shutdownTask = shutdownTask.then(() => { throw new Error('DESKTOP_SHUTDOWN_FAILED', {
+          cause: managementAdmissionFailure?.cause,
+        }); });
+      }
       return request.mode === 'ordinary'
         ? shutdownTask
         : shutdownTask.then(async () => {
@@ -3325,7 +3365,6 @@ async function startDesktopCompositionRuntime({
     }
 
     shutdownStarted = true;
-    profileSnapshotInspectionClient.closeAdmission();
     // Publish the shared task before any shutdown callback can re-enter.
     shutdownTask = Promise.resolve().then(async () => {
       const shutdownStartedAt = Date.now();
@@ -3350,6 +3389,9 @@ async function startDesktopCompositionRuntime({
           await activeWorkspaceLifecycle.stopAndProveHandlesClosed(
             activeWorkspace.workspaceId,
           );
+        }
+        if (managementAdmissionFailure !== undefined) {
+          throw new Error('WORKSPACE_RUNTIME_STOP_FAILED', { cause: managementAdmissionFailure.cause });
         }
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
@@ -3401,6 +3443,8 @@ async function startDesktopCompositionRuntime({
         });
       }
     });
+    revokeManagementAdmission();
+    profileSnapshotInspectionClient.closeAdmission();
     return shutdownTask;
   };
   let installerHandoffPending = false;

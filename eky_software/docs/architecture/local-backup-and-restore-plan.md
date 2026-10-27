@@ -701,8 +701,18 @@ lähde-/vientisisällön ja eri tarkistussidontojen onnistuneen vertailun
 jälkeen, ennen tarkistusstagingin loppusiivousta. Säilytyskuittaus ei anna
 poistovaltuutta: loppusiivouksen hylkäys estää sisällön palauttamisen
 valmistelutuloksena, vaikka varmennettu käyttäjän kopio säilyy.
-Kohteen, kertakulutuksen ja todellisen lifecycle-compositionin kytkentä
-sekä native-/pakettitodennus säilyvät W7.3:n avoimina portteina.
+Kertakäyttöinen `deletionBackupReceipt` käyttää samaa sisältövastaavuuden
+omistajaa ja torjuu myöntämisen tai kuluttamisen uudelleentulon ennen
+ensimmäistä odotusta. Kulutus välittää vartijansa varsinaiselle
+julkaisukuluttajalle ja mitätöi talteen jääneet callbackit myös virheessä.
+Lopullinen `readDeletionBackupExportIdentity` tarkistaa todelliset tavut
+nykyisillä container-/stream-rajoilla sekä saman kahvan ja polun identiteetin
+ennen lukua, sen jälkeen ja sulun valmistuttua. Se ei pura sisältöä uudelleen,
+säilytä salasanaa tai korvaa alkuperäistä autentikoitua todistetta:
+uudelleenluvun tuloksen on vastattava juuri tuota todistetta.
+Lukuvirhe ja epävarma kahvasulku säilyvät erillisinä syinä eikä keskeneräinen
+lukija palauta kuittia. Management-compositionin koko valmistelukytkentä
+sekä oikea native-/prosessi-/pakettitodennus säilyvät W7.3:n avoimina portteina.
 
 ## Machine-local recovery point
 

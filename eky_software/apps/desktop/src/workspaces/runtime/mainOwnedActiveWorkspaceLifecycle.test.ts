@@ -541,6 +541,7 @@ describe('named deletion lifecycle', () => {
     expect(f.resources.stopBackend).not.toHaveBeenCalled();
     expect(f.resources.stopBackendForUpdate).not.toHaveBeenCalled();
     expect(f.resources.markCleanShutdown).toHaveBeenCalledOnce();
+    expect(f.resources.disposeCapabilities).toHaveBeenCalledExactlyOnceWith('delete');
     expect(f.runtimeRelaunch.isRequested()).toBe(false);
     await f.lifecycle.ensurePreviousWorkspaceRunning(workspaceId);
     expect(f.runtimeRelaunch.isRequested()).toBe(true);

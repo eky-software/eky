@@ -14,7 +14,7 @@ import type { WorkspaceRuntimeAbsencePort } from './workspaceRuntimeAbsencePort.
 
 export interface MainOwnedWorkspaceRuntimeResources {
   closeBrokers(): Promise<void>;
-  disposeCapabilities(): Promise<void>;
+  disposeCapabilities(purpose?: 'delete'): Promise<void>;
   markCleanShutdown(): Promise<void>;
   sealAndDrainSecrets(): Promise<void>;
   deletion?: Readonly<{
@@ -216,7 +216,7 @@ export class MainOwnedActiveWorkspaceLifecycle
     }
     let outcome: BackendShutdownOutcome | undefined;
     for (const [phase, close] of [
-      ['capabilities', () => this.resources.disposeCapabilities()],
+      ['capabilities', () => this.resources.disposeCapabilities(selected?.kind === 'delete' ? 'delete' : undefined)],
       ['backend', async () => {
         if (selected !== undefined) {
           if (selected.kind === 'delete') await this.resources.deletion!.stopBackend(selected.operationId);
@@ -257,8 +257,9 @@ export class MainOwnedActiveWorkspaceLifecycle
     if (outcome === 'exited') {
       try {
         await this.resources.markCleanShutdown();
-      } catch {
+      } catch (error) {
         this.state = 'stopFailed';
+        if (error instanceof WorkspaceRuntimeStopError) throw error;
         throw new WorkspaceRuntimeStopError({ phase: 'cleanMarker', reason: 'operationFailed' });
       }
     }

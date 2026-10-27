@@ -880,10 +880,23 @@ jaetaan, mutta vieras operation torjutaan. Backenditon valitsin käyttää
 vain omaa nykyistä main-varaustaan ja nimettyä delete-leasea, ei kuviteltua
 backend-exitiä. Paluuta ei pyydetä automaattisesti.
 
+Active-lifecyclen main-resurssikytkentä käyttää nyt arkiston todellista
+`sealAndDrain`-tulosta ja backendin `stopForDelete`-ketjua sekä main-varauksen
+takaisinottoa. Nimetty capability-sulku säilyttää vain jo hyväksytyn
+hallintapyynnön eliniän; tavallinen ja update-sulku eivät lainaa tätä
+poikkeusta. Ulkoinen shutdown sulkee admissionin ja mitätöi pyynnön ennen
+mahdollista shared-task-varhaispaluuta.
+
+Admission-sulun virhe säilytetään yhteisessä sulkutehtävässä ja muiden
+omistettujen sulkujen yritykset tehdään silti. Myös capability-disposalin
+jälkeen havaittu virhe estää puhtaan sammutuksen merkinnän. Sen turvallinen
+`capabilities`-vaihe säilyy erillään markerin omasta kirjoitusvirheestä;
+myöhempi sulkukutsu ei muuta hylättyä tehtävää onnistumiseksi.
+
 Nämä omistajakohtaiset lähde- ja testikytkennät eivät vielä ole koko mainin
-poistovalmistelun tuotantokytkentä. Composition-juurten pitää edelleen
-yhdistää todellinen arkisto-/secret-/inspection-I/O, hallintapyynnön valtuus,
-täsmällinen kohde ja kertakäyttöinen backup-todiste samaan ketjuun.
+poistovalmistelun tuotantokytkentä. Management-palvelun todelliset active-
+ja selector-kuluttajat sekä native-dialogit pitää edelleen yhdistää
+mainin sisäiseen täsmällisen kohteen ja kertakäyttöisen backupin valmisteluun.
 [W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
 omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
 

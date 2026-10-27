@@ -60,14 +60,32 @@ tarkistetun kopion säilytys erotetaan tarkistusstagingin siivouksesta.
 Epävarma siivous ei anna poistovaltuutta tai onnistunutta valmistelutulosta.
 Rajattu riippumaton jälkikatselmus ei jättänyt tähän korjaukseen löydöksiä.
 
-**Seuraava työ:** liitä täsmällinen kohdevaltuus ja kertakäyttöinen
-valmistelu molempiin composition-juuriin omistavan suunnitelman järjestyksessä.
+**V2:n kytkentäpala:** täsmällinen rekisteri-/juurivalinta, kertakäyttöinen
+backup-kuitti ja lopullisen tiedoston todellinen rajattu uudelleenluku ovat
+nyt lähdetoteutuksessa. Mainin sisäinen valmistelu erottaa aktiivisen,
+muun ja vikatilaisen kohteen sekä backendittoman null-valitsimen. Backupin
+peruutus ei muutu menetyssuostumukseksi. Oma poistosulku säilyttää vain
+hyväksytyn pyynnön; ulkoinen sulku mitätöi sen. Nykyiset main-resurssit
+välittävät arkisto-drainin ja nimetyn strict-stopin, mutta management-
+palvelun kokonaiskuluttaja ei vielä ole kytketty. Rajattu 196 testin sarja
+läpäisi; sen SQLite-, prosessi-, native- ja fyysisen varauksen rajat olivat
+injektoituja. Testifixtuurin päällekkäinen spy korjattiin. Uuden valmistelun
+drain-järjestysvirhe toistettiin ja korjattiin aloittamalla nykyiset omistajat
+yhdessä; alkuperäiset hylkäykset säilyvät erillisinä. Tämä ei sulje V3:a.
+
+**Seuraava työ:** liitä valmistelun todelliset management-kuluttajat
+molempiin composition-juuriin omistavan suunnitelman järjestyksessä.
 Management-palvelun valmistelukomento ei vielä ole composition-juurten
-tuotantokuluttaja. Arkiston `sealAndDrain` tarvitsee vielä saman omistajan
-todellisen sulkukytkennän; pelkkä uusi palvelurajapinta ei todista sitä.
-Menetyssuostumuksen, passiivisen/vikatilaisen kohteen ja null-valitsimen
-koko yhteiskytkentä sekä oikeat SQLite-, prosessi-, varaus-, native- ja
-vientilukijarajat ovat edelleen V2/V3:n todennusvelvoitteita.
+tuotantokuluttaja. Menetyssuostumuksen, passiivisen/vikatilaisen kohteen ja
+null-valitsimen oikeat SQLite-, prosessi-, varaus- ja native-rajat ovat
+edelleen V2/V3:n todennusvelvoitteita. Rajattu lähdekatselmus ja sen
+korjausten jälkikatselmus valmistuivat. Koko main-kontrollisarjan 316 testiä
+läpäisivät korjatulla lähteellä. Sen ensimmäinen kierros löysi uuden
+admission-sulun virheenkäsittelyregression; se ja katselmuksen myöhäisen
+virheen clean-marker-puute toistettiin ja korjattiin regressioineen.
+Niitä ei sekoiteta yllä säilyvään vanhaan source-null-timeoutiin.
+Desktopin tavallinen ja tuotantorajan tyyppitarkistus sekä ohjeiden
+linkkitarkistus läpäisivät. Tämä ei ole koko W7.3:n integraatiohyväksyntä.
 Koko poistoketjun tuotantokytkentää tai uutta CI-kierrosta ei ole tehty. Delete-IPC,
 preload-metodi ja poistopainike pysyvät poissa tuotannosta W7.4:n
 todelliseen kuluttajaan asti. Valmistelu ei ole poiston `completed`-tulos.

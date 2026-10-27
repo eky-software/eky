@@ -4430,10 +4430,33 @@ Alkuperäisen autentikoidun container-kahvan identiteetti säilyy, eikä
 samansisältöinen uusi tiedosto korvaa sitä. Nimetty backend-sulku tarkistaa
 saman suojan ennen palvelinsulkua ja sen jälkeen. Active-lifecycle liittyy
 kaikkien aloittamiensa drainien loppuun myös virheessä; valitsin käyttää
-nykyistä main-varaustaan ilman backendia. Nämä omistajaportit eivät vielä
-muodosta tuotannon poistovaltuutta: kohde, kertakulutus ja composition-
-juurten todelliset resurssikytkennät ovat kesken. SQLite, kuljetus, exit ja
-fyysinen varaus ovat tämän liitosnäytön kontrolloituja rajoja.
+nykyistä main-varaustaan ilman backendia.
+
+Kohteen `workspaceDeletionTarget`-lukija kaappaa nyt samoista validoiduista
+rekisteritavuista myös slotti- ja juuri-identiteetit. Se ei korjaa rekisteriä
+vahvistuksen sivuvaikutuksena. Backupin `deletionBackupReceipt` sitoo
+tarkistusomistajien todelliset tunnisteet ja yhteisen sisältövertailun
+kertakäyttöiseen kuittiin. `readDeletionBackupExportIdentity` lukee lopulliset
+tavut nykyisellä stream-erä- ja container-rajalla sekä odottaa lukukahvan
+sulun; polun vaihtuminen myös sulun aikana hylkää tuloksen.
+
+Mainin sisäinen `workspaceDeletionPreparation` käyttää näitä nykyisen
+capabilityn pyynnön ja saman delete-leasen aikana. Se erottaa avoimen ja
+muun kohteen sekä null-valitsimen; puuttuva snapshot-omistaja ei johda
+aktiivisen yrityksen backupin käyttämiseen tai hiljaiseen menetyssuostumukseen.
+Nykyiset mainin I/O-drainit alkavat backendin huoltokuittausta odottamatta,
+ja kaikkien aloitettujen töiden päättyminen liitetään myös virheessä.
+Julkaisukuluttaja saa muuttumattoman kohteen ja sekä kuitin että
+valmistelun vartijat. Peruutuksen paluu vaatii edelleen käyttäjän valinnan.
+
+Active-lifecyclen main-resurssit nimeävät nyt poistosulun erikseen:
+arkiston todellinen drain, strict backend-stop ja main-varauksen palautuminen.
+Oma capability-disposal säilyttää vain jo hyväksytyn hallintapyynnön;
+ulkoinen shutdown mitätöi sen myös liittyessään aiempaan sulkutehtävään.
+Tämä ei vielä kytke management-palvelun valmistelukomentoa molempien
+composition-juurten tuotantokuluttajaksi. SQLite, kuljetus, exit, native-
+dialogit ja fyysinen varaus ovat valmistelun liitosnäytössä kontrolloituja
+rajoja, eivät oikean prosessiketjun tai koko W7.3:n hyväksyntä.
 
 **Toteutusjärjestys:** arkisto-/management-admissionin ja nimettyjen
 maintenance-/inspection-/backup-/lifecycle-porttien jälkeen target-reader,

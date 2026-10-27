@@ -78,6 +78,7 @@ import { WorkspaceMigrationInventoryCoordinator } from '../workspaces/update/wor
 import { WorkspaceFirstStartMigrationJournalStore } from '../workspaces/update/workspaceFirstStartMigrationJournalStore.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import { WorkspaceManagementService } from '../workspaces/management/workspaceManagementService.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
@@ -3496,6 +3497,36 @@ describe('desktop restore startup composition', () => {
     ]);
     expect(fixture.stop).toHaveBeenCalledOnce();
     await expect(fixture.marker.consume()).resolves.toBe('unclean');
+  });
+
+  it('keeps a late joining admission failure unclean after backend exit', async () => {
+    const fixture = await createFixture(originalProfileId, { completeStartup: true, skipRestore: true, update: true });
+    const readHandoff = prepareUpdateBoundary(fixture.root);
+    const lifecycle = (await fixture.start())!;
+    const handoff = readHandoff();
+    await handoff.prepareConfirmedUpdate();
+    let resume!: () => void;
+    let started!: () => void;
+    const gate = new Promise<void>(resolve => { resume = resolve; });
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    fixture.stopForUpdate.mockImplementation(async () => { started(); await gate; });
+    const updating = handoff.handoffPreparedUpdate().catch(error => error);
+    let joining: Promise<unknown> | undefined;
+    try {
+      await entered;
+      vi.spyOn(WorkspaceManagementService.prototype, 'closeAdmission').mockImplementationOnce(() => {
+        throw new Error('synthetic-private-late-admission');
+      });
+      joining = lifecycle.shutdown().catch(error => error);
+    } finally { resume(); await updating; await joining; }
+    expect(await updating).toBeInstanceOf(Error);
+    expect.soft(await joining).toMatchObject({ cause: {
+      runtimeFailure: { firstFailure: { phase: 'capabilities', reason: 'operationFailed' } },
+    } });
+    await expect.soft(fixture.marker.consume()).resolves.toBe('unclean');
+    expect(fixture.stopForUpdate).toHaveBeenCalledOnce();
+    expect(fixture.stop).not.toHaveBeenCalled();
+    expect(launchWindowsInstallerForUpdate).not.toHaveBeenCalled();
   });
 
   it.each(['none', 'backend', 'backendAndBroker', 'capability', 'broker', 'scheduler', 'quiescence'] as const)(
