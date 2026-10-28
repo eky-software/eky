@@ -34,8 +34,17 @@ loppusiivous ovat lähteessä. Nykyinen rajattu ajo läpäisi 352 testiä ja
 desktopin jälkityypityksen; kaksi POSIX-testiä odottaa Linux-näyttöä.
 Julkaisun, sidontojen ja loppusiivouksen katselmushavainnot toistettiin, korjattiin ja
 delta-katselmuksessa suljettiin. W7.4:llä ei vielä ole PR-/main-hyväksyntää.
-Seuraavaksi B:n omistajaliitokset
-sekä C:n W7.3-luovutusraja. Tekninen tallennusnäyttö ei hyväksy payload-poistoa.
+Ensimmäisen B-liitoksen [palautussidonnan toteutussopimus](local-company-workspace-plan.md#w74-b-replacement-sidonnan-valtuus-ja-epävarma-tulos)
+erottaa palautuksen oman sulun koko sovelluksen sammutuksesta sekä
+epävarman tallennuksen tavallisesta palautuksesta ja paluukäynnistyksestä.
+Sopimuskatselmus läpäisi korjaavan journal-luvun suojan täsmennyksen jälkeen.
+Sidonnan ensimmäinen toteutusosa ja pysyvät regressiot ovat nyt lähteessä;
+95 kohdetestiä, tyyppitarkistus ja rajattu riippumaton koodikatselmus
+läpäisivät. Yksi POSIX-testi odottaa Linux-näyttöä. Koordinaattorin,
+mainin ja korjaavan journal-luvun tuotantokytkentää ei vielä muutettu.
+Seuraavaksi tämä kytkentä ja oikean main-ketjun näyttö, sitten muut B:n
+omistajaliitokset sekä C:n W7.3-luovutusraja.
+Tekninen tallennusnäyttö ei hyväksy payload-poistoa.
 Tuotantokytkentä edellyttää W7-P4:n mukaista katselmoitua näyttöä, ei vain
 suunnitelman valmistumista. W7.5:n näkyvä käyttöönotto ja backenditon
 tukipaketti ovat erillinen seuraava pala; uusia käyttäytymispäätöksiä ei

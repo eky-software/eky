@@ -44,9 +44,13 @@ export class InMemoryWorkspaceMaintenanceLease
     return this.held ? 'busy' : 'idle';
   }
 
-  captureCurrentOwner(allowedPurposes: readonly WorkspaceMaintenancePurpose[]): () => void {
+  captureCurrentOwner(
+    allowedPurposes: readonly WorkspaceMaintenancePurpose[],
+    expectedHandle?: WorkspaceMaintenanceLeaseHandle,
+  ): () => void {
     const owner = this.held;
-    if (owner === undefined || !allowedPurposes.includes(owner.purpose)) {
+    if (owner === undefined || !allowedPurposes.includes(owner.purpose) ||
+        (expectedHandle !== undefined && owner.handle !== expectedHandle)) {
       throw new WorkspaceMaintenanceLeaseBusyError();
     }
     return () => {

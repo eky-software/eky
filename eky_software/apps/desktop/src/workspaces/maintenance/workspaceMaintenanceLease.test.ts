@@ -6,6 +6,22 @@ import {
 } from './workspaceMaintenanceLease.js';
 
 describe('workspace maintenance lease', () => {
+  it('captures only the exact acquired handle even when a later owner has the same purpose', async () => {
+    const lease = new InMemoryWorkspaceMaintenanceLease();
+    const first = await lease.acquire('replace');
+    const assertFirst = lease.captureCurrentOwner(['replace'], first);
+    expect(() => lease.captureCurrentOwner(['replace'], { release: first.release })).toThrow(WorkspaceMaintenanceLeaseBusyError);
+    await first.release();
+    const second = await lease.acquire('replace');
+    expect(() => lease.captureCurrentOwner(['replace'], first)).toThrow(WorkspaceMaintenanceLeaseBusyError);
+    expect(assertFirst).toThrow(WorkspaceMaintenanceLeaseBusyError);
+    const assertSecond = lease.captureCurrentOwner(['replace'], second);
+    await first.release();
+    expect(assertSecond).not.toThrow();
+    await second.release();
+    expect(assertSecond).toThrow(WorkspaceMaintenanceLeaseBusyError);
+  });
+
   it('binds captured authority to the actual owner, not a later busy state', async () => {
     const lease = new InMemoryWorkspaceMaintenanceLease();
     expect(() => lease.captureCurrentOwner(['create'])).toThrow(WorkspaceMaintenanceLeaseBusyError);

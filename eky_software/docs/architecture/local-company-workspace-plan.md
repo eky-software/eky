@@ -4867,6 +4867,132 @@ poistamiseen. Uuden clear-portin todelliset ennen-/jälkeen-keskeytykset,
 inspection-juuren poissaolo, samanniminen vieras slotti ja menetetty valtuus
 todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet niitä.
 
+##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
+
+**Ensimmäinen toteutusosa:** `WorkspaceBackupReplacementBinding` kaappaa
+täsmällisen replace-kahvan, alkuperäiset valintatavut ja omistajaportit,
+käyttää nykyistä sidontatallenninta sekä tarkistaa julkaistun kuitin.
+Epävarma tulos säilyy kyseisen sidontaolion eliniän ja välittyy kutsujan
+antamaan sulkuporttiin. Osan ja viereisten regressioiden rajattu ajo läpäisi 95 testiä;
+yksi POSIX-testi odottaa Linux-näyttöä. Tyyppitarkistus ja rajattu riippumaton
+koodikatselmus läpäisivät. Tämä osa ei vielä ole koordinaattorin tai mainin
+tuotantokytkentä: epävarmuuden composition-laajuinen esto, korjaavan
+journal-luvun vartiointi ja koko palautusketjun näyttö ovat seuraava pala.
+
+**Toteutusta edeltävä tarkennus:** tämä koskee ensimmäistä B-liitosta,
+ei uutta palautusmoottoria tai vielä todennettua tuotantokytkentää.
+`WorkspaceBackupReplacementCoordinator` säilyttää nykyisen preflight ->
+replace-lease -> preRestore -> strict-stop -> poissaolo -> candidate -järjestyksen.
+Sidonnan julkaisu tulee poissaolon jälkeen ennen `prepareCandidate/stageBackup`a.
+
+Lähdekartoituksessa on kaksi toteutuksessa huomioitavaa eroa:
+`disposeWorkspaceRuntimeCapabilities` sulkee normaalin korvauksen omassa
+sulussa myös management-palvelun ja sen operation-guardin. Niiden avoimuus
+ei siten voi olla sulun jälkeisen sidontakirjoituksen ehto. Lisäksi
+`WorkspaceManagementService` yrittää deferred-relaunchin päättämistä myös
+komennon virheessä. Pelkkä hylätty Promise ei ole paluun esto.
+Nämä ovat nykyisen ketjun ominaisuuksia, eivät väite uudesta tuotantoviasta.
+
+**Nykyiset omistajat ja portit:**
+
+- Replacement saa pakollisen rajatun sidontaportin. Se kaappaa juuri saadun
+  replace-leasen omistajuuden heti hankinnan jälkeen ennen seuraavaa
+  asynkronista työtä. Nykyinen `captureCurrentOwner` tarkennetaan tässä
+  kutsussa vertaamaan myös hankittua kahvaa; sama tarkoitus tai myöhempi
+  samanlainen lease ei kelpaa. Muiden kutsujien nykyinen käyttö säilyy.
+- Management-composition yhdistää tämän nykyisen main-varauksen
+  `assertMainOwned`-/`assertMainCurrent`-tarkistuksiin. Sidontaportissa ne
+  ovat pakollisia, eivät candidate-portin valinnaisia no-op-kutsuja.
+  Mainin fyysistä omistajuutta vaaditaan vasta todetun backend-sulun jälkeen.
+  Sidonnan talletettu arvo tai mainin elinikätarkistus yksin ei riitä.
+- Koko sovelluksen alkava shutdown sulkee sidonnan jatkovaltuuden heti
+  mainin nykyisellä `shutdownStarted`-tilalla, ei vasta varauksen lopullisessa
+  vapautuksessa. Tämä tarkistetaan myös odotusten jälkeen. Palautuksen oma
+  capability-sulku ei aseta tätä koko sovelluksen sammutuksen ehtoa.
+- Kohde ja autentikoitu lineage tulevat koordinaattorin jo validoidusta
+  alkuperäisestä valinnasta. Sidontakirjoittaja lukee registry-slotit
+  korjaamatta niitä: yksi kelvollinen current, ei sivuslotteja, täsmällinen
+  sama registry-arvo. Se kaappaa tavut ja tiedostoidentiteetin ja vertaa
+  niitä odotusten jälkeen. Älä käytä korjaavaa `registry.read()`a uuden
+  metadatan I/O-vartijana tai korvaa valintaa uudella havaitulla kohteella.
+- Synkroninen vartija tarkistaa saman leasen, main-omistajuuden ja pysyvän
+  mitätöitymisen. Asynkroninen vartija todistaa runtime-poissaolon, mainin
+  varauksen ja muuttumattoman registry-valinnan nykyisillä omistajilla;
+  synkroninen tarkistus tehdään jokaisen odotuksen jälkeen. Tallennin
+  käyttää näitä nykyisissä slot-/tiedostomuutoksissaan ja lopputarkistuksessa.
+  Suljettua operation-guardia ei avata uudelleen eikä käytetä tähän.
+
+**Julkaisutulos ja virheen päättäminen:**
+
+1. Ennen sidontaportin ensimmäistä I/O:ta koordinaattori merkitsee
+   julkaisuyrityksen alkaneeksi. Vain odotettu valmis julkaisu, readback
+   ja tuore valtuustarkistus hyväksyvät kuitin. Currentin löytyminen
+   hylätyn kutsun jälkeen ei jälkikäteen muuta yritystä onnistuneeksi.
+2. Epävarma julkaisu tai kuitin myöhempi valtuusristiriita ohittaa tavallisen
+   `recoverFailure`-haaran: ei `discardBeforeActivation`ia, rollbackia,
+   `ensurePreviousWorkspaceRunning`ia, uutta relaunch-pyyntöä tai
+   metadata-siistintää. Sidonta, preRestore-piste ja mahdollinen muu
+   aineisto säilyvät. Tämä ei estä ennen sidontayritystä syntyneiden,
+   nykyisen sopimuksen mukaan turvallisten virheiden tavallista käsittelyä.
+3. Nykyinen composition sulkee admissionin ja mitätöi nykyisen main-varauksen
+   jatkovaltuuden vapauttamatta fyysistä varausta kesken työn. Epävarmuus
+   jää kyseisen compositionin eliniäksi myös deferred-completionin
+   synkroniseen vartijaan. Sekä jo jonotettu että myöhäinen paluupyyntö
+   estetään; uusi lease tai uusi `complete()` ei nollaa estoa.
+   Tätä varten ei lisätä yleistä tilapalvelua tai toista relaunch-omistajaa.
+4. Kaikki aloitetut tallennus-/sulkutyöt odotetaan ja sama lease vapautetaan
+   nykyisessä finally-polussa. Palvelun pending-work sisältää tämän
+   päättämisen; ulkoinen shutdown ei odota itseään. Ensivirhe säilyy
+   mahdollisen eston, releasen tai myöhemmän sulkuvirheen rinnalla.
+5. Tavallinen onnistuminen ja todettu rollback säilyttävät nykyisen
+   relaunch-järjestyksen. Replacementin loppucompletioniin ei siirretä
+   jo vapautetun leasen vartijaa: W7.3:n delete-valmistelun erillinen
+   saman leasen luovutussopimus ei muutu kaikkien komentojen sopimukseksi.
+   Epävarmuusvartija ei yksin anna paluulupaa tai kumoa nykyisiä tarkistuksia.
+
+Kuittauksen jälkeen syntyvän tavallisen candidate-/activation-virheen
+käsittely säilyy nykyisen palautusomistajan vastuulla. Saman julkaistun
+sidonnan tavut, identiteetti ja tuore valtuus tarkistetaan jo ennen
+`recoverFailure`-haaran ensimmäistä korjaavaa activation-journalin lukua:
+`read()` voi siirtää tai poistaa slotteja, joten vain ennen
+`discardBeforeActivation`ia tai rollbackia tehty tarkistus olisi myöhässä.
+Valtuus viedään nykyisten journal-/transaktioporttien kautta myös tämän
+korjaavan luvun ja myöhemmän siivouksen muutosrajoille. Ristiriita siirtyy
+yllä olevaan säilyttävään polkuun. Payloadin ja metadatan poisto ovat eri
+asioita. Metadata poistuu
+vain aiemmin määritellyllä `clearAfterPayloadsAbsent`-sopimuksella kaikkien
+oman operaation jäännösjuurten poissaolon jälkeen. Cold-recovery ei saa
+johtaa tätä lupaa kadonneesta activation-journalista.
+
+**Ensimmäisen B-palan todistus ennen muita omistajia:**
+
+- Oikea coordinator + sidontatallennin: onnistunut readback ennen payloadia;
+  väärä lineage/preflight torjutaan yhä ennen leasea ja sulkua.
+- Oikeat slotit: katko ennen/jälkeen nextin julkaisun, kadonnut kuittaus,
+  muuttunut registry-tavu tai tiedostoidentiteetti ja menetetty main-/lease-
+  valtuus. Tarkista säilyneet tavut ja ettei cleanup/paluu käynnisty.
+- Recovery: muuttunut sidonta torjutaan ennen ensimmäistä korjaavaa
+  journal-lukua; luvun aikana menetetty valtuus estää slotin siirron tai
+  poiston. Tarkista kaikki säilyneet journal-slotit, ei vain loppuvirhettä.
+- Ulkoinen shutdown kesken sidonnan I/O:n estää seuraavan muutoksen;
+  aloitettu kahvan sulku liittyy silti loppuun ennen leasen vapautusta.
+- Todellinen lease-omistaja: vapautus ja uusi saman tarkoituksen lease eivät
+  elvytä vanhaa vartijaa. Async-vartijaa ei hyväksytä synkroniseksi luvaksi.
+- Nykyinen service + deferred-relaunch: epävarma julkaisu, valmiiksi jonotettu
+  ja myöhäinen paluu, viivästetty tiedostokahvan sulku, releasen lisävirhe
+  sekä ulkoisen shutdownin liittyminen. Ensivirhe ja päättämisen virheet
+  erottuvat eikä valmis sulku tarkoita onnistunutta mutaatiota.
+- Oikea main-composition: oma admission-sulku ei hylkää kelvollista sidontaa;
+  epävarmuus estää uudet työt ja paluun. Normaali onnistuminen, preRestore-
+  virhe ja rollback säilyvät. Pelkät guard-mokit eivät täytä tätä näyttöä.
+
+Rajattu riippumaton katselmus edeltää muiden B-omistajien kytkentää.
+Alkuperäisen virheen nykyinen yksityinen syyketju, turvallinen palaute ja
+operational-lukijat tarkistetaan toteutuksen mukana; uusia julkisia
+raakakenttiä ei lisätä. B:n koko jäännösluettelo-/cleanup- ja cold-liitos
+sekä F:n prosessi-, paketti-, salaus/purku- ja PR/main-portit jäävät erillisiksi
+vaatimuksiksi. Tämä suunnitelma ei yksin todista yhtäkään niistä.
+
 ##### W7.4:n valtuuden luovutus ja elinikä
 
 Nykyinen W7.3 tarkistaa alkuperäisen registry-valinnan ja työtilajuuren
