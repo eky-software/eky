@@ -1,11 +1,12 @@
 import { promises as fileSystem } from 'node:fs';
+import { randomBytes, randomUUID } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
-  profileInspectionShutdownMilliseconds, profileInspectionWorkMilliseconds,
+  profileInspectionProtocolVersion, profileInspectionShutdownMilliseconds, profileInspectionWorkMilliseconds,
   type ProfileInspectionReceipt,
 } from '../runtime/profileInspectionMessages.js';
 import { ProfileInspectionProcessError } from '../runtime/profileInspectionProcess.js';
@@ -32,14 +33,138 @@ const roots: string[] = [];
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ['performance', 'setTimeout', 'clearTimeout'] });
-  boundary.run.mockReset().mockResolvedValue(result());
+  boundary.run.mockReset().mockImplementation(async (input: { operationId: string }) => ({
+    ...result(), identity: inspectionIdentity(input.operationId),
+  }));
 });
-afterEach(async () => {
+afterEach(async ({ task }) => {
   vi.clearAllTimers(); vi.useRealTimers(); vi.restoreAllMocks();
+  if (task.result?.state !== 'pass') { roots.splice(0); return; }
   await Promise.all(roots.splice(0).map(root => fileSystem.rm(root, { force: true, recursive: true })));
 });
 
 describe('main-owned snapshot inspection client', () => {
+  it('retains the exact accepted inspection identity behind the existing consumer fence', async () => {
+    const f = await fixture();
+    const accepted = result();
+    boundary.run.mockResolvedValueOnce(accepted);
+    const validation = await f.client.validateProfileSnapshot(operationId);
+    expect(validation).not.toHaveProperty('identity');
+    expect(JSON.stringify(validation)).not.toContain(accepted.identity.runtimeSession);
+    await f.client.withProfileSnapshotEvidence(operationId, async (evidence, assertCurrent) => {
+      expect(evidence.identity).toBe(accepted.identity);
+      expect(evidence.receipt).toBe(accepted.receipt);
+      expect(Object.isFrozen(evidence)).toBe(true);
+      await assertCurrent();
+    });
+    await f.client.removeProfileSnapshot(operationId);
+  });
+
+  it.each(['missing', 'otherOperation'] as const)('rejects %s identity without issuing evidence or deleting source', async variant => {
+    const f = await fixture();
+    const accepted = result();
+    boundary.run.mockResolvedValueOnce({ ...accepted,
+      identity: variant === 'missing' ? undefined : inspectionIdentity(otherOperationId) });
+    await expect(f.client.validateProfileSnapshot(operationId)).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+    const use = vi.fn();
+    await expect(f.client.withProfileSnapshotEvidence(operationId, use)).rejects.toThrow();
+    expect(use).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    expect(f.owner.close).not.toHaveBeenCalled();
+    await f.client.removeProfileSnapshot(operationId);
+  });
+
+  it('renews identity on reinspection and permanently expires the prior consumer guard', async () => {
+    const f = await fixture();
+    const first = result();
+    const second = result();
+    boundary.run.mockResolvedValueOnce(first).mockResolvedValueOnce(second);
+    let oldGuard!: () => Promise<void>;
+    await f.client.validateProfileSnapshot(operationId);
+    await f.client.withProfileSnapshotEvidence(operationId, async (evidence, guard) => {
+      expect(evidence.identity).toBe(first.identity); oldGuard = guard;
+    });
+    await expect(oldGuard()).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    await f.client.validateProfileSnapshot(operationId);
+    await f.client.withProfileSnapshotEvidence(operationId, async (evidence, guard) => {
+      expect(evidence.identity).toBe(second.identity);
+      expect(evidence.identity.generationId).not.toBe(first.identity.generationId);
+      await expect(oldGuard()).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+      await guard();
+    });
+    await f.client.removeProfileSnapshot(operationId);
+  });
+
+  it('does not reuse old identity after reinspection fails', async () => {
+    const f = await fixture();
+    await f.client.validateProfileSnapshot(operationId);
+    boundary.run.mockRejectedValueOnce(new ProfileInspectionProcessError('PROFILE_SCHEMA_UNSUPPORTED', {
+      processAbsent: true, reservationReclaimed: true, forced: false,
+    }));
+    await expect(f.client.validateProfileSnapshot(operationId)).rejects.toThrow();
+    const use = vi.fn();
+    await expect(f.client.withProfileSnapshotEvidence(operationId, use)).rejects.toThrow();
+    expect(use).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    await f.client.removeProfileSnapshot(operationId);
+  });
+
+  it.each(['owner', 'channel', 'shutdown'] as const)('rejects evidence use after %s is lost across an await', async variant => {
+    const f = await fixture();
+    await f.client.validateProfileSnapshot(operationId);
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    const action = vi.fn();
+    const task = f.client.withProfileSnapshotEvidence(operationId, async (_, guard) => {
+      entered.resolve(); await gate.promise;
+      await guard(); action();
+    });
+    const failed = failure(task);
+    try {
+      await entered.promise;
+      if (variant === 'owner') f.owner.assertMainOwned.mockRejectedValue(new Error('synthetic ownership loss'));
+      else if (variant === 'channel') f.authority.mockImplementation(() => { throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID'); });
+      else f.client.closeAdmission();
+    } finally { gate.resolve(); await Promise.allSettled([failed]); }
+    expect(await failed).toBeInstanceOf(Error);
+    expect(action).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    expect(f.owner.close).not.toHaveBeenCalled();
+  });
+
+  it('keeps evidence source use owned until it settles during shutdown', async () => {
+    const f = await fixture();
+    await f.client.validateProfileSnapshot(operationId);
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    const task = f.client.withProfileSnapshotEvidence(operationId, async () => {
+      entered.resolve(); await gate.promise;
+    });
+    let shutdown: Promise<void> | undefined;
+    let closed = false;
+    try {
+      await entered.promise;
+      shutdown = f.client.shutdown().then(() => { closed = true; });
+      await flush();
+      expect(closed).toBe(false);
+      expect(f.owner.close).not.toHaveBeenCalled();
+    } finally { gate.resolve(); await Promise.allSettled([task, shutdown]); }
+    await task; await shutdown;
+    expect(closed).toBe(true);
+    expect(f.owner.close).toHaveBeenCalledOnce();
+  });
+
+  it('forwards the explicitly named delete owner without changing ordinary validation', async () => {
+    const f = await fixture();
+    await f.client.validateDeletionProfileSnapshot(operationId, otherOperationId);
+    expect(boundary.run.mock.calls[0]![0]).toMatchObject({ operationId, deleteMaintenanceOperationId: otherOperationId });
+    expect(boundary.run.mock.calls[0]![0]).not.toHaveProperty('updateMaintenanceOperationId');
+    await f.client.validateProfileSnapshot(operationId);
+    expect(boundary.run.mock.calls[1]![0]).not.toHaveProperty('deleteMaintenanceOperationId');
+    expect(() => f.client.validateDeletionProfileSnapshot(operationId, '')).toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+    await f.client.removeProfileSnapshot(operationId);
+  });
+
   it('releases activation staging through its inspection owner before client shutdown', async () => {
     const f = await fixture();
     f.owner.assertMainOwned.mockImplementation(async () => { await fileSystem.lstat(f.operationRoot); });
@@ -83,7 +208,10 @@ describe('main-owned snapshot inspection client', () => {
       return snapshot;
     });
     const receipt = result().receipt;
-    boundary.run.mockResolvedValueOnce(result({ ...receipt, migrationPolicy: 'exactCurrentManifest' }));
+    boundary.run.mockImplementationOnce(async (input: { operationId: string }) => ({
+      ...result({ ...receipt, migrationPolicy: 'exactCurrentManifest' }),
+      identity: inspectionIdentity(input.operationId),
+    }));
     const lease = new InMemoryWorkspaceMaintenanceLease();
     const first = new Error('synthetic startup lineage refusal');
     await expect(validateOwnedActiveProfile({
@@ -780,10 +908,15 @@ function result(receipt: ProfileInspectionReceipt = {
   migrationChainIdentity: 'b'.repeat(64), profileId: 'a'.repeat(64), migrationPolicy: 'restoreCompatible',
   database: { byteSize: 10, sha256: 'c'.repeat(64) }, artifactCatalog: { byteSize: 2, sha256: 'd'.repeat(64) },
 }) {
-  return { receipt, validation: { type: 'profileSnapshotValidation' as const, activeProfileIsEmpty: false,
+  return { receipt, identity: inspectionIdentity(operationId), validation: { type: 'profileSnapshotValidation' as const, activeProfileIsEmpty: false,
     artifactCount: receipt.artifactCount, artifactTotalByteSize: receipt.artifactTotalByteSize,
     databaseHealth: receipt.databaseHealth, migrationChainIdentity: receipt.migrationChainIdentity,
     profileId: receipt.profileId, profileMatchesActive: true } };
+}
+
+function inspectionIdentity(id: string) {
+  return Object.freeze({ protocolVersion: profileInspectionProtocolVersion, operationId: id,
+    generationId: randomUUID(), runtimeSession: randomBytes(32).toString('base64url') });
 }
 
 function restoreJournal(phase: 'validationStarting') {

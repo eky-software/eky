@@ -217,6 +217,9 @@ export function createElectronE2eBackendController(
               // The controlled runner cannot attest the production restore fence.
               throw new Error('ELECTRON_E2E_BACKEND_RESTORE_SHUTDOWN_UNSUPPORTED');
             },
+            async stopForDelete(_operationId: string) {
+              throw new Error('ELECTRON_E2E_BACKEND_DELETE_SHUTDOWN_UNSUPPORTED');
+            },
           });
 
           async function stopBackend(

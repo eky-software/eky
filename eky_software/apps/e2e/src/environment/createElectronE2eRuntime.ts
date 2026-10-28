@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import {
+  appendFileSync,
   cpSync,
   mkdirSync,
   realpathSync,
@@ -8,6 +9,7 @@ import {
 import { join, resolve } from 'node:path';
 
 import { profileInspectionNativeContract } from '../../../backend/src/database/connection/profileInspectionNativeContract.js';
+import { workspaceDeletionProofPreload } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
 import type { E2eWorkerPaths } from './e2eEnvironmentTypes.js';
 import {
   createElectronE2eProfile,
@@ -73,6 +75,10 @@ export function createElectronE2eRuntime(input: {
     join(applicationDistPath, 'preload'),
     { recursive: true },
   );
+  const deletionPreload = workspaceDeletionProofPreload(input.scenarioId);
+  if (deletionPreload !== '') {
+    appendFileSync(join(applicationDistPath, 'preload', 'index.cjs'), deletionPreload, 'utf8');
+  }
   cpSync(
     resolve(repositoryRoot, 'apps/desktop/dist/runtime'),
     join(applicationDistPath, 'runtime'),

@@ -93,7 +93,7 @@ describe('workspace management composition boundaries', () => {
         workspaceComposition,
         'maintenanceLease: options.maintenanceLease,',
       ),
-    ).toBe(7); // Active and selector switch branches bind the same existing lease.
+    ).toBe(8); // Delete preparation also borrows this same installation owner.
     expect(workspaceComposition).toContain("completionMode: 'beforeRuntimeStart' as const");
     expect(workspaceComposition).toContain('assertRecoveryAdmission: options.assertRecoveryAdmission,');
     expect(workspaceComposition).toContain('workspaceRuntimeAbsence: options.workspaceRuntimeAbsence,');
@@ -101,16 +101,32 @@ describe('workspace management composition boundaries', () => {
       'maintenanceState: options.maintenanceLease,',
     );
     expect(workspaceComposition).toContain(
-      'runtimeRelaunchCompletion: options.runtimeRelaunch,',
+      'runtimeRelaunchCompletion: deletion === undefined ? options.runtimeRelaunch : {',
     );
+    expect(workspaceComposition).toContain('options.runtimeRelaunch.complete(() => {');
+    expect(workspaceComposition).toContain('if (assertCurrent !== undefined) assertUpdateJournalAuthority(assertCurrent);');
+    expect(workspaceComposition).toContain('if (assertReturn !== undefined) assertUpdateJournalAuthority(assertReturn);');
     expect(desktopComposition).toContain(
       'disposeCapabilities: disposeWorkspaceRuntimeCapabilities,',
     );
     expect(desktopComposition).toContain(
-      'const capabilities = [\n        workspaceManagementCapability,',
+      "const capabilities = [\n        purpose === 'delete' ? undefined : workspaceManagementCapability,",
     );
+    expect(desktopComposition).toContain("purpose === 'delete' ? undefined : workspaceManagementComposition,");
+    expect(desktopComposition).toContain("if (purpose === 'delete') workspaceManagementComposition.service.closeAdmission();");
     expect(desktopComposition).toContain('capability?.dispose();');
     // Runtime ordering is covered by lifecycle and real composition shutdown tests.
+  });
+
+  it('keeps both production preparation hooks dormant without the real journal consumer', async () => {
+    for (const file of ['desktopComposition.ts', 'desktopSelectorComposition.ts']) {
+      const source = await readFile(join(desktopSourceRoot, 'main', file), 'utf8');
+      expect(source).toContain('options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {');
+      expect(source).toContain('runtimeGeneration: options.runtimeInstanceId,');
+      expect(source).toContain('publish: options.workspaceDeletionPublisher,');
+      expect(source).toContain('...createWorkspaceDeletionConfirmations(');
+      expect(source).not.toMatch(/ipcMain\.handle\([^\n]*[Dd]elet/u);
+    }
   });
 });
 

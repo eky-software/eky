@@ -1,10 +1,11 @@
+import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import type { RecoveryPointService } from '../../profileBackup/recoveryPoint/recoveryPointService.js';
 import type { LocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
 import { isTerminalUpdateJournalState } from '../../update/startupRecoveryAuthority.js';
 import { parseUpdateJournal } from '../../update/updateJournal.js';
-import { maximumUpdateJournalBytes } from '../../update/updateJournalStore.js';
+import { assertUpdateJournalAuthority, maximumUpdateJournalBytes } from '../../update/updateJournalStore.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { EmptyWorkspaceCreationCoordinator } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import { EmptyWorkspaceCreationRecovery } from '../creation/emptyWorkspaceCreationRecovery.js';
@@ -62,6 +63,7 @@ import { WorkspaceLabelRename } from './workspaceLabelRename.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
+import { prepareWorkspaceDeletion, type WorkspaceDeletionPreparationOptions } from './workspaceDeletionPreparation.js';
 import type { DesktopOperationalIdentity } from '../../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../../observability/desktopOperationalLogger.js';
 
@@ -72,7 +74,14 @@ interface SharedWorkspaceRuntimeRelaunch
 
 interface SharedWorkspaceMaintenanceLease
   extends WorkspaceMaintenanceLease,
-    WorkspaceMaintenanceStateReader {}
+    WorkspaceMaintenanceStateReader,
+    Pick<InMemoryWorkspaceMaintenanceLease, 'captureCurrentOwner'> {}
+
+export interface WorkspaceDeletionPreparationCompositionOptions extends Pick<WorkspaceDeletionPreparationOptions,
+  'runtimeGeneration' | 'assertMainReservation' | 'assertMainReservationCurrent' |
+  'confirmDataLoss' | 'confirmDeletion' | 'confirmReturn' | 'publish'> {
+  createRuntime(): WorkspaceDeletionPreparationOptions['runtime'];
+}
 
 interface SharedActiveWorkspaceLifecycle
   extends ActiveWorkspaceLifecyclePort,
@@ -86,6 +95,7 @@ export interface WorkspaceManagementCompositionOptions {
   readonly activeWorkspaceLifecycle: SharedActiveWorkspaceLifecycle;
   readonly appVersion: string;
   readonly buildRevision: string;
+  readonly deletionPreparation?: Readonly<WorkspaceDeletionPreparationCompositionOptions>;
   readonly localUpdateRuntimePaths: Pick<
     LocalUpdateRuntimePaths,
     'directSetupMigrationRecoveryPath' | 'journalPath'
@@ -313,6 +323,8 @@ export async function createWorkspaceManagementComposition(
     ...renameOptions, mode: 'selector', assertCurrent: options.assertCurrent.bind(options),
     captureCurrentOwner: () => options.maintenanceLease.captureCurrentOwner(['rename']),
   } : renameOptions);
+  let assertDeletionReturn: (() => void) | undefined;
+  const deletion = options.deletionPreparation;
   const service = new WorkspaceManagementService({
     observer: createWorkspaceBackupOperationalObserver({
       operationalIdentity: options.operationalIdentity,
@@ -328,7 +340,37 @@ export async function createWorkspaceManagementComposition(
     }).inspect() } : registry,
     renameWorkspace,
     ...(replaceActive === undefined ? {} : { replaceActive }),
-    runtimeRelaunchCompletion: options.runtimeRelaunch,
+    ...(deletion === undefined ? {} : { deletionPreparation: {
+      maintenanceLease: options.maintenanceLease,
+      prepare: (request, lifetime, assertLease) => prepareWorkspaceDeletion({
+        operationId: randomUUID(), installationRoot: options.userDataRoot,
+        runtimeGeneration: deletion.runtimeGeneration, registry, request, lifetime, assertLease,
+        runtime: deletion.createRuntime(),
+        assertMainReservation: () => deletion.assertMainReservation(),
+        assertMainReservationCurrent: () => deletion.assertMainReservationCurrent(),
+        confirmDataLoss: target => deletion.confirmDataLoss(target),
+        confirmDeletion: target => deletion.confirmDeletion(target),
+        confirmReturn: target => deletion.confirmReturn(target),
+        closeServiceAdmission: (): void => service.closeAdmission(),
+        setReturnGuard(guard) {
+          if (assertDeletionReturn !== undefined) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
+          assertDeletionReturn = guard;
+        },
+        publish: (assertAuthority, assertSelection, target) => deletion.publish(assertAuthority, assertSelection, target),
+      }),
+    } }),
+    runtimeRelaunchCompletion: deletion === undefined ? options.runtimeRelaunch : {
+      complete(assertCurrent) {
+        // The service still owns the exact lease while both guards run.
+        const assertReturn = assertDeletionReturn;
+        try {
+          options.runtimeRelaunch.complete(() => {
+            if (assertCurrent !== undefined) assertUpdateJournalAuthority(assertCurrent);
+            if (assertReturn !== undefined) assertUpdateJournalAuthority(assertReturn);
+          });
+        } finally { assertDeletionReturn = undefined; }
+      },
+    },
     switchWorkspace,
   });
 

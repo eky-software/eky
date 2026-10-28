@@ -32,7 +32,7 @@ export class MainOwnedSelectorWorkspaceLifecycle
     this.assertMainCurrent = options.reservation.assertMainCurrent.bind(options.reservation);
     this.assertMainOwned = options.reservation.assertMainOwned.bind(options.reservation);
     const capture = options.maintenanceLease.captureCurrentOwner.bind(options.maintenanceLease);
-    this.captureOwner = () => capture(['create', 'import', 'switch']);
+    this.captureOwner = () => capture(['create', 'import', 'switch', 'delete']);
     this.requestRelaunch = options.runtimeRelaunch.request.bind(options.runtimeRelaunch);
   }
 

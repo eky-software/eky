@@ -579,8 +579,9 @@ palautus-/relaunch-tuloksen mainille muuttumattomana; muut virheet luokitellaan
 edelleen turvallisesti. Todiste kattaa source-null-virhepaluun ja erillisen
 fyysisen restartin, ei business-avauksen jälkeistä rollbackia tai pakettia.
 
-`DESK-SELECTOR-CREATE-001` ja `DESK-SELECTOR-IMPORT-001` käyttävät samaa
-eristettyä Electron-fixtureä, mutta vain nämä täsmälliset skenaariot
+`DESK-SELECTOR-CREATE-001`, `DESK-SELECTOR-IMPORT-001` ja W7.3:n kuusi
+testimatriisissa nimettyä `DESK-DELETE-*`-tapausta käyttävät samaa
+eristettyä Electron-fixtureä. Vain nämä täsmälliset skenaariot
 delegoivat backendin käynnistyksen tuotannon `startDesktopBackend`-omistajalle. Tavallinen fake-backend ei
 suorita FirstStartin tarvitsemaa migraatioporttia. Havaintodekoraattori
 välittää alkuperäiset vaihtoehdot, sulkutulokset ja exit-ilmoitukset;
@@ -588,6 +589,27 @@ se ei ole toinen prosessiomistaja. Fixture tallettaa kunkin käynnistyksen
 todellisen portin ja varmentaa sen vapautumisen puun sulun jälkeen,
 ennen uutta käynnistystä tai juuren poistamista. Puuttuva tai ristiriitainen
 havainto estää siivouksen hyväksymisen. Muut skenaariot säilyvät ennallaan.
+
+W7.3:n valmistelutodennus käyttää nykyistä UI-luontia ja -avausta eikä
+rinnakkaista profiilin tai prosessin omistajaa. Vain testin yksityiseen
+preload-kopioon liitetty yksi valmistelukutsu välittää alkuperäisen IPC-
+eventin nykyiselle main-capabilitylle. E2E-main rekisteröi kanavan vasta
+compositionin valmistuttua ja poistaa sen ulkoisessa sulussa sekä startup-
+virheessä. Tuotannon preload, julkinen desktop-API ja poistokanavan esto
+säilyvät. Testikuluttaja tarkistaa vartijat mutta ei poista tietoja.
+Kaksi nimettyä backup-tapausta valitsee nykyisessä native-testisovituksessa
+vain testin oman `.ekybackup`-kohteen ja vaatii nykyiset tallennusvalinnan
+otsikko-/suodatin-/pääte-ehdot. Muut skenaariot käyttävät vanhaa
+tallennuskohdettaan. Salasana annetaan oikeassa rajatussa salasanaikkunassa;
+käyttöjärjestelmän tiedostodialogin käsittely on edelleen testisovitus.
+Vientitavut autentikoidaan nykyisellä container-lukijalla. Muutettujen
+tavujen koe ei ole palautuskoe tai W7.4:n poistotodiste.
+Mainin ulkoinen shutdown, ei testiapurin erillinen drain, omistaa keskeneräisen
+pyynnön odotuksen. Ensivirhe tarjotaan ennen IPC-virhemuunnosta nykyiseen
+yksityiseen keräykseen; puuttuvaa tai osittaista havaintoa ei arvata.
+Kytkentäkontrollit eivät yksin ole oikean Electron-/SQLite-ketjun tai
+paketoidun palautuksen hyväksyntä. Tarkka sopimus ja todennuksen tila ovat
+[W7.3:n omistajalla](local-company-workspace-plan.md#w73n-toteutussopimus).
 
 Testisession ensimmäinen arvo tulee edelleen eristetystä konfiguraatiosta;
 myöhemmät arvot syntyvät nykyisellä tuotannon generaattorilla. Näin
@@ -654,6 +676,13 @@ alkaa ennen operaatiocallbackia: se kattaa myös callbackin tiedosto- ja
 salasanavaiheet, eikä ole pelkän prosessin poistumisajan mittaus.
 `desktopBeforeQuit.test.ts` kattaa jaetun käsittelijän kilpailut ja molempien
 entrypointien kytkennän; todellinen Electron-käyttäjäpolku on erillinen näyttö.
+
+`DESK-WINDOW-CLOSE-001` sulkee oikean pääikkunan ennen sovelluksen quit-ketjua.
+Se vaatii samasta runtime-sukupolvesta yhden käynnistys- ja onnistuneen
+sulkutapahtuman eikä hyväksy sulkuvirhettä. Sulun odotus käyttää nykyistä
+graceful-exit-turvarajaa; oma kuuntelija ja ajastin poistetaan myös virheessä.
+Fixturen prosessipuun ja portin siivous säilyy erillisenä hyväksyntäehtona.
+Tämä ei ole Win32-asenninkutsun tai hardened-paketin korvaava todistus.
 
 Epäonnistuneen yrityksen `electron-lifecycle`-liite sisältää vain version,
 yritysnumeron, rajatun vaiheluettelon ja erilliset API-, runtime-, portti- ja
@@ -871,8 +900,8 @@ todellisen exitin jälkeen; epäselvä tila lukitsee jatkon. Ennen kirjoittavaa
 importia kesken jäänyt varauskysely ei estä määräaikaista poistumista.
 Tämä sovittaa olemassa olevan synteettisen backendin nykyiseen sopimukseen,
 ei korvaa oikean backendin, migraatioportin tai paketoidun päivityksen testejä.
-Testibackend ei hyväksy päivitys- eikä palautusoperaatioon sidottua sammutusta:
-se ei voi todistaa tuotannon maintenance-suojaa. Molemmat kutsut hylätään
+Testibackend ei hyväksy päivitys-, palautus- eikä poisto-operaatioon sidottua sammutusta:
+se ei voi todistaa tuotannon maintenance-suojaa. Nämä kutsut hylätään
 ennen sammutusviestin lähetystä; tavallinen sulku säilyy. Oikean backendin
 palautussulun erillinen sopimus on
 [RESTORE-BACKEND-STOP-001](r0-e2e-test-matrix.md), jonka kohdenäyttö on
@@ -882,6 +911,15 @@ prosessikahvaa; se ei käsittele testibackendin tavallista sulkua
 suojatun päivitys- tai palautussammutuksen hyväksyntänä. `WORKSPACE-CREATE-001` käyttää erillistä
 Node-järjestelmäfixturen prosessipuu- ja porttipoissaolon todistusta.
 Todellinen Electron-omistajuus todennetaan desktop-käyttäjäpoluissa.
+Oikean backendin selector-, first-start- ja activation-havaintosovittimet
+välittävät myös `stopForDelete`-kutsun samalle omistajalle ja samalla
+operaatiotunnisteella. Odottava tai epäonnistunut sulku ei vapauta niiden
+omistajuushavaintoa; alkuperäinen virhe säilyy. Tätä suojaavat
+[`workspaceProofBackendDecorators.test.ts`](../../apps/desktop/e2e/workspaceProofBackendDecorators.test.ts)
+ja nykyinen backend-controllerin sopimustesti. Molemmat kuuluvat desktopin
+tavalliseen testikomentoon ja sen ajokytkennän suojaukseen. Hallitut
+delegointitestit eivät todista oikean backendin poistosulkua tai W7.3:n
+valmisteluketjua.
 Havaintokutsun poikkeus ei muuta controllerin onnistumista, alkuperäistä
 käynnistysvirhettä tai sulkemista. Tuotannon käynnistyspolku ei muutu.
 Erillinen `DESK-STARTUP-OBSERVATION-001` todistaa havaintojen todellisen

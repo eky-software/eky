@@ -1,10 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { createDesktopOperationalEvent } from './createDesktopOperationalEvent.js';
+import type { DesktopOperationalEventPayloadMap } from './desktopOperationalEvent.js';
 import {
   DesktopOperationalEventValidationError,
   validateDesktopOperationalEvent,
 } from './desktopOperationalEventValidator.js';
+import { workspaceManagementOperationIds } from './workspaceManagementFailureContext.js';
+
+type ManagementFailureCase = Pick<
+  DesktopOperationalEventPayloadMap['workspaceManagement.operationFailed'],
+  'operationId' | 'errorCode' | 'stage' | 'retryable'
+>;
 
 const options = {
   appVersion: '0.0.0',
@@ -15,6 +22,80 @@ const options = {
 };
 
 describe('desktop operational event contracts', () => {
+  const existingOperations = ['create', 'import', 'replace', 'switch', 'rename'] as const;
+  const managementFailures = existingOperations.flatMap<ManagementFailureCase>(operation => [
+    { operationId: workspaceManagementOperationIds[operation], errorCode: `WORKSPACE_MANAGEMENT_${operation.toUpperCase()}_FAILED`, stage: 'operation', retryable: false },
+    { operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_INVALID', stage: 'operation', retryable: false },
+    { operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', stage: 'operation', retryable: false },
+    { operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'operation', retryable: true },
+    { operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'admission', retryable: true },
+  ]);
+  const deletionFailures = (['admission', 'deletePreparation'] as const).flatMap<ManagementFailureCase>(stage => [
+    { operationId: workspaceManagementOperationIds.delete, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage, retryable: true },
+    ...['WORKSPACE_MANAGEMENT_INVALID', 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_FAILED']
+      .map<ManagementFailureCase>(errorCode => ({ operationId: workspaceManagementOperationIds.delete, errorCode, stage, retryable: false })),
+  ]);
+
+  const namedFailures: ManagementFailureCase[] = [
+    { operationId: workspaceManagementOperationIds.replace, errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck', retryable: false },
+    { operationId: workspaceManagementOperationIds.create, errorCode: 'WORKSPACE_CREATION_LABEL_EXISTS', stage: 'operation', retryable: false },
+    { operationId: workspaceManagementOperationIds.import, errorCode: 'WORKSPACE_IMPORT_LABEL_EXISTS', stage: 'operation', retryable: false },
+    ...(['create', 'import', 'rename'] as const).map<ManagementFailureCase>(operation => ({
+      operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS', stage: 'operation', retryable: false,
+    })),
+  ];
+
+  it.each([...managementFailures, ...deletionFailures, ...namedFailures])(
+    'validates $operationId $errorCode at $stage without opening other operations', entry => {
+      const event = createDesktopOperationalEvent({
+        ...entry, eventName: 'workspaceManagement.operationFailed',
+        correlationId: options.runtimeInstanceId, durationMs: 2, sideEffectState: 'unknown',
+      }, options);
+      expect(validateDesktopOperationalEvent(event)).toEqual(event);
+      const none = { ...event, sideEffectState: 'none' };
+      if (entry.operationId === 'workspace.delete' && entry.stage === 'deletePreparation' && !entry.retryable) {
+        expect(() => validateDesktopOperationalEvent(none)).toThrow(DesktopOperationalEventValidationError);
+      } else {
+        expect(validateDesktopOperationalEvent(none)).toMatchObject({ sideEffectState: 'none' });
+      }
+      for (const change of [
+        { category: 'backup' }, { component: 'backend' }, { level: 'info' }, { outcome: 'success' },
+        { eventName: 'workspaceManagement.operationCompleted' },
+        { eventName: 'workspaceManagement.operationPrepared' },
+        { eventName: 'workspaceManagement.operationCancelled' },
+        { operationId: 'workspace.deleteResume' }, { stage: 'deleteAuthorization' },
+        { stage: 'deletePurge' }, { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
+        { correlationId: undefined }, { durationMs: undefined }, { operationId: undefined },
+        { correlationId: 'synthetic-not-a-uuid' }, { durationMs: -1 }, { durationMs: 1.5 },
+        { durationMs: Number.MAX_SAFE_INTEGER + 1 }, { errorCode: undefined },
+        { retryable: !entry.retryable }, { sideEffectState: undefined }, { stage: undefined },
+        { sideEffectState: 'committed' }, { sideEffectState: 'completed' }, { sideEffectState: 'rolledBack' },
+        { rawError: 'synthetic-private' }, { cause: {} }, { stack: 'synthetic-private' },
+        { workspaceId: 'synthetic-workspace' }, { workspaceLabel: 'Synthetic' },
+        { lineageIdentity: 'synthetic-lineage' }, { inventory: [] }, { path: '/synthetic/private' },
+        { fingerprint: 'synthetic-private' }, { companyId: 'synthetic-company' },
+        ...(entry.operationId === 'workspace.delete'
+          ? [{ stage: 'operation' }, { stage: 'lineageCheck' },
+            ...['WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'WORKSPACE_MANAGEMENT_DELETE_FAILED',
+              ...existingOperations.map(operation => `WORKSPACE_MANAGEMENT_${operation.toUpperCase()}_FAILED`),
+              'WORKSPACE_CREATION_LABEL_EXISTS', 'WORKSPACE_IMPORT_LABEL_EXISTS', 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH',
+              'WORKSPACE_MANAGEMENT_LABEL_EXISTS', 'WORKSPACE_DELETE_STALE_CONFIRMATION',
+              'WORKSPACE_DELETE_BACKUP_UNAVAILABLE', 'WORKSPACE_DELETE_INVENTORY_INVALID',
+              'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED', 'WORKSPACE_DELETE_CLEANUP_FAILED']
+              .map(errorCode => ({ errorCode }))]
+          : [{ stage: 'deletePreparation' },
+            { errorCode: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' }, { errorCode: 'WORKSPACE_DELETE_FAILED' }]),
+        ...(entry.errorCode.endsWith('_LABEL_EXISTS')
+          ? [{ stage: 'admission' }, { stage: 'lineageCheck' },
+            ...Object.values(workspaceManagementOperationIds).filter(operationId => entry.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
+              ? !['workspace.create', 'workspace.import', 'workspace.rename'].includes(operationId)
+              : operationId !== entry.operationId).map(operationId => ({ operationId }))] : []),
+        ...((entry.errorCode.endsWith('_FAILED') && entry.operationId !== 'workspace.delete') || entry.stage === 'lineageCheck'
+          ? [{ operationId: entry.operationId === 'workspace.create' ? 'workspace.replace' : 'workspace.create' }, { stage: 'admission' }] : []),
+      ]) expect(() => validateDesktopOperationalEvent({ ...event, ...change })).toThrow(DesktopOperationalEventValidationError);
+    },
+  );
+
   it.each(['acceptancePreparation', 'acceptanceCommit', 'acceptedCleanup'] as const)(
     'validates the closed acceptance failure at %s', stage => {
       const event = createDesktopOperationalEvent({

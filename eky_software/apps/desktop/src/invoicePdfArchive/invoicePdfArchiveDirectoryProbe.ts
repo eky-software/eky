@@ -29,6 +29,7 @@ export async function probeInvoicePdfArchiveDirectory(
   );
   const remove = operationOverrides.rm ?? rm;
 
+  let closeUncertain = false;
   try {
     await finalizeInvoicePdfArchiveFile(
       {
@@ -39,13 +40,18 @@ export async function probeInvoicePdfArchiveDirectory(
       operationOverrides,
     );
     await remove(finalPath, { force: true });
-  } catch {
+  } catch (error) {
+    closeUncertain = error instanceof InvoicePdfArchiveError && error.ioCompletionUncertain;
     throw new InvoicePdfArchiveError(
       'ARCHIVE_DIRECTORY_UNSUPPORTED',
       false,
+      closeUncertain,
+      error,
     );
   } finally {
-    await remove(temporaryPath, { force: true }).catch(() => undefined);
-    await remove(finalPath, { force: true }).catch(() => undefined);
+    if (!closeUncertain) {
+      await remove(temporaryPath, { force: true }).catch(() => undefined);
+      await remove(finalPath, { force: true }).catch(() => undefined);
+    }
   }
 }

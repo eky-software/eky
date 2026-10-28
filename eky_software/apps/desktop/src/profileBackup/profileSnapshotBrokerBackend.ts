@@ -29,6 +29,9 @@ export interface ProfileMaintenanceService {
   assertRestore(operationId: string): void;
   endRestore(operationId: string): void;
   invalidateRestore(operationId: string): void;
+  beginDelete(operationId: string, timeoutMilliseconds: number, maximumDurationMilliseconds: number): Promise<void>;
+  assertDelete(operationId: string): void;
+  invalidateDelete(operationId: string): void;
   end(operationId: string): void;
   forceEnd(): void;
   getStatus(): 'busy' | 'normal';
@@ -64,14 +67,16 @@ export function startProfileSnapshotBrokerBackend(input: {
 }): {
   assertUpdateMaintenance(operationId: string): void;
   assertRestoreMaintenance(operationId: string): void;
+  assertDeleteMaintenance(operationId: string): void;
   close(): void;
 } {
   let activeOperationId: string | undefined;
-  let activeOperationKind: 'ordinary' | 'update' | 'restore' | undefined;
+  let activeOperationKind: 'ordinary' | 'update' | 'restore' | 'delete' | undefined;
   let activeSnapshotAbortController: AbortController | undefined;
   let autoReleaseTimer: ReturnType<typeof setTimeout> | undefined;
   let closed = false;
   let operationQueue = Promise.resolve();
+  const queuedDeleteBegins = new Set<{ readonly operationId: string; cancelled: boolean }>();
 
   const clearActiveOperation = () => {
     if (autoReleaseTimer !== undefined) {
@@ -84,7 +89,7 @@ export function startProfileSnapshotBrokerBackend(input: {
 
   const assertProtectedMaintenance = (
     operationId: string,
-    kind: 'update' | 'restore',
+    kind: 'update' | 'restore' | 'delete',
   ) => {
     if (closed) {
       throw new Error('PROFILE_SNAPSHOT_BROKER_UNAVAILABLE');
@@ -95,12 +100,15 @@ export function startProfileSnapshotBrokerBackend(input: {
       throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
     }
     if (kind === 'update') input.maintenance.assertUpdate(operationId);
-    else input.maintenance.assertRestore(operationId);
+    else if (kind === 'restore') input.maintenance.assertRestore(operationId);
+    else input.maintenance.assertDelete(operationId);
   };
   const assertUpdateMaintenance = (operationId: string) =>
     assertProtectedMaintenance(operationId, 'update');
   const assertRestoreMaintenance = (operationId: string) =>
     assertProtectedMaintenance(operationId, 'restore');
+  const assertDeleteMaintenance = (operationId: string) =>
+    assertProtectedMaintenance(operationId, 'delete');
   const captureSnapshotFence = (operationId?: string) => {
     // Timer/close cleanup can erase broker metadata while work is awaiting.
     const protectedKind = activeOperationKind === 'ordinary'
@@ -126,6 +134,7 @@ export function startProfileSnapshotBrokerBackend(input: {
       return;
     }
     closed = true;
+    queuedDeleteBegins.clear();
     unsubscribe();
     unsubscribeClose();
     activeSnapshotAbortController?.abort();
@@ -136,11 +145,17 @@ export function startProfileSnapshotBrokerBackend(input: {
     }
     input.transport.close();
   };
-  const invalidateRestoreMaintenance = (operationId: string) => {
-    if (activeOperationKind !== 'restore' || activeOperationId !== operationId) {
+  const invalidateMaintenance = (operationId: string, kind: 'restore' | 'delete') => {
+    if (kind === 'delete') {
+      for (const queued of queuedDeleteBegins) {
+        if (queued.operationId === operationId) queued.cancelled = true;
+      }
+    }
+    if (activeOperationKind !== kind || activeOperationId !== operationId) {
       throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
     }
-    input.maintenance.invalidateRestore(operationId);
+    if (kind === 'restore') input.maintenance.invalidateRestore(operationId);
+    else input.maintenance.invalidateDelete(operationId);
     activeSnapshotAbortController?.abort();
     if (autoReleaseTimer !== undefined) {
       clearTimeout(autoReleaseTimer);
@@ -150,10 +165,12 @@ export function startProfileSnapshotBrokerBackend(input: {
   const unsubscribe = input.transport.subscribe((value) => {
     if (closed) return;
     const immediateRequest = parseProfileSnapshotBrokerRequest(value);
-    if (immediateRequest?.operation === 'invalidateRestoreMaintenance') {
+    if (immediateRequest?.operation === 'invalidateRestoreMaintenance' ||
+      immediateRequest?.operation === 'invalidateDeleteMaintenance') {
       // Revocation must precede the ACK of work already awaiting in the queue.
       try {
-        invalidateRestoreMaintenance(immediateRequest.operationId);
+        invalidateMaintenance(immediateRequest.operationId,
+          immediateRequest.operation === 'invalidateRestoreMaintenance' ? 'restore' : 'delete');
         input.transport.send({
           ok: true,
           protocolVersion: profileSnapshotBrokerProtocolVersion,
@@ -167,13 +184,17 @@ export function startProfileSnapshotBrokerBackend(input: {
       }
       return;
     }
+    const queuedDeleteBegin = immediateRequest?.operation === 'beginDeleteMaintenance'
+      ? { operationId: immediateRequest.operationId, cancelled: false } : undefined;
+    if (queuedDeleteBegin !== undefined) queuedDeleteBegins.add(queuedDeleteBegin);
     operationQueue = operationQueue
       .then(async () => {
+        if (queuedDeleteBegin !== undefined) queuedDeleteBegins.delete(queuedDeleteBegin);
         if (closed) {
           return;
         }
 
-        const request = parseProfileSnapshotBrokerRequest(value);
+        const request = immediateRequest;
         const requestId = readProfileSnapshotBrokerRequestId(value);
 
         if (request === undefined) {
@@ -189,10 +210,15 @@ export function startProfileSnapshotBrokerBackend(input: {
         }
 
         try {
+          // Cancellation may arrive before this exact admission acquires a fence.
+          if (queuedDeleteBegin?.cancelled) {
+            throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+          }
           if (
             request.operation === 'beginProfileMaintenance' ||
             request.operation === 'beginUpdateMaintenance' ||
-            request.operation === 'beginRestoreMaintenance'
+            request.operation === 'beginRestoreMaintenance' ||
+            request.operation === 'beginDeleteMaintenance'
           ) {
             if (
               activeOperationId !== undefined ||
@@ -202,7 +228,7 @@ export function startProfileSnapshotBrokerBackend(input: {
             }
             const kind = request.operation === 'beginUpdateMaintenance'
               ? 'update' : request.operation === 'beginRestoreMaintenance'
-                ? 'restore' : 'ordinary';
+                ? 'restore' : request.operation === 'beginDeleteMaintenance' ? 'delete' : 'ordinary';
             // Own cancellation before begin can wait for an in-flight write.
             activeOperationId = request.operationId;
             activeOperationKind = kind;
@@ -214,6 +240,11 @@ export function startProfileSnapshotBrokerBackend(input: {
                 );
               } else if (kind === 'restore') {
                 await input.maintenance.beginRestore(
+                  request.operationId, maintenanceDrainTimeoutMilliseconds,
+                  maximumMaintenanceDurationMilliseconds,
+                );
+              } else if (kind === 'delete') {
+                await input.maintenance.beginDelete(
                   request.operationId, maintenanceDrainTimeoutMilliseconds,
                   maximumMaintenanceDurationMilliseconds,
                 );
@@ -260,7 +291,11 @@ export function startProfileSnapshotBrokerBackend(input: {
             input.maintenance.endRestore(request.operationId);
             clearActiveOperation();
           } else if (request.operation === 'invalidateRestoreMaintenance') {
-            invalidateRestoreMaintenance(request.operationId);
+            invalidateMaintenance(request.operationId, 'restore');
+          } else if (request.operation === 'assertDeleteMaintenance') {
+            assertDeleteMaintenance(request.operationId);
+          } else if (request.operation === 'invalidateDeleteMaintenance') {
+            invalidateMaintenance(request.operationId, 'delete');
           } else if (request.operation === 'createProfileSnapshot') {
             const assertContinuation = captureSnapshotFence(request.operationId);
             activeSnapshotAbortController = new AbortController();
@@ -307,6 +342,11 @@ export function startProfileSnapshotBrokerBackend(input: {
                 }
                 assertRestoreMaintenance(request.operationId);
               }
+              if (request.deleteMaintenanceOperationId !== undefined) {
+                assertDeleteMaintenance(request.deleteMaintenanceOperationId);
+              } else if (ownerKind === 'delete') {
+                throw new Error('PROFILE_MAINTENANCE_OPERATION_MISMATCH');
+              }
             };
             assertContextOwner();
             const context = await input.snapshot.readProfileInspectionContext();
@@ -349,6 +389,7 @@ export function startProfileSnapshotBrokerBackend(input: {
   return {
     assertUpdateMaintenance,
     assertRestoreMaintenance,
+    assertDeleteMaintenance,
     close,
   };
 }

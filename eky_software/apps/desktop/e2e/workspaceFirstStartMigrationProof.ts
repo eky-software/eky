@@ -700,7 +700,7 @@ async function runExactAcceptedRestart(input: {
   }
 }
 
-function createTrackedBackendStarter(input: {
+export function createTrackedBackendStarter(input: {
   readonly beforeStart?: () => Promise<void>;
   readonly delegate: (
     options: StartDesktopBackendOptions,
@@ -758,6 +758,10 @@ function createTrackedBackendStarter(input: {
       },
       async stopForRestore(operationId) {
         await delegateHandle.stopForRestore(operationId);
+        release();
+      },
+      async stopForDelete(operationId) {
+        await delegateHandle.stopForDelete(operationId);
         release();
       },
     };

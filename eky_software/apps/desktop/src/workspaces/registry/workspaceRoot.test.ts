@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
+import { chmod, mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -52,6 +52,17 @@ describe('workspace root inspection', () => {
 
     await expect(inspectWorkspaceRoot(paths)).resolves.toBe(paths);
   });
+
+  for (const directory of ['workspacesRoot', 'workspaceRoot'] as const) {
+    it.skipIf(process.platform === 'win32')(`rejects non-private POSIX permissions on ${directory}`, async () => {
+      const userDataPath = await createPrivateRoot();
+      const paths = deriveWorkspaceRoot(userDataPath, workspaceId, 1);
+      await mkdir(paths.workspaceRoot, { mode: 0o700, recursive: true });
+      await chmod(paths[directory], 0o755);
+
+      await expect(inspectWorkspaceRoot(paths)).rejects.toThrow(WORKSPACE_ROOT_INVALID);
+    });
+  }
 
   it('rejects a missing workspace root', async () => {
     const userDataPath = await createPrivateRoot();

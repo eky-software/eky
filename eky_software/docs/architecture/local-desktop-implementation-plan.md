@@ -860,6 +860,59 @@ aktivointiaan tarkistajan drainissa. Offline/cold-valtuuden, lopullisen
 startup-hyväksynnän ja hardened-palautuksen nykytila on M1:n Jatka tästä
 -kohdassa; nämä säilyvät erillisinä hyväksyntävaatimuksina.
 
+### W7.3:n nimetyn poistosulun valmistelu
+
+W7.3:n lähdetoteutus käyttää samoja command-, runner- ja process-omistajia
+poiston omalla operaatiotunnisteella. Se ei lainaa update-/restore-suojaa
+eikä ota käyttöön uutta sammutusalgoritmia. Saman poistosuojan tarkistus
+ennen palvelinsulkua ja sen jälkeen, todellinen onnistunut exit sekä
+varauksen takaisinotto ovat erillisiä vaatimuksia. Brokerin sulkeminen
+mitätöi elävän suojan vasta viimeisen tarkistuksen jälkeen; kanavan
+puuttuminen ei todista onnistunutta sulkua. Nykyinen strict-budjetti ja
+tavallisen sulun sopimus säilyvät.
+
+Nimetyt `shutdownForDelete` ja `stopForDelete` käyttävät nykyistä strict-
+sulkua ilman forced-fallbackia. Active-lifecyclen poistohaara liittyy
+secret-/HTTP-/arkisto-drainiin ja odottaa kaikkien aloitettujen drainien
+päättymisen myös ensimmäisen hylkäyksen jälkeen. Aiemmin valittu tavallinen
+tai update-sulku ei muutu poistosuluksi; sama poistosulku ja sen lopputulos
+jaetaan, mutta vieras operation torjutaan. Backenditon valitsin käyttää
+vain omaa nykyistä main-varaustaan ja nimettyä delete-leasea, ei kuviteltua
+backend-exitiä. Paluuta ei pyydetä automaattisesti.
+
+Active-lifecyclen main-resurssikytkentä käyttää nyt arkiston todellista
+`sealAndDrain`-tulosta ja backendin `stopForDelete`-ketjua sekä main-varauksen
+takaisinottoa. Nimetty capability-sulku säilyttää vain jo hyväksytyn
+hallintapyynnön eliniän; tavallinen ja update-sulku eivät lainaa tätä
+poikkeusta. Ulkoinen shutdown sulkee admissionin ja mitätöi pyynnön ennen
+mahdollista shared-task-varhaispaluuta.
+
+Ulkoinen sulku liittyy lisäksi sekä capabilityn että hallintapalvelun
+jo aloitettuihin töihin. Backendin sulku ja nämä odotukset käynnistyvät
+nykyisissä omistajissa; yhden hylkäys ei ohita toisten päättymistä.
+Poiston oma resurssisulku ei odota omaa hallintapyyntöään. Sen saavuttama
+clean-marker-raja on tässä vaiheessa vain tieto onnistuneesta runtime-
+sulusta: main kirjoittaa merkin vasta ulkoisen sulun onnistuneiden
+hallintaodotusten jälkeen ja ennen fyysisen varauksen vapautusta.
+Sama lykkäys koskee tavallista ulkoista sulkua. Marker-kirjoitus tehdään
+kerran, eikä myöhempi kutsu uusi epäonnistunutta kirjoitusta. Hallintasulun
+alkuperäiset syyt säilyvät sisäisessä virheketjussa; operational-lokiin
+kulkee edelleen vain turvallinen luokitus. Hylätty valmistelupyyntö ja
+sen onnistunut loppuun odottaminen ovat eri tuloksia.
+
+Admission-sulun virhe säilytetään yhteisessä sulkutehtävässä ja muiden
+omistettujen sulkujen yritykset tehdään silti. Myös capability-disposalin
+jälkeen havaittu virhe estää puhtaan sammutuksen merkinnän. Sen turvallinen
+`capabilities`-vaihe säilyy erillään markerin omasta kirjoitusvirheestä;
+myöhempi sulkukutsu ei muuta hylättyä tehtävää onnistumiseksi.
+
+Nämä omistajakohtaiset lähde- ja testikytkennät eivät vielä ole koko mainin
+poistovalmistelun tuotantokytkentä. Management-palvelun todelliset active-
+ja selector-kuluttajat sekä native-dialogit pitää edelleen yhdistää
+mainin sisäiseen täsmällisen kohteen ja kertakäyttöisen backupin valmisteluun.
+[W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
+omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit

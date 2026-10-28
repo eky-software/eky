@@ -177,6 +177,14 @@ Valmistelu, toiminta ja tarkistukset sisältyvät samaan rajaan. Muiden
 varianttien, sovelluksen ja CI:n aikarajat sekä kaikki tarkistukset säilyvät.
 Mittauskoe ei yksin selitä aiempia aikakatkaisuja tai sulje W7.2:ta.
 
+Omistajan 28.10.2026 hyväksymä sama kymmenen sekunnin raja koskee lisäksi
+`settles the selected source-null replacement through real rollback before
+selector return` -yhdistelmätestin `releaseFailure`-varianttia.
+Valmistelu, palautus ja lopputarkistukset sisältyvät samaan rajaan;
+`contentFailure`-variantin oletusraja säilyy. Sovelluksen ja CI:n aikarajat
+sekä kaikki tarkistukset säilyvät. Rajattu mittaus läpäisi, mutta aiemman
+aikakatkaisun syy jää avoimeksi eikä mittaus yksin hyväksy laajaa sarjaa.
+
 Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
 valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai
 testirungon aikakatkaisun jälkeen yhteiset resurssit vapautetaan vasta työn

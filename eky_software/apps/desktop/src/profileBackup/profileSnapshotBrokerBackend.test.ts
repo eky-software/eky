@@ -459,6 +459,9 @@ describe('profile snapshot broker boundary', () => {
         assertRestore: () => maintenance.assertRestore(),
         endRestore: () => maintenance.endRestore(),
         invalidateRestore: () => maintenance.invalidateRestore(),
+        beginDelete: () => maintenance.beginDelete(),
+        assertDelete: () => maintenance.assertDelete(),
+        invalidateDelete: () => maintenance.invalidateDelete(),
         end: (operationId) => maintenance.end(operationId),
         forceEnd: () => maintenance.forceEnd(),
         getStatus: () => maintenance.getStatus(),
@@ -902,6 +905,18 @@ function deferred<T>() {
 class FakeProfileMaintenance {
   status: 'busy' | 'normal' = 'normal';
   private operationId: string | undefined;
+
+  async beginDelete(): Promise<void> {
+    throw new Error('Delete maintenance requires the real-state boundary fixture.');
+  }
+
+  assertDelete(): void {
+    throw new Error('Delete maintenance requires the real-state boundary fixture.');
+  }
+
+  invalidateDelete(): void {
+    throw new Error('Delete maintenance requires the real-state boundary fixture.');
+  }
 
   async beginUpdate(): Promise<void> {
     throw new Error('Update maintenance requires the real-state boundary fixture.');

@@ -7,13 +7,18 @@ import type {
 import type { BackupPasswordWindowController } from '../../profileBackup/passwordWindow/backupPasswordWindow.js';
 import type { WorkspaceManagementService } from './workspaceManagementService.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
-import type { WorkspaceManagementOperationKind } from './workspaceManagementTypes.js';
+import type {
+  WorkspaceDeletionPreparationLifetime,
+  WorkspaceDeletionPreparationOutcome,
+  WorkspaceManagementOperationKind,
+} from './workspaceManagementTypes.js';
 import {
   createEmptyWorkspaceIpcChannel,
   createWorkspaceOperationResult,
   getWorkspaceManagementStatusIpcChannel,
   importWorkspaceBackupAsNewIpcChannel,
   parseWorkspaceIdRequest,
+  parseWorkspaceDeletionRequest,
   parseWorkspaceLabelRequest,
   parseWorkspaceRenameRequest,
   parseWorkspaceStatusResult,
@@ -35,7 +40,7 @@ interface WorkspaceManagementCapabilityOptions {
     | 'rename'
     | 'replaceActiveFromBackup'
     | 'switchTo'
-  >;
+  > & Partial<Pick<WorkspaceManagementService, 'prepareDeletion'>>;
   confirmActiveWorkspaceReplacement(workspaceLabel: string): Promise<boolean>;
   selectBackupSource(): Promise<string | null>;
   selectReplacementBackupSource(): Promise<string | null>;
@@ -43,12 +48,21 @@ interface WorkspaceManagementCapabilityOptions {
 }
 
 export interface WorkspaceManagementCapability {
+  // Main-only until W7.4 supplies the real journal/purge consumer.
+  prepareDeletion(
+    event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ): Promise<WorkspaceDeletionPreparationOutcome>;
+  closeAdmission(): void;
   dispose(): void;
   shutdown(): Promise<void>;
 }
 
 interface WorkspaceManagementCapabilityState {
   disposed: boolean;
+  admissionClosed: boolean;
+  documentEpoch: number;
+  retainedDeletion?: WorkspaceDeletionPreparationLifetime;
   mutationInFlight: boolean;
   readonly pendingWork: Set<Promise<void>>;
 }
@@ -58,6 +72,8 @@ export function createWorkspaceManagementCapability(
 ): WorkspaceManagementCapability {
   const state: WorkspaceManagementCapabilityState = {
     disposed: false,
+    admissionClosed: false,
+    documentEpoch: 0,
     mutationInFlight: false,
     pendingWork: new Set(),
   };
@@ -209,14 +225,98 @@ export function createWorkspaceManagementCapability(
       ),
   );
 
-  const dispose = () => {
-    if (state.disposed) return;
-    state.disposed = true;
+  const sealAdmission = () => {
+    if (state.admissionClosed) return;
+    state.admissionClosed = true;
     for (const channel of workspaceManagementIpcChannels) {
       options.ipcMain.removeHandler(channel);
     }
   };
+  const closeAdmission = () => {
+    // An external close revokes even an already retained own-stop request.
+    delete state.retainedDeletion;
+    sealAdmission();
+  };
+  const invalidateDocument = () => { state.documentEpoch += 1; };
+  const navigationStarted = (details: { isMainFrame: boolean }) => {
+    if (details.isMainFrame) invalidateDocument();
+  };
+  // Retain the subscribed emitter: native window access is invalid after close.
+  const documentEvents = options.mainWindow.webContents;
+  documentEvents.on('did-start-navigation', navigationStarted);
+  documentEvents.on('did-start-loading', invalidateDocument);
+  documentEvents.on('render-process-gone', invalidateDocument);
+  documentEvents.on('destroyed', invalidateDocument);
+  options.mainWindow.on('close', invalidateDocument);
+
+  const dispose = () => {
+    if (state.disposed) return;
+    state.disposed = true;
+    closeAdmission();
+    invalidateDocument();
+    documentEvents.off('did-start-navigation', navigationStarted);
+    documentEvents.off('did-start-loading', invalidateDocument);
+    documentEvents.off('render-process-gone', invalidateDocument);
+    documentEvents.off('destroyed', invalidateDocument);
+    options.mainWindow.off('close', invalidateDocument);
+  };
   return Object.freeze({
+    closeAdmission,
+    prepareDeletion(event: IpcMainInvokeEvent, ...args: unknown[]) {
+      let privateFailure: { cause: unknown } | undefined;
+      const work = runCapability(options, state, event, args, 1, () =>
+        runMutation(state, 'delete', async () => {
+          const request = parseWorkspaceDeletionRequest(args[0]);
+          const epoch = state.documentEpoch;
+          let active = true;
+          const lifetime: WorkspaceDeletionPreparationLifetime = Object.freeze({
+            assertCurrent() {
+              if (
+                !active || state.disposed || state.documentEpoch !== epoch ||
+                options.mainWindow.isDestroyed() || options.mainWindow.webContents.isDestroyed() ||
+                event.sender !== options.mainWindow.webContents ||
+                event.senderFrame !== options.mainWindow.webContents.mainFrame ||
+                (state.admissionClosed && state.retainedDeletion !== lifetime)
+              ) {
+                active = false;
+                throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+              }
+            },
+            closeAdmissionForOwnStop() {
+              lifetime.assertCurrent();
+              state.retainedDeletion = lifetime;
+              sealAdmission();
+              lifetime.assertCurrent();
+            },
+          });
+          try {
+            lifetime.assertCurrent();
+            if (options.service.prepareDeletion === undefined) {
+              throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
+            }
+            const outcome = await options.service.prepareDeletion(request, lifetime);
+            lifetime.assertCurrent();
+            if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
+              throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
+            }
+            return outcome;
+          } finally {
+            active = false;
+            if (state.retainedDeletion === lifetime) delete state.retainedDeletion;
+          }
+        }).catch((cause: unknown) => {
+          privateFailure = { cause };
+          throw cause;
+        }),
+      );
+      // This entry stays in main; renderer handlers retain their safe-only errors.
+      return work.catch((error: unknown) => {
+        if (privateFailure !== undefined && error instanceof Error) {
+          throw new Error(error.message, { cause: privateFailure.cause });
+        }
+        throw error;
+      });
+    },
     dispose,
     shutdown() {
       dispose();
@@ -234,10 +334,13 @@ async function runCapability<Result>(
   expectedArgumentCount: number,
   operation: (assertCurrent: () => void) => Promise<Result>,
 ): Promise<Result> {
+  const epoch = state.documentEpoch;
   const assertCurrent = () => {
     if (
       state.disposed ||
+      state.admissionClosed || state.documentEpoch !== epoch ||
       options.mainWindow.isDestroyed() ||
+      options.mainWindow.webContents.isDestroyed() ||
       event.sender !== options.mainWindow.webContents ||
       event.senderFrame !== options.mainWindow.webContents.mainFrame ||
       args.length !== expectedArgumentCount
@@ -268,7 +371,12 @@ async function runCapability<Result>(
           : 'WORKSPACE_MANAGEMENT_CAPABILITY_INVALID',
       );
     }
-    if (!state.disposed && !options.mainWindow.isDestroyed()) options.showSafeError();
+    try {
+      assertCurrent();
+      options.showSafeError();
+    } catch {
+      // A stale document or failed dialog must not replace the safe first result.
+    }
     throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FAILED');
   } finally {
     state.pendingWork.delete(completion);

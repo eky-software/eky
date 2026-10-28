@@ -1,6 +1,18 @@
 import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
 import type { ProfileInspectionReceipt } from '../runtime/profileInspectionMessages.js';
 import type { ProfileSnapshotInspectionValidation } from './runProfileSnapshotInspection.js';
+import type { ProfileSnapshotInspectionEvidence } from './profileSnapshotInspectionClient.js';
+
+/** Internal main-process content evidence, never a renderer capability. */
+export interface ProfileSnapshotEvidencePort {
+  withProfileSnapshotEvidence<T>(operationId: string, use: (
+    evidence: ProfileSnapshotInspectionEvidence, assertCurrent: () => Promise<void>,
+  ) => Promise<T>): Promise<T>;
+}
+
+export interface ProfileDeletionSnapshotEvidencePort extends ProfileSnapshotEvidencePort {
+  validateDeletionProfileSnapshot(operationId: string, deleteMaintenanceOperationId: string): Promise<ProfileSnapshotInspectionValidation>;
+}
 
 /** Main-owned staging remains reserved through its consumer and cleanup. */
 export interface ProfileSnapshotOwnershipPort {

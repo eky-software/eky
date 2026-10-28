@@ -13,6 +13,7 @@ import type { WorkspaceMaintenanceLease } from '../workspaces/maintenance/worksp
 import type { BackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
 import { createBackupPasswordWindowController } from './passwordWindow/backupPasswordWindow.js';
 import { PortableProfileBackupService } from './portableProfileBackup.js';
+import { createDeletionBackupExport } from './createDeletionBackupExport.js';
 import type { ProfileBackupCapability } from './profileBackupCapability.js';
 import { createProfileBackupCapability } from './profileBackupCapability.js';
 import type { ProfileRecoveryOperationalObserver } from './profileRecoveryOperationalObserver.js';
@@ -64,6 +65,7 @@ export interface ProfileBackupComposition {
   profileBackupCapability: ProfileBackupCapability;
   profileRestoreActivationService: ProfileRestoreActivationService;
   profileRestoreStagingService: ProfileRestoreStagingService;
+  createDeletionBackupExport(): ReturnType<typeof createDeletionBackupExport>;
 }
 
 export async function createProfileBackupComposition(
@@ -133,6 +135,10 @@ export async function createProfileBackupComposition(
     profileBackupCapability: capability,
     profileRestoreActivationService: restoreActivationService,
     profileRestoreStagingService: restoreStagingService,
+    createDeletionBackupExport: () => createDeletionBackupExport({
+      backupService, passwordWindow, readActiveWorkspaceLabel: options.readActiveWorkspaceLabel,
+      selectBackupTarget: defaultFileName => selectBackupTarget(options, defaultFileName),
+    }),
   };
 }
 

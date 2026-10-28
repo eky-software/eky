@@ -8,6 +8,7 @@ import {
 
 export const RUNNER_FAILURE_LIMIT = 128;
 export const RUNNER_FAILURE_ROOT_PREFIX = 'eky-test-errors-';
+export { STARTUP_EXCEPTION_DELIVERY_TIMEOUT_MS as RUNNER_FAILURE_DELIVERY_TIMEOUT_MS };
 const runners = new Set(['node', 'vitest', 'playwright', 'native']);
 const identifier = value => typeof value === 'string' && /^[A-Za-z0-9_-]{1,120}$/.test(value);
 const integer = value => Number.isSafeInteger(value) && value >= 0 ? value : null;
@@ -113,7 +114,7 @@ export function createRunnerFailureSink({ env = process.env, tempRoot = tmpdir()
     ? projectExceptionChain({ message: value }, knownSecrets).chain[0].message : null;
   const snapshot = status => ({ status, observed, recorded, rejected, limited, omitted, recordLimit: RUNNER_FAILURE_LIMIT });
   return {
-    record({ runner, phase, testName, attempt, error, testId, file, line, column, retryCount, repeatCount }) {
+    record({ runner, phase, testName, attempt, error, projectedException, testId, file, line, column, retryCount, repeatCount }) {
       if (observed >= RUNNER_FAILURE_LIMIT) {
         limited = true;
         omitted = Math.min(Number.MAX_SAFE_INTEGER, omitted + 1);
@@ -123,11 +124,26 @@ export function createRunnerFailureSink({ env = process.env, tempRoot = tmpdir()
       let bytes;
       try {
         if (!binding || !knownSecrets || !runners.has(runner) || !identifier(phase)) throw new Error();
-        bytes = Buffer.from(JSON.stringify(validateRunnerFailureEvidence({ schemaVersion: 1, kind: 'runnerFailure', binding,
+        const record = { schemaVersion: 1, kind: 'runnerFailure', binding,
           invocationId, sequence, recordLimit: RUNNER_FAILURE_LIMIT, runner, phase,
           test: { name: text(testName), id: text(testId), file: text(file), line: integer(line),
             column: integer(column), attempt: integer(attempt), retryCount: integer(retryCount),
-            repeatCount: integer(repeatCount) }, exception: projectExceptionChain(error, knownSecrets) })) + '\n');
+            repeatCount: integer(repeatCount) }, exception: projectedException ?? projectExceptionChain(error, knownSecrets) };
+        if (projectedException !== undefined) {
+          // The main process already bounded its source. Reapply the shared
+          // redactor without erasing its truncation/coverage evidence.
+          validateRunnerFailureEvidence(record);
+          let reconstructed;
+          for (const part of [...projectedException.chain].reverse()) {
+            reconstructed = { name: part.name, message: part.message, stack: part.stack,
+              ...(reconstructed === undefined ? {} : { cause: reconstructed }) };
+          }
+          const redacted = projectExceptionChain(reconstructed, knownSecrets);
+          record.exception = { incomplete: projectedException.incomplete || redacted.incomplete,
+            chain: redacted.chain.map((part, index) => ({ ...part,
+              truncated: part.truncated || projectedException.chain[index].truncated })) };
+        }
+        bytes = Buffer.from(JSON.stringify(validateRunnerFailureEvidence(record)) + '\n');
         if (bytes.length > STARTUP_EXCEPTION_LIMITS.fileBytes) throw new Error();
       } catch { rejected++; return; }
       directory ??= (async () => {

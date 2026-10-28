@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   createInvoicePdfArchiveCapability,
@@ -11,6 +12,9 @@ import {
   retryPendingInvoicePdfArchiveTasksIpcChannel,
 } from './invoicePdfArchiveCapabilityTypes.js';
 import type { InvoicePdfArchiveStatus } from './invoicePdfArchiveTypes.js';
+
+const capabilities: ReturnType<typeof createInvoicePdfArchiveCapability>[] = [];
+afterEach(() => { for (const capability of capabilities.splice(0)) capability.dispose(); });
 
 describe('invoice PDF archive capability', () => {
   it('lets main own directory selection without accepting renderer input', async () => {
@@ -150,6 +154,126 @@ describe('invoice PDF archive capability', () => {
       retryPendingInvoicePdfArchiveTasksIpcChannel,
     );
   });
+
+  it.each(['dispose', 'navigation', 'loading', 'rendererGone', 'windowClose'] as const)(
+    'rejects a late directory selection after %s without new effects', async invalidation => {
+      const fixture = createFixture();
+      const entered = deferred<void>();
+      const finish = deferred<string | null>();
+      fixture.selectDirectory.mockImplementationOnce(async () => {
+        entered.resolve();
+        return finish.promise;
+      });
+      const result = fixture.invoke(chooseInvoicePdfArchiveDirectoryIpcChannel, fixture.trustedEvent)
+        .catch(error => error);
+      try {
+        await entered.promise;
+        if (invalidation === 'dispose') fixture.capability.dispose();
+        if (invalidation === 'navigation') fixture.webContents.emit('did-start-navigation', { isMainFrame: true });
+        if (invalidation === 'loading') fixture.webContents.emit('did-start-loading');
+        if (invalidation === 'rendererGone') fixture.webContents.emit('render-process-gone');
+        if (invalidation === 'windowClose') fixture.mainWindow.emit('close');
+        finish.resolve('C:\\SyntheticArchive');
+        expect(await result).toMatchObject({ message: 'INVOICE_PDF_ARCHIVE_OPERATION_FAILED' });
+        expect(fixture.chooseDirectory).not.toHaveBeenCalled();
+        expect(fixture.onConfigurationChanged).not.toHaveBeenCalled();
+        expect(fixture.showSafeError).not.toHaveBeenCalled();
+      } finally { finish.resolve(null); await result; }
+    },
+  );
+
+  it.each(['change', 'disable'] as const)('does not use a late %s confirmation', async kind => {
+    const fixture = createFixture({ status: enabledStatus });
+    const entered = deferred<void>();
+    const finish = deferred<boolean>();
+    const confirm = kind === 'change' ? fixture.confirmChange : fixture.confirmDisable;
+    confirm.mockImplementationOnce(async () => { entered.resolve(); return finish.promise; });
+    const channel = kind === 'change' ? chooseInvoicePdfArchiveDirectoryIpcChannel : disableInvoicePdfArchiveIpcChannel;
+    const result = fixture.invoke(channel, fixture.trustedEvent).catch(error => error);
+    try {
+      await entered.promise;
+      fixture.capability.dispose();
+      finish.resolve(true);
+      expect(await result).toBeInstanceOf(Error);
+      expect(fixture.selectDirectory).not.toHaveBeenCalled();
+      expect(fixture.disable).not.toHaveBeenCalled();
+      expect(fixture.onConfigurationChanged).not.toHaveBeenCalled();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+    } finally { finish.resolve(false); await result; }
+  });
+
+  it('does not open an archive path resolved after disposal', async () => {
+    const fixture = createFixture({ status: enabledStatus });
+    const entered = deferred<void>();
+    const finish = deferred<string | null>();
+    fixture.getOpenDirectoryPath.mockImplementationOnce(async () => { entered.resolve(); return finish.promise; });
+    const result = fixture.invoke(openInvoicePdfArchiveDirectoryIpcChannel, fixture.trustedEvent).catch(error => error);
+    try {
+      await entered.promise;
+      fixture.capability.dispose();
+      finish.resolve('C:\\SyntheticArchive');
+      expect(await result).toBeInstanceOf(Error);
+      expect(fixture.openPath).not.toHaveBeenCalled();
+    } finally { finish.resolve(null); await result; }
+  });
+
+  it('rejects stale status while leaving a fresh document request available', async () => {
+    const fixture = createFixture();
+    const finish = deferred<InvoicePdfArchiveStatus>();
+    fixture.getStatus.mockImplementationOnce(() => finish.promise);
+    const result = fixture.invoke(getInvoicePdfArchiveStatusIpcChannel, fixture.trustedEvent).catch(error => error);
+    fixture.webContents.emit('did-start-loading');
+    try {
+      finish.resolve(enabledStatus);
+      expect(await result).toMatchObject({ message: 'INVOICE_PDF_ARCHIVE_FORBIDDEN' });
+      await expect(fixture.invoke(getInvoicePdfArchiveStatusIpcChannel, fixture.trustedEvent)).resolves.toEqual(disabledStatus);
+    } finally { finish.resolve(enabledStatus); await result; }
+  });
+
+  it('ignores subframe navigation and releases all document listeners on disposal', async () => {
+    const fixture = createFixture();
+    fixture.webContents.emit('did-start-navigation', { isMainFrame: false });
+    await expect(fixture.invoke(chooseInvoicePdfArchiveDirectoryIpcChannel, fixture.trustedEvent)).resolves.toEqual(enabledStatus);
+    fixture.capability.dispose();
+    fixture.capability.dispose();
+    for (const event of ['did-start-navigation', 'did-start-loading', 'render-process-gone', 'destroyed']) {
+      expect(fixture.webContents.listenerCount(event)).toBe(0);
+    }
+    expect(fixture.mainWindow.listenerCount('close')).toBe(0);
+  });
+
+  it('disposes after window destruction and rejects a late directory selection', async () => {
+    const fixture = createFixture();
+    const entered = deferred<void>();
+    const finish = deferred<string | null>();
+    fixture.selectDirectory.mockImplementationOnce(async () => {
+      entered.resolve();
+      return finish.promise;
+    });
+    const operation = fixture.invoke(chooseInvoicePdfArchiveDirectoryIpcChannel,
+      fixture.trustedEvent).catch((error: unknown) => error);
+    try {
+      await entered.promise;
+      fixture.mainWindow.emit('close');
+      fixture.webContents.emit('destroyed');
+      fixture.mainWindow.isDestroyed = () => true;
+      fixture.webContents.isDestroyed = () => true;
+      const readDestroyedContents = vi.fn(() => { throw new Error('Object has been destroyed'); });
+      Object.defineProperty(fixture.mainWindow, 'webContents', { get: readDestroyedContents });
+      fixture.capability.dispose();
+      fixture.capability.dispose();
+      finish.resolve('C:\\SyntheticArchive');
+      expect(await operation).toMatchObject({ message: 'INVOICE_PDF_ARCHIVE_OPERATION_FAILED' });
+      expect(readDestroyedContents).not.toHaveBeenCalled();
+      for (const event of ['did-start-navigation', 'did-start-loading', 'render-process-gone', 'destroyed']) {
+        expect(fixture.webContents.listenerCount(event)).toBe(0);
+      }
+      expect(fixture.mainWindow.listenerCount('close')).toBe(0);
+      expect(fixture.chooseDirectory).not.toHaveBeenCalled();
+      expect(fixture.onConfigurationChanged).not.toHaveBeenCalled();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+    } finally { finish.resolve(null); await operation; }
+  });
 });
 
 const disabledStatus: InvoicePdfArchiveStatus = {
@@ -191,24 +315,25 @@ function createFixture(
     handlers.delete(channel);
   });
   const mainFrame = {};
-  const webContents = { mainFrame };
+  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: (): boolean => false });
+  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: (): boolean => false, webContents });
   const status = options.status ?? disabledStatus;
   const chooseDirectory = vi.fn(async () => enabledStatus);
   const disable = vi.fn(async () => disabledStatus);
-  const getOpenDirectoryPath = vi.fn(async () => 'C:\\Invoices\\Archive');
+  const getOpenDirectoryPath = vi.fn(async (): Promise<string | null> => 'C:\\Invoices\\Archive');
   const getStatus = vi.fn(async () => status);
   const retryPending = vi.fn(async () => enabledStatus);
   const openPath = vi.fn(async () => '');
   const onConfigurationChanged = vi.fn();
-  const selectDirectory = vi.fn(async () => 'C:\\Invoices\\Archive');
+  const selectDirectory = vi.fn(async (): Promise<string | null> => 'C:\\Invoices\\Archive');
+  const confirmChange = vi.fn(async () => options.changeConfirmed ?? true);
+  const confirmDisable = vi.fn(async () => options.disableConfirmed ?? true);
+  const showSafeError = vi.fn();
   const capability = createInvoicePdfArchiveCapability({
-    confirmChange: vi.fn(async () => options.changeConfirmed ?? true),
-    confirmDisable: vi.fn(async () => options.disableConfirmed ?? true),
+    confirmChange,
+    confirmDisable,
     ipcMain: { handle, removeHandler } as never,
-    mainWindow: {
-      isDestroyed: () => false,
-      webContents,
-    } as never,
+    mainWindow: mainWindow as never,
     onConfigurationChanged,
     openPath,
     selectDirectory,
@@ -219,8 +344,9 @@ function createFixture(
       getStatus,
       retryPending,
     } as never,
-    showSafeError: vi.fn(),
+    showSafeError,
   });
+  capabilities.push(capability);
 
   return {
     capability,
@@ -235,6 +361,12 @@ function createFixture(
       return handler(event, ...args);
     },
     mainFrame,
+    mainWindow,
+    webContents,
+    getStatus,
+    confirmChange,
+    confirmDisable,
+    showSafeError,
     onConfigurationChanged,
     openPath,
     removeHandler,
@@ -242,4 +374,10 @@ function createFixture(
     selectDirectory,
     trustedEvent: { sender: webContents, senderFrame: mainFrame },
   };
+}
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(complete => { resolve = complete; });
+  return { promise, resolve };
 }

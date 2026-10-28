@@ -638,6 +638,108 @@ pelkkä uuden viestioperaation olemassaolo ei todista niiden kytkentää.
 
 Backup ei muuta business dataa, laskun statusta tai toimitustapahtumia.
 
+### W7.3:n poiston valmistelun vientisopimus
+
+**Lähdetoteutus, koko poistoketjun kytkentä kesken:** poiston backup-haara käyttää samaa
+portable-vientialgoritmia, containeria ja nykyisiä siivousomistajia. Tavallinen
+`create()` hankkii ja vapauttaa edelleen oman maintenance-suojansa. Poiston
+kutsuja omistaa erikseen nimetyn suojan snapshotista todelliseen sulkuun;
+vientipalvelu ei saa vapauttaa sitä onnistumisessa tai virheessä eikä lainata
+update-/restore-valtuutta. Vain mainin nykyinen omistaja antaa tämän portin.
+
+Lähteen `exactCurrentManifest`-kuitti ja viennin `restoreCompatible`-kuitti
+säilytetään ennen turvalliseksi yhteenvedoksi projisointia ja stagingin
+siivousta. Niiden varsinaiset sisältökentät vertaillaan
+[W7.0:n vastaavuussäännön](local-company-workspace-plan.md#poiston-backup-todisteen-vastaavuus)
+mukaan. Alkuperäisen autentikoidun container-kahvan identiteetti säilyy
+tiivisteen rinnalla: myöhempi polun `stat` ei korvaa sitä. Tiedostoihin sidotun
+kuittitiedon palautus odottaa lukukahvojen sulut ja tarkistuksen oman siivouksen.
+Nykyinen tarkistusomistaja säilyttää itse luomansa muuttumattoman
+operation/generation/session-sidonnan hyväksytyn kuitin rinnalla. Nimetty
+mainin sisäinen evidence-luku käyttää samaa varattua kuluttajaelinkaarta;
+uudelleentarkistus tyhjentää aiemman sidonnan ja päättynyt kuluttaja menettää
+valtuutensa. Lähteen ja viennin tarkistukset ovat erilliset. Tunnisteita ei
+lisätä turvalliseen yhteenvetoon tai rendererille.
+Todettu vientisisältö ei itsessään ole poisto-, journal- tai paluuvaltuus.
+Kutsujan valtuus tarkistetaan myös viimeisen tiedostosiivouksen ja koko
+tarkistusoperaation omistajan paluun jälkeen, ennen sisältötodisteen palautusta.
+
+Jo varmennettu käyttäjän vientikopio säilyy, vaikka poiston valtuus katoaa
+myöhemmin tai lähdestagingin siivous jää epävarmaksi. Tällöin poiston
+valmistelu ei onnistu eikä epävarmaa siivousta uusita automaattisesti.
+Ennen varmennusta hylätty vienti ei kelpaa backup-todisteeksi. Salaisuus- ja
+paikallisten asetusten nykyiset poissulut sekä tavallisen backupin käyttäytyminen
+säilyvät.
+
+Lähdekoodista johdettu yksityinen koe käyttää oikeaa salattua containeria,
+tiedostoja ja synteettisiä PDF-tavuja. Yhdistetty koe käyttää nykyisen mainin
+tarkistusomistajan luomia tunnisteita sekä nykyistä kertakopion ja kuluttajan
+siivousta. Myöhempi liitoskoe yhdistää tähän nimetyn delete-maintenance-tilan,
+client/brokerin ja installation-leasen nykyisen muistissa olevan omistajan.
+Nimetty `validateDeletionProfileSnapshot` välittää poistosuojan omistajan
+sekä lähteen että eri tunnisteella tarkistettavan viennin alku- ja loppulukuun.
+Vientikutsun paikallinen sovitus käyttää samaa staging- ja tarkistusalgoritmia;
+yleistä muuttuvaa tarkistuskontekstia tai update-valtuutta ei käytetä.
+Väärä omistaja, kesken luvun peruttu suoja ja vaihtunut lease eivät anna kuittia.
+SQLite, snapshotin lähde, prosessiraja, kuljetus ja fyysinen varaus ovat
+vielä injektoituja. Yrityskohde, suojan luovutus todelliseen sulkuun sekä
+kuitin lopullinen kulutus vaativat oman kytkentänäyttönsä.
+Koetuloksen ja koko W7.3:n hyväksyntärajat ovat
+[työtilasuunnitelmassa](local-company-workspace-plan.md#w73n-toteutussopimus).
+
+Nimetty `createForDeletion` käyttää nyt tätä yhteistä vientipolkua. Se vaatii
+mainin kutsujan elävän omistajuuden sekä tarkistuksen erilliset
+`validateDeletionProfileSnapshot`- ja `withProfileSnapshotEvidence`-portit.
+Tavallisen `create()`-kutsun sopimus ei vaadi näitä portteja eikä julkaise
+sisäistä kuittia. Vientitodistus ei ole lopullisen poiston valtuus.
+Tarkistuksen v13-broker nimeää poistosuojan erikseen molempiin
+kontekstilukuihin. Suojalle ei ole saman runtimen vapautuskutsua;
+peruutus estää myös vielä jonossa olevan täsmällisen begin-pyynnön.
+Katkos, umpeutuminen tai epävarma drain säilyttää kirjoituseston.
+Vientikopion säilytys lukitaan vasta alkuperäisen autentikoidun tiedoston,
+lähde-/vientisisällön ja eri tarkistussidontojen onnistuneen vertailun
+jälkeen, ennen tarkistusstagingin loppusiivousta. Säilytyskuittaus ei anna
+poistovaltuutta: loppusiivouksen hylkäys estää sisällön palauttamisen
+valmistelutuloksena, vaikka varmennettu käyttäjän kopio säilyy.
+Kertakäyttöinen `deletionBackupReceipt` käyttää samaa sisältövastaavuuden
+omistajaa ja torjuu myöntämisen tai kuluttamisen uudelleentulon ennen
+ensimmäistä odotusta. Kulutus välittää vartijansa varsinaiselle
+julkaisukuluttajalle ja mitätöi talteen jääneet callbackit myös virheessä.
+Julkaisukuluttajan asynkroninen `assertPublicationCurrent` tarkistaa myös
+vientitiedoston nykyisen identiteetin, koon ja tiivisteen. Kuluttaja kutsuu
+sitä omien valmisteluodotustensa jälkeen ennen suojattua julkaisua;
+pelkkä synkroninen valtuusvartija ei todista muuttuvia tiedostotavuja.
+Sama täysi tarkistus tehdään ennen kuluttajaan pääsyä ja ennen kulutuksen
+onnistunutta päättämistä. Sisäkkäiset valmisteluomistajan kohde- ja
+valtuustarkistukset eivät käynnistä ylimääräisiä sisältölukuja.
+Tarkistustulosta ei välimuistiteta odotusten yli. Hylkäys mitätöi kuitin
+myös silloin, kun julkaisukuluttaja ottaa poikkeuksen itse kiinni.
+Ensimmäinen tarkistusvirhe syyketjuineen säilyy kulutuksen tuloksessa;
+myöhempi vartija- tai julkaisupoikkeus ei korvaa sitä yleisellä virheellä.
+Päättämistarkistuksen hylkäys ei peru jo mahdollisesti tehtyä julkaisua
+eikä anna oikeutta sen uusimiseen; W7.4:n journal omistaa epävarman tuloksen.
+Tämä ei ole käyttöjärjestelmätason lukko ulkopuolisen kirjoittajan estämiseksi
+tarkistuksen jälkeen. W7.4 todentaa oman todellisen julkaisukohtansa erikseen.
+Lopullinen `readDeletionBackupExportIdentity` tarkistaa todelliset tavut
+nykyisillä container-/stream-rajoilla sekä saman kahvan ja polun identiteetin
+ennen lukua, sen jälkeen ja sulun valmistuttua. Se ei pura sisältöä uudelleen,
+säilytä salasanaa tai korvaa alkuperäistä autentikoitua todistetta:
+uudelleenluvun tuloksen on vastattava juuri tuota todistetta.
+Lukuvirhe ja epävarma kahvasulku säilyvät erillisinä syinä eikä keskeneräinen
+lukija palauta kuittia. Management-compositionin ehdollinen main-kytkentä
+käyttää nyt saman portable-palvelun omaa vientisovitusta. Aktiivinen kohde
+ja mainin validoima näyttönimi tarkistetaan ennen native-tallennusvalintaa;
+valtuus tarkistetaan myös tiedosto- ja salasanaikkunan paluun jälkeen.
+Vienti ja myöhempi uudelleenluku käyttävät samaa nykyisen portable-palvelun
+tiedostopäätteen normalisointia. Päätteetön native-valinta ei saa johtaa
+eri tiedoston lukemiseen; olemassa oleva pääte säilyy kirjainkoosta
+riippumatta. Absoluuttisen kohteen ja sen omistajuuden tarkistuksia ei ohiteta.
+Peruutus ei vaihda backup-valintaa menetyssuostumukseksi. Kukin vienti on
+kertakäyttöinen, ja myöhempi uudelleenluku käyttää vain valittua tiedostoa
+ja elävää vartijaa, ei salasanaa. Nykyinen tuotannon entrypoint ei vielä
+anna W7.4:n julkaisukuluttajaa. Oikean native-/prosessi-/pakettiketjun
+yhteistodennus säilyy W7.3:n avoimena porttina.
+
 ## Machine-local recovery point
 
 Palautuspiste käyttää samaa profiilisisällön inclusion/exclusion-sopimusta,
@@ -745,7 +847,7 @@ sisältöön sidotun tuloksen; `withProfileSnapshot` pitää varauksen käytön 
 ja `removeProfileSnapshot` todistaa siivouksen. Testikuluttaja vertaa luetut
 tavut receiptiin eikä poista stagingia suoraan. Siivousvirhe hylkää myös
 muuten onnistuneen havainnon ja säilyttää ensisyyn erillään siivoustilasta.
-Private broker v12 sallii vain snapshotin muodostamisen, maintenance-
+Private broker v13 sallii vain snapshotin muodostamisen, maintenance-
 toiminnot ja rajatun aktiivikontekstin luvun. Korvatut raskaat tarkistus- ja
 aktivointivalmistelukomennot sekä niiden vastaukset hylätään; fallbackia ei
 ole. Tämä ei muuta backup-formaatteja tai historiallisten kopioiden tukea.
@@ -1000,10 +1102,10 @@ busy tai epäselvä juuri säilyy. Vanha staging tarkistetaan uudelleen:
 journal, ikä tai muistista puuttuva receipt ei hyväksy sitä. Tämä ei
 anna W3:n journalittomalle plaintextille tai v1:lle cold-recovery-lupaa.
 
-Private snapshot-brokerin nykyinen versio on 12. Komennot
+Private snapshot-brokerin nykyinen versio on 13. Komennot
 `validateProfileSnapshot`, `validateActiveProfile` ja
 `prepareProfileRestoreActivation` sekä niiden vastaukset on poistettu
-tästä brokerista. V9/V10/V11 eivät ole fallbackeja; samanniminen sisäinen
+tästä brokerista. V9/V10/V11/V12 eivät ole fallbackeja; samanniminen sisäinen
 tarkistusportti ei palauta poistettua broker-komentoa. Julkinen HTTP,
 renderer-capabilityt ja durable-formaatit eivät laajene.
 

@@ -38,9 +38,13 @@ const COMMANDS = {
   node: ['test', 1],
   unit: ['installer:test:unit', 0],
   process: ['installer:test:windows-process', 1],
+  encrypted: ['installer:test:encrypted-evidence', 0],
 };
 const REQUIRED_FILES = [
   ['e2e/electronE2eBackendProcess.test.ts', 'vitest'],
+  ['e2e/workspaceProofBackendDecorators.test.ts', 'vitest'],
+  ['e2e/workspaceDeletionProof.test.ts', 'vitest'],
+  ['../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs', 'encrypted'],
   ['e2e/electronE2eBackendRunner.test.ts', 'vitest'],
   ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
   ['e2e/electronE2eRuntimeSession.test.ts', 'vitest'],
@@ -149,6 +153,7 @@ function assertPackageWiring({ root, desktop, files }) {
   const ordinary = commandChain(desktop.scripts.test, 2);
   const unit = commandChain(desktop.scripts['installer:test:unit'], 1);
   const process = commandChain(desktop.scripts['installer:test:windows-process'], 2);
+  const encrypted = commandChain(desktop.scripts['installer:test:encrypted-evidence'], 1);
   assert.equal(process[0], 'pnpm installer:supervisor:build');
   assert.equal(desktop.scripts['installer:supervisor:build'],
     'node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs');
@@ -158,6 +163,8 @@ function assertPackageWiring({ root, desktop, files }) {
     node: testFiles(ordinary[1], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
     unit: testFiles(unit[0], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
     process: testFiles(process[1], ['node', '--test', '--test-concurrency=1',
+      '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
+    encrypted: testFiles(encrypted[0], ['node', '--test', '--test-concurrency=1',
       '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
   };
   assert.ok(selected.vitest.includes('src'), 'Existing desktop source tests must remain selected');

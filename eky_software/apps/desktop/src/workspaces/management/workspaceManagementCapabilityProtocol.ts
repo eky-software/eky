@@ -43,6 +43,13 @@ export interface WorkspaceRenameRequest extends WorkspaceIdRequest {
   readonly workspaceLabel: string;
 }
 
+export interface WorkspaceDeletionRequest {
+  readonly formatVersion: 1;
+  readonly workspaceId: ReturnType<typeof validateWorkspaceId>;
+  readonly typedLabel: string;
+  readonly backupChoice: 'createBackup' | 'explicitDataLoss';
+}
+
 export type WorkspaceOperationResult = Readonly<{
   formatVersion: 1;
   status: 'cancelled' | 'completed' | 'relaunching';
@@ -99,6 +106,29 @@ export function parseWorkspaceRenameRequest(
     return Object.freeze({
       workspaceId: validateWorkspaceId(value.workspaceId),
       workspaceLabel: validateWorkspaceLabel(value.workspaceLabel),
+    });
+  } catch {
+    return invalidCapabilityValue();
+  }
+}
+
+export function parseWorkspaceDeletionRequest(
+  value: unknown,
+): Readonly<WorkspaceDeletionRequest> {
+  try {
+    if (
+      !isPlainDataRecord(value) ||
+      !hasExactDataKeys(value, ['formatVersion', 'workspaceId', 'typedLabel', 'backupChoice']) ||
+      value.formatVersion !== workspaceManagementCapabilityProtocolVersion ||
+      (value.backupChoice !== 'createBackup' && value.backupChoice !== 'explicitDataLoss')
+    ) {
+      return invalidCapabilityValue();
+    }
+    return Object.freeze({
+      formatVersion: workspaceManagementCapabilityProtocolVersion,
+      workspaceId: validateWorkspaceId(value.workspaceId),
+      typedLabel: validateWorkspaceLabel(value.typedLabel),
+      backupChoice: value.backupChoice,
     });
   } catch {
     return invalidCapabilityValue();

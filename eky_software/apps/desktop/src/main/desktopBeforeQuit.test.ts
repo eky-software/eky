@@ -232,7 +232,7 @@ describe('desktop before-quit handler', () => {
     );
     expect(source.match(/app\.on\('before-quit'/g)).toHaveLength(1);
     expect(source).toMatch(
-      /app\.on\('before-quit', \(event\) => \{\s*void handleBeforeQuit\(event\);\s*\}\);/,
+      /app\.on\('before-quit', \(event\) => \{\s*deletionProof\?\.closeChannel\(\);\s*void handleBeforeQuit\(event\);\s*\}\);/,
     );
     expect(source).not.toContain('shutdownStarted');
     expect(source).toContain("app.on('window-all-closed', () => app.quit());");

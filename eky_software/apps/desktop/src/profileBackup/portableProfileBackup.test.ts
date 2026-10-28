@@ -34,7 +34,8 @@ type RecordSuccessfulBackup = (input: {
   validationStatus: 'validated';
 }) => Promise<void>;
 
-afterEach(async () => {
+afterEach(async context => {
+  if (context.task.result?.state !== 'pass') { roots.splice(0); return; }
   await Promise.all(
     roots.splice(0).map((root) =>
       rm(root, { force: true, recursive: true }),

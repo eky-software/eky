@@ -1,5 +1,6 @@
 export type WorkspaceMaintenancePurpose =
   | 'backup'
+  | 'delete'
   | 'create'
   | 'import'
   | 'replace'

@@ -1,4 +1,4 @@
-export const profileSnapshotBrokerProtocolVersion = 12;
+export const profileSnapshotBrokerProtocolVersion = 13;
 
 const requestIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -15,6 +15,9 @@ export type ProfileMaintenanceBrokerOperation =
   | 'assertRestoreMaintenance'
   | 'endRestoreMaintenance'
   | 'invalidateRestoreMaintenance'
+  | 'beginDeleteMaintenance'
+  | 'assertDeleteMaintenance'
+  | 'invalidateDeleteMaintenance'
   | 'createProfileSnapshot'
   | 'endProfileMaintenance'
   | 'getProfileMaintenanceStatus'
@@ -39,6 +42,7 @@ export type ProfileSnapshotBrokerRequest =
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
       requestId: string;
       updateMaintenanceOperationId?: string;
+      deleteMaintenanceOperationId?: string;
     }
   | {
       migrationPolicy: ProfileSnapshotMigrationPolicy;
@@ -57,6 +61,9 @@ export type ProfileSnapshotBrokerRequest =
         | 'assertRestoreMaintenance'
         | 'endRestoreMaintenance'
         | 'invalidateRestoreMaintenance'
+        | 'beginDeleteMaintenance'
+        | 'assertDeleteMaintenance'
+        | 'invalidateDeleteMaintenance'
         | 'endProfileMaintenance';
       operationId: string;
       protocolVersion: typeof profileSnapshotBrokerProtocolVersion;
@@ -129,12 +136,13 @@ export function createProfileSnapshotBrokerRequest(input: {
   operationId?: string;
   requestId: string;
   updateMaintenanceOperationId?: string;
+  deleteMaintenanceOperationId?: string;
 }): ProfileSnapshotBrokerRequest {
   if (input.kind !== undefined && input.operation !== 'readProfileInspectionContext') {
     throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
   }
   if (
-    input.updateMaintenanceOperationId !== undefined &&
+    (input.updateMaintenanceOperationId !== undefined || input.deleteMaintenanceOperationId !== undefined) &&
     input.operation !== 'readProfileInspectionContext'
   ) {
     throw new Error('PROFILE_SNAPSHOT_BROKER_REQUEST_INVALID');
@@ -162,6 +170,8 @@ export function createProfileSnapshotBrokerRequest(input: {
             ...(input.operation === 'readProfileInspectionContext' ? { kind: input.kind } : {}),
             ...(input.updateMaintenanceOperationId === undefined
               ? {} : { updateMaintenanceOperationId: input.updateMaintenanceOperationId }),
+            ...(input.deleteMaintenanceOperationId === undefined
+              ? {} : { deleteMaintenanceOperationId: input.deleteMaintenanceOperationId }),
           };
   const request = parseProfileSnapshotBrokerRequest(value);
 
@@ -215,18 +225,23 @@ export function parseProfileSnapshotBrokerRequest(
 
   if (value.operation === 'readProfileInspectionContext') {
     const hasUpdateOwner = Object.hasOwn(value, 'updateMaintenanceOperationId');
+    const hasDeleteOwner = Object.hasOwn(value, 'deleteMaintenanceOperationId');
     if (!hasExactKeys(value, [
       'operation', 'kind', 'operationId', 'protocolVersion', 'requestId',
       ...(hasUpdateOwner ? ['updateMaintenanceOperationId'] : []),
+      ...(hasDeleteOwner ? ['deleteMaintenanceOperationId'] : []),
     ]) || !isOperationId(value.operationId) ||
       (value.kind !== 'inspect' && value.kind !== 'prepareRestoreActivation') ||
-      (hasUpdateOwner && (value.kind !== 'inspect' || !isOperationId(value.updateMaintenanceOperationId)))) {
+      (hasUpdateOwner && hasDeleteOwner) ||
+      (hasUpdateOwner && (value.kind !== 'inspect' || !isOperationId(value.updateMaintenanceOperationId))) ||
+      (hasDeleteOwner && (value.kind !== 'inspect' || !isOperationId(value.deleteMaintenanceOperationId)))) {
       return undefined;
     }
     return {
       operation: value.operation, kind: value.kind, operationId: value.operationId,
       protocolVersion: profileSnapshotBrokerProtocolVersion, requestId: value.requestId,
       ...(hasUpdateOwner ? { updateMaintenanceOperationId: value.updateMaintenanceOperationId as string } : {}),
+      ...(hasDeleteOwner ? { deleteMaintenanceOperationId: value.deleteMaintenanceOperationId as string } : {}),
     };
   }
 
@@ -273,6 +288,9 @@ export function parseProfileSnapshotBrokerRequest(
       value.operation !== 'assertRestoreMaintenance' &&
       value.operation !== 'endRestoreMaintenance' &&
       value.operation !== 'invalidateRestoreMaintenance' &&
+      value.operation !== 'beginDeleteMaintenance' &&
+      value.operation !== 'assertDeleteMaintenance' &&
+      value.operation !== 'invalidateDeleteMaintenance' &&
       value.operation !== 'endProfileMaintenance') ||
     !hasExactKeys(value, [
       'operation',

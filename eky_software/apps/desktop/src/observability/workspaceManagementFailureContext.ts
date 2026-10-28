@@ -1,6 +1,6 @@
 export const workspaceManagementOperationIds = Object.freeze({
   create: 'workspace.create', import: 'workspace.import', replace: 'workspace.replace',
-  switch: 'workspace.switch', rename: 'workspace.rename',
+  switch: 'workspace.switch', rename: 'workspace.rename', delete: 'workspace.delete',
 } as const);
 
 export type WorkspaceManagementOperationId =
@@ -22,6 +22,15 @@ export function isWorkspaceManagementFailureContext(value: Record<string, unknow
     typeof value.durationMs !== 'number' || !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 ||
     !Object.values(workspaceManagementOperationIds).some(id => id === value.operationId) ||
     (value.sideEffectState !== 'none' && value.sideEffectState !== 'unknown')) return false;
+  if (value.operationId === workspaceManagementOperationIds.delete) {
+    if (value.stage !== 'admission' && value.stage !== 'deletePreparation') return false;
+    if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') return value.retryable === true;
+    return value.retryable === false &&
+      (value.stage === 'admission' || value.sideEffectState === 'unknown') &&
+      (value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' ||
+        value.errorCode === 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' ||
+        value.errorCode === 'WORKSPACE_DELETE_FAILED');
+  }
   if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') {
     return (value.stage === 'admission' || value.stage === 'operation') && value.retryable === true;
   }

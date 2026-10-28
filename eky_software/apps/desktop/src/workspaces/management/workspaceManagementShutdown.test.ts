@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { EventEmitter } from 'node:events';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { EmptyWorkspaceCreationCoordinator } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import {
@@ -12,7 +13,28 @@ import { createWorkspaceManagementCapability } from './workspaceManagementCapabi
 import { createEmptyWorkspaceIpcChannel } from './workspaceManagementCapabilityProtocol.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
 
+const capabilities: ReturnType<typeof createWorkspaceManagementCapability>[] = [];
+afterEach(() => { for (const capability of capabilities.splice(0)) capability.dispose(); });
+
 describe('workspace management settlement through the existing IPC and service owners', () => {
+  it('keeps actual coordinator work and its lease until admission-only closure settles', async () => {
+    const f = fixture();
+    const operation = f.create();
+    try {
+      await f.bootstrapEntered.promise;
+      f.capability.closeAdmission();
+      f.service.closeAdmission();
+      expect(f.lease.readState()).toBe('busy');
+      expect(f.events).not.toContain('reservation.close');
+      f.bootstrapFinish.resolve();
+      await expect(operation).resolves.toEqual({ formatVersion: 1, status: 'relaunching' });
+      expect(f.lease.readState()).toBe('idle');
+      expect(f.journal.current).toBeUndefined();
+      await f.shutdown();
+      expect(f.events.at(-1)).toBe('reservation.close');
+    } finally { f.bootstrapFinish.resolve(); await operation; await f.shutdown(); }
+  });
+
   it.each(['success', 'failure'] as const)(
     'waits for creation, cleanup and lease release while preserving %s', async outcome => {
       const f = fixture();
@@ -122,19 +144,22 @@ function fixture() {
   });
   const handlers = new Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>();
   const mainFrame = {};
-  const webContents = { mainFrame };
+  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false });
+  const mainWindow = Object.assign(new EventEmitter(), { webContents, isDestroyed: () => false });
   const showSafeError = vi.fn();
   const capability = createWorkspaceManagementCapability({
     ipcMain: { handle: (channel: string, handler: (event: unknown, ...args: unknown[]) => Promise<unknown>) => {
       handlers.set(channel, handler);
     }, removeHandler: (channel: string) => handlers.delete(channel) } as never,
-    mainWindow: { webContents, isDestroyed: () => false } as never,
+    mainWindow: mainWindow as never,
     passwordWindow: { requestPassword: unexpected }, confirmActiveWorkspaceReplacement: unexpected,
     selectBackupSource: unexpected, selectReplacementBackupSource: unexpected, service, showSafeError,
   });
+  capabilities.push(capability);
   let shutdownTask: Promise<void> | undefined;
   return {
     events, registry, journal, roots, lease, relaunch, bootstrapEntered, bootstrapFinish, showSafeError,
+    capability, service,
     loseReservation() { reservationCurrent = false; },
     create() {
       return handlers.get(createEmptyWorkspaceIpcChannel)!(

@@ -3,7 +3,7 @@ import { promises as fileSystem } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   backupAuthenticationTagLength,
@@ -21,7 +21,9 @@ const salt = Buffer.from('000102030405060708090a0b0c0d0e0f', 'hex');
 const nonce = Buffer.from('101112131415161718191a1b', 'hex');
 const temporaryDirectories: string[] = [];
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  vi.restoreAllMocks();
+  if (task.result?.state !== 'pass') { temporaryDirectories.splice(0); return; }
   await Promise.all(
     temporaryDirectories.splice(0).map((directory) =>
       fileSystem.rm(directory, { force: true, recursive: true }),
@@ -71,9 +73,96 @@ describe('encrypted backup container', () => {
     ]);
 
     const container = await fileSystem.readFile(fixture.containerPath);
+    expect(await fileSystem.lstat(fixture.containerPath, { bigint: true })).toMatchObject(decrypted.authenticatedFileIdentity);
+    expect(Object.isFrozen(decrypted.authenticatedFileIdentity)).toBe(true);
     expect(createHash('sha256').update(container).digest('hex')).toBe(
       '643026f00d280a3179b1c102ef442b6710ebb9c42539663665ce809531f38b71',
     );
+  });
+
+  it('keeps the authenticated handle identity when the source path is replaced during finalization', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const original = await fileSystem.lstat(fixture.containerPath, { bigint: true });
+    const bytes = await fileSystem.readFile(fixture.containerPath);
+    const retainedPath = `${fixture.containerPath}.original`;
+    const chmod = fileSystem.chmod;
+    const change = vi.spyOn(fileSystem, 'chmod').mockImplementation(async (path, mode) => {
+      if (path === fixture.quarantinePath) {
+        await fileSystem.rename(fixture.containerPath, retainedPath);
+        await fileSystem.writeFile(fixture.containerPath, bytes, { flag: 'wx' });
+      }
+      await chmod(path, mode);
+    });
+    try {
+      const result = await decryptBackupPayload({ containerPath: fixture.containerPath, password,
+        quarantinePath: fixture.quarantinePath });
+      expect(original).toMatchObject(result.authenticatedFileIdentity);
+      expect(result.containerSha256).toBe(createHash('sha256').update(bytes).digest('hex'));
+      expect(await fileSystem.lstat(fixture.containerPath, { bigint: true })).not.toMatchObject(result.authenticatedFileIdentity);
+      expect(await fileSystem.readFile(retainedPath)).toEqual(bytes);
+    } finally { change.mockRestore(); }
+  });
+
+  it('does not return authenticated evidence before the actual source reader closes', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const open = fileSystem.open;
+    const closing = deferred();
+    const allowClose = deferred();
+    let closeCompleted = false;
+    const intercept = vi.spyOn(fileSystem, 'open').mockImplementation(async (...args) => {
+      const handle = await open(...args);
+      if (args[0] === fixture.containerPath) {
+        const close = handle.close.bind(handle);
+        handle.close = async () => {
+          closing.resolve(); await allowClose.promise; await close(); closeCompleted = true;
+        };
+      }
+      return handle;
+    });
+    let returned = false;
+    const pending = decryptBackupPayload({ containerPath: fixture.containerPath, password,
+      quarantinePath: fixture.quarantinePath }).then(value => { returned = true; return value; });
+    try {
+      await closing.promise;
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(returned).toBe(false);
+      expect(closeCompleted).toBe(false);
+    } finally {
+      allowClose.resolve();
+      await Promise.allSettled([pending]);
+      intercept.mockRestore();
+    }
+    expect((await pending).authenticatedFileIdentity).toMatchObject({ ino: expect.any(BigInt) });
+    expect(returned).toBe(true);
+    expect(closeCompleted).toBe(true);
+  });
+
+  it('rejects authenticated bytes if the open file changes before its final identity check', async () => {
+    const fixture = await createFixture();
+    await writeFixture(fixture);
+    const open = fileSystem.open;
+    const intercept = vi.spyOn(fileSystem, 'open').mockImplementation(async (...args) => {
+      const handle = await open(...args);
+      if (args[0] === fixture.containerPath) {
+        const stat = handle.stat.bind(handle);
+        let reads = 0;
+        handle.stat = (async (...statArgs: Parameters<typeof stat>) => {
+          if (++reads === 2) {
+            await fileSystem.chmod(fixture.containerPath, 0o600);
+            await fileSystem.appendFile(fixture.containerPath, Buffer.of(0));
+          }
+          return stat(...statArgs);
+        }) as typeof handle.stat;
+      }
+      return handle;
+    });
+    try {
+      await expect(decryptBackupPayload({ containerPath: fixture.containerPath, password,
+        quarantinePath: fixture.quarantinePath })).rejects.toThrow('BACKUP_CONTAINER_FILE_CHANGED');
+      await expect(fileSystem.stat(fixture.quarantinePath)).rejects.toMatchObject({ code: 'ENOENT' });
+    } finally { intercept.mockRestore(); }
   });
 
   it.each([
@@ -286,4 +375,10 @@ async function writeFixture(fixture: Fixture): Promise<void> {
     password,
     salt,
   });
+}
+
+function deferred() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(fulfill => { resolve = fulfill; });
+  return { promise, resolve };
 }

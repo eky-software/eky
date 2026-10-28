@@ -11,12 +11,18 @@ import { readSupportBundleBackendData } from './supportBundleBackendData.js';
 
 describe('readSupportBundleBackendData', () => {
   it('revalidates every management failure combination using the real source validator', () => {
-    const cases = Object.values(workspaceManagementOperationIds).flatMap(operationId => [
+    const cases = Object.values(workspaceManagementOperationIds)
+      .filter(operationId => operationId !== workspaceManagementOperationIds.delete).flatMap(operationId => [
       { operationId, errorCode: `WORKSPACE_MANAGEMENT_${operationId.slice('workspace.'.length).toUpperCase()}_FAILED`, stage: 'operation' as const, retryable: false },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_INVALID', stage: 'operation' as const, retryable: false },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', stage: 'operation' as const, retryable: false },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'operation' as const, retryable: true },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'admission' as const, retryable: true },
+    ]);
+    const deletionCases = (['admission', 'deletePreparation'] as const).flatMap(stage => [
+      { operationId: workspaceManagementOperationIds.delete, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage, retryable: true },
+      ...['WORKSPACE_MANAGEMENT_INVALID', 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_FAILED']
+        .map(errorCode => ({ operationId: workspaceManagementOperationIds.delete, errorCode, stage, retryable: false })),
     ]);
     const lineage = { operationId: 'workspace.replace' as const, errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck' as const, retryable: false };
     const read = (value: unknown) => readSupportBundleBackendData({ ...createValidData(), diagnosticEvents: [value] }).diagnosticEvents;
@@ -27,7 +33,7 @@ describe('readSupportBundleBackendData', () => {
         operationId, errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS',
       })),
     ].map(entry => ({ ...entry, stage: 'operation' as const, retryable: false }));
-    for (const entry of [...cases, lineage, ...labelConflicts]) {
+    for (const entry of [...cases, lineage, ...labelConflicts, ...deletionCases]) {
       const source = createDesktopOperationalEvent({
         ...entry, eventName: 'workspaceManagement.operationFailed',
         correlationId: '22222222-2222-4222-8222-222222222222', durationMs: 2, sideEffectState: 'unknown',
@@ -35,7 +41,11 @@ describe('readSupportBundleBackendData', () => {
       const { eventId, timestamp, schemaVersion: _schemaVersion, ...fields } = source;
       const event = { ...fields, id: `desktop:${eventId}`, occurredAt: timestamp };
       expect(read(event)).toEqual([event]);
-      expect(read({ ...event, sideEffectState: 'none' })).toEqual([{ ...event, sideEffectState: 'none' }]);
+      if (entry.operationId === 'workspace.delete' && entry.stage === 'deletePreparation' && !entry.retryable) {
+        expect(() => read({ ...event, sideEffectState: 'none' })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
+      } else {
+        expect(read({ ...event, sideEffectState: 'none' })).toEqual([{ ...event, sideEffectState: 'none' }]);
+      }
       for (const change of [
         { component: 'backend' }, { category: 'backup' }, { level: 'warn' }, { outcome: 'success' },
         { correlationId: undefined }, { durationMs: undefined }, { operationId: undefined },
@@ -48,12 +58,27 @@ describe('readSupportBundleBackendData', () => {
         { rawError: 'synthetic-private' }, { path: '/synthetic/private' },
         { workspaceLabel: 'Synthetic' }, { workspaceId: 'synthetic-workspace-id' },
         { message: 'synthetic-private' }, { errorCode: 'WORKSPACE_LABEL_EXISTS' },
+        { operationId: 'workspace.deleteResume' }, { stage: 'deleteAuthorization' },
+        { stage: 'deletePurge' }, { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
+        { eventName: 'workspaceManagement.operationCompleted' },
+        { inventory: [] }, { lineageIdentity: 'synthetic-lineage' }, { cause: {} }, { stack: 'synthetic-private' },
+        ...(entry.operationId === 'workspace.delete'
+          ? [{ stage: 'operation' }, { stage: 'lineageCheck' },
+            ...['WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'WORKSPACE_MANAGEMENT_DELETE_FAILED',
+              ...cases.map(old => old.errorCode).filter(code => code.endsWith('_FAILED')),
+              'WORKSPACE_CREATION_LABEL_EXISTS', 'WORKSPACE_IMPORT_LABEL_EXISTS', 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH',
+              'WORKSPACE_MANAGEMENT_LABEL_EXISTS', 'WORKSPACE_DELETE_STALE_CONFIRMATION',
+              'WORKSPACE_DELETE_BACKUP_UNAVAILABLE', 'WORKSPACE_DELETE_INVENTORY_INVALID',
+              'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED', 'WORKSPACE_DELETE_CLEANUP_FAILED']
+              .map(errorCode => ({ errorCode }))]
+          : [{ stage: 'deletePreparation' },
+            { errorCode: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' }, { errorCode: 'WORKSPACE_DELETE_FAILED' }]),
         ...(entry.errorCode.endsWith('_LABEL_EXISTS')
           ? [{ stage: 'admission' }, { stage: 'lineageCheck' },
             ...Object.values(workspaceManagementOperationIds).filter(operationId => entry.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
-              ? operationId === 'workspace.replace' || operationId === 'workspace.switch' : operationId !== entry.operationId)
+              ? !['workspace.create', 'workspace.import', 'workspace.rename'].includes(operationId) : operationId !== entry.operationId)
               .map(operationId => ({ operationId }))] : []),
-        ...(entry.errorCode.endsWith('_FAILED') || entry.stage === 'lineageCheck'
+        ...((entry.errorCode.endsWith('_FAILED') && entry.operationId !== 'workspace.delete') || entry.stage === 'lineageCheck'
           ? [{ operationId: entry.operationId === 'workspace.create' ? 'workspace.replace' : 'workspace.create' }, { stage: 'admission' }] : []),
       ]) expect(() => read({ ...event, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
     }

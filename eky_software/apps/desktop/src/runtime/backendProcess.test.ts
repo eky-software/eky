@@ -47,7 +47,7 @@ describe('backend process shutdown result', () => {
     expect(fixture.kill).toHaveBeenCalledOnce();
   });
 
-  it.each(['stopForUpdate', 'stopForRestore'] as const)(
+  it.each(['stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
     'keeps %s strict without invoking the forced fallback', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
@@ -61,6 +61,7 @@ describe('backend process shutdown result', () => {
 
   it.each([
     ['stopForUpdate', 'shutdownForUpdate'], ['stopForRestore', 'shutdownForRestore'],
+    ['stopForDelete', 'shutdownForDelete'],
   ] as const)('preserves successful %s and its named command', async (method, type) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
@@ -71,7 +72,7 @@ describe('backend process shutdown result', () => {
     expect(fixture.kill).not.toHaveBeenCalled();
   });
 
-  it.each(['stopForUpdate', 'stopForRestore'] as const)(
+  it.each(['stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
     'rejects an invalid %s operation before consuming the ordinary stop', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
@@ -84,7 +85,7 @@ describe('backend process shutdown result', () => {
     await expect(stopped).resolves.toBe('exited');
   });
 
-  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)(
+  it.each(['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
     'rejects an unsuccessful process exit during %s',
     async (method) => {
       vi.useFakeTimers();
@@ -625,7 +626,7 @@ describe('backend parent reservation transfer', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(['stopForUpdate', 'stopForRestore'] as const)(
+  it.each(['stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
     'does not add a new %s budget for a stuck reclaim after a delayed zero exit', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
@@ -649,6 +650,7 @@ describe('backend shutdown event ordering', () => {
   it.each([
     ['stop', 0], ['stop', 1], ['stopForUpdate', 0], ['stopForUpdate', 1],
     ['stopForRestore', 0], ['stopForRestore', 1],
+    ['stopForDelete', 0], ['stopForDelete', 1],
   ] as const)('does not let %s claim an unsolicited exit %s as graceful', async (method, exitCode) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
@@ -661,7 +663,7 @@ describe('backend shutdown event ordering', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)(
+  it.each(['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
     'rejects %s when the request emits zero exit and then throws', async (method) => {
       vi.useFakeTimers();
       const fixture = await createFixture();
@@ -675,7 +677,7 @@ describe('backend shutdown event ordering', () => {
     },
   );
 
-  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)('observes synchronous exit from %s', async (method) => {
+  it.each(['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)('observes synchronous exit from %s', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     fixture.postMessage.mockImplementation(() => { fixture.process.emit('exit', 0); });
@@ -684,7 +686,7 @@ describe('backend shutdown event ordering', () => {
     expect(vi.getTimerCount()).toBe(0);
   });
 
-  it.each(['stop', 'stopForUpdate', 'stopForRestore'] as const)('keeps a throwing %s request bounded and unclean', async (method) => {
+  it.each(['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)('keeps a throwing %s request bounded and unclean', async (method) => {
     vi.useFakeTimers();
     const fixture = await createFixture();
     fixture.postMessage.mockImplementation(() => { throw new Error('synthetic private post failure'); });

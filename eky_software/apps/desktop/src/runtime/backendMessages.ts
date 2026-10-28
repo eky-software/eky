@@ -65,6 +65,11 @@ export interface DesktopBackendRestoreShutdownMessage {
   type: 'shutdownForRestore';
 }
 
+export interface DesktopBackendDeleteShutdownMessage {
+  operationId: string;
+  type: 'shutdownForDelete';
+}
+
 export interface DesktopBackendContinueStartupMessage {
   type: 'continueStartup';
 }
@@ -80,6 +85,7 @@ export type DesktopBackendCommand =
   | DesktopBackendShutdownMessage
   | DesktopBackendUpdateShutdownMessage
   | DesktopBackendRestoreShutdownMessage
+  | DesktopBackendDeleteShutdownMessage
   | DesktopBackendStartMessage;
 
 export interface DesktopBackendMigrationGateReadyMessage {
@@ -173,7 +179,8 @@ export function parseDesktopBackendCommand(
     return hasExactKeys(value, ['type']) ? { type: 'shutdown' } : undefined;
   }
 
-  if (value.type === 'shutdownForUpdate' || value.type === 'shutdownForRestore') {
+  if (value.type === 'shutdownForUpdate' || value.type === 'shutdownForRestore' ||
+      value.type === 'shutdownForDelete') {
     return hasExactKeys(value, ['operationId', 'type']) &&
       isOperationId(value.operationId)
       ? { operationId: value.operationId, type: value.type }

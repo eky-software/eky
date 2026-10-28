@@ -61,6 +61,8 @@ describe('Electron development backend ownership boundary', () => {
       .rejects.toThrow('ELECTRON_E2E_BACKEND_UPDATE_SHUTDOWN_UNSUPPORTED');
     await expect(handle.stopForRestore('11111111-1111-4111-8111-111111111111'))
       .rejects.toThrow('ELECTRON_E2E_BACKEND_RESTORE_SHUTDOWN_UNSUPPORTED');
+    await expect(handle.stopForDelete('11111111-1111-4111-8111-111111111111'))
+      .rejects.toThrow('ELECTRON_E2E_BACKEND_DELETE_SHUTDOWN_UNSUPPORTED');
     expect(f.child.postMessage).toHaveBeenCalledTimes(2);
     expect(f.child.kill).not.toHaveBeenCalled();
     const stopping = handle.stop();

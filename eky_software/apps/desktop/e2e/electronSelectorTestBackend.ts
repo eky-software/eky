@@ -18,6 +18,7 @@ export function observeSelectorTestBackend(start: (options: StartDesktopBackendO
         async stop() { const result = await handle.stop(); release(); return result; },
         async stopForUpdate(id) { await handle.stopForUpdate(id); release(); },
         async stopForRestore(id) { await handle.stopForRestore(id); release(); },
+        async stopForDelete(id) { await handle.stopForDelete(id); release(); },
       };
     },
   };

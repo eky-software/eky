@@ -213,8 +213,8 @@ describe('snapshot inspection with trusted active context', () => {
 
   it('binds fresh private generations and sessions instead of reusing a business session', async () => {
     const f = fixture();
-    await f.start();
-    await f.start();
+    const firstResult = await f.start();
+    const lastResult = await f.start();
     const first = boundary.run.mock.calls[0]![0].identity;
     const last = boundary.run.mock.calls[1]![0].identity;
     expect(first.operationId).toBe(operationId);
@@ -223,6 +223,64 @@ describe('snapshot inspection with trusted active context', () => {
     expect(first.runtimeSession).not.toBe(last.runtimeSession);
     expect(f.bind.mock.calls[0]![0]).toBe(first.generationId);
     expect(boundary.run.mock.calls[0]![0].reservationTransfer.descriptor.generationId).toBe(first.generationId);
+    expect(firstResult.identity).toBe(first);
+    expect(lastResult.identity).toBe(last);
+    expect(Object.isFrozen(firstResult.identity)).toBe(true);
+    expect(Object.isFrozen(lastResult.identity)).toBe(true);
+    expect(firstResult.validation).not.toHaveProperty('identity');
+    expect(JSON.stringify(firstResult.validation)).not.toContain(first.runtimeSession);
+  });
+
+  it.each(['cleanup', 'finalContext'] as const)('exposes no identity before %s settles', async phase => {
+    const f = fixture();
+    const entered = deferred<void>();
+    const gate = deferred<void>();
+    if (phase === 'cleanup') copy.discard.mockImplementationOnce(async () => { entered.resolve(); await gate.promise; });
+    else f.readActiveContext.mockResolvedValueOnce(context).mockImplementationOnce(async () => {
+      entered.resolve(); await gate.promise; return context;
+    });
+    const published = vi.fn();
+    const task = f.start().then(value => { published(value); return value; });
+    try {
+      await entered.promise;
+      await flush();
+      expect(published).not.toHaveBeenCalled();
+    } finally { gate.resolve(); await Promise.allSettled([task]); }
+    const accepted = await task;
+    expect(accepted.identity).toBe(boundary.run.mock.calls[0]![0].identity);
+    expect(published).toHaveBeenCalledOnce();
+  });
+
+  it.each(['cleanup', 'finalContext'] as const)('publishes neither receipt nor identity after failed %s', async phase => {
+    const f = fixture();
+    if (phase === 'cleanup') copy.discard.mockRejectedValueOnce(new Error('synthetic close failed'));
+    else f.readActiveContext.mockResolvedValueOnce(context).mockResolvedValueOnce({ ...context, activeProfileId: 'f'.repeat(64) });
+    const published = vi.fn();
+    await expect(f.start().then(published)).rejects.toBeInstanceOf(ProfileInspectionProcessError);
+    expect(published).not.toHaveBeenCalled();
+    expect(boundary.run).toHaveBeenCalledOnce();
+  });
+
+  it('forwards the delete owner in both context reads under the same inspection budget', async () => {
+    const f = fixture();
+    await f.start({ deleteMaintenanceOperationId: updateOperationId });
+    expect(f.readActiveContext).toHaveBeenCalledTimes(2);
+    for (const [request] of f.readActiveContext.mock.calls) {
+      expect(request).toMatchObject({ operationId, kind: 'inspect', deleteMaintenanceOperationId: updateOperationId });
+      expect(request).not.toHaveProperty('updateMaintenanceOperationId');
+    }
+    expect(f.readActiveContext.mock.calls[1]![0].deadline).toBe(f.readActiveContext.mock.calls[0]![0].deadline);
+  });
+
+  it.each([
+    { deleteMaintenanceOperationId: '' },
+    { deleteMaintenanceOperationId: updateOperationId, updateMaintenanceOperationId: updateOperationId },
+    { deleteMaintenanceOperationId: updateOperationId, kind: 'prepareRestoreActivation' as const },
+  ])('rejects invalid or conflicting delete authority before context reads: %j', async overrides => {
+    const f = fixture();
+    expect(await failure(f.start(overrides))).toHaveProperty('causeCode', 'PROFILE_INSPECTION_PROTOCOL_INVALID');
+    expect(f.readActiveContext).not.toHaveBeenCalled();
+    expect(boundary.run).not.toHaveBeenCalled();
   });
 
   it('uses the latest admitted emptiness without exposing the active profile id in the validation fields', async () => {

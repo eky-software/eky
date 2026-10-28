@@ -10,9 +10,10 @@ import { createBackupPasswordWindowController, type BackupPasswordWindowControll
 import { registerElectronPermissionPolicy } from '../security/electronPermissionPolicy.js';
 import type { LocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
 import type { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
-import { createWorkspaceManagementCapability, type WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
+import type { WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
 import { createWorkspaceManagementComposition, type SelectorWorkspaceManagementComposition } from '../workspaces/management/workspaceManagementComposition.js';
 import { WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
+import { createWorkspaceDeletionConfirmations } from '../workspaces/management/createWorkspaceDeletionConfirmations.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedSelectorWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.js';
 import type { WorkspaceSelectorStartupSelection } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
@@ -24,7 +25,8 @@ import { restoreWindowInputFocus } from './windowInputFocus.js';
 
 interface DesktopSelectorCompositionOptions {
   options: StartDesktopCompositionOptions;
-  dependencies: Pick<DesktopCompositionDependencies, 'showOpenDialog' | 'showErrorBox'>;
+  dependencies: Pick<DesktopCompositionDependencies,
+    'showOpenDialog' | 'showErrorBox' | 'showMessageBox' | 'createWorkspaceManagementCapability'>;
   selection: WorkspaceSelectorStartupSelection;
   reservation: Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>>;
   maintenanceLease: InMemoryWorkspaceMaintenanceLease;
@@ -109,6 +111,17 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
       assertSelectorCurrent: assertCurrent, reservation, maintenanceLease, runtimeRelaunch,
     });
     management = await createWorkspaceManagementComposition({
+      ...(options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {
+        runtimeGeneration: options.runtimeInstanceId,
+        createRuntime: () => ({ kind: 'selector' as const, lifecycle }),
+        assertMainReservation: () => reservation.assertMainOwned(),
+        assertMainReservationCurrent: () => reservation.assertMainCurrent(),
+        ...createWorkspaceDeletionConfirmations({ getWindow() {
+          if (mainWindow === undefined) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
+          return mainWindow;
+        }, showMessageBox: input.dependencies.showMessageBox }),
+        publish: options.workspaceDeletionPublisher,
+      } }),
       mode: 'selector', assertCurrent,
       operationalIdentity: input.operationalIdentity, operationalLogger: input.operationalLogger,
       activeWorkspaceLifecycle: lifecycle, appVersion: options.appVersion,
@@ -145,7 +158,7 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
     const rejectReplacement = async (): Promise<never> => {
       throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'replace');
     };
-    capability = createWorkspaceManagementCapability({
+    capability = input.dependencies.createWorkspaceManagementCapability({
       ipcMain, mainWindow: window, passwordWindow, service: management.service,
       confirmActiveWorkspaceReplacement: rejectReplacement, selectReplacementBackupSource: rejectReplacement,
       async selectBackupSource() {
