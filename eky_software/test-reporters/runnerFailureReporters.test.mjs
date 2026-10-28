@@ -112,6 +112,26 @@ test('shared projection remains bounded, redacts known secrets and does not invo
   assert.equal(large.chain[0].truncated, true);
 });
 
+test('preprojected exception input rejects getters, extra fields and invalid bounds in the existing sink', async () => {
+  let touched = false;
+  const valid = () => ({ chain: [{ name: 'Error', message: 'SYNTHETIC_PROJECTION', stack: 'synthetic', truncated: false }], incomplete: false });
+  for (const mutate of [
+    value => { value.extra = 'REJECTED'; },
+    value => { value.chain[0].message = 'x'.repeat(STARTUP_EXCEPTION_LIMITS.message + 1); },
+    value => { value.chain[0].truncated = 'false'; },
+    value => { value.incomplete = 'false'; },
+    value => { Object.defineProperty(value, 'chain', { get() { touched = true; throw new Error('GETTER_MUST_NOT_RUN'); } }); },
+  ]) {
+    const projectedException = valid(); mutate(projectedException);
+    const sink = createRunnerFailureSink({ env: {} });
+    sink.record({ runner: 'playwright', phase: 'projectedBoundary', error: undefined, projectedException });
+    const result = await sink.flush();
+    assert.equal(result.recorded, 0);
+    assert.equal(result.rejected, 1);
+  }
+  assert.equal(touched, false);
+});
+
 test('CI binding is explicit, local fallback is separate and invalid identity is rejected', () => {
   assert.deepEqual(runnerFailureBinding({}), { kind: 'local' });
   const env = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2',

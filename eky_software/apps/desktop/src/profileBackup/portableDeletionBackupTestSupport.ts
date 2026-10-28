@@ -13,7 +13,8 @@ import type { OwnedProfileBackupInspectionReservation } from './inspectOwnedEncr
 import { ProfileMaintenanceState } from './profileMaintenanceStateTestSupport.js';
 import { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
 import { startProfileSnapshotBrokerBackend } from './profileSnapshotBrokerBackend.js';
-import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import { InMemoryWorkspaceMaintenanceLease, type WorkspaceMaintenanceLeaseHandle,
+  type WorkspaceMaintenancePurpose } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { ProfileSnapshotBrokerTransport } from './profileSnapshotBrokerTransport.js';
 
 export type ProcessInput = Parameters<typeof import('../runtime/profileInspectionProcess.js')['runProfileInspectionProcess']>[0];
@@ -47,6 +48,7 @@ type Options = {
   assertCurrent?(): Promise<void>;
   assertValid?(): void;
   beginDeleteMaintenance?: boolean;
+  deferMaintenanceLease?: boolean;
   retainEvidence?(): boolean;
 };
 async function fixture(options: Options = {}) {
@@ -64,8 +66,20 @@ async function fixture(options: Options = {}) {
   const events: string[] = [];
   const state = new ProfileMaintenanceState();
   const lease = new InMemoryWorkspaceMaintenanceLease();
-  const handle = await lease.acquire(options.ordinary ? 'backup' : 'delete');
-  const assertLease = lease.captureCurrentOwner([options.ordinary ? 'backup' : 'delete']);
+  let ownedHandle: WorkspaceMaintenanceLeaseHandle | undefined;
+  let leaseGuard: (() => void) | undefined;
+  const acquireLease = async (purpose: WorkspaceMaintenancePurpose) => {
+    const acquired = await lease.acquire(purpose);
+    ownedHandle = acquired;
+    leaseGuard = lease.captureCurrentOwner([purpose]);
+    return acquired;
+  };
+  if (!options.deferMaintenanceLease) await acquireLease(options.ordinary ? 'backup' : 'delete');
+  const handle = { async release() { await ownedHandle?.release(); } };
+  const assertLease = () => {
+    if (leaseGuard === undefined) throw new Error('SYNTHETIC_LEASE_NOT_ACQUIRED');
+    leaseGuard();
+  };
   const transports = serializedTransportPair();
   const broker = new ProfileSnapshotBrokerClient(transports[0]);
   const snapshot = {
@@ -164,7 +178,7 @@ async function fixture(options: Options = {}) {
     stagingRoot, quarantineRoot, profileSnapshotClient: client, operationIdFactory: () => ids.shift()!,
   });
   return { root, stagingRoot, destinationPath, client, service, begin, end, events,
-    broker, backend, state, lease, handle, contextRequests, snapshot, assertFence,
+    broker, backend, state, lease, handle, acquireLease, contextRequests, snapshot, assertFence,
     create: () => service.createForDeletion({ destinationPath, password }, {
       operationId: sourceId, assertValid: assertFence,
       async assertCurrent() { assertFence(); await broker.assertDeleteMaintenance(sourceId); assertFence(); await options.assertCurrent?.(); assertFence(); },

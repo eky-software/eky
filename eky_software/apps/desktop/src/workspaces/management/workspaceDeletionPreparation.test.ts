@@ -21,7 +21,7 @@ import { InvoicePdfArchiveJournalStore } from '../../invoicePdfArchive/invoicePd
 import { createInvoicePdfArchiveRuntimePaths } from '../../invoicePdfArchive/invoicePdfArchivePaths.js';
 import { WorkspaceManagementService } from './workspaceManagementService.js';
 import { createWorkspaceManagementCapability } from './workspaceManagementCapability.js';
-import type { WorkspaceDeletionPreparationLifetime } from './workspaceManagementTypes.js';
+import type { WorkspaceDeletionPreparationLifetime, WorkspaceManagementObserver } from './workspaceManagementTypes.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { MainOwnedSelectorWorkspaceLifecycle } from '../runtime/mainOwnedSelectorWorkspaceLifecycle.js';
 import { prepareWorkspaceDeletion, WorkspaceDeletionPreparationFailure } from './workspaceDeletionPreparation.js';
@@ -50,6 +50,8 @@ it('joins the admitted request, real target/export and named stop before one-sho
     expect(f.events).toContain('capabilities.delete');
     expect(f.savedGuard()).toThrow();
     expect(f.relaunch).not.toHaveBeenCalled();
+    // Admission, the publisher's two explicit checks and settlement only.
+    expect(f.events.filter(event => event === 'export.recheck')).toHaveLength(4);
     await expect(fs.readFile(f.sentinel)).resolves.toEqual(Buffer.from('company retained'));
     await expect(fs.stat(f.base.destinationPath)).resolves.toBeDefined();
     await expect(f.start()).rejects.toThrow();
@@ -245,6 +247,7 @@ it.each([false, true])('cancellation requests return only for explicit choice %s
     f.gates.return.resolve();
     expect(await operation).toBe(returnChoice ? 'returnRequested' : 'cancelled');
     expect(f.relaunch).toHaveBeenCalledTimes(returnChoice ? 1 : 0);
+    expect(f.base.lease.readState()).toBe('idle');
     expect(f.publications).toHaveLength(0);
     await expect(fs.stat(f.base.destinationPath)).resolves.toBeDefined();
     await expect(fs.readFile(f.sentinel)).resolves.toEqual(Buffer.from('company retained'));
@@ -264,9 +267,15 @@ it('rejects external invalidation while the explicit return choice is pending', 
 it('rechecks request and reservation in the final deferred return callback', async () => {
   await exercise({ cancel: true, returnChoice: true }, async f => {
     f.beforeCompletion.mockImplementationOnce(() => f.loseReservation());
-    expect(await f.start()).toBe('returnRequested');
+    await expect(f.start()).rejects.toThrow();
     expect(f.relaunch).not.toHaveBeenCalled();
     expect(f.events).toContain('return.revoked');
+    expect(f.base.lease.readState()).toBe('idle');
+    expect(f.observer.record).toHaveBeenCalledTimes(1);
+    expect(f.observer.record).toHaveBeenCalledWith(expect.objectContaining({
+      outcome: 'failed', retryable: false, sideEffectState: 'unknown', stage: 'deletePreparation',
+    }));
+    expect(JSON.stringify(f.observer.record.mock.calls)).not.toContain('SYNTHETIC_RESERVATION_LOST');
   });
 });
 
@@ -302,9 +311,29 @@ it('keeps the backup receipt guard attached to the final publication callback', 
   });
 });
 
+it('rejects an export changed during publication without publishing or deleting company data', async () => {
+  await exercise({ holdPublication: true }, async f => {
+    const operation = f.start().catch(error => error);
+    await f.entered.publish.promise;
+    const changed = await fs.readFile(f.base.destinationPath);
+    changed[changed.length - 1]! ^= 1;
+    await fs.chmod(f.base.destinationPath, 0o600);
+    await fs.writeFile(f.base.destinationPath, changed);
+    f.gates.publish.resolve();
+    expect(await operation).toBeInstanceOf(Error);
+    expect(f.originalFailures[0]).toMatchObject({ message: 'WORKSPACE_DELETE_BACKUP_UNAVAILABLE' });
+    expect(f.events).not.toContain('publish');
+    expect(f.savedGuard()).toThrow();
+    expect(f.relaunch).not.toHaveBeenCalled();
+    await expect(fs.readFile(f.sentinel)).resolves.toEqual(Buffer.from('company retained'));
+    await expect(fs.readFile(f.base.destinationPath)).resolves.toEqual(changed);
+  });
+});
+
 it.each([false, true])('uses explicit loss consent without a backup for other target %s', async otherTarget => {
   await exercise({ backupChoice: 'explicitDataLoss', otherTarget, recoveryRequired: otherTarget }, async f => {
     expect(await f.start()).toBe('prepared');
+    expect(f.events).not.toContain('export.recheck');
     expect(f.events.indexOf('confirm.loss')).toBeLessThan(f.events.indexOf('confirm.delete'));
     expect(f.events).toContain('exit');
     expect(processBoundary.run).not.toHaveBeenCalled();
@@ -408,7 +437,8 @@ async function fixture(options: Options) {
   const entered = Object.fromEntries(gateNames.map(name => [name, deferred()])) as typeof gates;
   const drainStarted = deferred();
   let lifetime: WorkspaceDeletionPreparationLifetime | undefined;
-  const base = await backupFixture({ beginDeleteMaintenance: false, assertValid: () => lifetime?.assertCurrent(),
+  const base = await backupFixture({ beginDeleteMaintenance: false, deferMaintenanceLease: true,
+    assertValid: () => lifetime?.assertCurrent(),
     retainEvidence: () => originalFailures.length !== 0 });
   if (options.holdFence) {
     const begin = base.broker.beginDeleteMaintenance.bind(base.broker);
@@ -432,15 +462,18 @@ async function fixture(options: Options) {
   await fs.mkdir(companyRoot, { recursive: true });
   const sentinel = join(companyRoot, 'sentinel'); await fs.writeFile(sentinel, 'company retained', { flag: 'wx' });
   if (options.otherTarget) await fs.mkdir(deriveWorkspaceRoot(base.root, targetWorkspaceId, 1).workspaceRoot, { recursive: true });
-  const assertLease = base.lease.captureCurrentOwner(['delete']);
   let reservationCurrent = true;
   const assertReservation = () => { if (!reservationCurrent) throw new Error('SYNTHETIC_RESERVATION_LOST'); };
   const beforeCompletion = vi.fn<() => void>();
   const relaunch = vi.fn();
   let returnGuard: (() => void) | undefined;
   const deferredReturn = new DeferredWorkspaceRuntimeRelaunch(() => {
-    try { if (!returnGuard) throw new Error('NO_RETURN_AUTHORITY'); returnGuard(); relaunch(); }
-    catch { events.push('return.revoked'); }
+    try {
+      if (!returnGuard) throw new Error('NO_RETURN_AUTHORITY');
+      returnGuard();
+      expect(base.lease.readState()).toBe('busy');
+      relaunch();
+    } catch (cause) { events.push('return.revoked'); throw cause; }
   });
   const secretFile = new EncryptedSecretFile(join(companyRoot, 'company-email-smtp-v1.dat'));
   const [secretClientTransport, secretMainTransport] = createLinkedSecretTransports();
@@ -511,13 +544,17 @@ async function fixture(options: Options) {
     }, maintenanceLease: base.lease, runtimeRelaunch: deferredReturn,
   }) : undefined;
   const publications: string[] = [];
+  const observer = { record: vi.fn<WorkspaceManagementObserver['record']>() };
   let savedGuard: (() => void) | undefined;
   const unexpected = async (): Promise<never> => { throw new Error('UNEXPECTED_COMMAND'); };
   service = new WorkspaceManagementService({
     createEmpty: { create: unexpected }, importBackup: { import: unexpected }, renameWorkspace: { rename: unexpected },
-    switchWorkspace: { switchTo: unexpected }, operationGuard: guard, registry, maintenanceState: base.lease,
-    runtimeRelaunchCompletion: { complete() { beforeCompletion(); deferredReturn.complete(); } },
-    deletionPreparation: { async prepare(selected, authority) {
+    switchWorkspace: { switchTo: unexpected }, operationGuard: guard, registry, maintenanceState: base.lease, observer,
+    runtimeRelaunchCompletion: { complete(assertCurrent) { beforeCompletion(); deferredReturn.complete(assertCurrent); } },
+    deletionPreparation: {
+      maintenanceLease: { acquire: base.acquireLease,
+        captureCurrentOwner: purposes => base.lease.captureCurrentOwner(purposes) },
+      async prepare(selected, authority, assertLease) {
       lifetime = authority;
       return prepareWorkspaceDeletion({ operationId: sourceId, request: selected,
         installationRoot: base.root, runtimeGeneration: secretGeneration, lifetime: authority, registry,
@@ -529,9 +566,12 @@ async function fixture(options: Options) {
           if (options.cancelBackup) return Promise.resolve(null);
           return base.service.createForDeletion({ destinationPath: base.destinationPath, password: 'Synthetic bound inspection 2026!' }, owner);
         },
-        recheckExport: () => readDeletionBackupExportIdentity(base.destinationPath, () => {
-          authority.assertCurrent(); assertLease(); assertReservation();
-        }),
+        recheckExport: () => {
+          events.push('export.recheck');
+          return readDeletionBackupExportIdentity(base.destinationPath, () => {
+            authority.assertCurrent(); assertLease(); assertReservation();
+          });
+        },
         },
         async confirmDataLoss() {
           events.push('confirm.loss'); entered.loss.resolve();
@@ -562,7 +602,7 @@ async function fixture(options: Options) {
     selectBackupSource: unexpected, selectReplacementBackupSource: unexpected, showSafeError() {},
   });
   return { base, registry, initial, lifecycle, events, publications, relaunch, gates, entered, drainStarted, sentinel, beforeCompletion,
-    firstFailure, originalFailures,
+    firstFailure, originalFailures, observer,
     start: () => track(capability.prepareDeletion(event, { formatVersion: 1, workspaceId: targetWorkspaceId, typedLabel: label,
       backupChoice: options.backupChoice ?? 'createBackup' })),
     savedGuard: () => savedGuard!,

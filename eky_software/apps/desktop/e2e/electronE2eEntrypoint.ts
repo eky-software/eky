@@ -1,6 +1,6 @@
 import { resolve } from 'node:path';
 
-import { app, BrowserWindow, MessageChannelMain, protocol, utilityProcess } from 'electron';
+import { app, BrowserWindow, ipcMain, MessageChannelMain, protocol, utilityProcess } from 'electron';
 
 import { createDesktopBeforeQuitHandler } from '../src/main/desktopBeforeQuit.js';
 import {
@@ -28,6 +28,8 @@ import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js
 import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSelectorTestRelease.js';
 import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
+import { createWorkspaceDeletionProof } from './workspaceDeletionProof.js';
+import { isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -74,6 +76,10 @@ const backendController = createElectronE2eBackendController(
   },
 );
 const nativeAdapters = createElectronE2eNativeAdapters(config);
+const deletionProof = isWorkspaceDeletionProofScenario(config.scenarioId)
+  ? createWorkspaceDeletionProof({ scenarioId: config.scenarioId, ipcMain,
+    showMessageBox: nativeAdapters.showMessageBox, sessionSecret: config.backend.sessionSecret })
+  : undefined;
 const selectorBackend = usesSelectorTestBackend(config.scenarioId)
   ? observeSelectorTestBackend(startDesktopBackend) : undefined;
 app.once('browser-window-created', () => {
@@ -152,6 +158,7 @@ if (hasSingleInstanceLock) {
     exitApplication: (code) => app.exit(code),
     loadRuntime: async () => ({ startDesktopComposition }),
     async onFailure(errorCode) {
+      deletionProof?.closeChannel();
       startupObservation.record('startupFailed');
       nativeAdapters.recordStartupFailure(errorCode, backendController.getStartupFailure());
       nativeAdapters.showErrorBox(
@@ -173,13 +180,16 @@ if (hasSingleInstanceLock) {
           schemaVersion: 1,
         },
         dependencies: {
+          ...(deletionProof === undefined ? {} : {
+            createWorkspaceManagementCapability: deletionProof.createCapability,
+          }),
           createRuntimeSession: () => {
             runtimeSessionCount += 1;
             return createRuntimeSession();
           },
           openPath: nativeAdapters.openPath,
           showErrorBox: nativeAdapters.showErrorBox,
-          showMessageBox: nativeAdapters.showMessageBox,
+          showMessageBox: deletionProof?.showMessageBox ?? nativeAdapters.showMessageBox,
           showOpenDialog: nativeAdapters.showOpenDialog,
           showSaveDialog: nativeAdapters.showSaveDialog,
           resolveActiveWorkspace: async (userDataRoot, options) => {
@@ -237,7 +247,9 @@ if (hasSingleInstanceLock) {
           userDataPath: undefined,
         },
         userDataPath: config.paths.userDataPath,
+        ...(deletionProof === undefined ? {} : { workspaceDeletionPublisher: deletionProof.publish }),
       });
+      deletionProof?.register();
       startupObservation.record('compositionCompleted');
     },
     async waitUntilReady() {
@@ -262,12 +274,24 @@ const handleBeforeQuit = createDesktopBeforeQuitHandler({
   quitApplication: () => app.quit(),
 });
 app.on('before-quit', (event) => {
+  deletionProof?.closeChannel();
   void handleBeforeQuit(event);
 });
 app.on('window-all-closed', () => app.quit());
 
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
+    workspaceDeletionProof: deletionProof === undefined ? undefined : Object.freeze({
+      arm: deletionProof.arm,
+      release: deletionProof.release,
+      snapshot: deletionProof.snapshot,
+      readFailures: deletionProof.readFailures,
+      beginShutdown() {
+        if (lifecycle === undefined) throw new Error('E2E_WORKSPACE_DELETION_LIFECYCLE_MISSING');
+        deletionProof.beginShutdown(lifecycle);
+      },
+      waitForShutdown: deletionProof.waitForShutdown,
+    }),
     secretReplyProof: Object.freeze({
       arm: (operation: 'setCompanyEmailSecret' | 'removeCompanyEmailSecret') => requireSecretReplyHold().arm(operation),
       release: () => requireSecretReplyHold().release(),

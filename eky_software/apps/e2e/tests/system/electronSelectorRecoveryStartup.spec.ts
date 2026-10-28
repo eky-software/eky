@@ -1,6 +1,7 @@
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
 import { readSelectorTestRelease, selectorCreateScenarioId, selectorImportScenarioId, selectorRecoveryScenarioId, usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
+import { workspaceDeletionProofScenarioIds } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
 import { observeSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestBackend.js';
 import type { DesktopBackendHandle, StartDesktopBackendOptions } from '../../../desktop/src/runtime/backendProcess.js';
 import type { ElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
@@ -11,7 +12,7 @@ import { readSelectorTestBackendPort } from '../../src/electron/readElectronMain
 
 test('SYS-SELECTOR-RECOVERY-RUN-001 @security limits synthetic release admission to the named scenarios', () => {
   expect(readSelectorTestRelease('DESK-SELECTOR-READY-001')).toBeUndefined();
-  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, selectorImportScenarioId]) {
+  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, selectorImportScenarioId, ...workspaceDeletionProofScenarioIds]) {
     expect(readSelectorTestRelease(`${scenarioId}-OTHER`)).toBeUndefined();
     expect(readSelectorTestRelease(scenarioId)).toMatchObject({
       appVersion: '0.2.0', buildRevision: 'a'.repeat(40), releaseChannel: 'pilot',
@@ -68,7 +69,7 @@ test('SYS-SELECTOR-RECOVERY-RUN-003 @security refuses stale observations or anot
 });
 
 test('SYS-SELECTOR-BACKEND-001 @security delegates startup unchanged and never accepts failed shutdown', async () => {
-  for (const operation of ['stop', 'stopForUpdate', 'stopForRestore'] as const) {
+  for (const operation of ['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const) {
     let resolveStart!: (handle: DesktopBackendHandle) => void;
     let failClose = true;
     let observedId: string | undefined;
@@ -80,7 +81,7 @@ test('SYS-SELECTOR-BACKEND-001 @security delegates startup unchanged and never a
     };
     const raw: DesktopBackendHandle = {
       port: 12345, onUnexpectedExit() {},
-      async stop() { await close(); return 'forced'; }, stopForUpdate: close, stopForRestore: close,
+      async stop() { await close(); return 'forced'; }, stopForUpdate: close, stopForRestore: close, stopForDelete: close,
     };
     const options = {} as StartDesktopBackendOptions;
     const observed = observeSelectorTestBackend(input => {
@@ -113,6 +114,7 @@ test('SYS-SELECTOR-BACKEND-002 @security preserves startup failure and unexpecte
   const observed = observeSelectorTestBackend(async () => ({
     port: 12345, onUnexpectedExit(callback) { onExit = callback; },
     async stop() { return 'exited'; }, async stopForUpdate() {}, async stopForRestore() {},
+    async stopForDelete() { throw new Error('UNEXPECTED_FIXTURE_DELETE_STOP'); },
   }));
   const handle = await observed.startBackend({} as StartDesktopBackendOptions);
   handle.onUnexpectedExit(() => { notified = true; });
@@ -122,7 +124,7 @@ test('SYS-SELECTOR-BACKEND-002 @security preserves startup failure and unexpecte
 });
 
 test('SYS-SELECTOR-BACKEND-003 @security accepts only a bound real port or a backendless selector observation', async () => {
-  for (const scenarioId of [selectorCreateScenarioId, selectorImportScenarioId]) {
+  for (const scenarioId of [selectorCreateScenarioId, selectorImportScenarioId, ...workspaceDeletionProofScenarioIds]) {
     const selector = { scenarioId, starts: 0, running: false, port: undefined };
     const business = { ...selector, starts: 1, running: true, port: 12345 };
     const application = (observation: unknown) => ({ evaluate: async () => observation }) as unknown as ElectronApplication;

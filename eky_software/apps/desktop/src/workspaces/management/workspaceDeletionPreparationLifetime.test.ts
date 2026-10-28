@@ -295,14 +295,15 @@ function fixture(
   const command = vi.fn(prepare);
   const unexpected = async (): Promise<never> => { throw new Error('UNEXPECTED_FIXTURE_OPERATION'); };
   const create = vi.fn(unexpected);
+  const maintenanceLease = new InMemoryWorkspaceMaintenanceLease();
   const service = new WorkspaceManagementService({
     createEmpty: { create }, importBackup: { import: unexpected },
     renameWorkspace: { rename: unexpected }, switchWorkspace: { switchTo: unexpected },
-    maintenanceState: new InMemoryWorkspaceMaintenanceLease(),
+    maintenanceState: maintenanceLease,
     registry: { async read() { return { formatVersion: 2, activeWorkspaceId: null, workspaces: [] }; } },
     operationGuard: { assertNoUnresolvedOperations: guard, async readRecoveryState() { return 'clear'; } },
     observer: { record: event => { events.push(event); observer?.record(event); } },
-    deletionPreparation: { prepare: command },
+    deletionPreparation: { maintenanceLease, prepare: command },
   });
   const handlers = new Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>();
   const mainFrame = {};

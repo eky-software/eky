@@ -217,6 +217,8 @@ import { validateOwnedActiveProfile, type OwnedActiveProfileValidation } from '.
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import { createWorkspaceManagementComposition, recoverWorkspaceManagementBeforeRuntime } from '../workspaces/management/workspaceManagementComposition.js';
+import { createWorkspaceDeletionConfirmations } from '../workspaces/management/createWorkspaceDeletionConfirmations.js';
+import type { WorkspaceDeletionPreparationOptions } from '../workspaces/management/workspaceDeletionPreparation.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../workspaces/management/workspaceManagementOperationGuard.js';
 import { assertNoSelectorWorkspaceRecoveryFromRoot, readColdWorkspaceRecoveryAdmissionFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
 import type { WorkspaceColdRecoveryAdmission } from '../workspaces/runtime/workspaceColdRecoveryAdmission.js';
@@ -254,6 +256,7 @@ export interface DesktopLifecycleHandle {
 }
 
 export interface DesktopCompositionDependencies {
+  createWorkspaceManagementCapability: typeof createWorkspaceManagementCapability;
   createRuntimeSession(): string;
   openPath(path: string): Promise<string>;
   showErrorBox(title: string, message: string): void;
@@ -290,6 +293,8 @@ export interface StartDesktopCompositionOptions {
   smokeConfiguration: PackagedSmokeConfiguration;
   userDataPath: string;
   observeStartupException?(error: unknown, stage: StartupExceptionStage, secrets?: readonly string[]): void;
+  // W7.4 supplies the journal consumer before any delete IPC is registered.
+  workspaceDeletionPublisher?: WorkspaceDeletionPreparationOptions['publish'];
   w6b2PackagedProof?: Readonly<{
     configuration: Readonly<W6b2PackagedProofConfiguration>;
     interruptProcess(
@@ -305,6 +310,7 @@ export interface StartDesktopCompositionOptions {
 }
 
 const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
+  createWorkspaceManagementCapability,
   createRuntimeSession: createDesktopRuntimeSession,
   openPath: (path) => shell.openPath(path),
   showErrorBox(title, message) {
@@ -3114,7 +3120,9 @@ async function startDesktopCompositionRuntime({
 
   let disposeCapabilitiesTask: Promise<void> | undefined;
   let managementAdmissionFailure: { cause: unknown } | undefined;
+  let deletionCapabilityCloseStarted = false;
   const disposeWorkspaceRuntimeCapabilities = (purpose?: 'delete'): Promise<void> => {
+    if (purpose === 'delete') deletionCapabilityCloseStarted = true;
     profileSnapshotInspectionClient.closeAdmission();
     disposeCapabilitiesTask ??= Promise.resolve().then(async () => {
       const capabilities = [
@@ -3194,6 +3202,13 @@ async function startDesktopCompositionRuntime({
     });
     return secretFailureAcknowledgement;
   };
+  let cleanShutdownBoundaryReached = false;
+  let cleanShutdownTask: Promise<void> | undefined;
+  const persistCleanShutdown = (): Promise<void> => {
+    cleanShutdownTask ??= Promise.resolve().then(() => recoveryPointScheduler.markCleanShutdown())
+      .catch(() => { throw new WorkspaceRuntimeStopError({ phase: 'cleanMarker', reason: 'operationFailed' }); });
+    return cleanShutdownTask;
+  };
   const activeWorkspaceLifecycle = new MainOwnedActiveWorkspaceLifecycle(
     activeWorkspace.workspaceId,
     backendRequestQuiescence,
@@ -3204,7 +3219,11 @@ async function startDesktopCompositionRuntime({
         if (managementAdmissionFailure !== undefined) {
           throw new WorkspaceRuntimeStopError({ phase: 'capabilities', reason: 'operationFailed' });
         }
-        return recoveryPointScheduler.markCleanShutdown();
+        cleanShutdownBoundaryReached = true;
+        // A deletion request can still own publication/lease finalization after
+        // its backend stop. External shutdown joins it before persisting clean.
+        if (shutdownStarted || deletionCapabilityCloseStarted) return Promise.resolve();
+        return persistCleanShutdown();
       },
       sealAndDrainSecrets: () => secretBrokerHandle.sealAndDrain(),
       deletion: {
@@ -3237,6 +3256,17 @@ async function startDesktopCompositionRuntime({
   );
   const workspaceManagementComposition =
     await createWorkspaceManagementComposition({
+      ...(options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {
+        runtimeGeneration: options.runtimeInstanceId,
+        createRuntime: () => ({ kind: 'active' as const, workspaceId: activeWorkspace.workspaceId,
+          lifecycle: activeWorkspaceLifecycle, broker: profileSnapshotBrokerClient,
+          ...profileBackupComposition.createDeletionBackupExport() }),
+        assertMainReservation: () => workspaceReservation.assertMainOwned(),
+        assertMainReservationCurrent: () => workspaceReservation.assertMainCurrent(),
+        ...createWorkspaceDeletionConfirmations({ getWindow: () => mainWindow,
+          showMessageBox: dependencies.showMessageBox }),
+        publish: options.workspaceDeletionPublisher,
+      } }),
       operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,
       activeWorkspaceId: activeWorkspace.workspaceId,
@@ -3281,7 +3311,7 @@ async function startDesktopCompositionRuntime({
   if (backupPasswordWindowController === undefined) {
     throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_UNAVAILABLE');
   }
-  workspaceManagementCapability = createWorkspaceManagementCapability({
+  workspaceManagementCapability = dependencies.createWorkspaceManagementCapability({
     ipcMain,
     mainWindow,
     passwordWindow: backupPasswordWindowController,
@@ -3365,16 +3395,23 @@ async function startDesktopCompositionRuntime({
     }
 
     shutdownStarted = true;
+    const capabilityToDrain = workspaceManagementCapability;
     // Publish the shared task before any shutdown callback can re-enter.
     shutdownTask = Promise.resolve().then(async () => {
       const shutdownStartedAt = Date.now();
-      desktopOperationalLogger.write(
-        createDesktopOperationalEvent(
-          { eventName: 'desktop.shutdownStarted' },
-          desktopOperationalIdentity,
-        ),
-      );
+      // Do not join these owners inside delete-own-stop: that request is one
+      // of the pending owners. External shutdown can join both independently.
+      const managementShutdown = Promise.allSettled([
+        Promise.resolve().then(() => capabilityToDrain?.shutdown()),
+        Promise.resolve().then(() => workspaceManagementComposition.shutdown()),
+      ]);
       try {
+        desktopOperationalLogger.write(
+          createDesktopOperationalEvent(
+            { eventName: 'desktop.shutdownStarted' },
+            desktopOperationalIdentity,
+          ),
+        );
         if (request.mode === 'update') {
           await activeWorkspaceLifecycle.stopForUpdate(
             activeWorkspace.workspaceId,
@@ -3390,9 +3427,20 @@ async function startDesktopCompositionRuntime({
             activeWorkspace.workspaceId,
           );
         }
+        const managementFailures = (await managementShutdown).filter(result => result.status === 'rejected');
+        if (managementFailures.length !== 0) {
+          const failure = new WorkspaceRuntimeStopError({ phase: 'capabilities', reason: 'operationFailed' });
+          failure.cause = new AggregateError(managementFailures.map(result => result.reason),
+            'WORKSPACE_MANAGEMENT_SHUTDOWN_FAILED');
+          throw failure;
+        }
         if (managementAdmissionFailure !== undefined) {
           throw new Error('WORKSPACE_RUNTIME_STOP_FAILED', { cause: managementAdmissionFailure.cause });
         }
+        if (!cleanShutdownBoundaryReached) {
+          throw new WorkspaceRuntimeStopError({ phase: 'cleanMarker', reason: 'operationFailed' });
+        }
+        await persistCleanShutdown();
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
             {
@@ -3422,6 +3470,10 @@ async function startDesktopCompositionRuntime({
             cleanupFailures.push(phase);
           }
         }
+        const managementFailures = (await managementShutdown).filter(result => result.status === 'rejected');
+        if (managementFailures.length !== 0) {
+          cleanupFailures.push('management');
+        }
         desktopOperationalLogger.write(
           createDesktopOperationalEvent(
             {
@@ -3439,6 +3491,8 @@ async function startDesktopCompositionRuntime({
           cause: Object.freeze({
             runtimeFailure: error instanceof WorkspaceRuntimeStopError ? error : undefined,
             cleanupFailures: Object.freeze(cleanupFailures),
+            ...(managementFailures.length === 0 ? {} : { managementFailure:
+              new AggregateError(managementFailures.map(result => result.reason), 'WORKSPACE_MANAGEMENT_SHUTDOWN_FAILED') }),
           }),
         });
       }

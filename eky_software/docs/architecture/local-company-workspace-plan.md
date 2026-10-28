@@ -4095,7 +4095,11 @@ näiden omistajien yhteyteen, ei yleiseen manageriin tai utilities-kerrokseen.
    Callbackin paluun jälkeen tarkistetaan sen aikana voinut mitätöinti.
    Kulutus revalidoi lopullisen containerin identiteetin ja
    tiivisteen sekä kaikki kohde-/lease-/exit-rajat ennen W7.4:n
-   `authorized`-julkaisua. Julkaisuvartija mitätöidään lopuksi myös
+   `authorized`-julkaisua. Kuluttajan asynkroninen julkaisutarkistus uusii
+   myös vientitodisteen odotuksen jälkeen, ei vain kohdevalintaa.
+   Täsmälliset tarkistuskohdat ja rajat omistaa
+   [vientisopimus](local-backup-and-restore-plan.md#w73n-poiston-valmistelun-vientisopimus).
+   Julkaisuvartija mitätöidään lopuksi myös
    virheessä; talteen jäänyttä callbackia ei saa käyttää myöhemmin.
    Kuittauskatko ei palauta kulutusoikeutta.
 7. Ennen julkaisuyritystä peruutus säilyttää yrityksen aineiston. Se ei
@@ -4165,7 +4169,9 @@ peruutuspolun todentaminen ovat vielä tekemättä.
 
 **Paluun nykyinen kutsuketju:** `WorkspaceManagementService.runAdmitted`
 kutsuu `runtimeRelaunchCompletion.complete()`-metodia myös virheen ja
-peruutuksen jälkeisessä finallyssa. `DeferredWorkspaceRuntimeRelaunch`
+peruutuksen jälkeen ennen saman leasen odotettua vapautusta.
+Ensivirhe säilyy mahdollisten paluu- ja vapautusvirheiden edellä.
+`DeferredWorkspaceRuntimeRelaunch`
 toteuttaa jo aiemmin pyydetyn paluun silloin kerran. Siksi poistosta paluun
 `request()` tehdään vasta erillisen käyttäjävalinnan, todellisen sulun ja
 tuoreen varaus-/rekisteritarkistuksen jälkeen, ei valmistelun varmuustoimena.
@@ -4457,6 +4463,141 @@ Tämä ei vielä kytke management-palvelun valmistelukomentoa molempien
 composition-juurten tuotantokuluttajaksi. SQLite, kuljetus, exit, native-
 dialogit ja fyysinen varaus ovat valmistelun liitosnäytössä kontrolloituja
 rajoja, eivät oikean prosessiketjun tai koko W7.3:n hyväksyntä.
+
+**V2:n päättämisjärjestys:** nykyinen `WorkspaceManagementService` hankkii
+poistovalmistelun täsmällisen delete-leasen ja lainaa komennolle vain sen
+vartijan. Komento ei vapauta varausta. Saman pyynnön elinikä ja sama lease
+tarkistetaan synkronisesti deferred-paluussa; vain onnistunut
+`returnRequested` sallii pyydetyn paluun. Deferred-omistaja kuluttaa pyynnön
+ennen vartijaa ja callbackia, joten hylätty tai heittävä paluu ei toistu.
+Asynkroninen vartija ei ole lupa. Oma admission-sulku ei yksin mitätöi
+hyväksyttyä pyyntöä; ulkoinen sulku ja navigointi mitätöivät sen edelleen.
+
+Paluucallbackin jälkeen palvelu odottaa saman leasen vapautuksen myös
+virheessä. Mutaatiogate ja `pendingWork` kattavat koko päättämisen;
+paluucallbackista alkanutta palvelun shutdownia ei odoteta sen oman työn
+sisällä. Komennon ensivirhe säilyy alkuperäisenä syynä ja turvallisena
+koodina, ja mahdolliset paluu- ja vapautusvirheet liittyvät järjestettyyn
+syyketjuun. Loppuselvityksen virhe sulkee admissionin eikä tuota
+onnistumis- tai uudelleenyrityslupausta. Turvallinen observer ei saa
+raakavirheitä. Tavalliset create/import/replace/switch-komennot omistavat
+edelleen omat leasensa ja nykyisen palautuspaluunsa.
+
+Tämä in-memory-leasen vapautus ei avaa business-kirjoituksia eikä korvaa
+backendin exitin tai mainin fyysisen varauksen todistusta. Tuotannon
+composition-kytkentä, native-, exit- ja SQLite-portit ovat edelleen
+erillisiä V2/V3-velvoitteita; uutta manageria tai poistokanavaa ei lisätä.
+
+**V2:n ehdollinen composition-kytkentä:** nykyinen
+`workspaceManagementComposition` muodostaa valmistelun samalla rekisterillä,
+mutaatiogatella ja installation-leasella. Kukin pyyntö saa mainin uuden
+operaatiotunnisteen ja oman runtime-sovituksen; valmistelun paluuvartija
+liittyy palvelun vartijaan ennen nykyistä deferred-callbackia ja tyhjennetään
+myös virheessä. Aktiivisen yrityksen ja null-valitsimen main-juuret tarjoavat
+omat nykyiset lifecycle-/varausomistajansa. Vain aktiivisen kohteen backup
+käyttää nykyistä portable-vientiä sekä mainin tiedosto- ja salasanaikkunoita.
+Native-odotukset tarkistavat saman eliniän ennen seuraavaa sivuvaikutusta;
+viennin uudelleenluku säilyttää vain valitun polun ja vartijan, ei salasanaa.
+
+Kytkentä otetaan käyttöön vain mainin sisäisellä
+`workspaceDeletionPublisher`-kuluttajalla. Nykyinen tuotannon entrypoint ei
+anna sitä; ilman kuluttajaa valmistelukomentoa ei asenneta eikä kohdetta
+suljeta. Nimetty testikuluttaja todistaa valmistelun rajaa, ei journalia,
+poistoa tai `completed`-tulosta. Delete-IPC:tä, preloadia tai painiketta ei
+lisätä. Oikean prosessin, SQLiten, fyysisen varauksen ja paketoidun ketjun
+yhteisnäyttö sekä V3-hyväksyntä ovat edelleen tekemättä.
+
+**V3:n todellisen kytkennän rajaus:** mainin nykyinen riippuvuuskokoelma
+sisältää nyt saman `createWorkspaceManagementCapability`-factoryn.
+Tuotanto käyttää alkuperäistä oletusta molemmissa composition-juurissa.
+Testisovitus kutsuu sitä kerran muuttamattomilla optioilla, ottaa viitteen
+syntyneeseen capabilityyn ja palauttaa mainille saman olion. Se ei luo
+toista capabilityä, muuta pyyntöelinikää tai lisää lifecycle-kahvaan uutta
+toimintoa. Kontrolloidut main-testit käyttävät nyt tätä capabilityä
+palvelun suoran kutsun sijaan; kontrolloitu Electron-eventti ei kuitenkaan
+ole oikean IPC-rajan todiste.
+
+Electron-todennuksen lähdekytkentä on nykyisen `isolatedElectronTest`-
+fixturen sisällä. Vain nimettyyn testiskenaarioon valmistellun yksityisen
+sovelluskopion preload saa yhden nimetyn valmistelukutsun; tuotannon
+preload, julkinen tyyppisopimus ja build pysyvät muuttumattomina. E2E-main
+rekisteröi sen testikanavan vasta compositionin valmistuttua ja välittää
+tuoreen oikean `IpcMainInvokeEvent`-olion sekä alkuperäiset argumentit
+samalle capabilitylle. Vapaata IPC-/metodivalintaa, tallennettua eventtiä,
+korvattua sender/frame-arvoa tai valtuuden ohitusta ei sallita.
+Pyyntö käy nykyisen validoinnin ja dokumenttisukupolven läpi; renderer
+ei saa capabilityä, vartijoita, polkuja tai alkuperäisiä virhesyitä.
+
+Testi käyttää nykyistä oikean backendin käynnistäjää ja havaintosovitinta,
+ei fake-backendin sulkua tai mallinnettuja SQLite-omistajalaskureita.
+Tarvittava synteettinen yritys muodostetaan nykyisellä luonti-/avauspolulla;
+portin ja sessionin havainto sekä restart jäävät nykyiselle fixturelle.
+Nimetty julkaisukuluttaja tarkistaa tuoreen valtuuden ja valinnan mutta ei
+poista mitään eikä palauta `completed`-tulosta. Ulkoisen sulun koe pitää
+pyynnön kesken myös backendin päättymisen jälkeen; vain tuotannon oma
+shutdown saa odottaa sen loppuun ja vapauttaa varauksen. Testiapuri ei
+korjaa tätä odottamalla capabilityä erikseen. Testikanava ja viitteet
+suljetaan myös startup-virheessä ja uudelleenkäynnistyksessä.
+Alkuperäinen syy tarjotaan nykyiseen yksityiseen keräykseen ennen IPC:n
+virhemuunnosta. Main pitää ensimmäisen syyn muistissa; fixturen epäonnistunut
+testi lukee nykyisen rajatun projektion ennen sulkua ja tarjoaa sen nykyiselle
+runner-sinkille. Luku käyttää samaa rajattua toimitusbudjettia; katkos,
+osittainen projektio ja puuttuva havainto eivät muutu täydelliseksi
+keräysväitteeksi. Odotettu virhe onnistuneessa testissä ei tuota virheraporttia.
+Requestin ja ulkoisen shutdownin ensimmäiset syyt säilyvät erillisinä;
+odotettu pyynnön mitätöinti ei peitä myöhempää sulkuvirhettä. Nykyinen sinkki
+validoi jo rajatun projektion samalla suljetulla tietueella, soveltaa nykyisen
+redaktoinnin ja säilyttää alkuperäiset truncation-/incomplete-merkinnät.
+Kirjoitin, toimitusbudjetti ja julkaisuraja eivät muutu. Odotettu
+`failed`/`failed`-testitulos ei tuota uutta alkuperäisvirheraporttia, mutta
+odottamaton timeout tai keskeytys ei kuulu tähän poissulkuun.
+
+Neljä oikeaa Electron-tapausta läpäisi muuttumattomilla lähde-/build-
+tavuilla nykyisen yritysluonnin ja -avauksen kautta. Ne kattavat peruutuksen,
+native- ja julkaisuvastauksen pidon backend-exitin yli, todellisen
+prosessivarauksen, clean-merkin ja yritysdatan säilymisen fyysisessä
+restartissa. Native-vastaukset ovat ohjattuja sovituksia. Menetyssuostumuksen
+hyväksyminen ei tässä poista tietoja: testikuluttaja palauttaa vain
+valmistelun tuloksen. Erillinen OpenPGP-koe todisti alkuperäiset viesti-,
+pino- ja syytavut sekä osittaisuuden säilymisen puretussa paketissa;
+sen main-lukuraja oli kontrolloitu eikä se ole uusi hosted-CI-todiste.
+Lopullisen raportointiehdon ja ajokytkennän täsmennykset seurasivat
+tätä Electron-ajoa. Backup-haaran myöhempi näyttö on alla erikseen;
+hardened-paketti ja viimeisimmän lähteen normaalit PR/main-portit
+eivät sisälly tähän neljän tapauksen tulokseen.
+
+Backup-haaran myöhempi rajattu Electron-todennus käytti oikeaa
+salasanaikkunaa, caller-owned-vientiä, inspection-prosessia ja nimettyä
+backend-sulkua. Onnistuvan viennin container sekä DB-/katalogimerkintöjen
+tiivisteet autentikoitiin nykyisellä lukijalla; sama profiili, vientitavut
+ja alkuperäisen yrityksen asiakas säilyivät fyysisessä restartissa.
+Tämä ei ole viennistä palautetun asiakassisällön itsenäinen todiste.
+Tiedostodialogin vastaus oli edelleen rajattu testisovitus.
+
+Muuttumiskokeen ensimmäinen hylkäys johtui testin yrityksestä kirjoittaa
+valmiin viennin tarkoituksella kirjoitussuojattuihin tavuihin. Vain
+autentikoidun testikohteen turmeltamisvalmistelu korjattiin. Sen jälkeen
+koe osoitti tarkistusaukon: vientitiedoston muuttaminen
+testikuluttajan julkaisunodotuksen aikana ei estänyt valmistelun
+päättymistä. Aiempi `deletionBackupReceipt` luki identiteetin ja tiivisteen
+vain ennen julkaisucallbackia; myöhempi `assertSelection` tarkisti valtuuden,
+kohteen ja päättyneet omistajat, ei vientitavuja. Tämä korjattiin nykyisen
+kuitin asynkroniseen julkaisuvartijaan. Sen
+[tuoreustarkistus ja ensivirheen säilytys](local-backup-and-restore-plan.md#w73n-poiston-valmistelun-vientisopimus)
+eivät lisää uutta lukijaa tai muuta aika-/sisältörajoja.
+
+Rajatut regressiot toistivat sekä muuttuneen, korvatun tai puuttuvan
+viennin hyväksymisen että siepatun tarkistusvirheen syyn peittymisen.
+Lopullinen 179 kontrollin sarja läpäisi; riippumattoman katselmuksen
+ensivirhelöydös korjattiin ja jälkikatselmus valmistui. Ensimmäinen
+korjattu kuuden Electron-tapauksen ajo läpäisi ennen viimeistä
+ensivirheen säilytysmuutosta. Myös lopullisen lähteen kuusi tapausta
+läpäisivät ennen ajoa ja sen jälkeen varmennetuilla lähde-/build-tavuilla.
+Muuttunut vienti hylättiin ennen julkaisua, turvallinen alkuperäinen syy
+löytyi nykyisestä main-projektiosta ja yritysdata säilyi restartissa.
+Onnistuva vienti sekä aiemmat peruutus- ja sulkukontrollit säilyivät.
+Tämä ei vielä ole itsenäinen restore-/hardened-pakettitodiste;
+koko W7.3:n, W7.4:n ja PR/mainin portit säilyvät avoimina.
 
 **Toteutusjärjestys:** arkisto-/management-admissionin ja nimettyjen
 maintenance-/inspection-/backup-/lifecycle-porttien jälkeen target-reader,

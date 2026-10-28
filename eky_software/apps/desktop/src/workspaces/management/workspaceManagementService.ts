@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { assertUpdateJournalAuthority } from '../../update/updateJournalStore.js';
 import {
   readWorkspaceCandidateCleanupCause,
 } from '../../runtime/workspaceCandidateFailure.js';
@@ -13,7 +14,11 @@ import type {
   WorkspaceBackupImportInput,
   WorkspaceBackupImportResult,
 } from '../import/workspaceBackupImportCoordinator.js';
-import type { WorkspaceMaintenanceStateReader } from '../maintenance/workspaceMaintenanceLease.js';
+import type {
+  InMemoryWorkspaceMaintenanceLease,
+  WorkspaceMaintenanceLeaseHandle,
+  WorkspaceMaintenanceStateReader,
+} from '../maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import type {
@@ -79,11 +84,18 @@ export interface WorkspaceManagementServiceOptions {
   readonly runtimeRelaunchCompletion?: WorkspaceRuntimeRelaunchCompletion;
   readonly switchWorkspace: WorkspaceSwitchCommand;
   readonly deletionPreparation?: {
+    readonly maintenanceLease: Pick<InMemoryWorkspaceMaintenanceLease, 'acquire' | 'captureCurrentOwner'>;
     prepare(
       request: Readonly<WorkspaceDeletionRequest>,
       lifetime: WorkspaceDeletionPreparationLifetime,
+      assertLease: () => void,
     ): Promise<WorkspaceDeletionPreparationOutcome>;
   };
+}
+
+interface DeletionPreparationCompletion {
+  assertRelaunch(): void;
+  release(): Promise<void>;
 }
 
 export class WorkspaceManagementService {
@@ -205,30 +217,54 @@ export class WorkspaceManagementService {
         'WORKSPACE_MANAGEMENT_INVALID', 'delete', { cause },
       ));
     }
+    let lease: WorkspaceMaintenanceLeaseHandle | undefined;
+    let assertLease: (() => void) | undefined;
+    let returnRequested = false;
     return this.run('delete', async () => {
-      lifetime.assertCurrent();
-      if (this.options.deletionPreparation === undefined) {
+      assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      const preparation = this.options.deletionPreparation;
+      if (preparation === undefined) {
         throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
       }
-      const outcome = await this.options.deletionPreparation.prepare(request, lifetime);
-      lifetime.assertCurrent();
+      lease = await preparation.maintenanceLease.acquire('delete');
+      this.assertAdmissionOpen('delete');
+      assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      assertLease = preparation.maintenanceLease.captureCurrentOwner(['delete']);
+      const outcome = await preparation.prepare(request, lifetime, assertLease);
+      assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      assertUpdateJournalAuthority(assertLease);
       if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
         throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
       }
+      returnRequested = outcome === 'returnRequested';
       return outcome;
+    }, {
+      assertRelaunch: () => {
+        if (!returnRequested || assertLease === undefined) {
+          throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
+        }
+        assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+        assertUpdateJournalAuthority(assertLease);
+      },
+      async release() {
+        returnRequested = false;
+        await lease?.release();
+      },
     });
   }
 
   private run<T>(
     operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
     operation: () => Promise<T>,
+    deletionCompletion?: DeletionPreparationCompletion,
   ): Promise<T> {
-    return this.trackWork(operationKind, () => this.runAdmitted(operationKind, operation));
+    return this.trackWork(operationKind, () => this.runAdmitted(operationKind, operation, deletionCompletion));
   }
 
   private async runAdmitted<T>(
     operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
     operation: () => Promise<T>,
+    deletionCompletion?: DeletionPreparationCompletion,
   ): Promise<T> {
     const correlationId = randomUUID();
     const startedAt = this.now();
@@ -251,11 +287,31 @@ export class WorkspaceManagementService {
     }
     this.activeOperation = true;
     let operationStarted = false;
+    const failures: unknown[] = [];
     try {
-      await this.options.operationGuard.assertNoUnresolvedOperations();
-      this.assertAdmissionOpen(operationKind);
-      operationStarted = true;
-      const result = await operation();
+      let result!: T;
+      try {
+        await this.options.operationGuard.assertNoUnresolvedOperations();
+        this.assertAdmissionOpen(operationKind);
+        operationStarted = true;
+        result = await operation();
+      } catch (cause) {
+        failures.push(cause);
+      }
+      // Completion borrows the exact lease; pending work includes its release.
+      try {
+        this.options.runtimeRelaunchCompletion?.complete(deletionCompletion?.assertRelaunch);
+      } catch (cause) {
+        failures.push(cause);
+        this.closeAdmission();
+      }
+      try {
+        if (deletionCompletion !== undefined) await deletionCompletion.release();
+      } catch (cause) {
+        failures.push(cause);
+        this.closeAdmission();
+      }
+      if (failures.length !== 0) throw failures[0];
       if (operationKind !== 'delete') {
         this.record({
           correlationId,
@@ -271,7 +327,12 @@ export class WorkspaceManagementService {
       const classification = operationStarted && operationKind !== 'delete'
         ? classifyWorkspaceManagementFailure(error, operationKind)
         : { lineageMismatch: false };
-      const mapped = mapWorkspaceManagementError(error, operationKind);
+      const primary = mapWorkspaceManagementError(error, operationKind);
+      const mapped = failures.length > 1
+        ? new WorkspaceManagementError(primary.code, operationKind, {
+            cause: new AggregateError(failures, 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', { cause: error }),
+          })
+        : primary;
       const cleanupCauseCode = operationStarted ? readWorkspaceCandidateCleanupCause(error) : undefined;
       this.record({
         ...((operationKind === 'import' || operationKind === 'replace')
@@ -286,7 +347,7 @@ export class WorkspaceManagementService {
         errorCode: classification.lineageMismatch ? 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH' : mapped.code,
         operationKind,
         outcome: 'failed',
-        retryable: mapped.code === 'WORKSPACE_MANAGEMENT_BUSY',
+        retryable: !this.admissionClosed && mapped.code === 'WORKSPACE_MANAGEMENT_BUSY',
         sideEffectState:
           (operationKind === 'delete'
             ? !operationStarted
@@ -301,7 +362,6 @@ export class WorkspaceManagementService {
       throw mapped;
     } finally {
       this.activeOperation = false;
-      this.options.runtimeRelaunchCompletion?.complete();
     }
   }
 

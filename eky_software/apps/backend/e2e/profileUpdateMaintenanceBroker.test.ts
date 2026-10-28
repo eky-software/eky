@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -17,6 +17,7 @@ import type { runProfileSnapshotInspection } from '../../desktop/src/profileBack
 import type { OwnedProfileBackupInspectionReservation } from '../../desktop/src/profileBackup/inspectOwnedEncryptedProfileBackup.js';
 import { createProfileSnapshotArtifactIdentity } from '../../desktop/src/runtime/profileInspectionArtifactIdentity.js';
 import { ProfileInspectionProcessError } from '../../desktop/src/runtime/profileInspectionProcess.js';
+import { profileInspectionProtocolVersion } from '../../desktop/src/runtime/profileInspectionMessages.js';
 import type { ProfileSnapshotBrokerTransport } from '../../desktop/src/profileBackup/profileSnapshotBrokerTransport.js';
 import { LocalUpdateHandoffCoordinator } from '../../desktop/src/update/localUpdateHandoffCoordinator.js';
 import type { UpdateJournal } from '../../desktop/src/update/updateJournal.js';
@@ -82,7 +83,7 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
     await inspector.shutdown();
   });
 
-  it.each(['settled', 'unreclaimed', 'disconnected', 'observerFailure'] as const)('gates failed inspection cleanup on process exit and native ownership (%s)', async (outcome) => {
+  it.each(['settled', 'unreclaimed', 'disconnected', 'observerFailure', 'beforeInspection'] as const)('gates failed inspection cleanup on process exit and native ownership (%s)', async (outcome) => {
     const { fixture, inspectionOperationId, inspector, owners, database, service, stagingRoot, store } = await createEncryptedPointFixture();
     const entered = deferred<void>();
     const finish = deferred<void>();
@@ -91,6 +92,7 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
       processAbsent: true, reservationReclaimed: outcome !== 'unreclaimed', forced: false,
     });
     inspectionBoundary.run.mockImplementation(async input => {
+      if (outcome === 'beforeInspection') throw firstFailure;
       if (input.operationId !== inspectionOperationId) return inspect(input);
       entered.resolve();
       await finish.promise;
@@ -99,12 +101,12 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
     await fixture.client.beginUpdateMaintenance(fixture.operationId);
     const creating = service.createPreUpdateWithMaintenance(fixture.operationId);
     const result = creating.then(() => { throw new Error('EXPECTED_INSPECTION_FAILURE'); }, error => error);
-    await entered.promise;
     const inspectionPath = join(stagingRoot, inspectionOperationId, 'profile.sqlite');
     const injectedObservationFailure = new Error('SYNTHETIC_OBSERVATION_FAILURE');
     let observationFailure: unknown;
     const cleanupFailures: unknown[] = [];
     try {
+      await Promise.race([entered.promise, result.then(error => { throw error; })]);
       await expect(readFile(inspectionPath, 'utf8')).resolves.toBe(database);
       await expect(inspector.removeProfileSnapshot(inspectionOperationId))
         .rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
@@ -117,7 +119,13 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
       try {
         const failure = await result;
         await expect(store.list(activeValidation.profileId)).resolves.toEqual([]);
-        if (outcome !== 'unreclaimed') {
+        if (outcome === 'beforeInspection') {
+          expect(failure).toBe(firstFailure);
+          expect(owners.has(inspectionOperationId)).toBe(false);
+          expect(owners.get(fixture.operationId)!.close).toHaveBeenCalledOnce();
+          await expect(readFile(join(stagingRoot, fixture.operationId, 'profile.sqlite')))
+            .rejects.toMatchObject({ code: 'ENOENT' });
+        } else if (outcome !== 'unreclaimed') {
           expect(failure).toBe(firstFailure);
           await expect(readFile(inspectionPath)).rejects.toMatchObject({ code: 'ENOENT' });
           expect(owners.get(inspectionOperationId)!.close).toHaveBeenCalledOnce();
@@ -137,7 +145,8 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
         } else await inspector.shutdown();
       } catch (error) { cleanupFailures.push(error); }
     }
-    if (outcome === 'observerFailure') expect(observationFailure).toBe(injectedObservationFailure);
+    if (outcome === 'beforeInspection') expect(observationFailure).toBe(firstFailure);
+    else if (outcome === 'observerFailure') expect(observationFailure).toBe(injectedObservationFailure);
     else if (observationFailure !== undefined) throw observationFailure;
     if (cleanupFailures.length > 0) throw new AggregateError(cleanupFailures, 'Inspection cleanup verification failed');
   });
@@ -571,7 +580,9 @@ async function createEncryptedPointFixture() {
     expect(actualCatalog.toString()).toBe(catalog);
     await context();
     input.assertAuthority();
-    return { validation: { ...snapshotValidation, type: 'profileSnapshotValidation' }, receipt: {
+    return { identity: { protocolVersion: profileInspectionProtocolVersion, operationId: input.operationId,
+      generationId: randomUUID(), runtimeSession: randomBytes(32).toString('base64url') },
+    validation: { ...snapshotValidation, type: 'profileSnapshotValidation' }, receipt: {
       ...activeValidation, migrationPolicy: input.migrationPolicy,
       artifactIdentity: createProfileSnapshotArtifactIdentity([]),
       database: { byteSize: actualDatabase.length, sha256: createHash('sha256').update(actualDatabase).digest('hex') },

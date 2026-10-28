@@ -48,7 +48,8 @@ export interface WorkspaceDeletionPreparationOptions {
   confirmReturn(target: DeletionTarget): Promise<boolean>;
   setReturnGuard(guard: () => void): void;
   // W7.4 supplies the real journal consumer. W7.3 exposes no delete IPC.
-  publish(assertAuthority: () => void, assertSelection: () => Promise<void>, target: DeletionTarget): Promise<void>;
+  // Recheck after publication awaits; the backup branch also rereads its bytes.
+  publish(assertAuthority: () => void, assertPublicationCurrent: () => Promise<void>, target: DeletionTarget): Promise<void>;
 }
 
 export class WorkspaceDeletionPreparationFailure extends Error {
@@ -229,9 +230,11 @@ export async function prepareWorkspaceDeletion(
         else await assertSelection();
         assertPublication();
       };
-      await assertPublicationSelection(); assertPublication();
+      // Wrapping selection checks stay light. The receipt owns entry/settlement
+      // content checks; only the final consumer requests intermediate rereads.
+      await assertSelection(); assertPublication();
       await input.publish(assertPublication, assertPublicationSelection, selection.target);
-      await assertPublicationSelection(); assertPublication();
+      await assertSelection(); assertPublication();
     };
     if (receipt !== undefined) await receipt.consume(publish);
     else await publish();

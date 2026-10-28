@@ -778,7 +778,7 @@ async function runExpectedLifecycle(input: {
   await stopProofComposition(lifecycle);
 }
 
-function createTrackedBackendStarter(input: {
+export function createTrackedBackendStarter(input: {
   readonly delegate: (
     options: StartDesktopBackendOptions,
   ) => Promise<DesktopBackendHandle>;
@@ -813,6 +813,10 @@ function createTrackedBackendStarter(input: {
       },
       async stopForRestore(operationId) {
         await delegateHandle.stopForRestore(operationId);
+        release();
+      },
+      async stopForDelete(operationId) {
+        await delegateHandle.stopForDelete(operationId);
         release();
       },
     };

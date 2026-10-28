@@ -68,6 +68,8 @@ import {
 import { assertElectronSelectorFixtureCombination, prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
 import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
 import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
+import { isWorkspaceDeletionProofScenario } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
+import { captureWorkspaceDeletionFailure, shouldCaptureWorkspaceDeletionFailure } from './captureWorkspaceDeletionFailure.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -510,6 +512,12 @@ export const test = base.extend<
     } catch (error) {
       failure = { error };
     } finally {
+      if (isWorkspaceDeletionProofScenario(scenarioId) &&
+          shouldCaptureWorkspaceDeletionFailure(testInfo.status, testInfo.expectedStatus,
+            failure !== undefined || testInfo.errors.length > 0)) {
+        await captureWorkspaceDeletionFailure({ application: electronApp,
+          runtimeInstanceId: runtime.runtimeInstanceId, testInfo });
+      }
       let launchFailureEvidence: ReturnType<typeof launchFailureCapture.finish> | undefined;
       await finishIsolatedElectronTest({
         failure,

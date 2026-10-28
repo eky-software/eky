@@ -1,5 +1,5 @@
 import { appendFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 import type {
   BrowserWindow,
@@ -14,6 +14,7 @@ import type {
 import type { DesktopCompositionDependencies } from '../src/main/desktopComposition.js';
 import { readSafeStartupFailureCode } from '../src/main/earlyStartup.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
+import { isWorkspaceDeletionBackupProofScenario } from './workspaceDeletionProofProtocol.js';
 import {
   parseElectronE2eBackendFailureObservation,
   readElectronE2eBackendFailureCode,
@@ -127,13 +128,22 @@ export function createElectronE2eNativeAdapters(
     },
     async showSaveDialog(
       _owner: BrowserWindow,
-      _options: SaveDialogOptions,
+      options: SaveDialogOptions,
     ): Promise<SaveDialogReturnValue> {
+      const deletionBackup = isWorkspaceDeletionBackupProofScenario(config.scenarioId);
+      if (deletionBackup && (options.title !== 'Tallenna salattu Eky-varmuuskopio' ||
+          options.filters?.length !== 1 || options.filters[0]?.extensions.length !== 1 ||
+          options.filters[0]?.extensions[0] !== 'ekybackup' ||
+          typeof options.defaultPath !== 'string' || !options.defaultPath.endsWith('.ekybackup'))) {
+        throw new Error('ELECTRON_E2E_SAVE_DIALOG_REJECTED');
+      }
       saveDialogCount += 1;
       record({ operation: 'showSaveDialog' });
       return {
         canceled: false,
-        filePath: config.paths.supportBundlePath,
+        filePath: deletionBackup
+          ? workspaceDeletionProofBackupPath(config.paths.supportBundlePath)
+          : config.paths.supportBundlePath,
       };
     },
     snapshot() {
@@ -146,6 +156,10 @@ export function createElectronE2eNativeAdapters(
       };
     },
   };
+}
+
+export function workspaceDeletionProofBackupPath(supportBundlePath: string): string {
+  return join(dirname(supportBundlePath), 'deletion-preparation.ekybackup');
 }
 
 function assertExpectedOpenDialog(

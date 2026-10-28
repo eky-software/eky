@@ -175,6 +175,103 @@ it('also checks the measured digest independently of the file identity', async (
   expect(publish).not.toHaveBeenCalled();
 });
 
+it.each(['changedBytes', 'sameBytesNewFile', 'missingFile'] as const)(
+  'rejects %s after the publisher has already started', async change => {
+    const f = await targetFixture();
+    const proof = f.begin(); const receipt = await proof.issue(await f.create());
+    f.ownersExited = true;
+    let published = false;
+    let savedGuard!: () => void;
+    await expect(receipt.consume(async (guard, assertPublicationCurrent) => {
+      savedGuard = guard;
+      const original = await fs.readFile(f.destinationPath);
+      await fs.rename(f.destinationPath, `${f.destinationPath}.retained`);
+      if (change !== 'missingFile') {
+        const changed = Buffer.from(original);
+        if (change === 'changedBytes') changed[changed.length - 1]! ^= 1;
+        await fs.writeFile(f.destinationPath, changed);
+      }
+      await assertPublicationCurrent(); guard(); published = true;
+    })).rejects.toBeInstanceOf(Error);
+    expect(published).toBe(false);
+    expect(savedGuard).toThrow('WORKSPACE_DELETE_BACKUP_UNAVAILABLE');
+    await expect(fs.readFile(f.companySentinel)).resolves.toEqual(Buffer.from('synthetic company remains'));
+    await expect(fs.stat(`${f.destinationPath}.retained`)).resolves.toBeDefined();
+  },
+);
+
+it('rejects changed export bytes before reporting publication settled', async () => {
+  const f = await targetFixture();
+  const proof = f.begin(); const receipt = await proof.issue(await f.create());
+  f.ownersExited = true;
+  await expect(receipt.consume(async guard => {
+    guard();
+    const original = await readSyntheticExport(f.destinationPath);
+    f.recheck.mockResolvedValue({ ...original, sha256: hash(Buffer.from('changed after publication')) });
+  })).rejects.toThrow('WORKSPACE_DELETE_BACKUP_UNAVAILABLE');
+  await expect(receipt.consume(vi.fn())).rejects.toThrow('WORKSPACE_DELETE_BACKUP_UNAVAILABLE');
+});
+
+it('reads the export only at admission, explicit publication checks and settlement', async () => {
+  const f = await targetFixture();
+  const proof = f.begin(); const receipt = await proof.issue(await f.create());
+  f.ownersExited = true;
+  await receipt.consume(async (guard, assertPublicationCurrent) => {
+    expect(f.recheck).toHaveBeenCalledTimes(1);
+    for (let index = 0; index < 10; index += 1) guard();
+    expect(f.recheck).toHaveBeenCalledTimes(1);
+    await assertPublicationCurrent(); guard();
+    expect(f.recheck).toHaveBeenCalledTimes(2);
+  });
+  expect(f.recheck).toHaveBeenCalledTimes(3);
+});
+
+it.each(['revoked', 'readFailure', 'changedDigest'] as const)(
+  'burns the receipt when the publisher catches a %s recheck failure', async failure => {
+    const f = await targetFixture();
+    const proof = f.begin(); const receipt = await proof.issue(await f.create());
+    f.ownersExited = true;
+    let published = false;
+    let firstFailure: unknown;
+    const outcome = await receipt.consume(async (guard, assertPublicationCurrent) => {
+      const original = await readSyntheticExport(f.destinationPath);
+      f.recheck.mockImplementationOnce(async () => {
+        await Promise.resolve();
+        if (failure === 'revoked') proof.invalidate();
+        if (failure === 'readFailure') throw new Error('SYNTHETIC_EXPORT_READ_FAILED');
+        return failure === 'changedDigest' ? { ...original, sha256: 'f'.repeat(64) } : original;
+      });
+      firstFailure = await assertPublicationCurrent().catch(error => error);
+      expect(firstFailure).toBeInstanceOf(Error);
+      // A publisher cannot swallow a failed check and reuse its earlier guard.
+      guard(); published = true;
+    }).catch(error => error);
+    expect(outcome).toBe(firstFailure);
+    expect(published).toBe(false);
+  },
+);
+
+it.each(['return', 'guard', 'throwAgain'] as const)(
+  'preserves the first recheck failure when the publisher catches it and chooses to %s', async continuation => {
+    const f = await targetFixture();
+    const proof = f.begin(); const receipt = await proof.issue(await f.create());
+    f.ownersExited = true;
+    const cause = new Error('SYNTHETIC_EXPORT_CLOSE_FAILED');
+    const firstFailure = new Error('SYNTHETIC_EXPORT_READ_FAILED', { cause });
+    let savedGuard!: () => void;
+    await expect(receipt.consume(async (guard, assertPublicationCurrent) => {
+      savedGuard = guard;
+      f.recheck.mockRejectedValueOnce(firstFailure);
+      await expect(assertPublicationCurrent()).rejects.toBe(firstFailure);
+      if (continuation === 'guard') guard();
+      if (continuation === 'throwAgain') throw new Error('SYNTHETIC_PUBLISH_FAILED');
+    })).rejects.toBe(firstFailure);
+    expect(firstFailure.cause).toBe(cause);
+    expect(savedGuard).toThrow('WORKSPACE_DELETE_BACKUP_UNAVAILABLE');
+    await expect(receipt.consume(vi.fn())).rejects.toThrow('WORKSPACE_DELETE_BACKUP_UNAVAILABLE');
+  },
+);
+
 it('checks target selection again after the publication callback and closes its guard on failure', async () => {
   const f = await targetFixture();
   const proof = f.begin(); const receipt = await proof.issue(await f.create());

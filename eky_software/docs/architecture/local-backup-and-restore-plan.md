@@ -705,14 +705,40 @@ Kertakäyttöinen `deletionBackupReceipt` käyttää samaa sisältövastaavuuden
 omistajaa ja torjuu myöntämisen tai kuluttamisen uudelleentulon ennen
 ensimmäistä odotusta. Kulutus välittää vartijansa varsinaiselle
 julkaisukuluttajalle ja mitätöi talteen jääneet callbackit myös virheessä.
+Julkaisukuluttajan asynkroninen `assertPublicationCurrent` tarkistaa myös
+vientitiedoston nykyisen identiteetin, koon ja tiivisteen. Kuluttaja kutsuu
+sitä omien valmisteluodotustensa jälkeen ennen suojattua julkaisua;
+pelkkä synkroninen valtuusvartija ei todista muuttuvia tiedostotavuja.
+Sama täysi tarkistus tehdään ennen kuluttajaan pääsyä ja ennen kulutuksen
+onnistunutta päättämistä. Sisäkkäiset valmisteluomistajan kohde- ja
+valtuustarkistukset eivät käynnistä ylimääräisiä sisältölukuja.
+Tarkistustulosta ei välimuistiteta odotusten yli. Hylkäys mitätöi kuitin
+myös silloin, kun julkaisukuluttaja ottaa poikkeuksen itse kiinni.
+Ensimmäinen tarkistusvirhe syyketjuineen säilyy kulutuksen tuloksessa;
+myöhempi vartija- tai julkaisupoikkeus ei korvaa sitä yleisellä virheellä.
+Päättämistarkistuksen hylkäys ei peru jo mahdollisesti tehtyä julkaisua
+eikä anna oikeutta sen uusimiseen; W7.4:n journal omistaa epävarman tuloksen.
+Tämä ei ole käyttöjärjestelmätason lukko ulkopuolisen kirjoittajan estämiseksi
+tarkistuksen jälkeen. W7.4 todentaa oman todellisen julkaisukohtansa erikseen.
 Lopullinen `readDeletionBackupExportIdentity` tarkistaa todelliset tavut
 nykyisillä container-/stream-rajoilla sekä saman kahvan ja polun identiteetin
 ennen lukua, sen jälkeen ja sulun valmistuttua. Se ei pura sisältöä uudelleen,
 säilytä salasanaa tai korvaa alkuperäistä autentikoitua todistetta:
 uudelleenluvun tuloksen on vastattava juuri tuota todistetta.
 Lukuvirhe ja epävarma kahvasulku säilyvät erillisinä syinä eikä keskeneräinen
-lukija palauta kuittia. Management-compositionin koko valmistelukytkentä
-sekä oikea native-/prosessi-/pakettitodennus säilyvät W7.3:n avoimina portteina.
+lukija palauta kuittia. Management-compositionin ehdollinen main-kytkentä
+käyttää nyt saman portable-palvelun omaa vientisovitusta. Aktiivinen kohde
+ja mainin validoima näyttönimi tarkistetaan ennen native-tallennusvalintaa;
+valtuus tarkistetaan myös tiedosto- ja salasanaikkunan paluun jälkeen.
+Vienti ja myöhempi uudelleenluku käyttävät samaa nykyisen portable-palvelun
+tiedostopäätteen normalisointia. Päätteetön native-valinta ei saa johtaa
+eri tiedoston lukemiseen; olemassa oleva pääte säilyy kirjainkoosta
+riippumatta. Absoluuttisen kohteen ja sen omistajuuden tarkistuksia ei ohiteta.
+Peruutus ei vaihda backup-valintaa menetyssuostumukseksi. Kukin vienti on
+kertakäyttöinen, ja myöhempi uudelleenluku käyttää vain valittua tiedostoa
+ja elävää vartijaa, ei salasanaa. Nykyinen tuotannon entrypoint ei vielä
+anna W7.4:n julkaisukuluttajaa. Oikean native-/prosessi-/pakettiketjun
+yhteistodennus säilyy W7.3:n avoimena porttina.
 
 ## Machine-local recovery point
 

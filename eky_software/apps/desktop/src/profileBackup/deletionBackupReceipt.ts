@@ -117,10 +117,11 @@ export function beginDeletionBackupProof(input: DeletionBackupBinding, ports: Po
         return Object.freeze({
           scope: 'portableBusinessSnapshot' as const,
           async consume(publishAuthorized: (
-            assertAuthority: () => void, assertSelection: () => Promise<void>,
+            assertAuthority: () => void, assertPublicationCurrent: () => Promise<void>,
           ) => Promise<void>) {
             if (phase !== 'issued') fail();
             phase = 'consuming';
+            let firstRecheckFailure: { error: unknown } | undefined;
             const guard = () => {
               if (phase !== 'consuming') fail();
               assertContinuous();
@@ -132,21 +133,33 @@ export function beginDeletionBackupProof(input: DeletionBackupBinding, ports: Po
               await assertCurrent();
               guard();
             };
+            // Publication may await after admission. Its async guard must read
+            // the export again, not reuse the admission check or just its path.
+            const assertPublicationCurrent = async () => {
+              try {
+                await assertSelection();
+                guard();
+                const current = await ports.recheckAuthenticatedExport();
+                guard();
+                if (!sameIdentity(identity, current)) fail();
+                await assertSelection();
+                guard();
+              } catch (error) {
+                phase = 'invalid';
+                firstRecheckFailure ??= { error };
+                throw firstRecheckFailure.error;
+              }
+            };
             try {
-              await assertSelection();
+              await assertPublicationCurrent();
               guard();
-              const current = await ports.recheckAuthenticatedExport();
-              guard();
-              if (!sameIdentity(identity, current)) fail();
-              await assertSelection();
-              guard();
-              await publishAuthorized(guard, assertSelection);
-              await assertSelection();
+              await publishAuthorized(guard, assertPublicationCurrent);
+              await assertPublicationCurrent();
               guard();
               phase = 'spent';
             } catch (error) {
               phase = 'invalid';
-              throw error;
+              throw firstRecheckFailure === undefined ? error : firstRecheckFailure.error;
             }
           },
         });

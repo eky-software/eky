@@ -108,6 +108,16 @@ hosted-toimituksen ja paikallisen purun todistuksen, ei vain toisen alustan
 läpäisyä. Keräys sallitaan vain alustan kanssa täsmäävällä `RUNNER_OS`-arvolla
 GitHubin hosted-ajossa. Tavalliset push-, schedule- ja workflow_dispatch-ajot
 sekä saman repositoryn PR sallitaan; fork-PR ja `pull_request_target` estetään.
+
+W7.3:n nimetty Electron-testikytkentä säilyttää requestin ja ulkoisen
+shutdownin ensimmäiset virheet erillisinä ennen turvallista IPC-muunnosta.
+Fixturen epäonnistunut testi tarjoaa rajatut projektiot nykyiselle
+runner-sinkille, joka validoi saman suljetun tietueen ennen redaktointia
+ja säilyttää myös lähteen `truncated`-/`incomplete`-merkinnät. Uutta
+tiedostolajia, kirjoitinta tai keräysrajaa ei lisätä. Erillinen
+[OpenPGP-regressio](../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs)
+vertaa puretun paketin alkuperäiset tavut ja molempien syiden testisidonnan;
+kontrolloitu main-lukuraja ei yksin todista oikeaa Electron- tai hosted-ajoa.
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 

@@ -3,8 +3,9 @@ import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
+import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
 
-import type { BrowserWindow } from 'electron';
+import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from 'vitest';
 
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
@@ -79,6 +80,8 @@ import { WorkspaceFirstStartMigrationJournalStore } from '../workspaces/update/w
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { WorkspaceManagementService } from '../workspaces/management/workspaceManagementService.js';
+import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
+import { createWorkspaceManagementCapability, type WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
@@ -1207,7 +1210,7 @@ describe('selector installation-state startup wiring', () => {
           if (scenario === 'releaseFailure') expect(releaseFailed).toBe(true);
         }
       });
-    }, scenario === 'completed' ? restoreStartupCompositionTimeoutMs : undefined);
+    }, scenario === 'completed' || scenario === 'releaseFailure' ? restoreStartupCompositionTimeoutMs : undefined);
   }
 
   it('does not publish business acceptance when fresh content changes lineage after source-null switch acceptance', async context => {
@@ -4138,6 +4141,9 @@ async function createFixture(
     validationProfileId?: string;
     ownedRoots?: string[];
     resolveActiveWorkspace?: NonNullable<StartDesktopCompositionOptions['dependencies']>['resolveActiveWorkspace'];
+    workspaceDeletionPublisher?: StartDesktopCompositionOptions['workspaceDeletionPublisher'];
+    createWorkspaceManagementCapability?: typeof createWorkspaceManagementCapability;
+    stopForDelete?(operationId: string): Promise<void>;
   } = {},
 ) {
   const root = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
@@ -4431,6 +4437,7 @@ async function createFixture(
     start: (observeStartupException?: StartDesktopCompositionOptions['observeStartupException'],
       reportSmokeStage: StartDesktopCompositionOptions['reportSmokeStage'] = async () => undefined) => startDesktopComposition({
       ...(observeStartupException === undefined ? {} : { observeStartupException }),
+      ...(options.workspaceDeletionPublisher === undefined ? {} : { workspaceDeletionPublisher: options.workspaceDeletionPublisher }),
       assertSingleInstanceOwnership,
       appVersion: '0.2.8',
       applicationPath: join(root, 'app'),
@@ -4443,6 +4450,9 @@ async function createFixture(
       },
       releaseInfo,
       dependencies: {
+        ...(options.createWorkspaceManagementCapability === undefined ? {} : {
+          createWorkspaceManagementCapability: options.createWorkspaceManagementCapability,
+        }),
         ...(options.resolveActiveWorkspace === undefined ? {} : { resolveActiveWorkspace: options.resolveActiveWorkspace }),
         createRuntimeSession,
         showErrorBox,
@@ -4497,7 +4507,11 @@ async function createFixture(
             port: 12345, stop: stopOwnedBackend, onUnexpectedExit: vi.fn(),
             stopForUpdate: stopOwnedBackendForUpdate,
             stopForRestore: async () => { throw new Error('RESTORE_FENCE_NOT_CONFIGURED_IN_FIXTURE'); },
-            stopForDelete: async () => { throw new Error('DELETE_FENCE_NOT_CONFIGURED_IN_FIXTURE'); },
+            stopForDelete: async operationId => {
+              if (options.stopForDelete === undefined) throw new Error('DELETE_FENCE_NOT_CONFIGURED_IN_FIXTURE');
+              await options.stopForDelete(operationId);
+              await reclaimAfterExit();
+            },
           };
         },
       },
@@ -4516,6 +4530,203 @@ async function createFixture(
     }),
   };
 }
+
+describe('W7.3 main preparation wiring', () => {
+  it.for(['active', 'selector'] as const)('connects the W7.3 preparation in the real %s main composition', async (mode, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const publish = vi.fn<NonNullable<StartDesktopCompositionOptions['workspaceDeletionPublisher']>>(async () => {
+        throw new Error('UNEXPECTED_JOURNAL_PUBLICATION');
+      });
+      let capability: WorkspaceManagementCapability | undefined;
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, workspaceDeletionPublisher: publish,
+        createWorkspaceManagementCapability(options) {
+          capability = createWorkspaceManagementCapability(options);
+          return capability;
+        },
+      }));
+      const registry = (await f.registry.read())!;
+      await f.registry.write({ ...registry, formatVersion: 2, activeWorkspaceId: mode === 'selector' ? null : workspaceId });
+      // This controlled HTTP boundary must still reject a different runtime session.
+      electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+        ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+      const startupFailures: unknown[] = [];
+      let lifecycle: Awaited<ReturnType<typeof f.start>>;
+      let firstFailure: { error: unknown } | undefined;
+      try {
+        await lifetime.step('startup', async () => {
+          try { lifecycle = await f.start(error => { startupFailures.push(error); }); }
+          catch (error) { throw startupFailures[0] ?? error; }
+        });
+        expect(lifecycle).toBeDefined();
+        await lifetime.step('restoredContentCheck', async () => {
+          const statusHandler = electronBoundary.handle.mock.calls.find(([channel]) => channel === getWorkspaceManagementStatusIpcChannel)![1];
+          const status = await statusHandler({ sender: f.mainWindow.webContents, senderFrame: f.mainWindow.webContents.mainFrame });
+          expect(status.activeWorkspaceId).toBe(mode === 'selector' ? null : workspaceId);
+          if (capability === undefined) throw new Error('MANAGEMENT_CAPABILITY_NOT_CAPTURED');
+          f.showMessageBox.mockClear();
+          const selected = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+          await expect(capability.prepareDeletion({ sender: f.mainWindow.webContents,
+            senderFrame: f.mainWindow.webContents.mainFrame } as unknown as IpcMainInvokeEvent,
+          { formatVersion: 1, workspaceId, typedLabel: registry.workspaces[0]!.workspaceLabel,
+            backupChoice: 'explicitDataLoss' })).resolves.toBe('cancelled');
+          expect(f.showMessageBox).toHaveBeenCalledExactlyOnceWith(f.mainWindow, expect.objectContaining({
+            title: 'Poisto ilman varmuuskopiota', defaultId: 0, cancelId: 0,
+          }));
+          expect(publish).not.toHaveBeenCalled();
+          expect(f.showSaveDialog).not.toHaveBeenCalled();
+          expect(f.events).toEqual(mode === 'selector' ? [] : ['backendStarted']);
+          expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+          expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(selected);
+          expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+        });
+      } catch (error) {
+        firstFailure = { error };
+        throw error;
+      } finally {
+        // Cancellation must not skip the shutdown of an already returned owner.
+        try { await lifecycle?.shutdown(); }
+        catch (cleanupFailure) {
+          if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+            'SYNTHETIC_W7_PREPARATION_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+          throw cleanupFailure;
+        }
+      }
+    });
+  });
+
+  it.for([
+    { mode: 'active', heldAt: 'confirmation', closeFailure: false, backendFailure: false },
+    { mode: 'active', heldAt: 'publication', closeFailure: false, backendFailure: false },
+    { mode: 'selector', heldAt: 'confirmation', closeFailure: false, backendFailure: false },
+    { mode: 'active', heldAt: 'confirmation', closeFailure: true, backendFailure: false },
+    { mode: 'active', heldAt: 'confirmation', closeFailure: true, backendFailure: true },
+  ] as const)('retains the reservation while external shutdown joins a held $mode $heldAt request (close failure: $closeFailure, backend failure: $backendFailure)', async ({ mode, heldAt, closeFailure, backendFailure }, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const entered = createCompletionGate();
+      const release = createCompletionGate();
+      const draining = createCompletionGate();
+      const runtimeStopped = createCompletionGate();
+      const originalManagementFailure = new Error('SYNTHETIC_MANAGEMENT_DRAIN_FAILED');
+      let capability: WorkspaceManagementCapability | undefined;
+      const publish = vi.fn<NonNullable<StartDesktopCompositionOptions['workspaceDeletionPublisher']>>(async (assertAuthority, assertSelection) => {
+        assertAuthority();
+        await assertSelection();
+        entered.resolve();
+        await release.promise;
+        assertAuthority();
+      });
+      const stopForDelete = vi.fn(async (_operationId: string) => undefined);
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+        workspaceDeletionPublisher: publish, stopForDelete,
+        createWorkspaceManagementCapability(options) {
+          capability = createWorkspaceManagementCapability(options);
+          return capability;
+        },
+      }));
+      const registry = (await f.registry.read())!;
+      await f.registry.write({ ...registry, formatVersion: 2, activeWorkspaceId: mode === 'selector' ? null : workspaceId });
+      electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+        ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+      vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'beginDeleteMaintenance').mockResolvedValue('busy');
+      vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'assertDeleteMaintenance').mockResolvedValue('busy');
+      const serviceShutdown = WorkspaceManagementService.prototype.shutdown;
+      vi.spyOn(WorkspaceManagementService.prototype, 'shutdown').mockImplementation(function (this: WorkspaceManagementService) {
+        const work = serviceShutdown.call(this);
+        draining.resolve();
+        return work.then(() => { if (closeFailure) throw originalManagementFailure; });
+      });
+      const stopRuntime = MainOwnedActiveWorkspaceLifecycle.prototype.stopAndProveHandlesClosed;
+      vi.spyOn(MainOwnedActiveWorkspaceLifecycle.prototype, 'stopAndProveHandlesClosed').mockImplementation(async function (
+        this: MainOwnedActiveWorkspaceLifecycle, ...args
+      ) {
+        try { return await stopRuntime.apply(this, args); }
+        finally { runtimeStopped.resolve(); }
+      });
+      const markClean = vi.spyOn(RecoveryPointCleanShutdownMarker.prototype, 'markClean');
+      let lifecycle: Awaited<ReturnType<typeof f.start>>;
+      let request: Promise<{ value: unknown } | { error: unknown }> | undefined;
+      let closing: Promise<void> | undefined;
+      let closeResultChecked = false;
+      let firstFailure: { error: unknown } | undefined;
+      try {
+        await lifetime.step('startup', async () => { lifecycle = await f.start(); });
+        if (lifecycle === undefined || capability === undefined) throw new Error('MANAGEMENT_CAPABILITY_NOT_CAPTURED');
+        const originalRegistry = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+        f.showMessageBox.mockImplementation(async () => {
+          if (heldAt === 'confirmation') { entered.resolve(); await release.promise; }
+          return { response: 1, checkboxChecked: false };
+        });
+        request = capability.prepareDeletion({ sender: f.mainWindow.webContents,
+          senderFrame: f.mainWindow.webContents.mainFrame } as unknown as IpcMainInvokeEvent,
+        { formatVersion: 1, workspaceId, typedLabel: registry.workspaces[0]!.workspaceLabel, backupChoice: 'explicitDataLoss' })
+          .then(value => ({ value }), error => ({ error }));
+        const reached = await Promise.race([entered.promise.then(() => 'held' as const), request]);
+        if (reached !== 'held') throw 'error' in reached ? reached.error : new Error('REQUEST_DID_NOT_REACH_HOLD');
+        expect(stopForDelete).toHaveBeenCalledTimes(heldAt === 'publication' ? 1 : 0);
+        expect(markClean).not.toHaveBeenCalled();
+        if (backendFailure) f.stop.mockRejectedValue(new BackendShutdownExitError());
+        electronBoundary.reservationReleased.mockClear();
+        closing = lifecycle.shutdown();
+        const joined = await Promise.race([draining.promise.then(() => 'draining'), closing.then(() => 'closed')]);
+        expect(joined).toBe('draining');
+        if (mode === 'active') {
+          await runtimeStopped.promise;
+          // Flush the lifecycle continuation, not a wall-clock sleep: management
+          // remains deliberately held after the existing runtime owner settled.
+          await nextEventLoopTurn();
+        }
+        let shutdownSettled = false;
+        void closing.then(() => { shutdownSettled = true; }, () => { shutdownSettled = true; });
+        await nextEventLoopTurn();
+        expect(shutdownSettled).toBe(false);
+        expect(electronBoundary.reservationReleased).not.toHaveBeenCalled();
+        expect(markClean).not.toHaveBeenCalled();
+        expect((await readRestoreDiagnosticEvents(f.root)).some(event => event.eventName === 'desktop.shutdownCompleted')).toBe(false);
+        release.resolve();
+        expect(await request).toHaveProperty('error');
+        if (closeFailure) {
+          await expect(closing).rejects.toMatchObject({ message: 'DESKTOP_SHUTDOWN_FAILED', cause: {
+            runtimeFailure: { firstFailure: backendFailure
+              ? { phase: 'backend', reason: 'unsuccessfulExit' } : { phase: 'capabilities', reason: 'operationFailed' } },
+            cleanupFailures: ['management'],
+          } });
+          await expect(closing.catch(error => hasErrorCause(error.cause.managementFailure, originalManagementFailure))).resolves.toBe(true);
+          if (!backendFailure) {
+            await expect(closing.catch(error => hasErrorCause(error.cause.runtimeFailure, originalManagementFailure))).resolves.toBe(true);
+          }
+          expect(electronBoundary.reservationReleased).not.toHaveBeenCalled();
+        } else {
+          await closing;
+          expect(electronBoundary.reservationReleased).toHaveBeenCalledOnce();
+        }
+        closeResultChecked = true;
+        expect(markClean).toHaveBeenCalledTimes(mode === 'active' && !closeFailure ? 1 : 0);
+        await expect(f.marker.consume()).resolves.toBe(mode === 'active' && !closeFailure ? 'clean' : 'unclean');
+        expect(f.relaunch).not.toHaveBeenCalled();
+        expect(publish).toHaveBeenCalledTimes(heldAt === 'publication' ? 1 : 0);
+        expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(originalRegistry);
+        expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+        expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+      } catch (error) {
+        firstFailure = { error };
+        throw error;
+      } finally {
+        release.resolve();
+        await request;
+        try { await (closing ?? lifecycle?.shutdown()); }
+        catch (cleanupFailure) {
+          if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+            'SYNTHETIC_W7_PREPARATION_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+          if (!closeResultChecked || !closeFailure) throw cleanupFailure;
+        }
+      }
+    });
+  });
+});
 
 function hashFixtureBytes(bytes: Buffer): string { return createHash('sha256').update(bytes).digest('hex'); }
 

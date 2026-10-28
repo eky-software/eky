@@ -887,6 +887,19 @@ hallintapyynnön eliniän; tavallinen ja update-sulku eivät lainaa tätä
 poikkeusta. Ulkoinen shutdown sulkee admissionin ja mitätöi pyynnön ennen
 mahdollista shared-task-varhaispaluuta.
 
+Ulkoinen sulku liittyy lisäksi sekä capabilityn että hallintapalvelun
+jo aloitettuihin töihin. Backendin sulku ja nämä odotukset käynnistyvät
+nykyisissä omistajissa; yhden hylkäys ei ohita toisten päättymistä.
+Poiston oma resurssisulku ei odota omaa hallintapyyntöään. Sen saavuttama
+clean-marker-raja on tässä vaiheessa vain tieto onnistuneesta runtime-
+sulusta: main kirjoittaa merkin vasta ulkoisen sulun onnistuneiden
+hallintaodotusten jälkeen ja ennen fyysisen varauksen vapautusta.
+Sama lykkäys koskee tavallista ulkoista sulkua. Marker-kirjoitus tehdään
+kerran, eikä myöhempi kutsu uusi epäonnistunutta kirjoitusta. Hallintasulun
+alkuperäiset syyt säilyvät sisäisessä virheketjussa; operational-lokiin
+kulkee edelleen vain turvallinen luokitus. Hylätty valmistelupyyntö ja
+sen onnistunut loppuun odottaminen ovat eri tuloksia.
+
 Admission-sulun virhe säilytetään yhteisessä sulkutehtävässä ja muiden
 omistettujen sulkujen yritykset tehdään silti. Myös capability-disposalin
 jälkeen havaittu virhe estää puhtaan sammutuksen merkinnän. Sen turvallinen
