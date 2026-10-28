@@ -86,10 +86,15 @@ vartija ovat nyt lähteessä. Yhdentoista tiedoston kohdesarja läpäisi
 läpäisivät. Oikean synteettisen tiedoston viivästetty kahvasulku ei vapauta
 lukijaa tai salli seuraavaa slottilukua vanhentuneella luvalla. Aiemmat
 kohdeajot ovat päällekkäistä näyttöä, eivät näihin lisättäviä testimääriä.
-Seuraavaksi mainin kaappaus-/cold-/accepted-/työlupakytkentä, sitten saman
-sopimuksen live-/rolledBack-jatkot regressioineen. Alkuperäisen tehtävän
-seuranta, ensivirhe ja viimeiset poistovartijat vaativat oman kytkentänäytön;
-porttien olemassaolo ei ole koko palautusketjun hyväksyntä.
+Startup-lukijan yhteinen registry-/switch-/sidontatilannekuva ja mainin
+rajattu valmisteluadapteri on toteutettu: niiden 65 kohdetestiä (21 uutta),
+tyypitys sekä rajattu katselmus ja korjausdelta läpäisivät. Mainin
+kaappaus-/cold-/accepted-/työlupakytkennän ehdokas ei vielä läpäise nykyistä
+source-null-paluutestiä. Rajattu koe vahvisti valintametadatan tarkistuksen
+kertautumisen; seuraavaksi sen sijoittelu arvioidaan samojen omistajien ja
+aikarajojen sisällä. Hylkäystä ei ohiteta. Live-/rolledBack-jatkot,
+ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
+ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta
 läpäisivät; tämä valmistaa toteutuksen, ei sulje kytkennän näyttöporttia.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin

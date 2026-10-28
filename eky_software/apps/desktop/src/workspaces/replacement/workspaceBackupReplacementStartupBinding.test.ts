@@ -8,7 +8,12 @@ import { createWorkspaceRemnantBindingPaths } from '../deletion/workspaceRemnant
 import { WorkspaceRemnantBindingStore } from '../deletion/workspaceRemnantBindingStore.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { createNodeCrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
-import { captureWorkspaceBackupReplacementStartupBinding } from './workspaceBackupReplacementStartupBinding.js';
+import { captureWorkspaceBackupReplacementStartupBinding, captureWorkspaceBackupReplacementStartupSelection } from './workspaceBackupReplacementStartupBinding.js';
+import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
+import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
+import { WorkspaceSwitchJournalStore, createWorkspaceSwitchJournalPaths, serializeVersionedWorkspaceSwitchJournal } from '../switch/workspaceSwitchJournal.js';
+import { createWorkspaceSelectorSwitchJournal } from '../switch/workspaceSelectorSwitchState.js';
 import { TEST_REPLACEMENT_OPERATION_ID as operationId, TEST_REPLACEMENT_WORKSPACE_ID as workspaceId,
   TEST_REPLACEMENT_PROFILE_ID as profileId } from './workspaceBackupReplacementTestSupport.js';
 
@@ -304,6 +309,134 @@ describe('workspace replacement startup binding observation', () => {
     });
   }
 });
+
+describe('workspace replacement startup metadata selection', () => {
+  it.for([false, true])('pins the selected registry and absent switch with binding published=%s', async (published, context) => {
+    const f = await selectionFixture(context, published);
+    const before = await snapshot(f.root);
+    const selected = await f.capture();
+    await selected.assertCurrent(f.owner.assertAuthority);
+    expect(selected.mode).toBe(published ? 'workspaceReplacement' : 'legacyUnbound');
+    expect(await snapshot(f.root)).toEqual(before);
+    selected.close();
+    await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow();
+  });
+
+  it('accepts a new phase owner without retaining the capture lease', async context => {
+    const f = await selectionFixture(context, true);
+    const selected = await f.capture();
+    await f.held.release();
+    const next = await f.maintenance.acquire('restore');
+    try {
+      await selected.assertCurrent(f.maintenance.captureCurrentOwner(['restore'], next));
+    } finally { await next.release(); }
+    await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow();
+  });
+
+  it.for(['active', 'lineage', 'notReady'] as const)('rejects a changed initial registered %s before granting a selection', async (change, context) => {
+    const f = await selectionFixture(context, true);
+    await f.registry.write({ ...f.registryValue,
+      ...(change === 'active' ? { formatVersion: 2, activeWorkspaceId: null } : {}),
+      workspaces: f.registryValue.workspaces.map(entry => ({ ...entry,
+        ...(change === 'lineage' ? { lineageIdentity: { formatVersion: 1, profileId: 'e'.repeat(64) } }
+          : change === 'notReady' ? { lifecycleState: 'recoveryRequired' } : {}),
+      })),
+      ...(change === 'notReady' ? { formatVersion: 2, activeWorkspaceId: null } : {}),
+    });
+    const before = await snapshot(f.root);
+    await expect(f.capture()).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  for (const kind of ['registry', 'switch'] as const) {
+    for (const slot of ['current', 'next', 'backup'] as const) {
+      it(`rejects ${kind} ${slot} changes and keeps all bytes`, async context => {
+        const f = await selectionFixture(context, true);
+        const selected = await f.capture();
+        const switchPaths = createWorkspaceSwitchJournalPaths(f.root);
+        const registryPath = join(f.root, `${WORKSPACE_REGISTRY_FILE_NAME}${slot === 'current' ? '' : `.${slot}`}`);
+        const path = kind === 'registry' ? registryPath : switchPaths[`${slot}Path`];
+        if (kind === 'switch') await mkdir(switchPaths.directoryPath, { recursive: true });
+        if (kind === 'registry' && slot === 'current') await rename(path, `${path}.preserved`);
+        const bytes = kind === 'registry' ? serializeWorkspaceRegistry(f.registryValue)
+          : serializeVersionedWorkspaceSwitchJournal({ formatVersion: 1, operationId,
+            sourceWorkspaceId: '99999999-9999-4999-8999-999999999999', targetWorkspaceId: workspaceId,
+            state: 'targetSelected', createdAt: '2026-10-29T00:00:00.000Z' });
+        await writeFile(path, bytes, { flag: 'wx' });
+        const before = await snapshot(f.root);
+        await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow();
+        await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow();
+        expect(await snapshot(f.root)).toEqual(before);
+      });
+    }
+  }
+
+  it('uses the captured source-null migration context without changing switch or registry', async context => {
+    const f = await selectionFixture(context, false);
+    await publishMigration(f);
+    const journal = createWorkspaceSelectorSwitchJournal({ ...f.registryValue, formatVersion: 2, activeWorkspaceId: null },
+      workspaceId, operationId, '2026-10-29T00:00:00.000Z');
+    await f.registry.write({ ...f.registryValue, formatVersion: 2 });
+    const paths = createWorkspaceSwitchJournalPaths(f.root);
+    await mkdir(paths.directoryPath, { recursive: true });
+    await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal({ ...journal, state: 'targetSelected' }));
+    const switchContext: { operationId: string; sourceWorkspaceId: null; targetWorkspaceId: string } =
+      { operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId };
+    const before = await snapshot(f.root);
+    const pending = captureWorkspaceBackupReplacementStartupSelection({ ...f.input, mode: 'targetValidation', switchContext },
+      f.owner.assertAuthority, f.sources);
+    switchContext.operationId = '77777777-7777-4777-8777-777777777777';
+    const selected = await pending;
+    expect(selected.mode).toBe('workspaceActivationMigration');
+    await selected.assertCurrent(f.owner.assertAuthority);
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  it('keeps an original registry observation joined after phase cancellation', async context => {
+    const f = await selectionFixture(context, true);
+    const entered = gate();
+    const finish = gate();
+    const inspect = f.registry.inspectSlots.bind(f.registry);
+    vi.spyOn(f.registry, 'inspectSlots').mockImplementationOnce(async assertCurrent => {
+      const value = await inspect(assertCurrent);
+      entered.resolve();
+      await finish.promise;
+      return value;
+    });
+    const switchRead = vi.spyOn(f.sources.switchJournal, 'inspectSlots');
+    let current = true;
+    let settled = false;
+    const original = captureWorkspaceBackupReplacementStartupSelection({ ...f.input, mode: 'normal' },
+      () => { if (!current) throw new Error('synthetic cancelled phase'); }, f.sources);
+    const result = original.then(() => { settled = true; return 'completed'; }, () => { settled = true; return 'failed'; });
+    await entered.promise;
+    current = false;
+    try { expect(settled).toBe(false); expect(switchRead).not.toHaveBeenCalled(); }
+    finally { finish.resolve(); }
+    expect(await result).toBe('failed');
+    expect(switchRead).not.toHaveBeenCalled();
+  });
+});
+
+function gate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(yes => { resolve = yes; });
+  return { promise, resolve };
+}
+
+async function selectionFixture(context: TestContext, published: boolean) {
+  const f = await fixture(context, published);
+  const registry = new WorkspaceRegistryStore({ installationRoot: f.root, filePath: join(f.root, WORKSPACE_REGISTRY_FILE_NAME) });
+  const registryValue = { formatVersion: 1 as const, activeWorkspaceId: workspaceId, workspaces: [{
+    workspaceId, workspaceLabel: 'Synthetic company', lineageIdentity: { formatVersion: 1 as const, profileId },
+    layoutVersion: 1 as const, lifecycleState: 'ready' as const, createdAt: '2026-10-29T00:00:00.000Z',
+  }] };
+  await registry.write(registryValue);
+  const sources = { registry, switchJournal: new WorkspaceSwitchJournalStore(f.root) };
+  return { ...f, registry, registryValue, sources,
+    capture: () => captureWorkspaceBackupReplacementStartupSelection({ ...f.input, mode: 'normal' }, f.owner.assertAuthority, sources),
+  };
+}
 
 async function publishMigration(f: Awaited<ReturnType<typeof fixture>>) {
   const value = captureWorkspaceRemnantBinding({ ...f.value, owner: 'workspaceActivationMigration' });

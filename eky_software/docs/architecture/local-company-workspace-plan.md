@@ -5367,6 +5367,28 @@ kaappaukseen. Seuraavaksi saman sopimuksen cold-/accepted-/grant-kutsujat
 ja niiden main-regressiot, sitten live-/rolledBack-jatkot. Puhtaan paketin
 ja koko palautusketjun näyttö jäävät omiksi porteikseen.
 
+**Main-valmistelun seuraava checkpoint 29.10.2026:** nykyinen startup-
+sidontalukija yhdistää nyt registry-/switch-valinnan molempiin sidontapaikkoihin.
+Odotetut tunnisteet ja valintakonteksti kaapataan ennen ensimmäistä odotusta.
+Lukija tarkistaa rekisteröidyn kohteen nykyisen lineagen sekä lukitsee
+kaikkien slottien tavut, identiteetit ja puuttumisen.
+Mainin rajattu valmisteluadapteri käyttää omaa täsmällistä restore-leasea:
+cold-kutsuja välittää saman absoluuttisen deadlinen, backend-valmistelu oman
+signaalinsa ja saa koko alkuperäisen tehtävän sulkuineen. Keskeneräinen työ
+säilyttää leasen ja ilmoittaa ulommalle omistajalle; myöhäinen valmistuminen
+ei vapauta sitä. Ensivirhe ja leasen sulkuvirhe erotetaan.
+
+Lukijan ja valmisteluadapterin 65 kohdetestiä sekä desktopin tyyppitarkistus
+läpäisivät. Näistä 21 on uusia; aiemmat ajot eivät ole lisäkattavuutta.
+Rajattu riippumaton katselmus ja async-vartijan ajonaikaisen tarkistuksen
+korjausdelta läpäisivät. Tämä todistaa adapterit, ei mainin koko ketjua.
+Mainin cold-/accepted-/grant-ehdokas ei vielä läpäise source-null-paluun
+nykyistä yhdistelmätestiä: valintametadatan tarkistus kertautuu sisäisten
+omistajuustarkistusten mukana. Jatkoratkaisu tarvitsee tämän tarkistuksen
+sijoittelun rajatun arvioinnin nykyisessä omistajuussopimuksessa; aikarajoja
+ei kasvateta eikä tätä hylkäystä merkitä korjatuksi. Live-/rolledBack-
+liitosten, main-ketjun ja puhtaan paketin hyväksyntä säilyvät avoimina.
+
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja
 `ProfileRestoreStartupRecovery`n testit laajennetaan, ei korvata. Todista
