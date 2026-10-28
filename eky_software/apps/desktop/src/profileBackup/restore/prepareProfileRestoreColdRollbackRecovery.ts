@@ -11,7 +11,7 @@ import {
 } from './profileRestoreActivationJournal.js';
 import type { ProfileRestoreActivationJournalStore } from './profileRestoreActivationJournalStore.js';
 import type { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
-import type { ProfileRestoreColdContentContext } from './prepareProfileRestoreColdForwardRecovery.js';
+import type { ProfileRestoreColdContentContext, ProfileRestoreColdOperationSelection } from './prepareProfileRestoreColdForwardRecovery.js';
 import type { ProfileRestoreColdRollbackAdmission, ProfileRestoreStartupMode, ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
 
 type Reservation = ProfileRestoreColdContentContext['reservation'];
@@ -28,6 +28,7 @@ interface ProfileRestoreRollbackAuthorityInput {
   readonly assertContent: (context: ProfileRestoreColdContentContext) => Promise<void>;
   readonly acquireReservation: (root: string, identity: string, signal: AbortSignal) => Promise<Reservation>;
   readonly observer?: ProfileRecoveryOperationalObserver;
+  readonly operationSelection?: ProfileRestoreColdOperationSelection;
 }
 
 export function prepareProfileRestoreColdRollbackRecovery(input: ProfileRestoreRollbackAuthorityInput & {
@@ -54,6 +55,15 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
   let lease: Awaited<ReturnType<typeof input.maintenanceLease.acquire>> | undefined;
   let timer: ReturnType<typeof setTimeout> | undefined;
   let deadline: number | undefined;
+  const selection = input.operationSelection === undefined ? undefined : Object.freeze({
+    deadline: input.operationSelection.deadline,
+    assertOperationSelection: input.operationSelection.assertOperationSelection.bind(input.operationSelection),
+    onUnsettledWork: input.operationSelection.onUnsettledWork.bind(input.operationSelection),
+  });
+  const selectionDeadline = selection?.deadline;
+  const pendingWork = new Set<Promise<unknown>>();
+  let closed = false;
+  let retainOwnership = false;
   let result: T | undefined;
   let completed = false;
   let recoveryStarted = false;
@@ -62,11 +72,31 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
     anchor?.invalidate();
     for (const source of sources) if (!source.released) source.reservation.invalidate();
   };
+  const retain = () => {
+    if (retainOwnership) return;
+    retainOwnership = true;
+    closed = true;
+    cancellation.abort();
+    if (failures.length === 0) failures.push(new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED'));
+    for (const reservation of [anchor, ...sources.filter(source => !source.released).map(source => source.reservation)]) {
+      try { reservation?.invalidate(); } catch (error) { failures.push(error); }
+    }
+    try { selection!.onUnsettledWork(failures[0]); } catch (error) { failures.push(error); }
+  };
   try {
+    if (selection !== undefined) {
+      const remaining = selectionDeadline! - performance.now();
+      if (!Number.isFinite(remaining) || remaining <= 0 || remaining > profileInspectionWorkMilliseconds) {
+        throw new Error('PROFILE_INSPECTION_TIMEOUT');
+      }
+      deadline = selectionDeadline;
+      timer = setTimeout(() => { closed = true; cancellation.abort(); }, remaining);
+    }
     if (assertBorrowedRestoreOwner === undefined) lease = await input.maintenanceLease.acquire('restore');
     else assertBorrowedRestoreOwner();
-    const assertLease = input.maintenanceLease.captureCurrentOwner(['restore']);
+    const assertLease = input.maintenanceLease.captureCurrentOwner(['restore'], selection === undefined ? undefined : lease);
     const assertAuthority = () => {
+      if (closed) throw new Error('PROFILE_INSPECTION_TIMEOUT');
       assertBorrowedRestoreOwner?.();
       assertLease();
       input.assertAuthority();
@@ -75,17 +105,27 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
       }
       for (const source of sources) if (!source.released) source.reservation.assertMainCurrent();
     };
+    const run = async <T>(task: () => Promise<T>): Promise<T> => {
+      if (selection === undefined) return task();
+      assertAuthority();
+      const pending = Promise.resolve().then(() => { assertAuthority(); return task(); });
+      pendingWork.add(pending);
+      void pending.then(() => pendingWork.delete(pending), () => pendingWork.delete(pending));
+      const value = await waitForInspectionPhase(pending, cancellation.signal);
+      assertAuthority();
+      return value;
+    };
     const read = async <T>(task: () => Promise<T>): Promise<T> => {
       assertAuthority();
       let settled = false;
-      const pending = Promise.resolve().then(task).finally(() => { settled = true; });
+      const pending = run(task).finally(() => { settled = true; });
       try {
         const value = await waitForInspectionPhase(pending, cancellation.signal);
         assertAuthority();
         return value;
-      } finally { if (!settled) invalidate(); }
+      } finally { if (!settled && selection === undefined) invalidate(); }
     };
-    const assertCurrent = async () => {
+    const assertOwnership = async () => {
       anchor?.assertMainCurrent();
       await read(input.assertMainOwned);
       for (const source of sources) if (!source.released) await read(() => source.reservation.assertMainOwned());
@@ -94,34 +134,49 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
       assertAuthority();
       anchor?.assertMainCurrent();
     };
+    const assertCurrent = async () => {
+      await assertOwnership();
+      if (selection !== undefined) {
+        await run(() => selection.assertOperationSelection(assertAuthority));
+        await assertOwnership();
+      }
+    };
     await assertCurrent();
     assertProfileRestoreActivationJournalMatches(selected, await read(() => input.journalStore.peek()));
-    const roots = await input.transaction.prepareColdRollbackAnchor(selected, async selectedSources => {
+    const roots = await run(() => input.transaction.prepareColdRollbackAnchor(selected, async selectedSources => {
       for (const source of selectedSources) {
         await assertCurrent();
-        const reservation = await input.acquireReservation(source.root, source.identity, cancellation.signal);
-        sources.push({ ...source, reservation, released: false });
+        await run(async () => {
+          const reservation = await input.acquireReservation(source.root, source.identity, cancellation.signal);
+          sources.push({ ...source, reservation, released: false });
+          if (closed) reservation.invalidate();
+        });
         await assertCurrent();
       }
-    }, assertCurrent);
+    }, assertCurrent));
     await assertCurrent();
-    anchor = await input.acquireReservation(roots.anchorRoot, roots.anchorIdentity, cancellation.signal);
+    await run(async () => {
+      anchor = await input.acquireReservation(roots.anchorRoot, roots.anchorIdentity, cancellation.signal);
+      if (closed) anchor.invalidate();
+    });
     await assertCurrent();
     assertProfileRestoreActivationJournalMatches(selected, await read(() => input.journalStore.peek()));
-    deadline = performance.now() + profileInspectionWorkMilliseconds;
-    timer = setTimeout(() => cancellation.abort(), profileInspectionWorkMilliseconds);
+    if (selection === undefined) {
+      deadline = performance.now() + profileInspectionWorkMilliseconds;
+      timer = setTimeout(() => cancellation.abort(), profileInspectionWorkMilliseconds);
+    }
     const assertContent = async (current: Readonly<ProfileRestoreActivationJournal>) => {
       const journal = captureProfileRestoreActivationJournal(current);
       const index = phases.indexOf(journal.phase);
       if (index < 0) throw required();
       const expected = { ...selected, phase: journal.phase, revision: selected.revision + index };
       assertProfileRestoreActivationJournalMatches(expected, journal);
-      await input.assertContent({ journal, reservation: anchor!, signal: cancellation.signal, deadline: deadline!,
-        assertAuthority, assertCurrent });
+      await run(() => input.assertContent({ journal, reservation: anchor!, signal: cancellation.signal, deadline: deadline!,
+        assertAuthority, assertCurrent }));
     };
     await assertContent(selected);
     recoveryStarted = true;
-    result = await use({
+    result = await run(() => use({
       kind: 'rollback', journal: selected, assertCurrent, assertContent,
       async beforeStagingMove(current) {
         await assertContent(current);
@@ -148,22 +203,31 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
           assertAuthority(); anchor!.assertMainCurrent();
         } });
       },
-    });
+    }));
     completed = true;
     await assertCurrent();
   } catch (error) {
     failures.push(error);
-    try { anchor?.assertMainCurrent(); } catch { invalidate(); }
+    try { anchor?.assertMainCurrent(); } catch {
+      if (selection !== undefined) retain();
+      else invalidate();
+    }
   } finally {
+    closed = true;
     if (timer !== undefined) clearTimeout(timer);
     cancellation.abort();
-    try { await anchor?.close(); } catch (error) { failures.push(error); }
-    for (const source of [...sources].reverse()) {
-      if (!source.released) {
-        try { await source.reservation.close(); source.released = true; } catch (error) { failures.push(error); }
+    if (selection !== undefined && pendingWork.size !== 0) retain();
+    if (!retainOwnership) {
+      let closeFailed = false;
+      try { await anchor?.close(); } catch (error) { failures.push(error); closeFailed = true; }
+      for (const source of [...sources].reverse()) {
+        if (!source.released) {
+          try { await source.reservation.close(); source.released = true; } catch (error) { failures.push(error); closeFailed = true; }
+        }
       }
+      if (selection !== undefined && closeFailed) retain();
+      if (!retainOwnership) try { await lease?.release(); } catch (error) { failures.push(error); }
     }
-    try { await lease?.release(); } catch (error) { failures.push(error); }
   }
   if (failures.length !== 0) {
     if (!recoveryStarted || completed) observeProfileRecoverySafely(input.observer ?? noOpProfileRecoveryOperationalObserver, {

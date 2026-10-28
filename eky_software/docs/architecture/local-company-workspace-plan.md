@@ -5158,7 +5158,8 @@ valinnan kaappaus, leasen vaihto tai native-valmistelu ei nollaa sitä.
 Tämä säilyttää sekuntirajan mutta vähentää sisältötyön jäljellä olevaa
 aikaa valmistelun verran. Tavallisten kutsujien ajoitus ei muutu.
 Erillinen uusi valmisteluaika kasvattaisi kokonaisbudjettia eikä ole
-hyväksytty vaihtoehto. Porttia tai ajastuksen aloitusmuutosta ei ole kytketty.
+hyväksytty vaihtoehto. Cold-apurien sisäinen portti on toteutettu alla;
+mainin kutsujakytkentää ei vielä ole tehty.
 
 Sulun toteutusraja säilyy aikapäätöksestä riippumatta: vaiheomistaja seuraa
 alkuperäistä lukutehtävää tiedostokahvan sulkuun asti, ei vain aikakatkaistua
@@ -5207,6 +5208,29 @@ jälkeen omissa nykyisissä vaiheomistajissaan. Callbackin jälkeinen
 `cleanupWork`-odotus ei saa kiertää vaiheomistajan määräaikaa eikä antaa
 siivouslupaa päättymättömälle työlle. Näitä liitoksia ei merkitä valmiiksi
 cold-apurien kokeiden perusteella.
+
+**Cold-portin toteutuscheckpoint 28.10.2026:** nykyiset cold-forward- ja
+cold-rollback-apurit saavat valinnaisen `operationSelection`-sopimuksen:
+absoluuttinen `deadline`, `assertOperationSelection(assertAuthority)` ja
+synkroninen `onUnsettledWork(cause)` ulommalle omistajalle. Määräaika ja
+callbackit kaapataan ennen ensimmäistä odotusta. Puuttuva portti säilyttää
+vanhan kutsujan aikakäyttäytymisen. Uusi portti ei hyväksy vanhentunutta,
+ei-äärellistä tai yli nykyisen työbudjetin ulottuvaa määräaikaa.
+Valintatarkistus on perusomistajuuden tarkistusten välissä; yleinen
+I/O-seuranta ei itse kutsu valintatarkistusta tai sisältövalidointia.
+Keskeneräinen työ tai epäonnistunut native-sulku säilyttää huoltovarauksen,
+invalidioi omat varaukset ja ilmoittaa ulommalle omistajalle ensisyyn.
+Myöhäinen varaus invalidioidaan, mutta sitä tai huoltovarausta ei vapauteta
+automaattisesti. Lainatun varauksen vapautusta ei tehdä apurissa.
+
+Yhdeksän tiedoston kohdesarja läpäisi 258 testiä, joista 40 on uusia tämän
+portin regressioita; desktopin tyyppitarkistus ja rajattu riippumaton
+koodikatselmus läpäisivät. Kohdenäyttö sisältää
+todellisen synteettisen tiedoston luvun ja viivästetyn kahvasulun, ei
+käyttöjärjestelmään juuttuneen I/O:n peruuttamislupausta. Aiemmat ajot ovat
+päällekkäistä välipistenäyttöä. Main ei vielä välitä uutta porttia, joten
+ulomman omistajan invalidointi, live-/grant-/cleanup-kytkentä ja koko
+palautusketju vaativat edelleen omat alla nimetyt todisteensa.
 
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja

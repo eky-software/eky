@@ -67,12 +67,16 @@ olevaa työdeadlinea. Rajattu katselmus ja neljä synteettistä koetta
 vahvistivat budjettirajan sekä alkuperäisen luvun ja sen sulun erottamisen
 odotuksen katkeamisesta. Omistaja hyväksyi 28.10.2026 vain uuden kytkennän
 saman 35 sekunnin työajan alkamisen ensimmäisestä valintatarkistuksesta
-ilman nollausta; tuotantokytkentää ei vielä muutettu. Seuraava rajattu
-toteutuspala on cold-apurien yhteinen määräaika ja keskeneräisen työn
-omistajuuden säilyminen regressioineen. Epävarma sulku estää myös ulomman
-omistajan vapautuksen ja paluukäynnistyksen ensivirhettä peittämättä.
-Kohdekokeet eivät ole main-kytkennän tai koko palautusketjun hyväksyntää;
-accepted-, grant- ja rolledBack-cleanup-liitokset jäävät omaan todennukseensa.
+ilman nollausta. Cold-apurien valinnainen määräaika-/valinta-/sulkuportti
+on nyt lähteessä: alkuperäinen työ seurataan sulkuun asti ja epävarmuus
+säilyttää oman tai lainatun huoltovarauksen. Yhdeksän tiedoston kohdesarja
+läpäisi 258 testiä (40 uutta); desktopin tyypitys ja rajattu riippumaton
+koodikatselmus läpäisivät. Aiemmat kohdeajot
+ovat päällekkäistä näyttöä, eivät tähän lisättäviä testimääriä.
+Main ei vielä välitä porttia. Seuraavaksi sen alkuvalinnan ja cold-kutsujien
+yhteinen määräaika sekä ulomman omistajan säilyminen ensivirhettä peittämättä;
+accepted-, live-, grant- ja rolledBack-cleanup-liitokset vaativat oman
+todennuksensa. Tämä ei ole main-kytkennän tai koko palautusketjun hyväksyntä.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
 ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
 ei ole tämän kytkennän testinäyttö.
