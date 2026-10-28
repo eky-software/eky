@@ -76,7 +76,10 @@ ovat päällekkäistä näyttöä, eivät tähän lisättäviä testimääriä.
 Main ei vielä välitä porttia. Seuraavaksi sen alkuvalinnan ja cold-kutsujien
 yhteinen määräaika sekä ulomman omistajan säilyminen ensivirhettä peittämättä;
 accepted-, live-, grant- ja rolledBack-cleanup-liitokset vaativat oman
-todennuksensa. Tämä ei ole main-kytkennän tai koko palautusketjun hyväksyntä.
+todennuksensa. Ennen kytkentää ratkaistaan niiden yhteinen
+valmistelu-/sulkuomistajuus ja readonly registry-/switch-lukujen päättyminen;
+cold-apurin hyväksyntä ei anna muiden vaiheiden lisäbudjettia. Tämä ei ole
+main-kytkennän tai koko palautusketjun hyväksyntä.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
 ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
 ei ole tämän kytkennän testinäyttö.

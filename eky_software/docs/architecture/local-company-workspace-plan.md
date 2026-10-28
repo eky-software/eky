@@ -5232,6 +5232,27 @@ päällekkäistä välipistenäyttöä. Main ei vielä välitä uutta porttia, j
 ulomman omistajan invalidointi, live-/grant-/cleanup-kytkentä ja koko
 palautusketju vaativat edelleen omat alla nimetyt todisteensa.
 
+**Main-valmistelun avoin liitosraja 29.10.2026:** alkuvalinta ja sen
+valmistelulease edeltävät cold-apurien portteja. Nykyinen main lukee ensin
+palautus-, päivitys- ja replacement-journalit; uuden sidonnan kaappaus ei
+vielä kuulu tähän ketjuun. `accepted`-haara ei käytä cold-apuria, ja
+backendin työlupa kuuluu siirtovaltuudelle, ei enää mainin fyysisen
+varauksen omistajuudelle. Näille ei päätellä lisäaikaa cold-apurin määräajasta.
+Ennen main-kytkentää nimetään yhdessä alkuvalinnan, cold-valmistelun,
+accepted-valinnan, live-terminalin, grantin ja rolledBack-cleanupin nykyinen
+työ-/sulkuomistaja sekä päättymistodiste. Hyväksytty sama cold-deadline
+ei yksin ratkaise muiden vaiheiden alkuvalmistelun budjettia.
+
+Registry- ja switch-tallentimien nykyiset `inspectSlots`-luvut ovat
+korjaamattomia, mutta niiden rajapinnoissa ei ole vaiheomistajan vartijaa
+yksittäisten slottilukujen välissä. Koko luvun odotuksen katkeaminen ei
+siksi yksin todista sisäisten lukujen tai kahvasulkujen päättymistä.
+Valintatarkistus ei saa käyttää korjaavaa `read`- tai startup-resolveria
+kiertotienä. Tämä on uuden kytkennän toteutusraja, ei todettu vanhan
+palautuspolun vika tai lupa lisätä uusi yleinen I/O-omistaja. Pienin
+nykyisiin omistajiin perustuva ratkaisu ja keskeytysregressiot suljetaan
+ennen tuotantokytkentää; jo toteutettuja cold-portteja ei tehdä uudelleen.
+
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja
 `ProfileRestoreStartupRecovery`n testit laajennetaan, ei korvata. Todista
