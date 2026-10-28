@@ -2,7 +2,7 @@ import { isAbsolute, join, resolve } from 'node:path';
 import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
 import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
-import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
+import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import {
   captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, parseWorkspaceDeletionJournalBytes,
   sameWorkspaceDeletionJournalBinding, serializeWorkspaceDeletionJournal, workspaceDeletionPhases,
@@ -40,7 +40,7 @@ export class WorkspaceDeletionJournalStore {
   }
 
   inspect(assertCurrent: () => void) {
-    return this.exclusive(() => inspectWorkspaceDeletionJournal(this.fileSystem, checkedAuthority(assertCurrent)));
+    return this.exclusive(() => inspectWorkspaceDeletionJournal(this.fileSystem, checkedDeletionAuthority(assertCurrent, invalidCode)));
   }
 
   publish(value: unknown, selection: WorkspaceDeletionJournalSelection) {
@@ -99,18 +99,8 @@ export class WorkspaceDeletionJournalStore {
   }
 }
 
-function checkedAuthority(assertCurrent: () => void): () => void {
-  return () => {
-    const result: unknown = assertCurrent();
-    if (result !== undefined) {
-      void Promise.resolve(result).catch(() => undefined);
-      invalidDeletionData(invalidCode);
-    }
-  };
-}
-
 function captureSelection(selection: WorkspaceDeletionJournalSelection) {
-  const assertAuthority = checkedAuthority(selection.assertAuthority.bind(selection));
+  const assertAuthority = checkedDeletionAuthority(selection.assertAuthority.bind(selection), invalidCode);
   const slots = { current: undefined, next: undefined, backup: undefined } as Record<
     'current' | 'next' | 'backup', ReadOnlyJournalSlots<WorkspaceDeletionJournalV1>['current']>;
   for (const name of ['current', 'next', 'backup'] as const) {

@@ -4664,7 +4664,7 @@ recovery-estoa tai nimetä valmistelua lopulliseksi poistoksi.
 
 #### W7.4:n toteutussopimus
 
-**28.10.2026: sopimus ja A:n ensimmäinen tavukerros; ei vielä poiston tuotantokytkentää.**
+**28.10.2026: A:n journal- ja kohdeluettelotallennus; ei vielä poiston tuotantokytkentää.**
 Lähtö on W7.3:n hyväksytty main `11e0eadfee002806db01a1b7152532e04dec5ca4`.
 [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) omistaa ajantasaisen
 jatkamiskohdan. W7.0:n yllä olevat formaatit, keskeytystaulukko ja
@@ -4672,7 +4672,7 @@ W7-P1-P4 sekä W7.3:n vahvistus-/backup-/sulkusopimus säilyvät.
 Tämä osio nimeää puuttuvat tuotantoliitokset; vanhoja kokeita ei
 lasketa niiden hyväksynnäksi.
 
-**A:n ensimmäinen kohdenäyttö:** `workspaces/deletion/` sisältää tiukat
+**A:n nykyinen kohdenäyttö:** `workspaces/deletion/` sisältää tiukat
 inventory-/journal-codecit, rajatun JSONL-tarkistimen, kaikkien journal-
 slottien sivuvaikutuksettoman tarkistuksen ja nykyistä selected-byte-storea
 käyttävän journal-tallentimen. Tallennuspolku on mainin johtaman
@@ -4681,16 +4681,29 @@ Initial-next ei anna jatkolupaa, muuttunut sidonta tai vaihehyppy hylätään,
 ja terminal-clear vaatii erillisen aineiston poissaolon tarkistusportin.
 Adoption nykyinen 13 merkinnän lista on yhteinen, ei poistajan kopio.
 
+Kohdeluettelon tiedosto sijaitsee mainin johtamassa
+`workspace-state/workspace-deletion-inventories/<operationId>/inventory.jsonl`-
+polussa. Julkaisu luo operaatiokansion yksinomaisesti, kirjoittaa nextin
+etenevällä offsetilla sekä tekee syncin, sulun, siirron ja rajatun
+takaisinluvun ennen kuitin palauttamista. Aiemmin olemassa olevaa kansiota
+tai partial-nextiä ei omaksuta uudeksi julkaisuksi. Luku tarkistaa alkuperäisen
+tiedosto-/kansioidentiteetin, sitoumuksen ja sulun jälkeen säilyneet tavut.
+Tekninen loppusiivous vaatii saman terminal-currentin ilman sivuslotteja;
+luettelo ja tyhjä operaatiokansio poistuvat ennen journalia. Puuttuvan
+luettelon tai kansion jatko kelpaa vain tässä loppuvaiheessa, ei payload-lupana.
+Yhteiset emot, tuntematon lisätiedosto ja journal säilyvät epävarmassa tuloksessa.
+
 Näiden ja nykyisten viereisten persistence-/adoption-regressioiden yksi
-rajattu loppuajo läpäisi 203 testiä; desktopin jälkityyppitarkistus läpäisi.
-Ensimmäisen valmistelun testikontekstivirhe ja identiteettifixturen
-muuttumattomaksi jäänyt testiarvo korjattiin testeihin, ei hyväksyntäehtoihin.
-Riippumattoman rajatun katselmuksen kaksi regressiotestiaukkoa korjattiin
-ja delta-katselmus sulki ne ilman muita tämän rajauksen löydöksiä.
-A:n suuren luettelon varsinainen
-tiedostojulkaisu, sidontatallennus ja loppusiivous sekä B-F ovat vielä
-avoimia. Muistissa injektoitu ulkoinen guard ja uusi tallenninolio eivät
-todista oikeaa omistajuusketjua tai prosessikatkosta. Poistokanava pysyy suljettuna.
+rajattu loppuajo läpäisi 279 testiä; yksi POSIX-oikeustesti odottaa Linux-näyttöä.
+Desktopin jälkityyppitarkistus läpäisi. Julkaisun katselmuksessa todetut
+lukukahvan sulun ja ulkoisen valinnan odotusikkunat toistettiin ennen korjausta
+neljällä hylkäävällä regressiolla ja korjattiin tarkistusjärjestykseen.
+Myös viimeisen journal-odotuksen aikana vaihtuva tyhjä juuri toistettiin
+ja korjattiin rmdir-rajan tuoreeseen lähdetarkistukseen. Riippumaton
+rajattu delta-katselmus sulki kaikki kolme havaintoa ilman muita löydöksiä.
+A:n sidontatallennus sekä B-F ovat vielä avoimia. Injektoitu ulkoinen guard,
+terminal-journal ja uusi tallenninolio eivät todista payloadien todellista
+poistumista, omistajuusketjua tai prosessikatkosta. Poistokanava pysyy suljettuna.
 
 **Toimitusraja:** toteutetaan yksi mainin omistama lopullinen poisto,
 johon vahvistettu live-pyyntö ja kylmäkäynnistys liittyvät eri sisääntuloista.

@@ -9,6 +9,16 @@ export function invalidDeletionData(code: WorkspaceDeletionDataFailure): never {
   throw new Error(code);
 }
 
+export function checkedDeletionAuthority(assertCurrent: () => void, code: WorkspaceDeletionDataFailure): () => void {
+  return () => {
+    const result: unknown = assertCurrent();
+    if (result !== undefined) {
+      void Promise.resolve(result).catch(() => undefined);
+      invalidDeletionData(code);
+    }
+  };
+}
+
 export function deletionDataRecord(
   value: unknown, keys: readonly string[], code: WorkspaceDeletionDataFailure,
 ): asserts value is Record<string, unknown> {
