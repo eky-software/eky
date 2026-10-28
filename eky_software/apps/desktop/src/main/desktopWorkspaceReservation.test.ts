@@ -55,7 +55,7 @@ function reservation() {
   return { loss, handle };
 }
 
-async function fixture(prepareMainOwned?: (signal: AbortSignal) => Promise<void>) {
+async function fixture(prepareMainOwned?: (signal: AbortSignal, assertPreparationCurrent: () => void) => Promise<void>) {
   const initial = reservation();
   const reclaimed = reservation();
   acquire.mockResolvedValueOnce(initial.handle).mockResolvedValueOnce(reclaimed.handle);
@@ -149,6 +149,87 @@ describe('selector lifecycle with the desktop reservation owner', () => {
 });
 
 describe('desktop composition workspace reservation owner', () => {
+  it('lends a repeatable preparing guard without granting main ownership or a child grant', async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    let captured!: () => void;
+    f = await fixture(async (_signal, assertPreparationCurrent) => {
+      captured = assertPreparationCurrent;
+      expect(() => f.owner.assertMainCurrent()).toThrow();
+      await expect(f.owner.assertMainOwned()).rejects.toThrow();
+      expect(assertPreparationCurrent()).toBeUndefined();
+      await Promise.resolve();
+      expect(assertPreparationCurrent()).toBeUndefined();
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+    });
+    await f.transfer.prepare(f.signal.signal);
+    expect(() => captured()).toThrow();
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['cancelled', 'leaseLost', 'instanceLost', 'invalidated'] as const)(
+    'seals the preparation guard after %s without releasing the held reservation', async mode => {
+      const entered = deferred();
+      const finish = deferred();
+      let captured!: () => void;
+      const f = await fixture(async (_signal, assertPreparationCurrent) => {
+        captured = assertPreparationCurrent;
+        assertPreparationCurrent();
+        entered.resolve();
+        await finish.promise;
+        assertPreparationCurrent();
+      });
+      const preparation = f.transfer.prepare(f.signal.signal);
+      const failure = expect(preparation).rejects.toThrow();
+      await entered.promise;
+      if (mode === 'cancelled') f.signal.abort();
+      else if (mode === 'leaseLost') await f.handle.release();
+      else if (mode === 'instanceLost') f.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('lost'); });
+      else f.owner.invalidate();
+      expect(() => captured()).toThrow();
+      finish.resolve();
+      await failure;
+      expect(() => captured()).toThrow();
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+      await expect(f.owner.close()).rejects.toThrow();
+    },
+  );
+
+  it('does not let a sealed preparation guard invalidate or authorize a later generation', async () => {
+    let captured!: () => void;
+    const f = await fixture(async (_signal, assertPreparationCurrent) => { captured = assertPreparationCurrent; });
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    const next = f.owner.bind(randomUUID(), f.assertAuthority);
+    expect(() => captured()).toThrow();
+    await next.prepare(f.signal.signal);
+    await next.assertGrant(f.signal.signal);
+    next.assertCurrent();
+    acquire.mockResolvedValueOnce(reservation().handle);
+    await next.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('seals the borrowed guard when its preparation callback rejects', async () => {
+    let captured!: () => void;
+    const original = new Error('synthetic preparation failure');
+    const f = await fixture(async (_signal, assertPreparationCurrent) => {
+      captured = assertPreparationCurrent;
+      assertPreparationCurrent();
+      throw original;
+    });
+    await expect(f.transfer.prepare(f.signal.signal)).rejects.toBe(original);
+    expect(() => captured()).toThrow();
+    expect(f.initial.handle.release).not.toHaveBeenCalled();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
   it('keeps installation validity repeatable without granting main ownership or consuming a child grant', async () => {
     const f = await fixture();
     const assertRepeatable = () => {

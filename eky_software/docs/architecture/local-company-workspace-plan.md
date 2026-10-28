@@ -5347,6 +5347,26 @@ korjaavan luvun guardin, ajonaikaisen synkronisuuden, ensivirheportin ja
 kertakäyttöisen jatkovaltuuden täsmennysten jälkeen. Toteutuksen katselmus
 ja uusi kytkentänäyttö ovat edelleen erilliset portit.
 
+**Readonly-/prepare-porttien toteutuscheckpoint 29.10.2026:** nykyisten
+registry- ja switch-tallentimien `inspectSlots(assertAuthority?)` tarkistaa
+aidosti synkronisen vartijan jokaisen slottiluvun ympärillä ja ennen tulosta.
+Vain `undefined` tarkoittaa pois jätettyä vartijaa; Promise tai muu paluu
+ei kelpaa luvaksi. Alkuperäinen luku odottaa myös kahvan sulun, ja menetetty
+valtuus estää seuraavan slotin lukemisen. Mainin `bind` välittää nyt
+valmistelucallbackille saman `preparing`-vaiheen toistettavan vartijan.
+Päättynyt callback tai vanha sukupolvi ei saa sillä jatkolupaa eikä voi
+mitätöidä uudempaa omistajaa. Vanhat kutsujat ja aikarajat säilyvät.
+
+Yhdentoista tiedoston kohdesarja läpäisi 422 testiä, joista 41 on tämän
+palan uusia regressioita. Desktopin tyypitys ja rajattu riippumaton
+koodikatselmus läpäisivät. Kohdenäyttö sisältää oikean synteettisen tiedoston
+viivästetyn kahvasulun; se ei lupaa käyttöjärjestelmään juuttuneen I/O:n
+peruuttamista. Aiemmat kohdeajot ovat päällekkäistä näyttöä.
+Main ei vielä käytä näitä portteja palautuksen valintatilannekuvan
+kaappaukseen. Seuraavaksi saman sopimuksen cold-/accepted-/grant-kutsujat
+ja niiden main-regressiot, sitten live-/rolledBack-jatkot. Puhtaan paketin
+ja koko palautusketjun näyttö jäävät omiksi porteikseen.
+
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja
 `ProfileRestoreStartupRecovery`n testit laajennetaan, ei korvata. Todista

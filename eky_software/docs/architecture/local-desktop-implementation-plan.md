@@ -637,6 +637,15 @@ asynkronisesti validoidun valitsintuloksen käyttöä. Myös backendin
 valmistelun jälkeen valtuus tarkistetaan ennen runtime-resurssien avausta.
 Vanha myöhäinen tulos ei anna uuden käynnistyksen valtuutta.
 
+`bind`in valinnainen `prepareMainOwned`-callback saa signaalin lisäksi saman
+`preparing`-vaiheen toistettavan synkronisen vartijan. Se tarkistaa startupin,
+siirtosukupolven, peruutuksen ja saman hallussa olevan varauksen, eikä vaadi
+aktiivisen siirron aikana kiellettyä yleistä main-omistajuusväitettä.
+Vartija lakkaa kelpaamasta callbackin päätyttyä myös virheessä; vanha vartija
+ei valtuuta tai mitätöi seuraavaa sukupolvea. Callbackin alkuperäinen tehtävä
+säilyy nykyisessä prepare-/sulkuseurannassa. Portti ei aloita uutta aikarajaa
+eikä korvaa backendin erillistä grantia tai mainin native-omistajuustarkistusta.
+
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:
 readonly admission, nykyinen build-portti, tuore varaus sekä sama huoltolease

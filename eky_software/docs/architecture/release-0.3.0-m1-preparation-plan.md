@@ -80,12 +80,16 @@ nykyisen backend-valmistelun sisällä sekä grantin alkuperäisen tehtävän
 seurannan. Live-terminal säilyttää oman nykyisen budjettinsa. RolledBack-
 loppusiivous käyttää tuoreen validointileasen ja saman sisältötarkistuksen
 jäljellä olevan ajan; uutta terminal-odotusta ei lisätä.
-Seuraavaksi readonly-slottilukujen guardit, mainin kaappaus-/työlupakytkentä
-ja saman sopimuksen live-/rolledBack-jatkot regressioineen. Viiden nykyisen
-omistajatiedoston 223 kontrollitestiä läpäisivät. Ne ovat lähtömekanismien
-näyttöä, eivät uuden kytkennän hyväksyntä tai aiempiin määriin lisättävä
-testikokonaisuus. Ensivirhe, keskeneräisen I/O:n omistajuus sekä viimeiset
-synkroniset poistovartijat vaativat nimetyt uudet regressiot.
+Readonly-slottilukujen guardit ja mainin valmistelucallbackin vaihekohtainen
+vartija ovat nyt lähteessä. Yhdentoista tiedoston kohdesarja läpäisi
+422 testiä (41 uutta); desktopin tyypitys ja rajattu riippumaton koodikatselmus
+läpäisivät. Oikean synteettisen tiedoston viivästetty kahvasulku ei vapauta
+lukijaa tai salli seuraavaa slottilukua vanhentuneella luvalla. Aiemmat
+kohdeajot ovat päällekkäistä näyttöä, eivät näihin lisättäviä testimääriä.
+Seuraavaksi mainin kaappaus-/cold-/accepted-/työlupakytkentä, sitten saman
+sopimuksen live-/rolledBack-jatkot regressioineen. Alkuperäisen tehtävän
+seuranta, ensivirhe ja viimeiset poistovartijat vaativat oman kytkentänäytön;
+porttien olemassaolo ei ole koko palautusketjun hyväksyntä.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta
 läpäisivät; tämä valmistaa toteutuksen, ei sulje kytkennän näyttöporttia.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin

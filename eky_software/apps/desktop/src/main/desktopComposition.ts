@@ -392,7 +392,7 @@ export async function acquireDesktopWorkspaceReservation(options: {
     bind(
       generationId: string,
       assertAuthority: () => void,
-      prepareMainOwned?: (signal: AbortSignal) => Promise<void>,
+      prepareMainOwned?: (signal: AbortSignal, assertPreparationCurrent: () => void) => Promise<void>,
     ): WorkspaceProcessReservationTransfer {
       assertMainInstance();
       if (active !== undefined || held === undefined) throw fail();
@@ -438,7 +438,12 @@ export async function acquireDesktopWorkspaceReservation(options: {
             assertSignal(signal);
             assertAuthorityCurrent();
             if (prepareMainOwned !== undefined) {
-              await prepareMainOwned(signal);
+              const assertPreparationCurrent = () => {
+                assertSignal(signal);
+                assertAuthorityCurrent();
+                if (transfer.phase !== 'preparing' || !transfer.pending || held !== reservation) throw fail();
+              };
+              await prepareMainOwned(signal, assertPreparationCurrent);
               assertSignal(signal);
               assertAuthorityCurrent();
               try { await reservation.assertOwned(); }

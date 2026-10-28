@@ -64,7 +64,7 @@ export class WorkspaceRegistryStore {
     });
   }
 
-  inspectSlots(): Promise<ReadOnlyJournalSlots<LocalWorkspaceRegistry>> {
+  inspectSlots(assertAuthority?: () => void): Promise<ReadOnlyJournalSlots<LocalWorkspaceRegistry>> {
     return this.runExclusive(async () => {
       try {
         const result: Record<'current' | 'next' | 'backup',
@@ -72,12 +72,15 @@ export class WorkspaceRegistryStore {
           current: undefined, next: undefined, backup: undefined,
         };
         for (const slot of ['current', 'next', 'backup'] as const) {
+          assertSynchronousAuthority(assertAuthority);
           let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
           const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
+          assertSynchronousAuthority(assertAuthority);
           if (bytes !== undefined) {
             result[slot] = Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes), ...(identity === undefined ? {} : { identity }) });
           }
         }
+        assertSynchronousAuthority(assertAuthority);
         return Object.freeze(result);
       } catch (error) {
         throw this.mapStoreError(error);
@@ -172,5 +175,14 @@ export class WorkspaceRegistryStore {
       return new WorkspaceRegistryValidationError();
     }
     return new WorkspaceRegistryStoreError(WORKSPACE_REGISTRY_UNAVAILABLE);
+  }
+}
+
+function assertSynchronousAuthority(assertAuthority: (() => void) | undefined): void {
+  if (assertAuthority === undefined) return;
+  const result: unknown = assertAuthority();
+  if (result !== undefined) {
+    void Promise.resolve(result).catch(() => undefined);
+    throw new WorkspaceRegistryValidationError();
   }
 }
