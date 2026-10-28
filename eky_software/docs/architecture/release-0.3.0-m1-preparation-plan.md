@@ -53,8 +53,15 @@ katselmushavainto korjattiin ja delta-katselmus läpäisi. Seuraavaksi uuden
 startup-omistajan main-valtuus ja pysyvän sidonnan tarkistusten kytkentä.
 Sidonnan muuttumaton startup-lukija on nyt toteutettu ja katselmoitu;
 nykyinen laajennettu kohdesarja läpäisi 241 testiä, yksi POSIX-testi odottaa
-Linux-näyttöä. Ennen main-liitosta täsmennetään yhteistä palautinta käyttävän
-kopioaktivoinnin omistajaraja ja tarkistuksen sijoitus cold-/live-ketjuun.
+Linux-näyttöä. Yhteistä palautinta käyttävän kopioaktivoinnin main-sopimus
+on tarkennettu samassa omistavassa suunnitelmassa: kaksi nimettyä
+sidontapaikkaa, erillinen sidonnaton yhteensopivuushavainto sekä tuore
+vaihekohtainen cold-/live-valtuus. Seuraava toteutuspala laajentaa nykyisen
+lukijan, välittää rekisteröidyn kohteen ja kytkee tarkistukset mainiin
+säilyttäen nykyiset palautus-, kopioaktivointi- ja valitsinpalautustestit.
+Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
+ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
+ei ole tämän kytkennän testinäyttö.
 Vanha välitön lähdehaara poistetaan vasta myös vastaavan main-ketjun näytön
 jälkeen; vanhaa replace-leasea tai runtime-poissaolon vartijaa ei käytetä
 elävän backendin loppuhyväksyntään. Native-/paketti-/PR-portit ovat kesken.

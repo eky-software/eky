@@ -5023,14 +5023,138 @@ payload-poistolupaa. Sen 21 regressiota sisältyvät nykyiseen 241 testin
 kohdesarjaan; yksi POSIX-testi odottaa Linux-näyttöä. Tyyppitarkistus ja
 rajattu riippumaton lukijan katselmus läpäisivät. Lukijaa ei vielä kutsuta mainista.
 
-**Ennen main-kytkentää ratkaistava liitos:** sama replacement-startup-factory
-palvelee myös päivityksen kopioaktivointia. Palautussidonnan omistajaa ei
-saa päätellä pelkästä yhteisestä factory- tai journal-polusta. Täsmennä
-täsmällisen startup-valinnan ja omistajan yhteys sekä asynkronisen
-sidontatarkistuksen sijoitus nykyisiin cold-/live-valtuuksiin. Synkroniseksi
-vartijaksi ei anneta Promisea eikä sisältötarkistus saa kutsua itseään
-sidontaluvun kautta. Nykyiset kopioaktivointi-, ordinary-restore- ja
-source-null-palautukset säilyvät; tämä ei hyväksy niiden ohittamista.
+**Main-kytkennän omistajuussopimus (28.10.2026):** sama
+`createWorkspaceBackupReplacementStartupRecovery` ja asennustasoinen
+aktivointijournal palvelevat palautusta ja päivityksen kopioaktivointia.
+`startupRecoveryAuthority === 'workspaceReplacement'` nimeää tässä
+tiedostoasettelun, ei journalin tuottajaa. Myöskään `targetValidation`-tila
+ei yksin todista omistajaa. Alla oleva liitos tarkentaa nykyisiä omistajia;
+se ei muuta palautuksen tilakonetta, journal-formaattia tai hyväksyntärajoja.
+
+1. Valittu operation-ID luetaan nykyisestä korjaamattomasta `peek`-tuloksesta.
+   Nykyinen startup-sidontalukija laajennetaan lukemaan sarjassa sekä
+   `workspaceReplacement`- että `workspaceActivationMigration`-sidontapaikka.
+   Täsmälleen yksi julkaistu, kelvollinen ja kohteeseen sopiva omistaja
+   hyväksytään. Molemmat puuttuvat tarkoittaa vain `legacyUnbound`-havaintoa:
+   vanha palautussopimus säilyy, mutta tuottajaa tai poistolupaa ei keksitä.
+   Kahden omistajan julkaisu, vieras kohde, osittainen julkaisu tai virheellinen
+   slotti pysäyttää työn; virhettä ei muuteta puuttuvaksi sidonnaksi.
+2. Molempien paikkojen kaikki slotit, raakatavut, identiteetit ja puuttuminen
+   lukitaan samaan valintaan. Myöhemmin ilmestyvä toinen omistaja, katoaminen
+   tai samojen tavujen vaihtuminen uuteen tiedostoidentiteettiin hylätään.
+   Lukija käyttää vain nykyistä `WorkspaceRemnantBindingStore.inspect`-porttia.
+   Se ei korjaa, julkaise tai poista sidontaa. Aiempi yhden omistajan lukijan
+   näyttö ei vielä todista tätä kahden paikan kytkentää.
+3. Odotettu workspace ja lineage tulevat nykyisen
+   `resolveActiveWorkspaceStartup`-omistajan validoimasta rekisterimerkinnästä,
+   eivät sidontatiedostosta tai sen nimestä. Rekisteröidyn valinnan muuttumaton
+   lineage välitetään nykyisessä startup-valinnassa mainille. Rajattu
+   readonly-valintatarkistus käyttää nykyisiä registry-/switch-slottilukuja
+   ja todentaa tämän valinnan uudelleen vaiheomistajan alla. Adoptioniin ei
+   lisätä arvattua lineagea: ilman rekisteröityä kohdetta julkaistu sidonta
+   ei saa lupaa, mutta sidonnaton vanha polku säilyy nykyisine tarkistuksineen.
+4. Julkaistu migration-sidonta vaatii saman operaation validoidun
+   switch-kontekstin. Puuttuva tai vieraan operaation konteksti estää työn;
+   sitä ei tulkita tarkistuksen poissuluksi. Operation-ID, source/target,
+   lineage ja käsiteltävä aktiivinen juuri eivät saa
+   olla ristiriidassa. Lähdeyritykseen paluun `rollbackValidation` ei muuta
+   toisen kohteen globaalia journalia lähdeyrityksen journaliksi. Ristiriita
+   säilyttää aineiston; main ei vaihda palautuskohdetta sidonnan perusteella.
+   Migrationin oman sidonnan kirjoittaja kytketään myöhemmässä B-palassa
+   vasta sen oman source-null-/source-nonnull-kattavuuden jälkeen.
+5. Sidontatilannekuva kuuluu valittuun palautusoperaatioon, ei koko mainin
+   elinkaareen. Se kaapataan ennen tämän journalin ensimmäistä korjaavaa
+   lukua tai muutosta ja tarkistetaan uudelleen ennen backendin työlupaa.
+   Mainin rajattu readonly-valmistelu hankkii oman restore-leasen, tarkistaa
+   startup-/main-omistajuuden ja valitun journalin uudelleen sekä vapauttaa
+   valmisteluleasen ennen cold- tai live-vaiheen omaa leasea. Tilannekuva ei
+   säilytä valmisteluleasen closurea; vaiheiden välinen muutos hylätään
+   uuden omistajan tarkistuksessa. Vaaditun tilannekuvan puuttuminen ei ole
+   callbackin valinnaisuutta eikä lupa palata vanhaan ohittavaan polkuun.
+   `accepted`-tilan valmistelun nykyinen korjaamaton luku säilyy; korjaus ja
+   siivous odottavat live-terminalin valtuutta. `failedSafe` ei saa korjaavaa
+   fallbackia. Journaliton normaali käynnistys ei kaappaa kaikkia tulevia
+   operaatioita puuttuviksi. Saman käynnistyksen myöhempi source-null-
+   candidate-rollback saa oman täsmälliseen kuittiin sidotun valintansa.
+6. Registry-/switch-valinta lukitaan palautuksen vaiheeseen, ei sen jälkeisten
+   hyväksyttyjen siirtymien yli. Nykyinen järjestys säilyy: palautuksen
+   terminal valmistuu, sitten `activeWorkspace.accept`, W6-rekisterisiirtymä
+   ja FirstStart. Valintaa ei päivitetä huomaamatta tarkistuksessa. Odotettu
+   terminal sulkee oman valintansa; myöhempi nimetty operaatio hankkii uuden
+   valtuuden. Ulkopuolinen muutos ennen tätä rajaa on virhe.
+
+Source-nonnull-paluun odotukset erotetaan: jos kohteelle ei jää
+aktivointijournalia, nykyinen turvallinen lähdevalinta ja relaunch säilyvät.
+Jos julkaistu sidonta osoittaa kohteeseen mutta sen journal on vielä
+jäljellä, lähteeksi vaihtunut valinta ei saa suorittaa kohteen cleanupia.
+Tulos on recovery-esto, aineiston säilyminen ja ei uutta business-avausta;
+journalia ei tulkita lähteen aineistoksi. Tämä on uuden sidotun havainnon
+ristiriitaraja, ei lupa muuttaa nykyistä `legacyUnbound`-paluupolkua tässä
+palassa. Sidonnattoman nonnull-paluun nykyiset sisältö-, lineage- ja
+siivoustarkistukset sekä tulos säilytetään regressioina. Ennen migrationin
+sidontakirjoittajan myöhempää kytkentää sen oma B-portti vaatii myös nimetyn
+kohdeomistajan terminalin ennen lähdevalinnan vaihtoa tai erillisen
+ratkaisupäätöksen; tämän lukijakytkennän hyväksyntä ei yksin hyväksy sitä.
+
+**Asynkroninen tarkistus nykyisissä vaiheomistajissa:**
+
+Palautusapu saa rajatun valinnaisen `assertOperationSelection`-portin, joka
+vastaanottaa kyseisen vaiheen synkronisen valtuustarkistuksen. Mainin
+replacement-kytkentä antaa portin aina, myös sidonnattomalle havainnolle.
+Ordinary restore ja C:n päivityspalautus säilyvät nykyisillä porteillaan.
+Mainin callback lukee vain sidonta-/valintametadatan; se ei kutsu sisältö-
+validointia, leasen hankintaa, ulompaa `assertCurrent`ia tai itseään.
+Backendin työlupaa edeltävä readonly-tarkistus kytketään nykyiseen
+`reservationTransfer.assertGrant`-ketjuun sen startup-/siirtovaltuudella.
+Se säilyttää perusadapterin `assertGrant`in ja viimeisen synkronisen
+vartijan. Valmistellulle lapselle jo luovutettua varausta ei tässä vaadita
+mainin fyysiseksi omistukseksi eikä hankita sisäkkäistä restore-leasea.
+
+| Nykyinen omistaja | Tarkistuksen järjestys |
+| --- | --- |
+| `prepareProfileRestoreColdForwardRecovery` | Täsmällinen restore-lease ja main-/staging-omistus, valintaportti, sama perusomistus uudelleen. Tämä on nykyisen `assertCurrent`in sisällä; sisältöportin ja journalin muutossuojat säilyvät. |
+| `withProfileRestoreColdRollbackAuthority` | Oma tai nimenomaisesti lainattu restore-omistaja, alkuperäisten lähteiden/ankkurin nykyiset varaukset ja sama valintaportti ennen sisältö-/muutostarkistuksia. Lainattua leasea ei hankita uudelleen eikä vapauteta apurin omana. |
+| `withProfileRestoreTerminalAuthority` | Uusi restore-lease, elävän backendin fence ja snapshot. Valintaportti tarkistetaan ennen journalin käsittelyä sekä jokaisessa terminalin `assertCurrent`issa ennen nykyistä tuoretta fence-/snapshot-/jäännösvarausten tarkistusta. Ei `workspaceReservation.assertMainOwned`-ehtoa elävälle backendille. |
+| Replacementin `withRolledBackCleanupAuthority` | Uusi täsmällinen restore-lease, startup-/kohde-/sidontatarkistus ja jo hyväksytty `clearRolledBack(expected, guard)`-kytkentä. Ei accepted-terminalia, uutta rollbackia tai payloadin poistovaltuutta. |
+
+Porttia ei piiloteta yleiseen `read`-wrappaukseen: sisäkkäiset snapshot-
+lukijat eivät saa kutsua samaa tarkistusta uudelleen tai kertoa raskasta
+sisältövalidointia. Cold-sisältövalidointi jatkaa nykyisen `assertCurrent`in
+kautta, mutta sidontalukijan ulkoinen tarkistus sisältää vain kevyen
+registry-/switch-valinnan. Nykyinen lopullinen tavujen/identiteetin
+uudelleentarkistus jää tämän jälkeen, eikä sen perään lisätä uutta
+odottavaa valintalukua ennen tiedostomuutosta. Synkroniset viimeiset
+vartijat pysyvät synkronisina; Promise ei ole onnistunut tarkistus.
+
+Portin työ kuuluu nykyisen vaiheen määräaikaan ja päättämistodisteeseen.
+Myöhäinen tulos ei saa jatkaa muutosta tai elvyttää omistajaa. Keskeneräinen
+I/O ei anna lupaa vapauttaa fyysistä varausta, vaihtaa yritystä tai jatkaa
+siivousta: nykyisen omistajan epävarma sulku ja invalidointi säilyvät, ilman
+uutta odotusaikaa tai rajatonta kuittausodotusta. Valinta-/sidontavirhe lukitsee
+mainin nykyisen recovery-eston ennen yleistä virhepalautusta; se ei saa
+pudota `activeWorkspace.recoverFromFailure`-paluukäynnistykseen. Alkuperäinen
+virhe ja päättämisen virhe säilyvät erillisinä nykyisessä virheketjussa.
+
+**Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
+`resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja
+`ProfileRestoreStartupRecovery`n testit laajennetaan, ei korvata. Todista
+molemmat yksittäiset omistajat, molempien puuttuminen, ristiriita, väärä
+kohde/lineage/operation-ID, migrationin puuttuva/vieras switch-konteksti,
+kaikki slotit ja identiteetin muutos; uuden
+vaiheomistajan hyväksyntä ja vanhan/menetetyn omistajan hylkäys; tarkistuksen
+keskeytys ja myöhäinen valmistuminen ilman muutosta tai jatkokäynnistystä.
+Main-ketjun näyttö kattaa sekä palautuksen että kopioaktivoinnin,
+`validationStarting`/`accepted`/`rolledBack`-vaiheet, epäonnistuneen
+validoinnin kylmän rollbackin, source-null-valitsinpalautuksen ja erikseen
+journalittoman, legacy-sidonnattoman sekä ristiriitaisen sidotun
+source-nonnull-paluun yllä nimettyine tuloksineen. Varmista myös ordinary
+restore, adoption, C-palautus,
+registry/W6/FirstStart-järjestys ja ensivirheen säilyminen.
+
+Rajaus on sopimustarkennus, ei valmis tuotantokytkentä. Main-, oikean
+prosessin ja puhtaan paketin näyttö sekä korvatun välittömän haaran poisto
+ovat edelleen alla olevan portin takana. Uutta riippuvuutta, pysyvää
+formaattia, manageria tai rinnakkaista palautuspolkua ei lisätä.
 
 Lähtökartoituksessa `workspaceManagementComposition.ts` antaa aina
 `runtimeHandoff`in. Myös koordinaattorin yksikköfixture ja
