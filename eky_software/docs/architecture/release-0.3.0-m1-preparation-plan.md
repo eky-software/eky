@@ -28,13 +28,13 @@ ole yrityksen poiston `completed`-tulos.
 **W7.4:n seuraava pala:** [omistava toteutussopimus](local-company-workspace-plan.md#w74n-toteutussopimus)
 nimeää nykyiset omistajat, pysyvän valtuuden luovutuksen, kohdesidonnat,
 inventaarion, journalin, yhteisen delete/resume-ketjun ja todennusjärjestyksen.
-A:n codecit, journalin slottitarkistus sekä kohdeluettelon todellinen
+A:n codecit, journalin slottitarkistus, viiden omistajan sidontatallennin sekä kohdeluettelon todellinen
 tiedostojulkaisu, takaisinluku ja journalin viimeiseksi jättävä tekninen
-loppusiivous ovat lähteessä. Nykyinen rajattu ajo läpäisi 279 testiä ja
-desktopin jälkityypityksen; yksi POSIX-oikeustesti odottaa Linux-näyttöä.
-Julkaisun ja loppusiivouksen katselmushavainnot toistettiin, korjattiin ja
+loppusiivous ovat lähteessä. Nykyinen rajattu ajo läpäisi 352 testiä ja
+desktopin jälkityypityksen; kaksi POSIX-testiä odottaa Linux-näyttöä.
+Julkaisun, sidontojen ja loppusiivouksen katselmushavainnot toistettiin, korjattiin ja
 delta-katselmuksessa suljettiin. W7.4:llä ei vielä ole PR-/main-hyväksyntää.
-Seuraavaksi A:n sidontatallennus, B:n omistajaliitokset
+Seuraavaksi B:n omistajaliitokset
 sekä C:n W7.3-luovutusraja. Tekninen tallennusnäyttö ei hyväksy payload-poistoa.
 Tuotantokytkentä edellyttää W7-P4:n mukaista katselmoitua näyttöä, ei vain
 suunnitelman valmistumista. W7.5:n näkyvä käyttöönotto ja backenditon

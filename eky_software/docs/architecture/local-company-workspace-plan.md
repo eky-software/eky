@@ -4664,7 +4664,7 @@ recovery-estoa tai nimetä valmistelua lopulliseksi poistoksi.
 
 #### W7.4:n toteutussopimus
 
-**28.10.2026: A:n journal- ja kohdeluettelotallennus; ei vielä poiston tuotantokytkentää.**
+**28.10.2026: A:n journal-, kohdeluettelo- ja sidontatallennus; ei vielä poiston tuotantokytkentää.**
 Lähtö on W7.3:n hyväksytty main `11e0eadfee002806db01a1b7152532e04dec5ca4`.
 [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) omistaa ajantasaisen
 jatkamiskohdan. W7.0:n yllä olevat formaatit, keskeytystaulukko ja
@@ -4693,15 +4693,27 @@ luettelo ja tyhjä operaatiokansio poistuvat ennen journalia. Puuttuvan
 luettelon tai kansion jatko kelpaa vain tässä loppuvaiheessa, ei payload-lupana.
 Yhteiset emot, tuntematon lisätiedosto ja journal säilyvät epävarmassa tuloksessa.
 
+`WorkspaceRemnantBindingStore` toteuttaa alla nimetyt viisi metadataosoitetta,
+tiukan 4 KiB:n muodon ja kanonisen sidontatiivisteen nykyisellä byte-slot-storella.
+Tavallinen luku vaatii currentin ja kaikkien slottien saman arvon, eikä korjaa
+initial-nextiä. `clearAfterPayloadsAbsent` poistaa vain sidontametadataa;
+normaalin omistajan ja poiston `purged`-loppusiivouksen portit erotetaan.
+Jälkimmäisen sivuslottijatko vaatii erikseen tuoreen journal-/inventaario-/
+registry-/poissaolotodisteen. Puuttuva metadatahakemisto voidaan todeta ilman
+luontia tai synkronointia vain saman validoidun ancestorin ja uusitun
+poissaolotodisteen kautta; olemassa olevan hakemiston sync-virhe hylkää edelleen.
+
 Näiden ja nykyisten viereisten persistence-/adoption-regressioiden yksi
-rajattu loppuajo läpäisi 279 testiä; yksi POSIX-oikeustesti odottaa Linux-näyttöä.
+rajattu loppuajo läpäisi 352 testiä; kaksi POSIX-testiä odottaa Linux-näyttöä.
 Desktopin jälkityyppitarkistus läpäisi. Julkaisun katselmuksessa todetut
 lukukahvan sulun ja ulkoisen valinnan odotusikkunat toistettiin ennen korjausta
 neljällä hylkäävällä regressiolla ja korjattiin tarkistusjärjestykseen.
 Myös viimeisen journal-odotuksen aikana vaihtuva tyhjä juuri toistettiin
 ja korjattiin rmdir-rajan tuoreeseen lähdetarkistukseen. Riippumaton
 rajattu delta-katselmus sulki kaikki kolme havaintoa ilman muita löydöksiä.
-A:n sidontatallennus sekä B-F ovat vielä avoimia. Injektoitu ulkoinen guard,
+Sidontasiivouksen katselmuksen puuttuvan hakemiston alustakohtainen ero
+toistettiin hylkäävällä kokeella, korjattiin ja delta-katselmuksessa suljettiin.
+B-F ovat vielä avoimia. Injektoitu ulkoinen guard,
 terminal-journal ja uusi tallenninolio eivät todista payloadien todellista
 poistumista, omistajuusketjua tai prosessikatkosta. Poistokanava pysyy suljettuna.
 

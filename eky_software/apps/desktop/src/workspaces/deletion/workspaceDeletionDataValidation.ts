@@ -3,7 +3,8 @@ import { hasExactDataKeys, isPlainDataRecord } from '../registry/workspaceRegist
 
 export type WorkspaceDeletionDataFailure =
   | 'WORKSPACE_DELETE_INVENTORY_INVALID'
-  | 'WORKSPACE_DELETE_JOURNAL_CONFLICT';
+  | 'WORKSPACE_DELETE_JOURNAL_CONFLICT'
+  | 'WORKSPACE_REMNANT_BINDING_INVALID';
 
 export function invalidDeletionData(code: WorkspaceDeletionDataFailure): never {
   throw new Error(code);
