@@ -5144,6 +5144,15 @@ mainin nykyisen recovery-eston ennen yleistä virhepalautusta; se ei saa
 pudota `activeWorkspace.recoverFromFailure`-paluukäynnistykseen. Alkuperäinen
 virhe ja päättämisen virhe säilyvät erillisinä nykyisessä virheketjussa.
 
+**Ennen tämän portin kytkentää todennettava toteutusraja:** cold-forwardin
+ja cold-rollbackin nykyinen sisältötyön määräaika alkaa native-valmistelun
+jälkeen. Uuden valintaluvun valmistelu ja mahdollinen myöhäinen I/O on
+siksi sidottava nimettyyn nykyiseen päättämisomistajaan; pelkkä lisäys
+`assertCurrent`iin ei osoita työbudjettia tai leasen turvallista vapautusta.
+Vertailukohta on nykyisen `validateOwnedActiveProfile`n rajattu pending-I/O-
+ja sulkumalli. Porttia ei vielä ole kytketty. Tämä ei ole todistettu
+regressio vanhassa palautuspolussa eikä lupa muuttaa sen aikarajoja.
+
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja
 `ProfileRestoreStartupRecovery`n testit laajennetaan, ei korvata. Todista

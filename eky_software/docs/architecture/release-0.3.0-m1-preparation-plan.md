@@ -62,6 +62,8 @@ aiemmin nimetty POSIX-todennus on yhä kesken.
 Seuraavaksi katselmoidun sopimuksen vaihekohtaiset cold-/live-valtuudet
 sekä mainin alkuvalinta-, työlupa- ja `rolledBack`-cleanup-kytkentä
 säilyttäen nykyiset palautus-, kopioaktivointi- ja valitsinpalautustestit.
+Ennen valintaportin kytkentää täsmennetään vielä alkuvalmistelun työbudjetin
+ja myöhäisen I/O:n päättämisomistaja nykyisillä sulkumekanismeilla.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
 ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
 ei ole tämän kytkennän testinäyttö.
