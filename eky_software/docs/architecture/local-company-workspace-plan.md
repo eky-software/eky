@@ -5075,8 +5075,10 @@ se ei muuta palautuksen tilakonetta, journal-formaattia tai hyväksyntärajoja.
    elinkaareen. Se kaapataan ennen tämän journalin ensimmäistä korjaavaa
    lukua tai muutosta ja tarkistetaan uudelleen ennen backendin työlupaa.
    Mainin rajattu readonly-valmistelu hankkii oman restore-leasen, tarkistaa
-   startup-/main-omistajuuden ja valitun journalin uudelleen sekä vapauttaa
-   valmisteluleasen ennen cold- tai live-vaiheen omaa leasea. Tilannekuva ei
+   startup- ja valmisteluvaiheen omistajuuden sekä valitun journalin uudelleen
+   ja vapauttaa valmisteluleasen ennen cold- tai live-vaiheen omaa leasea.
+   `accepted`-valmistelu kuuluu alla kuvatun työlupasiirron valmisteluvaiheeseen,
+   ei siirron aikana kiellettyyn yleiseen `assertMainOwned`-kutsuun. Tilannekuva ei
    säilytä valmisteluleasen closurea; vaiheiden välinen muutos hylätään
    uuden omistajan tarkistuksessa. Vaaditun tilannekuvan puuttuminen ei ole
    callbackin valinnaisuutta eikä lupa palata vanhaan ohittavaan polkuun.
@@ -5124,7 +5126,7 @@ mainin fyysiseksi omistukseksi eikä hankita sisäkkäistä restore-leasea.
 | `prepareProfileRestoreColdForwardRecovery` | Täsmällinen restore-lease ja main-/staging-omistus, valintaportti, sama perusomistus uudelleen. Tämä on nykyisen `assertCurrent`in sisällä; sisältöportin ja journalin muutossuojat säilyvät. |
 | `withProfileRestoreColdRollbackAuthority` | Oma tai nimenomaisesti lainattu restore-omistaja, alkuperäisten lähteiden/ankkurin nykyiset varaukset ja sama valintaportti ennen sisältö-/muutostarkistuksia. Lainattua leasea ei hankita uudelleen eikä vapauteta apurin omana. |
 | `withProfileRestoreTerminalAuthority` | Uusi restore-lease, elävän backendin fence ja snapshot. Valintaportti tarkistetaan ennen journalin käsittelyä sekä jokaisessa terminalin `assertCurrent`issa ennen nykyistä tuoretta fence-/snapshot-/jäännösvarausten tarkistusta. Ei `workspaceReservation.assertMainOwned`-ehtoa elävälle backendille. |
-| Replacementin `withRolledBackCleanupAuthority` | Uusi täsmällinen restore-lease, startup-/kohde-/sidontatarkistus ja jo hyväksytty `clearRolledBack(expected, guard)`-kytkentä. Ei accepted-terminalia, uutta rollbackia tai payloadin poistovaltuutta. |
+| Replacementin `withRolledBackCleanupAuthority` | Tuore validointivaiheen restore-lease jatkuu saman validoinnin loppusiivoukseen. Startup-/kohde-/sidontatarkistus ja nykyinen `clearRolledBack(expected, guard)` säilyvät; ei toista leasen hankintaa tai accepted-terminalia. Alla oleva jatkoportti rajaa työn nykyiseen validointiaikaan. |
 
 Porttia ei piiloteta yleiseen `read`-wrappaukseen: sisäkkäiset snapshot-
 lukijat eivät saa kutsua samaa tarkistusta uudelleen tai kertoa raskasta
@@ -5232,26 +5234,118 @@ päällekkäistä välipistenäyttöä. Main ei vielä välitä uutta porttia, j
 ulomman omistajan invalidointi, live-/grant-/cleanup-kytkentä ja koko
 palautusketju vaativat edelleen omat alla nimetyt todisteensa.
 
-**Main-valmistelun avoin liitosraja 29.10.2026:** alkuvalinta ja sen
-valmistelulease edeltävät cold-apurien portteja. Nykyinen main lukee ensin
-palautus-, päivitys- ja replacement-journalit; uuden sidonnan kaappaus ei
-vielä kuulu tähän ketjuun. `accepted`-haara ei käytä cold-apuria, ja
-backendin työlupa kuuluu siirtovaltuudelle, ei enää mainin fyysisen
-varauksen omistajuudelle. Näille ei päätellä lisäaikaa cold-apurin määräajasta.
-Ennen main-kytkentää nimetään yhdessä alkuvalinnan, cold-valmistelun,
-accepted-valinnan, live-terminalin, grantin ja rolledBack-cleanupin nykyinen
-työ-/sulkuomistaja sekä päättymistodiste. Hyväksytty sama cold-deadline
-ei yksin ratkaise muiden vaiheiden alkuvalmistelun budjettia.
+### Main-valinnan ja vaiheomistajien yhteinen toteutussopimus
 
-Registry- ja switch-tallentimien nykyiset `inspectSlots`-luvut ovat
-korjaamattomia, mutta niiden rajapinnoissa ei ole vaiheomistajan vartijaa
-yksittäisten slottilukujen välissä. Koko luvun odotuksen katkeaminen ei
-siksi yksin todista sisäisten lukujen tai kahvasulkujen päättymistä.
-Valintatarkistus ei saa käyttää korjaavaa `read`- tai startup-resolveria
-kiertotienä. Tämä on uuden kytkennän toteutusraja, ei todettu vanhan
-palautuspolun vika tai lupa lisätä uusi yleinen I/O-omistaja. Pienin
-nykyisiin omistajiin perustuva ratkaisu ja keskeytysregressiot suljetaan
-ennen tuotantokytkentää; jo toteutettuja cold-portteja ei tehdä uudelleen.
+Rajaus 29.10.2026 ratkaisee uuden valintakytkennän omistajat ilman uutta
+manageria tai aikabudjettia. Nykyinen alkuperäinen journalien `peek`-luokittelu
+säilyy. Alla oleva cold-aika alkaa ensimmäisestä **uudesta valintatarkistuksesta**,
+ei takautuvasti koko sovelluksen käynnistyksestä. Tavallinen palautus, C ja
+sidonnaton yhteensopivuus säilyvät aiemmin nimetyin regressioin.
+
+| Vaihe ja nykyinen omistaja | Työaika ja päättymistodiste |
+| --- | --- |
+| Mainin cold-alkuvalinta | Aseta hyväksytty absoluuttinen 35 000 ms deadline ennen valmisteluleasen hankintaa ja ensimmäistä valintalukua. Nykyinen main-varaus sekä täsmällinen restore-lease suojaavat readonly-kaappausta. Vapauta valmistelulease vain päättyneen työn jälkeen; välitä sama deadline cold-apurille. Keskeneräiselle luvulle ei lisätä omaa sulkuaikaa. |
+| `accepted`-alkuvalinta | Säilytä ensin `prepareBeforeBackend`in korjaamaton journalivalinta. Kaappaa uusi sidonta-/registry-/switch-tilannekuva `bind`in `prepareMainOwned`-callbackissa ennen fyysisen varauksen vapautusta ja lapsen `prepare`-viestiä. `startDesktopBackend`in jo käynnissä oleva 30 000 ms readiness-aika omistaa tämän työn. |
+| Backendin grant | Saman käynnistyksen jäljellä oleva readiness-aika; valintatarkistus ennen perusadapterin `assertGrant`ia ja sen jälkeen. Säilytä kertakäyttöinen synkroninen `assertCurrent` juuri ennen työluvan lähetystä. Molemmat alkuperäiset prepare/grant-tehtävät kuuluvat backendin nykyiseen yhteiseen 3 000 ms virhesulkuun. Exit ei yksin salli reclaimia. |
+| Live-terminal | Nykyisen `withProfileRestoreTerminalAuthority`n 35 000 ms ja sen oma yhteinen 3 000 ms sulku. Seuraa alkuperäisiä metadata- ja sulkutehtäviä, ei vain aikakatkaistua odotusta. Keskeneräisessä työssä säilytä lease ja varaukset sekä invalidioi backend-fence ennen sulkuodotusta. |
+| `rolledBack`-loppusiivous | `validateOwnedActiveProfile`n saman 35 000 ms työn sisäinen jatko; sama tuore validointilease lainataan loppusiivoukselle. Nykyinen yhteinen 6 000 ms sulku palvelee jo aloitettujen tehtävien päättymistä ja fencen sulkua, ei uusia journalipoistoja. Uutta 35 sekunnin terminalia ei aloiteta. |
+
+**Readonly-portti ja työlupa.** Laajenna vain nykyisiä registry-/switch-
+`inspectSlots`-lukuja valinnaisella synkronisella vaiheguardilla. Tarkista
+vartija ennen ja jälkeen jokaisen slotin odottavan luvun sekä ennen tuloksen
+palautusta. Alkuperäinen tehtävä sisältää avoimien kahvojen `finally`-sulut;
+guard ei jätä niitä tekemättä. Vanha kutsuja ilman guardia säilyttää
+käyttäytymisensä. Mainin valintalukija käyttää näitä samoja readonly-portteja,
+ei korjaavaa `read`ia, startup-resolveria tai rinnakkaista slottitoteutusta.
+Pelkkä `() => void` -tyyppi ei todista synkronisuutta: guardin paluun pitää
+olla ajonaikaisesti `undefined`. Promise tai muu paluu hylätään ennen
+seuraavaa lukua tai muutosta; mahdollisen Promisen hylkäys käsitellään ilman
+irrallista poikkeusta. Sama sääntö koskee viimeisiä mutaatiovartijoita.
+
+`bind.prepare` pitää fyysisen varauksen callbackin yli ja tarkistaa sen
+uudelleen. Sen sisäiseen callbackiin välitetään saman siirtovaiheen
+toistettava synkroninen guard: sukupolvi, startup, signal, `preparing` ja
+sama hallussa oleva varaus. Yleiset `assertMainOwned`/`assertMainCurrent`
+eivät kelpaa aktiivisen siirron aikana. Grantin valintaluku käyttää
+startup-/asennus- ja siirtovaltuutta, ei mainin fyysistä omistajuutta tai
+sisäkkäistä restore-leasea. Lopullista kertakäyttöistä grant-guardia ei
+käytetä toistettavana lukuvartijana.
+
+Prepare- ja grant-callbackit palauttavat **koko alkuperäisen tehtävän**,
+myös kahvasulun ja valmisteluleasen päättämisen. Ne eivät palauta vain
+keskeytettyä odotus-Promisea. Backendin nykyinen päättymisseuranta kattaa
+siten myös wrapperin ennen/jälkeen-luvut. Keskeytys sulkee uudet luvut;
+keskeytyneen accepted-kaappauksen leasea ei vapauteta myöhäisen tuloksen
+perusteella. Epävarma sulku säilyttää ulomman installation-omistajan.
+
+**RolledBack-jatkon täsmällinen paikka.** Vain uusi W7.4-kutsu antaa
+`validateAfterBackend`ille rajatun `withValidatedRolledBackProfile(use)`-
+jatkoportin. `use(reportFirstFailure)` vastaanottaa validointiomistajan
+synkronisen, ei-heittävän ensivirheen kirjaajan. Portti ei korvaa muiden
+kutsujien `validateActiveProfile`-polkua.
+Main käyttää nykyistä `validateOwnedActiveProfile`a ja tuoretta
+`activeValidationOwner`ia. Sen nykyisen `withProfileSnapshot`-käytön sisälle
+lisätään valinnainen jatko: sisältö ja lineage validoidaan, health tarkistetaan,
+sitten nykyinen recovery suorittaa oman `finishRolledBackCleanup`insa kerran.
+Sama valittu journal, tuore metadata, fence ja snapshot suojaavat siivouksen.
+Sisältövalidointia ei ajeta uudelleen, eikä cleanup kutsu ulompaa
+`withInspectionOperation`ia tai `withProfileSnapshot`ia sisäkkäin.
+
+Main lainaa jatkon elävän valtuuden nykyiselle
+`withRolledBackCleanupAuthority`-portille vain callbackin ajaksi. Ulompi
+`use` saa kutsukohtaisen sukupolven, ja sen kertakäyttö kulutetaan ennen
+ensimmäistä odotusta. Käyttämättä jäänyt, toistettu tai myöhäinen kutsu
+ei tuota `ready`ä. Onnistuminen, virhe ja peruutus sulkevat sukupolven
+pysyvästi. Lainattu guard kaappaa juuri tämän valtuuden; se ei lue myöhemmin
+vaihtuvaa main-kenttää. Vanhan kutsun `finally` ei tyhjennä uudempaa lainaa.
+Koko jatko ja sen `cleanupWork`-join ovat validointiomistajan seuraamaa
+alkuperäistä työtä. Aikarajan jälkeen omistaja saa palauttaa epävarman
+tuloksen nykyisen sulun puitteissa; ulkopuolelle ei jää uutta rajatonta
+joinia. Guard suljetaan synkronisesti ennen odotuksen keskeyttämistä.
+Recovery välittää ensimmäisen havaitun virheen `reportFirstFailure`-porttiin
+ennen mahdollista joinia. Ensimmäinen ilmoitus sulkee jatkovaltuuden ja
+keskeyttää työn odotuksen synkronisesti; alkuperäinen työ säilyy seurannassa.
+Myöhempi timeout ei korvaa ensivirhettä. Suljetun kutsun
+myöhäinen ilmoitus ei muuta palautettua tulosta tai seuraavan operaation
+ensisyytä. Sisältö-/health-hylkäys, cleanup-hylkäys ja sulkuvirhe
+säilyvät eri vaiheina; cleanup-virhe ei käynnistä uutta rollbackia.
+`ready` vaatii jatkon, snapshot-/fence-sulun ja leasen vapautuksen onnistumisen.
+
+Nykyinen `clearRolledBack` saa erillisen synkronisen viimeisen mutaatioguardin
+ennen jokaista uutta `rmdir`-kutsua ja journal-slotin poistoa viimeisen
+odotuksen jälkeen. Se ei korvaa nykyisiä async-sisältö-/journal-tarkistuksia
+tai kolmannen parametrin rollback-juuren poistotodistetta. Myös
+`requireTerminalJournal`in korjaava `journal.read` välittää saman guardin
+viimeisille rename- ja sivuslottipoistokohdille; pelkkä `clear`in suojaus
+ei riitä. Journalin `clear` välittää guardin varsinaiselle poistokohdalle.
+Nykyiset slot- ja sisältötarkistukset säilyvät näiden guardien edellä. Jo aloitettua
+I/O:ta ei väitetä peruutetuksi; uutta poistoa ei aloiteta peruutuksen jälkeen.
+Vanhojen kutsujien kattavuus ja journalin viimeiseksi jättävä järjestys säilyvät.
+
+**Epävarma lopputulos.** Kaikki vaiheet säilyttävät ensimmäisen syyn ja
+erillisen sulkutuloksen. Main lukitsee `restoreRuntimeRecoveryBlocked`in
+ennen yleistä recoveryä ja tarkistaa sen ennen mahdollista invalidoinnin
+seurauksena epäonnistuvaa `assertMainOwned`-kutsua. Epävarma työ ei vapauta
+leasen tai fyysisen varauksen omistajuutta, käynnistä toista yritystä tai
+sulje valintatilannekuvaa onnistuneena. Myöhäinen valmistuminen ei poista
+estoa. Onnistunut terminal sulkee valintatilannekuvan ennen
+`activeWorkspace.accept`-, W6- ja FirstStart-siirtymiä.
+
+Toteutusjärjestys on readonly-guardit ja mainin cold/prepare/grant-liitos,
+sitten saman sopimuksen live-/rolledBack-jatkot ja yhteinen main-regressio.
+258 testin cold-porttinäyttöä ei toteuteta uudelleen. Nykyisten viiden
+omistajatiedoston 223 kontrollitestiä läpäisivät 29.10.2026 ilman
+tuotantokoodin muutoksia. Ne todentavat ratkaisun nykyisiä lähtömekanismeja,
+eivät vielä uusia jatkoportteja, main-kytkentää tai paketoitua palautusta.
+Uusi kohdenäyttö vaatii lisäksi keskeytyksen jokaisen slottiluvun ja
+viimeisen mutaatiota edeltävän odotuksen aikana, async-guardin hylkäyksen,
+myöhäisen kahvasulun, käyttämättömän/toistetun/vanhan jatkon sekä alkuperäisen
+virheen säilymisen myöhemmän timeoutin yli. Vertaa säilyneitä tiedostoja ja
+varauksia, ei vain lopullista virhekoodia.
+Rajattu riippumaton sopimuskatselmus ja sen delta läpäisivät yllä kuvattujen
+korjaavan luvun guardin, ajonaikaisen synkronisuuden, ensivirheportin ja
+kertakäyttöisen jatkovaltuuden täsmennysten jälkeen. Toteutuksen katselmus
+ja uusi kytkentänäyttö ovat edelleen erilliset portit.
 
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja

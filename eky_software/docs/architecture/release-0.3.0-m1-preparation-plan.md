@@ -73,13 +73,21 @@ säilyttää oman tai lainatun huoltovarauksen. Yhdeksän tiedoston kohdesarja
 läpäisi 258 testiä (40 uutta); desktopin tyypitys ja rajattu riippumaton
 koodikatselmus läpäisivät. Aiemmat kohdeajot
 ovat päällekkäistä näyttöä, eivät tähän lisättäviä testimääriä.
-Main ei vielä välitä porttia. Seuraavaksi sen alkuvalinnan ja cold-kutsujien
-yhteinen määräaika sekä ulomman omistajan säilyminen ensivirhettä peittämättä;
-accepted-, live-, grant- ja rolledBack-cleanup-liitokset vaativat oman
-todennuksensa. Ennen kytkentää ratkaistaan niiden yhteinen
-valmistelu-/sulkuomistajuus ja readonly registry-/switch-lukujen päättyminen;
-cold-apurin hyväksyntä ei anna muiden vaiheiden lisäbudjettia. Tämä ei ole
-main-kytkennän tai koko palautusketjun hyväksyntä.
+Main ei vielä välitä porttia. **29.10.2026 yhteinen
+[vaiheomistajien toteutussopimus](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus)**
+nimeää cold-alkuvalinnan saman 35 sekunnin määräajan, accepted-valinnan
+nykyisen backend-valmistelun sisällä sekä grantin alkuperäisen tehtävän
+seurannan. Live-terminal säilyttää oman nykyisen budjettinsa. RolledBack-
+loppusiivous käyttää tuoreen validointileasen ja saman sisältötarkistuksen
+jäljellä olevan ajan; uutta terminal-odotusta ei lisätä.
+Seuraavaksi readonly-slottilukujen guardit, mainin kaappaus-/työlupakytkentä
+ja saman sopimuksen live-/rolledBack-jatkot regressioineen. Viiden nykyisen
+omistajatiedoston 223 kontrollitestiä läpäisivät. Ne ovat lähtömekanismien
+näyttöä, eivät uuden kytkennän hyväksyntä tai aiempiin määriin lisättävä
+testikokonaisuus. Ensivirhe, keskeneräisen I/O:n omistajuus sekä viimeiset
+synkroniset poistovartijat vaativat nimetyt uudet regressiot.
+Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta
+läpäisivät; tämä valmistaa toteutuksen, ei sulje kytkennän näyttöporttia.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
 ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
 ei ole tämän kytkennän testinäyttö.
