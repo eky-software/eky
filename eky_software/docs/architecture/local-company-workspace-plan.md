@@ -5144,14 +5144,69 @@ mainin nykyisen recovery-eston ennen yleistä virhepalautusta; se ei saa
 pudota `activeWorkspace.recoverFromFailure`-paluukäynnistykseen. Alkuperäinen
 virhe ja päättämisen virhe säilyvät erillisinä nykyisessä virheketjussa.
 
-**Ennen tämän portin kytkentää todennettava toteutusraja:** cold-forwardin
+**Valintatyön budjetti ja sulku, rajattu selvitys 28.10.2026:** cold-forwardin
 ja cold-rollbackin nykyinen sisältötyön määräaika alkaa native-valmistelun
-jälkeen. Uuden valintaluvun valmistelu ja mahdollinen myöhäinen I/O on
-siksi sidottava nimettyyn nykyiseen päättämisomistajaan; pelkkä lisäys
-`assertCurrent`iin ei osoita työbudjettia tai leasen turvallista vapautusta.
-Vertailukohta on nykyisen `validateOwnedActiveProfile`n rajattu pending-I/O-
-ja sulkumalli. Porttia ei vielä ole kytketty. Tämä ei ole todistettu
-regressio vanhassa palautuspolussa eikä lupa muuttaa sen aikarajoja.
+jälkeen. Nykyinen lease ei ole ajastin, eikä myöhemmin käynnistyvän backendin
+readiness-aika kata tätä alkuvalmistelua. Lähdekatselmus ja kaksi hallitun
+kellon koetta vahvistivat, ettei uusi alkuvalintaluku saa niistä määräaikaa.
+Tämä ei ole todistettu regressio vanhassa palautuspolussa.
+
+**Omistajan hyväksymä rajaus 28.10.2026:** vain uuden W7.4-kytkennän cold-
+vaiheessa nykyinen 35 000 ms työaika alkaa ensimmäisestä valintatarkistuksesta.
+Sama absoluuttinen määräaika kulkee alkuvalmistelusta sisältötyön loppuun;
+valinnan kaappaus, leasen vaihto tai native-valmistelu ei nollaa sitä.
+Tämä säilyttää sekuntirajan mutta vähentää sisältötyön jäljellä olevaa
+aikaa valmistelun verran. Tavallisten kutsujien ajoitus ei muutu.
+Erillinen uusi valmisteluaika kasvattaisi kokonaisbudjettia eikä ole
+hyväksytty vaihtoehto. Porttia tai ajastuksen aloitusmuutosta ei ole kytketty.
+
+Sulun toteutusraja säilyy aikapäätöksestä riippumatta: vaiheomistaja seuraa
+alkuperäistä lukutehtävää tiedostokahvan sulkuun asti, ei vain aikakatkaistua
+odotus-Promisea. Peruutus sulkee uudet luvut ja jatkovaltuuden synkronisesti;
+jo avatun kahvan `finally`-sulku saa päättyä. Myöhäinen tulos ei anna
+julkaisua, uutta palautusta tai jälkikäteen käynnistyvää leasen vapautusta.
+Live-terminal käyttää vain oman nykyisen sulkuajan jäljellä olevan osan,
+ei erillistä lisäodotusta. Sulun epävarmuudessa nykyinen backendin
+huoltovaltuus invalidioidaan ennen odotusta ja kirjoitusesto säilytetään;
+pelkkä mainin lease tai fyysisen varauksen invalidointi ei estä elävän
+backendin kirjoituksia.
+Cold-valmistelulle ei päätellä omaa sulkuaikaa
+sisäisen inspectorin vakioista: ilman olemassa olevaa sulkuomistajaa
+keskeneräinen luku jättää varauksen ja huoltovaltaan kuuluvan eston voimaan
+sekä palauttaa epävarman sulkutuloksen. Aineisto säilyy; loppuun kuittaamaton
+työ ei oikeuta protected-cleanupiin tai seuraavan omistajan käynnistykseen.
+Epävarmuus invalidioi myös ulomman startup-/asennusomistajan ennen
+virhepalautusta, ei vain lähde- tai ankkurivarausta. Muuten ulompi
+virheenkäsittely voisi vapauttaa fyysisen varauksen keskeneräisen luvun alta.
+Oman leasen `finally`-vapautus estetään tällöin; lainatun leasen omistaja
+saa saman epävarman tuloksen eikä vapauta sitä onnistuneena sulkuna.
+Mainin pysyvä recovery-esto tarkistetaan ennen myöhempää omistajuusväitettä,
+jotta invalidoinnin seuraus ei peitä ensivirhettä. Myöhäinen valmistuminen
+ei poista estoa eikä käynnistä vapautusta tai paluukäynnistystä.
+
+Kaksi muuta rajattua koetta käyttivät nykyistä sidontalukijaa, todellista
+synteettisen tiedoston kahvaa ja hallittua sulkuviivettä. Odotuksen
+katkeaminen ei päättänyt alkuperäistä lukua, ja suljettu valtuus esti
+seuraavan slotin luvun myös myöhäisen sulun jälkeen. Kaikki neljä koetta
+läpäisivät. Ne eivät vielä todista mainin kytkentää, leasen tuotannollista
+säilytystä, käyttöjärjestelmään juuttuneen luvun keskeytystä tai koko
+palautusketjua. Nykyisen `validateOwnedActiveProfile`n
+pending-I/O-malli on vertailukohta, ei cold-vaiheen uusi aikabudjetti.
+
+Ensimmäinen toteutuspala on cold-apurien rajattu portti: kutsuja välittää
+ennen alkuvalintaa asetetun absoluuttisen määräajan ja epävarman sulun
+synkronisen ilmoituksen nykyiselle ulommalle omistajalle. Apuri seuraa
+alkuperäisiä tehtäviä sulkuineen ja estää oman leasen vapautuksen, kun
+päättymistodiste puuttuu. Myös vielä valmistuva native-varauksen hankinta
+kuuluu tähän päättämistodisteeseen; myöhäinen varaus ei saa jäädä ilman
+omistajaa. Vanhat kutsujat säilyttävät nykyisen rajapinnan käyttäytymisen.
+Pysyvät regressiot todistavat kuluneen alkuvalmisteluajan, kesken luvun
+katkeamisen, myöhäisen päättymisen sekä oman ja lainatun leasen säilymisen.
+Mainin accepted-, grant- ja rolledBack-cleanup-liitokset todennetaan tämän
+jälkeen omissa nykyisissä vaiheomistajissaan. Callbackin jälkeinen
+`cleanupWork`-odotus ei saa kiertää vaiheomistajan määräaikaa eikä antaa
+siivouslupaa päättymättömälle työlle. Näitä liitoksia ei merkitä valmiiksi
+cold-apurien kokeiden perusteella.
 
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja

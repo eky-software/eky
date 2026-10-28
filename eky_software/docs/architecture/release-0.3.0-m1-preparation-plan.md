@@ -62,8 +62,17 @@ aiemmin nimetty POSIX-todennus on yhä kesken.
 Seuraavaksi katselmoidun sopimuksen vaihekohtaiset cold-/live-valtuudet
 sekä mainin alkuvalinta-, työlupa- ja `rolledBack`-cleanup-kytkentä
 säilyttäen nykyiset palautus-, kopioaktivointi- ja valitsinpalautustestit.
-Ennen valintaportin kytkentää täsmennetään vielä alkuvalmistelun työbudjetin
-ja myöhäisen I/O:n päättämisomistaja nykyisillä sulkumekanismeilla.
+Valintaportin alkuvalmistelulla ei ole nykyisessä cold-ketjussa käynnissä
+olevaa työdeadlinea. Rajattu katselmus ja neljä synteettistä koetta
+vahvistivat budjettirajan sekä alkuperäisen luvun ja sen sulun erottamisen
+odotuksen katkeamisesta. Omistaja hyväksyi 28.10.2026 vain uuden kytkennän
+saman 35 sekunnin työajan alkamisen ensimmäisestä valintatarkistuksesta
+ilman nollausta; tuotantokytkentää ei vielä muutettu. Seuraava rajattu
+toteutuspala on cold-apurien yhteinen määräaika ja keskeneräisen työn
+omistajuuden säilyminen regressioineen. Epävarma sulku estää myös ulomman
+omistajan vapautuksen ja paluukäynnistyksen ensivirhettä peittämättä.
+Kohdekokeet eivät ole main-kytkennän tai koko palautusketjun hyväksyntää;
+accepted-, grant- ja rolledBack-cleanup-liitokset jäävät omaan todennukseensa.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
 ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
 ei ole tämän kytkennän testinäyttö.
