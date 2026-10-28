@@ -4993,6 +4993,129 @@ raakakenttiä ei lisätä. B:n koko jäännösluettelo-/cleanup- ja cold-liitos
 sekä F:n prosessi-, paketti-, salaus/purku- ja PR/main-portit jäävät erillisiksi
 vaatimuksiksi. Tämä suunnitelma ei yksin todista yhtäkään niistä.
 
+##### Replacementin käynnistyspolkujen yhteinen omistajuusraja
+
+**Rajattu toteutusratkaisu:** säilytetään nykyinen tuotannon deferred-handoff
+ja startup-hyväksyntä. Koordinaattorin vaihtoehtoinen välitön
+`ensurePreviousWorkspaceRunning -> accept/clearRolledBack` poistetaan vasta
+alla nimetyn vastaavan kattavuuden jälkeen. Sille ei rakenneta toista
+live-valtuutta eikä pysähtyneen runtimen tarkistusta muuteta valinnaiseksi.
+Tämä on W7.4 B:n liitoksen täsmennys, ei uusi palautusarkkitehtuuri.
+
+**Ensimmäinen toteutusosa:** koordinaattorin yksikkötestit ja oikean salatun
+backupin kolme system-tapausta käyttävät nyt luovutusta ja erillistä nykyistä
+startup-recoveryä. Rajattu 177 testin sarja sekä kolme system-testiä läpäisivät;
+desktopin ja E2E:n tyypitys läpäisi. Uusi `rolledBack`-cleanup-portti on
+startup-omistajassa ja replacement-factoryssä; se on todennettu myös oikeilla
+tiedostotavuilla sekä valtuuden menetyksellä. Sen main-valtuus ja pysyvän
+sidonnan tarkistusten kytkentä ovat vielä tekemättä. Katselmuksen
+uudelleenkutsuhavainto korjattiin ja regressio sekä delta-katselmus läpäisivät.
+Tämä ei ole main-/native-/pakettihyväksyntä: välitön lähdehaara säilyy vielä
+poistamisen näyttöporttiin asti. Aiemmat testimäärät ovat päällekkäistä näyttöä,
+eivät tähän lisättäviä uusia läpäisyjä.
+
+Lähtökartoituksessa `workspaceManagementComposition.ts` antaa aina
+`runtimeHandoff`in. Myös koordinaattorin yksikköfixture ja
+`apps/e2e/tests/system/workspaceBackupReplacement.spec.ts` muodostavat
+koordinaattorin, mutta käyttivät välitöntä polkua. Jälkimmäisen oikean
+salatun backupin, SQLiten, historiallisen migraation ja PDF-tavujen näyttö
+säilytetään. Sen lifecycle-laskurit eivät yksin todista oikeaa prosessisulkua.
+
+| Vaihe ja omistaja | Valtuus ja päättämisehto |
+| --- | --- |
+| Korvauskoordinaattori ennen luovutusta | Täsmällinen `replace`-lease, pysähtynyt runtime, mainin fyysinen varaus, sama registry ja julkaistu sidonta. Sisältö- ja journal-suojat säilyvät. Ei live-acceptia tai käynnistystä tässä omistajassa. |
+| Nykyinen service ja deferred-relaunch | Pyyntö tehdään vasta viimeisen onnistuneen sidonta-/valtuustarkistuksen jälkeen. Komennon I/O ja finally-release päättyvät ennen completionia. Pysyvä epävarmuus tai ulkoinen shutdown estää myös jonotetun/myöhäisen paluun. Vapautettua replace-leasea ei käytetä completionin lupana. |
+| Uuden käynnistyksen nykyinen recovery-omistaja | Hankkii oman tuoreen installation-/restore-valtuutensa ja valitsee täsmällisen journalin, kohteen ja lineagen uudelleen. Vanhaa closurea, leasen kahvaa tai pelkkää paluupyyntöä ei hyväksytä jatkoluvaksi. |
+| Backendin jälkeinen hyväksyntä | Nykyinen `withProfileRestoreTerminalAuthority` suojaa elävän backendin kirjoitukset ja todentaa snapshotin, sisällön sekä poistettavien jäännösjuurten varaukset. Se ei väitä aktiivisen backendin olevan poissa eikä käytä vanhan sidontakirjoittajan `assertPublished`-kutsua. |
+| Palautetun alkuperäisen yrityksen loppusiivous | `validateRolledBackProfile` säilyttää ensin oikean sisältövalidoinnin. Uuden startup-omistajan rajattu cleanup-valtuus viedään `clearRolledBack(expected, assertRecoveryAuthority)`-porttiin ennen korjaavaa journal-lukua sekä tyhjien hakemistojen ja journalin poistoon. Tämä ei ole accepted-terminal eikä payload-poistolupa. |
+
+Uusi käynnistys lukee mahdollisen sidonnan nykyisen
+`WorkspaceRemnantBindingStore.inspect`-portin kautta, ei korjaavana lukuna
+eikä uuden sidonnan julkaisuna. Läsnä oleva sidonta sovitetaan täsmälliseen
+workspaceen, lineageen, omistajaan ja operation-ID:hen; kaikki slotit sekä
+valitun tiedoston tavut ja identiteetti tarkistetaan. Uuden omistajan
+vaihekohtainen valtuus tarkistetaan odotusten jälkeen ja nykyisillä
+journal-/tiedostomuutosten rajoilla. Cold-vaiheessa vaaditaan poissaolo ja
+main-omistus; live-terminalissa sen oma kirjoitussuoja ja tuore sisältö-/
+jäännösvaltuus. Näitä ei yhdistetä löyhäksi joko-tai-vartijaksi.
+Myös alussa todettu sidonnan puuttuminen lukitaan tämän käynnistyksen
+valinnaksi: kesken työn ilmestyvää sidontaa ei omaksuta. Läsnä olevan
+sidonnan katoaminen tai vaihtuminen torjutaan ennen seuraavaa muutosta.
+Vanha sidonnaton recovery ei saa takautuvasti keksittyä poistovaltuutta;
+sen nykyinen palautussopimus säilyy. Pelkkä puuttuva sidonta ei todista,
+ettei sellaista olisi ollut aikaisemmassa prosessissa; tätä historiatietoa
+ei päätellä muistissa olleesta kuitista tai journalin puuttumisesta.
+W7:n jäännöspayloadin poistolupa ja palautuksen hyväksyntä ovat eri asioita.
+
+**`rolledBack`-haaran erillinen liitos:** nykyinen
+`ProfileRestoreStartupRecovery.validateStartup` kutsuu tässä haarassa suoraan
+`clearRolledBack`ia; `withProfileRestoreTerminalAuthority` ei hyväksy tätä
+vaihetta. Sitä ei laajenneta huomaamatta rolledBack-siivoajaksi. Nykyiseen
+startup-omistajaan välitetään replacementin rajattu
+`withRolledBackCleanupAuthority(journal, use)`-callback, joka hankkii uuden
+täsmällisen restore-leasen ja pitää sen koko cleanupin ja aloitettujen
+I/O:iden päättymisen ajan. Main kytkee siihen nykyisen startup-/shutdown-
+valtuuden, valitun workspace-/lineage-kohteen ja edellä lukitun sidontatilannekuvan
+tuoreen tarkistuksen. Vartija ei käytä vanhaa replace-leasea tai väitä
+käynnissä olevaa alkuperäistä backendia pysähtyneeksi. Se annetaan nykyisen
+transaktion `assertRecoveryAuthority`-parametrille: vain ulompi ennen-/
+jälkeen-tarkistus ei riitä. `use` ei saa vaihtaa valittua journalia.
+Muut startup-kutsujat säilyttävät nykyisen sopimuksensa; replacementin
+main-kytkennässä tämä callback ei ole valinnainen no-op.
+
+Tämä haara poistaa edelleen vain todistetusti tyhjät rollback-hakemistot
+ei-rekursiivisesti ja täsmällisen journalin. Epäonnistuneen uuden sisällön
+aineisto ja sen sidonta säilyvät, kun payloadia on jäljellä. Menetetty valtuus,
+muuttunut sidonta tai myöhäinen hakemistomerkintä estää seuraavan muutoksen
+ja `ready`-tuloksen; nykyinen epäonnistumisen backend-sulku ja ensivirheen
+säilytys pysyvät. Myös leasen vapautusvirhe säilyy erillisenä epävarmuutena.
+Tämä liitos ei korvaa cold-rollbackin pysähtyneen kirjoittajan todistusta.
+
+**Toteutus ja poistamisen näyttöportti:**
+
+1. Ensin testit käyttävät jo nykyistä `runtimeHandoff`-vaihtoehtoa. Onnistunut
+   koordinaattori jättää `validationStarting`-journalin ja pysähtyneen
+   runtimen; tunnettu activation-virhe jättää todistetun `rolledBack`-tilan.
+   Molemmissa korvauslease vapautuu ennen uutta omistajaa. Ennen aktivointia
+   syntynyt turvallisesti siivottu virhe palautuu nykyiseen normaaliin
+   startupiin. Epävarma sulku tai julkaisu ei saa tätä paluuta.
+2. `WORKSPACE-REPLACE-001/002` jatkavat saman testitapauksen sisällä erikseen
+   nykyisellä `createWorkspaceBackupReplacementStartupRecovery`-ketjulla
+   uuden omistajan alla. Testi ei pääty handoffiin. Nykyinen todellinen
+   sisältövalidointi, uusi session, yksi omistaja, journalin/loppusiivouksen
+   tulos, preRestore ja muiden tavujen muuttumattomuus säilyvät.
+   `WORKSPACE-REPLACE-003` säilyttää väärän salasanan ja muutettujen tavujen
+   torjunnan ennen quiescea; paluuta ei pyydetä eikä yritystä avata uudelleen.
+3. Koordinaattorin vanha post-start-validointivirheen rollback-näyttö ja
+   accepted-siivousvirheen säilytysnäyttö siirtyvät nimettyyn
+   coordinator -> uusi startup -ketjutestiin. Ensimmäinen sulkee uuden
+   kirjoittajan ennen rollbackia ja todistaa alkuperäiset DB-/PDF-tavut
+   sekä seuraavan käynnistyksen terveyden. Jälkimmäinen säilyttää uuden
+   sisällön ja accepted-journalin eikä aloita rollbackia. Guardin menetys,
+   sivuslotin vaihtuminen, väärä uusi kohde, puuttuva kuittaus ja vanha
+   lease torjutaan; alkuperäinen syy ja siivousvirhe säilyvät erillään.
+   `rolledBack`-cleanupissa katkot tehdään erikseen tyhjän hakemiston ja
+   journal-slottien poiston kohdalla: valtuuden menetys tai sidonnan muutos
+   estää seuraavan poiston, säilyttää jäljellä olevat tavut ja estää `ready`n.
+4. Oikean main-compositionin nykyiset testit ja nimetyt Electron-/packaged-
+   portit todistavat oikean sulun, varauksen siirron ja uuden käynnistyksen.
+   System-fixturen laskuria tai ilman todellista terminal-/rollback-valtuutta
+   ajettua composition-proofia ei nimetä native-todisteeksi. R0-testimatriisin
+   kuvaus päivitetään muuttuneelle ketjulle; tapauksia tai tarkistuksia ei
+   pudoteta siksi, että niiden entinen kutsukohta poistuu.
+5. Vasta vastaavan kohde-/system-/main-näytön jälkeen `runtimeHandoff`
+   tehdään pakolliseksi ja koordinaattorin välitön haara, vain sen tarvitsemat
+   readiness-portit sekä compositionin `relaunchOnlyRuntimeReadiness`-stub
+   poistetaan samana käyttökelpoisena palana. Muut readiness-, lifecycle-,
+   activation-migration- ja startup-kuluttajat säilyvät. Lopuksi molempien
+   pakettien tyypitys, vaikutusalueen testit ja riippumaton kytkentäkatselmus;
+   koko W7.4 tarvitsee yhä F:n puhtaan paketin ja PR/main-portit.
+
+Tämä ratkaisu ja yllä rajattu kohdenäyttö eivät vielä hyväksy main-kytkentää.
+Vanha polku säilyy lähteessä, kunnes korvaava näyttö on olemassa; sitä ei
+jätetä pysyväksi valinnaiseksi turvarajaksi. Epäselvä uusi valtuus pysäyttää
+vain vaikutusalueen toteutuksen, ei avaa koko palautusjärjestelmää uudelleen.
+
 ##### W7.4:n valtuuden luovutus ja elinikä
 
 Nykyinen W7.3 tarkistaa alkuperäisen registry-valinnan ja työtilajuuren

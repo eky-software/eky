@@ -48,11 +48,17 @@ export type ProfileRestoreRollbackAcceptance = (
   use: (admission: ProfileRestoreColdRollbackAdmission) => Promise<void>,
 ) => Promise<void>;
 
+export type ProfileRestoreRolledBackCleanup = (
+  journal: Readonly<ProfileRestoreActivationJournal>,
+  use: (assertRecoveryAuthority: () => Promise<void>) => Promise<void>,
+) => Promise<void>;
+
 interface ProfileRestoreStartupRecoveryDependencies {
   journalStore: Pick<ProfileRestoreActivationJournalStore, 'peek' | 'read'>;
   observer?: ProfileRecoveryOperationalObserver;
   withTerminalAuthority?: ProfileRestoreTerminalAcceptance;
   withRollbackAuthority?: ProfileRestoreRollbackAcceptance;
+  withRolledBackCleanupAuthority?: ProfileRestoreRolledBackCleanup;
   transaction: Pick<
     ProfileRestoreActivationTransaction,
     | 'commitAcceptance'
@@ -252,8 +258,7 @@ export class ProfileRestoreStartupRecovery {
     }
     try {
       if (input.mode === 'validateRolledBackProfile') {
-        await this.dependencies.transaction.clearRolledBack(this.requireSelectedJournal());
-        this.selectedJournal = undefined;
+        await this.finishRolledBackCleanup();
       } else {
         await this.finishAcceptance();
       }
@@ -366,6 +371,60 @@ export class ProfileRestoreStartupRecovery {
     this.activeStartupOperations++;
     try { return await operation(); }
     finally { this.activeStartupOperations--; }
+  }
+
+  private async finishRolledBackCleanup(): Promise<void> {
+    const selected = this.requireSelectedJournal();
+    if (this.dependencies.withRolledBackCleanupAuthority === undefined) {
+      await this.dependencies.transaction.clearRolledBack(selected);
+    } else {
+      let active = true;
+      let started = false;
+      let completed = false;
+      let cleanupWork: Promise<void> | undefined;
+      let ownerFailure: { readonly error: unknown } | undefined;
+      let firstFailure: { readonly error: unknown } | undefined;
+      const assertSelected = () => {
+        if (!active) throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+        assertProfileRestoreActivationJournalMatches(selected, this.requireSelectedJournal());
+      };
+      try {
+        await this.dependencies.withRolledBackCleanupAuthority(selected, assertAuthority => {
+          assertSelected();
+          if (started) throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+          started = true;
+          cleanupWork = (async () => {
+            const assertCurrent = async () => {
+              assertSelected();
+              await assertAuthority();
+              assertSelected();
+            };
+            await assertCurrent();
+            await this.dependencies.transaction.clearRolledBack(selected, assertCurrent);
+            await assertCurrent();
+            completed = true;
+          })();
+          void cleanupWork.catch(error => { firstFailure ??= { error }; });
+          return cleanupWork;
+        });
+      } catch (error) {
+        ownerFailure = { error };
+        firstFailure ??= ownerFailure;
+      }
+      finally { active = false; }
+      // Join any started I/O even if the owner returned without awaiting use().
+      try { await cleanupWork; }
+      catch (error) {
+        if (ownerFailure !== undefined && ownerFailure.error !== error) {
+          throw new AggregateError(firstFailure?.error === error
+            ? [error, ownerFailure.error] : [ownerFailure.error, error], 'PROFILE_RESTORE_RECOVERY_REQUIRED');
+        }
+        throw error;
+      }
+      if (ownerFailure !== undefined) throw ownerFailure.error;
+      if (!completed) throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    }
+    this.selectedJournal = undefined;
   }
 
   private async finishAcceptance(): Promise<void> {

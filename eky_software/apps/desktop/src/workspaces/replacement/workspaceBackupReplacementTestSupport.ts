@@ -1,6 +1,7 @@
 import { resolve } from 'node:path';
 
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import { ProfileRestoreStartupRecovery } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
 import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceBackupCandidateReadiness } from '../import/workspaceBackupImportPorts.js';
@@ -106,7 +107,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     fail: false,
     async acquire(purpose: string) {
       events.push(`lease.acquire.${purpose}`);
-      if (this.fail) throw new Error('busy');
+      if (this.fail || this.held) throw new Error('busy');
       this.held = true;
       return {
         release: async () => {
@@ -211,6 +212,10 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       events.push('activationJournal.read');
       return this.journal;
     },
+    async peek() {
+      events.push('activationJournal.peek');
+      return this.journal;
+    },
     async prepare(operationId: string) {
       events.push('activation.prepare');
       this.journal = {
@@ -224,6 +229,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       if (this.fail === 'prepare') throw new Error('private activation');
     },
     async advanceToValidation() {
+      if (this.journal?.phase === 'validationStarting') return this.journal;
       events.push('activation.replace');
       if (this.fail === 'replace') throw new Error('private activation');
       if (this.journal === undefined) throw new Error('missing');
@@ -235,7 +241,9 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       return this.journal;
     },
     async assertForwardRecoveryState() {
-      throw new Error('SYNTHETIC_LIVE_ACTIVATION_HAS_NO_COLD_AUTHORITY');
+      if (this.journal?.phase !== 'validationStarting' || lifecycle.runningOwners !== 0) {
+        throw new Error('SYNTHETIC_STARTUP_STATE_INVALID');
+      }
     },
     async readForwardRecoverySources() {
       throw new Error('SYNTHETIC_LIVE_ACTIVATION_HAS_NO_COLD_AUTHORITY');
@@ -246,12 +254,15 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       this.journal = undefined;
     },
     async commitAcceptance() {
+      events.push('activation.commitAcceptance');
       if (this.journal?.phase !== 'validationStarting') throw new Error('missing');
       this.journal = { ...this.journal, phase: 'accepted', revision: this.journal.revision + 1 };
       return this.journal;
     },
     async clearAccepted() {
+      events.push('activation.clearAccepted');
       if (this.journal?.phase !== 'accepted') throw new Error('missing');
+      if (this.fail === 'accept') throw new Error('private activation');
       this.journal = undefined;
     },
     async rollback() {
@@ -261,7 +272,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       this.journal = {
         ...this.journal,
         phase: 'rolledBack',
-        revision: this.journal.revision + 1,
+        revision: this.journal.revision + 2,
       };
       return this.journal;
     },
@@ -325,17 +336,55 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     preRestoreRecoveryPoint: preRestore,
     registry,
     rootStore,
-    ...(options?.useRuntimeHandoff === true ? { runtimeHandoff } : {}),
+    ...(options?.useRuntimeHandoff === false ? {} : { runtimeHandoff }),
     runtimeReadiness,
     userDataRoot: options?.userDataRoot ?? TEST_REPLACEMENT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
   });
+
+  async function completeStartup() {
+    if (lease.held || runtimeHandoff.requests === 0 || lifecycle.runningOwners !== 0) {
+      throw new Error('SYNTHETIC_STARTUP_HANDOFF_INVALID');
+    }
+    const startupLease = await lease.acquire('restore');
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: activation,
+      transaction: activation,
+      async withRollbackAuthority(journal, use) {
+        const assertCurrent = async () => {
+          if (!lease.held || lifecycle.runningOwners !== 0 || activation.journal?.operationId !== journal.operationId) {
+            throw new Error('SYNTHETIC_ROLLBACK_AUTHORITY_INVALID');
+          }
+        };
+        await assertCurrent();
+        await use({ kind: 'rollback', journal, assertCurrent,
+          assertContent: assertCurrent, beforeStagingMove: assertCurrent });
+      },
+    });
+    try {
+      const mode = await recovery.prepareBeforeBackend();
+      await lifecycle.ensurePreviousWorkspaceRunning();
+      const validateActiveProfile = () => runtimeReadiness.assertReady({
+        expectedProfileId: targetProfileId,
+        workspaceId: TEST_REPLACEMENT_WORKSPACE_ID,
+      }).then(() => undefined);
+      if (mode === 'normal') await validateActiveProfile();
+      return await recovery.validateAfterBackend({
+        mode,
+        stopBackend: async () => { await lifecycle.stopAndProveHandlesClosed(); },
+        validateActiveProfile,
+      });
+    } finally {
+      await startupLease.release();
+    }
+  }
 
   return {
     activation,
     candidate,
     container,
     coordinator,
+    completeStartup,
     events,
     guard,
     lease,

@@ -7,9 +7,157 @@ import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperatio
 import { profileInspectionFailureCauses } from '../../runtime/profileInspectionFailure.js';
 import type { ProfileRestoreActivationJournal, ProfileRestoreActivationPhase } from './profileRestoreActivationJournal.js';
 import type { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
-import type { ProfileRestoreColdRollbackAdmission, ProfileRestoreRollbackAcceptance } from './profileRestoreStartupRecovery.js';
+import type { ProfileRestoreColdRollbackAdmission, ProfileRestoreRollbackAcceptance,
+  ProfileRestoreRolledBackCleanup } from './profileRestoreStartupRecovery.js';
 
 describe('profile restore startup recovery', () => {
+  it('consumes cleanup permission before an authority callback can re-enter', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    let reentries = 0;
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: { peek: unexpectedJournalPeek, read: async () => createJournal(operationId, 'rolledBack') },
+      transaction,
+      async withRolledBackCleanupAuthority(_journal, use) {
+        await use(async () => {
+          reentries++;
+          expect(() => use(async () => {})).toThrow('PROFILE_RESTORE_DECISION_INVALID');
+        });
+      },
+    });
+    const mode = await recovery.prepareBeforeBackend();
+    await expect(recovery.validateAfterBackend({ mode,
+      async stopBackend() {}, async validateActiveProfile() {},
+    })).resolves.toBe('ready');
+    expect(reentries).toBeGreaterThan(0);
+    expect(transaction.clearRolledBack).toHaveBeenCalledOnce();
+  });
+
+  it('keeps the cleanup cause before an owner-release failure', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    const first = new Error('synthetic cleanup failure');
+    const release = new Error('synthetic owner release failure');
+    transaction.clearRolledBack.mockRejectedValueOnce(first);
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: { peek: unexpectedJournalPeek, read: async () => createJournal(operationId, 'rolledBack') },
+      transaction,
+      async withRolledBackCleanupAuthority(_journal, use) {
+        try { await use(async () => {}); }
+        finally { throw release; }
+      },
+    });
+    const mode = await recovery.prepareBeforeBackend();
+    await expect(recovery.validateAfterBackend({ mode,
+      async stopBackend() {}, async validateActiveProfile() {},
+    })).rejects.toMatchObject({ cause: { errors: [first, release] } });
+  });
+
+  it('seals a late rolled-back cleanup callback after its owner has returned', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    let lateUse: Parameters<ProfileRestoreRolledBackCleanup>[1] | undefined;
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: { peek: unexpectedJournalPeek, read: async () => createJournal(operationId, 'rolledBack') },
+      transaction,
+      async withRolledBackCleanupAuthority(_journal, use) { lateUse = use; },
+    });
+    const mode = await recovery.prepareBeforeBackend();
+    await expect(recovery.validateAfterBackend({ mode,
+      async stopBackend() {}, async validateActiveProfile() {},
+    })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    if (lateUse === undefined) throw new Error('missing cleanup callback');
+    const invokeLate = lateUse;
+    expect(() => invokeLate(async () => {})).toThrow('PROFILE_RESTORE_DECISION_INVALID');
+    expect(transaction.clearRolledBack).not.toHaveBeenCalled();
+  });
+
+  it('joins started cleanup before shutdown when the owner returns early', async () => {
+    const operationId = randomUUID();
+    const transaction = createTransaction(operationId);
+    let releaseGuard!: () => void;
+    let signalGuard!: () => void;
+    const guardEntered = new Promise<void>(resolve => { signalGuard = resolve; });
+    const guardPending = new Promise<void>(resolve => { releaseGuard = resolve; });
+    let stopped = false;
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: { peek: unexpectedJournalPeek, read: async () => createJournal(operationId, 'rolledBack') },
+      transaction,
+      async withRolledBackCleanupAuthority(_journal, use) {
+        void use(async () => { signalGuard(); await guardPending; }).catch(() => {});
+      },
+    });
+    const mode = await recovery.prepareBeforeBackend();
+    const result = recovery.validateAfterBackend({ mode,
+      async stopBackend() { stopped = true; }, async validateActiveProfile() {},
+    });
+    const assertion = expect(result).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    await guardEntered;
+    expect(stopped).toBe(false);
+    releaseGuard();
+    await assertion;
+    expect(stopped).toBe(true);
+    expect(transaction.clearRolledBack).not.toHaveBeenCalled();
+  });
+
+  it.each(['unused', 'guardFailure', 'cleanupFailure', 'releaseFailure'] as const)(
+    'does not report rolled-back startup ready after %s', async failure => {
+      const operationId = randomUUID();
+      const selected = createJournal(operationId, 'rolledBack');
+      const transaction = createTransaction(operationId);
+      const first = new Error('synthetic cleanup authority failure');
+      const stopFailure = new Error('synthetic shutdown failure');
+      transaction.clearRolledBack.mockImplementation(async (_journal, assertAuthority) => {
+        await assertAuthority?.();
+        if (failure === 'cleanupFailure') throw first;
+      });
+      const recovery = new ProfileRestoreStartupRecovery({
+        journalStore: { peek: unexpectedJournalPeek, read: async () => selected }, transaction,
+        async withRolledBackCleanupAuthority(journal, use) {
+          expect(journal).toEqual(selected);
+          if (failure === 'unused') return;
+          await use(async () => { if (failure === 'guardFailure') throw first; });
+          if (failure === 'releaseFailure') throw first;
+        },
+      });
+      const mode = await recovery.prepareBeforeBackend();
+      const result = recovery.validateAfterBackend({ mode,
+        async validateActiveProfile() {},
+        async stopBackend() { throw stopFailure; },
+      });
+      if (failure === 'unused') {
+        await expect(result).rejects.toMatchObject({ cause: { errors: [
+          expect.objectContaining({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' }), stopFailure,
+        ] } });
+      } else {
+        await expect(result).rejects.toMatchObject({ cause: { errors: [first, stopFailure] } });
+      }
+      if (failure === 'unused' || failure === 'guardFailure') expect(transaction.clearRolledBack).not.toHaveBeenCalled();
+      expect(transaction.rollback).not.toHaveBeenCalled();
+      expect(transaction.commitAcceptance).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects reuse of the rolled-back cleanup callback without repeating mutation', async () => {
+    const operationId = randomUUID();
+    const selected = createJournal(operationId, 'rolledBack');
+    const transaction = createTransaction(operationId);
+    const stopBackend = vi.fn(async () => {});
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: { peek: unexpectedJournalPeek, read: async () => selected }, transaction,
+      async withRolledBackCleanupAuthority(_journal, use) {
+        await use(async () => {});
+        await use(async () => {});
+      },
+    });
+    const mode = await recovery.prepareBeforeBackend();
+    await expect(recovery.validateAfterBackend({ mode, stopBackend,
+      async validateActiveProfile() {},
+    })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(transaction.clearRolledBack).toHaveBeenCalledOnce();
+    expect(stopBackend).toHaveBeenCalledOnce();
+  });
+
   it.each(['validationFailure', 'deferredDecision'] as const)(
     'denies post-backend rollback without fresh authority after %s', async stage => {
       const operationId = randomUUID();

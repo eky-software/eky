@@ -44,6 +44,16 @@ läpäisivät. Yksi POSIX-testi odottaa Linux-näyttöä. Koordinaattorin,
 mainin ja korjaavan journal-luvun tuotantokytkentää ei vielä muutettu.
 Seuraavaksi tämä kytkentä ja oikean main-ketjun näyttö, sitten muut B:n
 omistajaliitokset sekä C:n W7.3-luovutusraja.
+Kahden paluupolun [rajattu toteutusratkaisu](local-company-workspace-plan.md#replacementin-käynnistyspolkujen-yhteinen-omistajuusraja)
+säilyttää tuotannon deferred-handoffin ja nykyisen startup-hyväksynnän.
+Testit käyttävät nyt luovutusta ja erillistä startup-recoveryä. Sen sekä
+uuden rajatun `rolledBack`-cleanup-portin 177 kohdetestiä, oikean backupin
+kolme system-testiä ja molempien pakettien tyypitys läpäisivät. Rajattu
+katselmushavainto korjattiin ja delta-katselmus läpäisi. Seuraavaksi uuden
+startup-omistajan main-valtuus ja pysyvän sidonnan tarkistusten kytkentä.
+Vanha välitön lähdehaara poistetaan vasta myös vastaavan main-ketjun näytön
+jälkeen; vanhaa replace-leasea tai runtime-poissaolon vartijaa ei käytetä
+elävän backendin loppuhyväksyntään. Native-/paketti-/PR-portit ovat kesken.
 Tekninen tallennusnäyttö ei hyväksy payload-poistoa.
 Tuotantokytkentä edellyttää W7-P4:n mukaista katselmoitua näyttöä, ei vain
 suunnitelman valmistumista. W7.5:n näkyvä käyttöönotto ja backenditon

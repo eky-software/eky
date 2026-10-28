@@ -66,13 +66,16 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'registry.read',
       'activation.prepare',
       'activation.replace',
-      'lifecycle.ensure',
-      'runtime.validate',
-      'registry.read',
-      'activation.accept',
+      'runtimeHandoff.request',
       'lease.release',
     ]);
-    expect(fixture.registry.reads).toBe(4);
+    expect(fixture.registry.reads).toBe(3);
+    expect(fixture.activation.journal?.phase).toBe('validationStarting');
+    expect(fixture.lifecycle.runningOwners).toBe(0);
+    await expect(fixture.completeStartup()).resolves.toBe('ready');
+    expect(fixture.events.indexOf('lease.release')).toBeLessThan(
+      fixture.events.indexOf('lease.acquire.restore'),
+    );
     expect(fixture.activation.journal).toBeUndefined();
     expect(fixture.lifecycle.maxRunningOwners).toBe(1);
     expect(fixture.lifecycle.maxSqliteOwners).toBe(1);
@@ -118,6 +121,10 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(fixture.events).not.toContain('activation.clearRolledBack');
     expect(fixture.events.at(-1)).toBe('lease.release');
     expect(fixture.activation.journal?.phase).toBe('rolledBack');
+    expect(fixture.lifecycle.runningOwners).toBe(0);
+    await expect(fixture.completeStartup()).resolves.toBe('ready');
+    expect(fixture.activation.journal).toBeUndefined();
+    expect(fixture.lifecycle.runningOwners).toBe(1);
   });
 
   it('relaunches the unchanged workspace only after pre-activation cleanup', async () => {
@@ -138,6 +145,7 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'lease.release',
     ]);
     expect(fixture.activation.journal).toBeUndefined();
+    await expect(fixture.completeStartup()).resolves.toBe('ready');
   });
 
   it.each([false, true])(
@@ -334,6 +342,8 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'backupStage',
     );
     expect(fixture.rootStore.discarded).toBe(true);
+    expect(fixture.lifecycle.runningOwners).toBe(0);
+    await expect(fixture.completeStartup()).resolves.toBe('ready');
     expect(fixture.lifecycle.runningOwners).toBe(1);
     expect(fixture.activation.journal).toBeUndefined();
   });
@@ -348,6 +358,8 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'backupStage',
     );
     expect(fixture.rootStore.discarded).toBe(true);
+    expect(fixture.lifecycle.runningOwners).toBe(0);
+    await expect(fixture.completeStartup()).resolves.toBe('ready');
     expect(fixture.lifecycle.runningOwners).toBe(1);
     expect(fixture.activation.journal).toBeUndefined();
   });
@@ -367,6 +379,8 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
         stage,
       );
       expect(fixture.rootStore.discarded).toBe(true);
+      expect(fixture.lifecycle.runningOwners).toBe(0);
+      await expect(fixture.completeStartup()).resolves.toBe('ready');
       expect(fixture.lifecycle.runningOwners).toBe(1);
       expect(fixture.activation.journal).toBeUndefined();
     },
@@ -382,6 +396,9 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
         fixture.coordinator.replace(replacementInput),
       ).rejects.toBeInstanceOf(WorkspaceBackupReplacementError);
       expect(fixture.events).toContain('activation.rollback');
+      expect(fixture.events).not.toContain('activation.clearRolledBack');
+      expect(fixture.lifecycle.runningOwners).toBe(0);
+      await expect(fixture.completeStartup()).resolves.toBe('ready');
       expect(fixture.events).toContain('activation.clearRolledBack');
       expect(fixture.lifecycle.runningOwners).toBe(1);
       expect(fixture.activation.journal).toBeUndefined();
@@ -392,30 +409,30 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     const fixture = createWorkspaceBackupReplacementFixture();
     fixture.runtimeReadiness.fail = true;
 
-    await expectReplacementError(
-      fixture.coordinator.replace(replacementInput),
-      'WORKSPACE_REPLACEMENT_VALIDATION_FAILED',
-      'activeRuntimeValidation',
-    );
+    await fixture.coordinator.replace(replacementInput);
+    await expect(fixture.completeStartup()).resolves.toBe('relaunchRequired');
     expect(fixture.events.filter((event) => event === 'lifecycle.stop')).toHaveLength(2);
     expect(fixture.events).toContain('activation.rollback');
+    expect(fixture.activation.journal?.phase).toBe('rolledBack');
+    expect(fixture.lifecycle.runningOwners).toBe(0);
+    expect(fixture.lease.held).toBe(false);
+    await expect(fixture.completeStartup()).resolves.toBe('ready');
     expect(fixture.runtimeReadiness.calls).toBe(2);
     expect(fixture.lifecycle.runningOwners).toBe(1);
+    expect(fixture.activation.journal).toBeUndefined();
   });
 
   it('retains committed replacement content when accepted cleanup fails', async () => {
     const fixture = createWorkspaceBackupReplacementFixture();
-    fixture.activation.accept = async () => {
-      fixture.events.push('activation.accept');
-      await fixture.activation.commitAcceptance();
-      throw new Error('synthetic terminal cleanup failed');
-    };
-    await expect(fixture.coordinator.replace(replacementInput))
-      .rejects.toBeInstanceOf(WorkspaceBackupReplacementError);
+    fixture.activation.fail = 'accept';
+    await fixture.coordinator.replace(replacementInput);
+    await expect(fixture.completeStartup()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
     expect(fixture.activation.journal?.phase).toBe('accepted');
     expect(fixture.events).not.toContain('activation.rollback');
     expect(fixture.events).not.toContain('activation.clearRolledBack');
     expect(fixture.rootStore.discarded).toBe(false);
+    expect(fixture.lifecycle.runningOwners).toBe(0);
+    expect(fixture.lease.held).toBe(false);
   });
 
   it('fails closed when registry bytes change while the lease is held', async () => {

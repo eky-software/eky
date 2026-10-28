@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import {
   mkdir,
+  lstat,
   mkdtemp,
   readFile,
   rm,
@@ -15,8 +16,10 @@ import type { ProfileRestoreActivationPhase } from '../../profileBackup/restore/
 import { ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
 import { ProfileRestoreActivationTransaction } from '../../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { ProfileRestoreStartupRecovery } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from './workspaceBackupReplacementActivationFactory.js';
-import { deriveWorkspaceBackupReplacementPaths } from './workspaceBackupReplacementPaths.js';
+import { deriveWorkspaceBackupReplacementPaths, deriveWorkspaceBackupReplacementRuntimePaths } from './workspaceBackupReplacementPaths.js';
+import { createWorkspaceBackupReplacementStartupRecovery } from './workspaceBackupReplacementStartupRecovery.js';
 import {
   TEST_REPLACEMENT_OPERATION_ID,
   TEST_REPLACEMENT_OTHER_WORKSPACE_ID,
@@ -46,6 +49,80 @@ afterEach(async () => {
 });
 
 describe('workspace backup replacement activation', () => {
+  it.each(['success', 'directoryAuthorityLost', 'journalBindingChanged'] as const)(
+    'uses fresh startup authority for rolled-back cleanup: %s', async failure => {
+      const fixture = await createFixture();
+      const transaction = fixture.createTransaction();
+      await transaction.prepare(TEST_REPLACEMENT_OPERATION_ID);
+      await transaction.advanceToValidation();
+      await transaction.rollback();
+      const before = await fixture.readUnrelatedHashes();
+      const selected = await fixture.journalStore.peek();
+      const root = join(fixture.paths.activationRollbackRoot, TEST_REPLACEMENT_OPERATION_ID);
+      const failedDatabase = join(fixture.paths.activationFailedRoot, TEST_REPLACEMENT_OPERATION_ID, 'active', 'data', 'eky.sqlite');
+      const failedBefore = await readFile(failedDatabase);
+      const maintenance = new InMemoryWorkspaceMaintenanceLease();
+      const oldLease = await maintenance.acquire('replace');
+      await oldLease.release();
+      let bindingCurrent = true;
+      let cleanupStarted = false;
+      let replacementOwner: Awaited<ReturnType<typeof maintenance.acquire>> | undefined;
+      const { recovery } = createWorkspaceBackupReplacementStartupRecovery({
+        paths: deriveWorkspaceBackupReplacementRuntimePaths(fixture.root, TEST_REPLACEMENT_WORKSPACE_ID),
+        async withRolledBackCleanupAuthority(journal, use) {
+          expect(journal).toEqual(selected);
+          const lease = await maintenance.acquire('restore');
+          const assertOwner = maintenance.captureCurrentOwner(['restore'], lease);
+          cleanupStarted = true;
+          try {
+            await use(async () => {
+              assertOwner();
+              if (failure === 'directoryAuthorityLost' && !await pathPresent(join(root, 'data'))) {
+                await lease.release();
+                replacementOwner = await maintenance.acquire('restore');
+              }
+              if (failure === 'journalBindingChanged' && !await pathPresent(root)) bindingCurrent = false;
+              assertOwner();
+              if (!bindingCurrent) throw new Error('SYNTHETIC_BINDING_CHANGED');
+            });
+          } finally {
+            await lease.release();
+          }
+        },
+      });
+      const mode = await recovery.prepareBeforeBackend();
+      expect(mode).toBe('validateRolledBackProfile');
+      let stopped = false;
+      const result = recovery.validateAfterBackend({ mode,
+        async stopBackend() { stopped = true; },
+        async validateActiveProfile() {
+          expect(cleanupStarted).toBe(false);
+          await expect(readFile(fixture.paths.activeDatabasePath, 'utf8')).resolves.toBe('old database');
+          await expect(readFile(fixture.activePdfPath, 'utf8')).resolves.toBe('old pdf');
+        },
+      });
+      try {
+        if (failure === 'success') {
+          await expect(result).resolves.toBe('ready');
+          await expect(fixture.journalStore.peek()).resolves.toBeUndefined();
+          expect(stopped).toBe(false);
+        } else {
+          await expect(result).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+          await expect(fixture.journalStore.peek()).resolves.toEqual(selected);
+          expect(stopped).toBe(true);
+          if (failure === 'directoryAuthorityLost') {
+            expect(await pathPresent(join(root, 'storage'))).toBe(true);
+          }
+        }
+        await expect(readFile(failedDatabase)).resolves.toEqual(failedBefore);
+        expect(await fixture.readUnrelatedHashes()).toEqual(before);
+      } finally {
+        await replacementOwner?.release();
+      }
+      expect(maintenance.readState()).toBe('idle');
+    },
+  );
+
   it('replaces only the target portable slots and leaves registry, other workspaces and device-local state byte-identical', async () => {
     const fixture = await createFixture();
     const before = await fixture.readUnrelatedHashes();
@@ -289,6 +366,7 @@ async function createFixture() {
   ];
 
   return {
+    root,
     activePdfPath,
     createTransaction,
     journalStore,
@@ -296,6 +374,14 @@ async function createFixture() {
     readUnrelatedHashes: async () =>
       Promise.all(unrelatedPaths.map((path) => sha256File(path))),
   };
+}
+
+async function pathPresent(path: string): Promise<boolean> {
+  try { await lstat(path); return true; }
+  catch (error) {
+    if (error instanceof Error && 'code' in error && error.code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 async function sha256File(path: string): Promise<string> {
