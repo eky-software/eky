@@ -51,6 +51,10 @@ uuden rajatun `rolledBack`-cleanup-portin 177 kohdetestiä, oikean backupin
 kolme system-testiä ja molempien pakettien tyypitys läpäisivät. Rajattu
 katselmushavainto korjattiin ja delta-katselmus läpäisi. Seuraavaksi uuden
 startup-omistajan main-valtuus ja pysyvän sidonnan tarkistusten kytkentä.
+Sidonnan muuttumaton startup-lukija on nyt toteutettu ja katselmoitu;
+nykyinen laajennettu kohdesarja läpäisi 241 testiä, yksi POSIX-testi odottaa
+Linux-näyttöä. Ennen main-liitosta täsmennetään yhteistä palautinta käyttävän
+kopioaktivoinnin omistajaraja ja tarkistuksen sijoitus cold-/live-ketjuun.
 Vanha välitön lähdehaara poistetaan vasta myös vastaavan main-ketjun näytön
 jälkeen; vanhaa replace-leasea tai runtime-poissaolon vartijaa ei käytetä
 elävän backendin loppuhyväksyntään. Native-/paketti-/PR-portit ovat kesken.

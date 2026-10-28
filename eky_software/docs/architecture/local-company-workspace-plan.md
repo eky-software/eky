@@ -5004,8 +5004,8 @@ Tämä on W7.4 B:n liitoksen täsmennys, ei uusi palautusarkkitehtuuri.
 
 **Ensimmäinen toteutusosa:** koordinaattorin yksikkötestit ja oikean salatun
 backupin kolme system-tapausta käyttävät nyt luovutusta ja erillistä nykyistä
-startup-recoveryä. Rajattu 177 testin sarja sekä kolme system-testiä läpäisivät;
-desktopin ja E2E:n tyypitys läpäisi. Uusi `rolledBack`-cleanup-portti on
+startup-recoveryä. Kolme system-testiä sekä desktopin ja E2E:n tyypitys
+läpäisivät tämän liitoksen checkpointissa. Uusi `rolledBack`-cleanup-portti on
 startup-omistajassa ja replacement-factoryssä; se on todennettu myös oikeilla
 tiedostotavuilla sekä valtuuden menetyksellä. Sen main-valtuus ja pysyvän
 sidonnan tarkistusten kytkentä ovat vielä tekemättä. Katselmuksen
@@ -5013,6 +5013,24 @@ uudelleenkutsuhavainto korjattiin ja regressio sekä delta-katselmus läpäisiv�
 Tämä ei ole main-/native-/pakettihyväksyntä: välitön lähdehaara säilyy vielä
 poistamisen näyttöporttiin asti. Aiemmat testimäärät ovat päällekkäistä näyttöä,
 eivät tähän lisättäviä uusia läpäisyjä.
+
+Käynnistyksen `captureWorkspaceBackupReplacementStartupBinding` käyttää
+nykyistä sidontatallenninta vain muuttumattomaan lukuun. Se lukitsee tämän
+käynnistyksen puuttuvan tai julkaistun sidonnan, kaikki raakatavut ja
+tiedostoidentiteetit; jokainen myöhempi tarkistus saa nykyisen vaiheomistajan
+valtuuden erikseen. Lukija ei julkaise tai korjaa metadataa eikä anna
+payload-poistolupaa. Sen 21 regressiota sisältyvät nykyiseen 241 testin
+kohdesarjaan; yksi POSIX-testi odottaa Linux-näyttöä. Tyyppitarkistus ja
+rajattu riippumaton lukijan katselmus läpäisivät. Lukijaa ei vielä kutsuta mainista.
+
+**Ennen main-kytkentää ratkaistava liitos:** sama replacement-startup-factory
+palvelee myös päivityksen kopioaktivointia. Palautussidonnan omistajaa ei
+saa päätellä pelkästä yhteisestä factory- tai journal-polusta. Täsmennä
+täsmällisen startup-valinnan ja omistajan yhteys sekä asynkronisen
+sidontatarkistuksen sijoitus nykyisiin cold-/live-valtuuksiin. Synkroniseksi
+vartijaksi ei anneta Promisea eikä sisältötarkistus saa kutsua itseään
+sidontaluvun kautta. Nykyiset kopioaktivointi-, ordinary-restore- ja
+source-null-palautukset säilyvät; tämä ei hyväksy niiden ohittamista.
 
 Lähtökartoituksessa `workspaceManagementComposition.ts` antaa aina
 `runtimeHandoff`in. Myös koordinaattorin yksikköfixture ja
