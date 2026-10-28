@@ -21,7 +21,7 @@ import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 
 const maximumAdoptionFiles = 100_010;
 const maximumAdoptionBytes = 32n * 1024n * 1024n * 1024n;
-const workspaceOwnedEntryNames = Object.freeze([
+export const workspaceOwnedEntryNames = Object.freeze([
   'data',
   'storage',
   'profile-backup-state',

@@ -3473,7 +3473,7 @@ tiedostoidentiteetin sekä tarkistaa jokaisen kohteen tuoreesti. Hash yksin
 ei todista juurten omistajuutta, täydellisyyttä tai muuttumattomuutta.
 Nykyiset operaation aika-/peruutusrajat säilyvät; rajaton aineistomäärä ei
 tarkoita rajatonta suoritusaikaa. Tuotannon luettelointi ja kaikkien
-roolien disjointness todennetaan W7.3:ssa, ei pelkällä codec-kokeella.
+roolien disjointness todennetaan W7.4:ssä, ei pelkällä codec-kokeella.
 
 **Rajattu näyttö:** 44 formaatti-, slot-, julkaisu- ja loppusiivouskoetta
 sekä tyyppitarkistus läpäisivät. Mukana on oikea journal-rajaa suurempi
@@ -4021,10 +4021,11 @@ ennen kytkentää. Valmistelu ei käynnistä pitkää CI- tai asennusajoa.
 
 #### W7.3:n toteutussopimus
 
-**27.10.2026: V1:n toteutussopimus ja rajattu yhteiskytkentäkoe on
-katselmoitu. V2:n arkisto-/admission-pohja sekä nimetyt huolto-,
-backup-, inspection- ja lifecycle-portit ovat lähdetoteutuksessa;
-poistovaltuuden kokonaiskytkentä ja V3-hyväksyntä ovat tekemättä.** W7.0:n hyväksytyt
+**28.10.2026: W7.3 hyväksytty PR #323:ssa ja mainin omilla porteilla.**
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+nimeää täsmällisen revision ja näytön. Alla päivätyt valmistelukokeet
+ovat historiaa, eivät avoin W7.3-työjono. W7.4:n lopullinen poisto ja
+W7.5:n näkyvä käyttöönotto eivät kuulu tähän hyväksyntään. W7.0:n hyväksytyt
 [vahvistusrajat](#w70n-poistopyyntö--ja-vahvistussopimus),
 [backup-todiste](#poiston-backup-todisteen-vastaavuus) ja
 [poistettava kokonaisuus](#vahvistus-sulku-ja-poistettava-kokonaisuus)
@@ -4032,8 +4033,8 @@ säilyvät. Tämä osio täsmentää niiden nykyiset tuotantokutsujat; se ei
 uusi vanhoja kokeita tai lisää W7.4:n purgea W7.3:een.
 
 Alla olevat päivätyt osakokeet kuvaavat valmistelun etenemistä. Niiden
-silloiset puutteet eivät ole rinnakkainen työjono: jäljellä oleva työ on
-koottu kohde-/omistajamatriisiin ja toteutusjärjestykseen tämän osion lopussa.
+silloiset puutteet eivät ole rinnakkainen työjono. Kohde-/omistajamatriisi
+ja toteutusjärjestys säilyvät hyväksytyn toteutuksen vastuurajoina.
 
 **Toimitusraja:** W7.3 valmistelee vahvistuksen ja kertakäyttöisen valtuuden
 nykyisiin omistajiin sekä todentaa todellisen backup-/sulkuketjun.
@@ -4660,6 +4661,337 @@ Toteutuksen mukana päivitetään muuttuvien rajojen omistavat backup-,
 arkisto-, workspace-/ADR-, integraatiomatriisi- ja testiohjeet.
 Tuotantototeutus ei saa arvata uutta sulkubudjettia, ohittaa yleistä
 recovery-estoa tai nimetä valmistelua lopulliseksi poistoksi.
+
+#### W7.4:n toteutussopimus
+
+**28.10.2026: sopimus ja A:n ensimmäinen tavukerros; ei vielä poiston tuotantokytkentää.**
+Lähtö on W7.3:n hyväksytty main `11e0eadfee002806db01a1b7152532e04dec5ca4`.
+[M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) omistaa ajantasaisen
+jatkamiskohdan. W7.0:n yllä olevat formaatit, keskeytystaulukko ja
+W7-P1-P4 sekä W7.3:n vahvistus-/backup-/sulkusopimus säilyvät.
+Tämä osio nimeää puuttuvat tuotantoliitokset; vanhoja kokeita ei
+lasketa niiden hyväksynnäksi.
+
+**A:n ensimmäinen kohdenäyttö:** `workspaces/deletion/` sisältää tiukat
+inventory-/journal-codecit, rajatun JSONL-tarkistimen, kaikkien journal-
+slottien sivuvaikutuksettoman tarkistuksen ja nykyistä selected-byte-storea
+käyttävän journal-tallentimen. Tallennuspolku on mainin johtaman
+`workspace-state/workspace-deletion-journal-v1.json` current/next/backup.
+Initial-next ei anna jatkolupaa, muuttunut sidonta tai vaihehyppy hylätään,
+ja terminal-clear vaatii erillisen aineiston poissaolon tarkistusportin.
+Adoption nykyinen 13 merkinnän lista on yhteinen, ei poistajan kopio.
+
+Näiden ja nykyisten viereisten persistence-/adoption-regressioiden yksi
+rajattu loppuajo läpäisi 203 testiä; desktopin jälkityyppitarkistus läpäisi.
+Ensimmäisen valmistelun testikontekstivirhe ja identiteettifixturen
+muuttumattomaksi jäänyt testiarvo korjattiin testeihin, ei hyväksyntäehtoihin.
+Riippumattoman rajatun katselmuksen kaksi regressiotestiaukkoa korjattiin
+ja delta-katselmus sulki ne ilman muita tämän rajauksen löydöksiä.
+A:n suuren luettelon varsinainen
+tiedostojulkaisu, sidontatallennus ja loppusiivous sekä B-F ovat vielä
+avoimia. Muistissa injektoitu ulkoinen guard ja uusi tallenninolio eivät
+todista oikeaa omistajuusketjua tai prosessikatkosta. Poistokanava pysyy suljettuna.
+
+**Toimitusraja:** toteutetaan yksi mainin omistama lopullinen poisto,
+johon vahvistettu live-pyyntö ja kylmäkäynnistys liittyvät eri sisääntuloista.
+W7.4 ei lisää HTTP-poistoa, toista recovery-järjestelmää, tietokantamigraatiota,
+riippuvuutta tai yleistä manageria. W7.5 omistaa näkyvän poistotoiminnon ja
+backendittoman tukipaketin käyttöönoton. Delete-IPC, preload ja poistopainike
+pysyvät suljettuina, kunnes myös niiden valmis palaute-/tukiketju on todennettu.
+W7.4 todentaa oikean sisäisen kuluttajan nykyisellä rajatulla testikytkennällä;
+testiportti ei saa päätyä tavalliseksi käyttäjän poistooikotieksi.
+
+##### W7.4:n omistajat ja muutosjärjestys
+
+Lähdepolut ovat `apps/desktop/src/`-juuresta. Uudet poistokohtaiset
+codec-, store-, inventaario- ja siirtoapurit sijoitetaan
+`workspaces/deletion/`-alueelle. Ne käyttävät nykyistä
+`workspaces/persistence/`-tiedosto-/slot-toteutusta. Käyttötapauksen
+admission, seuranta ja elinikä pysyvät `WorkspaceManagementService`ssä,
+eivät siirry uuteen yleiseen orkestrointikerrokseen.
+
+| Pala | Nykyinen omistaja ja rajattu muutos | Todiste ennen seuraavaa liitosta |
+| --- | --- | --- |
+| A: pysyvät tavut | Poistokohtainen journal, muuttumaton kohdeluettelo ja omistajien sidontatallennin nykyisillä slot-/tiedostoporteilla. Uudet nimet ovat toteutusehdotuksia, eivät olemassa olevan toteutuksen väitteitä. | Tiukat formaatit, kaikki slotit, readback, initial-next, katkennut kuittaus, stream-rajat ja terminal-siistintä oikeilla tiedostotavuilla. |
+| B: aineiston alkuperä | Replacement-, activation-migration-, import-, adoption- ja inspection-omistajien alla luetellut liitokset; oman aineiston luettelo ja loppusiivous tulevat samoilta omistajilta. | Sidonta ennen payloadia, alkuperäinen juuri-identiteetti, journalin poistumisen jälkeen säilyvä sidonta, epävarman siivouksen/paluun esto. Tavalliset onnistuvat palautuspolut säilyvät. |
+| C: vahvistuksen luovutus | `workspaceDeletionPreparation.ts`, `workspaceDeletionTarget.ts`, `workspaceManagementService.ts` ja `workspaceManagementComposition.ts`. | Oikea W7.3-kuitti + journal: ei siirtoa valmistelun päättämistarkistusten sisällä; sama lease säilyy luovutuksen yli. Epävarma julkaisu ei ole peruutus. |
+| D: poisto ja registry | Poistokohtainen yhteinen eteneminen sekä `workspaceRegistryMutations.ts`, `WorkspaceRegistryStore.inspectSlots/writeSelected/recoverSelected`. | Jokainen keskeytystaulukon raja, osittaiset siirrot/poistot ja vanhan rekisterislotin torjunta; muiden yritysten kaikki tavut säilyvät. |
+| E: cold-admission | `workspaceColdRecoveryAdmission.ts`, `workspaceColdRecoveryAdmissionComposition.ts`, `recoverWorkspaceManagementBeforeRuntime`, nykyiset management-/selector-guardit ja `desktopComposition.ts`. | Deletion valitaan ennen korjaavaa registry-lukua/adoptionia/business-avausta. Todellinen restart jatkaa samaa poistajaa tai pysähtyy säilyttäen epävarman aineiston. |
+| F: lopputulos ja integraatio | Nykyinen operational-observer, virhesopimus ja sallitut lukijat; aktiivisen ja backendittoman mainin composition. | Ensivirhe ja cleanup erillään, alkuperäinen synteettinen syy puretussa salatussa paketissa, oikea prosessi-/pakettiketju sekä uuden revision PR/main-portit. |
+
+**B:n täsmälliset kutsujat:** replacement julkaisee kohdesidonnan ennen
+`prepareCandidate/stageBackup`-kutsuja. Activation-migration julkaisee sen
+tuoreen `reprove()`-tarkistuksen jälkeen ennen `createAndStage()`a;
+nykyinen snapshot-before-stop ja candidate-after-exit eivät vaihda järjestystä.
+Import julkaisee vasta uuden workspaceId:n varauksen ja autentikoidun
+source-lineagen jälkeen, ennen `createCandidate/stageBackup`a. Epävarma
+kirjoitustulos estää myös nykyisen `ensurePreviousWorkspaceRunning()`-haaran.
+Legacy-adoption julkaisee hyväksytyn `accept(profileId)`-sidonnan ennen
+candidate-/journal-loppusiivousta; `fresh` ei luo legacy-lähdettä.
+`runOwnedProfileInspection` käyttää `WorkspaceCandidateInspectionCopy`n
+alkuperäistä luontikuittia, julkaisee kohteen tuntevan kutsujan sidonnan ennen
+grantia ja säilyttää nykyisen prepare/grant/exit-järjestyksen.
+Kohteetonta preflightia ei sidota aktiiviseen yritykseen.
+
+Sidonnan tyyppisopimus ja polkuadapteri keskitetään workspace-omistajaan;
+jokainen kutsuja omistaa edelleen oman julkaisunsa ja poistonsa.
+Shared activation-root ei oikeuta yhteisen emon tai vieraan operaation
+poistoon. Metadata pysyy payloadin ulkopuolella ja elossa niin kauan
+kuin yksikin sidottu jäännös on olemassa. Historiallista sidonnatonta
+jäännöstä ei jälkisidota nimen, nykyisen yrityksen tai samanlaisten tavujen
+perusteella. Sen epävarmuus estää poiston valmistumisväitteen, ei muuta
+portable backupin formaattia tai vanhan ehjän kopion hyväksyntää.
+
+##### W7.4:n sidontametadatan tuotantosopimus
+
+Tämä täsmentää W7.0:n kokeessa avoimeksi jätetyn tuotantoesityksen.
+Muuttumattoman sidonnan nykyistä koemuotoa käytetään ilman uutta tilakonetta:
+
+- Perusmuodon ainoat kentät ovat `formatVersion: 1`, `owner`, `operationId`,
+  `workspaceId` ja `lineageIdentity`. Omistaja on `workspaceReplacement`,
+  `workspaceActivationMigration`, `workspaceImport` tai
+  `workspaceLegacyAdoption`. Nykyiset omistajien tunniste- ja lineage-
+  validaattorit säilyvät; nullable-kohdetta ei lisätä.
+- Inspectionin `owner` on `profileInspection` ja lisäkentät ovat
+  `generationId`, `rootIdentity` sekä `parentIdentity`. Käytetään nykyistä
+  inspection-operaatio-/generation-validaattoria ja alkuperäistä
+  kopion luontikuittia, ei myöhemmästä polusta pääteltyä identiteettiä.
+- Enintään 4 096 tavua per slotti; UTF-8 JSON ja lopettava LF. Kirjoitus
+  käyttää yllä lueteltua avainjärjestystä ja `JSON.stringify`-esitystä.
+  Virheellinen UTF-8, avaintoistot ja ylimääräiset kentät hylätään.
+  Inventaarion `bindingSha256` lasketaan validoidun arvon tästä kanonisesta
+  tavuesityksestä. Luku ei sekoita samaa normalisoitua arvoa raakatekstin
+  muotoiluun eikä muuta lähdetiedostoa.
+- Ei vaihetta, aikaleimaa, absoluuttista polkua, nimeä, salasanaa,
+  runtimeSession-arvoa tai talletettua tiedostomuutoksen valtuutta.
+  Neljän kilotavun raja koskee vain tätä kiinteää teknistä tietuetta,
+  ei yrityksen, backupin, PDF:n tai virhepaketin kokoa.
+
+`S` tarkoittaa mainin validoidusta installation-userData-juuresta johdettua
+nykyistä `workspace-state`-kansiota. Seuraavat ovat W7.4:n uusia omistavia
+polkusopimuksia, eivät väite jo olemassa olevista tuotantotiedostoista:
+
+| Omistaja | Current-tiedosto suhteessa S:ään |
+| --- | --- |
+| Replacement | `workspace-replacement-bindings/<operationId>.json` |
+| Activation-migration | `workspace-activation-migration-bindings/<operationId>.json` |
+| Import | `workspace-import-bindings/<operationId>.json` |
+| Legacy-adoption | `workspace-legacy-adoption-bindings/<workspaceId>.json` |
+| Inspection | `profile-inspection-bindings/<operationId>-<generationId>.json` |
+
+Next ja backup ovat saman tiedoston `.next`- ja `.backup`-päätteet.
+Sidonnalle ei synny erillistä operaatiokansiota tai toista hakemistoindeksiä.
+Adoption workspace-avain johtuu siitä, että `legacyEntry`-tietueessa ei ole
+operationId:tä. Arvon operationId pysyy silti pakollisena ja candidate-roolin
+operaation pitää vastata sitä. Activation-roolit tarkistavat replacementin
+ja migrationin nimetyt sidontapaikat; täsmälleen yhden omistajan pitää
+vastata tietuetta. Kahden omistajan ristiriitaa ei ratkaista valitsemalla
+ensimmäinen. Kaikki polkuosat tulevat validoiduista tunnisteista, eivät
+rendereriltä tai sidonnassa olevasta polusta.
+
+Julkaisu vaatii kaikkien kolmen slotin poissaolon ja täsmällisen readbackin.
+Tavallinen lukija vaatii currentin sekä kaikkien olemassa olevien slottien
+saman validoidun arvon. Next-only, backup-only tai ristiriita hylätään;
+luku ei korjaa tai poista slotteja. Metadata suljetaan portable backupista
+ja tukipaketeista pois. Nykyinen polku-/tiedosto-omistaja tarkistaa
+parentin, linkit, tyypit ja tuoreen valtuuden myös yksittäisten I/O:iden yli.
+
+**Metadata-cleanupin oma keskeytyssääntö:** tavallista lukijaa ei käytetä
+jo poistetun inspection-juuren tai osittain siivotun metadatan omaksumiseen.
+Nykyiselle omistajalle nimetään rajattu `clearAfterPayloadsAbsent`-portti;
+se ei siirrä tai poista payloadia. W7:n jatko saa käyttää sitä vain, kun
+poistojournalin valittu julkaistu vaihe on `purged`, täydellinen sitoumukseen
+täsmäävä luettelo on tallella, kaikki kohteen payload-/quarantine-juuret on
+todettu poissa oleviksi ja kaikki registry-slotit ovat täsmällisessä
+jälkeen-tilassa. Kirjoittajien poissaolo ja tuore lease todistetaan erikseen.
+
+Jokainen jäljellä oleva sidontaslotti validoidaan omistajaan, kohteeseen ja
+luettelon kanoniseen sidontatiivisteeseen ennen poistoa. Sivuslotit poistuvat
+ennen currentia; poissa oleva slotti voidaan hyväksyä vain tämän rajatun
+loppusiivouksen jo sallittuna välitilana. Kaikkien slottien puuttuminen ei
+anna tavalliselle lukijalle onnistunutta sidontaa eikä lupaa uuteen
+payload-poistoon. Virheellistä tai vierasta jäljellä olevaa tiedostoa ei
+ohiteta. Mahdollisen saman kohteen recovery-journalin sovituksen tekee
+sen nykyinen omistaja kaikkien slottien tarkistuksella, ei yleinen unlink.
+Kaikki aloitetut I/O:t päätetään ja valtuus tarkistetaan odotusten jälkeen.
+Terminal julkaistaan vasta metadatan todetun poissaolon jälkeen.
+Inventaarioon sitomatonta uutta metadataa ei omaksuta tähän cleanupiin.
+Tämä tarkistetaan myös cold-resumessa; vanhan leasen jatkuvuutta ei oleteta
+uudelleenkäynnistyksen yli.
+
+Normaalin omistajan onnistunut cleanup säilyy omana polkunaan: ennen
+sidonnan poistamista se todistaa kaikki operaation aineistojuuret poissa
+oleviksi ja työn päättyneeksi. Pelkkä journalin loppuminen ei riitä.
+Payloaditon sidonta siivotaan tällä metadata-only-polulla **ennen lopullista
+inventaarion täydellisyystarkistusta ja authorized-julkaisua**. Current ja
+kaikki sivuslotit validoidaan täsmällisesti; inspectionilta ei tässä vaadita
+jo poistetun kopion olemassaoloa. Sivuslotit poistuvat ennen currentia,
+ja epävarma cleanup estää poiston valmistelun jatkon. Katkon jälkeen
+next-/backup-only ei kelpaa. Kaikkien slottien puuttuminen todistaa vain
+metadatan puuttumisen; payloadien poissaolo tarkistetaan erikseen.
+
+Legacy-lähteen kaikkien 13 merkinnän puuttuminen ei riitä, jos adoption
+candidate tai muu saman operaation payload on jäljellä. Sidonta säilyy
+silloin ja mukana oleva candidate-tietue sitoo operaation ja hashin.
+Candidate ei kuitenkaan ole pakollinen legacy-lähteen omistajuuden ehto.
+Vasta kaikkien saman omistajan aineistojuurten poissaolo sallii
+workspace-avaimisen sidonnan ennakkosiivouksen; uutta metadata-inventaarion
+roolia ei lisätä.
+Sidonnan puuttuminen ei missään polussa oikeuta tuntemattoman payloadin
+poistamiseen. Uuden clear-portin todelliset ennen-/jälkeen-keskeytykset,
+inspection-juuren poissaolo, samanniminen vieras slotti ja menetetty valtuus
+todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet niitä.
+
+##### W7.4:n valtuuden luovutus ja elinikä
+
+Nykyinen W7.3 tarkistaa alkuperäisen registry-valinnan ja työtilajuuren
+vielä julkaisucallbackin paluun jälkeen. Myös backup-kuitti tekee oman
+päättämistarkistuksensa. Siksi `publish` **ei saa siirtää tai purkaa
+yrityskansiota eikä vaihtaa registryä**. Se julkaisee vain pysyvän
+aloituksen ja siihen sidotun valmiin inventaarion.
+
+1. Mainin nykyinen käyttötapaus varaa saman installation-delete-leasen
+   ennen työtä. W7.3:n vahvistus, todellinen strict-exit, mainin I/O:n
+   päättyminen ja prosessivarauksen palautuminen säilyvät.
+   Luettelointi ei avaa vikatilaisen yrityksen SQLitea tai pura SMTP-arvoa.
+2. Alkuperäisen kohde-/requester-valtuuden alla muodostetaan ja varmennetaan
+   täydellinen kohdeluettelo. Luettelo yksin ei anna jatkolupaa.
+   Viimeisen valmisteluodotuksen jälkeen kutsutaan W7.3:n asynkronista
+   `assertPublicationCurrent`-tarkistusta, backup-haarassa oikeilla
+   container-tavuilla. Vartijat tarkistetaan myös journalin I/O-rajoilla.
+3. `authorized` julkaistaan nykyisen journal-sopimuksen mukaan.
+   Valmistelucallback palautuu muuttamatta payloadia tai registryä.
+   W7.3:n loppuvalidointi ja kuitin kulutuksen päättäminen odotetaan.
+   Niiden hylkäys säilyttää jo mahdollisesti julkaistun journalin ja
+   palauttaa epävarman tuloksen; tässä suoritusyrityksessä ei aloiteta purgea.
+4. Vasta onnistuneen luovutuksen jälkeen nykyinen management-käyttötapaus
+   liittyy journalin omistamaan etenemiseen **ennen oman leasen vapautusta**.
+   Se lukee slotit ja inventaarion uudelleen, todistaa pysyvän saman operaation,
+   main-varauksen ja kirjoittajien poissaolon. Valmistelun talteen jätetty
+   callback tai muistikuitti ei ole poistovaltuus.
+5. Pysyvä aloitus erottaa requesterin ja operaation eliniät. Rendererin
+   katoaminen ei peru jo kirjattua poistoa. Nykyinen ulkoinen main-sulku
+   liittyy aloitettuihin I/O-töihin; menetetty varaus/omistajuus pysäyttää
+   seuraavan muutoksen ja jättää journalin jatkettavaksi.
+   Oman sulkukutsun itseodotusta ei lisätä.
+6. Katkennut julkaisu-/päättämiskuittaus käsitellään cold-polussa samoista
+   pysyvistä sloteista kuin oikea prosessikatkos. Silloin ei enää vaadita
+   vanhaa rendereriä, salasanaa tai käyttäjän vientitiedostoa eikä julkaisua
+   toisteta. Pelkkä alkuvaiheen next ei ole vahvistettu aloitus.
+7. Lease vapautuu vasta aloitettujen töiden päätyttyä. Paluukäynnistys käyttää
+   nykyistä deferred-relaunch-omistajaa ja W7.3:n release-/ensivirhejärjestystä.
+   Epävarma poisto ei pyydä paluuta. Vahvistuksen peruutus ennen julkaisua
+   säilyttää W7.3:n käyttäjän erikseen valitseman hallitun paluun.
+
+Luovutus todistetaan ensin pienellä nykyisen valmistelun, todellisen
+slot-tallentimen ja management-palvelun yhteiskokeella. Sen hylkäys
+pysäyttää kyseisen kytkennän; tarkistuksia ei poisteta valmistelun läpäisyksi.
+Tämä on ensimmäinen vastuurajat ylittävä W7.4-katselmuskohta.
+
+##### W7.4:n inventaario, tiedostot ja rekisteri
+
+Yllä olevat [kohdeluettelon](#w70n-kohdeluettelon-täsmäsopimus),
+[journalin](#poistojournal-ja-peruuttamattomuuden-raja) ja
+[keskeytyksen](#keskeytyksen-jatkaminen) sopimukset ovat normatiivisia;
+niille ei tehdä rinnakkaista algoritmia. Inventaario on omistajien
+suljettu, osissa luettava luettelo, ei koko userData-juuren glob-haku.
+Kukin omistaja tarkistaa myös nimeämänsä juuren indeksittömät jäännökset:
+indeksin tai journalin puuttuminen ei todista tyhjyyttä.
+
+- Rekisteröity workspace sisältää yrityksen DB/sidecarit, auktoritatiiviset
+  PDF:t, business-auditin, SMTP:n kaikki slotit, sisäiset arkistoasetukset/
+  retryt sekä omat palautuspisteet avaimineen. Alijuuret eivät toistu
+  ulkoisina rooleina. Poisto ei tarvitse salaisuuden dekryptausta.
+- Legacy-lähteestä käytetään nykyisen adoption-omistajan samaa 13 merkinnän
+  sallintalistaa. Installation-runtime, lokit, tukipaketit ja päivitystila
+  eivät muutu yrityksen payloadiksi. Käyttäjän ulkoiset PDF:t ja backupit
+  sekä toisten yritysten tiedostot säilyvät.
+- Juurten fyysinen erillisyys, alkuperäiset ja tuoreet identiteetit,
+  linkki-/tyyppirajat, nykyiset sisältörajat sekä kaikkien kirjoittajien
+  poistuminen tarkistetaan ennen siirtoa. Quarantine on saman levyn siirto,
+  ei kopio/hardlink, piilobackup tai uusi säilytysaika.
+- Jokainen siirto ja poisto vaatii tuoreen saman operaation valtuuden.
+  Osittaisen purgen poissaolo on sallittu vain ennalta valtuutetussa
+  quarantinessa. Muut puuttumiset ja vaihtuneet kohteet estävät jatkon.
+  Epäonnistumisessa odotetaan kaikki aloitetut I/O:t; ei taustalle jääviä poistoja.
+- Rekisterin jälkeen-tila johdetaan validoidusta ennen-tilasta puhtaalla
+  mutaatiolla: vain kohde poistuu, aktiivisen kohteen jälkeen valinta on null,
+  muuten sama aiempi valinta säilyy. Muiden entryjen arvot ja järjestys eivät
+  muutu. Vain täsmällinen `writeSelected`-valinta, ei vanhan snapshotin
+  sokkokirjoitusta tai yleistä `recoverAndRead()`-siivousta.
+- Registry-entry/lineage-varaus säilyy payloadin todettuun poissaoloon asti.
+  Kaikki registry-slotit sovitetaan ennen terminalia; backup-slotti ei saa
+  palauttaa poistettua yritystä. Omistajien sidonta-/journal-cleanup tapahtuu
+  luettelon ollessa vielä käytössä. Luettelo ja oma tyhjä operaatiokansio
+  poistetaan vasta terminal-currentissa; poistojournal viimeisenä.
+
+##### W7.4:n cold-admission ja havaittava tulos
+
+Nykyinen startup tunnistaa vain creation/import-admissionin. Lisää siihen
+deletion-omistaja **ennen** normaalia korjaavaa registry-lukua, adoptionia,
+W6:n yritysinventaariota ja business-avausta. Säilytä sitä edeltävät
+single-instance-, build- ja asennuspäivityksen omistajuusportit.
+Deletion-census lisätään myös managementin sekä selectorin avaus-/paluun
+guardien kaikkiin sisääntuloihin. Pelkkä ensimmäisen slotin `inspect()`
+tai journalin löytyminen ei anna palautusvaltuutta.
+
+Saman kohteen keskeytynyt palautus voidaan korvata vain jo hyväksytyn
+W7-P3:n tarkalla pysyvällä kohdesidonnalla ja nykyisten omistajien
+sulkutodisteella. Tämä nimetty delete-admission ei lievennä tavallisen
+create/import/switch/replace-toiminnon `assertNoUnresolvedOperations()`-
+sääntöä. Muun yrityksen tai installation-update/W6:n journal ei väisty.
+Poistojournalin täsmällinen valinta tarkistetaan uudelleen delete-leasen
+ja mainin fyysisen varauksen alla; cold-resume kutsuu samaa etenemistä
+kuin live-poisto. Tuntematon tila säilyy näkyvänä selvitystarpeena.
+
+Sisäiset tulokset ja turvalliset tapahtumat noudattavat
+[poistopyyntösopimusta](#w70n-poistopyyntö--ja-vahvistussopimus).
+`prepared` ei ole `completed`, eikä työtilan poistuminen yksin todista
+metadata-cleanupia. Runtime-sulun puhdas merkki ei todista poiston onnistumista.
+Aktiivisen/viimeisen poiston jälkeen päädytään nykyiseen null-valitsimeen;
+passiivisen jälkeen voidaan palata vain samaan aiempaan yritykseen normaalien
+porttien kautta. Relaunch-virhe erotetaan pysyvästi valmistuneesta poistosta.
+
+Uudet delete/deleteResume-vaiheet kytketään nykyiseen operational-observeriin,
+validatoriin, Diagnostics-projektioon ja nykyisiin sallittuihin
+tukipakettilukijoihin samassa toteutuksessa. W7.5:n desktop-only-vientiä
+ei väitetä valmiiksi tällä perusteella. Alkuperäisen synteettisen virheen
+ketju todistetaan nykyisen salatun testipaketin keräyksellä ja purulla
+ennen pitkää CI-ajoa; puuttuva tieto jää puuttuvaksi. Ei uusia aineistolajeja
+tai raakavirheitä julkiseen lokiin.
+
+##### W7.4:n todistus- ja valmistumisportit
+
+| Näyttö | Hyväksymisehto |
+| --- | --- |
+| Pienet rajakokeet | A-C:n todelliset slotit, kopion alkuperäinen luontitodiste, muuttunut backup, varaus/valinta/nimi/sukupolvi, publication settlement ja leasen luovutus. W7.0:n kokeet ovat vertailukohta, eivät uuden kytkennän näyttö. |
+| Keskeytysmatriisi | Journalin jokaisen vaihesiirron molemmat puolet, partial rename/purge, kaikkien slotien ristiriidat, readback/sync/close-virheet, vaihdettu/linkitetty juuri ja toistettu restart. Vertaa poistuneita ja kaikkia säilytettäviä tavuja. |
+| Oikea prosessiraja | Nimetty hallittu lapsen keskeytys + uusi omistajaprosessi; ei vain uusi JavaScript-olio. Backend/main-I/O/inspection/varaus todistetaan erikseen. Prosessikoe ei lupaa fyysistä sähkökatkokestävyyttä. |
+| Ei regressioita | Tavallinen backup, same-lineage replace, activation-migration, create/import, adoption, secret-/arkistosulku, update ja W7.3:n peruutuspaluu. Sidonnan epävarmuus ei avaa relaunchia; muu onnistuminen säilyy. |
+| Kokonainen sisäinen poisto | Aktiivinen, passiivinen, viimeinen ja vikatilainen kohde, jokainen jäännösrooli, SMTP:n kaikki slotit sekä omat palautuspisteet. Ei DB:n avausta vikakohteen poistoluvaksi. Toisen yrityksen ja ulkoisten kopioiden tavut säilyvät; lineage vapautuu vasta terminalissa. |
+| Paketti ja integraatio | Sama puhdas hardened Windows-paketti: backup -> inspect -> restore -> restart -> compare sekä sisäinen poisto -> restart -> selector/aiempi yritys ja tietojen vertailu. Nykyiset vaikutusalueen stress-/soak-/installer-portit, riippuvuusauditointi, riippumaton katselmus, PR:n täsmähead ja uuden mainin omat portit. |
+
+Ennen jokaista uutta vastuurajaa luetaan kohde-AGENTS ja sen nykyiset
+omistavat ohjeet kokonaan. Yksi katselmoitava pala kerrallaan; dokumentit,
+audit/diagnostiikka ja regressiot päivittyvät sen mukana. Korvattu
+väliaikainen sovitus poistetaan vasta kattavuuden todennuksella eikä jätetä
+rinnakkaista poistajaa. Uutta pitkää ajoa ei käytetä pienen puuttuvan
+sopimuksen arvaamiseen. Aika-, sisältö-, eheys- ja CI-rajat säilyvät.
+
+**Suunnitelman rajattu katselmus 28.10.2026:** lähdekartta ja riippumaton
+omistajuus-/keskeytyssopimuksen katselmus tehtiin. Sidonnan tuotantomuoto
+sekä metadatan keskeytyvä loppusiivous täsmennettiin katselmuksen perusteella;
+delta-arviossa ei jäänyt muuta estävää havaintoa tähän rajaukseen.
+Tämä ei ole koko sovelluksen katselmus tai tuotantotodiste. Erityisesti
+management-palvelun todellinen valtuuden luovutus, kaikkien avausguardien
+kattavuus ja uusien cleanup-porttien keskeytysnäyttö vaaditaan ennen niiden
+kytkentää yllä olevissa A-E-paloissa.
+
+**Valmis:** kaikki A-F:n puuttuvat tuotantoliitokset ja yllä olevat portit
+on todennettu revision mukaan, normaali suojattu merge tehty ja uuden mainin
+omat portit hyväksytty. M1 kirjaa seuraavaksi W7.5:n; W7.4 ei yksin sulje
+koko W7:ää tai 0.3.0-julkaisua. Avoimet aiemmat viive-/siivoushavainnot
+eivät muutu korjatuiksi uuden läpäisyn perusteella.
 
 #### Toteutusriippuvuudet ja vaiheistus
 

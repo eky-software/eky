@@ -640,7 +640,7 @@ Backup ei muuta business dataa, laskun statusta tai toimitustapahtumia.
 
 ### W7.3:n poiston valmistelun vientisopimus
 
-**Lähdetoteutus, koko poistoketjun kytkentä kesken:** poiston backup-haara käyttää samaa
+**W7.3 hyväksytty; varsinainen poisto kuuluu W7.4:ään:** poiston backup-haara käyttää samaa
 portable-vientialgoritmia, containeria ja nykyisiä siivousomistajia. Tavallinen
 `create()` hankkii ja vapauttaa edelleen oman maintenance-suojansa. Poiston
 kutsuja omistaa erikseen nimetyn suojan snapshotista todelliseen sulkuun;
@@ -737,8 +737,9 @@ riippumatta. Absoluuttisen kohteen ja sen omistajuuden tarkistuksia ei ohiteta.
 Peruutus ei vaihda backup-valintaa menetyssuostumukseksi. Kukin vienti on
 kertakäyttöinen, ja myöhempi uudelleenluku käyttää vain valittua tiedostoa
 ja elävää vartijaa, ei salasanaa. Nykyinen tuotannon entrypoint ei vielä
-anna W7.4:n julkaisukuluttajaa. Oikean native-/prosessi-/pakettiketjun
-yhteistodennus säilyy W7.3:n avoimena porttina.
+anna W7.4:n julkaisukuluttajaa. W7.3:n oikean native-/prosessi-/pakettiketjun
+hyväksyntä on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+W7.4:n pysyvä julkaisu ja lopullinen poisto vaativat erillisen näyttönsä.
 
 ## Machine-local recovery point
 

@@ -906,10 +906,10 @@ jälkeen havaittu virhe estää puhtaan sammutuksen merkinnän. Sen turvallinen
 `capabilities`-vaihe säilyy erillään markerin omasta kirjoitusvirheestä;
 myöhempi sulkukutsu ei muuta hylättyä tehtävää onnistumiseksi.
 
-Nämä omistajakohtaiset lähde- ja testikytkennät eivät vielä ole koko mainin
-poistovalmistelun tuotantokytkentä. Management-palvelun todelliset active-
-ja selector-kuluttajat sekä native-dialogit pitää edelleen yhdistää
-mainin sisäiseen täsmällisen kohteen ja kertakäyttöisen backupin valmisteluun.
+W7.3:n hyväksytty main-kytkentä yhdistää management-palvelun active- ja
+selector-kuluttajat sekä native-dialogit mainin sisäiseen täsmällisen kohteen
+ja kertakäyttöisen backupin valmisteluun. W7.4:n pysyvää poistokuluttajaa
+ja W7.5:n käyttäjäpolkua ei hyväksytä tämän sulkutodisteen perusteella.
 [W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
 omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
 
