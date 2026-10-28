@@ -677,6 +677,13 @@ salasanavaiheet, eikä ole pelkän prosessin poistumisajan mittaus.
 `desktopBeforeQuit.test.ts` kattaa jaetun käsittelijän kilpailut ja molempien
 entrypointien kytkennän; todellinen Electron-käyttäjäpolku on erillinen näyttö.
 
+`DESK-WINDOW-CLOSE-001` sulkee oikean pääikkunan ennen sovelluksen quit-ketjua.
+Se vaatii samasta runtime-sukupolvesta yhden käynnistys- ja onnistuneen
+sulkutapahtuman eikä hyväksy sulkuvirhettä. Sulun odotus käyttää nykyistä
+graceful-exit-turvarajaa; oma kuuntelija ja ajastin poistetaan myös virheessä.
+Fixturen prosessipuun ja portin siivous säilyy erillisenä hyväksyntäehtona.
+Tämä ei ole Win32-asenninkutsun tai hardened-paketin korvaava todistus.
+
 Epäonnistuneen yrityksen `electron-lifecycle`-liite sisältää vain version,
 yritysnumeron, rajatun vaiheluettelon ja erilliset API-, runtime-, portti- ja
 testijuuren siivoustulokset. Se kerätään myös ensimmäisestä yrityksestä,

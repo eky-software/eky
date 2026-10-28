@@ -236,6 +236,14 @@ Vanha tulos ei käynnistä uutta kansiovalintaa, kirjoitusta, kansion avausta
 tai virheikkunaa uudessa dokumentissa. Sulun vuoksi jo päättynyt SMTP-
 toimitus ei muutu epäonnistuneeksi.
 
+Capability poistaa kuuntelijat samasta dokumentin tapahtumaviitteestä,
+johon ne tilattiin. Disposal toimii myös ikkunan jo tuhouduttua ilman
+sen natiivin `webContents`-ominaisuuden uutta lukua. Viitettä ei käytetä
+elävän pyynnön valtuutuksen korvikkeena. Myöhäinen kansiovalinta pysyy
+mitätöitynä eikä kirjoita asetuksia tai näytä virheikkunaa suljettuun
+dokumenttiin. Ikkunasta alkavan todellisen sovellussulun regressio on
+[`DESK-WINDOW-CLOSE-001`](r0-e2e-test-matrix.md#desktop).
+
 Brokerin `close()` sulkee viestipääsyn, mutta ei yksin todista palvelun
 I/O:n päättymistä. W7.3:n nimetty lifecycle-kutsuja kytkee nämä omistajat
 toisiinsa erikseen; palvelun ja capabilityn kohdetestit eivät korvaa tätä

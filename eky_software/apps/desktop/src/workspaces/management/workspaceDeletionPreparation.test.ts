@@ -9,6 +9,7 @@ import { DeferredWorkspaceRuntimeRelaunch } from '../../workspaces/runtime/defer
 import { WorkspaceRegistryStore } from '../../workspaces/registry/workspaceRegistryStore.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../workspaces/registry/workspaceRegistryPaths.js';
 import { deriveWorkspaceRoot } from '../../workspaces/registry/deriveWorkspaceRoot.js';
+import { inspectWorkspaceRoot } from '../../workspaces/registry/inspectWorkspaceRoot.js';
 import { validateWorkspaceId } from '../../workspaces/registry/workspaceIdValidation.js';
 import { MainOwnedWorkspaceManagementOperationGuard, createReadOnlyJournalSlotPaths } from '../../workspaces/management/mainOwnedWorkspaceManagementOperationGuard.js';
 import { startSecretBrokerMain } from '../../secrets/secretBrokerMain.js';
@@ -458,10 +459,16 @@ async function fixture(options: Options) {
     createdAt: '2026-10-27T00:00:00.000Z',
   }] : [])] };
   await registry.write(initial);
-  const companyRoot = deriveWorkspaceRoot(base.root, workspaceId, 1).workspaceRoot;
-  await fs.mkdir(companyRoot, { recursive: true });
+  const companyPaths = deriveWorkspaceRoot(base.root, workspaceId, 1);
+  const companyRoot = companyPaths.workspaceRoot;
+  await fs.mkdir(companyRoot, { recursive: true, mode: 0o700 });
+  await expect(inspectWorkspaceRoot(companyPaths)).resolves.toBe(companyPaths);
   const sentinel = join(companyRoot, 'sentinel'); await fs.writeFile(sentinel, 'company retained', { flag: 'wx' });
-  if (options.otherTarget) await fs.mkdir(deriveWorkspaceRoot(base.root, targetWorkspaceId, 1).workspaceRoot, { recursive: true });
+  if (options.otherTarget) {
+    const targetPaths = deriveWorkspaceRoot(base.root, targetWorkspaceId, 1);
+    await fs.mkdir(targetPaths.workspaceRoot, { recursive: true, mode: 0o700 });
+    await expect(inspectWorkspaceRoot(targetPaths)).resolves.toBe(targetPaths);
+  }
   let reservationCurrent = true;
   const assertReservation = () => { if (!reservationCurrent) throw new Error('SYNTHETIC_RESERVATION_LOST'); };
   const beforeCompletion = vi.fn<() => void>();

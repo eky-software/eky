@@ -241,6 +241,39 @@ describe('invoice PDF archive capability', () => {
     }
     expect(fixture.mainWindow.listenerCount('close')).toBe(0);
   });
+
+  it('disposes after window destruction and rejects a late directory selection', async () => {
+    const fixture = createFixture();
+    const entered = deferred<void>();
+    const finish = deferred<string | null>();
+    fixture.selectDirectory.mockImplementationOnce(async () => {
+      entered.resolve();
+      return finish.promise;
+    });
+    const operation = fixture.invoke(chooseInvoicePdfArchiveDirectoryIpcChannel,
+      fixture.trustedEvent).catch((error: unknown) => error);
+    try {
+      await entered.promise;
+      fixture.mainWindow.emit('close');
+      fixture.webContents.emit('destroyed');
+      fixture.mainWindow.isDestroyed = () => true;
+      fixture.webContents.isDestroyed = () => true;
+      const readDestroyedContents = vi.fn(() => { throw new Error('Object has been destroyed'); });
+      Object.defineProperty(fixture.mainWindow, 'webContents', { get: readDestroyedContents });
+      fixture.capability.dispose();
+      fixture.capability.dispose();
+      finish.resolve('C:\\SyntheticArchive');
+      expect(await operation).toMatchObject({ message: 'INVOICE_PDF_ARCHIVE_OPERATION_FAILED' });
+      expect(readDestroyedContents).not.toHaveBeenCalled();
+      for (const event of ['did-start-navigation', 'did-start-loading', 'render-process-gone', 'destroyed']) {
+        expect(fixture.webContents.listenerCount(event)).toBe(0);
+      }
+      expect(fixture.mainWindow.listenerCount('close')).toBe(0);
+      expect(fixture.chooseDirectory).not.toHaveBeenCalled();
+      expect(fixture.onConfigurationChanged).not.toHaveBeenCalled();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+    } finally { finish.resolve(null); await operation; }
+  });
 });
 
 const disabledStatus: InvoicePdfArchiveStatus = {
@@ -282,8 +315,8 @@ function createFixture(
     handlers.delete(channel);
   });
   const mainFrame = {};
-  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false });
-  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents });
+  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: (): boolean => false });
+  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: (): boolean => false, webContents });
   const status = options.status ?? disabledStatus;
   const chooseDirectory = vi.fn(async () => enabledStatus);
   const disable = vi.fn(async () => disabledStatus);

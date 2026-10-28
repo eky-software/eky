@@ -7,8 +7,46 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**W7.3:n nykyinen jatkamiskohta:** loppukatselmus ja laajat tarkistukset
-ovat kesken, eikä merge-portti ole auki. Vienti ja sen jälkitarkistus
+**W7.3:n nykyinen jatkamiskohta:** PR #323:n ensimmäinen kierros on päättynyt
+hylkäykseen: core-testit sekä kaksi upgrade- ja kaksi legacy-palautusajoa.
+Ensimmäisen kierroksen PR-head oli `eb00e163`; alla olevat korjaukset
+todennetaan uudella korjausrevisiolla. Merge-portti ei ole auki.
+Core-hylkäyksen salattu aineisto osoitti kahden uuden
+testifixturen liian väljät POSIX-kansio-oikeudet; tuotannon tarkistin
+hylkäsi ne oikein. Vain testivalmisteluun rajattu korjaus ja kaksi
+oikeuksien kielteistä regressiota sisältyvät korjausrevisioon.
+Rajattu katselmus, 60 kohdetestiä ja tyyppitarkistus läpäisivät;
+kaksi POSIX-tapausta ovat Windowsissa ohitettuja, eivät läpäisseitä.
+Linux-todennus puuttuu edelleen. Upgrade-ajoissa säilynyt syy on
+`runningUpgradeShutdownFailed`; legacy-aineistossa
+`targetShutdownEvidenceInvalid`. Prosessin poistuminen ei korvaa
+puuttuvaa hyväksyttävää sovellussulkua. Legacy-ajojen testiaineiston
+siivous jäi varmentamattomaksi, vaikka prosessi- ja asennusjälkitarkistukset
+valmistuivat. Näitä tuloksia ei muuteta jälkikäteen onnistuneiksi.
+
+Rajattu tutkimus toisti todellisen Electronin ikkunasta alkavan sulun
+hylkäyksen. W7.3:n hallinta- ja PDF-arkistocapability yrittivät molemmat
+lukea jo tuhoutuneen ikkunan natiivia dokumenttiominaisuutta kuuntelijoiden
+poistossa. Korjaus säilyttää vain tilausten siivoukseen tarvittavan viitteen;
+elävien pyyntöjen turvatarkistukset ja sulun odotus säilyvät.
+Molempien omistajien regressiot hylkäsivät ensin vanhan toteutuksen.
+Korjattu 66 kohdetestin sarja, 17 main-sulkukontrollia ja tyyppitarkistukset
+läpäisivät erillisinä ajoina. Todellisen Electronin ikkunasulku ja tavallinen
+restart läpäisivät myös. Rajattu riippumaton katselmus ja testin
+odotussiivouksen jälkikatselmus valmistuivat. Tämä on lähdekorjauksen näyttö,
+ei vielä paketoitujen upgrade-/legacy-ajojen tai koko PR:n hyväksyntä.
+
+Korjauspalan normaali desktop-sarja läpäisi 6 333 Vitest-testiä ja 425
+erillistä Node-testiä. Kahdeksan Vitest- ja kaksitoista Node-ohitusta
+eivät ole läpäisyjä; Linux-fixturen todistus jää nykyisen PR:n porttiin.
+Seuraavat paketti-, endurance- ja integraatiotodisteet sidotaan tähän
+korjausrevisioon, ei ensimmäisen kierroksen pakettiin.
+
+Täysi soak ei vielä alkanut: valmistelu hylkäsi liian varhain asetetun
+E2E-ympäristömerkin ilman sen vaatimaa Vite-kontekstia. Tämä on erillinen
+käynnistysvirhe, ei soak-läpäisy tai sovelluksen kuormitushylkäys.
+
+**Nykyisen lähdepalan aiempi näyttö:** vienti ja sen jälkitarkistus
 käyttävät nyt samaa tiedostopäätteen normalisointia; puuttuvan ja eri
 kirjainkokoisen päätteen regressiot käyttävät oikeita salattuja tavuja.
 Rajattu 99 testin sarja läpäisi. Päivityksen tarkistusta jäljittelevä vanha
@@ -58,10 +96,15 @@ lähde-/build-tavuilla: peruutus, molemmat ulkoisen sulun odotukset,
 valmistelu, oikea salattu vienti ja odotuksen aikana muuttuneen viennin esto.
 Yritysdata säilyi restartissa; alkuperäinen turvallinen hylkäyssyy todettiin.
 
-**Seuraava työ:** puhtaan lähderevision paketointi ja
-[W7.3-sopimuksen](local-company-workspace-plan.md#w73n-toteutussopimus)
-V3:n puuttuva hardened Windows backup -> inspect -> restore -> restart ->
-compare, nykyiset stress/soak-portit sekä täsmällisen revision PR/main-portit.
+**Seuraava työ:** viimeistele korjausrevision normaalit vaikutusaluetarkistukset,
+tee siitä puhdas paketti ja todenna korjattu sulku paketoiduissa kuluttajissa.
+Todista fixturekorjaus Linuxissa uuden täsmällisen PR-headin porttien mukana.
+Alla olevat hardened- ja stressitulokset säilyvät aiemmalle revisiolle;
+korjattu runtime tarvitsee [W7.3-sopimuksen](local-company-workspace-plan.md#w73n-toteutussopimus)
+V3:n hardened Windows backup -> inspect -> restore -> restart -> compare
+-ketjun, nykyiset stress/soak-portit ja täsmällisen revision PR/main-portit.
+Normaali täysi soak käynnistetään omalla nykyisellä valmistelukomennollaan,
+ei koko valmistelulle etukäteen asetetulla E2E-ympäristömerkillä.
 Tuotannon poistokanava pysyy suljettuna. Osatodiste ei hyväksy koko W7.3:a,
 fyysistä poistoa tai W7.4:n journal-julkaisua.
 

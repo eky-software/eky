@@ -46,10 +46,12 @@ export function createInvoicePdfArchiveCapability(
   const navigationStarted = (details: { isMainFrame: boolean }) => {
     if (details.isMainFrame) invalidateDocument();
   };
-  options.mainWindow.webContents.on('did-start-navigation', navigationStarted);
-  options.mainWindow.webContents.on('did-start-loading', invalidateDocument);
-  options.mainWindow.webContents.on('render-process-gone', invalidateDocument);
-  options.mainWindow.webContents.on('destroyed', invalidateDocument);
+  // Retain the subscribed emitter: native window access is invalid after close.
+  const documentEvents = options.mainWindow.webContents;
+  documentEvents.on('did-start-navigation', navigationStarted);
+  documentEvents.on('did-start-loading', invalidateDocument);
+  documentEvents.on('render-process-gone', invalidateDocument);
+  documentEvents.on('destroyed', invalidateDocument);
   options.mainWindow.on('close', invalidateDocument);
   const channels = [
     getInvoicePdfArchiveStatusIpcChannel,
@@ -148,10 +150,10 @@ export function createInvoicePdfArchiveCapability(
       for (const channel of channels) {
         options.ipcMain.removeHandler(channel);
       }
-      options.mainWindow.webContents.off('did-start-navigation', navigationStarted);
-      options.mainWindow.webContents.off('did-start-loading', invalidateDocument);
-      options.mainWindow.webContents.off('render-process-gone', invalidateDocument);
-      options.mainWindow.webContents.off('destroyed', invalidateDocument);
+      documentEvents.off('did-start-navigation', navigationStarted);
+      documentEvents.off('did-start-loading', invalidateDocument);
+      documentEvents.off('render-process-gone', invalidateDocument);
+      documentEvents.off('destroyed', invalidateDocument);
       options.mainWindow.off('close', invalidateDocument);
     },
   };

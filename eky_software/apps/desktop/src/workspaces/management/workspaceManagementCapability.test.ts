@@ -690,6 +690,49 @@ describe('workspace management capability', () => {
     expect(fixture.mainWindow.listenerCount('close')).toBe(0);
   });
 
+  it('drains admitted work after window destruction without rereading its native contents', async () => {
+    const entered = createDeferred<void>();
+    const finish = createDeferred<unknown>();
+    const fixture = createFixture({ getStatus: async () => {
+      entered.resolve();
+      return finish.promise;
+    } });
+    const cached = fixture.getHandler(getWorkspaceManagementStatusIpcChannel);
+    const operation = fixture.invoke(getWorkspaceManagementStatusIpcChannel,
+      fixture.trustedEvent).catch((error: unknown) => error);
+    let closing: Promise<void> | undefined;
+    try {
+      await entered.promise;
+      fixture.mainWindow.emit('close');
+      fixture.webContents.emit('destroyed');
+      fixture.mainWindow.isDestroyed = () => true;
+      fixture.webContents.isDestroyed = () => true;
+      const readDestroyedContents = vi.fn(() => { throw new Error('Object has been destroyed'); });
+      Object.defineProperty(fixture.mainWindow, 'webContents', { get: readDestroyedContents });
+
+      closing = fixture.capability.shutdown();
+      let settled = false;
+      void closing.then(() => { settled = true; }, () => { settled = true; });
+      await expect(cached(fixture.trustedEvent))
+        .rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+      expect(settled).toBe(false);
+      expect(readDestroyedContents).not.toHaveBeenCalled();
+      for (const event of ['did-start-navigation', 'did-start-loading', 'render-process-gone', 'destroyed']) {
+        expect(fixture.webContents.listenerCount(event)).toBe(0);
+      }
+      expect(fixture.mainWindow.listenerCount('close')).toBe(0);
+      finish.resolve(status);
+      expect(await operation).toMatchObject({ message: 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN' });
+      await closing;
+      expect(settled).toBe(true);
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+    } finally {
+      finish.resolve(status);
+      await operation;
+      await closing;
+    }
+  });
+
   it('tracks a native callback before reentrant shutdown', async () => {
     const result = createDeferred<string | null>();
     const fixture = createFixture();
@@ -736,8 +779,8 @@ function createFixture(
   );
   const removeHandler = vi.fn((channel: string) => handlers.delete(channel));
   const mainFrame = {};
-  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: () => false });
-  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents });
+  const webContents = Object.assign(new EventEmitter(), { mainFrame, isDestroyed: (): boolean => false });
+  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: (): boolean => false, webContents });
   const createEmpty = vi.fn(
     options.createEmpty ??
       (async (workspaceLabel) => ({ workspaceId: otherWorkspaceId, workspaceLabel })),

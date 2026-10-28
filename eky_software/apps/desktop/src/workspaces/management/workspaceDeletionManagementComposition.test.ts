@@ -8,6 +8,7 @@ import { BackendRequestQuiescence } from '../../main/backendRequestQuiescence.js
 import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
+import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
@@ -132,8 +133,10 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
   const registryBytes = await readFile(registryPath);
   const sentinels: string[] = [];
   for (const workspace of initial.workspaces) {
-    const workspaceRoot = deriveWorkspaceRoot(root, workspace.workspaceId, workspace.layoutVersion).workspaceRoot;
-    await mkdir(workspaceRoot, { recursive: true });
+    const workspacePaths = deriveWorkspaceRoot(root, workspace.workspaceId, workspace.layoutVersion);
+    const workspaceRoot = workspacePaths.workspaceRoot;
+    await mkdir(workspaceRoot, { recursive: true, mode: 0o700 });
+    await expect(inspectWorkspaceRoot(workspacePaths)).resolves.toBe(workspacePaths);
     const sentinel = join(workspaceRoot, 'sentinel');
     await writeFile(sentinel, 'retained'); sentinels.push(sentinel);
   }

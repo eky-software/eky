@@ -4122,6 +4122,17 @@ Arkistokopion epäonnistuminen ei muuta jo hyväksyttyä SMTP-toimitusta
 epäonnistuneeksi. Työn päättyminen, sen onnistuminen ja sulkuvaltuus ovat
 eri asioita.
 
+Hallinta- ja arkistocapability säilyttävät tilaamansa dokumentin
+tapahtumaviitteen kuuntelijoiden poistamista varten. Ikkuna voi tuhoutua
+ennen sovelluksen `before-quit`-käsittelyä; disposal ei silloin saa lukea
+sen natiivia `webContents`-ominaisuutta uudelleen. Säilytetty viite ei ole
+pyyntövaltuus: elävän ikkunan, lähettäjän, framen, dokumenttisukupolven ja
+admissionin tarkistukset säilyvät. Hallinnan shutdown odottaa edelleen
+jo alkanutta työtä myös ikkunan sulkeuduttua.
+`DESK-WINDOW-CLOSE-001` erottaa tämän ikkunasta alkavan sulun tavallisesta
+`DESK-RESTART-001`-polusta. Vain todettu onnistunut sovellussulku hyväksytään;
+fixturen myöhempi prosessisiivous ei korvaa sitä.
+
 **Omistajan hyväksyntä 27.10.2026:** rajatun kokeen arkistosulun odotus on
 enintään viisi sekuntia. Se alkaa uuden työn sulkemisesta rinnakkain
 nykyisen secret-drainin kanssa. D2:n viittä sekuntia, HTTP-quiescencen
