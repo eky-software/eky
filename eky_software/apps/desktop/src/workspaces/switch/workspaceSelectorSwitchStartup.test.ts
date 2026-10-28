@@ -37,8 +37,10 @@ it('resolves actual persisted source-null startup and mints the activation guard
   const f = await fixture(test);
   const startup = await f.resolve();
   expect(startup).toMatchObject({ mode: 'targetValidation', workspaceId: TEST_TARGET_WORKSPACE_ID,
+    registeredLineageIdentity: { formatVersion: 1, profileId },
     switchContext: { operationId: TEST_SWITCH_OPERATION_ID, sourceWorkspaceId: null, targetProfileId: profileId } });
   if (startup.mode === 'selector') throw new Error('unexpected selector');
+  expect(Object.isFrozen(startup.registeredLineageIdentity)).toBe(true);
   const legacyRead = vi.fn();
   const guard = new WorkspaceActivationMigrationGuard({ read: legacyRead }, { read: legacyRead }, startup.selectorActivationAuthority);
   const proof = await guard.prove({ operationId: TEST_SWITCH_OPERATION_ID, sourceWorkspaceId: null,

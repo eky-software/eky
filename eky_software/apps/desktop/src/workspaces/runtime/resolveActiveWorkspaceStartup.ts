@@ -9,7 +9,8 @@ import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
-import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceId, WorkspaceLineageIdentityV1 } from '../registry/workspaceRegistryTypes.js';
+import { validateWorkspaceLineage } from '../registry/workspaceLineageValidation.js';
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
 import { resolveWorkspaceSwitchStartup } from '../switch/workspaceSwitchStartup.js';
@@ -72,6 +73,8 @@ export interface ActiveWorkspaceStartupSelection {
   readonly switchContext?: Readonly<ActiveWorkspaceSwitchContext>;
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
+  // A registered observation, not a replacement for fresh selection authority.
+  readonly registeredLineageIdentity?: Readonly<WorkspaceLineageIdentityV1>;
   assertCanAccept(profileId: string): void;
   accept(profileId: string): Promise<void>;
   rejectInvalidTarget?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
@@ -146,6 +149,7 @@ export async function resolveActiveWorkspaceStartup(
       selectorActivationAuthority: selected.selectorActivationAuthority,
       switchContext: Object.freeze({ ...selected.context, targetProfileId: selected.workspace.lineageIdentity.profileId }),
       workspaceId: selected.workspace.workspaceId, workspaceRoot: paths.workspaceRoot,
+      registeredLineageIdentity: validateWorkspaceLineage(selected.workspace.lineageIdentity),
       assertCanAccept: selected.assertCanAccept, accept: selected.accept,
       rejectInvalidTarget: selected.rejectInvalidTarget, requireRecovery: selected.requireRecovery,
       recoverFromFailure: selected.recoverFromFailure,
@@ -224,6 +228,7 @@ export async function resolveActiveWorkspaceStartup(
         }),
     workspaceId: switchSelection.workspace.workspaceId,
     workspaceRoot: paths.workspaceRoot,
+    registeredLineageIdentity: validateWorkspaceLineage(switchSelection.workspace.lineageIdentity),
     assertCanAccept: (profileId: string) =>
       switchSelection.assertCanAccept(profileId),
     accept: (profileId: string) => switchSelection.accept(profileId),

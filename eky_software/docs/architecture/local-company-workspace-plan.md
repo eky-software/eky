@@ -5015,13 +5015,22 @@ poistamisen näyttöporttiin asti. Aiemmat testimäärät ovat päällekkäistä
 eivät tähän lisättäviä uusia läpäisyjä.
 
 Käynnistyksen `captureWorkspaceBackupReplacementStartupBinding` käyttää
-nykyistä sidontatallenninta vain muuttumattomaan lukuun. Se lukitsee tämän
-käynnistyksen puuttuvan tai julkaistun sidonnan, kaikki raakatavut ja
-tiedostoidentiteetit; jokainen myöhempi tarkistus saa nykyisen vaiheomistajan
-valtuuden erikseen. Lukija ei julkaise tai korjaa metadataa eikä anna
-payload-poistolupaa. Sen 21 regressiota sisältyvät nykyiseen 241 testin
-kohdesarjaan; yksi POSIX-testi odottaa Linux-näyttöä. Tyyppitarkistus ja
-rajattu riippumaton lukijan katselmus läpäisivät. Lukijaa ei vielä kutsuta mainista.
+nykyistä sidontatallenninta vain muuttumattomaan lukuun. Lukija tarkistaa nyt
+molemmat nimetyt aktivointiomistajat ja lukitsee myös puuttuvat slotit,
+raakatavut ja tiedostoidentiteetit. Jokainen myöhempi tarkistus saa nykyisen
+vaiheomistajan valtuuden erikseen. Migration vaatii saman operaation
+switch-kontekstin; `legacyUnbound` ei saa tuottaja- tai payload-poistolupaa.
+`mode` on muuttumaton havainto, ei valtuus. Nykyinen startup-valitsin
+välittää lisäksi rekisteröidyn kohteen validoidun lineagen muuttumattoman
+kopion; adoptioniin ei arvata lineagea.
+
+Lukijan 44 regressiota sekä säilyvät registry-/switch-, adoption- ja
+kopioaktivointitestit läpäisivät nykyisessä seitsemän tiedoston 204 testin
+kohdesarjassa. Desktopin tyyppitarkistus ja rajattu riippumaton
+koodikatselmus läpäisivät. Nämä korvaavat tämän palan
+aiemman kohdeajon nykytilana, eivät ole siihen yhteen laskettavia läpäisyjä.
+Lukija ei julkaise tai korjaa metadataa; mainin cold-/live-/työlupakytkentä
+ja native-/pakettitodennus ovat edelleen tekemättä.
 
 **Main-kytkennän omistajuussopimus (28.10.2026):** sama
 `createWorkspaceBackupReplacementStartupRecovery` ja asennustasoinen

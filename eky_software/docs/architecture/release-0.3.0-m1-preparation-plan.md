@@ -51,13 +51,16 @@ uuden rajatun `rolledBack`-cleanup-portin 177 kohdetestiä, oikean backupin
 kolme system-testiä ja molempien pakettien tyypitys läpäisivät. Rajattu
 katselmushavainto korjattiin ja delta-katselmus läpäisi. Seuraavaksi uuden
 startup-omistajan main-valtuus ja pysyvän sidonnan tarkistusten kytkentä.
-Sidonnan muuttumaton startup-lukija on nyt toteutettu ja katselmoitu;
-nykyinen laajennettu kohdesarja läpäisi 241 testiä, yksi POSIX-testi odottaa
-Linux-näyttöä. Yhteistä palautinta käyttävän kopioaktivoinnin main-sopimus
-on tarkennettu samassa omistavassa suunnitelmassa: kaksi nimettyä
-sidontapaikkaa, erillinen sidonnaton yhteensopivuushavainto sekä tuore
-vaihekohtainen cold-/live-valtuus. Seuraava toteutuspala laajentaa nykyisen
-lukijan, välittää rekisteröidyn kohteen ja kytkee tarkistukset mainiin
+Startup-lukija tarkistaa nyt molemmat nimetyt sidontapaikat ja erottaa
+sidonnattoman yhteensopivuushavainnon ilman arvattua omistajaa.
+Rekisteröity startup-valinta välittää validoidun lineagen muuttumattomana;
+adoptionin nykyinen polku säilyy. Nykyinen seitsemän tiedoston kohdesarja
+läpäisi 204 testiä; desktopin tyyppitarkistus ja rajattu riippumaton
+koodikatselmus läpäisivät. Aiemmat kohdeajot
+ovat päällekkäistä checkpoint-näyttöä, eivät tähän lisättäviä läpäisyjä;
+aiemmin nimetty POSIX-todennus on yhä kesken.
+Seuraavaksi katselmoidun sopimuksen vaihekohtaiset cold-/live-valtuudet
+sekä mainin alkuvalinta-, työlupa- ja `rolledBack`-cleanup-kytkentä
 säilyttäen nykyiset palautus-, kopioaktivointi- ja valitsinpalautustestit.
 Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
 ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus

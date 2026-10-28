@@ -19,7 +19,8 @@ describe('workspace replacement startup binding observation', () => {
       const before = await snapshot(f.root);
       const selection = await captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner);
       await selection.assertCurrent(f.owner);
-      expect(Object.keys(selection)).toEqual(['assertCurrent']);
+      expect(Object.keys(selection)).toEqual(['mode', 'assertCurrent']);
+      expect(selection.mode).toBe(published ? 'workspaceReplacement' : 'legacyUnbound');
       expect(await snapshot(f.root)).toEqual(before);
       await expect(readFile(f.payload, 'utf8')).resolves.toBe('preserved payload');
     });
@@ -78,7 +79,7 @@ describe('workspace replacement startup binding observation', () => {
       if (delay) { entered(); await pendingRead; readFinished = true; }
       return bytes;
     };
-    const selection = await captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner, fileSystem);
+    const selection = await captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner, { workspaceReplacement: fileSystem });
     delay = true;
     const checking = selection.assertCurrent(f.owner);
     try {
@@ -145,7 +146,7 @@ describe('workspace replacement startup binding observation', () => {
       if (loseOwner) await f.held.release();
       return bytes;
     };
-    const selection = await captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner, fileSystem);
+    const selection = await captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner, { workspaceReplacement: fileSystem });
     loseOwner = true;
     const before = await snapshot(f.root);
     await expect(selection.assertCurrent(f.owner)).rejects.toThrow('WORKSPACE_MAINTENANCE_BUSY');
@@ -169,10 +170,147 @@ describe('workspace replacement startup binding observation', () => {
     const fileSystem = createNodeCrashSafeFileSlotFileSystem(f.paths, maximumWorkspaceRemnantBindingBytes);
     const read = vi.spyOn(fileSystem, 'readSlot');
     await expect(captureWorkspaceBackupReplacementStartupBinding(f.input,
-      { ...f.owner, assertAuthority: async () => {} }, fileSystem)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      { ...f.owner, assertAuthority: async () => {} }, { workspaceReplacement: fileSystem })).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
     expect(read).not.toHaveBeenCalled();
   });
+
+  for (const sourceWorkspaceId of [null, '77777777-7777-4777-8777-777777777777']) {
+    it(`pins the migration owner with source=${sourceWorkspaceId}`, async context => {
+      const f = await fixture(context, false);
+      await publishMigration(f);
+      const before = await snapshot(f.root);
+      const selection = await captureWorkspaceBackupReplacementStartupBinding({ ...f.input,
+        switchContext: { operationId, sourceWorkspaceId, targetWorkspaceId: workspaceId },
+      }, f.owner);
+      expect(selection.mode).toBe('workspaceActivationMigration');
+      await selection.assertCurrent(f.owner);
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
+  for (const mismatch of ['missingSwitch', 'foreignOperation', 'foreignTarget', 'sameSource', 'foreignLineage', 'foreignWorkspace'] as const) {
+    it(`rejects a migration with ${mismatch} without changing evidence`, async context => {
+      const f = await fixture(context, false);
+      await publishMigration(f);
+      const foreignId = '77777777-7777-4777-8777-777777777777';
+      const before = await snapshot(f.root);
+      await expect(captureWorkspaceBackupReplacementStartupBinding({ ...f.input,
+        ...(mismatch === 'foreignLineage' ? { lineageIdentity: { formatVersion: 1, profileId: 'd'.repeat(64) } } : {}),
+        ...(mismatch === 'foreignWorkspace' ? { workspaceId: foreignId } : {}),
+        ...(mismatch === 'missingSwitch' ? {} : { switchContext: {
+          operationId: mismatch === 'foreignOperation' ? foreignId : operationId,
+          sourceWorkspaceId: mismatch === 'sameSource' ? workspaceId : null,
+          targetWorkspaceId: mismatch === 'foreignTarget' ? foreignId : workspaceId,
+        } }),
+      }, f.owner)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
+  it('rejects both published owners instead of choosing the first', async context => {
+    const f = await fixture(context, true);
+    await publishMigration(f);
+    const before = await snapshot(f.root);
+    await expect(captureWorkspaceBackupReplacementStartupBinding({ ...f.input,
+      switchContext: { operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId },
+    }, f.owner)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  for (const published of [false, true]) {
+    it(`rejects a later migration owner after replacement published=${published}`, async context => {
+      const f = await fixture(context, published);
+      const selection = await captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner);
+      await publishMigration(f);
+      const before = await snapshot(f.root);
+      await expect(selection.assertCurrent(f.owner)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    it(`rejects an invalid migration ${slot} even when replacement is valid`, async context => {
+      const f = await fixture(context, true);
+      const paths = createWorkspaceRemnantBindingPaths(f.root, { owner: 'workspaceActivationMigration', operationId });
+      await mkdir(paths.directoryPath, { recursive: true, mode: 0o700 });
+      await writeFile(paths[`${slot}Path`], 'invalid\n', { mode: 0o600, flag: 'wx' });
+      const before = await snapshot(f.root);
+      await expect(captureWorkspaceBackupReplacementStartupBinding(f.input, f.owner)).rejects.toThrow();
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
+  for (const slot of ['next', 'backup'] as const) {
+    it(`rejects migration ${slot}-only without repair or legacy fallback`, async context => {
+      const f = await fixture(context, false);
+      const paths = await publishMigration(f);
+      await rename(paths.currentPath, paths[`${slot}Path`]);
+      const before = await snapshot(f.root);
+      await expect(captureWorkspaceBackupReplacementStartupBinding({ ...f.input,
+        switchContext: { operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId },
+      }, f.owner)).rejects.toThrow();
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
+  it('allows an unregistered legacy selection only when both bindings are absent', async context => {
+    const f = await fixture(context, false);
+    const selection = await captureWorkspaceBackupReplacementStartupBinding({ ...f.input, lineageIdentity: undefined }, f.owner);
+    expect(selection.mode).toBe('legacyUnbound');
+    await selection.assertCurrent(f.owner);
+    await f.store.publish(f.value, f.owner);
+    const before = await snapshot(f.root);
+    await expect(selection.assertCurrent(f.owner)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    await expect(captureWorkspaceBackupReplacementStartupBinding({ ...f.input, lineageIdentity: undefined }, f.owner))
+      .rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  it('captures migration switch selection before caller mutation', async context => {
+    const f = await fixture(context, false);
+    await publishMigration(f);
+    const switchContext: { operationId: string; sourceWorkspaceId: string | null; targetWorkspaceId: string } =
+      { operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId };
+    const pending = captureWorkspaceBackupReplacementStartupBinding({ ...f.input, switchContext }, f.owner);
+    switchContext.operationId = '77777777-7777-4777-8777-777777777777';
+    switchContext.targetWorkspaceId = switchContext.operationId;
+    const selection = await pending;
+    await selection.assertCurrent(f.owner);
+    expect(selection.mode).toBe('workspaceActivationMigration');
+  });
+
+  for (const change of ['disappeared', 'sameBytesNewIdentity', 'sameValueNewBytes', 'newSideSlot', 'replacementAppeared'] as const) {
+    it(`rejects migration ${change} and keeps evidence`, async context => {
+      const f = await fixture(context, false);
+      const paths = await publishMigration(f);
+      const selection = await captureWorkspaceBackupReplacementStartupBinding({ ...f.input,
+        switchContext: { operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId },
+      }, f.owner);
+      if (change === 'replacementAppeared') await f.store.publish(f.value, f.owner);
+      else if (change === 'disappeared' || change === 'sameBytesNewIdentity') {
+        await rename(paths.currentPath, `${paths.currentPath}.preserved`);
+        if (change === 'sameBytesNewIdentity') {
+          await writeFile(paths.currentPath, serializeWorkspaceRemnantBinding({ ...f.value, owner: 'workspaceActivationMigration' }),
+            { mode: 0o600, flag: 'wx' });
+        }
+      } else if (change === 'sameValueNewBytes') {
+        await writeFile(paths.currentPath, ` ${await readFile(paths.currentPath, 'utf8')}`, { mode: 0o600 });
+      } else {
+        await writeFile(paths.backupPath, await readFile(paths.currentPath), { mode: 0o600, flag: 'wx' });
+      }
+      const before = await snapshot(f.root);
+      await expect(selection.assertCurrent(f.owner)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
 });
+
+async function publishMigration(f: Awaited<ReturnType<typeof fixture>>) {
+  const value = captureWorkspaceRemnantBinding({ ...f.value, owner: 'workspaceActivationMigration' });
+  const store = new WorkspaceRemnantBindingStore(f.root, { owner: value.owner, operationId });
+  await store.publish(value, f.owner);
+  return createWorkspaceRemnantBindingPaths(f.root, { owner: value.owner, operationId });
+}
 
 async function fixture(context: TestContext, published: boolean) {
   const root = await mkdtemp(join(tmpdir(), 'eky-replacement-startup-binding-'));

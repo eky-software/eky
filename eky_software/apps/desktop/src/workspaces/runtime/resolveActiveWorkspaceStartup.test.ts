@@ -43,6 +43,26 @@ afterEach(async () => {
 });
 
 describe('active workspace startup resolution', () => {
+  for (const state of ['normal', 'targetSelected', 'rollbackSelected'] as const) {
+    it(`exposes the immutable registered lineage for ${state} without granting cleanup`, async context => {
+      const f = await createSwitchStartupFixture(state);
+      temporaryRoots.splice(temporaryRoots.indexOf(f.userDataRoot), 1);
+      context.onTestFinished(async () => {
+        if (context.task.result?.state === 'pass') await rm(f.userDataRoot, { recursive: true, force: true });
+      });
+      const registry = await f.registry.inspect();
+      const selected = await resolveActiveWorkspaceStartup(f.userDataRoot);
+      const expected = registry!.workspaces.find(entry => entry.workspaceId === selected.workspaceId)!.lineageIdentity;
+      expect(selected.registeredLineageIdentity).toEqual(expected);
+      expect(selected.registeredLineageIdentity).not.toBe(expected);
+      expect(Object.isFrozen(selected.registeredLineageIdentity)).toBe(true);
+      expect(Reflect.set(selected.registeredLineageIdentity!, 'profileId', 'f'.repeat(64))).toBe(false);
+      selected.assertCanAccept(expected.profileId);
+      expect(() => selected.assertCanAccept('f'.repeat(64))).toThrow();
+      expect(await f.registry.inspect()).toEqual(registry);
+    });
+  }
+
   it('does not repair registry slots while resolving an ordinary workspace before schema inventory', async () => {
     const userDataRoot = await createPrivateTemporaryRoot();
     const first = await resolveActiveWorkspaceStartup(userDataRoot);
@@ -89,6 +109,7 @@ describe('active workspace startup resolution', () => {
     const first = await resolveActiveWorkspaceStartup(userDataRoot);
 
     expect(first.mode).toBe('adoption');
+    expect(first.registeredLineageIdentity).toBeUndefined();
     await first.accept(profileId);
     expect(await readdir(join(userDataRoot, 'workspace-operations'))).toEqual(
       [],
@@ -100,6 +121,7 @@ describe('active workspace startup resolution', () => {
       mode: 'normal',
       workspaceId: first.workspaceId,
       workspaceRoot: first.workspaceRoot,
+      registeredLineageIdentity: { formatVersion: 1, profileId },
     });
     await second.accept(profileId);
     await expect(

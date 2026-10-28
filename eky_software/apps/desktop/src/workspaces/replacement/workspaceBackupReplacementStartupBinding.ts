@@ -1,11 +1,16 @@
 import { WorkspaceRemnantBindingStore, type WorkspaceRemnantBindingAuthority } from '../deletion/workspaceRemnantBindingStore.js';
-import { captureWorkspaceRemnantBinding, serializeWorkspaceRemnantBinding, workspaceRemnantBindingKey } from '../deletion/workspaceRemnantBindingCodec.js';
+import { captureWorkspaceRemnantBinding, serializeWorkspaceRemnantBinding } from '../deletion/workspaceRemnantBindingCodec.js';
 import { sameCrashSafeFileSlotIdentity, type CrashSafeFileSlot, type CrashSafeFileSlotFileSystem,
   type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import type { WorkspaceRemnantBindingV1 } from '../deletion/workspaceRemnantBindingCodec.js';
+import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
+import { validateWorkspaceLineage } from '../registry/workspaceLineageValidation.js';
+import { validateWorkspaceBackupReplacementOperationId } from './workspaceBackupReplacementOperationId.js';
 
 type BindingSelection = Awaited<ReturnType<WorkspaceRemnantBindingStore['inspect']>>;
+const activationOwners = ['workspaceReplacement', 'workspaceActivationMigration'] as const;
+type ActivationOwner = (typeof activationOwners)[number];
 
 /** Pins this startup's observation only; never publishes, repairs or grants deletion. */
 export async function captureWorkspaceBackupReplacementStartupBinding(input: Readonly<{
@@ -13,32 +18,59 @@ export async function captureWorkspaceBackupReplacementStartupBinding(input: Rea
   operationId: unknown;
   workspaceId: unknown;
   lineageIdentity: unknown;
-}>, authority: WorkspaceRemnantBindingAuthority, fileSystem?: CrashSafeFileSlotFileSystem) {
-  const expected = captureWorkspaceRemnantBinding({ formatVersion: 1, owner: 'workspaceReplacement',
-    operationId: input.operationId, workspaceId: input.workspaceId, lineageIdentity: input.lineageIdentity });
-  const expectedBytes = serializeWorkspaceRemnantBinding(expected);
-  const store = new WorkspaceRemnantBindingStore(input.userDataRoot, workspaceRemnantBindingKey(expected), fileSystem);
-  const observe = async (owner: WorkspaceRemnantBindingAuthority): Promise<BindingSelection> => {
+  switchContext?: Readonly<{ operationId: unknown; sourceWorkspaceId: unknown; targetWorkspaceId: unknown }>;
+}>, authority: WorkspaceRemnantBindingAuthority,
+fileSystems?: Readonly<Partial<Record<ActivationOwner, CrashSafeFileSlotFileSystem>>>) {
+  const operationId = validateWorkspaceBackupReplacementOperationId(input.operationId);
+  const workspaceId = validateWorkspaceId(input.workspaceId);
+  const lineage = input.lineageIdentity === undefined ? undefined : validateWorkspaceLineage(input.lineageIdentity);
+  const context = input.switchContext;
+  const switchContext = context === undefined ? undefined : Object.freeze({
+    operationId: validateWorkspaceBackupReplacementOperationId(context.operationId),
+    sourceWorkspaceId: context.sourceWorkspaceId === null ? null : validateWorkspaceId(context.sourceWorkspaceId),
+    targetWorkspaceId: validateWorkspaceId(context.targetWorkspaceId),
+  });
+  const stores = activationOwners.map(owner => ({ owner, store: new WorkspaceRemnantBindingStore(input.userDataRoot,
+    { owner, operationId }, fileSystems?.[owner]) }));
+  const observe = async (owner: WorkspaceRemnantBindingAuthority) => {
     const assertCurrent = captureSynchronousGuard(owner.assertAuthority.bind(owner));
     const assertExternal = owner.assertExternalSelection.bind(owner);
-    const selection = await store.inspect({ assertAuthority: assertCurrent,
-      async assertExternalSelection() { assertCurrent(); await assertExternal(); assertCurrent(); } });
+    const selections: BindingSelection[] = [];
+    let mode: ActivationOwner | 'legacyUnbound' = 'legacyUnbound';
+    for (const { owner: bindingOwner, store } of stores) {
+      const selection = await store.inspect({ assertAuthority: assertCurrent,
+        async assertExternalSelection() { assertCurrent(); await assertExternal(); assertCurrent(); } });
+      assertCurrent();
+      if (selection.mode === 'published') {
+        if (mode !== 'legacyUnbound' || lineage === undefined) throw required();
+        const expected = captureWorkspaceRemnantBinding({ formatVersion: 1, owner: bindingOwner,
+          operationId, workspaceId, lineageIdentity: lineage });
+        if (!serializeWorkspaceRemnantBinding(selection.value).equals(serializeWorkspaceRemnantBinding(expected))) throw required();
+        if (bindingOwner === 'workspaceActivationMigration' &&
+            (switchContext === undefined || switchContext.operationId !== operationId ||
+              switchContext.targetWorkspaceId !== workspaceId || switchContext.sourceWorkspaceId === workspaceId)) throw required();
+        mode = bindingOwner;
+      }
+      selections.push(selection);
+    }
     assertCurrent();
-    if (selection.mode === 'published' && !serializeWorkspaceRemnantBinding(selection.value).equals(expectedBytes)) throw required();
-    return selection;
+    return { mode, selections };
   };
   const initial = await observe(authority);
-  const pinned = copySlots(initial.slots);
+  const pinned = initial.selections.map(selection => copySlots(selection.slots));
   let active = false;
   let failed = false;
   return Object.freeze({
+    mode: initial.mode,
     async assertCurrent(owner: WorkspaceRemnantBindingAuthority): Promise<void> {
       if (active || failed) throw required();
       active = true;
       try {
         const selected = await observe(owner);
         if (selected.mode !== initial.mode) throw required();
-        assertSameSlots(pinned, selected.slots);
+        for (let index = 0; index < pinned.length; index++) {
+          assertSameSlots(pinned[index]!, selected.selections[index]!.slots);
+        }
       } catch (error) { failed = true; throw error; }
       finally { active = false; }
     },
