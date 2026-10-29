@@ -585,14 +585,24 @@ export class ProfileRestoreActivationTransaction {
     assertRecoveryAuthority?: () => Promise<void>,
     beforeRollbackRootRemoval?: (journal: Readonly<ProfileRestoreActivationJournal>) => Promise<ProfileRestoreRollbackRootRemovalAuthority>,
     coldCleanupContext?: ProfileRestoreColdCleanupContext,
+    assertLiveMutationCurrent?: () => void,
   ): Promise<void> {
+    if (assertLiveMutationCurrent !== undefined && (typeof assertLiveMutationCurrent !== 'function' ||
+        expected === undefined || typeof assertRecoveryAuthority !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
     if (coldCleanupContext !== undefined && (expected === undefined || typeof assertRecoveryAuthority !== 'function' ||
         typeof beforeRollbackRootRemoval !== 'function' || coldCleanupContext === null ||
         typeof coldCleanupContext.assertReadOwnership !== 'function' || typeof coldCleanupContext.assertMutationCurrent !== 'function')) {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
     }
     const assertRead = coldCleanupContext?.assertReadOwnership.bind(coldCleanupContext) ?? assertRecoveryAuthority;
-    const assertMutation = coldCleanupContext?.assertMutationCurrent.bind(coldCleanupContext);
+    const assertColdMutation = coldCleanupContext?.assertMutationCurrent.bind(coldCleanupContext);
+    const assertLiveMutation = assertLiveMutationCurrent;
+    const assertMutation = assertLiveMutation === undefined ? assertColdMutation : () => {
+      if (assertColdMutation !== undefined) assertSynchronousRollbackRootAuthority(assertColdMutation);
+      assertSynchronousRollbackRootAuthority(assertLiveMutation);
+    };
     // Repair remains a full-content mutation boundary, never a readonly probe.
     const journal = await this.requireTerminalJournal(expected, assertRecoveryAuthority, assertMutation);
     if (journal.phase !== 'rolledBack') {

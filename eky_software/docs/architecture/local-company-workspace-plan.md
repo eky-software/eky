@@ -5320,6 +5320,18 @@ läpäisi 200 testiä, desktopin tyypitys ja rajattu katselmus korjausdeltoineen
 läpäisivät. Mainin ja recoveryn jatkokytkentä sekä koko palautusketjun näyttö
 ovat edelleen kesken; apurin hyväksyntä ei sulje niitä.
 
+Recoveryn valinnainen jatkoportti käyttää nyt samaa validointiomistajaa.
+Uudessa polussa puuttuva omistaja tai viimeinen synkroninen muutosvartija
+estää korjaavan journal-luvun; vanha kutsutapa säilyy erillisenä. Kertakäyttöisen
+jatkon rikkomus pysyy hylkäyksenä myös kutsujan nieltyä virheen. Ensimmäinen
+vartijavirhe kirjataan ennen keskeneräisen työn sulkua, eikä myöhäinen työ
+voi tyhjentää uuden käynnistyksen journalivalintaa. Kuuden tiedoston
+vaikutusalueen sarja läpäisi 544 testiä; sen jälkeen katselmuksen ensisyy-
+täsmennykset läpäisivät 129 päällekkäistä kohdetestiä ja tyypityksen.
+Riippumaton katselmus ja korjausdelta läpäisivät. Oikeiden validointi- ja
+recovery-omistajien yhteinen keskeytyskoe säilytti alkuperäisen syyn ja
+varauksen nykyisissä rajoissa. Mainin kytkentä on vasta todennettava ehdokas.
+
 Nykyinen `clearRolledBack` saa erillisen synkronisen viimeisen mutaatioguardin
 ennen jokaista uutta `rmdir`-kutsua ja journal-slotin poistoa viimeisen
 odotuksen jälkeen. Se ei korvaa nykyisiä async-sisältö-/journal-tarkistuksia

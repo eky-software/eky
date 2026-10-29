@@ -66,6 +66,64 @@ afterEach(context => {
 });
 
 describe('profile restore activation transaction', () => {
+  it.each([1, 2, 3, 4, 5, 6])('retains evidence at live rolled-back mutation boundary %s', async boundary => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId);
+    await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const root = join(f.rollbackRoot, operationId);
+    const first = new Error('SYNTHETIC_LIVE_CLEANUP_REVOKED');
+    const guard = vi.fn(() => { if (guard.mock.calls.length === boundary) throw first; });
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, undefined, undefined, guard)).rejects.toThrow();
+    expect(guard).toHaveBeenCalledTimes(boundary);
+    expect(await f.journalStore.peek()).toEqual(selected);
+    if (boundary <= 3) expect(await readdir(root)).toEqual(
+      boundary === 1 ? ['data', 'storage'] : boundary === 2 ? ['storage'] : []);
+    else await expect(readdir(root)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+  });
+
+  it.each(['pending', 'rejected', 'resolved'] as const)('rejects a %s asynchronous live cleanup guard', async state => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId); await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const before = await captureEvidence(f);
+    const guard = () => state === 'pending' ? new Promise<void>(() => {})
+      : state === 'rejected' ? Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')) : Promise.resolve();
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, undefined, undefined, guard))
+      .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it.each(['current', 'backup', 'next'] as const)('guards repair of the rolled-back %s slot before live cleanup', async slot => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId); await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const journalPath = join(dirname(dirname(f.activeDatabasePath)), 'profile-restore-state', profileRestoreActivationJournalFileName);
+    if (slot === 'current') await writeFile(`${journalPath}.next`, await readFile(journalPath));
+    else await rename(journalPath, `${journalPath}.${slot}`);
+    const before = await captureEvidence(f);
+    const guard = vi.fn(() => { throw new Error('SYNTHETIC_REPAIR_REVOKED'); });
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, undefined, undefined, guard)).rejects.toThrow();
+    expect(guard).toHaveBeenCalledOnce(); expect(await captureEvidence(f)).toEqual(before);
+    expect(await f.journalStore.peek()).toEqual(selected);
+  });
+
+  it.each(['cold', 'live'] as const)('composes both cleanup guards without bypassing %s', async failingGuard => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId); await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const before = await captureEvidence(f);
+    const cold = vi.fn(() => { if (failingGuard === 'cold') throw new Error('COLD_OWNER_REVOKED'); });
+    const live = vi.fn(() => { if (failingGuard === 'live') throw new Error('LIVE_OWNER_REVOKED'); });
+    const root = vi.fn(async () => ({ identity: 'unused', assertCurrent() {} }));
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, root,
+      { async assertReadOwnership() {}, assertMutationCurrent: cold }, live)).rejects.toThrow();
+    expect(cold).toHaveBeenCalledOnce(); expect(live).toHaveBeenCalledTimes(failingGuard === 'live' ? 1 : 0);
+    expect(root).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(before);
+  });
+
   it.each(['completed', 'changedCensus', 'expiredMutation'] as const)(
     'forwards the paired journal context with the rollback census (%s)', async outcome => {
       const f = await createFixture(); const selected = await beginInterruptedRollback(f);

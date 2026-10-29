@@ -113,8 +113,11 @@ läpäisivät, mutta mainin sisältövirhetapauksen aikakatkaisu ei poistunut.
 Saman elävän snapshotin valinnainen validointijatko on toteutettu;
 sen ja valintaporttien viiden tiedoston yhteissarja läpäisi 200 testiä,
 desktopin tyypitys ja rajattu katselmus korjausdeltoineen läpäisivät.
-Tämä ei vielä ole mainin tai recoveryn tuotantokytkennän näyttö.
-Live-/rolledBack-jatkokytkennät,
+Recoveryn jatkoportti ja viimeiset poistovartijat on nyt kytketty alemmissa
+kerroksissa: 544 testin vaikutusalueen sarja sekä sen jälkeen 129 päällekkäisen
+kohdetestin katselmusdelta, tyypitys ja rajattu riippumaton katselmus
+läpäisivät. Mainin rolledBack-kytkentä on vielä todennettava ehdokas.
+Live-jatkokytkentä,
 ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
 ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta

@@ -4,10 +4,67 @@ import { profileInspectionShutdownMilliseconds, profileInspectionWorkMillisecond
   type ProfileInspectionReceipt } from '../runtime/profileInspectionMessages.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { validateOwnedActiveProfile, type OwnedActiveProfileContinuation } from './validateOwnedActiveProfile.js';
+import { ProfileRestoreStartupRecovery } from './restore/profileRestoreStartupRecovery.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('owned active profile validation', () => {
+  it.each([false, true])('bounds actual recovery cleanup join within the validation owner (first failure: %s)', async earlyFailure => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const f = fixture(); const entered = deferred(); const finish = deferred(); const settled = deferred();
+    const first = new Error('SYNTHETIC_CLEANUP_OWNER_FAILURE');
+    const journal = { formatVersion: 1 as const, operationId: '11111111-1111-4111-8111-111111111111',
+      phase: 'rolledBack' as const, revision: 1, hadActiveDatabase: true, hadActiveDocuments: true };
+    let current: OwnedActiveProfileContinuation | undefined; let mutations = 0;
+    const stop = vi.fn(async () => {});
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: { peek: async () => journal, read: async () => journal },
+      transaction: {
+        async clearRolledBack(_journal, _assertOwner, _root, _cold, mutation) {
+          entered.resolve();
+          try { await finish.promise; mutation!(); mutations++; }
+          finally { settled.resolve(); }
+        },
+        async clearAccepted() { throw new Error('UNEXPECTED_ACCEPTANCE'); },
+        async commitAcceptance() { throw new Error('UNEXPECTED_ACCEPTANCE'); },
+        async advanceToValidation() { throw new Error('UNEXPECTED_FORWARD'); },
+        async assertForwardRecoveryState() { throw new Error('UNEXPECTED_FORWARD'); },
+        async rollback() { throw new Error('UNEXPECTED_ROLLBACK'); },
+      },
+      async withRolledBackCleanupAuthority(_journal, use) {
+        const owner = current!;
+        const original = use(() => owner.assertCurrent(), () => owner.assertMutationCurrent());
+        void original.catch(() => {});
+        if (earlyFailure) { await entered.promise; throw first; }
+        await original;
+      },
+    });
+    const mode = await recovery.prepareBeforeBackend();
+    const original = recovery.validateAfterBackend({ mode, stopBackend: stop,
+      async validateActiveProfile() { throw new Error('UNEXPECTED_SECOND_VALIDATION'); },
+      async withValidatedRolledBackProfile(use) {
+        await validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+          current = authority;
+          try { await use(authority.reportFirstFailure); } finally { current = undefined; }
+        } });
+      },
+    });
+    const outcome = original.catch(error => error);
+    try {
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync((earlyFailure ? 0 : profileInspectionWorkMilliseconds) + 2 * profileInspectionShutdownMilliseconds);
+      const error = await outcome;
+      expect(error.message).toBe('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      expect(error.cause.errors[0]).toMatchObject({ message: earlyFailure ? first.message : 'PROFILE_INSPECTION_TIMEOUT' });
+      if (earlyFailure) expect(error.cause.errors[0]).toBe(first);
+      expect(stop).toHaveBeenCalledOnce(); expect(f.lease.readState()).toBe('busy');
+      expect(f.client.invalidateRestoreMaintenance).toHaveBeenCalledOnce();
+      expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled();
+      finish.resolve(); await settled.promise; await vi.advanceTimersByTimeAsync(0);
+      expect(mutations).toBe(0); expect(await outcome).toBe(error); expect(f.lease.readState()).toBe('busy');
+    } finally { finish.resolve(); await settled.promise; await vi.runAllTimersAsync(); await outcome; }
+  });
+
   it('runs the captured continuation inside the same snapshot and closes its authority', async () => {
     const f = fixture();
     let captured: OwnedActiveProfileContinuation | undefined;
