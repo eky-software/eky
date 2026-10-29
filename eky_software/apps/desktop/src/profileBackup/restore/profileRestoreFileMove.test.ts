@@ -3,6 +3,52 @@ import { describe, expect, it, vi } from 'vitest';
 import { renameProfilePathWithRetry } from './profileRestoreFileMove.js';
 
 describe('profile restore file move', () => {
+  it.each([null, false, 1])('rejects malformed final guard %s before rename or retry', async guard => {
+    const renamePath = vi.fn(async () => {}); const wait = vi.fn(async () => {});
+    await expect(renameProfilePathWithRetry({ sourcePath: 'source', destinationPath: 'destination',
+      renamePath, wait, async assertAuthority() {}, assertMutationCurrent: guard as never,
+    })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(renamePath).not.toHaveBeenCalled(); expect(wait).not.toHaveBeenCalled();
+  });
+
+  it('preserves legacy authority replacement during the existing retry wait', async () => {
+    const first = new Error('SYNTHETIC_LEGACY_AUTHORITY_REVOKED');
+    const renamePath = vi.fn(async () => { throw createNodeError('EPERM'); });
+    const revoke = vi.fn(async () => { throw first; });
+    const options = { sourcePath: 'source', destinationPath: 'destination', platform: 'win32' as const,
+      renamePath, async assertAuthority() {}, wait: vi.fn(async () => { options.assertAuthority = revoke; }) };
+    await expect(renameProfilePathWithRetry(options)).rejects.toBe(first);
+    expect(renamePath).toHaveBeenCalledOnce(); expect(revoke).toHaveBeenCalledOnce();
+    expect(options.wait).toHaveBeenCalledExactlyOnceWith(25);
+  });
+
+  it('checks the captured synchronous owner after asynchronous authority and before every rename', async () => {
+    const first = new Error('SYNTHETIC_FINAL_OWNER_REVOKED');
+    let current = true;
+    const renamePath = vi.fn(async () => { throw createNodeError('EPERM'); });
+    const replacement = vi.fn();
+    const options = { sourcePath: 'source', destinationPath: 'destination', platform: 'win32' as const,
+      renamePath, wait: vi.fn(async () => { current = false; }),
+      async assertAuthority() { options.assertMutationCurrent = replacement; },
+      assertMutationCurrent() { if (!current) throw first; },
+    };
+    await expect(renameProfilePathWithRetry(options)).rejects.toBe(first);
+    expect(renamePath).toHaveBeenCalledOnce();
+    expect(options.wait).toHaveBeenCalledExactlyOnceWith(25);
+    expect(replacement).not.toHaveBeenCalled();
+  });
+
+  it.each(['pending', 'resolved', 'rejected'] as const)('rejects a %s asynchronous final guard before rename', async kind => {
+    const renamePath = vi.fn(async () => {});
+    const wait = vi.fn(async () => {});
+    await expect(renameProfilePathWithRetry({ sourcePath: 'source', destinationPath: 'destination',
+      renamePath, wait, async assertAuthority() {},
+      assertMutationCurrent: () => kind === 'pending' ? new Promise<void>(() => {})
+        : kind === 'resolved' ? Promise.resolve() : Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')),
+    })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(renamePath).not.toHaveBeenCalled(); expect(wait).not.toHaveBeenCalled();
+  });
+
   it('does not retry a rename after losing authority during the Windows retry wait', async () => {
     let current = true;
     const primary = new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');

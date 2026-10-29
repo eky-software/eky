@@ -4879,6 +4879,31 @@ koodikatselmus läpäisivät. Tämä osa ei vielä ole koordinaattorin tai maini
 tuotantokytkentä: epävarmuuden composition-laajuinen esto, korjaavan
 journal-luvun vartiointi ja koko palautusketjun näyttö ovat seuraava pala.
 
+**B:n muutosportit:** sidontakirjoittajan viimeinen synkroninen vartija
+vaatii julkaistun kuitin, saman leasen ja nykyisen main-omistajuuden.
+Epävarmuus on pysyvä; käynnissä olevaa kuitin lukua ei hyväksytä luvaksi.
+Nykyisen activation-transaktion `prepare`, `advanceToValidation` ja
+`rollback` sekä replacementin root-store ottavat rajatun valinnaisen
+muutosvaltuuden. Uusi kutsuja antaa sekä tuoreen asynkronisen tarkistuksen
+että välittömästi ennen tiedostomuutosta tehtävän synkronisen vartijan.
+Tämä ei muuta vanhojen, porttia käyttämättömien kutsujien sopimusta eikä
+korvaa cold-sisältötarkistusta tai sen journal-kontekstia.
+
+Vartija kulkee alkujournalin luontiin, korjaavaan lukemiseen, hakemiston
+luontiin/oikeuksiin, siirron jokaiseen nykyiseen uusintayritykseen,
+rollbackin failed-safe-kirjoitukseen ja valmistelukansioiden poistoihin.
+Root-store tarkistaa muuttuvan kohteen myös valtuuden asynkronisen luvun
+jälkeen. Molempien siivouskohteiden epäselvyys torjutaan ennen ensimmäistä
+poistoa; jäljelle jäävä kohde tarkistetaan uudelleen ennen omaa poistoaan.
+Jo aloitettu tiedostotyö ja kahvan sulku liittyvät loppuun ennen virheen
+palautusta; menetetty valtuus ei oikeuta seuraavaa muutosta.
+Nämä portit ovat koordinaattori-/composition-kytkennän edellytys, eivät sen
+valmistumisnäyttö. Tuotantokutsuja ei saa jättää uuden sidonnan vartijaa pois.
+Jäädytetty porttien ja vanhojen kutsujen seitsemän tiedoston regressiosarja
+läpäisi 600 testiä nykyisillä aikarajoilla. Rajattu katselmus läpäisi.
+POSIX-oikeusmuutoksen ajonaikainen todennus kuuluu vielä Linux-porttiin;
+paikallista Windows-näyttöä ei nimetä sen todisteeksi.
+
 **Toteutusta edeltävä tarkennus:** tämä koskee ensimmäistä B-liitosta,
 ei uutta palautusmoottoria tai vielä todennettua tuotantokytkentää.
 `WorkspaceBackupReplacementCoordinator` säilyttää nykyisen preflight ->

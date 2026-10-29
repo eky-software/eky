@@ -1,16 +1,18 @@
+import { promises as fileSystem } from 'node:fs';
 import {
   link,
   lstat,
   mkdir,
   mkdtemp,
   readFile,
+  readdir,
   rm,
   writeFile,
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { deriveWorkspaceBackupReplacementPaths } from './workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from './workspaceBackupReplacementRootStore.js';
@@ -21,15 +23,127 @@ import {
 
 const cleanupRoots: string[] = [];
 
-afterEach(async () => {
-  await Promise.all(
-    cleanupRoots
-      .splice(0)
-      .map((root) => rm(root, { force: true, recursive: true })),
-  );
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
+
+afterEach(context => {
+  vi.restoreAllMocks(); vi.mocked(rm).mockReset();
+  const owned = cleanupRoots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') {
+      for (const root of owned) await rm(root, { force: true, recursive: true });
+    }
+  });
 });
 
 describe('workspace backup replacement root store', () => {
+  it.each(Array.from({ length: process.platform === 'win32' ? 10 : 20 }, (_, index) => index + 1))(
+    'retains the exact root tree when preparation owner is lost before mutation %s', async boundary => {
+      const f = await createFixture(); let calls = 0;
+      let retained: Awaited<ReturnType<typeof snapshot>> | undefined;
+      const first = new Error('SYNTHETIC_ROOT_OWNER_REVOKED');
+      await expect(f.store.prepareCandidate(f.paths, {
+        async assertCurrent() { retained = await snapshot(f.root); },
+        assertMutationCurrent() { if (++calls === boundary) throw first; },
+      })).rejects.toMatchObject({ cause: first });
+      expect(calls).toBe(boundary); expect(await snapshot(f.root)).toEqual(retained);
+    },
+  );
+
+  it.each([1, 2])('guards discard mutation %s separately and keeps the remaining evidence', async boundary => {
+    const f = await createFixture(); await f.store.prepareCandidate(f.paths);
+    await mkdir(f.paths.importStagingRoot, { mode: 0o700, recursive: true });
+    await writeFile(join(f.paths.importStagingRoot, 'profile.sqlite'), 'source');
+    await writeFile(f.paths.candidateDatabasePath, 'candidate');
+    let calls = 0; let retained: Awaited<ReturnType<typeof snapshot>> | undefined;
+    const first = new Error('SYNTHETIC_DISCARD_OWNER_REVOKED');
+    await expect(f.store.discardBeforeActivation(f.paths, {
+      async assertCurrent() { retained = await snapshot(f.root); },
+      assertMutationCurrent() { if (++calls === boundary) throw first; },
+    })).rejects.toMatchObject({ cause: first });
+    expect(calls).toBe(boundary); expect(await snapshot(f.root)).toEqual(retained);
+    expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.paths.candidateDatabasePath, 'utf8')).toBe('candidate');
+  });
+
+  it.each(['prepareCandidate', 'discardBeforeActivation', 'removeImportStaging'] as const)(
+    'rejects a non-synchronous guard without changing files in %s', async method => {
+      const f = await createFixture(); await f.store.prepareCandidate(f.paths);
+      await mkdir(f.paths.importStagingRoot, { mode: 0o700, recursive: true });
+      const before = await snapshot(f.root);
+      await expect(f.store[method](f.paths, { async assertCurrent() {}, async assertMutationCurrent() {} })).rejects.toThrow();
+      expect(await snapshot(f.root)).toEqual(before);
+    },
+  );
+
+  it('pins root authority callbacks before the first asynchronous validation', async () => {
+    const f = await createFixture(); const foreign = vi.fn(); const guard = vi.fn();
+    const authority = { async assertCurrent() { Object.assign(authority, { assertCurrent: foreign, assertMutationCurrent: foreign }); },
+      assertMutationCurrent: guard };
+    await f.store.prepareCandidate(f.paths, authority);
+    expect(foreign).not.toHaveBeenCalled();
+    expect(guard).toHaveBeenCalledTimes(process.platform === 'win32' ? 10 : 20);
+  });
+
+  it('joins the original removal before reporting lost ownership and never starts candidate cleanup', async () => {
+    const f = await createFixture(); await f.store.prepareCandidate(f.paths);
+    await mkdir(f.paths.importStagingRoot, { mode: 0o700, recursive: true });
+    await writeFile(f.paths.candidateDatabasePath, 'candidate');
+    let release!: () => void; const gate = new Promise<void>(resolve => { release = resolve; });
+    let entered!: () => void; const started = new Promise<void>(resolve => { entered = resolve; });
+    let current = true; let settled = false;
+    const first = new Error('SYNTHETIC_PENDING_REMOVAL_REVOKED');
+    vi.mocked(rm).mockClear();
+    vi.mocked(rm).mockImplementationOnce(async (...args) => {
+      entered(); await gate; await fileSystem.rm(...args);
+    });
+    const result = f.store.discardBeforeActivation(f.paths, {
+      async assertCurrent() { if (!current) throw first; },
+      assertMutationCurrent() { if (!current) throw first; },
+    }).then(() => undefined, error => error as unknown).finally(() => { settled = true; });
+    try {
+      await Promise.race([started, result.then(() => { throw new Error('REMOVAL_NOT_STARTED'); })]);
+      current = false; await Promise.resolve(); expect(settled).toBe(false);
+    } finally { release(); await result; }
+    expect(await result).toMatchObject({ cause: first });
+    expect(vi.mocked(rm)).toHaveBeenCalledOnce();
+    expect(await readFile(f.paths.candidateDatabasePath, 'utf8')).toBe('candidate');
+    expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('old database');
+  });
+
+  it('rechecks both trees after asynchronous authority before discarding either', async () => {
+    const f = await createFixture(); await f.store.prepareCandidate(f.paths);
+    await mkdir(f.paths.importStagingRoot, { mode: 0o700, recursive: true });
+    await writeFile(join(f.paths.importStagingRoot, 'profile.sqlite'), 'source');
+    await writeFile(f.paths.candidateDatabasePath, 'candidate');
+    let retained: Awaited<ReturnType<typeof snapshot>> | undefined;
+    const guard = vi.fn(); vi.mocked(rm).mockClear();
+    await expect(f.store.discardBeforeActivation(f.paths, {
+      async assertCurrent() {
+        await writeFile(join(f.paths.activationStagingOperationRoot, 'foreign.txt'), 'retained');
+        retained = await snapshot(f.root);
+      }, assertMutationCurrent: guard,
+    })).rejects.toThrow();
+    expect(guard).not.toHaveBeenCalled(); expect(rm).not.toHaveBeenCalled();
+    expect(await snapshot(f.root)).toEqual(retained);
+  });
+
+  it('revalidates import staging after asynchronous authority before removing it', async () => {
+    const f = await createFixture(); await f.store.prepareCandidate(f.paths);
+    await mkdir(f.paths.importStagingRoot, { mode: 0o700, recursive: true });
+    const source = join(f.paths.importStagingRoot, 'profile.sqlite'); await writeFile(source, 'source');
+    let retained: Awaited<ReturnType<typeof snapshot>> | undefined;
+    const guard = vi.fn(); vi.mocked(rm).mockClear();
+    await expect(f.store.removeImportStaging(f.paths, {
+      async assertCurrent() { await link(source, join(f.root, 'foreign-link')); retained = await snapshot(f.root); },
+      assertMutationCurrent: guard,
+    })).rejects.toThrow();
+    expect(guard).not.toHaveBeenCalled(); expect(rm).not.toHaveBeenCalled();
+    expect(await snapshot(f.root)).toEqual(retained);
+  });
+
   it('prepares and validates only the private candidate slots', async () => {
     const fixture = await createFixture();
 
@@ -233,6 +347,16 @@ describe('workspace backup replacement root store', () => {
     });
   });
 });
+
+async function snapshot(root: string): Promise<Record<string, string>> {
+  const result: Record<string, string> = {};
+  async function visit(path: string, key: string): Promise<void> {
+    const metadata = await lstat(path);
+    result[key] = metadata.isDirectory() ? 'directory' : (await readFile(path)).toString('base64');
+    if (metadata.isDirectory()) for (const name of (await readdir(path)).sort()) await visit(join(path, name), `${key}/${name}`);
+  }
+  await visit(root, 'root'); return result;
+}
 
 async function createFixture() {
   const root = await mkdtemp(join(tmpdir(), 'eky-workspace-replacement-root-'));

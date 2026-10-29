@@ -45,6 +45,7 @@ export interface ProfileRestoreJournalCreateAuthority {
   readonly previous: undefined;
   assertAbsent(): Promise<void>;
   assertCurrent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+  readonly assertMutationCurrent?: () => void;
 }
 
 export class ProfileRestoreActivationJournalStore {
@@ -147,7 +148,7 @@ export class ProfileRestoreActivationJournalStore {
 
     const suppliedContext = authority !== undefined && 'writeContext' in authority ? authority.writeContext : undefined;
     const suppliedMutation = authority !== undefined && 'assertMutationCurrent' in authority ? authority.assertMutationCurrent : undefined;
-    if (suppliedMutation !== undefined && (typeof suppliedMutation !== 'function' || authority?.previous === undefined ||
+    if (suppliedMutation !== undefined && (typeof suppliedMutation !== 'function' || authority === undefined ||
         typeof authority.assertCurrent !== 'function')) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     const assertLiveMutation = suppliedMutation?.bind(authority);
     if (suppliedContext !== undefined && (authority === undefined || !('kind' in authority) ||
@@ -160,7 +161,17 @@ export class ProfileRestoreActivationJournalStore {
       assertReadCurrent: suppliedContext.assertReadCurrent.bind(suppliedContext),
       assertMutationCurrent: suppliedContext.assertMutationCurrent.bind(suppliedContext),
     });
-    if (writeContext !== undefined || assertLiveMutation !== undefined) {
+    if (assertLiveMutation !== undefined && authority?.previous === undefined) {
+      const supplied = authority as ProfileRestoreJournalCreateAuthority;
+      if (typeof supplied.assertAbsent !== 'function' ||
+          ('kind' in supplied && supplied.kind !== undefined && supplied.kind !== 'combined')) {
+        throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+      }
+      authority = Object.freeze({ previous: undefined,
+        assertAbsent: supplied.assertAbsent.bind(supplied),
+        assertCurrent: supplied.assertCurrent.bind(supplied),
+      });
+    } else if (writeContext !== undefined || assertLiveMutation !== undefined) {
       const supplied = authority as Extract<ProfileRestoreJournalWriteAuthority, { kind: 'separateContent' }>;
       if (typeof supplied.assertCurrent !== 'function' ||
           (supplied.kind === 'separateContent' && typeof supplied.assertContent !== 'function')) {

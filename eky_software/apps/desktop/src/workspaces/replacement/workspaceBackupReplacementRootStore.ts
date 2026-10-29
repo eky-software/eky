@@ -8,7 +8,8 @@ import {
 } from 'node:fs/promises';
 import { dirname, join, resolve } from 'node:path';
 
-import type { WorkspaceBackupReplacementRootStore } from './workspaceBackupReplacementPorts.js';
+import type { WorkspaceBackupReplacementRootStore, WorkspaceReplacementMutationAuthority } from './workspaceBackupReplacementPorts.js';
+import { assertSynchronousProfileRestoreMutationAuthority } from '../../profileBackup/restore/profileRestoreMutationAuthority.js';
 import type { WorkspaceBackupReplacementPaths } from './workspaceBackupReplacementPaths.js';
 import {
   mapWorkspaceBackupReplacementError,
@@ -20,24 +21,30 @@ export class NodeWorkspaceBackupReplacementRootStore
 {
   async prepareCandidate(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    suppliedAuthority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void> {
     try {
+      const authority = captureAuthority(suppliedAuthority);
+      if (authority !== undefined) await authority.assertCurrent();
       await assertRealDirectory(paths.userDataRoot, false);
       await assertWorkspaceLayout(paths);
-      await ensurePrivateDirectory(paths.userDataRoot, paths.operationsRoot);
-      await ensurePrivateDirectory(paths.operationsRoot, paths.importRoot);
-      await ensurePrivateDirectory(paths.operationsRoot, paths.activationRoot);
+      await ensurePrivateDirectory(paths.userDataRoot, paths.operationsRoot, authority);
+      await ensurePrivateDirectory(paths.operationsRoot, paths.importRoot, authority);
+      await ensurePrivateDirectory(paths.operationsRoot, paths.activationRoot, authority);
       await ensurePrivateDirectory(
         paths.activationRoot,
         paths.activationStagingRoot,
+        authority,
       );
       await ensurePrivateDirectory(
         paths.activationRoot,
         paths.activationRollbackRoot,
+        authority,
       );
       await ensurePrivateDirectory(
         paths.activationRoot,
         paths.activationFailedRoot,
+        authority,
       );
       await assertPathMissing(paths.importStagingRoot);
       await assertPathMissing(paths.activationStagingOperationRoot);
@@ -56,6 +63,7 @@ export class NodeWorkspaceBackupReplacementRootStore
       await createPrivateDirectory(
         paths.activationStagingRoot,
         paths.activationStagingOperationRoot,
+        authority,
       );
       const activationDocumentsRoot = dirname(
         dirname(paths.candidateArtifactRoot),
@@ -64,15 +72,19 @@ export class NodeWorkspaceBackupReplacementRootStore
       await createPrivateDirectory(
         paths.activationStagingOperationRoot,
         activationDocumentsRoot,
+        authority,
       );
       await createPrivateDirectory(
         activationDocumentsRoot,
         activationStorageRoot,
+        authority,
       );
       await createPrivateDirectory(
         activationStorageRoot,
         paths.candidateArtifactRoot,
+        authority,
       );
+      if (authority !== undefined) await authority.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupReplacementError(
         error,
@@ -84,10 +96,15 @@ export class NodeWorkspaceBackupReplacementRootStore
 
   async removeImportStaging(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    suppliedAuthority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void> {
     try {
+      const authority = captureAuthority(suppliedAuthority);
+      if (authority !== undefined) await authority.assertCurrent();
       await assertSafeTree(paths.importStagingRoot);
+      if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
       await rm(paths.importStagingRoot, { recursive: true });
+      if (authority !== undefined) await authority.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupReplacementError(
         error,
@@ -131,8 +148,10 @@ export class NodeWorkspaceBackupReplacementRootStore
 
   async discardBeforeActivation(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    suppliedAuthority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void> {
     try {
+      const authority = captureAuthority(suppliedAuthority);
       const importStagingExists = await safePathExists(paths.importStagingRoot);
       const candidateExists = await safePathExists(
         paths.activationStagingOperationRoot,
@@ -145,13 +164,23 @@ export class NodeWorkspaceBackupReplacementRootStore
         await assertPartialCandidate(paths);
       }
       if (importStagingExists) {
+        if (authority !== undefined) await authority.assertCurrent();
+        if (authority !== undefined) {
+          await assertSafeTree(paths.importStagingRoot);
+          if (candidateExists) await assertPartialCandidate(paths);
+        }
+        if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
         await rm(paths.importStagingRoot, { recursive: true });
       }
       if (candidateExists) {
+        if (authority !== undefined) await authority.assertCurrent();
+        if (authority !== undefined) await assertPartialCandidate(paths);
+        if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
         await rm(paths.activationStagingOperationRoot, {
           recursive: true,
         });
       }
+      if (authority !== undefined) await authority.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupReplacementError(
         error,
@@ -236,25 +265,50 @@ async function assertRegularFile(path: string): Promise<void> {
 async function ensurePrivateDirectory(
   parentPath: string,
   directoryPath: string,
+  authority?: Readonly<WorkspaceReplacementMutationAuthority>,
 ): Promise<void> {
+  if (authority !== undefined) await authority.assertCurrent();
   await assertRealDirectory(parentPath, false);
+  if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
   try {
     await mkdir(directoryPath, { mode: 0o700 });
   } catch (error) {
     if (!isNodeError(error) || error.code !== 'EEXIST') throw error;
   }
-  if (process.platform !== 'win32') await chmod(directoryPath, 0o700);
+  if (process.platform !== 'win32') {
+    if (authority !== undefined) await authority.assertCurrent();
+    if (authority !== undefined) await assertRealDirectory(directoryPath, false);
+    if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
+    await chmod(directoryPath, 0o700);
+  }
   await assertRealDirectory(directoryPath, true);
 }
 
 async function createPrivateDirectory(
   parentPath: string,
   directoryPath: string,
+  authority?: Readonly<WorkspaceReplacementMutationAuthority>,
 ): Promise<void> {
+  if (authority !== undefined) await authority.assertCurrent();
   await assertRealDirectory(parentPath, true);
+  if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
   await mkdir(directoryPath, { mode: 0o700 });
-  if (process.platform !== 'win32') await chmod(directoryPath, 0o700);
+  if (process.platform !== 'win32') {
+    if (authority !== undefined) await authority.assertCurrent();
+    if (authority !== undefined) await assertRealDirectory(directoryPath, false);
+    if (authority !== undefined) assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
+    await chmod(directoryPath, 0o700);
+  }
   await assertRealDirectory(directoryPath, true);
+}
+
+function captureAuthority(authority?: Readonly<WorkspaceReplacementMutationAuthority>): Readonly<WorkspaceReplacementMutationAuthority> | undefined {
+  if (authority === undefined) return undefined;
+  if (authority === null || typeof authority.assertCurrent !== 'function' || typeof authority.assertMutationCurrent !== 'function') {
+    throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+  }
+  return Object.freeze({ assertCurrent: authority.assertCurrent.bind(authority),
+    assertMutationCurrent: authority.assertMutationCurrent.bind(authority) });
 }
 
 async function assertRealDirectory(

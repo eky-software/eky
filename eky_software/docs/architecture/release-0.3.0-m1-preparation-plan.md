@@ -57,6 +57,12 @@ vaiheomistajien kytkentä ovat työn alla. Omistavat sopimukset:
   sulkuvirheen erottamisen. Mainin neljä valintakontrollia läpäisivät.
   Molempien pakettien tyypitys ja rajattu katselmus läpäisivät.
   Mallinnettua prosessiomistajaa ei nimetä native-näytöksi.
+- B:n ensimmäistä sidontakytkentää varten nykyiset journal-, transaktio-
+  ja root-store-portit välittävät viimeisen muutosluvan myös korjaavaan
+  lukuun, siirtoon ja siivoukseen. Sidonnan kuitti ei yksin anna jatkolupaa.
+  Jäädytetty seitsemän tiedoston sarja läpäisi 600 testiä ja rajattu
+  katselmus läpäisi. Vanhojen porttia käyttämättömien kutsujien sopimus säilyy; tämä ei vielä
+  ole koordinaattori-/composition-kytkennän hyväksyntä.
 - **Seuraava työ:** B:n replacement-sidonnan julkaisu- ja epävarmuuskytkentä
   koordinaattoriin ja management/mainiin, sitten muut B:n omistajaliitokset
   ja C:n W7.3-luovutus.

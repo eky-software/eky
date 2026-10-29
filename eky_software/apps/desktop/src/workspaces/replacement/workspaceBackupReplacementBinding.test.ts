@@ -14,6 +14,51 @@ import { createWorkspaceBackupReplacementFixture, TEST_REPLACEMENT_OPERATION_ID 
   TEST_REPLACEMENT_WORKSPACE_ID as workspaceId } from './workspaceBackupReplacementTestSupport.js';
 
 describe('workspace replacement binding authority', () => {
+  it('requires completed publication before the last synchronous mutation guard', async context => {
+    const f = await fixture(context);
+    expect(() => f.binding.assertMutationCurrent()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(f.onUncertain).not.toHaveBeenCalled();
+    await f.binding.publish();
+    await f.binding.assertPublished();
+    expect(f.binding.assertMutationCurrent()).toBeUndefined();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  });
+
+  for (const loss of ['shutdown', 'lease'] as const) {
+  it(`latches ${loss} loss in the last mutation guard without reading or changing files`, async context => {
+    const f = await fixture(context);
+    await f.binding.publish();
+    const before = await snapshot(f.root);
+    f.assertOwned.mockClear(); f.assertAbsent.mockClear();
+    if (loss === 'shutdown') f.state.shutdown = true;
+    else await f.held.release();
+    expect(() => f.binding.assertMutationCurrent()).toThrow();
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(f.assertOwned).not.toHaveBeenCalled(); expect(f.assertAbsent).not.toHaveBeenCalled();
+    f.state.shutdown = false;
+    expect(() => f.binding.assertMutationCurrent()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    await expect(f.binding.assertPublished()).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+  }
+
+  it('does not authorize a mutation while original receipt readback is still pending', async context => {
+    const f = await fixture(context);
+    await f.binding.publish();
+    const entered = gate(); const finish = gate();
+    f.assertOwned.mockImplementationOnce(async () => { entered.resolve(); await finish.promise; });
+    const readback = f.binding.assertPublished().then(() => undefined, error => error as unknown);
+    await entered.promise;
+    try {
+      expect(() => f.binding.assertMutationCurrent()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(f.onUncertain).toHaveBeenCalledOnce();
+    } finally { finish.resolve(); }
+    expect(await readback).toBeInstanceOf(Error);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(() => f.binding.assertMutationCurrent()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+  });
+
   it('publishes real bytes under the exact lease, revalidates readback and never removes payloads', async context => {
     const f = await fixture(context);
     const payload = join(f.root, 'preserved-payload');

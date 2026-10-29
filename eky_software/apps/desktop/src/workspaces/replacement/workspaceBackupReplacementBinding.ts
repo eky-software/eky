@@ -79,6 +79,14 @@ export class WorkspaceBackupReplacementBinding {
     });
   }
 
+  // Last synchronous check after fresh readback and immediately before mutation.
+  assertMutationCurrent(): void {
+    try {
+      if (this.receipt === undefined || this.activeIo) throw unavailable();
+      this.assertAuthority();
+    } catch (primary) { this.rejectUncertain(primary); }
+  }
+
   private assertAuthority = (): void => {
     if (this.uncertain) throw unavailable();
     assertSynchronous(this.assertLease);
@@ -122,14 +130,17 @@ export class WorkspaceBackupReplacementBinding {
     if (this.activeIo || this.uncertain) throw unavailable();
     this.activeIo = true;
     try { await work(); }
-    catch (primary) {
-      if (this.attempted) {
-        this.uncertain = true;
-        try { assertSynchronous(this.onUncertain); }
-        catch (secondary) { throw new AggregateError([primary, secondary], 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED'); }
-      }
-      throw primary;
-    } finally { this.activeIo = false; }
+    catch (primary) { this.rejectUncertain(primary); }
+    finally { this.activeIo = false; }
+  }
+
+  private rejectUncertain(primary: unknown): never {
+    if (this.attempted && !this.uncertain) {
+      this.uncertain = true;
+      try { assertSynchronous(this.onUncertain); }
+      catch (secondary) { throw new AggregateError([primary, secondary], 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED'); }
+    }
+    throw primary;
   }
 }
 

@@ -70,6 +70,134 @@ afterEach(context => {
 });
 
 describe('profile restore activation transaction', () => {
+  for (const flow of ['forward', 'rollback'] as const) {
+    it.each(['current', 'next', 'backup'] as const)(`guards ${flow} repair of %s before any live mutation`, async slot => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = flow === 'forward' ? (await f.journalStore.peek())! : await f.transaction.advanceToValidation();
+      const path = join(dirname(dirname(f.activeDatabasePath)), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      if (slot === 'current') await writeFile(`${path}.next`, await readFile(path));
+      else await rename(path, `${path}.${slot}`);
+      const before = await captureEvidence(f); const mutations = mutationCounts();
+      const guard = vi.fn(() => { throw new Error('SYNTHETIC_LIVE_REPAIR_REVOKED'); });
+      await expect(flow === 'forward'
+        ? f.transaction.advanceToValidation(selected, async () => {}, undefined, undefined, guard)
+        : f.transaction.rollback(selected, async () => {}, undefined, guard)).rejects.toThrow();
+      expect(guard).toHaveBeenCalledOnce(); expect(mutationCounts()).toEqual(mutations);
+      expect(await captureEvidence(f)).toEqual(before);
+    });
+  }
+
+  for (const flow of ['prepare', 'forward', 'rollback'] as const) {
+    it.each(['resolved', 'rejected', 'pending'] as const)(`rejects %s asynchronous live guard for ${flow}`, async state => {
+      const f = await createFixture();
+      if (flow !== 'prepare') await f.transaction.prepare(operationId);
+      const selected = flow === 'rollback' ? await f.transaction.advanceToValidation() : await f.journalStore.peek();
+      const before = await captureEvidence(f); const mutations = mutationCounts();
+      const guard = () => state === 'pending' ? new Promise<void>(() => {})
+        : state === 'resolved' ? Promise.resolve() : Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD'));
+      await expect(flow === 'prepare' ? f.transaction.prepare(operationId, async () => {}, undefined, guard)
+        : flow === 'forward' ? f.transaction.advanceToValidation(selected, async () => {}, undefined, undefined, guard)
+          : f.transaction.rollback(selected, async () => {}, undefined, guard)).rejects.toThrow();
+      expect(mutationCounts()).toEqual(mutations); expect(await captureEvidence(f)).toEqual(before);
+    });
+  }
+
+  it.each(['cold', 'live'] as const)('requires both forward journal guards without bypassing the %s owner', async failed => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+    const cold = vi.fn(() => { if (failed === 'cold') throw new Error('SYNTHETIC_COLD_REVOKED'); });
+    const live = vi.fn(() => { if (failed === 'live') throw new Error('SYNTHETIC_LIVE_REVOKED'); });
+    await expect(f.transaction.advanceToValidation(selected, async () => {}, async () => {},
+      { async assertReadOwnership() {}, assertMutationCurrent: cold }, live)).rejects.toThrow();
+    expect(cold).toHaveBeenCalledOnce(); expect(live).toHaveBeenCalledTimes(failed === 'live' ? 1 : 0);
+    expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it.each([1, 2])('guards initial rollback directory mutation %s before journal creation', async boundary => {
+    const f = await createFixture(); let calls = 0;
+    let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+    const first = new Error('SYNTHETIC_PREPARATION_OWNER_REVOKED');
+    const guard = () => { if (++calls === boundary) throw first; };
+    await expect(f.transaction.prepare(operationId, async () => { retained = await captureEvidence(f); }, undefined, guard)).rejects.toBe(first);
+    expect(calls).toBe(boundary); expect(await f.journalStore.peek()).toBeUndefined();
+    expect(await captureEvidence(f)).toEqual(retained);
+  });
+
+  const liveForwardCuts = [
+    ['movingCurrentDatabase', 3], ['movingCurrentDocuments', 3],
+    ['activatingStagedDatabase', 4], ['activatingStagedDocuments', 4],
+  ] as const;
+  for (const [phase, count] of liveForwardCuts) {
+    it.each(Array.from({ length: count }, (_, index) => index + 1))(
+      `retains exact live forward evidence at ${phase} payload mutation %s`, async boundary => {
+        const f = await createFixture(); await f.transaction.prepare(operationId);
+        const selected = (await f.journalStore.peek())!;
+        let armed = false; let calls = 0; let revoked = false;
+        let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+        let mutations: number[] | undefined;
+        const first = new Error('SYNTHETIC_FORWARD_OWNER_REVOKED');
+        const transaction = new ProfileRestoreActivationTransaction({ journalStore: f.journalStore,
+          paths: { activeDatabasePath: f.activeDatabasePath, activeDocumentsRoot: f.activeDocumentsRoot,
+            failedRoot: f.failedRoot, rollbackRoot: f.rollbackRoot, stagingRoot: f.stagingRoot },
+          afterPhasePersisted(current) { armed = current === phase; },
+        });
+        const guard = () => {
+          if (revoked) throw first;
+          if (armed && ++calls === boundary) {
+            revoked = true; mutations = mutationCounts(); throw first;
+          }
+        };
+        await expect(transaction.advanceToValidation(selected, async () => {
+          if (armed && !revoked) retained = await captureEvidence(f);
+        }, undefined, undefined, guard)).rejects.toThrow();
+        expect(revoked).toBe(true); expect(calls).toBe(boundary);
+        expect(mutationCounts()).toEqual(mutations);
+        expect(await captureEvidence(f)).toEqual(retained);
+        expect((await f.journalStore.peek())?.phase).toBe(phase);
+      },
+    );
+  }
+
+  it.each(Array.from({ length: 17 }, (_, index) => index + 1))(
+    'retains live rollback evidence after owner revocation at payload mutation %s', async boundary => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = await f.transaction.advanceToValidation();
+      let armed = false; let calls = 0; let revoked = false;
+      let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+      let mutations: number[] | undefined;
+      const first = new Error('SYNTHETIC_ROLLBACK_OWNER_REVOKED');
+      const transaction = new ProfileRestoreActivationTransaction({ journalStore: f.journalStore,
+        paths: { activeDatabasePath: f.activeDatabasePath, activeDocumentsRoot: f.activeDocumentsRoot,
+          failedRoot: f.failedRoot, rollbackRoot: f.rollbackRoot, stagingRoot: f.stagingRoot },
+        afterPhasePersisted(current) { armed = current === 'rollbackStarting'; },
+      });
+      const guard = () => {
+        if (revoked) throw first;
+        if (armed && ++calls === boundary) { revoked = true; mutations = mutationCounts(); throw first; }
+      };
+      await expect(transaction.rollback(selected, async () => {
+        if (armed && !revoked) retained = await captureEvidence(f);
+      }, undefined, guard)).rejects.toMatchObject({ message: 'PROFILE_RESTORE_ROLLBACK_FAILED', cause: first });
+      expect(revoked).toBe(true); expect(calls).toBe(boundary);
+      expect(mutationCounts()).toEqual(mutations);
+      expect(await captureEvidence(f)).toEqual(retained);
+      expect((await f.journalStore.peek())?.phase).toBe('rollbackStarting');
+    },
+  );
+
+  it('completes guarded preparation, forward activation and rollback with the same original file content', async () => {
+    const f = await createFixture(); const guard = vi.fn(); const authority = vi.fn(async () => {});
+    await f.transaction.prepare(operationId, authority, undefined, guard);
+    const selected = (await f.journalStore.peek())!;
+    const next = await f.transaction.advanceToValidation(selected, authority, undefined, undefined, guard);
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+    expect((await f.transaction.rollback(next, authority, undefined, guard)).phase).toBe('rolledBack');
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(guard).toHaveBeenCalled(); expect(authority).toHaveBeenCalled();
+  });
+
   it.each([1, 2, 3, 4, 5, 6])('retains evidence at live rolled-back mutation boundary %s', async boundary => {
     const f = await createFixture();
     await f.transaction.prepare(operationId);
@@ -2891,6 +3019,11 @@ function createActivationFixture(transaction: ProfileRestoreActivationTransactio
     stagingService: { claimPreparedRestore: id => owner.claim(id) },
   });
   return { service, owner, profileSnapshotClient, stopBusinessRuntime, relaunchApplication, assertAuthority };
+}
+
+function mutationCounts(): number[] {
+  return [mkdir, chmod, rename, rm].map(method => vi.mocked(method).mock.calls.length)
+    .concat(vi.mocked(open).mock.calls.filter(([, flags]) => flags === 'wx').length);
 }
 
 async function createFixture(

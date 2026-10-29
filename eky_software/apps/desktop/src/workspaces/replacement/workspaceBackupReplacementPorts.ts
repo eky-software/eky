@@ -47,14 +47,22 @@ export interface WorkspaceReplacementActivationAuthorityFactory {
 export interface WorkspaceBackupReplacementRootStore {
   prepareCandidate(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    authority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void>;
   removeImportStaging(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    authority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void>;
   inspectCandidate(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
   ): Promise<void>;
   discardBeforeActivation(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    authority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void>;
+}
+
+export interface WorkspaceReplacementMutationAuthority {
+  assertCurrent(): Promise<void>;
+  assertMutationCurrent(): void;
 }
