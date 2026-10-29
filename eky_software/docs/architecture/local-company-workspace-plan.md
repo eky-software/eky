@@ -5374,7 +5374,13 @@ ja tarkistettiin oikean selected-writen sisällä laukeavalla ristiriidalla;
 katselmoija ei ajanut testejä itsenäisesti. Prosessiomistaja on näissä
 mallinnettu. Valitsemattomia testejä ei lasketa läpäisyiksi, ja aiemmat sarjat
 ovat päällekkäisiä, eivät lisäkattavuutta.
-Native-/SQLite-/pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
+Nykyinen `DESK-WORKSPACE-STARTUP-001` läpäisi toteutusrevision `e9d575b1`
+puhtaasta lähteestä käännetyllä testiruntimella: oikea Electron-candidate,
+SQLite ja prosessivaraus sekä historiallisen sidonnattoman tuonnin ja
+luonnin täsmällinen rekisteri ja tiedostotavut toisessakin käynnistyksessä.
+Koe pysähtyy ennen business-backendia. Uuden sidonnan prosessinäyttö ja
+paketoitu business-restart eivät seuraa tästä läpäisystä.
+Sidotun tuonnin native-/pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
 W7.5 pysyy suljettuna.
 
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos

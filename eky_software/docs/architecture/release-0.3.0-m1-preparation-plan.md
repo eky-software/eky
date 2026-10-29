@@ -166,8 +166,14 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   rajattu riippumaton katselmus läpäisivät. Valitsemattomat testit eivät ole
   tämän kohdeajon läpäisyjä. Katselmuksen ensivirhelöydös korjattiin ja
   todennettiin oikean tallentimen sisältä laukeavilla virheillä.
-- **Seuraava työ:** todenna kylmäimportin todellinen prosessi-/restart-ketju
-  ja yhteinen palautusportti. Puuttuva sidonta ei anna W7-poistovaltuutta
+  Nykyinen `DESK-WORKSPACE-STARTUP-001` läpäisi toteutusrevision
+  `e9d575b1` puhtaasta lähteestä käännetyllä Electron-testiruntimella.
+  Oikea candidate, SQLite ja prosessivaraus säilyttivät historiallisen
+  sidonnattoman tuonnin ja luonnin tavut myös toisessa käynnistyksessä.
+  Pysäytysraja on ennen business-backendia; tämä ei ole sidotun tuonnin
+  native- tai paketoitu business-restart-todiste.
+- **Seuraava työ:** täydennä sidotun kylmäimportin prosessinäyttö ja yhteisen
+  palautusportin paketoitu todennus. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
