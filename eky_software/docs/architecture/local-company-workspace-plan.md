@@ -5294,6 +5294,25 @@ native-/SQLite-/pakettipalautusta. Ne sekä nykyiset live-, historical-,
 selector-, käynnistys-, salatun ensivirheen ja PR/main-portit vaaditaan
 ennen tämän liitoksen ja koko W7.4:n hyväksyntää. W7.5 pysyy suljettuna.
 
+**Slot-porttien toteutuscheckpoint 30.10.2026:** nykyiset journal- ja
+rekisteritallentimet tarjoavat `inspectRecoverySelection`-havainnon ja
+`recoverObservedSelection`-korjauksen. Nykyinen file-slot-omistaja lukee
+syrjäytettyjen slottien turvallisen identiteetin ilman sisältöallokaatiota.
+Erillinen rajattu persistence-apuri vartioi havaintoa ja seuraa omat
+kuittaukset; tavalliset lukijat ja live-kirjoittajan tiukat portit säilyvät.
+Puuttuva tiedostojärjestelmän havaintokyky hylätään ilman repairing-fallbackia.
+Kutsuva cold-omistaja vastaa edelleen C/R18-admissionista, täsmällisestä
+leasesta, pysyvästä epävarmuusmerkinnästä ja mainin eliniästä. Portti ei
+itsessään anna binding- tai payload-valtuutta.
+
+Jäädytetty kymmenen tiedoston sarja läpäisi 457 testiä, joista 53 on uusia
+oikeiden tallentimien regressioita; loput ovat aiempia kontrolleja.
+Desktopin tyypitys ja rajattu riippumaton lähde-/testikatselmus läpäisivät.
+Katselmoija ei ajanut testejä itsenäisesti. Tämä ei vielä kytke uusia
+portteja recoveryn
+haaroihin, bindingin loppupoistoon, karanteeniin tai mainiin. Niiden ja
+native-/paketti-/PR/main-porttien vaatimukset säilyvät yllä.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa

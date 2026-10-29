@@ -2,6 +2,8 @@ import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
   type CrashSafeByteSlotSelection,
+  type ObservedRecoveryAuthority,
+  type ObservedRecoverySelection,
 } from '../persistence/crashSafeByteSlotStore.js';
 import { CrashSafeFileSlotError, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
@@ -68,6 +70,28 @@ export class WorkspaceBackupImportJournalStore
         }
         assertSynchronousAuthority(assertAuthority);
         return Object.freeze(result);
+      } catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  inspectRecoverySelection(assertAuthority: () => void) {
+    return this.runExclusive(async () => {
+      try {
+        const selection = await this.byteStore.inspectRecoverySelection(assertAuthority);
+        const value = selection.bytes === undefined ? undefined : parseWorkspaceBackupImportJournalBytes(selection.bytes);
+        assertSynchronousAuthority(assertAuthority);
+        return Object.freeze({ ...selection, value });
+      } catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  recoverObservedSelection(selection: ObservedRecoverySelection, authority: ObservedRecoveryAuthority) {
+    return this.runExclusive(async () => {
+      try {
+        if (selection.bytes === undefined) throw new WorkspaceBackupImportJournalValidationError();
+        parseWorkspaceBackupImportJournalBytes(selection.bytes);
+        const receipt = await this.byteStore.recoverObservedSelection(selection, authority);
+        return Object.freeze({ ...receipt, value: parseWorkspaceBackupImportJournalBytes(receipt.bytes) });
       } catch (error) { throw this.mapStoreError(error); }
     });
   }

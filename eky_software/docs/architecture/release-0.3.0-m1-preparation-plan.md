@@ -136,9 +136,15 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   419 testin sarja, tyypitys ja rajattu katselmus läpäisivät. Sarja sisältää
   yllä olevia testejä.
   Tämä ei vielä todista korjaavan palautusomistajan uusia muutosvartijoita.
-- **Seuraava työ:** toteuta B:n importin
+- Kylmäpalautuksen journal-/rekisterivalinnan ja vartioidun korjauksen portit
+  on toteutettu. Nykyiset ordinary-/live-portit säilyvät; katkenneita
+  syrjäytettyjä sivuja ei muuteta uusiksi sisältörajoiksi. Kymmenen tiedoston
+  457 testiä, desktopin tyypitys ja rajattu riippumaton katselmus läpäisivät.
+  Tämä on tallennusporttien
+  näyttö, ei vielä palautusomistajan tai mainin kytkentä.
+- **Seuraava työ:** kytke B:n importin
   [kylmäpalautuksen omistajuussopimus](local-company-workspace-plan.md#tuonnin-kylmäpalautuksen-omistajuussopimus)
-  ensin nykyisiin slot-portteihin, sitten recovery-/main-ketjuun.
+  nykyisiin recovery-/binding-/karanteeniomistajiin ja sitten main-ketjuun.
   Uuden käynnistyksen todennettu alkuvalinta erotetaan oman muutoksen
   kuittauksesta. Vanha next-only- ja katkenneen sivuslotin palautuminen
   säilyy; live-sidonnan kuittia ei rakenneta jälkikäteen.

@@ -59,6 +59,9 @@ export interface CrashSafeFileSlotMutationGuard {
 
 export interface CrashSafeFileSlotFileSystem {
   prepareDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void>;
+  // Cold recovery may discard a safe torn sibling without reading its content.
+  // Older injected filesystems need not implement this new, explicit capability.
+  inspectSlotIdentity?(slot: CrashSafeFileSlot): Promise<Readonly<CrashSafeFileSlotIdentity> | undefined>;
   readSlot(
     slot: CrashSafeFileSlot,
     captureIdentity?: (identity: CrashSafeFileSlotIdentity) => void,
@@ -88,6 +91,23 @@ class NodeCrashSafeFileSlotFileSystem
     private readonly paths: Readonly<CrashSafeFileSlotPaths>,
     private readonly maximumBytes: number,
   ) {}
+
+  async inspectSlotIdentity(slot: CrashSafeFileSlot): Promise<Readonly<CrashSafeFileSlotIdentity> | undefined> {
+    let observed = false;
+    try {
+      if (!(await directoryExists(this.paths.directoryPath))) return undefined;
+      await assertRealDirectory(this.paths.directoryPath, true);
+      const path = this.pathFor(slot);
+      const before = await lstat(path);
+      observed = true;
+      assertSafeRegularFile(before, this.maximumBytes, false);
+      await assertUnchangedMutationSlot(path, this.maximumBytes, before);
+      return fileIdentity(before);
+    } catch (error) {
+      if (!observed && isNodeError(error) && error.code === 'ENOENT') return undefined;
+      throw mapFileSystemError(error, 'invalid');
+    }
+  }
 
   async prepareDirectory(guard?: CrashSafeFileSlotMutationGuard): Promise<void> {
     try {

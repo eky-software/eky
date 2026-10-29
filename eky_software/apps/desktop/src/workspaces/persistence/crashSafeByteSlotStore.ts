@@ -6,6 +6,9 @@ import {
   type CrashSafeFileSlotNextWriter,
   type CrashSafeFileSlotMutationGuard,
 } from './crashSafeFileSlot.js';
+import { inspectObservedRecovery, recoverObservedSelection,
+  type ObservedRecoveryAuthority, type ObservedRecoverySelection } from './crashSafeObservedRecovery.js';
+export type { ObservedRecoveryAuthority, ObservedRecoverySelection } from './crashSafeObservedRecovery.js';
 
 export type SelectedByteSlots = Readonly<Record<CrashSafeFileSlot, Uint8Array | undefined>>;
 export type SelectedSlotIdentities = Readonly<Record<CrashSafeFileSlot, Readonly<CrashSafeFileSlotIdentity> | undefined>>;
@@ -28,6 +31,14 @@ export class CrashSafeByteSlotStore {
   constructor(
     private readonly fileSystem: CrashSafeFileSlotFileSystem,
   ) {}
+
+  inspectRecoverySelection(assertAuthority: () => void): Promise<ObservedRecoverySelection> {
+    return inspectObservedRecovery(this.fileSystem, assertAuthority);
+  }
+
+  recoverObservedSelection(selection: ObservedRecoverySelection, authority: ObservedRecoveryAuthority) {
+    return recoverObservedSelection(this.fileSystem, selection, authority);
+  }
 
   // Selected operations never infer admission or roll back on a lost reply.
   // The owning journal supplies semantic admission and live external guards.
