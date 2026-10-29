@@ -7,34 +7,33 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**28.10.2026: W7.3 on hyväksytty. Seuraava työ on W7.4:n lopullinen
-yrityspoisto ja keskeytyneen poiston jatkaminen.** Lähtö on
-`main 11e0eadfee002806db01a1b7152532e04dec5ca4`,
-[PR #323:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/323#issuecomment-6468900620).
-Mergepuu vastaa katselmoitua headia
-`a0ee78343396cabbe6eb206a2d22ad7139e863b9`.
+**29.10.2026: W7.3 ja rajattu HTTP-adapterin tietoturvahuolto on hyväksytty.
+Seuraava työ on W7.4:n lopullinen yrityspoisto ja keskeytysjatko.**
+Nykyinen hyväksytty lähtö on `main 877049505c6262ef82fc40243082109939757052`,
+[PR #324:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/324#issuecomment-6497430060).
+Se säilyttää W7.3:n hyväksytyn toiminnan ja päivittää vain nykyisen
+`@hono/node-server`-riippuvuuden täsmäversioon 2.1.3 regressioineen.
+Electron, SQLite, tietomalli ja hyväksyntäehdot säilyvät.
 
-**Uusi integraatioeste 29.10.2026:** saman main-revision myöhempi
-[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/40844462629)
-hylkäsi nykyisen `@hono/node-server`-version
-[GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
-vuoksi. Aiempaa W7.3-hyväksyntää ei muuteta jälkikäteen, mutta uuden
-integraation portti ei ole vihreä. Omistaja hyväksyi rajatun
-2.1.0 -> 2.1.3 -päivityksen ja tarkistukset 29.10.2026. Täsmäversio,
-lukituksen rajaus, rekisteriallekirjoitukset sekä tuotanto- ja koko auditointi
-on todennettu. Alkuperäisen poikkeaman synteettinen regressio ja HTTP:n
-61 kohdetestiä läpäisivät; katselmuksen testitäsmennys läpäisi 25 testiä.
-Backendin hallittu uusinta läpäisi 4 156 testiä, viisi jäi suorittamatta;
-ensimmäisen diagnostiikan sulkutestin aikakatkaisun syy jää avoimeksi.
-Uudet 15 system-tapausta, tyypitys ja build läpäisivät. Sarjat ovat
-päällekkäistä näyttöä. Päivitys viedään erillisenä korjaushaarana normaalien
-PR/main-porttien läpi ennen uutta W7.4-toteutusosaa. Mainin aiempi
-auditointihylkäys ei vielä ole suljettu.
+PR:n [V2](https://github.com/eky-software/eky/actions/runs/40864424397) ja
+[auditointi](https://github.com/eky-software/eky/actions/runs/40864424167)
+läpäisivät ensimmäisellä kierroksella. Uuden mainin
+[V2, yritys 2](https://github.com/eky-software/eky/actions/runs/40868860747/attempts/2)
+ja [auditointi](https://github.com/eky-software/eky/actions/runs/40868860690)
+läpäisivät yhden rajatun komentotyön uusinnan ja pakollisten jatkotöiden jälkeen.
+Kummankin V2:n 38 valittua työtä hyväksyttiin; kuusi valitsematonta
+diagnostiikkatyötä eivät ole läpäisyjä. Mainin aiemmat 33 onnistunutta
+suoritusta ja kolme valmista pakettia säilyivät. Ensimmäisen synteettisen
+komentotestin viive ja paikallinen diagnostiikan sulkutestin aikakatkaisu
+jäävät avoimiksi, eivät korjatuiksi. Omistaja hyväksyi tämän rajatun
+loppuhyväksynnän kaikkien jäljellä olevien porttien läpäistyä.
+[Rajattu huolto ja ensihavainnot](release-0.3.0-integration-history.md#http-adapterin-tietoturvahuolto-29102026)
+ovat historiassa; tämä hyväksyntä ei sulje keskeneräistä W7.4:ää.
 
 | Hyväksytty raja | Revision oma näyttö |
 | --- | --- |
 | PR #323 | [V2, yritys 2](https://github.com/eky-software/eky/actions/runs/40672393035/attempts/2) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40672392980) läpäisivät. Yksi rajattu valmistelutyön uusinta, ei ensivirheen uudelleenluokitusta. |
-| Main | [V2, yritys 1](https://github.com/eky-software/eky/actions/runs/40680764279) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40680764104) läpäisivät. |
+| W7.3:n main `11e0eadf` | [V2, yritys 1](https://github.com/eky-software/eky/actions/runs/40680764279) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40680764104) läpäisivät. Nykyinen lähtö on yllä oleva tietoturvahuollon main. |
 | Kattavuus | Kummassakin V2:ssa 38 valittua työtä hyväksytty; kuusi tarkoituksella valitsematonta diagnostiikkatyötä eivät ole läpäisyjä. Puhtaan paketin hardened palautus, historialliset/cold-kontrollit, stress ja normaali kestoajo on eroteltu loppuhyväksynnässä. |
 
 W7.3 toimittaa vahvistuksen, backup-todisteen, mainin työn ja backendin
@@ -116,9 +115,9 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   salatulla backupilla, SQLitellä ja PDF-aineistolla; E2E:n tyypitys läpäisi.
   System-tapaukset todistavat yhteisen palautusportin säilymistä, eivät
   activation-migrationin native-prosessivarausta tai paketoitua hyväksyntää.
-- **Seuraava työ:** hyväksytyn HTTP-adapteripäivityksen normaalit PR/main-
-  portit ennen uutta toiminnallista vaihetta.
-  Nykyinen B:n activation-migration-toteutuscheckpoint noudattaa
+- **Seuraava työ:** jatka B:n vielä puuttuvia omistajaliitoksia hyväksytyltä
+  HTTP-adapterihuollon lähtörevisiolta. Nykyinen B:n
+  activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)
   rajaa; sen paikallinen läpäisy ei vielä sulje koko liitoksen portteja.
   Sen jälkeen import-, adoption- ja inspection-liitokset sekä

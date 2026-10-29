@@ -5,6 +5,53 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## HTTP-adapterin tietoturvahuolto 29.10.2026
+
+Mainin `11e0eadf` myöhempi
+[auditointi](https://github.com/eky-software/eky/actions/runs/40844462629)
+hylkäsi `@hono/node-server@2.1.0`:n
+[GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
+vuoksi. Omistaja hyväksyi rajatun täsmäpäivityksen 2.1.3:een ja tarkistukset.
+EKY ei käytä haavoittuvaa `serveStatic`-middlewarea tuotannossa;
+synteettinen HTTP-regressio toisti vanhan kaksinkertaisen polkupurun
+poikkeaman ja todensi korjatun hylkäyksen normaalien kontrollien rinnalla.
+Väliversioiden otsakemuutosten vuoksi myös sessio, vastaustavut ja sulku
+todennettiin. Muut riippuvuudet ja hyväksyntäehdot säilyivät.
+
+Rekisteriallekirjoitukset, tuotanto- ja koko auditointi, HTTP:n 61 kohdetestiä,
+katselmuksen 25 testiä, 15 system-tapausta, tyypitys ja build läpäisivät.
+Backendin hallittu uusinta läpäisi 4 156 testiä, viisi jäi suorittamatta;
+alkuperäisen diagnostiikan sulkutestin aikakatkaisun syy jäi avoimeksi.
+Sarjat ovat päällekkäistä näyttöä, eivät yhdistetty testimäärä.
+
+[PR #324:n lopputila](https://github.com/eky-software/eky/pull/324#issuecomment-6497430060)
+sitoo hyväksynnän mainiin `877049505c6262ef82fc40243082109939757052`.
+PR:n ensimmäinen V2-kierros ja oma auditointi läpäisivät. Mainin ensimmäinen
+kierros hylkäsi yhden synteettisen myöhäisen tulosjulkaisun komentotestin:
+lapsiprosessin odotus päätyi määräaikaan ennen tarkoitettua julkaisuvaihetta.
+Alkuperäinen poikkeus ja vaihehavainto säilyivät salatussa aineistossa;
+purku ja kaikkien 64 säilytetyn tiedoston tiivisteet varmennettiin.
+Prosessisiivous ja prosessipuun poissaolo todettiin. Myöhäisen julkaisun
+esto toimi edelleen, mutta aiemman lapsiprosessiviiveen juurisyy jäi avoimeksi.
+
+Yksi kohdeuusinta läpäisi kaikki 46 komentotestiä samoilla lähteillä ja rajoilla.
+Pakollinen legacy-paketti rakennettiin ensi kertaa ja molemmat kuluttajat
+läpäisivät. Mainin aiemmat 33 onnistunutta suoritusta säilyivät samoina
+ajoiltaan, askeliltaan ja lokitavuiltaan; GitHubin uudet job-tunnisteet eivät
+tarkoita niiden uudelleensuoritusta. Kolmen valmiin paketin tunnisteet ja
+tiivisteet säilyivät. Mainin V2:n 38 valittua työtä ja erillinen auditointi
+läpäisivät. Kuusi valitsematonta diagnostiikkatyötä eivät ole läpäisyjä.
+Omistaja hyväksyi rajatun loppuhyväksynnän ehdolla, että jäljellä olevat
+portit läpäisevät; alkuperäisiä viiveitä ei merkitty korjatuiksi.
+
+PR:n ja mainin system-valinnassa 858 tapausta läpäisi ja yksi vanha
+vain Windowsille tarkoitettu lyhyen polun tapaus ohitettiin Linuxissa.
+Webin kriittiset 116, paketoidun palautuksen kolme ja Electronin kriittiset
+66 tapausta läpäisivät. Oletushaaran Dependabot-luku palautti nolla avointa
+hälytystä, mutta ei tälle adapterille erillistä sulkeutunutta hälytystietuetta;
+tämä havainto on erillinen auditointituloksesta. W7.4:n toteutusta tai koko
+0.3.0-julkaisua ei hyväksytty tämän huollon yhteydessä.
+
 ## W7.4:n palautuskytkennän checkpointit 29.10.2026
 
 ### Activation-migrationin kertautuvat tarkistukset
