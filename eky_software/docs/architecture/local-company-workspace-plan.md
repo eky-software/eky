@@ -5167,6 +5167,133 @@ uuden runtimen sekä alkuperäisen turvallisen syyn diagnostiikka-/tukiketjun.
 Tämä ei sulje korjaavan kylmäpalautuksen vartijoita, POSIX-porttia tai
 W7.4:n puhtaan paketin ja PR/main-hyväksynnän vaatimuksia.
 
+###### Tuonnin kylmäpalautuksen omistajuussopimus
+
+Tämä täydentää live-tuonnin sopimusta; se ei käynnistä uutta tuontia eikä
+muuta C/R18:n palautusvalintaa. `WorkspaceBackupImportRecovery` omistaa
+edelleen haarat ja järjestyksen. Nykyinen main-/management-composition
+antaa käynnistyksen valtuuden, tallentimet oman tiedostomuutoksensa ja
+candidate-adapteri nykyisen prepare-grant-exit-ketjunsa. Uutta manageria,
+journal-formaattia, aikarajaa tai automaattista uusintaa ei lisätä.
+
+**Alkuvalinta ja oma kuitti ovat eri todisteita.** Uusi kylmäkäynnistys saa
+valita levyltä todennetun tilan vasta aiemman kirjoittajan päättymisen ja
+nykyisen main-varauksen jälkeen. Se ei rakenna vanhaa kirjoituskuittia tai
+tuontia edeltänyttä rekisteriä jälkikäteen. Tämän uuden ajon jokainen oma
+muutos vaatii kuitenkin oman kuittauksen ja täsmällisen readbackin;
+epävarmaa tulosta ei hyväksytä uudella luvulla saman ajon sisällä.
+
+1. Cold-import kaappaa täsmällisen `import`-leasekahvan heti hankinnan
+   jälkeen. Pakollinen composition-portti kaappaa startup-/installation-
+   sukupolven ja epävarmuuden ilmoituksen. Nykyinen C/R18-admission,
+   runtime-poissaolo ja fyysinen main-varaus todennetaan ennen ensimmäistä
+   korjaavaa journal-/rekisterilukua, karanteenin valmistelua tai siivousta.
+   `beforeRuntimeStart` ei saa käyttää puuttuvan omistajaportin fallbackia;
+   vanhan `running`-tilan kutsujat ja luontipalautus säilyvät erillisinä.
+2. Journal ja rekisteri valitaan korjaamattomasti nykyisellä prioriteetilla
+   `current -> backup -> next`. Valitun lähteen todelliset tavut, nykyinen
+   parseri ja tiedostoidentiteetti sekä kaikkien slottien läsnäolo sidotaan
+   samaan havaintoon. Valitun lähteen virhe ei oikeuta fallbackiin.
+   Bindingin kaikki slotit tarkistetaan edelleen sisältöineen: julkaistu
+   current ja samansisältöiset sivut sallitaan; osittainen tai ristiriitainen
+   sidonta estää jatkon. Kaikkien puuttuminen tarkoittaa vain `unbound`.
+3. Korjaus käyttää nykyisen byte-/file-slot-omistajan rajattua cold-porttia,
+   ei live-kirjoittajan tiukkaa `inspectSlots`/`recoverSelected`-yhdistelmää.
+   Kelvollinen alku-next ja backup-only sekä kelvollisen authoritative-
+   lähteen tyhjä tai katkennut sivuslotti säilyvät tuettuina. Nykyisen
+   current-valinnan syrjäyttämät molemmat sivuslotit voidaan edelleen
+   poistaa. Tämä on slot-tallennuksen sääntö, ei kaikkien journal-, root-
+   ja rekisteriyhdistelmien hyväksyntä; palautusmatriisi tarkistetaan aina.
+4. Syrjäytetty sivuslotti ei ole semanttinen tietolähde. Sen koko sisältöä
+   ei tarvitse lukea tai hyväksyä parserilla, eikä sille synny uutta
+   sisältökokorajaa. Nykyinen file-slot-omistaja todentaa turvallisen
+   tavallisen tiedoston, canonical-polun, linkkimäärän ja identiteetin
+   (myös koon ja muutosajat); poissaolo kuuluu valintaan. Vaihtunut havainto
+   estää poiston. Valitun lähteen tavut ja identiteetti tarkistetaan tuoreesti
+   jokaisen korjauksen yhteydessä. Tämä rajaus ei koske bindingia, payloadia
+   tai uusia live-kirjoituksia eikä anna niille poistovaltuutta.
+5. Tallennin seuraa omat korjatut slotit vain kuittauksen kautta ja tarkistaa
+   siirretyn tiedoston jatkuvan identiteetin sekä sisällön. Se palauttaa
+   normalisoidun current-valinnan vasta vartioidun lopputarkistuksen jälkeen.
+   Sitä seuraavat journal- ja rekisterikirjoitukset käyttävät nykyisiä
+   valittuja kirjoitusportteja. Ulkoinen vartija ei lue aktiivisen oman
+   tallentimensa muuttuvia slotteja; muut valinnat, sukupolvi ja lease
+   tarkistetaan myös odotusten jälkeen sekä juuri ennen muutosta.
+
+Palautuksen rekisterivalinta on tämän käynnistyksen havaittu tila, ei
+live-tuonnin alkuperäisen rekisterin kuitti. Nykyiset haarat säilyvät:
+
+| Levyllä todettu tila | Palautuksen sallittu toiminta |
+| --- | --- |
+| Ennen final-rootin julkaisua, target puuttuu rekisteristä | Todennettu candidate-/operaatiosiivous ja nykyisen jatkovalinnan tarkistus. Tuontia ei jatketa tai julkaista uudelleen. |
+| Final löytyy, candidate puuttuu, journal `candidateValidated` tai `rootPublished`, target puuttuu | Nykyinen täysi published-validointi ja yksi rekisterilisäys `appendRecoveredWorkspaceEntry`-säännöllä; historiallinen nimikonflikti ei muutu uuden live-tuonnin nimeämisportiksi. |
+| Final löytyy, candidate puuttuu, täsmällinen ready-target rekisterissä, journal `rootPublished` tai `registryPublished` | Sama sisältötarkistus; ei toista rekisterilisäystä. Vain tarvittava journal-siirtymä ja loppuketju. |
+| Molemmat juuret, julkaistu vaihe ilman finalia, väärä target/lineage/valinta tai väärä vaiheyhdistelmä | Säilytä aineisto ja estä jatko nykyisellä recovery-virheellä. |
+
+Rekisterin v1/v2- ja selector-erot sekä aiemman työtilan jatkettavuus
+säilyvät. `assertColdWorkspaceRecoveryContinuation` saa korjaamattoman,
+täsmälleen valitun rekisterin lukuadapterin: piilotettua korjaavaa `read()`-
+kutsua ei jätetä loppuvartijan sisään. Lopullinen yritysjuuri ei ole
+poistettava tuonnin jäännös.
+
+**Vartijoiden vastuut:** mainin nykyinen admission-lukija ja cold-omistaja
+jakavat saman vieraita recoveryjä koskevan ristiriitatarkistuksen. Sen
+kohdejoukko johdetaan kaapatusta rekisteristä, targetista ja edellisestä
+valinnasta. Oman journalin, registryn tai bindingin täyttä repairing-
+admissionia ei kutsuta niiden aktiivisen kirjoittajan sisältä; tätä varten
+ei kopioida toista recovery-sääntölistaa. Mainin sukupolvi ja täsmällinen
+lease säilyvät candidate-lapsen ajan. Fyysistä main-varausta ei vaadita
+lapsen oman grant-vaiheen sisällä; se sekä lapsen todellinen päättyminen ja
+runtime-poissaolo todennetaan uudelleen ennen seuraavaa mainin muutosta.
+Vanha tai keskeneräinen lapsitulos ei uusi valtuutta.
+
+Nykyisen plaintext-karanteenin siivous tarvitsee saman cold-valtuuden
+myös sisäisiin tiedostomuutoksiinsa ja viimeisen synkronisen vartijan.
+Karanteeni säilyy installation-tason nykyisen omistajansa vastuulla, ei
+yritykseen arvattuna W7-poistokohteena. Ilman import-journalia löytyvän
+plaintextin estoa ei muuteta. Root-store saa nykyisen mutation-authority-
+porttinsa; tiedostopoissaolo ei korvaa työn päättymistodistusta.
+
+**Loppuketju:** työn ja koko operaatiokansion varmennettu päättyminen;
+nykyinen tarkka jatkovalinta; sidonnan poisto, jos se oli julkaistu;
+journalin valittu loppupoisto; leasen vapautus. Cold-palautus ei käynnistä
+runtimea, vaan normaali startup tekee sen omien tarkistustensa jälkeen.
+Sidonnan poistovaltuus tulee uudesta cold-omistajasta, ei tekaistusta live-
+kuitista. Nykyinen `clearAfterPayloadsAbsent` tarvitsee cold-owner-kutsuun
+kaapatun kaikkien sidontaslottien valinnan tarkistuksen ennen omaa poistoa;
+muut owner-kutsujat ja `deletionPurged` eivät saa uutta fallbackia.
+Sidonnaton tuettu v2 käyttää itsenäisiä C/R18-todisteitaan eikä kirjoita
+uutta bindingia. Poistokuittauksen menetys sulkee tämän ajon; myöhempi uusi
+käynnistys arvioi jäljelle jääneen tilan taas omilla todisteillaan.
+
+Ensimmäinen virhe säilytetään ennen store-muunnosta ja erillään myöhemmästä
+siivous-/vapautusvirheestä. Keskeneräistä työtä ei vapauteta uuden omistajan
+käyttöön; nykyinen sulku odottaa alkuperäisen työn päättymisen omien
+rajojensa mukaan. Epävarmuus säilyttää aineiston ja estää startupin, eikä
+pelkkä lopulta tyhjä hakemisto muuta epävarmaa suoritusta onnistuneeksi.
+
+Toteutusjärjestys: nykyisten slot-omistajien cold-valinta/korjaus ja pysyvät
+keskeytysregressiot; recovery-/binding-/karanteenivartijat ja nykyinen
+haaramatriisi; main-/candidate-kytkentä ja todellinen restart-ketju.
+Pysyvä näyttö kattaa kaikki seitsemän ei-tyhjää slottiyhdistelmää, registry
+v1/v2:n, hylkäyksessä säilyvät tavut, muuttuneet identiteetit ja kadonneet
+kuittaukset. Uuden omistajan onnistuminen ei saa avata vanhaa omistajaa.
+Bindingin kaikki-slotit-ehto testataan sen oman clearin sisältä; lisäksi
+vaaditaan jo julkaistun targetin, vieraan recovery-konfliktin, lapsen sulun,
+karanteenin muutosten ja ensivirheen rinnakkaisen release-virheen testit.
+
+Suunnittelukokeessa 33 tapausta läpäisi oikeilla journal-/rekisteri-
+tallentimilla ja tiedostomuutoksilla. Vartija lisättiin vain kokeen
+tiedostorajalle; main, runtime-poissaolo ja ulkoinen valinta mallinnettiin.
+Nykyisen yhdeksän tiedoston 404 kontrollitestiä läpäisi muuttamattomina:
+slotit, ordinary/cold-palautus, sidonta-admission ja rekisterin palautuminen.
+Rajattu riippumaton sopimus-/testikatselmus ja sen viimeinen delta läpäisivät;
+katselmoija ei ajanut testejä itsenäisesti.
+Tämä ei vielä todista tuotantokytkentää, bindingin loppupoistoa tai
+native-/SQLite-/pakettipalautusta. Ne sekä nykyiset live-, historical-,
+selector-, käynnistys-, salatun ensivirheen ja PR/main-portit vaaditaan
+ennen tämän liitoksen ja koko W7.4:n hyväksyntää. W7.5 pysyy suljettuna.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa

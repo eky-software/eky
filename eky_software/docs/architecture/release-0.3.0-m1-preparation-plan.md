@@ -136,8 +136,16 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   419 testin sarja, tyypitys ja rajattu katselmus läpäisivät. Sarja sisältää
   yllä olevia testejä.
   Tämä ei vielä todista korjaavan palautusomistajan uusia muutosvartijoita.
-- **Seuraava työ:** kytke B:n importin korjaavan kylmäpalautuksen täsmälliset
-  valinta- ja muutosvartijat yllä olevan sopimuksen mukaan. Säilytä tuettu
+- **Seuraava työ:** toteuta B:n importin
+  [kylmäpalautuksen omistajuussopimus](local-company-workspace-plan.md#tuonnin-kylmäpalautuksen-omistajuussopimus)
+  ensin nykyisiin slot-portteihin, sitten recovery-/main-ketjuun.
+  Uuden käynnistyksen todennettu alkuvalinta erotetaan oman muutoksen
+  kuittauksesta. Vanha next-only- ja katkenneen sivuslotin palautuminen
+  säilyy; live-sidonnan kuittia ei rakenneta jälkikäteen.
+  Rajattu 33 tapauksen tiedostokoe, nykyiset 404 kontrollitestiä ja
+  riippumaton sopimuskatselmus läpäisivät. Koe mallinsi mainin ja
+  runtime-poissaolon, ei tuotantokytkentää.
+  Säilytä tuettu
   sidonnaton v2-palautus riippumattomine C/R18-todisteineen; puuttuva sidonta
   ei anna W7-poistovaltuutta eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
