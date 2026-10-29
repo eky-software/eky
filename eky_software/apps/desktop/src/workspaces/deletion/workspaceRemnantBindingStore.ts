@@ -1,5 +1,5 @@
 import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
-import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlot, type CrashSafeFileSlotFileSystem,
+import { createNodeCrashSafeFileSlotFileSystem, sameCrashSafeFileSlotIdentity, type CrashSafeFileSlot, type CrashSafeFileSlotFileSystem,
   type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { checkedDeletionAuthority, deletionDigest, invalidDeletionData } from './workspaceDeletionDataValidation.js';
@@ -20,6 +20,8 @@ export interface WorkspaceRemnantBindingAuthority {
 
 export interface WorkspaceRemnantBindingCleanup extends WorkspaceRemnantBindingAuthority {
   readonly mode: 'owner' | 'deletionPurged';
+  // Optional for existing owners; live import must pass its publication receipt.
+  readonly expectedCurrentIdentity?: Readonly<CrashSafeFileSlotIdentity>;
   readonly bindingSha256: string;
   // All roots and all writers, not just the journal or current inspection copy.
   assertPayloadsAbsent(): Promise<void>;
@@ -74,6 +76,15 @@ export class WorkspaceRemnantBindingStore {
           deletionDigest(proof.bindingSha256, invalidCode) !== workspaceRemnantBindingSha256(expected)) {
         return invalidDeletionData(invalidCode);
       }
+      const suppliedIdentity = proof.expectedCurrentIdentity;
+      if (suppliedIdentity !== undefined && (mode !== 'owner' || suppliedIdentity === null || typeof suppliedIdentity !== 'object')) {
+        return invalidDeletionData(invalidCode);
+      }
+      const expectedIdentity = suppliedIdentity === undefined ? undefined : Object.freeze({ ...suppliedIdentity });
+      if (expectedIdentity !== undefined && (expectedIdentity.ino === 0 || expectedIdentity.size < 1 ||
+          ![expectedIdentity.dev, expectedIdentity.ino, expectedIdentity.size, expectedIdentity.mtimeMs, expectedIdentity.ctimeMs].every(Number.isFinite))) {
+        return invalidDeletionData(invalidCode);
+      }
       const external = proof.assertExternalSelection.bind(proof);
       const absent = proof.assertPayloadsAbsent.bind(proof);
       const assertAuthority = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
@@ -87,6 +98,8 @@ export class WorkspaceRemnantBindingStore {
         assertAuthority();
       } };
       const selected = await this.observe(authority);
+      if (expectedIdentity !== undefined && (selected.slots.current?.identity === undefined ||
+          !sameCrashSafeFileSlotIdentity(expectedIdentity, selected.slots.current.identity))) return invalidDeletionData(invalidCode);
       this.assertSameValues(selected.slots, expected);
       if (mode === 'owner' && selected.slots.current === undefined &&
           (selected.slots.next !== undefined || selected.slots.backup !== undefined)) return invalidDeletionData(invalidCode);

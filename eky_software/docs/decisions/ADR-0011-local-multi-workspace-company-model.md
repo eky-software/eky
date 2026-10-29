@@ -454,9 +454,21 @@ Suljettu järjestys on:
 24. säilytä aiempi aktiivinen osoitin, jos registryssä oli valmis työtila
 25. jos valmista työtilaa ei ollut, osoita uusi entry aktiiviseksi käynnistämättä
     vielä runtimea
-26. varmista aiempi runtime idempotentisti terveeksi, jos sellainen oli
+26. pyydä aiempaan tilaan palaamista nykyisellä lykätyllä paluulla; tämä ei
+    käynnistä runtimea eikä todista sen terveyttä
 27. poista import-journal vasta terminal-tilassa
-28. vapauta maintenance lease.
+28. vapauta maintenance lease onnistuneesti
+29. toteuta jonotettu paluu vain nykyisen main-omistajan vartijan läpäistyä;
+    normaali startup todentaa terveyden, identiteetin ja sisällön ennen
+    business-käyttöä.
+
+Tämä paluujärjestys täsmentää nykyistä live-importin management-ketjua ja
+[hyväksyttyä tuonnin vaihevaltuutta](../architecture/local-company-workspace-plan.md#w74-b-tuonnin-vaihekohtainen-valtuus).
+Omistetun työn päättyminen, terminal-siistinnän tulos ja leasen vapautus
+todetaan ennen paluun toteutusta. Epävarma siivous, julkaisu tai omistajuus
+estää myös aiemmin jonotetun paluun; vapautettu lease ei ole uuden
+käynnistyksen valtuus. Tämä dokumentaarinen täsmennys ei muuta jäljempänä
+kuvattua cold-terminalia eikä ordinary-recoveryn erillistä terveystarkistusta.
 
 Tuonti ei muuta aktiivista työtilaa ennen erillistä switchiä tai käyttäjän
 vahvistamaa atomista aktivointia.

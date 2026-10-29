@@ -131,7 +131,18 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Tämä ei vielä todista korjaavan palautusomistajan uusia muutosvartijoita.
 - **Seuraava työ:** kytke B:n import-valtuusosa koordinaattoriin, mainin
   loppukäynnistykseen ja kylmäpalautukseen yllä olevan sopimuksen pienissä
-  paloissa hyväksytyltä HTTP-adapterihuollon lähtörevisiolta. Nykyinen B:n
+  paloissa hyväksytyltä HTTP-adapterihuollon lähtörevisiolta.
+  [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
+  erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
+  paluun. Rajattu 28 tapauksen koe läpäisi oikeilla tallentimilla mutta
+  mallinnetulla koordinaattori-/prosessiomistajuudella. Sidonnan poiston
+  kuittiehto sekä sidontaosan journal-vartija ja loppusiivous on nyt toteutettu
+  pysyvine regressioineen. Jäädytetty 13 tiedoston sarja läpäisi 237 testiä;
+  yksi olemassa oleva POSIX-tapaus odottaa Linux-ajoa. Tyypitys ja rajattu
+  riippumaton katselmus läpäisivät. Varsinainen koordinaattori-/main-kytkentä ja
+  korjaavan palautusomistajan vartijat ovat vielä tekemättä;
+  tätä koetta ei tulkita kokonaisen tuonnin tai palautuksen hyväksynnäksi.
+  Nykyinen B:n
   activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)
   rajaa; sen paikallinen läpäisy ei vielä sulje koko liitoksen portteja.

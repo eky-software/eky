@@ -4989,6 +4989,134 @@ Sarja sisältää aiemman 259 testin kontrollijoukon, ei yhteen laskettavaa
 lisäkattavuutta. Live-tuonnin ja korjaavan palautuksen uudet vartijat sekä
 terminal-/paluukytkentä ovat edelleen seuraava pala.
 
+###### Tuonnin ensimmäinen julkaisu ja loppusiivous
+
+Tämä täsmentää yllä olevaa vaihevaltuutta nykyisten omistajien sisällä.
+Rajattu 28 tapauksen koe ja riippumaton suunnittelukatselmus läpäisivät.
+Sidontaosan porttien toteutus on kuvattu tämän kohdan lopussa; koko
+koordinaattori-/main-kytkentä on edelleen seuraava pala. `prepared` säilyy
+ennen candidatea; sidonta julkaistaan journalin jälkeen mutta ennen payloadia.
+Ensimmäinen journal-kirjoitus ei voi vaatia vielä olematonta sidontaa.
+
+1. Koordinaattori kutsuu pakollista `captureImportOwner(lease)`-porttia heti
+   `acquire('import')`-palautuksen jälkeen ennen seuraavaa odotusta, saman
+   `try/finally`-vapautuksen sisällä. Nykyinen management-composition kaappaa
+   täsmällisen kahvan ja mainin callbackit synkronisesti. Kaappaus tarkistaa
+   installation-/main-sukupolven, ei vielä mainin fyysistä tiedostovarausta:
+   backend voi tässä vaiheessa edelleen omistaa sen. Aktiivinen main käyttää
+   nykyistä `assertInstallationCurrent`-tarkistusta ja sulkutilaa; valitsin
+   käyttää omaa nykyistä elinikätarkistustaan. Vasta todetun sulun jälkeen
+   vaaditaan runtime-poissaolo, `assertMainCurrent` ja `assertMainOwned`.
+2. Uuden työn journal-ennakkoluku on korjaamaton `inspectSlots`: yksikin
+   current/next/backup estää uuden tuonnin. Se ei korjaa aiempaa operaatiota.
+   Autentikoidun preflightin jälkeen rekisterin alkuvalinta kaapataan
+   korjaamattomasti tavuineen ja identiteetteineen; nykyinen current ja
+   sivuslottien poissaolo vaaditaan. Nykyiset nimien ja lineagen säännöt
+   sekä plaintext-karanteenin oma vastuu säilyvät.
+3. Sulun jälkeen ensimmäinen `writeSelected(prepared, selection)` käyttää
+   kaikkien journal-slottien täsmällistä poissaolovalintaa. Ulkoinen vartija
+   tarkistaa kaapatun leasen, mainin, runtime-poissaolon ja alkuperäisen
+   rekisterin. Se ei lue oman kirjoittajansa muuttuvia journal-slotteja eikä
+   vaadi sidontaa. Tämä valtuus on vain ensimmäiselle metadata-kirjoitukselle;
+   sitä ei anneta candidate-, staging- tai muulle payload-portille.
+4. Koordinaattori hyväksyy journal-valinnaksi vain kirjoittajan palauttaman
+   tiedostoidentiteetin, täsmälliset odotetut tavut ja korjaamattoman readbackin
+   ilman sivuslotteja. Ulkoinen valtuus toistetaan readbackin jälkeen.
+   Kirjoitusyrityksen epävarma tulos sulkee tämän ajon, vaikka odotetut tavut
+   myöhemmin löytyisivät. Vartijan ensisyy säilytetään ennen store-muunnosta.
+5. Nykyisen `WorkspaceBackupImportBinding.publish`-portin vartijaan lisätään
+   pakollinen kaapatun journal-valinnan tarkistus. Sidontakirjoituksen
+   ulkoinen ketju tarkistaa rekisterin, journalin ja rekisterin uudelleen;
+   sidontatallennin seuraa omia slottejaan. Sidonnan kuitti ja readback sekä
+   sama journal-valinta varmennetaan ennen candidate-luontia. Myöhemmät
+   journal-kirjoitukset käyttävät sidontaa ja rekisteriä ulkoisina ehtoina;
+   jokainen oma journal-kuitti vaihtaa valinnan vasta täsmällisen readbackin
+   jälkeen. Payload-portit saavat vain julkaistun sidonnan valtuuden.
+
+`captureImportOwner` on nykyisen compositionin pieni portti, ei uusi manageri.
+Se erottaa sukupolven eliniän, suljetun runtimen fyysisen varauksen ja
+epävarmuuden ilmoittamisen. Tuonnin sidontaosa ei ala omistaa journalin
+tilasiirtymiä, palautusta tai candidate-siivousta. Koordinaattori omistaa
+järjestyksen ja journal-kuitin; store omistaa oman slot-muutoksensa.
+
+Normaali loppujärjestys on: payload-työn päättyminen ja omien jäännösjuurten
+todettu poissaolo; sidontametadatan poisto; journalin terminal-poisto;
+leasen vapautus; vasta sitten lykätyn paluun toteutus. Lopullinen hyväksytty
+yritysjuuri ei ole jäännös eikä sitä poisteta. `readPresence`-tuloksen kaksi
+booleania eivät todista koko operation-rootin poissaoloa: sama root-store
+tarvitsee täsmällisen, linkit ja parentit tarkistavan poissaolotodistuksen,
+ja candidate-/inspection-omistajat todistavat työnsä päättyneeksi.
+
+Sidonnan `clearAfterPayloadsAbsent` säilyttää valitun journalin ja ennen/jälkeen-
+rekisterin ulkoisina ehtoina, mutta ei lue omaa aktiivista tallennintaan.
+Nykyisessä portissa on vain `owner`-tilassa sallittu odotettu current-
+tiedostoidentiteetti; live-tuonnin sidontaosa antaa sen pakollisesti alkuperäisestä
+sidonnan julkaisukuitista. Tallennin kaappaa arvon ennen ensimmäistä odotusta
+ja vertaa sitä omaan slot-havaintoonsa ennen yhtäkään poistoa. Puuttuva current
+tai sama sisältö eri tiedostoidentiteetissä hylätään. Tämän jälkeen nykyinen
+`clearSelected` vartioi valittuja slotteja jokaisessa poistossa. Muiden
+nykyisten owner-kutsujien ja `deletionPurged`-tilan sopimusta ei muuteta;
+odotettua current-identiteettiä ei hyväksytä jälkimmäisen tilan lisäehdoksi.
+Ennen poistokutsua tehty sidontaluku ei korvaa tätä tallentimen sisäistä ehtoa.
+Vasta onnistunut poistokuittaus ja kaikkien sidontaslottien korjaamaton
+poissaolohavainto siirtävät koordinaattorin rajattuun metadata-poistettu-tilaan.
+Sen ainoa jäljellä oleva tiedostomuutos on täsmälleen valitun journalin poisto
+(`removeSelected` tai ennen root-julkaisua `discardBeforePublicationSelected`).
+Tämä vartija vaatii yhä saman mainin, leasen, rekisterin, payloadien poissaolon
+ja sidontaslottien poissaolon; se ei anna uutta payload-muutoslupaa.
+Epävarmaa poistokuittausta ei korvata uudella poissaololuvulla.
+
+Jos prosessi päättyy metadatan poiston ja journalin poiston välissä, jäljellä
+oleva v2-journal käsitellään nykyisen sidonnattoman palautuksen riippumattomilla
+C/R18-ehdoilla. Kadonneesta sidonnasta ei päätellä aiempaa julkaisua tai
+poistolupaa. Katko, jossa sidontaslotit ovat osittaisia tai ristiriitaisia,
+estää edelleen automaattisen korjauksen. Uutta tallennettua vaihetta tai
+jälkikäteen rakennettua sidontaa ei lisätä.
+
+`ensurePreviousWorkspaceRunning` saa edelleen pyytää paluuta nykyisessä
+kohdassaan, mutta se ei avaa runtimea. Compositionin import-kohtainen
+terminal-eligibility on aluksi suljettu ja avataan vasta varmennetun
+loppuketjun ja onnistuneen leasen vapautuksen jälkeen. Ensimmäinen epävarma
+journal-/sidontakirjoitus, valtuuden menetys, keskeneräinen työ tai
+siivous-/vapautusvirhe sulkee sen sekä uuden service-admissionin pysyvästi
+tämän compositionin ajaksi. Lopullinen synkroninen käynnistysvartija tarkistaa
+main-sukupolven, nykyisen fyysisen main-varauksen ja terminal-eligibilityn,
+ei vapautettua import-leasea tai valitsimen leaseen sidottua stopped-vartijaa.
+Tavallinen ennen kirjoitusyritystä päättyvä syöte-/preflight-virhe ja
+varmennetusti siivottu candidate-validointivirhe eivät itsessään myrkytä
+omistajaa. Kaikki aloitetut työt liittyvät nykyiseen sulkuun; myöhäinen tulos
+ei avaa suljettua eligibilityä eikä peitä ensimmäistä syytä.
+
+Suunnittelukoe käytti oikeita journal-, sidonta-, rekisteri- ja root-tallentimia sekä
+nykyistä leasea ja lykätyn paluun apuria. Koordinaattorin järjestys, mainin
+omistajuus ja lapsityön elinikä on mallinnettu. Sidonnan julkaisukuitin uusi
+poistoehto oli siinä vain koeehdokas nykyisen tallentimen havaintorajan kohdalla.
+Kokeen näyttö kattaa ensimmäisen journalin, kuittauskatkot,
+vaihtuneen tiedostoidentiteetin, keskeneräisen työn sekä ennen root-julkaisua
+siivotun virhepolun paluun. Se ei todista onnistunutta koko tuontia, täyttä
+kylmäpalautusta, native-prosessivarausta tai paketoitua hyväksyntää.
+[ADR-0011:n live-tuonnin järjestys](../decisions/ADR-0011-local-multi-workspace-company-model.md#a-tuo-uutena-työtilana)
+on täsmennetty nykyisen lykätyn paluun mukaiseksi; cold- ja ordinary-recoveryn
+erillisiä loppuehtoja ei muuteta.
+
+**Sidontaosan toteutuscheckpoint 29.10.2026:** tallennin kaappaa ja tarkistaa
+omistajan odottaman current-identiteetin ennen poistoja. Import-sidonta
+kaappaa pakollisen journal-callbackin rakentajassa ja käyttää sitä julkaisun
+rekisteri/journal/rekisteri-vartijassa. Loppusiivous käyttää alkuperäistä
+sidontakuittia, payload-poissaoloa ja samaa journal-valintaa. Vain kuitattu
+poisto ja korjaamaton readback avaavat metadata-poistettu-tilan. Sen
+vartija ei lue journalia, jotta valittu journal-kirjoittaja omistaa omat
+slottinsa; payload-muutosvaltuus pysyy suljettuna. Pysyvät regressiot
+todentavat myös oikean journalin ja sidontatallentimen yhteistoiminnan.
+Jäädytetty 13 tiedoston sarja läpäisi 237 testiä; yksi olemassa oleva
+POSIX-tapaus odottaa Linux-ajoa. Desktopin tyypitys ja rajattu riippumaton
+katselmus läpäisivät. Sarja sisältää vanhoja kontrollitestejä, ei aiempien
+checkpointien päälle yhteen laskettavaa kattavuutta.
+Tämä ei vielä ole koordinaattorin ensimmäinen owner-kaappaus, root-storesta
+tuleva täydellinen poissaolotodistus, mainin elinikäkytkentä tai korjaavan
+kylmäpalautuksen hyväksyntä. Näiden portit ja koko W7.4:n pakettinäyttö
+ovat edelleen avoinna.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa

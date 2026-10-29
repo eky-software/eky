@@ -44,12 +44,15 @@ export async function createImportBindingFixture(context: TestContext, selector 
   const assertOwned = vi.fn(async () => { if (!state.owned) throw new Error('SYNTHETIC_MAIN_NOT_OWNED'); });
   const assertAbsent = vi.fn(async () => { if (!state.absent) throw new Error('SYNTHETIC_RUNTIME_PRESENT'); });
   const checkJournal = vi.fn(async () => {});
+  const checkInitialJournal = vi.fn(async () => {});
   const options: WorkspaceBackupImportBindingOptions = { userDataRoot: root, operationId: importBindingOperationId,
     workspaceId: importBindingWorkspaceId, lineageIdentity, registrySelection: selection, registry,
     lease: held, maintenanceLease: lease, runtimeAbsence: { assertNoActiveWorkspaceRuntime: assertAbsent },
-    mainOwner: { assertCurrent() { if (!state.current) throw new Error('SYNTHETIC_MAIN_EXPIRED'); }, assertOwned }, onUncertain };
+    mainOwner: { assertCurrent() { if (!state.current) throw new Error('SYNTHETIC_MAIN_EXPIRED'); }, assertOwned },
+    assertJournalSelection: checkInitialJournal, onUncertain };
   return { root, registryPaths, registryFs, registry, original, selection, entry, expected, lease, held, paths, fileSystem,
-    state, onUncertain, assertOwned, assertAbsent, checkJournal, options, binding: new WorkspaceBackupImportBinding(options, fileSystem) };
+    state, onUncertain, assertOwned, assertAbsent, checkJournal, checkInitialJournal, options,
+    binding: new WorkspaceBackupImportBinding(options, fileSystem) };
 }
 
 export async function snapshotImportBindingFiles(root: string): Promise<readonly unknown[]> {

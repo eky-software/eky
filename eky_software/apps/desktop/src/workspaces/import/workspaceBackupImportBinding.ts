@@ -23,6 +23,7 @@ export interface WorkspaceBackupImportBindingOptions {
   readonly maintenanceLease: Pick<InMemoryWorkspaceMaintenanceLease, 'captureCurrentOwner'>;
   readonly runtimeAbsence: WorkspaceRuntimeAbsencePort;
   readonly mainOwner: { assertCurrent(): void; assertOwned(): Promise<void> };
+  readonly assertJournalSelection: () => Promise<void>;
   readonly onUncertain: () => void;
 }
 
@@ -36,6 +37,7 @@ export class WorkspaceBackupImportBinding {
   private readonly assertOwned: () => Promise<void>;
   private readonly assertAbsent: () => Promise<void>;
   private readonly onUncertain: () => void;
+  private readonly checkInitialJournal: () => Promise<void>;
   private readonly readRegistry: WorkspaceRegistryStore['inspectSlots'];
   private readonly writeRegistry: WorkspaceRegistryStore['writeSelected'];
   private readonly original: RegistrySelection;
@@ -45,6 +47,7 @@ export class WorkspaceBackupImportBinding {
   private receipt: Receipt | undefined;
   private phase: 'before' | 'writing' | 'after' = 'before';
   private attempted = false;
+  private retired = false;
   private active = false;
   private failure: { error: unknown } | undefined;
 
@@ -55,6 +58,8 @@ export class WorkspaceBackupImportBinding {
     this.assertOwned = options.mainOwner.assertOwned.bind(options.mainOwner);
     this.assertAbsent = options.runtimeAbsence.assertNoActiveWorkspaceRuntime.bind(options.runtimeAbsence);
     this.onUncertain = options.onUncertain.bind(options);
+    if (typeof options.assertJournalSelection !== 'function') throw required();
+    this.checkInitialJournal = options.assertJournalSelection.bind(options);
     this.readRegistry = options.registry.inspectSlots.bind(options.registry);
     this.writeRegistry = options.registry.writeSelected.bind(options.registry);
     const slots = options.registrySelection;
@@ -73,16 +78,46 @@ export class WorkspaceBackupImportBinding {
     return this.run(async () => {
       if (this.attempted || this.phase !== 'before') throw required();
       this.attempted = true;
+      const external = this.journalGuard(this.checkInitialJournal);
       const receipt = await this.store.publish(this.binding, {
-        assertAuthority: this.assertAuthority, assertExternalSelection: this.assertRegistrySelection,
+        assertAuthority: this.assertAuthority, assertExternalSelection: external,
       });
       await this.verifyReceipt(receipt);
+      await external();
       this.receipt = receipt;
     });
   }
 
   assertPublished(): Promise<void> {
     return this.run(() => this.assertPublishedSelection());
+  }
+
+  clearAfterPayloadsAbsent(assertPayloadsAbsent: () => Promise<void>, assertJournalSelection: () => Promise<void>): Promise<void> {
+    const absent = assertPayloadsAbsent.bind(undefined);
+    const external = this.journalGuard(assertJournalSelection.bind(undefined));
+    return this.run(async () => {
+      await this.assertPublishedSelection();
+      const receipt = this.receipt!;
+      await this.store.clearAfterPayloadsAbsent(this.binding, {
+        mode: 'owner', bindingSha256: receipt.bindingSha256, expectedCurrentIdentity: receipt.identity,
+        assertAuthority: this.assertAuthority, assertExternalSelection: external,
+        assertPayloadsAbsent: async () => {
+          try { await absent(); this.assertAuthority(); } catch (error) { this.rejectUncertain(error); }
+        },
+      });
+      await this.assertMetadataAbsent(absent);
+      await external();
+      this.retired = true;
+    });
+  }
+
+  assertRetired(assertPayloadsAbsent: () => Promise<void>): Promise<void> {
+    const absent = assertPayloadsAbsent.bind(undefined);
+    return this.run(async () => {
+      if (!this.retired) throw required();
+      // The journal writer owns its slots; this guard must not read that journal.
+      await this.assertMetadataAbsent(absent);
+    });
   }
 
   publishRegistry(entry: Readonly<LocalWorkspaceRegistryEntryV1>, assertJournalSelection: () => Promise<void>): Promise<void> {
@@ -93,7 +128,7 @@ export class WorkspaceBackupImportBinding {
     const expected = serializeWorkspaceRegistry(publishImportedWorkspaceEntry(parseWorkspaceRegistryBytes(this.original.bytes), entry));
     const checkJournal = assertJournalSelection.bind(undefined);
     return this.run(async () => {
-      if (this.phase !== 'before') throw required();
+      if (this.retired || this.phase !== 'before') throw required();
       await this.assertPublishedSelection();
       this.phase = 'writing';
       // The existing writer owns its changing registry slots. Never re-enter it.
@@ -124,7 +159,7 @@ export class WorkspaceBackupImportBinding {
   assertMutationCurrent(): void {
     if (this.failure !== undefined) throw required(this.failure.error);
     try {
-      if (this.active || this.receipt === undefined || this.phase === 'writing') throw required();
+      if (this.active || this.retired || this.receipt === undefined || this.phase === 'writing') throw required();
       this.assertAuthority();
     } catch (error) { this.rejectUncertain(error); }
   }
@@ -171,9 +206,28 @@ export class WorkspaceBackupImportBinding {
   }
 
   private async assertPublishedSelection(): Promise<void> {
-    if (this.receipt === undefined || this.phase === 'writing') throw required();
+    if (this.retired || this.receipt === undefined || this.phase === 'writing') throw required();
     await this.assertRegistrySelection();
     await this.verifyReceipt(this.receipt);
+  }
+
+  private journalGuard(checkJournal: () => Promise<void>) {
+    return async (): Promise<void> => {
+      try {
+        await this.assertRegistrySelection();
+        await checkJournal(); this.assertAuthority();
+        await this.assertRegistrySelection();
+      } catch (error) { this.rejectUncertain(error); }
+    };
+  }
+
+  private async assertMetadataAbsent(absent: () => Promise<void>): Promise<void> {
+    await this.assertRegistrySelection();
+    await absent(); this.assertAuthority();
+    const observed = await this.store.inspect({ assertAuthority: this.assertAuthority, assertExternalSelection: this.assertOwner });
+    if (observed.mode !== 'absent') throw required();
+    await absent(); this.assertAuthority();
+    await this.assertRegistrySelection();
   }
 
   private async run(work: () => Promise<void>): Promise<void> {
