@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ProfileInspectionProcessError } from '../runtime/profileInspectionProcess.js';
 import { writeBackupContainer } from './container/backupContainerWriter.js';
-import { inspectOwnedEncryptedProfileBackup, OwnedProfileBackupInspectionError } from './inspectOwnedEncryptedProfileBackup.js';
+import { finishOwnedCleanup, inspectOwnedEncryptedProfileBackup, OwnedProfileBackupInspectionError } from './inspectOwnedEncryptedProfileBackup.js';
 import type { runProfileSnapshotInspection } from './runProfileSnapshotInspection.js';
 
 const inspection = vi.hoisted(() => ({ run: vi.fn() }));
@@ -19,11 +19,53 @@ const profileId = 'a'.repeat(64);
 const migrationChainIdentity = 'b'.repeat(64);
 const password = 'Synthetic owned backup inspection password!';
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
   vi.useRealTimers();
   vi.restoreAllMocks();
   inspection.run.mockReset();
+  if (task.result?.state !== 'pass') { roots.splice(0); return; }
   await Promise.all(roots.splice(0).map(root => fileSystem.rm(root, { force: true, recursive: true })));
+});
+
+describe('snapshot cleanup authority boundaries', () => {
+  it.each([false, true])('preserves cleanup ordering with optional authority: %s', async guarded => {
+    const f = await cleanupFixture();
+    const events: string[] = [];
+    f.owner.assertMainOwned.mockImplementation(async () => { events.push('native'); });
+    f.owner.close.mockImplementation(async () => { events.push('close'); });
+    const remove = fileSystem.rm.bind(fileSystem);
+    vi.spyOn(fileSystem, 'rm').mockImplementation(async (path, options) => {
+      if (path === f.operationRoot) events.push('remove');
+      await remove(path, options);
+    });
+    const deadline = performance.now() + 3_000;
+    if (guarded) {
+      await finishOwnedCleanup(f.owner, f.operationRoot, deadline, {
+        async assertOwned() { events.push('binding'); },
+        assertCurrent() { events.push('sync'); },
+      });
+    } else await finishOwnedCleanup(f.owner, f.operationRoot, deadline);
+    expect(events).toEqual(guarded
+      ? ['native', 'sync', 'binding', 'native', 'sync', 'remove', 'sync', 'close', 'sync']
+      : ['native', 'remove', 'close']);
+    await expect(fileSystem.lstat(f.operationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('checks logical authority again before close after original removal completes', async () => {
+    const f = await cleanupFixture();
+    const first = new Error('SYNTHETIC_CLEANUP_REVOKED');
+    let current = true;
+    const remove = fileSystem.rm.bind(fileSystem);
+    vi.spyOn(fileSystem, 'rm').mockImplementation(async (path, options) => {
+      await remove(path, options);
+      if (path === f.operationRoot) current = false;
+    });
+    await expect(finishOwnedCleanup(f.owner, f.operationRoot, performance.now() + 3_000, {
+      async assertOwned() {}, assertCurrent() { if (!current) throw first; },
+    })).rejects.toBe(first);
+    expect(f.owner.close).not.toHaveBeenCalled();
+    await expect(fileSystem.lstat(f.operationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
 });
 
 describe('owned encrypted backup inspect consumer', () => {
@@ -272,6 +314,19 @@ async function fixture() {
     assertAuthority: () => {}, signal: cancellation.signal,
     acquireReservation: vi.fn(async (_input: { operationRoot: string; signal: AbortSignal }) => owner) };
   return { input, owner, operationRoot, cancellation };
+}
+
+async function cleanupFixture() {
+  const root = await fileSystem.mkdtemp(join(tmpdir(), 'eky-snapshot-cleanup-authority-'));
+  roots.push(root);
+  const operationRoot = join(root, randomUUID());
+  await fileSystem.mkdir(operationRoot);
+  await fileSystem.writeFile(join(operationRoot, 'profile.sqlite'), 'synthetic source');
+  const owner = {
+    assertMainOwned: vi.fn(async () => {}), close: vi.fn(async () => {}), invalidate: vi.fn(),
+    bind: vi.fn(() => { throw new Error('notUsedByCleanupUnitTest'); }),
+  };
+  return { operationRoot, owner };
 }
 
 function result(inspectedProfileId = profileId) {

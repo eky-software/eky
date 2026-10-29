@@ -3,7 +3,8 @@ import { isAbsolute, join } from 'node:path';
 
 import { readDecryptedBackupPayload } from '../container/backupContainerReader.js';
 import { extractBackupPayload } from '../container/extractBackupPayload.js';
-import type { OwnedProfileSnapshotValidator } from '../profileSnapshotInspectionPort.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority,
+  type OwnedProfileSnapshotValidator } from '../profileSnapshotInspectionPort.js';
 import { decryptRecoveryPointPayload } from './decryptRecoveryPointPayload.js';
 import { RecoveryPointKeyEnvelopeStore } from './recoveryPointKeyEnvelopeStore.js';
 import type { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
@@ -38,10 +39,13 @@ interface MaterializeRecoveryPointInput {
   stagingRoot: string;
   validator: ProfileSnapshotValidator;
   updateMaintenanceOperationId?: string;
+  cleanupAuthority?: ProfileSnapshotCleanupAuthority;
 }
 
 export function materializeRecoveryPoint(input: MaterializeRecoveryPointInput): Promise<MaterializedRecoveryPoint> {
-  return input.validator.withInspectionOperation(() => materializeOwnedRecoveryPoint(input));
+  const cleanupAuthority = captureProfileSnapshotCleanupAuthority(input.cleanupAuthority);
+  const selected = { ...input, ...(cleanupAuthority === undefined ? {} : { cleanupAuthority }) };
+  return input.validator.withInspectionOperation(() => materializeOwnedRecoveryPoint(selected));
 }
 
 async function materializeOwnedRecoveryPoint(input: MaterializeRecoveryPointInput): Promise<MaterializedRecoveryPoint> {
@@ -68,15 +72,22 @@ async function materializeOwnedRecoveryPoint(input: MaterializeRecoveryPointInpu
   let dataKey: Buffer | undefined;
   let decrypted = false;
   let extracted = false;
+  let failure: { error: unknown } | undefined;
+  const cleanupAuthority = input.cleanupAuthority;
 
   try {
     const protectedKey = await envelopeStore.read();
     const unprotected = await input.keyProtector.unprotect(protectedKey);
     dataKey = unprotected.dataKey;
+    if (cleanupAuthority !== undefined) {
+      await cleanupAuthority.assertOwned();
+      cleanupAuthority.assertCurrent();
+    }
     await decryptRecoveryPointPayload({
       containerPath: input.containerPath,
       dataKey,
       quarantinePath,
+      ...(cleanupAuthority === undefined ? {} : { assertCleanupCurrent: cleanupAuthority.assertCurrent }),
     });
     decrypted = true;
     const parsed = await readDecryptedBackupPayload(quarantinePath);
@@ -84,13 +95,17 @@ async function materializeOwnedRecoveryPoint(input: MaterializeRecoveryPointInpu
       operationRoot,
       parsedPayload: parsed,
       payloadPath: quarantinePath,
+      ...(cleanupAuthority === undefined ? {} : { assertCleanupCurrent: cleanupAuthority.assertCurrent }),
     });
     extracted = true;
 
-    const validation = await input.validator.validateProfileSnapshot(
-      input.operationId,
-      input.updateMaintenanceOperationId,
-    );
+    if (cleanupAuthority !== undefined) {
+      await cleanupAuthority.assertOwned();
+      cleanupAuthority.assertCurrent();
+    }
+    const validation = cleanupAuthority === undefined
+      ? await input.validator.validateProfileSnapshot(input.operationId, input.updateMaintenanceOperationId)
+      : await input.validator.validateProfileSnapshot(input.operationId, input.updateMaintenanceOperationId, cleanupAuthority);
     return await input.validator.withProfileSnapshot(input.operationId, async () => {
       if (
         parsed.manifest.profileId !== input.expectedProfileId ||
@@ -102,7 +117,9 @@ async function materializeOwnedRecoveryPoint(input: MaterializeRecoveryPointInpu
       }
 
       if (unprotected.shouldReEncrypt) {
-        await envelopeStore.write(await input.keyProtector.protect(unprotected.dataKey));
+        const protectedKey = await input.keyProtector.protect(unprotected.dataKey);
+        cleanupAuthority?.assertCurrent();
+        await envelopeStore.write(protectedKey);
       }
 
       return {
@@ -117,20 +134,36 @@ async function materializeOwnedRecoveryPoint(input: MaterializeRecoveryPointInpu
       };
     });
   } catch (error) {
+    failure = { error };
+    if (cleanupAuthority !== undefined && error instanceof RecoveryPointCleanupError) throw error;
     if (extracted) {
       try {
+        if (cleanupAuthority !== undefined) {
+          await cleanupAuthority.assertOwned();
+          cleanupAuthority.assertCurrent();
+        }
         await input.validator.removeProfileSnapshot(input.operationId);
       } catch {
-        throw new RecoveryPointCleanupError(error);
+        const cleanupFailure = new RecoveryPointCleanupError(error);
+        if (cleanupAuthority !== undefined) failure = { error: cleanupFailure };
+        throw cleanupFailure;
       }
     }
     throw error;
   } finally {
     dataKey?.fill(0);
-    if (decrypted) {
-      await fileSystem
-        .rm(quarantinePath, { force: true })
-        .catch(() => undefined);
+    if (decrypted && !(cleanupAuthority !== undefined && failure?.error instanceof RecoveryPointCleanupError)) {
+      if (cleanupAuthority === undefined) {
+        await fileSystem.rm(quarantinePath, { force: true }).catch(() => undefined);
+      } else {
+        try {
+          await cleanupAuthority.assertOwned();
+          cleanupAuthority.assertCurrent();
+          await fileSystem.rm(quarantinePath, { force: true });
+        } catch (error) {
+          throw new RecoveryPointCleanupError(failure === undefined ? error : failure.error);
+        }
+      }
     }
   }
 }

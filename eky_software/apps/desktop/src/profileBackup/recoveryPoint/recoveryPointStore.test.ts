@@ -1,3 +1,4 @@
+import { promises as fileSystem } from 'node:fs';
 import {
   mkdir,
   mkdtemp,
@@ -14,6 +15,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createProfileBackupSourceEntries } from '../createProfileBackupSourceEntries.js';
 import type { ProfileInspectionReceipt } from '../../runtime/profileInspectionMessages.js';
 import { readProfileInspectionFailureCause } from '../../runtime/profileInspectionFailure.js';
+import { validateWorkspaceBackupImportOperationId } from '../../workspaces/import/workspaceBackupImportOperationId.js';
+import { WorkspaceActivationMigrationRecoveryPoint } from '../../workspaces/update/workspaceActivationMigrationRecoveryPoint.js';
 import { RecoveryPointKeyProtector } from './recoveryPointKeyProtector.js';
 import {
   recoveryPointFileExtension,
@@ -30,7 +33,9 @@ const profileId = 'a'.repeat(64);
 const migrationChainIdentity = 'b'.repeat(64);
 const snapshotCreatedAt = '2026-04-05T12:00:00.000Z';
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  vi.restoreAllMocks();
+  if (task.result?.state !== 'pass') { roots.splice(0); return; }
   await Promise.all(
     roots.splice(0).map((root) =>
       rm(root, { force: true, recursive: true }),
@@ -39,6 +44,129 @@ afterEach(async () => {
 });
 
 describe('recovery point store', () => {
+  it('retains quarantine when guarded snapshot removal fails despite valid binding authority', async () => {
+    const fixture = await createFixture();
+    await createPoint(fixture, 'preUpdate');
+    fixture.remove.mockClear();
+    const primary = new Error('SYNTHETIC_VALIDATION_FAILED');
+    fixture.validate.mockRejectedValueOnce(primary);
+    fixture.remove.mockRejectedValueOnce(new Error('SYNTHETIC_SNAPSHOT_CLOSE_FAILED'));
+    const removals = vi.spyOn(fileSystem, 'rm');
+    await expect(fixture.store.stageForRestore({
+      artifactId, expectedMigrationChainIdentity: migrationChainIdentity, operationId: restoreOperationId,
+      cleanupAuthority: { assertOwned: async () => {}, assertCurrent: () => {} },
+    })).rejects.toMatchObject({ cleanupStatus: 'unverified', cause: primary });
+    expect(fixture.remove).toHaveBeenCalledExactlyOnceWith(restoreOperationId);
+    const quarantinePath = join(fixture.quarantineRoot, `${restoreOperationId}.recovery-payload`);
+    expect(removals.mock.calls.map(([path]) => String(path))).not.toContain(quarantinePath);
+    expect(removals.mock.calls.map(([path]) => String(path))).not.toContain(join(fixture.stagingRoot, restoreOperationId));
+    expect(await readFile(join(fixture.stagingRoot, restoreOperationId, 'profile.sqlite'), 'utf8'))
+      .toBe('synthetic-sqlite-profile');
+    const quarantine = await readFile(quarantinePath);
+    expect(quarantine.includes(Buffer.from('synthetic-sqlite-profile'))).toBe(true);
+  });
+
+  it.each([
+    ['decrypt', 'destination'], ['decrypt', 'source'],
+    ['extract', 'destination'], ['extract', 'source'],
+  ] as const)('retains guarded evidence through materialization and migration fallback after %s %s close loss', async (phase, target) => {
+    const fixture = await createFixture();
+    const point = await createPoint(fixture, 'preUpdate');
+    fixture.remove.mockClear();
+    fixture.validate.mockClear();
+    const container = await readFile(fixture.containerPath);
+    const envelope = await readFile(fixture.keyEnvelopePath);
+    const quarantinePath = join(fixture.quarantineRoot, `${restoreOperationId}.recovery-payload`);
+    const operationRoot = join(fixture.stagingRoot, restoreOperationId);
+    const primary = new Error('SYNTHETIC_SYNC_FAILED');
+    const closeError = new Error('SYNTHETIC_CLOSE_FAILED');
+    const open = fileSystem.open.bind(fileSystem);
+    const removals = vi.spyOn(fileSystem, 'rm');
+    let temporaryPath = '';
+    let closeCalls = 0;
+    vi.spyOn(fileSystem, 'open').mockImplementation(async (...args) => {
+      const handle = await open(...args);
+      const path = String(args[0]);
+      const writer = args[1] === 'wx' && (phase === 'decrypt'
+        ? path === quarantinePath : path.startsWith(operationRoot) && path.endsWith('.next'));
+      const reader = args[1] === 'r' && path === (phase === 'decrypt' ? fixture.containerPath : quarantinePath);
+      if (writer) {
+        temporaryPath = path;
+        vi.spyOn(handle, 'sync').mockRejectedValueOnce(primary);
+      }
+      if (target === 'destination' ? writer : reader) {
+        const close = handle.close.bind(handle);
+        vi.spyOn(handle, 'close').mockImplementation(async () => {
+          await close();
+          // The payload parser closes its reader before extraction starts.
+          if (temporaryPath !== '') {
+            closeCalls++;
+            throw closeError;
+          }
+        });
+      }
+      return handle;
+    });
+    const fallback = vi.fn(async () => { await rm(operationRoot, { force: true, recursive: true }); });
+    const recovery = new WorkspaceActivationMigrationRecoveryPoint(
+      { createPreMigration: async () => point }, fixture.store,
+      { assertOperationRoot: async () => {}, removeOperationRoot: fallback });
+    const error = await recovery.createAndStage({
+      expectedMigrationChainIdentity: migrationChainIdentity, expectedProfileId: profileId,
+      operationId: validateWorkspaceBackupImportOperationId(restoreOperationId),
+      cleanupAuthority: { assertOwned: async () => {}, assertCurrent: () => {} },
+    }).catch((error: unknown) => error);
+    expect(error).toMatchObject({ cause: { cleanupStatus: 'unverified', cause: { errors: [primary, closeError] } } });
+    expect(closeCalls).toBe(1);
+    expect(fallback).not.toHaveBeenCalled();
+    expect(fixture.remove).not.toHaveBeenCalled();
+    expect(fixture.validate).not.toHaveBeenCalled();
+    expect(removals).not.toHaveBeenCalled();
+    const quarantine = await readFile(quarantinePath);
+    expect(quarantine.includes(Buffer.from('synthetic-sqlite-profile'))).toBe(true);
+    if (phase === 'extract') {
+      expect(await readFile(temporaryPath, 'utf8')).toBe('synthetic-sqlite-profile');
+    }
+    expect(await readFile(fixture.containerPath)).toEqual(container);
+    expect(await readFile(fixture.keyEnvelopePath)).toEqual(envelope);
+  });
+
+  it('binds restored staging cleanup and preserves plaintext when that owner is lost', async () => {
+    const f = await createFixture();
+    await createPoint(f, 'preUpdate');
+    f.remove.mockClear();
+    const primary = new Error('SYNTHETIC_VALIDATION_FAILED');
+    let current = true;
+    const assertCurrent = () => { if (!current) throw new Error('SYNTHETIC_AUTHORITY_LOST'); };
+    f.validate.mockImplementationOnce(async () => { current = false; throw primary; });
+    const error = await f.store.stageForRestore({ artifactId, expectedMigrationChainIdentity: migrationChainIdentity,
+      operationId: restoreOperationId, cleanupAuthority: { assertOwned: async () => assertCurrent(), assertCurrent } })
+      .catch(error => error);
+    expect(error).toMatchObject({ cleanupStatus: 'unverified', cause: primary });
+    expect(f.remove).not.toHaveBeenCalled();
+    expect(await readFile(join(f.stagingRoot, restoreOperationId, 'profile.sqlite'), 'utf8'))
+      .toBe('synthetic-sqlite-profile');
+    expect((await readFile(join(f.quarantineRoot, `${restoreOperationId}.recovery-payload`))).byteLength).toBeGreaterThan(0);
+    expect(await readFile(f.containerPath)).toBeDefined();
+  });
+
+  it('keeps exact restored bytes with a valid cleanup authority and removes only quarantine', async () => {
+    const f = await createFixture();
+    await createPoint(f, 'preUpdate');
+    f.remove.mockClear();
+    const authority = { assertOwned: vi.fn(async () => {}), assertCurrent: vi.fn(() => {}) };
+    await f.store.stageForRestore({ artifactId, expectedMigrationChainIdentity: migrationChainIdentity,
+      operationId: restoreOperationId, cleanupAuthority: authority });
+    expect(f.validate).toHaveBeenLastCalledWith(restoreOperationId, undefined, expect.objectContaining({
+      assertOwned: expect.any(Function), assertCurrent: expect.any(Function),
+    }));
+    expect(f.remove).not.toHaveBeenCalled();
+    expect(await readFile(join(f.stagingRoot, restoreOperationId, 'profile.sqlite'), 'utf8'))
+      .toBe('synthetic-sqlite-profile');
+    await expect(readFile(join(f.quarantineRoot, `${restoreOperationId}.recovery-payload`)))
+      .rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('uses the required ownership scope and removes self-inspection staging once', async () => {
     const fixture = await createFixture();
     await createPoint(fixture);
@@ -394,6 +522,7 @@ async function createFixture(options: {
     keyEnvelopePath: join(recoveryRoot, profileId, `${artifactId}.key.json`),
     ownershipCalls,
     recoveryRoot,
+    quarantineRoot,
     stagingRoot,
     store,
     remove,

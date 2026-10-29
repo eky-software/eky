@@ -16,6 +16,8 @@ import type {
   ParsedBackupPayload,
 } from './backupContainerReader.js';
 import { backupStreamChunkBytes } from './backupContainerLimits.js';
+import { captureProfileSnapshotCleanupGuard } from '../profileSnapshotInspectionPort.js';
+import { RecoveryPointCleanupError } from '../recoveryPoint/recoveryPointOperationError.js';
 
 const databaseLogicalPath = 'profile.sqlite';
 const artifactCatalogLogicalPath = 'snapshot-catalog-v1.json';
@@ -26,7 +28,9 @@ export async function extractBackupPayload(input: {
   operationRoot: string;
   parsedPayload: ParsedBackupPayload;
   payloadPath: string;
+  assertCleanupCurrent?: () => void;
 }): Promise<void> {
+  const assertCleanupCurrent = captureProfileSnapshotCleanupGuard(input.assertCleanupCurrent);
   validateRequiredEntries(input.parsedPayload.entries);
   const sourceMetadata = await fileSystem.lstat(input.payloadPath, {
     bigint: true,
@@ -37,6 +41,7 @@ export async function extractBackupPayload(input: {
 
   const source = await fileSystem.open(input.payloadPath, 'r');
   let operationRootCreated = false;
+  let failure: { error: unknown } | undefined;
 
   try {
     assertSameFileIdentity(
@@ -52,6 +57,7 @@ export async function extractBackupPayload(input: {
         entry,
         operationRoot: input.operationRoot,
         source,
+        ...(assertCleanupCurrent === undefined ? {} : { assertCleanupCurrent }),
       });
     }
 
@@ -60,14 +66,33 @@ export async function extractBackupPayload(input: {
       await source.stat({ bigint: true }),
     );
   } catch (error) {
+    if (assertCleanupCurrent !== undefined) {
+      failure = { error };
+      throw error;
+    }
     if (operationRootCreated) {
-      await fileSystem
-        .rm(input.operationRoot, { force: true, recursive: true })
-        .catch(() => undefined);
+      try {
+        await fileSystem.rm(input.operationRoot, { force: true, recursive: true });
+      } catch { /* Retain the failed operation and its original cause. */ }
     }
     throw error;
   } finally {
-    await source.close();
+    if (assertCleanupCurrent === undefined) {
+      await source.close();
+    } else {
+      try {
+        await source.close();
+      } catch (closeError) {
+        throw new RecoveryPointCleanupError(failure === undefined ? closeError : new AggregateError(
+          [failure.error, closeError], 'BACKUP_READ_FAILED'));
+      }
+      if (failure !== undefined && operationRootCreated && !(failure.error instanceof RecoveryPointCleanupError)) {
+        try {
+          assertCleanupCurrent();
+          await fileSystem.rm(input.operationRoot, { force: true, recursive: true });
+        } catch { /* Retain the failed operation and its original cause. */ }
+      }
+    }
   }
 }
 
@@ -111,6 +136,7 @@ async function extractEntry(input: {
   entry: ParsedBackupContainerEntry;
   operationRoot: string;
   source: FileHandle;
+  assertCleanupCurrent?: () => void;
 }): Promise<void> {
   const destinationPath = resolve(
     input.operationRoot,
@@ -133,6 +159,7 @@ async function extractEntry(input: {
   assertContainedPath(input.operationRoot, temporaryPath);
   const destination = await fileSystem.open(temporaryPath, 'wx', 0o600);
   let finalized = false;
+  let writeFailure: { error: unknown } | undefined;
   try {
     const hash = createHash('sha256');
     const buffer = Buffer.allocUnsafe(backupStreamChunkBytes);
@@ -165,16 +192,42 @@ async function extractEntry(input: {
     }
 
     await destination.sync();
+  } catch (error) {
+    writeFailure = { error };
+    throw error;
   } finally {
-    await destination.close();
+    if (input.assertCleanupCurrent === undefined) {
+      await destination.close();
+    } else {
+      try {
+        await destination.close();
+      } catch (closeError) {
+        throw new RecoveryPointCleanupError(writeFailure === undefined ? closeError : new AggregateError(
+          [writeFailure.error, closeError], 'BACKUP_WRITE_FAILED'));
+      }
+    }
   }
 
+  let finalizationFailure: { error: unknown } | undefined;
   try {
     await fileSystem.chmod(temporaryPath, 0o400);
     await fileSystem.link(temporaryPath, destinationPath);
     finalized = true;
+  } catch (error) {
+    finalizationFailure = { error };
+    throw error;
   } finally {
-    await fileSystem.rm(temporaryPath, { force: true });
+    if (finalized || input.assertCleanupCurrent === undefined) {
+      await fileSystem.rm(temporaryPath, { force: true });
+    } else {
+      try {
+        // Failed-entry removal belongs to the outer cleanup after the source closes.
+        input.assertCleanupCurrent();
+      } catch (cleanup) {
+        throw finalizationFailure === undefined ? cleanup : new AggregateError(
+          [finalizationFailure.error, cleanup], 'BACKUP_WRITE_FAILED');
+      }
+    }
   }
 
   if (!finalized) {

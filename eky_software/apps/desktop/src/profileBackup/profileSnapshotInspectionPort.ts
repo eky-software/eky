@@ -3,6 +3,47 @@ import type { ProfileInspectionReceipt } from '../runtime/profileInspectionMessa
 import type { ProfileSnapshotInspectionValidation } from './runProfileSnapshotInspection.js';
 import type { ProfileSnapshotInspectionEvidence } from './profileSnapshotInspectionClient.js';
 
+/** Same-operation cleanup permission, independent of the snapshot's native reservation. */
+export interface ProfileSnapshotCleanupAuthority {
+  assertOwned(): Promise<void>;
+  assertCurrent(): void;
+}
+
+export function captureProfileSnapshotCleanupAuthority(
+  authority: ProfileSnapshotCleanupAuthority,
+): Readonly<ProfileSnapshotCleanupAuthority>;
+export function captureProfileSnapshotCleanupAuthority(
+  authority?: ProfileSnapshotCleanupAuthority,
+): Readonly<ProfileSnapshotCleanupAuthority> | undefined;
+export function captureProfileSnapshotCleanupAuthority(
+  authority?: ProfileSnapshotCleanupAuthority,
+): Readonly<ProfileSnapshotCleanupAuthority> | undefined {
+  if (authority === undefined) return undefined;
+  if (authority === null || typeof authority !== 'object') throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+  const assertOwned = authority.assertOwned;
+  const assertCurrent = authority.assertCurrent;
+  if (typeof assertOwned !== 'function' || typeof assertCurrent !== 'function') {
+    throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+  }
+  return Object.freeze({
+    assertOwned: assertOwned.bind(authority),
+    assertCurrent: captureProfileSnapshotCleanupGuard(assertCurrent.bind(authority))!,
+  });
+}
+
+/** Captures the synchronous-only guard used by partial staging cleanup. */
+export function captureProfileSnapshotCleanupGuard(assertCurrent?: () => void): (() => void) | undefined {
+  if (assertCurrent === undefined) return undefined;
+  if (typeof assertCurrent !== 'function') throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+  return () => {
+    const result: unknown = assertCurrent();
+    if (result !== undefined) {
+      void Promise.resolve(result).catch(() => undefined);
+      throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    }
+  };
+}
+
 /** Internal main-process content evidence, never a renderer capability. */
 export interface ProfileSnapshotEvidencePort {
   withProfileSnapshotEvidence<T>(operationId: string, use: (
@@ -24,10 +65,13 @@ export interface ProfileSnapshotOwnershipPort {
 
 export interface ProfileSnapshotInspectionPort extends ProfileSnapshotOwnershipPort, Pick<
   ProfileSnapshotBrokerClient,
-  'assertUpdateMaintenance' | 'beginMaintenance' | 'createProfileSnapshot' |
+  'assertUpdateMaintenance' | 'beginMaintenance' |
   'endMaintenance'
 > {
-  validateProfileSnapshot(operationId: string, updateMaintenanceOperationId?: string): Promise<ProfileSnapshotInspectionValidation>;
+  createProfileSnapshot(operationId: string, policy: Parameters<ProfileSnapshotBrokerClient['createProfileSnapshot']>[1],
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority): ReturnType<ProfileSnapshotBrokerClient['createProfileSnapshot']>;
+  validateProfileSnapshot(operationId: string, updateMaintenanceOperationId?: string,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority): Promise<ProfileSnapshotInspectionValidation>;
 }
 
 export type OwnedProfileSnapshotValidator = ProfileSnapshotOwnershipPort & Pick<

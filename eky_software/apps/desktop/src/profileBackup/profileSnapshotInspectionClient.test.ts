@@ -16,6 +16,7 @@ import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferred
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import type { OwnedProfileBackupInspectionReservation } from './inspectOwnedEncryptedProfileBackup.js';
 import { ProfileSnapshotInspectionClient } from './profileSnapshotInspectionClient.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority } from './profileSnapshotInspectionPort.js';
 import { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
 import { PreparedProfileRestoreOwner } from './restore/preparedProfileRestoreOwner.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
@@ -44,6 +45,189 @@ afterEach(async ({ task }) => {
 });
 
 describe('main-owned snapshot inspection client', () => {
+  it('captures optional cleanup callbacks with their original receiver', async () => {
+    expect(captureProfileSnapshotCleanupAuthority()).toBeUndefined();
+    const source = {
+      current: true, reads: 0,
+      async assertOwned() { this.reads += 1; },
+      assertCurrent() { if (!this.current) throw new Error('SYNTHETIC_CLEANUP_LOST'); },
+    };
+    const captured = captureProfileSnapshotCleanupAuthority(source);
+    expect(Object.isFrozen(captured)).toBe(true);
+    source.assertOwned = async () => { throw new Error('REPLACED_READER'); };
+    source.assertCurrent = () => {};
+    await captured.assertOwned();
+    expect(source.reads).toBe(1);
+    source.current = false;
+    expect(() => captured.assertCurrent()).toThrow('SYNTHETIC_CLEANUP_LOST');
+  });
+
+  it.each([null, {}, { assertOwned: 1, assertCurrent() {} }, { async assertOwned() {}, assertCurrent: false }])(
+    'rejects malformed cleanup authority before broker or inspection work: %j', async value => {
+      const f = await fixture();
+      const authority = value as unknown as ProfileSnapshotCleanupAuthority;
+      await expect(f.client.createProfileSnapshot(operationId, 'exactCurrentManifest', authority))
+        .rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+      expect(() => f.client.validateProfileSnapshot(operationId, undefined, authority))
+        .toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+      expect(f.createSnapshot).not.toHaveBeenCalled();
+      expect(f.acquisition).not.toHaveBeenCalled(); expect(boundary.run).not.toHaveBeenCalled();
+      expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    },
+  );
+
+  it.each(['create', 'validate'] as const)('rejects an async current assertion before %s work', async mode => {
+    const f = await fixture();
+    const authority = { async assertOwned() {}, async assertCurrent() {} };
+    if (mode === 'create') {
+      await expect(f.client.createProfileSnapshot(operationId, 'exactCurrentManifest', authority))
+        .rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    } else {
+      expect(() => f.client.validateProfileSnapshot(operationId, undefined, authority))
+        .toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    }
+    expect(f.createSnapshot).not.toHaveBeenCalled(); expect(boundary.run).not.toHaveBeenCalled();
+    expect(f.acquisition).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+  });
+
+  it.each(['remove', 'shutdown'] as const)('uses captured source cleanup authority for %s with validation omission', async mode => {
+    const f = await fixture();
+    const guard = { assertOwned: vi.fn(async () => undefined), assertCurrent: vi.fn() };
+    boundary.run.mockResolvedValue(result({ ...result().receipt, migrationPolicy: 'compatibleHistoricalPrefix' }));
+    await f.client.createProfileSnapshot(operationId, 'compatibleHistoricalPrefix', guard);
+    await f.client.validateProfileSnapshot(operationId);
+    if (mode === 'remove') await f.client.removeProfileSnapshot(operationId);
+    else await f.client.shutdown();
+    expect(guard.assertOwned).toHaveBeenCalledOnce();
+    expect(f.owner.close).toHaveBeenCalledOnce();
+    expect(f.owner.invalidate).not.toHaveBeenCalled();
+    await expect(fileSystem.lstat(f.operationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it('preserves an imported cleanup authority across same-context and omitted-context reinspection', async () => {
+    const f = await fixture();
+    const guard = { assertOwned: vi.fn(async () => undefined), assertCurrent: vi.fn() };
+    await f.client.validateProfileSnapshot(operationId, undefined, guard);
+    await f.client.validateProfileSnapshot(operationId, undefined, guard);
+    await f.client.validateProfileSnapshot(operationId);
+    await f.client.removeProfileSnapshot(operationId);
+    expect(boundary.run).toHaveBeenCalledTimes(3);
+    expect(guard.assertOwned).toHaveBeenCalledOnce();
+    expect(f.owner.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(['replace', 'lateAdd'] as const)('retains bytes after an attempted cleanup context %s', async mode => {
+    const f = await fixture();
+    const guard = { async assertOwned() {}, assertCurrent() {} };
+    await f.client.validateProfileSnapshot(operationId, undefined, mode === 'replace' ? guard : undefined);
+    expect(() => f.client.validateProfileSnapshot(operationId, undefined, { ...guard }))
+      .toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    expect(boundary.run).toHaveBeenCalledOnce();
+    await expect(f.client.removeProfileSnapshot(operationId)).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    await expect(f.client.shutdown()).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    expect(f.owner.close).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+  });
+
+  it('does not invalidate an active inspector when a replacement cleanup context is rejected', async () => {
+    const f = await fixture();
+    const entered = deferred<void>(); const finish = deferred<void>();
+    const guard = { async assertOwned() {}, assertCurrent() {} };
+    boundary.run.mockImplementationOnce(async () => { entered.resolve(); await finish.promise; return result(); });
+    const pending = failure(f.client.validateProfileSnapshot(operationId, undefined, guard));
+    try {
+      await Promise.race([entered.promise, pending.then(() => { throw new Error('INSPECTION_DID_NOT_ENTER'); })]);
+      expect(() => f.client.validateProfileSnapshot(operationId, undefined, { ...guard }))
+        .toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+      expect(f.owner.invalidate).not.toHaveBeenCalled();
+      expect(f.owner.close).not.toHaveBeenCalled();
+    } finally { finish.resolve(); await pending; }
+    await expect(f.client.shutdown()).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    expect(f.owner.close).not.toHaveBeenCalled();
+  });
+
+  it.each(['remove', 'shutdown'] as const)('preserves the first cleanup failure and source bytes on %s', async mode => {
+    const f = await fixture();
+    const first = new Error('SYNTHETIC_CLEANUP_LOST');
+    let current = true;
+    const guard = { async assertOwned() {}, assertCurrent() { if (!current) throw first; } };
+    await f.client.validateProfileSnapshot(operationId, undefined, guard);
+    guard.assertCurrent = () => {};
+    current = false;
+    f.owner.invalidate.mockImplementation(() => { throw new Error('SYNTHETIC_INVALIDATION'); });
+    await expect(mode === 'remove' ? f.client.removeProfileSnapshot(operationId) : f.client.shutdown()).rejects.toBe(first);
+    expect(f.owner.close).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+  });
+
+  it.each(['native', 'logical'] as const)('rechecks %s ownership after the last awaited cleanup authority', async loss => {
+    const f = await fixture();
+    const entered = deferred<void>(); const finish = deferred<void>();
+    const first = new Error('SYNTHETIC_CLEANUP_OWNER_LOST');
+    let nativeCurrent = true; let logicalCurrent = true;
+    f.owner.assertMainOwned.mockImplementation(async () => { if (!nativeCurrent) throw first; });
+    const guard = {
+      assertOwned() { entered.resolve(); return finish.promise; },
+      assertCurrent() { if (!logicalCurrent) throw first; },
+    };
+    await f.client.validateProfileSnapshot(operationId, undefined, guard);
+    const removal = failure(f.client.removeProfileSnapshot(operationId));
+    try {
+      await Promise.race([entered.promise, removal.then(() => { throw new Error('GUARD_DID_NOT_ENTER'); })]);
+      expect(f.owner.assertMainOwned).toHaveBeenCalledTimes(2);
+      if (loss === 'native') nativeCurrent = false; else logicalCurrent = false;
+    } finally { finish.resolve(); await removal; }
+    expect(await removal).toBe(first);
+    expect(f.owner.close).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+  });
+
+  it.each(['resolve', 'reject'] as const)('tracks the original timed-out cleanup guard through late %s', async settlement => {
+    const f = await fixture();
+    const entered = deferred<void>(); const finish = deferred<void>();
+    const guard = { assertOwned() { entered.resolve(); return finish.promise; }, assertCurrent() {} };
+    await f.client.validateProfileSnapshot(operationId, undefined, guard);
+    const removal = failure(f.client.removeProfileSnapshot(operationId));
+    let shutdown: Promise<unknown> | undefined;
+    let shutdownSettled = false;
+    let first: unknown;
+    try {
+      await Promise.race([entered.promise, removal.then(() => { throw new Error('GUARD_DID_NOT_ENTER'); })]);
+      await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      first = await removal;
+      expect(first).toMatchObject({ message: 'PROFILE_INSPECTION_TIMEOUT' });
+      shutdown = failure(f.client.shutdown()).then(error => { shutdownSettled = true; return error; });
+      await flush();
+      expect(shutdownSettled).toBe(false);
+      expect(f.owner.close).not.toHaveBeenCalled();
+      if (settlement === 'reject') finish.reject(new Error('SYNTHETIC_LATE_GUARD'));
+      else finish.resolve();
+      expect(await shutdown).toBe(first);
+    } finally {
+      finish.resolve();
+      await Promise.allSettled([finish.promise, removal, shutdown]);
+    }
+    expect(() => f.client.validateProfileSnapshot(operationId)).toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    expect(f.owner.close).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('checks stored cleanup authority before reservation-only release', async () => {
+    const f = await fixture();
+    const first = new Error('SYNTHETIC_RELEASE_AUTHORITY_LOST');
+    let current = true;
+    await f.client.validateProfileSnapshot(operationId, undefined, {
+      async assertOwned() {}, assertCurrent() { if (!current) throw first; },
+    });
+    current = false;
+    await expect(f.client.releaseProfileSnapshot(operationId)).rejects.toBe(first);
+    expect(f.owner.close).not.toHaveBeenCalled();
+    expect(await fileSystem.readFile(f.source, 'utf8')).toBe('synthetic source');
+  });
+
   it('retains the exact accepted inspection identity behind the existing consumer fence', async () => {
     const f = await fixture();
     const accepted = result();
@@ -926,8 +1110,9 @@ function restoreJournal(phase: 'validationStarting') {
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>(fulfill => { resolve = fulfill; });
-  return { promise, resolve };
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((fulfill, fail) => { resolve = fulfill; reject = fail; });
+  return { promise, resolve, reject };
 }
 async function failure(task: Promise<unknown>): Promise<unknown> {
   return task.then(() => { throw new Error('EXPECTED_FAILURE'); }, error => error);

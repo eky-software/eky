@@ -105,9 +105,18 @@ export class WorkspaceActivationMigrationBinding {
   }
 
   assertMutationCurrent(): void {
+    this.assertPublishedCurrent(true);
+  }
+
+  /** Snapshot cleanup may precede shutdown, but still needs the exact live owner. */
+  assertSnapshotCleanupCurrent(): void {
+    this.assertPublishedCurrent(false);
+  }
+
+  private assertPublishedCurrent(requireStopped: boolean): void {
     if (this.uncertain) throw required(this.firstFailure?.error);
     try {
-      if (this.phase !== 'stopped' || this.receipt === undefined || this.active) throw required();
+      if ((requireStopped && this.phase !== 'stopped') || this.receipt === undefined || this.active) throw required();
       this.assertAuthority();
     } catch (primary) { this.rejectUncertain(primary); }
   }

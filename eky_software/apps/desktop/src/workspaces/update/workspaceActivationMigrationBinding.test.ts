@@ -25,6 +25,7 @@ describe('activation migration binding authority', () => {
     const f = await fixture(context, selector);
     await f.binding.publishBeforeSnapshot();
     await f.binding.assertPublished();
+    expect(f.binding.assertSnapshotCleanupCurrent()).toBeUndefined();
     expect(f.assertAbsent).not.toHaveBeenCalled();
     expect(f.assertOwned).not.toHaveBeenCalled();
     expect(f.assertStopped).not.toHaveBeenCalled();
@@ -35,6 +36,7 @@ describe('activation migration binding authority', () => {
     await f.binding.enterStopped();
     await f.binding.assertPublished();
     expect(f.binding.assertMutationCurrent()).toBeUndefined();
+    expect(f.binding.assertSnapshotCleanupCurrent()).toBeUndefined();
     expect(f.assertAbsent).toHaveBeenCalled(); expect(f.assertOwned).toHaveBeenCalled();
     expect(f.onUncertain).not.toHaveBeenCalled();
   });
@@ -48,6 +50,18 @@ describe('activation migration binding authority', () => {
     await expect(f.binding.enterStopped()).rejects.toThrow(required);
     expect(f.onUncertain).toHaveBeenCalledOnce();
     expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  it('does not grant snapshot cleanup before publication or after owner loss', async context => {
+    const f = await fixture(context);
+    expect(() => f.binding.assertSnapshotCleanupCurrent()).toThrow(required);
+    await f.binding.publishBeforeSnapshot();
+    f.state.current = false;
+    expect(() => f.binding.assertSnapshotCleanupCurrent()).toThrow('SYNTHETIC_STARTUP_LOST');
+    f.state.current = true;
+    expect(() => f.binding.assertSnapshotCleanupCurrent()).toThrow(required);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(f.assertStopped).not.toHaveBeenCalled();
   });
 
   it.for(['present', 'mainNotOwned', 'asyncLoss'] as const)('rejects an unproved stopped transition: %s', async (reason, context) => {

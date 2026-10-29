@@ -37,7 +37,8 @@ const profileId = 'a'.repeat(64);
 const migrationChainIdentity = 'b'.repeat(64);
 const now = new Date('2026-08-04T12:00:00.000Z');
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  if (task.result?.state !== 'pass') { roots.splice(0); return; }
   await Promise.all(
     roots.splice(0).map((root) =>
       rm(root, { force: true, recursive: true }),
@@ -46,6 +47,57 @@ afterEach(async () => {
 });
 
 describe('recovery point service', () => {
+  it('passes captured migration cleanup authority to the source owner only', async () => {
+    const f = await createFixture();
+    const client = f.dependencies.profileSnapshotClient;
+    const create = vi.spyOn(client, 'createProfileSnapshot');
+    const authority = { assertOwned: vi.fn(async () => {}), assertCurrent: vi.fn(() => {}) };
+    await expect(f.service.createPreMigration(authority)).resolves.toEqual(f.createdPoint);
+    expect(create).toHaveBeenCalledWith(operationId, 'compatibleHistoricalPrefix', expect.objectContaining({
+      assertOwned: expect.any(Function), assertCurrent: expect.any(Function),
+    }));
+    expect(authority.assertOwned).toHaveBeenCalled();
+    expect(f.remove).toHaveBeenCalledOnce();
+    expect(f.create).toHaveBeenCalledWith(expect.objectContaining({ kind: 'preUpdate' }));
+  });
+
+  it('retains a migration source after authority loss and preserves the first failure', async () => {
+    const primary = new Error('SYNTHETIC_PERSISTENCE_FAILED');
+    const f = await createFixture();
+    let current = true;
+    const assertCurrent = () => { if (!current) throw new Error('SYNTHETIC_AUTHORITY_LOST'); };
+    f.create.mockImplementationOnce(async () => { current = false; throw primary; });
+    const error = await f.service.createPreMigration({ assertOwned: async () => assertCurrent(), assertCurrent })
+      .catch(error => error);
+    expect(error).toMatchObject({ cleanupStatus: 'unverified', cause: primary });
+    expect(f.remove).not.toHaveBeenCalled();
+    expect(await readFile(join(f.operationRoot, 'profile.sqlite'), 'utf8')).toBe('database');
+    expect(f.calls.at(-1)).toBe('end');
+  });
+
+  it('rejects malformed migration cleanup authority before snapshot preparation', async () => {
+    const f = await createFixture();
+    expect(() => f.service.createPreMigration(null as never)).toThrow();
+    expect(f.calls).toEqual([]);
+  });
+
+  it('keeps cleanup authority loss before a later maintenance-end failure', async () => {
+    const f = await createFixture();
+    const first = new Error('SYNTHETIC_AUTHORITY_LOST');
+    const ending = new Error('SYNTHETIC_MAINTENANCE_END_FAILED');
+    let current = true;
+    f.create.mockImplementationOnce(async () => { current = false; return f.createdPoint; });
+    vi.spyOn(f.dependencies.profileSnapshotClient, 'endMaintenance').mockRejectedValueOnce(ending);
+    const assertCurrent = () => { if (!current) throw first; };
+    const error = await f.service.createPreMigration({ assertOwned: async () => assertCurrent(), assertCurrent })
+      .catch(error => error);
+    expect(error).toMatchObject({ cleanupStatus: 'unverified' });
+    expect(error.cause).toBeInstanceOf(AggregateError);
+    expect(error.cause.errors).toEqual([first, ending]);
+    expect(f.remove).not.toHaveBeenCalled();
+    expect(await readFile(join(f.operationRoot, 'profile.sqlite'), 'utf8')).toBe('database');
+  });
+
   it('owned recovery source stays reserved through persistence and rotation, then is removed once', async () => {
     const fixture = await createFixture();
     const create = fixture.create.getMockImplementation()!;

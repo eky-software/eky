@@ -1,4 +1,5 @@
-import type { RecoveryPointService } from '../../profileBackup/recoveryPoint/recoveryPointService.js';
+import { isRecoveryPointCleanupUnverified, type RecoveryPointService } from '../../profileBackup/recoveryPoint/recoveryPointService.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority } from '../../profileBackup/profileSnapshotInspectionPort.js';
 import type {
   RecoveryPointStore,
   StagedRecoveryPointRestore,
@@ -15,6 +16,7 @@ export interface WorkspaceActivationMigrationStagingPort {
   }): Promise<void>;
   removeOperationRoot(
     operationId: WorkspaceBackupImportOperationId,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority,
   ): Promise<void>;
 }
 
@@ -29,7 +31,9 @@ export class WorkspaceActivationMigrationRecoveryPoint {
     readonly expectedMigrationChainIdentity: string;
     readonly expectedProfileId: string;
     readonly operationId: WorkspaceBackupImportOperationId;
+    readonly cleanupAuthority?: ProfileSnapshotCleanupAuthority;
   }): Promise<Readonly<StagedRecoveryPointRestore>> {
+    const cleanupAuthority = captureProfileSnapshotCleanupAuthority(input.cleanupAuthority);
     if (
       !profileIdPattern.test(input.expectedMigrationChainIdentity) ||
       !profileIdPattern.test(input.expectedProfileId)
@@ -40,12 +44,23 @@ export class WorkspaceActivationMigrationRecoveryPoint {
     }
 
     try {
-      const point = await this.service.createPreMigration();
+      if (cleanupAuthority !== undefined) {
+        await cleanupAuthority.assertOwned();
+        cleanupAuthority.assertCurrent();
+      }
+      const point = cleanupAuthority === undefined
+        ? await this.service.createPreMigration()
+        : await this.service.createPreMigration(cleanupAuthority);
+      if (cleanupAuthority !== undefined) {
+        await cleanupAuthority.assertOwned();
+        cleanupAuthority.assertCurrent();
+      }
       const staged = await this.store.stageForRestore({
         artifactId: point.artifactId,
         expectedMigrationChainIdentity:
           input.expectedMigrationChainIdentity,
         operationId: input.operationId,
+        ...(cleanupAuthority === undefined ? {} : { cleanupAuthority }),
       });
       await this.staging.assertOperationRoot({
         operationId: input.operationId,
@@ -58,23 +73,36 @@ export class WorkspaceActivationMigrationRecoveryPoint {
       ) {
         throw new Error('identity-mismatch');
       }
+      if (cleanupAuthority !== undefined) {
+        await cleanupAuthority.assertOwned();
+        cleanupAuthority.assertCurrent();
+      }
       return Object.freeze({ ...staged });
-    } catch {
-      await this.staging
-        .removeOperationRoot(input.operationId)
-        .catch(() => undefined);
+    } catch (primary) {
+      let cause = primary;
+      if (!isRecoveryPointCleanupUnverified(primary)) {
+        try {
+          if (cleanupAuthority === undefined) await this.staging.removeOperationRoot(input.operationId);
+          else await this.staging.removeOperationRoot(input.operationId, cleanupAuthority);
+        } catch (cleanup) {
+          cause = new AggregateError([primary, cleanup], 'WORKSPACE_ACTIVATION_MIGRATION_FAILED');
+        }
+      }
       throw new WorkspaceActivationMigrationError(
-        'WORKSPACE_ACTIVATION_MIGRATION_FAILED',
+        'WORKSPACE_ACTIVATION_MIGRATION_FAILED', { cause },
       );
     }
   }
 
   removeStaging(
     operationId: WorkspaceBackupImportOperationId,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority,
   ): Promise<void> {
-    return this.staging.removeOperationRoot(operationId).catch(() => {
+    const authority = captureProfileSnapshotCleanupAuthority(cleanupAuthority);
+    return (authority === undefined ? this.staging.removeOperationRoot(operationId)
+      : this.staging.removeOperationRoot(operationId, authority)).catch((cause: unknown) => {
       throw new WorkspaceActivationMigrationError(
-        'WORKSPACE_ACTIVATION_MIGRATION_FAILED',
+        'WORKSPACE_ACTIVATION_MIGRATION_FAILED', { cause },
       );
     });
   }

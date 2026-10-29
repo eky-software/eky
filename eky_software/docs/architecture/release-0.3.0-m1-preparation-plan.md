@@ -75,6 +75,11 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Koordinaattorin ja mainin kytkentää tämä ei vielä todista.
   Molempien sidontaosien tarkennetut varaus-/ensivirhesäännöt ja nykyiset
   kuluttajat läpäisivät seitsemän tiedoston 242 testin sarjan sekä tyypityksen.
+- Migraation snapshotin ja stagingin lisäsiivousvaltuus on valmisteltu nykyisiin
+  omistajiin. Epävarma kahvan sulku säilyttää aineiston myös ylemmän kutsujan
+  virhepolussa; ensivirhe ja sulkuvirhe erottuvat. Jäädytetyn 14 tiedoston
+  404 testiä, desktopin tyypitys ja rajattu katselmus läpäisivät.
+  Tämä on kytkennän edellytys, ei vielä koordinaattori-/main- tai pakettinäyttö.
 - **Seuraava työ:** B:n activation-migration-sidonnan koordinaattori-/main-
   kytkentä, sitten import-, adoption- ja inspection-liitokset sekä
   C:n W7.3-luovutus. Migraation palautuspiste muodostuu edelleen ennen sulkua.

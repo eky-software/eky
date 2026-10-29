@@ -5065,16 +5065,45 @@ prosessivarauksen omistaja ja snapshot-omistaja säilyvät erillisinä vastuina.
 - Migraation epävarmuusilmoitus estää loogisen jatkon. Se ei vapauta tai
   mitätöi lapsiprosessin fyysistä varausta ennen nykyistä exit/reclaim-ketjua.
   Sulku ja päättäminen ovat yhä niiden nykyisten omistajien tehtäviä.
+- Palautuspisteen lähdesnapshot ja migraatiolle materialisoitu staging saavat
+  saman operaation kaapatun lisäsiivousvaltuuden. Se ei korvaa tarkistimen
+  fyysistä omistajaa eikä vaadi kohteen sulkua ennen snapshotin muodostamista.
+  Tiedostopoisto vaatii molemmat; valtuus säilyy snapshotin omistajatietueessa
+  myös tavallista runtime-shutdownia varten. Tunnettu epävarmuus estää
+  alkuperäisen virheen jälkeisen siivouksen myös ylemmän kutsujan catch-haarassa.
+- Nykyisen purun sisäinen virhesiivous tarkistaa kaapatun synkronisen
+  jatkoluvan. Epävarma osittainen staging tai selväkielinen välitiedosto
+  säilytetään, eikä onnistunut sulku yksin anna poistolupaa. Aloitettu I/O
+  päättyy nykyisillä omistajilla; tässä ei rakenneta yleistä streaming-
+  peruutusjärjestelmää. Alkuperäinen salattu palautuspiste sekä sen nykyinen
+  erillinen luonti-, tarkistus- ja rotaatio-omistajuus säilyvät.
+- Sidottu virhepolku odottaa myös purun luku- ja kirjoituskahvojen sulut.
+  Sulkuvirhe säilyy ensivirheen rinnalla ja estää sisäisen sekä ylemmän
+  kutsujan virhesiivouksen. Kelvollinen sidonta ei yksin todista kahvan sulkua.
+  Sama epävarmuus välittyy nykyisellä siivousvirheen sopimuksella; tavallisten
+  sitomattomien kutsujien toimintaa ei muuteta tässä liitoksessa.
+- Lisävaltuutta käyttämättömät backup- ja palautuskutsujat säilyttävät nykyisen
+  polkunsa. Uusi valtuus ei ole renderer-capability, pysyvä backup-kenttä tai
+  uusi prosessiomistaja. Sen katoaminen säilyttää ensivirheen ja aineiston;
+  myöhäinen kuittaus ei elvytä hylättyä siivousta.
 
-**Osan checkpoint 29.10.2026:** sidontaosa ja valitsimen rinnakkaiset
-regressiot läpäisivät 169 testiä; desktop-tyypitys ja rajattu riippumaton
-katselmus läpäisivät. Tämä todistaa sidontaosan, ei vielä migraation
-koordinaattori-/main-kytkentää tai paketoitua hyväksyntää.
-Kytkennässä on vielä vietävä vartijat snapshotin valmisteluun, alkuperäisen
-snapshot-omistajan siivoukseen, korjaavaan journal-lukuun ja payload-muutoksiin.
+**Osan checkpoint 29.10.2026:** sidonnan ja siivousvaltuuden edellytykset on
+toteutettu nykyisissä snapshot-, palautuspiste- ja staging-omistajissa.
+Jäädytetty 14 tiedoston regressiosarja läpäisi 404 testiä ja desktopin
+tyyppitarkistus läpäisi. Rajattu katselmus ja sen sulkuvirhekorjaukset kattavat
+myös alkuperäisen työn päättymisen sekä ylemmän virhesiivouksen eston.
+Tämä ei vielä todista migraation koordinaattori-/main-kytkentää tai
+paketoitua hyväksyntää. Kytkennässä on annettava sama lisävaltuus snapshotin
+valmisteluun ja siivoukseen sekä vietävä vartijat korjaavaan journal-lukuun
+ja payload-muutoksiin.
 Normaalin source-recoveryn tarkoituksellinen valinnanmuutos ja selector-paluun
 leasen vaihto tarvitsevat omat nykyisiin omistajiin perustuvat luovutusrajansa;
 vanhaa sidontaa ei saa vain päivittää uusiin havaittuihin tavuihin.
+Valitsimesta alkavan avauksen nykyinen proof- ja alkuperäisvalinnan tarkistus
+säilyy myös uuden sidonnan rinnalla. Nykyiseen valintaan otettu uusi sidonta
+ei saa korvata aiemmin myönnetyn valtuuden tarkistusta. Muusta yrityksestä
+alkavan koordinaattoripolun korjaavat registry-/switch-uusintaluvut korvataan
+sidonnan täsmällisillä readonly-luvuilla, ei poistamalla tuoreuden tarkistusta.
 
 ##### Replacementin käynnistyspolkujen yhteinen omistajuusraja
 
