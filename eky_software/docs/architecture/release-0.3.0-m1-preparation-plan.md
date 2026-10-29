@@ -7,6 +7,36 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
+**29.10.2026: rajattu HTTP-adapterin tietoturvakorjaus ennen W7.4:n jatkoa.**
+Hyväksytty lähtö on `main 11e0eadfee002806db01a1b7152532e04dec5ca4`,
+[PR #323:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/323#issuecomment-6468900620).
+Alla oleva W7.3:n mergeä edeltävä teksti on historiaa, ei uusi toteutusjono.
+
+Saman main-revision uusi
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/40844462629)
+hylkäsi `@hono/node-server@2.1.0`:n
+[GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
+vuoksi. Omistaja hyväksyi täsmäpäivityksen 2.1.3:een ja tarkistukset.
+EKY ei käytä paketin haavoittuvaa `serveStatic`-toimintoa tuotannossa;
+synteettinen oikean HTTP-rajapinnan regressio todistaa vanhan poikkeaman
+ja korjatun hylkäyksen sekä säilyvän julkisen ja suojatun normaalipolun.
+Väliversioiden otsakemuutosten vuoksi myös session, vastaustavujen ja sulun
+regressiot kuuluvat tarkistukseen. Muut riippuvuudet ja hyväksyntäehdot säilyvät.
+
+Korjauksen paikalliset auditoinnit ja rekisteriallekirjoitukset läpäisivät.
+HTTP:n 61 kohdetestiä, katselmuksen täsmennyksen 25 testiä ja 15 system-tapausta
+läpäisivät. Backendin yksi hallittu uusinta läpäisi 4 156 testiä, viisi jäi
+suorittamatta. Ensimmäisen diagnostiikan sulkutestin aikakatkaisu säilyy
+avoimena havaintona, ei korjattuna vikana. Tyypitys ja build läpäisivät;
+sarjat ovat päällekkäistä näyttöä. Tämä on erillinen riippuvuuskorjaus,
+ei keskeneräisen W7.4-toteutuksen hyväksyntä.
+
+**Seuraavaksi:** tämän täsmällisen korjaushaaran normaalit PR-portit ja
+riippuvuustarkistus, suojattu merge ja uuden main-revision omat portit.
+Sen jälkeen W7.4 jatkuu omistavan työtilasuunnitelman mukaan.
+
+### W7.3:n aiempi integraatiotilanne
+
 **W7.3:n nykyinen jatkamiskohta:** PR #323:n ensimmäinen kierros on päättynyt
 hylkäykseen: core-testit sekä kaksi upgrade- ja kaksi legacy-palautusajoa.
 Ensimmäisen kierroksen PR-head oli `eb00e163`; alla olevat korjaukset
