@@ -142,6 +142,12 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   457 testiä, desktopin tyypitys ja rajattu riippumaton katselmus läpäisivät.
   Tämä on tallennusporttien
   näyttö, ei vielä palautusomistajan tai mainin kytkentä.
+- Sidonnan loppupoiston täsmällinen kaikkien slottien ehto ja nykyisen
+  plaintext-karanteenin sisäiset muutosvartijat on toteutettu. Muuttunut
+  kohde säilytetään; `deletionPurged` ja karanteenin ownership-raja eivät
+  laajene. Kymmenen tiedoston 343 testiä, tyypitys ja rajattu katselmus
+  läpäisivät; yksi POSIX-kohtainen vartijatesti odottaa Linux-ajoa.
+  Tämä ei vielä anna porteille cold-omistajan todellista valtuutta.
 - **Seuraava työ:** kytke B:n importin
   [kylmäpalautuksen omistajuussopimus](local-company-workspace-plan.md#tuonnin-kylmäpalautuksen-omistajuussopimus)
   nykyisiin recovery-/binding-/karanteeniomistajiin ja sitten main-ketjuun.

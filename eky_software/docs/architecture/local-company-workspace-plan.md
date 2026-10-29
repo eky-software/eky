@@ -5313,6 +5313,32 @@ portteja recoveryn
 haaroihin, bindingin loppupoistoon, karanteeniin tai mainiin. Niiden ja
 native-/paketti-/PR/main-porttien vaatimukset säilyvät yllä.
 
+**Sisäisten siivousvartijoiden checkpoint 30.10.2026:** sidontatallentimen
+`clearAfterPayloadsAbsent` kaappaa nyt valinnaisen `expectedOwnerSlots`-
+valinnan ennen ensimmäistä odotusta. Se vertaa jokaisen slotin todellisia
+tavuja, identiteettiä ja poissaoloa tallentimen sisällä ennen poistoja.
+Ehto on vain `owner`-tilalle; `deletionPurged` ei saa sillä lisävaltuutta.
+Muiden nykyisten kutsujien sopimus säilyy. Valittu current on pakollinen,
+eikä pelkkää samaa sisältöä eri tiedostossa hyväksytä.
+
+Nykyinen plaintext-karanteeni ottaa palautuksessa valinnaisen nykyisen
+`WorkspaceImportMutationAuthority`-portin. Se kaappaa callbackit, vartioi
+myös hakemistojen valmistelun ja tarkistaa juurten sekä valittujen
+tiedostojen identiteetit. Viimeinen tiedostotarkistus on asynkronisten
+juuri-/valtuustarkistusten jälkeen, ja synkroninen valtuus edeltää poistoa.
+Karanteenia ei sidota arvaamalla yritykseen eikä sen sisältörajoja muuteta.
+Tavallinen porttia käyttämätön polku säilyttää aiemman käsittelynsä.
+
+Kymmenen tiedoston 343 testiä ja desktopin tyypitys läpäisivät; yksi uusi
+POSIX-oikeuksien muutosvartijan testi odottaa Linux-ajoa. Sarja sisältää
+25 uutta läpäissyttä siivousregressiota sekä päällekkäisiä aiempia kontrolleja.
+Näyttö kattaa muuttuneessa valinnassa säilyvät tiedostot ja viivästyneen
+luvun päättymisen ennen hylkäystä. Rajattu riippumaton lähde-/testikatselmus
+ja viimeinen rajatestidelta läpäisivät; katselmoija ei ajanut testejä.
+Cold-recoveryn ja mainin on vielä
+annettava näille porteille todellinen operaatiovaltuus. Tämä checkpoint ei
+todista niiden tuotantokytkentää tai koko W7.4:n hyväksyntää.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa
