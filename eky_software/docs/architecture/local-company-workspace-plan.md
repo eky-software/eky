@@ -4869,7 +4869,7 @@ todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet n
 
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
-**Ensimmäinen toteutusosa:** `WorkspaceBackupReplacementBinding` kaappaa
+**Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa
 täsmällisen replace-kahvan, alkuperäiset valintatavut ja omistajaportit,
 käyttää nykyistä sidontatallenninta sekä tarkistaa julkaistun kuitin.
 Epävarma tulos säilyy kyseisen sidontaolion eliniän ja välittyy kutsujan
@@ -4878,6 +4878,20 @@ yksi POSIX-testi odottaa Linux-näyttöä. Tyyppitarkistus ja rajattu riippumato
 koodikatselmus läpäisivät. Tämä osa ei vielä ole koordinaattorin tai mainin
 tuotantokytkentä: epävarmuuden composition-laajuinen esto, korjaavan
 journal-luvun vartiointi ja koko palautusketjun näyttö ovat seuraava pala.
+
+**Kytkennän checkpoint 29.10.2026:** koordinaattori kaappaa nyt pakollisen
+sidontaomistajan heti leasen jälkeen ja julkaisee sidonnan varmennetun sulun
+jälkeen ennen payloadia. Management/main säilyttää epävarmuuden myös omien
+capabilityjen sulun ja jonotetun paluukäynnistyksen yli. Epävarma julkaisu
+ei oikeuta tavalliseen rollbackiin tai siivoukseen. Varmennetun julkaisun
+jälkeinen tavallinen virhe käyttää edelleen nykyistä palautuspolkua tuoreilla
+sidonta- ja valintatarkistuksilla. Korjaavan journal-luvun sivuslottien poisto
+ja backupin julkaisu on todennettu oikeilla tiedostoilla menetetyn valtuuden
+kohdalla; aloitetun työn sulku odotetaan ennen leasen vapautusta.
+Jäädytetty 11 tiedoston sarja läpäisi 613 testiä ja oikean salatun backupin
+kolme system-tapausta läpäisivät. Rajattu kytkentäkatselmus läpäisi.
+Mallinnettu prosessivaraus ei ole native-todiste. Muut B:n omistajat ja
+F:n puhdas paketti sekä PR/main-portit jäävät erillisiksi hyväksyntärajoiksi.
 
 **B:n muutosportit:** sidontakirjoittajan viimeinen synkroninen vartija
 vaatii julkaistun kuitin, saman leasen ja nykyisen main-omistajuuden.

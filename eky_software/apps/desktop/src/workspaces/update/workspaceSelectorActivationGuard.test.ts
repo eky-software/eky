@@ -214,7 +214,7 @@ it('preserves activation evidence when selector authority expires during lease a
     maintenanceLease: { async acquire() { f.current = false; return { release: unexpected }; } },
     workspaceRuntimeAbsence: { assertNoActiveWorkspaceRuntime: absent },
     activationAuthorityFactory: { create: () => ({
-      journalStore: { read: activationRead }, transaction: {
+      journalStore: { read: activationRead, peek: activationRead }, transaction: {
         accept: unexpected, prepare: unexpected, advanceToValidation: unexpected, rollback,
         clearRolledBack: unexpected, commitAcceptance: unexpected, clearAccepted: unexpected,
         assertForwardRecoveryState: unexpected, readForwardRecoverySources: unexpected,

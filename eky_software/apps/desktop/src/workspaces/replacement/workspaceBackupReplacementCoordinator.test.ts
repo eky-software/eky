@@ -47,29 +47,30 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'guard.assert',
       'registry.read',
       'activationFactory.create',
-      'activationJournal.read',
+      'activationJournal.peek',
       'backup.inspect',
       'lease.acquire.replace',
+      'binding.capture',
       'guard.assert',
-      'activationJournal.read',
+      'activationJournal.peek',
       'registry.read',
       'lifecycle.quiesce',
       'recoveryPoint.preRestore',
       'lifecycle.stop',
       'runtime.absent',
+      'binding.publish',
       'root.prepare',
       'backup.stage',
       'candidate.migrate',
       'candidate.validate',
       'root.removeImportStaging',
       'root.inspectCandidate',
-      'registry.read',
       'activation.prepare',
       'activation.replace',
       'runtimeHandoff.request',
       'lease.release',
     ]);
-    expect(fixture.registry.reads).toBe(3);
+    expect(fixture.registry.reads).toBe(2);
     expect(fixture.activation.journal?.phase).toBe('validationStarting');
     expect(fixture.lifecycle.runningOwners).toBe(0);
     await expect(fixture.completeStartup()).resolves.toBe('ready');
@@ -232,7 +233,7 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       'guard.assert',
       'registry.read',
       'activationFactory.create',
-      'activationJournal.read',
+      'activationJournal.peek',
       'backup.inspect',
     ]);
     expect(fixture.preRestore.calls).toBe(0);
@@ -467,6 +468,28 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     expect(serialized).not.toContain(TEST_REPLACEMENT_PASSWORD);
     expect(serialized).not.toContain('private backup detail');
     expect(serialized).not.toContain(TEST_REPLACEMENT_CONTAINER_HASH);
+  });
+
+  it('retains the publication failure before a later lease release failure without recovery', async () => {
+    const first = new Error('SYNTHETIC_PUBLICATION_FAILED');
+    const release = new Error('SYNTHETIC_RELEASE_FAILED');
+    const fixture = createWorkspaceBackupReplacementFixture({ createBinding: () => ({
+      async publish() { throw first; },
+      async assertPublished() { throw new Error('UNEXPECTED_READBACK'); },
+      assertMutationCurrent() { throw new Error('UNEXPECTED_MUTATION'); },
+    }) });
+    fixture.lease.acquire = async () => ({ async release() {
+      fixture.events.push('lease.release'); throw release;
+    } });
+    await expect(fixture.coordinator.replace(replacementInput)).rejects.toMatchObject({
+      code: 'WORKSPACE_REPLACEMENT_LIFECYCLE_FAILED', stage: 'lease', cause: { errors: [
+        { cause: first }, { cause: release },
+      ] },
+    });
+    expect(fixture.rootStore.discarded).toBe(false);
+    expect(fixture.events).not.toContain('activation.rollback');
+    expect(fixture.runtimeHandoff.requests).toBe(0);
+    expect(fixture.events.at(-1)).toBe('lease.release');
   });
 });
 

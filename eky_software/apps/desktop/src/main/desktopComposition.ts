@@ -3467,6 +3467,20 @@ async function startDesktopCompositionRuntime({
       profileRestoreActivationJournalPath:
         profileSnapshotPaths.restoreActivationJournalPath,
       recoveryPointService,
+      replacementOwner: {
+        assertCurrent() {
+          if (shutdownStarted) throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+          workspaceReservation.assertMainCurrent();
+        },
+        async assertOwned() {
+          if (shutdownStarted) throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+          workspaceReservation.assertMainCurrent();
+          await workspaceReservation.assertMainOwned();
+          if (shutdownStarted) throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+          workspaceReservation.assertMainCurrent();
+        },
+        invalidate: () => workspaceReservation.invalidate(),
+      },
       resourcesPath: options.resourcesPath,
       reservationOwner: {
         assertMainOwned: workspaceReservation.assertMainOwned,

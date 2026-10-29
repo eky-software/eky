@@ -20,6 +20,7 @@ import { createProfileBackupIpcChannel } from '../profileBackup/portableProfileB
 import * as secretBrokerMain from '../secrets/secretBrokerMain.js';
 import { createProfileSnapshotRuntimePaths } from '../profileBackup/profileSnapshotRuntimePaths.js';
 import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryPointScheduler.js';
+import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
 import { BackendShutdownExitError, type BackendShutdownOutcome } from '../runtime/backendShutdown.js';
 import { startDesktopBackend, type StartDesktopBackendOptions } from '../runtime/backendProcess.js';
@@ -68,6 +69,10 @@ import { WorkspaceBackupImportJournalStore } from '../workspaces/import/workspac
 import { deriveWorkspaceBackupImportPaths } from '../workspaces/import/workspaceBackupImportPaths.js';
 import { createTestImportJournal } from '../workspaces/import/workspaceBackupImportTestSupport.js';
 import { WorkspaceBackupPlaintextQuarantine } from '../workspaces/import/workspaceBackupPlaintextQuarantine.js';
+import { WorkspaceBackupContainerAdapter } from '../workspaces/import/workspaceBackupContainerAdapter.js';
+import { WorkspaceRemnantBindingStore } from '../workspaces/deletion/workspaceRemnantBindingStore.js';
+import { createWorkspaceRemnantBindingPaths } from '../workspaces/deletion/workspaceRemnantBindingPaths.js';
+import { captureWorkspaceRemnantBinding, workspaceRemnantBindingKey } from '../workspaces/deletion/workspaceRemnantBindingCodec.js';
 import { deriveWorkspaceRoot } from '../workspaces/registry/deriveWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistryStore.js';
@@ -4908,6 +4913,113 @@ async function createFixture(
     }),
   };
 }
+
+describe('W7.4 main replacement binding', () => {
+  it.for(['ownStop', 'lostAcknowledgement', 'shutdown', 'reservationLoss'] as const)(
+    'keeps the real main replacement boundary across %s', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        let service: Parameters<typeof createWorkspaceManagementCapability>[0]['service'] | undefined;
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+          createWorkspaceManagementCapability(options) {
+            service = options.service;
+            return createWorkspaceManagementCapability(options);
+          },
+        }));
+        electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+          ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+        vi.spyOn(RecoveryPointService.prototype, 'createPreRestore').mockResolvedValue({
+          artifactId: operationId, byteSize: 1, createdAt: '2026-10-29T00:00:00.000Z', kind: 'preRestore',
+          state: 'validatedGood', validatedAt: '2026-10-29T00:00:00.000Z',
+        });
+        vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'inspect').mockResolvedValue({ appVersion: '0.3.0',
+          containerSha256: 'c'.repeat(64), migrationChainIdentity: 'd'.repeat(64), profileId: originalProfileId });
+        const candidateFailure = new Error('SYNTHETIC_CANDIDATE_STAGE_FAILED');
+        const acknowledgementFailure = new Error('SYNTHETIC_BINDING_ACK_LOST');
+        const stage = vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'stage').mockRejectedValue(candidateFailure);
+        const entered = createCompletionGate(); const finish = createCompletionGate();
+        const publish = WorkspaceRemnantBindingStore.prototype.publish;
+        const published = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'publish').mockImplementation(async function (
+          this: WorkspaceRemnantBindingStore, value, authority,
+        ) {
+          const receipt = await publish.call(this, value, authority);
+          entered.resolve();
+          if (scenario !== 'ownStop') await finish.promise;
+          if (scenario === 'lostAcknowledgement') throw acknowledgementFailure;
+          return receipt;
+        });
+        let lifecycle: Awaited<ReturnType<typeof f.start>>;
+        let request: Promise<unknown> | undefined;
+        let closing: Promise<void> | undefined;
+        let shutdownChecked = false;
+        let firstFailure: { error: unknown } | undefined;
+        try {
+          lifecycle = await lifetime.step('startup', () => f.start());
+          if (lifecycle === undefined || service === undefined) throw new Error('MANAGEMENT_NOT_CAPTURED');
+          const registryBefore = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+          electronBoundary.reservationReleased.mockClear();
+          request = service.replaceActiveFromBackup({ targetWorkspaceId: workspaceId,
+            containerPath: join(f.root, 'synthetic.ekybackup'), password: 'synthetic-only' }).catch(error => error as unknown);
+          if (scenario !== 'ownStop') {
+            const reached = await Promise.race([entered.promise.then(() => true), request]);
+            if (reached !== true) throw reached;
+            expect(f.stop).toHaveBeenCalledOnce();
+            expect(electronBoundary.removeHandler).toHaveBeenCalled();
+            if (scenario === 'shutdown') {
+              closing = lifecycle.shutdown();
+              void closing.catch(() => undefined);
+              let settled = false;
+              void closing.finally(() => { settled = true; }).catch(() => undefined);
+              await nextEventLoopTurn();
+              expect(settled).toBe(false);
+              expect(electronBoundary.reservationReleased).not.toHaveBeenCalled();
+            }
+            if (scenario === 'reservationLoss') electronBoundary.loseReservation!();
+            finish.resolve();
+          }
+          const result = await request;
+          expect(result).toBeInstanceOf(Error);
+          expect(published).toHaveBeenCalledOnce();
+          const binding = captureWorkspaceRemnantBinding(published.mock.calls[0]![0]);
+          const paths = createWorkspaceRemnantBindingPaths(f.root, workspaceRemnantBindingKey(binding));
+          expect(JSON.parse(await readFile(paths.currentPath, 'utf8'))).toMatchObject({ workspaceId, owner: 'workspaceReplacement' });
+          expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(registryBefore);
+          expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+          if (scenario === 'ownStop') {
+            expect(hasErrorCause(result, candidateFailure)).toBe(true);
+            expect(stage).toHaveBeenCalledOnce();
+            expect(f.relaunch).toHaveBeenCalledOnce();
+            await lifecycle.shutdown();
+          } else {
+            if (scenario === 'lostAcknowledgement') expect(hasErrorCause(result, acknowledgementFailure)).toBe(true);
+            expect(stage).not.toHaveBeenCalled();
+            expect(f.relaunch).not.toHaveBeenCalled();
+            await expect(service.rename(workspaceId, 'Later')).rejects.toThrow();
+            await expect(closing ?? lifecycle.shutdown()).rejects.toMatchObject({
+              message: 'WORKSPACE_PROCESS_RESERVATION_FAILED', reason: 'lost',
+            });
+            expect(electronBoundary.reservationReleased).not.toHaveBeenCalled();
+          }
+          shutdownChecked = true;
+        } catch (error) {
+          firstFailure = { error };
+          throw error;
+        } finally {
+          finish.resolve();
+          await request;
+          if (!shutdownChecked) {
+            try { await (closing ?? lifecycle?.shutdown()); }
+            catch (cleanupFailure) {
+              if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+                'SYNTHETIC_REPLACEMENT_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+              throw cleanupFailure;
+            }
+          }
+        }
+      });
+    });
+});
 
 describe('W7.3 main preparation wiring', () => {
   it.for(['active', 'selector'] as const)('connects the W7.3 preparation in the real %s main composition', async (mode, context) => {

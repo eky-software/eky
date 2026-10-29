@@ -27,6 +27,7 @@ import { validateWorkspaceId } from '../../../desktop/src/workspaces/registry/wo
 import type { ActiveWorkspaceLifecyclePort } from '../../../desktop/src/workspaces/runtime/activeWorkspaceLifecyclePort.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementActivationFactory.js';
 import { WorkspaceBackupReplacementCoordinator } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementCoordinator.js';
+import { WorkspaceBackupReplacementBinding } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementBinding.js';
 import { WorkspaceBackupReplacementError } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementError.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementOperationId.js';
 import {
@@ -399,6 +400,10 @@ async function createReplacementSystemFixture(
     userDataRoot: input.root,
   });
   const maintenanceLease = new InMemoryWorkspaceMaintenanceLease();
+  let replacementUncertain = false;
+  const assertMainCurrent = () => {
+    if (replacementUncertain) throw new Error('SYNTHETIC_REPLACEMENT_OWNER_UNCERTAIN');
+  };
   let assertReplacementOwner: (() => void) | undefined;
   const coordinator = new WorkspaceBackupReplacementCoordinator({
     activationAuthorityFactory:
@@ -409,6 +414,24 @@ async function createReplacementSystemFixture(
     ),
     backupContainer: new WorkspaceBackupContainerAdapter({
       plaintextQuarantine,
+    }),
+    createBinding: ({ lease, operationId: boundOperationId, target }) => new WorkspaceBackupReplacementBinding({
+      userDataRoot: input.root,
+      operationId: boundOperationId,
+      target,
+      lease,
+      maintenanceLease,
+      registry,
+      // Main is modeled here; the registry, receipt, lease and payload are real.
+      mainOwner: { assertCurrent: assertMainCurrent, async assertOwned() { assertMainCurrent(); } },
+      runtimeAbsence: {
+        async assertNoActiveWorkspaceRuntime() {
+          if (lifecycle.backendOwners !== 0 || lifecycle.sqliteOwners !== 0) {
+            throw new Error('SYNTHETIC_RUNTIME_STILL_PRESENT');
+          }
+        },
+      },
+      onUncertain: () => { replacementUncertain = true; },
     }),
     generateOperationId: () => operationId,
     maintenanceLease,
@@ -430,6 +453,7 @@ async function createReplacementSystemFixture(
     rootStore: new NodeWorkspaceBackupReplacementRootStore(),
     runtimeHandoff: {
       requestRelaunch: () => {
+        assertMainCurrent();
         assertReplacementOwner = maintenanceLease.captureCurrentOwner(['replace']);
         assertReplacementOwner();
         expect(lifecycle.backendOwners).toBe(0);
@@ -458,6 +482,7 @@ async function createReplacementSystemFixture(
     captureUnrelatedState: async () =>
       Promise.all(unrelatedPaths.map((path) => sha256File(path))),
     completeStartup: async (expectedMigrationChainIdentity: string) => {
+      assertMainCurrent();
       expect(lifecycle.relaunchRequests).toBe(1);
       expect(lifecycle.backendOwners).toBe(0);
       expect(lifecycle.sqliteOwners).toBe(0);

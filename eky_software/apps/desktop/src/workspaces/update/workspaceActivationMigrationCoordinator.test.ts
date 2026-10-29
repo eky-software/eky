@@ -520,6 +520,7 @@ function createFixture(options: FixtureOptions = {}) {
   };
   const activation = {
     journalStore: {
+      peek: vi.fn(async () => activationJournal),
       read: vi.fn(async () => {
         record('activation.read');
         return activationJournal;

@@ -27,7 +27,8 @@ ole yrityksen poiston `completed`-tulos.
 
 **W7.4:n nykyinen checkpoint 29.10.2026:** A:n journal-, inventaario- ja
 sidontatallennus on toteutettu. B:n replacement-liitos sekä palautuksen
-vaiheomistajien kytkentä ovat työn alla. Omistavat sopimukset:
+vaiheomistajien kytkentä on todennettu kohdetesteillä; muut B:n omistajat ja
+koko ketjun integraatio ovat kesken. Omistavat sopimukset:
 [W7.4 A-F](local-company-workspace-plan.md#w74n-omistajat-ja-muutosjärjestys) ja
 [mainin vaiheomistajat](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus).
 
@@ -61,11 +62,16 @@ vaiheomistajien kytkentä ovat työn alla. Omistavat sopimukset:
   ja root-store-portit välittävät viimeisen muutosluvan myös korjaavaan
   lukuun, siirtoon ja siivoukseen. Sidonnan kuitti ei yksin anna jatkolupaa.
   Jäädytetty seitsemän tiedoston sarja läpäisi 600 testiä ja rajattu
-  katselmus läpäisi. Vanhojen porttia käyttämättömien kutsujien sopimus säilyy; tämä ei vielä
-  ole koordinaattori-/composition-kytkennän hyväksyntä.
-- **Seuraava työ:** B:n replacement-sidonnan julkaisu- ja epävarmuuskytkentä
-  koordinaattoriin ja management/mainiin, sitten muut B:n omistajaliitokset
-  ja C:n W7.3-luovutus.
+  katselmus läpäisi. Vanhojen porttia käyttämättömien kutsujien sopimus säilyy.
+- Replacementin sidonta on nyt kytketty koordinaattoriin ja management/mainiin.
+  Epävarma julkaisu tai menetetty valinta estää korjaavan luvun, payloadin
+  siivouksen ja myös myöhäisen paluukäynnistyksen. Tavallinen oma sulku säilyy.
+  Jäädytetty 11 tiedoston sarja läpäisi 613 testiä; oikean salatun backupin
+  kolme system-tapausta ja rajattu riippumaton katselmus läpäisivät.
+  Main-kokeiden prosessivaraus on mallinnettu, ei native- tai pakettitodiste.
+- **Seuraava työ:** B:n activation-migration-sidonnan vaiheomistajuus ja
+  kytkentä, sitten import-, adoption- ja inspection-liitokset sekä
+  C:n W7.3-luovutus. Migraation palautuspiste muodostuu edelleen ennen sulkua.
   Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
   W7.5:n poistokanavaa ei avata.
 

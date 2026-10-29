@@ -1,22 +1,29 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { dirname, join } from 'node:path';
 import { utilityProcess } from 'electron';
 import { expect, it, vi, type TestContext } from 'vitest';
 
 import { BackendRequestQuiescence } from '../../main/backendRequestQuiescence.js';
 import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import { WorkspaceBackupContainerAdapter } from '../import/workspaceBackupContainerAdapter.js';
+import { WorkspaceRemnantBindingStore } from '../deletion/workspaceRemnantBindingStore.js';
+import { captureWorkspaceRemnantBinding, workspaceRemnantBindingKey } from '../deletion/workspaceRemnantBindingCodec.js';
+import { createWorkspaceRemnantBindingPaths } from '../deletion/workspaceRemnantBindingPaths.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
+import { deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
+import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { MainOwnedSelectorWorkspaceLifecycle } from '../runtime/mainOwnedSelectorWorkspaceLifecycle.js';
 import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { createWorkspaceManagementComposition, type WorkspaceDeletionPreparationCompositionOptions,
   type WorkspaceManagementComposition } from './workspaceManagementComposition.js';
+import { MainOwnedWorkspaceManagementOperationGuard } from './mainOwnedWorkspaceManagementOperationGuard.js';
 
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 const generation = '99999999-9999-4999-8999-999999999999';
@@ -109,8 +116,170 @@ it('preserves the original preparation error through the real factory', async te
   expect(JSON.stringify(f.log.mock.calls)).not.toContain('SYNTHETIC_NATIVE_FAILURE');
 });
 
+it('publishes replacement binding after its own capability disposal and returns without a released-lease guard', async test => {
+  const f = await replacementFixture(test);
+  const result = await f.replace().catch(error => error as unknown);
+  expect(errorCauses(result)).toContain(f.stageFailure);
+  expect(f.publishBinding).toHaveBeenCalledOnce();
+  expect(f.stage).toHaveBeenCalledOnce();
+  expect(f.discard).toHaveBeenCalledOnce();
+  expect(f.invalidate).not.toHaveBeenCalled();
+  expect(f.launch).toHaveBeenCalledOnce();
+  expect(f.lease.readState()).toBe('idle');
+  expect(await readFile(f.bindingPaths().currentPath)).not.toHaveLength(0);
+  expect(await readFile(f.runtimePaths.activeDatabasePath, 'utf8')).toBe('old database');
+  expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+});
+
+it.for([false, true])('blocks queued and late replacement completion with deletion preparation disabled=%s', async (disabled, test) => {
+  const f = await replacementFixture(test, { disabled, deferCompletion: true });
+  await f.service.rename(TEST_TARGET_WORKSPACE_ID, 'Kohde');
+  f.runtimeRelaunch.request();
+  const first = new Error('SYNTHETIC_BINDING_ACK_LOST');
+  f.publishBinding.mockImplementation(async function (this: WorkspaceRemnantBindingStore, value, authority) {
+    await f.originalPublish.call(this, value, authority);
+    throw first;
+  });
+  const result = await f.replace().catch(error => error as unknown);
+  expect(errorCauses(result)).toContain(first);
+  expect(f.invalidate).toHaveBeenCalledOnce();
+  expect(f.stage).not.toHaveBeenCalled();
+  expect(f.discard).not.toHaveBeenCalled();
+  expect(f.lease.readState()).toBe('idle');
+  const retained = await readFile(f.bindingPaths().currentPath);
+  const nextLease = await f.lease.acquire('replace');
+  try {
+    expect(() => f.completeDeferred()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    f.runtimeRelaunch.request();
+    await expect(f.service.rename(TEST_TARGET_WORKSPACE_ID, 'Later')).rejects.toThrow();
+    f.completeDeferred();
+    expect(f.launch).not.toHaveBeenCalled();
+    expect(await readFile(f.bindingPaths().currentPath)).toEqual(retained);
+    expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+  } finally { await nextLease.release(); }
+});
+
+it('retains the binding and registry side slot when replacement recovery loses selection', async test => {
+  const f = await replacementFixture(test);
+  f.stage.mockImplementation(async () => {
+    await writeFile(`${f.registryPath}.next`, f.registryBytes);
+    throw f.stageFailure;
+  });
+  const result = await f.replace().catch(error => error as unknown);
+  expect(errorCauses(result)).toContain(f.stageFailure);
+  expect(f.publishBinding).toHaveBeenCalledOnce();
+  expect(f.invalidate).toHaveBeenCalledOnce();
+  expect(f.discard).not.toHaveBeenCalled();
+  expect(f.launch).not.toHaveBeenCalled();
+  expect(await readFile(`${f.registryPath}.next`)).toEqual(f.registryBytes);
+  expect(await readFile(f.bindingPaths().currentPath)).not.toHaveLength(0);
+});
+
+it('pins all replacement owner callbacks before composition awaits', async test => {
+  const f = await replacementFixture(test, { replaceOwnerCallbacks: true });
+  const first = new Error('SYNTHETIC_BINDING_ACK_LOST');
+  f.publishBinding.mockImplementation(async function (this: WorkspaceRemnantBindingStore, value, authority) {
+    await f.originalPublish.call(this, value, authority);
+    throw first;
+  });
+  const result = await f.replace().catch(error => error as unknown);
+  expect(errorCauses(result)).toContain(first);
+  expect(f.assertOwned).toHaveBeenCalled();
+  expect(f.invalidate).toHaveBeenCalledOnce();
+  expect(f.foreignOwner).not.toHaveBeenCalled();
+  expect(f.stage).not.toHaveBeenCalled();
+});
+
+it('latches replacement uncertainty before every close and preserves all close failures', async test => {
+  const f = await replacementFixture(test, { deferCompletion: true });
+  await f.service.rename(TEST_TARGET_WORKSPACE_ID, 'Kohde');
+  const first = new Error('SYNTHETIC_BINDING_ACK_LOST');
+  const admissionFailure = new Error('SYNTHETIC_ADMISSION_CLOSE_FAILED');
+  const guardFailure = new Error('SYNTHETIC_GUARD_CLOSE_FAILED');
+  const ownerFailure = new Error('SYNTHETIC_OWNER_INVALIDATE_FAILED');
+  const closeAdmission = f.service.closeAdmission.bind(f.service);
+  const disposeGuard = MainOwnedWorkspaceManagementOperationGuard.prototype.dispose;
+  f.publishBinding.mockImplementation(async function (this: WorkspaceRemnantBindingStore, value, authority) {
+    await f.originalPublish.call(this, value, authority);
+    vi.spyOn(f.service, 'closeAdmission').mockImplementation(closeAdmission).mockImplementationOnce(() => {
+      closeAdmission();
+      f.runtimeRelaunch.request();
+      expect(() => f.completeDeferred()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      throw admissionFailure;
+    });
+    vi.spyOn(MainOwnedWorkspaceManagementOperationGuard.prototype, 'dispose').mockImplementation(function (this: MainOwnedWorkspaceManagementOperationGuard) {
+      disposeGuard.call(this); throw guardFailure;
+    });
+    f.invalidate.mockImplementation(() => { throw ownerFailure; });
+    throw first;
+  });
+  try {
+    const result = await f.replace().catch(error => error as unknown);
+    const causes = errorCauses(result);
+    for (const failure of [first, admissionFailure, guardFailure, ownerFailure]) expect(causes).toContain(failure);
+    expect(causes.indexOf(first)).toBeLessThan(causes.indexOf(admissionFailure));
+    expect(f.invalidate).toHaveBeenCalledOnce();
+    expect(f.launch).not.toHaveBeenCalled();
+    expect(f.stage).not.toHaveBeenCalled();
+    expect(f.discard).not.toHaveBeenCalled();
+    expect(f.lease.readState()).toBe('idle');
+  } finally { vi.restoreAllMocks(); }
+});
+
+it('joins original replacement ownership work before releasing the lease after revocation', async test => {
+  const f = await replacementFixture(test);
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let entered!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  f.assertOwned.mockImplementationOnce(async () => { entered(); await gate; });
+  let settled = false;
+  const result = f.replace().catch(error => error as unknown).finally(() => { settled = true; });
+  try {
+    await Promise.race([started, result.then(() => { throw new Error('OWNER_WORK_NOT_STARTED'); })]);
+    f.revokeOwner();
+    await Promise.resolve();
+    expect(settled).toBe(false);
+    expect(f.lease.readState()).toBe('busy');
+    expect(f.invalidate).not.toHaveBeenCalled();
+  } finally { release(); await result; }
+  expect(errorCauses(await result).some(error => error instanceof Error && error.message === 'SYNTHETIC_RESERVATION_LOST')).toBe(true);
+  expect(f.invalidate).toHaveBeenCalledOnce();
+  expect(f.lease.readState()).toBe('idle');
+  expect(f.stage).not.toHaveBeenCalled();
+  expect(f.discard).not.toHaveBeenCalled();
+  expect(f.launch).not.toHaveBeenCalled();
+});
+
+function errorCauses(error: unknown): unknown[] {
+  if (!(error instanceof Error)) return [error];
+  return [error, ...(error instanceof AggregateError ? error.errors.flatMap(errorCauses) : []),
+    ...('cause' in error ? errorCauses(error.cause) : [])];
+}
+
+async function replacementFixture(test: TestContext, options: {
+  disabled?: boolean; deferCompletion?: boolean; replaceOwnerCallbacks?: boolean;
+} = {}) {
+  const f = await fixture(test, 'active', { ...options, replacement: true });
+  const originalPublish = WorkspaceRemnantBindingStore.prototype.publish;
+  const publishBinding = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'publish');
+  const stageFailure = new Error('SYNTHETIC_BACKUP_STAGE_FAILED');
+  vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'inspect').mockResolvedValue({ appVersion: '0.3.0',
+    containerSha256: 'c'.repeat(64), migrationChainIdentity: 'd'.repeat(64), profileId: 'a'.repeat(64) });
+  const stage = vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'stage').mockRejectedValue(stageFailure);
+  const discard = vi.spyOn(NodeWorkspaceBackupReplacementRootStore.prototype, 'discardBeforeActivation');
+  return { ...f, originalPublish, publishBinding, stageFailure, stage, discard,
+    bindingPaths() {
+      const binding = captureWorkspaceRemnantBinding(publishBinding.mock.calls[0]![0]);
+      return createWorkspaceRemnantBindingPaths(f.root, workspaceRemnantBindingKey(binding));
+    },
+  };
+}
+
 async function fixture(test: TestContext, mode: 'active' | 'selector', options: {
   cancel?: boolean; returnChoice?: boolean; loseAtCompletion?: boolean; revokeAtCompletion?: boolean; disabled?: boolean;
+  replacement?: boolean; deferCompletion?: boolean; replaceOwnerCallbacks?: boolean;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-composition-'));
   let composition: Omit<WorkspaceManagementComposition, 'readActiveWorkspaceLabel'> | undefined;
@@ -118,6 +287,7 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
   test.onTestFinished(async () => {
     await Promise.allSettled(pending);
     await composition?.shutdown();
+    vi.restoreAllMocks();
     vi.mocked(utilityProcess.fork).mockClear();
     if (test.task.result?.state === 'pass') await rm(root, { force: true, recursive: true });
   });
@@ -146,13 +316,24 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
   const assertCurrent = () => { if (!current) throw new Error('SYNTHETIC_RESERVATION_LOST'); };
   const assertRequest = () => { if (!requestCurrent) throw new Error('SYNTHETIC_REQUEST_REVOKED'); };
   const assertOwned = vi.fn(async () => { assertCurrent(); });
-  const launch = vi.fn(() => { assertCurrent(); expect(lease.readState()).toBe('busy'); });
+  const invalidate = vi.fn(() => { current = false; });
+  const replacementOwner = { assertCurrent, assertOwned, invalidate };
+  const foreignOwner = vi.fn(() => { throw new Error('UNEXPECTED_REPLACEMENT_OWNER'); });
+  const launch = vi.fn(() => { assertCurrent(); expect(lease.readState()).toBe(options.replacement ? 'idle' : 'busy'); });
   const runtimeRelaunch = new DeferredWorkspaceRuntimeRelaunch(launch);
+  let deferredGuard: (() => void) | undefined;
+  const runtimePaths = deriveWorkspaceBackupReplacementRuntimePaths(root, TEST_SOURCE_WORKSPACE_ID);
+  if (options.replacement) {
+    await mkdir(dirname(runtimePaths.activeDatabasePath), { recursive: true, mode: 0o700 });
+    await mkdir(runtimePaths.activeArtifactRoot, { recursive: true, mode: 0o700 });
+    await writeFile(runtimePaths.activeDatabasePath, 'old database');
+    await writeFile(join(runtimePaths.activeArtifactRoot, 'old.pdf'), 'old pdf');
+  }
   const stopBackend = vi.fn(async () => {});
   const active = new MainOwnedActiveWorkspaceLifecycle(TEST_SOURCE_WORKSPACE_ID, new BackendRequestQuiescence(), {
-    async closeBrokers() {}, async disposeCapabilities() {}, async markCleanShutdown() {},
+    async closeBrokers() {}, async disposeCapabilities() { if (options.replacement) composition!.dispose(); }, async markCleanShutdown() {},
     async sealAndDrainSecrets() {}, async stopRecoveryPointScheduler() {},
-    async stopBackend() { throw new Error('UNEXPECTED_ORDINARY_STOP'); },
+    async stopBackend() { if (options.replacement) return 'exited'; throw new Error('UNEXPECTED_ORDINARY_STOP'); },
     async stopBackendForUpdate() { throw new Error('UNEXPECTED_UPDATE_STOP'); },
     deletion: { async sealAndDrainArchive() {}, stopBackend },
   }, runtimeRelaunch);
@@ -179,6 +360,8 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
     reservationOwner: { assertMainOwned: assertOwned, bindCandidate() { throw new Error('UNEXPECTED_CANDIDATE'); } },
     resourcesPath: resources, userDataRoot: root,
     runtimeRelaunch: { request: () => runtimeRelaunch.request(), complete(guard?: () => void) {
+      deferredGuard = guard;
+      if (options.deferCompletion) return;
       if (options.loseAtCompletion) current = false;
       if (options.revokeAtCompletion) requestCurrent = false;
       runtimeRelaunch.complete(guard);
@@ -190,17 +373,32 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
       async confirmReturn() { return options.returnChoice ?? false; }, publish,
     } }),
   };
-  composition = mode === 'selector'
-    ? await createWorkspaceManagementComposition({ ...shared, mode, activeWorkspaceLifecycle: selector, assertCurrent })
-    : await createWorkspaceManagementComposition({ ...shared, activeWorkspaceId: TEST_SOURCE_WORKSPACE_ID,
+  const compositionTask = mode === 'selector'
+    ? createWorkspaceManagementComposition({ ...shared, mode, activeWorkspaceLifecycle: selector, assertCurrent })
+    : createWorkspaceManagementComposition({ ...shared, activeWorkspaceId: TEST_SOURCE_WORKSPACE_ID,
         activeWorkspaceLifecycle: active, profileRestoreActivationJournalPath: join(root, 'restore-journal'),
-        recoveryPointService: { async createPreRestore() { throw new Error('UNEXPECTED_RECOVERY_POINT'); } } });
+        replacementOwner,
+        recoveryPointService: { async createPreRestore() {
+          if (!options.replacement) throw new Error('UNEXPECTED_RECOVERY_POINT');
+          return { artifactId: generation, byteSize: 1, createdAt: '2026-10-29T00:00:00.000Z',
+            kind: 'preRestore', state: 'validatedGood', validatedAt: '2026-10-29T00:00:00.000Z' };
+        } } });
+  if (options.replaceOwnerCallbacks) {
+    Object.assign(replacementOwner, { assertCurrent: foreignOwner, assertOwned: foreignOwner, invalidate: foreignOwner });
+  }
+  composition = await compositionTask;
   const service = composition.service;
   return { start(backupChoice: 'explicitDataLoss' | 'createBackup' = 'explicitDataLoss') {
     const work = service.prepareDeletion({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
       typedLabel: initial.workspaces.find(entry => entry.workspaceId === TEST_TARGET_WORKSPACE_ID)!.workspaceLabel, backupChoice },
     { assertCurrent: assertRequest, closeAdmissionForOwnStop: () => service.closeAdmission() });
     pending.push(work); void work.catch(() => undefined); return work;
-  }, lease, launch, stopBackend, backup, createRuntime, confirmLoss, confirmDeletion, publish, runtimeRelaunch,
+  }, replace() {
+    const work = service.replaceActiveFromBackup({ targetWorkspaceId: TEST_SOURCE_WORKSPACE_ID,
+      containerPath: join(root, 'synthetic.ekybackup'), password: 'synthetic-only' });
+    pending.push(work); void work.catch(() => undefined); return work;
+  }, completeDeferred() { runtimeRelaunch.complete(deferredGuard); }, revokeOwner() { current = false; },
+    service, root, runtimePaths, replacementOwner, assertOwned, invalidate, foreignOwner,
+    lease, launch, stopBackend, backup, createRuntime, confirmLoss, confirmDeletion, publish, runtimeRelaunch,
     log, registryPath, registryBytes, sentinels };
 }

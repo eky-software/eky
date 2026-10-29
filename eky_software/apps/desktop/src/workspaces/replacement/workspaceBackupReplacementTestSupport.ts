@@ -5,7 +5,8 @@ import { ProfileRestoreStartupRecovery } from '../../profileBackup/restore/profi
 import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceBackupCandidateReadiness } from '../import/workspaceBackupImportPorts.js';
-import { WorkspaceBackupReplacementCoordinator } from './workspaceBackupReplacementCoordinator.js';
+import { WorkspaceBackupReplacementCoordinator, type WorkspaceBackupReplacementCoordinatorOptions } from './workspaceBackupReplacementCoordinator.js';
+import { assertWorkspaceReplacementRegistryUnchanged } from './workspaceBackupReplacementRegistry.js';
 import type { WorkspaceBackupReplacementOperationId } from './workspaceBackupReplacementOperationId.js';
 import type { WorkspaceReplacementActivationAuthorityFactory } from './workspaceBackupReplacementPorts.js';
 
@@ -26,6 +27,7 @@ const TEST_REPLACEMENT_USER_DATA_ROOT = resolve(
 
 export function createWorkspaceBackupReplacementFixture(options?: {
   readonly activationAuthorityFactory?: WorkspaceReplacementActivationAuthorityFactory;
+  readonly createBinding?: WorkspaceBackupReplacementCoordinatorOptions['createBinding'];
   readonly activeWorkspaceId?: WorkspaceId | null;
   readonly duplicateLineage?: boolean;
   readonly lifecycleState?: 'ready' | 'recoveryRequired';
@@ -217,7 +219,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       events.push('activationJournal.peek');
       return this.journal;
     },
-    async prepare(operationId: string) {
+    async prepare(operationId: string, _assertAuthority?: () => Promise<void>, capturePreparation?: (journal: Readonly<ProfileRestoreActivationJournal>) => void) {
       events.push('activation.prepare');
       this.journal = {
         formatVersion: 1,
@@ -227,6 +229,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
         phase: 'prepared',
         revision: 0,
       };
+      capturePreparation?.(this.journal);
       if (this.fail === 'prepare') throw new Error('private activation');
     },
     async advanceToValidation() {
@@ -331,6 +334,21 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     activeWorkspaceLifecycle: lifecycle,
     backupCandidate: candidate,
     backupContainer: container,
+    createBinding: options?.createBinding ?? (input => {
+      events.push('binding.capture');
+      let published = false;
+      const assertCurrent = () => {
+        if (!lease.held || !published || lifecycle.runningOwners !== 0 || lifecycle.sqliteOwners !== 0) {
+          throw new Error('SYNTHETIC_REPLACEMENT_BINDING_UNAVAILABLE');
+        }
+        assertWorkspaceReplacementRegistryUnchanged(input.target.registrySnapshot, registry.value);
+      };
+      return {
+        async publish() { events.push('binding.publish'); published = true; assertCurrent(); },
+        async assertPublished() { assertCurrent(); },
+        assertMutationCurrent: assertCurrent,
+      };
+    }),
     generateOperationId: () => TEST_REPLACEMENT_OPERATION_ID,
     maintenanceLease: lease,
     operationGuard: guard,

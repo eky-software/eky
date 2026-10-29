@@ -36,6 +36,7 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from '../replacement/workspaceBackupReplacementActivationFactory.js';
+import { WorkspaceBackupReplacementBinding } from '../replacement/workspaceBackupReplacementBinding.js';
 import { WorkspaceBackupReplacementCoordinator } from '../replacement/workspaceBackupReplacementCoordinator.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
@@ -102,6 +103,11 @@ export interface WorkspaceManagementCompositionOptions {
   readonly maintenanceLease: SharedWorkspaceMaintenanceLease;
   readonly profileRestoreActivationJournalPath: string;
   readonly recoveryPointService: Pick<RecoveryPointService, 'createPreRestore'>;
+  readonly replacementOwner: Readonly<{
+    assertCurrent(): void;
+    assertOwned(): Promise<void>;
+    invalidate(): void;
+  }>;
   readonly resourcesPath: string;
   readonly reservationOwner: WorkspaceCandidateReservationOwner;
   readonly runtimeRelaunch: SharedWorkspaceRuntimeRelaunch;
@@ -110,7 +116,7 @@ export interface WorkspaceManagementCompositionOptions {
 
 export interface SelectorWorkspaceManagementCompositionOptions extends Omit<WorkspaceManagementCompositionOptions,
   'mode' | 'activeWorkspaceId' | 'activeWorkspaceLifecycle' | 'localUpdateRuntimePaths' |
-  'profileRestoreActivationJournalPath' | 'recoveryPointService'> {
+  'profileRestoreActivationJournalPath' | 'recoveryPointService' | 'replacementOwner'> {
   readonly mode: 'selector';
   readonly activeWorkspaceLifecycle: MainOwnedSelectorWorkspaceLifecycle;
   readonly maintenanceLease: SharedWorkspaceMaintenanceLease & Pick<InMemoryWorkspaceMaintenanceLease, 'captureCurrentOwner'>;
@@ -196,6 +202,7 @@ export function createWorkspaceManagementComposition(
 export async function createWorkspaceManagementComposition(
   options: Readonly<WorkspaceManagementCompositionOptions | SelectorWorkspaceManagementCompositionOptions>,
 ): Promise<Readonly<WorkspaceManagementComposition | SelectorWorkspaceManagementComposition>> {
+  const replacementOwner = options.mode === 'selector' ? undefined : captureReplacementOwner(options.replacementOwner);
   const candidateRuntimeFactory = await createCandidateRuntimeFactory(options);
   const backupCandidate = new PrivateWorkspaceBackupCandidateAdapter(
     candidateRuntimeFactory,
@@ -276,12 +283,57 @@ export async function createWorkspaceManagementComposition(
     userDataRoot: options.userDataRoot,
     workspaceRuntimeAbsence: options.activeWorkspaceLifecycle,
   });
+  let replacementUncertain = false;
+  const assertReplacementAvailable = (): void => {
+    if (replacementUncertain) throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+  };
+  const requestRelaunch = (): void => {
+    assertReplacementAvailable();
+    options.runtimeRelaunch.request();
+  };
+  const markReplacementUncertain = (): void => {
+    if (replacementUncertain) return;
+    replacementUncertain = true;
+    const failures: unknown[] = [];
+    for (const close of [
+      () => service.closeAdmission(),
+      () => operationGuard.dispose(),
+      () => { if (replacementOwner !== undefined) assertUpdateJournalAuthority(replacementOwner.invalidate); },
+    ]) {
+      try { close(); } catch (error) { failures.push(error); }
+    }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1) throw new AggregateError(failures, 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+  };
   const replaceActive = options.mode === 'selector' ? undefined : new WorkspaceBackupReplacementCoordinator({
     activationAuthorityFactory:
       new ProfileRestoreWorkspaceReplacementActivationFactory(),
     activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
     backupCandidate,
     backupContainer,
+    createBinding({ lease, operationId, target }) {
+      assertReplacementAvailable();
+      if (replacementOwner === undefined) throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      const assertCurrent = (): void => {
+        assertReplacementAvailable();
+        assertUpdateJournalAuthority(replacementOwner.assertCurrent);
+      };
+      return new WorkspaceBackupReplacementBinding({
+        userDataRoot: options.userDataRoot, operationId, target, lease,
+        maintenanceLease: options.maintenanceLease,
+        registry,
+        runtimeAbsence: options.activeWorkspaceLifecycle,
+        mainOwner: {
+          assertCurrent,
+          async assertOwned() {
+            assertCurrent();
+            await replacementOwner.assertOwned();
+            assertCurrent();
+          },
+        },
+        onUncertain: markReplacementUncertain,
+      });
+    },
     maintenanceLease: options.maintenanceLease,
     operationGuard,
     preRestoreRecoveryPoint: {
@@ -292,7 +344,7 @@ export async function createWorkspaceManagementComposition(
     registry,
     rootStore: new NodeWorkspaceBackupReplacementRootStore(),
     runtimeHandoff: {
-      requestRelaunch: () => options.runtimeRelaunch.request(),
+      requestRelaunch,
     },
     userDataRoot: options.userDataRoot,
     workspaceRuntimeAbsence: options.activeWorkspaceLifecycle,
@@ -304,13 +356,13 @@ export async function createWorkspaceManagementComposition(
     journal: new WorkspaceSwitchJournalStore(options.userDataRoot),
     maintenanceLease: options.maintenanceLease,
     registry,
-    relaunchApplication: () => options.runtimeRelaunch.request(),
+    relaunchApplication: requestRelaunch,
   } : {
     activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
     journal: new WorkspaceSwitchJournalStore(options.userDataRoot),
     maintenanceLease: options.maintenanceLease,
     registry,
-    relaunchApplication: () => options.runtimeRelaunch.request(),
+    relaunchApplication: requestRelaunch,
   });
   const renameOptions = {
     maintenanceLease: options.maintenanceLease,
@@ -357,14 +409,17 @@ export async function createWorkspaceManagementComposition(
         publish: (assertAuthority, assertSelection, target) => deletion.publish(assertAuthority, assertSelection, target),
       }),
     } }),
-    runtimeRelaunchCompletion: deletion === undefined ? options.runtimeRelaunch : {
+    runtimeRelaunchCompletion: {
       complete(assertCurrent) {
-        // The service still owns the exact lease while both guards run.
+        // Only deletion's return borrows a live lease; replacement has released it.
         const assertReturn = assertDeletionReturn;
         try {
+          assertReplacementAvailable();
           options.runtimeRelaunch.complete(() => {
+            assertReplacementAvailable();
             if (assertCurrent !== undefined) assertUpdateJournalAuthority(assertCurrent);
             if (assertReturn !== undefined) assertUpdateJournalAuthority(assertReturn);
+            assertReplacementAvailable();
           });
         } finally { assertDeletionReturn = undefined; }
       },
@@ -392,6 +447,15 @@ export async function createWorkspaceManagementComposition(
     }
     return workspace.workspaceLabel;
   } });
+}
+
+function captureReplacementOwner(owner: WorkspaceManagementCompositionOptions['replacementOwner']) {
+  if (owner === undefined || owner === null || typeof owner.assertCurrent !== 'function' ||
+      typeof owner.assertOwned !== 'function' || typeof owner.invalidate !== 'function') {
+    throw new Error('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+  }
+  return Object.freeze({ assertCurrent: owner.assertCurrent.bind(owner),
+    assertOwned: owner.assertOwned.bind(owner), invalidate: owner.invalidate.bind(owner) });
 }
 
 function createSelectorOperationGuard(options: Readonly<SelectorWorkspaceManagementCompositionOptions>) {

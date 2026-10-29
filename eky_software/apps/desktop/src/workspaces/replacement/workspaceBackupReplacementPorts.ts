@@ -22,7 +22,7 @@ export interface WorkspaceReplacementRuntimeHandoffPort {
 export interface WorkspaceReplacementActivationAuthority {
   readonly journalStore: Pick<
     ProfileRestoreActivationJournalStore,
-    'read'
+    'read' | 'peek'
   >;
   readonly transaction: Pick<
     ProfileRestoreActivationTransaction,
