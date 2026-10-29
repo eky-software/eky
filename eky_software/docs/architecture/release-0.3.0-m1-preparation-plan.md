@@ -42,8 +42,8 @@ metodia tai poistopainiketta ei ole avattu.** Hyväksytty valmistelu ei
 ole yrityksen poiston `completed`-tulos.
 
 **W7.4:n nykyinen checkpoint 29.10.2026:** A:n journal-, inventaario- ja
-sidontatallennus on toteutettu. B:n replacement-liitos sekä palautuksen
-vaiheomistajien kytkentä on todennettu kohdetesteillä; muut B:n omistajat ja
+sidontatallennus on toteutettu. B:n replacement- ja live-import-liitokset sekä
+palautuksen vaiheomistajien kytkentä on todennettu kohdetesteillä; muut B:n omistajat ja
 koko ketjun integraatio ovat kesken. Omistavat sopimukset:
 [W7.4 A-F](local-company-workspace-plan.md#w74n-omistajat-ja-muutosjärjestys) ja
 [mainin vaiheomistajat](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus).
@@ -116,36 +116,37 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   System-tapaukset todistavat yhteisen palautusportin säilymistä, eivät
   activation-migrationin native-prosessivarausta tai paketoitua hyväksyntää.
 - Importin [vaihekohtainen valtuussopimus](local-company-workspace-plan.md#w74-b-tuonnin-vaihekohtainen-valtuus)
-  on katselmoitu. Valtuusosa, journalin readonly-/selected-portit ja
-  root-storen muutosvartijat on toteutettu; oma lisäys erotetaan vieraasta
-  muutoksesta ja vartijan ensisyy säilyy ennen tallentimen virhemuunnosta.
-  Jäädytetty kymmenen tiedoston 259 testin sarja, desktopin tyypitys ja
-  rajattu riippumaton katselmus läpäisivät. Se sisältää aiemman suunnittelun
-  vanhoja kontrollitestejä. Tämä ei vielä ole koordinaattori-/main-kytkentä
-  tai kylmäpalautuksen hyväksyntä; puuttuva sidonta ei anna poistovaltuutta.
+  on kytketty nykyiseen koordinaattoriin sekä aktiivisen ja valitsintilan
+  main-compositioniin. Täsmällinen lease, alkuperäinen rekisteri ja jokaisen
+  oman journal-julkaisun kuitti vartioivat muutoksia. Sidonta ja journal
+  poistuvat vasta oman työn ja jäännösten varmennetun päättymisen jälkeen;
+  onnistunut vapautus edeltää vartioitua paluuta. Epävarma siivous tai
+  kuittaus säilyttää aineiston ja estää paluun; tavallinen tunnettu virhe ei
+  lukitse tervettä jatkoa. Capabilityjen oma sulku ei mitätöi kaapattua työtä.
+  Jäädytetty 28 tiedoston sarja läpäisi 612 testiä; sarja sisältää aiempia
+  kontrolleja. Desktopin, desktop-E2E:n ja system-E2E:n tyypitys sekä rajattu
+  riippumaton katselmus läpäisivät. Oikean salatun backupin nykyinen ja
+  historiallinen system-tuonti läpäisivät. Electronin composition-koe sekä
+  varsinainen tuontikäyttöpolku ja schema-hylkäys/paluu läpäisivät. Mallinnetut
+  elinkaarilaskurit eivät korvaa viimeisten käyttäjäpolkujen prosessinäyttöä.
+  Tämä ei vielä hyväksy kylmäpalautuksen uusia vartijoita tai koko W7.4:ää.
 - Kylmävalinnan korjaamaton sidontatarkistus on nyt kytketty nykyiseen
   readonly-admissioniin. Sidontaslotit, kohde, tunnettu lineage ja journalin
   valinta tarkistetaan; epävarmaa sidontaa ei ohiteta. Jäädytetty 12 tiedoston
   419 testin sarja, tyypitys ja rajattu katselmus läpäisivät. Sarja sisältää
   yllä olevia testejä.
   Tämä ei vielä todista korjaavan palautusomistajan uusia muutosvartijoita.
-- **Seuraava työ:** kytke B:n import-valtuusosa koordinaattoriin, mainin
-  loppukäynnistykseen ja kylmäpalautukseen yllä olevan sopimuksen pienissä
-  paloissa hyväksytyltä HTTP-adapterihuollon lähtörevisiolta.
+- **Seuraava työ:** kytke B:n importin korjaavan kylmäpalautuksen täsmälliset
+  valinta- ja muutosvartijat yllä olevan sopimuksen mukaan. Säilytä tuettu
+  sidonnaton v2-palautus riippumattomine C/R18-todisteineen; puuttuva sidonta
+  ei anna W7-poistovaltuutta eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
-  paluun. Rajattu 28 tapauksen koe läpäisi oikeilla tallentimilla mutta
-  mallinnetulla koordinaattori-/prosessiomistajuudella. Sidonnan poiston
-  kuittiehto sekä sidontaosan journal-vartija ja loppusiivous on nyt toteutettu
-  pysyvine regressioineen. Root-storeen on lisätty koko operaatiokansion
-  poissaolotarkistus; se ei korvaa kirjoittajien päättymistodistusta.
-  Root/sidonta/journal-ketjun onnistuminen ja tiedostojen säilyminen
-  jäännöksen estäessä siivouksen on todennettu. Jäädytetty 16 tiedoston
-  sarja läpäisi 401 testiä;
-  yksi olemassa oleva POSIX-tapaus odottaa Linux-ajoa. Tyypitys ja rajattu
-  riippumaton katselmus läpäisivät. Varsinainen koordinaattori-/main-kytkentä ja
-  korjaavan palautusomistajan vartijat ovat vielä tekemättä;
-  tätä koetta ei tulkita kokonaisen tuonnin tai palautuksen hyväksynnäksi.
+  paluun. Sen porttien ja tiedostokokeiden aiemmat checkpointit säilyvät
+  omistavassa suunnitelmassa. Koko operaatiokansion poissaolotarkistus ei
+  korvaa kirjoittajien päättymistodistusta; POSIX-kohtainen porttitodennus
+  vaatii edelleen Linux-ajon. Live-kytkennän näyttö on yllä; kylmäpalautus,
+  uusi puhdas paketti ja PR/main-portit eivät ole vielä hyväksyttyjä.
   Nykyinen B:n
   activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)

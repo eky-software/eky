@@ -340,10 +340,10 @@ export async function runWorkspaceManagementCompositionProof(
       password: WORKSPACE_MANAGEMENT_PROOF_PASSWORD,
       targetWorkspaceId: firstWorkspace.workspaceId,
     });
-    const replacementLifecycleOrdered = arraysEqual(
-      primaryLifecycle.events.slice(replacementLifecycleStart),
-      ['quiesced', 'preRestore', 'stopped', 'absent'],
-    );
+    const replacementEvents = primaryLifecycle.events.slice(replacementLifecycleStart);
+    const replacementLifecycleOrdered = replacementEvents.length >= 4 && arraysEqual(
+      replacementEvents.slice(0, 3), ['quiesced', 'preRestore', 'stopped'],
+    ) && replacementEvents.slice(3).every(event => event === 'absent');
     stage = 'replacementRecovery';
     const replacementRegistry = await readProofWorkspaceRegistry(primaryRoot);
     const replacementEntry = replacementRegistry.workspaces.find(
@@ -482,7 +482,7 @@ async function createProofComposition(input: {
       },
       async ensurePreviousWorkspaceRunning(id) {
         await input.reservation.assertMainOwned();
-        await input.activeWorkspaceLifecycle.ensurePreviousWorkspaceRunning(id);
+        input.runtimeRelaunch.request(() => input.activeWorkspaceLifecycle.completeReturn(id));
       },
       async assertNoActiveWorkspaceRuntime() {
         await input.activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();
@@ -504,6 +504,17 @@ async function createProofComposition(input: {
       ),
     },
     maintenanceLease: input.maintenanceLease,
+    replacementOwner: {
+      assertCurrent: input.reservation.assertMainCurrent,
+      assertOwned: input.reservation.assertMainOwned,
+      invalidate: input.reservation.invalidate,
+    },
+    importOwner: {
+      assertCurrent: input.reservation.assertInstallationCurrent,
+      assertMainCurrent: input.reservation.assertMainCurrent,
+      assertMainOwned: input.reservation.assertMainOwned,
+      invalidate: input.reservation.invalidate,
+    },
     profileRestoreActivationJournalPath: join(
       input.userDataRoot,
       'profile-restore',

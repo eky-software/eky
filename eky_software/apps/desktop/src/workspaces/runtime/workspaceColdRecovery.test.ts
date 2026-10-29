@@ -525,12 +525,21 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
 
   it.each(['registry', 'root'] as const)('retains evidence when candidate cleanup changes the continuation %s', async (change) => {
     const fixture = await createFixture(kind, { state: 'prepared' });
-    const discardCandidate = fixture.rootStore.discardCandidate.bind(fixture.rootStore);
-    vi.spyOn(fixture.rootStore, 'discardCandidate').mockImplementation(async (paths) => {
-      await discardCandidate(paths);
+    const changeContinuation = async () => {
       if (change === 'registry') fixture.registry.value = undefined;
       else await rm(fixture.previousRoot, { recursive: true });
-    });
+    };
+    if (fixture.rootStore instanceof MemoryWorkspaceBackupImportRootStore) {
+      const discard = fixture.rootStore.discardCandidate.bind(fixture.rootStore);
+      vi.spyOn(fixture.rootStore, 'discardCandidate').mockImplementation(async (paths, authority) => {
+        await discard(paths, authority); await changeContinuation();
+      });
+    } else {
+      const discard = fixture.rootStore.discardCandidate.bind(fixture.rootStore);
+      vi.spyOn(fixture.rootStore, 'discardCandidate').mockImplementation(async paths => {
+        await discard(paths); await changeContinuation();
+      });
+    }
     await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
     expect(fixture.journal.current?.state).toBe('prepared');
     expect(fixture.registry.writes).toHaveLength(0);

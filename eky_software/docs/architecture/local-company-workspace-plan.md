@@ -4869,7 +4869,8 @@ todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet n
 
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
-**29.10.2026: rajattu suunnitelma ja tiedostokoe, ei tuotantokytkentä.**
+**29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on
+alla olevassa koordinaattoricheckpointissa; korjaava kylmäpalautus on kesken.
 Tuonti lisää rekisteriin uuden yrityksen. Replacementin muuttumatonta
 alkuvalintaa ei siksi kopioida sellaisenaan eikä nykyistä rekisteriä hyväksytä
 uudeksi valtuudeksi pelkän onnistuneen luvun perusteella.
@@ -4970,8 +4971,8 @@ menetys on testattu. Vanhat portteja käyttämättömät kutsut säilyvät.
 Jäädytetty kymmenen tiedoston kohdesarja läpäisi 259 testiä, desktopin
 tyypitys ja rajattu riippumaton delta-katselmus läpäisivät. Sarja sisältää
 edellä mainittuja vanhoja kontrollitestejä, ei erillistä uutta 139 testin
-kattavuutta. Koordinaattori, mainin loppukäynnistys ja kylmäpalautus eivät
-vielä käytä uutta sidontaa; seuraava pala on niiden kytkentä ja pysyvät
+kattavuutta. Tämän checkpointin aikaan koordinaattori, mainin loppukäynnistys
+ja kylmäpalautus eivät vielä käyttäneet uutta sidontaa; seuraava pala oli niiden kytkentä ja pysyvät
 ketjuregressiot. Tämä checkpoint ei ole native-, paketti- tai PR-hyväksyntä.
 
 **Kylmävalinnan lukukytkentä 29.10.2026:** nykyinen
@@ -4986,15 +4987,15 @@ osittainen tai ristiriitainen metadata ei siirry sidonnattomaan polkuun.
 Jäädytetty 12 tiedoston 419 testin sarja, desktopin tyypitys ja rajattu
 riippumaton lähde-/testisuunnittelukatselmus läpäisivät.
 Sarja sisältää aiemman 259 testin kontrollijoukon, ei yhteen laskettavaa
-lisäkattavuutta. Live-tuonnin ja korjaavan palautuksen uudet vartijat sekä
-terminal-/paluukytkentä ovat edelleen seuraava pala.
+lisäkattavuutta. Tämän checkpointin seuraava pala oli live-tuonnin ja
+korjaavan palautuksen uudet vartijat sekä terminal-/paluukytkentä.
 
 ###### Tuonnin ensimmäinen julkaisu ja loppusiivous
 
 Tämä täsmentää yllä olevaa vaihevaltuutta nykyisten omistajien sisällä.
 Rajattu 28 tapauksen koe ja riippumaton suunnittelukatselmus läpäisivät.
-Sidontaosan porttien toteutus on kuvattu tämän kohdan lopussa; koko
-koordinaattori-/main-kytkentä on edelleen seuraava pala. `prepared` säilyy
+Sidontaosan portit ja koordinaattori-/main-kytkennän nykytila on kuvattu
+tämän kohdan lopussa. `prepared` säilyy
 ennen candidatea; sidonta julkaistaan journalin jälkeen mutta ennen payloadia.
 Ensimmäinen journal-kirjoitus ei voi vaatia vielä olematonta sidontaa.
 
@@ -5129,8 +5130,42 @@ todista prosessien tai kirjoittajien päättymistä eikä anna muutosvaltuutta.
 Jäädytetty 16 tiedoston sarja läpäisi 401 testiä; yksi olemassa oleva
 POSIX-tapaus odottaa Linux-ajoa. Tyypitys ja rajattu riippumaton katselmus
 läpäisivät. Tämä sarja sisältää edellisen checkpointin kontrolleja.
-Varsinainen koordinaattori-/main- ja korjaavan palautuksen kytkentä sekä
-native-/pakettiportit ovat edelleen kesken.
+Tämän root-portin checkpointin aikaan koordinaattori-/main- ja korjaavan
+palautuksen kytkentä sekä native-/pakettiportit olivat vielä kesken.
+
+**Live-koordinaattorin checkpoint 29.10.2026:** nykyinen koordinaattori
+kaappaa pakollisen import-omistajan ennen ensimmäistä journal-lukua.
+Ensimmäinen valittu journal-kirjoitus käyttää alkuperäisen rekisterin ja
+suljetun runtimen valtuutta; sidonta julkaistaan kuitin ja readbackin jälkeen
+ennen payloadia. Jokainen journalin oma kirjoitus saa uuden täsmällisen
+valinnan vasta kuitista ja korjaamattomasta readbackista. Rekisterin oma
+lisäys, root-muutokset ja metadata/journal-loppusiivous käyttävät yllä olevia
+erillisiä vartijoita. Alkuperäinen vartijavirhe säilyy myös tallentimen
+virhemuunnoksen yli. Epävarma plaintext-siivous ei oikeuta candidate-
+siivoukseen tai paluuseen.
+
+Aktiivinen ja backenditon main kaappaavat sukupolven erillään fyysisestä
+main-varauksesta. Oman sulun capability-disposal sulkee uuden admissionin,
+mutta ei mitätöi jo kaapattua työtä; ulkoinen shutdown sulkee myös sen.
+Keskeneräinen työ liittyy nykyiseen sulkuun ennen leasen vapautusta.
+Myöhäinen virhe sulkee jonotetun paluun, vaikka journal olisi jo poistettu.
+Viimeinen paluuvartija käyttää main-sukupolvea, fyysistä main-varausta ja
+terminal-eligibilityä, ei vapautettua leasea.
+
+Jäädytetty 28 tiedoston sarja läpäisi 612 testiä ja rajattu riippumaton
+lähde-/testikatselmus läpäisi; sarja sisältää aiempia kontrolleja.
+Desktopin ja molempien E2E-koostamisten tyypitys läpäisi. Neljä oikeiden
+tallentimien/juurten koetta käyttää oikeaa OS-varausta mutta mallinnettua
+candidatea/runtimea. Nykyisen ja historiallisen oikean salatun backupin
+kaksi system-tuontia läpäisivät SQLite-/PDF-tarkistuksineen.
+`DESK-WORKSPACE-MANAGEMENT-001` käyttää nyt todellisia varausportteja ja
+nykyistä lykätyn paluun apuria; Electronin candidate-ketju läpäisi, mutta
+sen elinkaarilaskurit ovat edelleen mallinnettuja. Varsinaiset
+`DESK-WORKSPACE-IMPORT-001`- ja `DESK-WORKSPACE-IMPORT-SCHEMA-001`-käyttäjäpolut
+läpäisivät erikseen: jälkimmäinen kattaa säilyvät tiedot, oikean main-sulun,
+uuden runtimen sekä alkuperäisen turvallisen syyn diagnostiikka-/tukiketjun.
+Tämä ei sulje korjaavan kylmäpalautuksen vartijoita, POSIX-porttia tai
+W7.4:n puhtaan paketin ja PR/main-hyväksynnän vaatimuksia.
 
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 

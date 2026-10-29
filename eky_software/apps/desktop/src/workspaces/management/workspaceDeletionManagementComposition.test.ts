@@ -353,6 +353,8 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
   });
   const log = vi.fn();
   const shared = {
+    importOwner: { assertCurrent, assertMainCurrent: assertCurrent, assertMainOwned: assertOwned,
+      invalidate() { current = false; } },
     appVersion: '0.3.0', buildRevision: 'a'.repeat(40),
     localUpdateRuntimePaths: createLocalUpdateRuntimePaths({ userDataPath: root, legacyRuntimeRoot: join(root, 'runtime') }),
     maintenanceLease: lease, operationalLogger: { write: log },

@@ -123,6 +123,15 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
         publish: options.workspaceDeletionPublisher,
       } }),
       mode: 'selector', assertCurrent,
+      importOwner: {
+        assertCurrent() {
+          assertCurrent();
+          if (shutdownTask !== undefined) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+        },
+        assertMainCurrent: () => reservation.assertMainCurrent(),
+        assertMainOwned: () => reservation.assertMainOwned(),
+        invalidate: () => reservation.invalidate(),
+      },
       operationalIdentity: input.operationalIdentity, operationalLogger: input.operationalLogger,
       activeWorkspaceLifecycle: lifecycle, appVersion: options.appVersion,
       buildRevision: options.buildInfo.buildRevision, localUpdateRuntimePaths: input.localUpdateRuntimePaths,

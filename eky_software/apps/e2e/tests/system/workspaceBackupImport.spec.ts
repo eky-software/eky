@@ -3,6 +3,7 @@ import { join } from 'node:path';
 
 import { readMigrationManifest } from '../../../backend/src/database/migration/migrationManifest.js';
 import { inspectSqliteProfileDatabase } from '../../../backend/src/runtime/profileSnapshot/inspectSqliteProfileDatabase.js';
+import { acquireWorkspaceProcessReservation } from '../../../desktop/src/runtime/workspaceProcessReservation.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../../desktop/src/workspaces/maintenance/workspaceMaintenanceLease.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../../desktop/src/workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../../../desktop/src/workspaces/registry/workspaceRegistryStore.js';
@@ -11,7 +12,8 @@ import { validateWorkspaceId } from '../../../desktop/src/workspaces/registry/wo
 import type { ActiveWorkspaceLifecyclePort } from '../../../desktop/src/workspaces/runtime/activeWorkspaceLifecyclePort.js';
 import { PrivateWorkspaceBackupCandidateAdapter } from '../../../desktop/src/workspaces/import/privateWorkspaceBackupCandidateAdapter.js';
 import { WorkspaceBackupContainerAdapter } from '../../../desktop/src/workspaces/import/workspaceBackupContainerAdapter.js';
-import { WorkspaceBackupImportCoordinator } from '../../../desktop/src/workspaces/import/workspaceBackupImportCoordinator.js';
+import { WorkspaceBackupImportCoordinator, type WorkspaceBackupImportCoordinatorOptions } from '../../../desktop/src/workspaces/import/workspaceBackupImportCoordinator.js';
+import { WorkspaceBackupImportBinding } from '../../../desktop/src/workspaces/import/workspaceBackupImportBinding.js';
 import { WorkspaceBackupImportError } from '../../../desktop/src/workspaces/import/workspaceBackupImportError.js';
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../../../desktop/src/workspaces/import/workspaceBackupImportJournalPaths.js';
 import { WorkspaceBackupImportJournalStore } from '../../../desktop/src/workspaces/import/workspaceBackupImportJournalStore.js';
@@ -42,6 +44,10 @@ const operationId = validateWorkspaceBackupImportOperationId(
 const workspaceId = validateWorkspaceId(
   '44444444-4444-4444-8444-444444444444',
 );
+type SystemImportOptions = Omit<WorkspaceBackupImportCoordinatorOptions, 'captureImportOwner' | 'maintenanceLease'> & {
+  maintenanceLease: InMemoryWorkspaceMaintenanceLease;
+  registry: WorkspaceRegistryStore;
+};
 
 test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup with its PDF into an isolated workspace', async ({
   e2eBackend,
@@ -85,6 +91,7 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
     filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
     installationRoot: userDataRoot,
   });
+  await registry.write({ formatVersion: 1, activeWorkspaceId: null, workspaces: [] });
   const importJournal = new WorkspaceBackupImportJournalStore({
     filePath: join(
       userDataRoot,
@@ -92,7 +99,7 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
     ),
     installationRoot: userDataRoot,
   });
-  const coordinator = new WorkspaceBackupImportCoordinator({
+  const options: SystemImportOptions = {
     activeWorkspaceLifecycle: createLifecycle(lifecycleEvents),
     backupCandidate: new PrivateWorkspaceBackupCandidateAdapter(
       createWorkspaceBackupCandidateRuntimeFactory(),
@@ -117,14 +124,14 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
         }
       },
     },
-  });
+  };
 
   await expect(
-    importWorkspaceForSystemProof(coordinator, {
+    importWorkspaceForSystemProof(options, {
       containerPath: backupPath,
       password: backupPassword,
       workspaceLabel: 'Tuotu PDF-yritys',
-    }),
+    }, e2eBackend.lifetime.readRemainingWorkMilliseconds()),
   ).resolves.toEqual({
     workspaceId,
     workspaceLabel: 'Tuotu PDF-yritys',
@@ -179,15 +186,13 @@ test('WORKSPACE-IMPORT-001 @critical @security imports a real encrypted backup w
     sourceDatabaseHashBeforeImport,
   );
   expect(await sha256File(backupPath)).toBe(sourceBackupHashBeforeImport);
-  expect(lifecycleEvents).toEqual([
+  expect(lifecycleEvents.filter(event => event !== 'runtime.absent')).toEqual([
     'active.quiesce.empty',
     'active.stop.empty',
-    // Prove absence after stop, candidate migration and candidate validation.
-    'runtime.absent',
-    'runtime.absent',
-    'runtime.absent',
     'active.ensure.empty',
   ]);
+  expect(lifecycleEvents.filter(event => event === 'runtime.absent').length).toBeGreaterThanOrEqual(3);
+  expect(lifecycleEvents.indexOf('runtime.absent')).toBeGreaterThan(lifecycleEvents.indexOf('active.stop.empty'));
 });
 
 test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated historical prefix without changing its source', async ({
@@ -216,11 +221,12 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
     filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
     installationRoot: userDataRoot,
   });
+  await registry.write({ formatVersion: 1, activeWorkspaceId: null, workspaces: [] });
   const importJournal = new WorkspaceBackupImportJournalStore({
     filePath: join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME),
     installationRoot: userDataRoot,
   });
-  const coordinator = new WorkspaceBackupImportCoordinator({
+  const options: SystemImportOptions = {
     activeWorkspaceLifecycle: createLifecycle(lifecycleEvents),
     backupCandidate: new PrivateWorkspaceBackupCandidateAdapter(
       createWorkspaceBackupCandidateRuntimeFactory(),
@@ -240,16 +246,17 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
     workspaceRuntimeAbsence: {
       assertNoActiveWorkspaceRuntime: async () => {
         lifecycleEvents.push('runtime.absent');
+        if (await e2eBackend.backend.workload.readState() !== 'exited') throw new Error('SOURCE_BACKEND_EXIT_UNVERIFIED');
       },
     },
-  });
+  };
 
   await expect(
-    importWorkspaceForSystemProof(coordinator, {
+    importWorkspaceForSystemProof(options, {
       containerPath: historical.backupPath,
       password: backupPassword,
       workspaceLabel: 'Historiallinen yritys',
-    }),
+    }, e2eBackend.lifetime.readRemainingWorkMilliseconds()),
   ).resolves.toEqual({
     workspaceId,
     workspaceLabel: 'Historiallinen yritys',
@@ -298,27 +305,60 @@ test('WORKSPACE-IMPORT-002 @critical @recovery migrates an authenticated histori
     currentManifest.length - 1,
   );
   expect(await importJournal.read()).toBeUndefined();
-  expect(lifecycleEvents).toEqual([
+  expect(lifecycleEvents.filter(event => event !== 'runtime.absent')).toEqual([
     'active.quiesce.empty',
     'active.stop.empty',
-    'runtime.absent',
-    'runtime.absent',
-    'runtime.absent',
     'active.ensure.empty',
   ]);
+  expect(lifecycleEvents.filter(event => event === 'runtime.absent').length).toBeGreaterThanOrEqual(3);
+  expect(lifecycleEvents.indexOf('runtime.absent')).toBeGreaterThan(lifecycleEvents.indexOf('active.stop.empty'));
 });
 
 async function importWorkspaceForSystemProof(
-  coordinator: WorkspaceBackupImportCoordinator,
+  options: SystemImportOptions,
   input: Parameters<WorkspaceBackupImportCoordinator['import']>[0],
+  remainingMilliseconds: number,
 ) {
+  const signal = AbortSignal.timeout(remainingMilliseconds);
+  const reservation = await acquireWorkspaceProcessReservation({ userDataRoot: options.userDataRoot, signal });
+  let uncertain = false;
+  let primary: unknown;
   try {
+    const coordinator = new WorkspaceBackupImportCoordinator({ ...options,
+      captureImportOwner(held) {
+        const assertLease = options.maintenanceLease.captureCurrentOwner(['import'], held);
+        const current = () => {
+          if (uncertain || signal.aborted || reservation.invalidated.aborted) throw new Error('SYSTEM_IMPORT_OWNER_EXPIRED');
+          assertLease();
+        };
+        const owned = async () => { current(); await reservation.assertOwned(); current(); };
+        return { assertCurrent: current, assertMainCurrent: current, assertMainOwned: owned,
+          onUncertain() { uncertain = true; },
+          onTerminalAfterRelease() {
+            if (uncertain || signal.aborted || reservation.invalidated.aborted || options.maintenanceLease.readState() !== 'idle') {
+              throw new Error('SYSTEM_IMPORT_TERMINAL_UNVERIFIED');
+            }
+          },
+          createBinding(selection) { return new WorkspaceBackupImportBinding({ ...selection,
+            userDataRoot: options.userDataRoot, registry: options.registry,
+            lease: held, maintenanceLease: options.maintenanceLease,
+            runtimeAbsence: options.workspaceRuntimeAbsence,
+            mainOwner: { assertCurrent: current, assertOwned: owned } }); },
+        };
+      },
+    });
     return await coordinator.import(input);
   } catch (error) {
+    primary = error;
     if (error instanceof WorkspaceBackupImportError) {
       throw new Error(`W3_IMPORT_${error.code}_${error.stage}`);
     }
     throw new Error('W3_IMPORT_UNEXPECTED_FAILURE');
+  } finally {
+    try { await reservation.release(); }
+    catch (error) {
+      throw new AggregateError(primary === undefined ? [error] : [primary, error], 'SYSTEM_IMPORT_RESERVATION_CLEANUP_FAILED');
+    }
   }
 }
 

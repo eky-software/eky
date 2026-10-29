@@ -1,4 +1,9 @@
 import { resolve } from 'node:path';
+import type { CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
+import { sameCrashSafeFileSlotIdentity, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
+import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
+import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
+import { createRecordingImportOwner } from './workspaceBackupImportOwnerTestSupport.js';
 
 import type {
   WorkspaceMaintenanceLease,
@@ -37,7 +42,10 @@ import type { WorkspaceBackupPlaintextQuarantineRecoveryPort } from './workspace
 import type {
   WorkspaceBackupImportRootPresence,
   WorkspaceBackupImportRootStore,
+  WorkspaceImportMutationAuthority,
 } from './workspaceBackupImportRootStore.js';
+import type { WorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
+import type { WorkspaceBackupImportOwner } from './workspaceBackupImportOwner.js';
 import type {
   WorkspaceBackupImportJournalStore,
   WorkspaceBackupImportJournal,
@@ -70,6 +78,7 @@ export function createWorkspaceBackupImportCoordinatorFixture(
     readonly duplicateLineage?: boolean;
     readonly emptyRegistry?: boolean;
     readonly userDataRoot?: string;
+    readonly decorateOwner?: (owner: WorkspaceBackupImportOwner) => WorkspaceBackupImportOwner;
   } = {},
 ) {
   const events: string[] = [];
@@ -102,7 +111,9 @@ export function createWorkspaceBackupImportCoordinatorFixture(
   );
   const lifecycle = new RecordingImportActiveWorkspaceLifecycle(events);
   const runtimeAbsence = new RecordingImportRuntimeAbsence(events);
+  const captureOwner = createRecordingImportOwner({ events, lease, journal, registry, root, lifecycle, runtimeAbsence });
   const coordinator = new WorkspaceBackupImportCoordinator({
+    captureImportOwner(held) { const owner = captureOwner(held); return options.decorateOwner?.(owner) ?? owner; },
     activeWorkspaceLifecycle: lifecycle,
     backupCandidate: candidate,
     backupContainer: container,
@@ -225,6 +236,8 @@ export function createTestImportJournal(input: {
 export class RecordingImportMaintenanceLease
   implements WorkspaceMaintenanceLease {
   held = false;
+  failRelease = false;
+  private handle: WorkspaceMaintenanceLeaseHandle | undefined;
 
   constructor(private readonly events: string[]) {}
 
@@ -235,14 +248,23 @@ export class RecordingImportMaintenanceLease
     if (this.held) throw new Error('busy');
     this.held = true;
     let released = false;
-    return {
+    const handle = {
       release: async () => {
         if (released) return;
         released = true;
         this.held = false;
+        this.handle = undefined;
         this.events.push('lease.release');
+        if (this.failRelease) throw new Error('SYNTHETIC_IMPORT_RELEASE_FAILED');
       },
     };
+    this.handle = handle;
+    return handle;
+  }
+
+  captureCurrentOwner(expected: WorkspaceMaintenanceLeaseHandle): () => void {
+    if (!this.held || this.handle !== expected) throw new Error('SYNTHETIC_IMPORT_LEASE_INVALID');
+    return () => { if (!this.held || this.handle !== expected) throw new Error('SYNTHETIC_IMPORT_LEASE_INVALID'); };
   }
 }
 
@@ -255,6 +277,7 @@ export class MemoryWorkspaceBackupImportJournal
   failAfterState: WorkspaceBackupImportJournal['state'] | undefined;
   failDiscard = false;
   failRemove = false;
+  revision = 1;
 
   constructor(
     private readonly events: string[],
@@ -274,6 +297,7 @@ export class MemoryWorkspaceBackupImportJournal
     if (this.failBeforeState === next.state) throw new Error('journal');
     assertWorkspaceBackupImportJournalTransition(this.current, next);
     this.current = next;
+    this.revision++;
     this.states.push(next.state);
     this.writes.push(next);
     if (this.failAfterState === next.state) throw new Error('journal');
@@ -293,6 +317,7 @@ export class MemoryWorkspaceBackupImportJournal
       throw new Error('journal');
     }
     this.current = undefined;
+    this.revision++;
   }
 
   async remove(operationId: WorkspaceBackupImportOperationId): Promise<void> {
@@ -306,6 +331,36 @@ export class MemoryWorkspaceBackupImportJournal
       throw new Error('journal');
     }
     this.current = undefined;
+    this.revision++;
+  }
+
+  async inspectSlots(assertCurrent?: () => void) {
+    assertCurrent?.(); this.events.push('journal.inspect');
+    const current = this.current === undefined ? undefined : { value: this.current,
+      bytes: serializeWorkspaceBackupImportJournal(this.current), identity: memoryImportIdentity(this.revision, serializeWorkspaceBackupImportJournal(this.current).byteLength) };
+    assertCurrent?.(); return { current, next: undefined, backup: undefined };
+  }
+
+  async writeSelected(value: unknown, selection: CrashSafeByteSlotSelection) {
+    const next = validateWorkspaceBackupImportJournal(value);
+    await assertMemorySelection(() => this.inspectSlots(), selection);
+    const identity = memoryImportIdentity(this.revision + 1, serializeWorkspaceBackupImportJournal(next).byteLength);
+    await this.write(next);
+    selection.assertAuthority(); await selection.assertExternalSelection(); selection.assertAuthority();
+    if (!this.current || this.revision !== identity.ino) throw new Error('SYNTHETIC_JOURNAL_RECEIPT_INVALID');
+    return identity;
+  }
+
+  async removeSelected(operationId: WorkspaceBackupImportOperationId, selection: CrashSafeByteSlotSelection) {
+    await assertMemorySelection(() => this.inspectSlots(), selection);
+    await this.remove(operationId);
+    selection.assertAuthority(); await selection.assertExternalSelection(); selection.assertAuthority();
+  }
+
+  async discardBeforePublicationSelected(operationId: WorkspaceBackupImportOperationId, selection: CrashSafeByteSlotSelection) {
+    await assertMemorySelection(() => this.inspectSlots(), selection);
+    await this.discardBeforePublication(operationId);
+    selection.assertAuthority(); await selection.assertExternalSelection(); selection.assertAuthority();
   }
 }
 
@@ -315,6 +370,7 @@ export class MemoryWorkspaceBackupImportRegistry
   failWriteBefore = false;
   failWriteAfter = false;
   readonly writes: Readonly<LocalWorkspaceRegistry>[] = [];
+  revision = 1;
 
   constructor(
     private readonly events: string[],
@@ -331,9 +387,32 @@ export class MemoryWorkspaceBackupImportRegistry
     this.events.push('registry.write');
     if (this.failWriteBefore) throw new Error('registry');
     this.value = value as Readonly<LocalWorkspaceRegistry>;
+    this.revision++;
     this.writes.push(this.value);
     if (this.failWriteAfter) throw new Error('registry');
   }
+
+  async inspectSlots(assertCurrent?: () => void) {
+    assertCurrent?.(); this.events.push('registry.inspect');
+    if (this.failRead) throw new Error('registry');
+    const current = this.value === undefined ? undefined : { value: this.value, bytes: serializeWorkspaceRegistry(this.value),
+      identity: memoryImportIdentity(this.revision, serializeWorkspaceRegistry(this.value).byteLength) };
+    assertCurrent?.(); return { current, next: undefined, backup: undefined };
+  }
+}
+
+export function memoryImportIdentity(revision: number, size: number): Readonly<CrashSafeFileSlotIdentity> {
+  return Object.freeze({ dev: 1, ino: revision, size, mtimeMs: revision, ctimeMs: revision });
+}
+
+async function assertMemorySelection(read: () => ReturnType<MemoryWorkspaceBackupImportJournal['inspectSlots']>, selection: CrashSafeByteSlotSelection) {
+  selection.assertAuthority(); await selection.assertExternalSelection(); selection.assertAuthority();
+  const slots = await read(); selection.assertAuthority();
+  if (selection.expectedSlots.next !== undefined || selection.expectedSlots.backup !== undefined ||
+      (slots.current === undefined ? selection.expectedSlots.current !== undefined :
+        selection.expectedSlots.current === undefined || selection.expectedIdentities.current === undefined ||
+        !Buffer.from(slots.current.bytes).equals(Buffer.from(selection.expectedSlots.current)) ||
+        !sameCrashSafeFileSlotIdentity(slots.current.identity, selection.expectedIdentities.current))) throw new Error('SYNTHETIC_SELECTED_JOURNAL_CHANGED');
 }
 
 export class RecordingWorkspaceBackupContainer
@@ -447,7 +526,8 @@ export class MemoryWorkspaceBackupImportRootStore
 
   constructor(private readonly events: string[]) {}
 
-  async createCandidate(): Promise<void> {
+  async createCandidate(_paths?: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
+    await authority?.assertCurrent(); authority?.assertMutationCurrent();
     this.events.push('root.createCandidate');
     if (this.failure === 'createBefore') throw new Error('create');
     this.candidateExists = true;
@@ -456,7 +536,8 @@ export class MemoryWorkspaceBackupImportRootStore
     if (this.failure === 'createAfter') throw new Error('create');
   }
 
-  async removeImportStaging(): Promise<void> {
+  async removeImportStaging(_paths?: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
+    await authority?.assertCurrent(); authority?.assertMutationCurrent();
     this.events.push('root.removeImportStaging');
     if (this.failure === 'removeStaging' || !this.stagingExists) {
       throw new Error('staging');
@@ -475,7 +556,8 @@ export class MemoryWorkspaceBackupImportRootStore
     }
   }
 
-  async publishCandidate(): Promise<void> {
+  async publishCandidate(_paths?: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
+    await authority?.assertCurrent(); authority?.assertMutationCurrent();
     this.events.push('root.publishCandidate');
     if (this.failure === 'publishBefore') throw new Error('publish');
     this.candidateExists = false;
@@ -490,7 +572,8 @@ export class MemoryWorkspaceBackupImportRootStore
     }
   }
 
-  async cleanupPublishedOperation(): Promise<void> {
+  async cleanupPublishedOperation(_paths?: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
+    await authority?.assertCurrent(); authority?.assertMutationCurrent();
     this.events.push('root.cleanupPublishedOperation');
     if (this.failure === 'cleanupPublished') throw new Error('cleanup');
     this.operationExists = false;
@@ -504,7 +587,8 @@ export class MemoryWorkspaceBackupImportRootStore
     });
   }
 
-  async discardCandidate(): Promise<void> {
+  async discardCandidate(_paths?: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
+    await authority?.assertCurrent(); authority?.assertMutationCurrent();
     this.events.push('root.discardCandidate');
     if (this.failure === 'discard') throw new Error('discard');
     this.candidateExists = false;
@@ -533,6 +617,7 @@ export class RecordingImportActiveWorkspaceLifecycle
   openDatabaseHandleOwners = 1;
   maxRunningRuntimeOwners = 1;
   maxOpenDatabaseHandleOwners = 1;
+  private returnWorkspaceId: WorkspaceId | null = null;
 
   constructor(private readonly events: string[]) {}
 
@@ -556,6 +641,12 @@ export class RecordingImportActiveWorkspaceLifecycle
     this.events.push('lifecycle.ensure');
     this.ensureCalls += 1;
     if (this.failure === 'ensure') throw new Error('ensure');
+    this.returnWorkspaceId = this.runningRuntimeOwners === 0 ? previousActiveWorkspaceId : null;
+  }
+
+  completeReturn(): void {
+    const previousActiveWorkspaceId = this.returnWorkspaceId;
+    this.returnWorkspaceId = null;
     if (previousActiveWorkspaceId === null) return;
     if (this.runningRuntimeOwners === 0) {
       this.runningRuntimeOwners = 1;

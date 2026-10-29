@@ -11,6 +11,10 @@ import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspace
 import { EmptyWorkspaceCreationCoordinator } from '../creation/emptyWorkspaceCreationCoordinator.js';
 import { WORKSPACE_CREATION_JOURNAL_FILE_NAME } from '../creation/workspaceCreationJournalPaths.js';
 import { WorkspaceBackupImportCoordinator } from '../import/workspaceBackupImportCoordinator.js';
+import { WorkspaceBackupContainerAdapter } from '../import/workspaceBackupContainerAdapter.js';
+import { PrivateWorkspaceBackupCandidateAdapter } from '../import/privateWorkspaceBackupCandidateAdapter.js';
+import { createTestImportPreflight, createTestImportReadiness } from '../import/workspaceBackupImportTestSupport.js';
+import { importBindingGate } from '../import/workspaceBackupImportBindingTestSupport.js';
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../import/workspaceBackupImportJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import * as readOnlySlots from '../persistence/readOnlyJournalSlots.js';
@@ -322,6 +326,57 @@ it('routes create and import to their existing commands without an active replac
   expect(utilityProcess.fork).not.toHaveBeenCalled();
 });
 
+it('keeps the captured import alive through its own capability disposal and launches after release', async test => {
+  const f = await importFixture(test);
+  const stop = f.lifecycle.stopAndProveHandlesClosed.bind(f.lifecycle);
+  vi.spyOn(f.lifecycle, 'stopAndProveHandlesClosed').mockImplementation(async previous => {
+    const result = await stop(previous); f.composition.dispose(); return result;
+  });
+  await expect(f.composition.service.importBackupAsNew(f.input)).resolves.toHaveProperty('workspaceId');
+  expect(f.launch).toHaveBeenCalledOnce();
+  expect(f.lease.readState()).toBe('idle');
+  expect((await f.registry.inspect())?.workspaces).toHaveLength(1);
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+});
+
+it('joins started import work during shutdown and retains its real evidence without relaunch', async test => {
+  const f = await importFixture(test);
+  const entered = importBindingGate(); const finish = importBindingGate();
+  vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'stage').mockImplementation(async value => {
+    await mkdir(value.importStagingRoot); entered.resolve(); await finish.promise; return createTestImportPreflight();
+  });
+  const pending = f.composition.service.importBackupAsNew(f.input).then(() => undefined, error => error as unknown);
+  let stopped = false;
+  let shutdown: Promise<void> | undefined;
+  try {
+    await Promise.race([entered.promise, pending.then(() => { throw new Error('IMPORT_STAGE_NOT_ENTERED'); })]);
+    shutdown = f.composition.shutdown().then(() => { stopped = true; });
+    await expect(f.composition.service.getStatus()).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(stopped).toBe(false); expect(f.lease.readState()).toBe('busy');
+  } finally { finish.resolve(); await pending; await shutdown; }
+  expect(stopped).toBe(true);
+  expect(await pending).toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+    cause: { errors: [{ code: 'WORKSPACE_IMPORT_RECOVERY_REQUIRED' }, expect.any(Error)] } });
+  expect((await readFile(join(f.root, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME))).byteLength).toBeGreaterThan(0);
+  expect(f.launch).not.toHaveBeenCalled();
+  expect((await f.registry.inspect())?.workspaces).toHaveLength(0);
+  expect(f.lease.readState()).toBe('idle');
+});
+
+it('keeps a late import-return failure sticky after the released lease and terminal callback', async test => {
+  const f = await importFixture(test);
+  const run = WorkspaceBackupImportCoordinator.prototype.import;
+  vi.spyOn(WorkspaceBackupImportCoordinator.prototype, 'import').mockImplementation(async function (this: WorkspaceBackupImportCoordinator, value) {
+    const result = await run.call(this, value); f.state.current = false; return result;
+  });
+  await expect(f.composition.service.importBackupAsNew(f.input)).rejects.toThrow();
+  expect(f.launch).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('idle');
+  expect((await f.registry.inspect())?.workspaces).toHaveLength(1);
+  f.state.current = true;
+  await expect(f.composition.service.getStatus()).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  expect(f.launch).not.toHaveBeenCalled();
+});
+
 it.for(['adoption', 'creation', 'import', 'switch', 'firstStart', 'legacyProfile', 'profile', 'replacement',
   'directSetup', 'update', 'legacyUpdate'] as const)(
   'preserves an unresolved %s slot and blocks management changes', async (owner, test) => {
@@ -446,13 +501,15 @@ async function fixture(test: TestContext, value = selectorRegistry) {
   const legacyRuntimeRoot = createDesktopProfilePaths(root).runtimeRoot;
   const update = createLocalUpdateRuntimePaths({ userDataPath: root, legacyRuntimeRoot });
   composition = await createWorkspaceManagementComposition({ mode: 'selector', assertCurrent,
+    importOwner: { assertCurrent, assertMainCurrent: assertCurrent, assertMainOwned: assertOwned,
+      invalidate() { state.current = false; } },
     activeWorkspaceLifecycle: lifecycle, appVersion: '0.3.0', buildRevision: 'a'.repeat(40),
     localUpdateRuntimePaths: update, maintenanceLease: lease, operationalLogger: { write: log },
     operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
     reservationOwner: { assertMainOwned: assertOwned, bindCandidate }, resourcesPath: resources,
     runtimeRelaunch: relaunch, userDataRoot: root });
   const profileRuntimeRoot = createDesktopProfilePaths(deriveWorkspaceRoot(root, TEST_TARGET_WORKSPACE_ID, 1).workspaceRoot).runtimeRoot;
-  return { root, registryPath, registry, composition, lease, launch, assertOwned, log, bindCandidate, state,
+  return { root, registryPath, registry, composition, lease, launch, assertOwned, log, bindCandidate, state, lifecycle,
     pendingPaths: {
       adoption: createWorkspaceLegacyAdoptionJournalPaths(root).backupPath,
       creation: join(root, WORKSPACE_CREATION_JOURNAL_FILE_NAME) + '.next',
@@ -467,4 +524,19 @@ async function fixture(test: TestContext, value = selectorRegistry) {
       legacyUpdate: update.legacyJournalPath,
     },
   };
+}
+
+async function importFixture(test: TestContext) {
+  const f = await fixture(test, { ...selectorRegistry, workspaces: [] });
+  vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'inspect').mockResolvedValue(createTestImportPreflight());
+  vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'stage').mockImplementation(async value => {
+    await mkdir(value.importStagingRoot); return createTestImportPreflight();
+  });
+  vi.spyOn(PrivateWorkspaceBackupCandidateAdapter.prototype, 'migrate').mockImplementation(async value => {
+    await writeFile(value.databaseFilePath, 'synthetic database bytes', { flag: 'wx' });
+    return { handlesClosed: true, profileId: createTestImportPreflight().profileId,
+      migrationChainIdentity: createTestImportReadiness().migrationChainIdentity };
+  });
+  vi.spyOn(PrivateWorkspaceBackupCandidateAdapter.prototype, 'validateAndMaterialize').mockResolvedValue(createTestImportReadiness());
+  return { ...f, input: { workspaceLabel: 'Imported synthetic', password: 'synthetic password', containerPath: join(f.root, 'synthetic.ekybackup') } };
 }

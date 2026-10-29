@@ -3490,6 +3490,15 @@ async function startDesktopCompositionRuntime({
         },
         invalidate: () => workspaceReservation.invalidate(),
       },
+      importOwner: {
+        assertCurrent() {
+          if (shutdownStarted) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+          workspaceReservation.assertInstallationCurrent();
+        },
+        assertMainCurrent: () => workspaceReservation.assertMainCurrent(),
+        assertMainOwned: () => workspaceReservation.assertMainOwned(),
+        invalidate: () => workspaceReservation.invalidate(),
+      },
       resourcesPath: options.resourcesPath,
       reservationOwner: {
         assertMainOwned: workspaceReservation.assertMainOwned,

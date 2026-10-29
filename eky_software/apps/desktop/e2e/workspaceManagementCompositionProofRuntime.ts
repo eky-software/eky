@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import { app } from 'electron';
 
 import type { ActiveWorkspaceLifecyclePort } from '../src/workspaces/runtime/activeWorkspaceLifecyclePort.js';
+import { DeferredWorkspaceRuntimeRelaunch } from '../src/workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import type { WorkspaceRuntimeAbsencePort } from '../src/workspaces/runtime/workspaceRuntimeAbsencePort.js';
 import type { WorkspaceId } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../src/workspaces/registry/workspaceIdValidation.js';
@@ -51,6 +52,10 @@ export class ProofActiveWorkspaceLifecycle
   async ensurePreviousWorkspaceRunning(
     previousActiveWorkspaceId: WorkspaceId | null,
   ): Promise<void> {
+    this.completeReturn(previousActiveWorkspaceId);
+  }
+
+  completeReturn(previousActiveWorkspaceId: WorkspaceId | null): void {
     this.activeWorkspaceId = previousActiveWorkspaceId;
     this.setOwners(previousActiveWorkspaceId === null ? 0 : 1);
     this.events.push('running');
@@ -90,12 +95,19 @@ export class ProofActiveWorkspaceLifecycle
 
 export class ProofRuntimeRelaunch {
   requestCount = 0;
+  private pending: DeferredWorkspaceRuntimeRelaunch | undefined;
 
-  request(): void {
+  request(complete: () => void = () => {}): void {
     this.requestCount += 1;
+    this.pending ??= new DeferredWorkspaceRuntimeRelaunch(complete);
+    this.pending.request();
   }
 
-  complete(): void {}
+  complete(assertCurrent?: () => void): void {
+    const pending = this.pending;
+    this.pending = undefined;
+    pending?.complete(assertCurrent);
+  }
 }
 
 export function captureUtilityProcessBaseline(): ReadonlySet<number> {

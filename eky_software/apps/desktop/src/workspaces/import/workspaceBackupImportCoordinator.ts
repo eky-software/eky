@@ -1,6 +1,10 @@
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
 import { generateWorkspaceId } from '../registry/workspaceIdGeneration.js';
-import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
+import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
+import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
+import type { CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
+import { sameCrashSafeFileSlotIdentity, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
+import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import type {
   WorkspaceId,
   WorkspaceLineageIdentityV1,
@@ -8,7 +12,12 @@ import type {
 import { validateWorkspaceTimestamp } from '../registry/workspaceTimestampValidation.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
-import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceMaintenanceLease, WorkspaceMaintenanceLeaseHandle } from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceBackupImportOwner, WorkspaceBackupImportBindingPort } from './workspaceBackupImportOwner.js';
+import type { WorkspaceBackupImportJournalStore as SelectedImportJournalStore } from './workspaceBackupImportJournalStore.js';
+import type { WorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
+import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
+import { assertSynchronousProfileRestoreMutationAuthority } from '../../profileBackup/restore/profileRestoreMutationAuthority.js';
 import type { WorkspaceBackupImportRootStore } from './workspaceBackupImportRootStore.js';
 import {
   WorkspaceBackupImportError,
@@ -32,12 +41,10 @@ import {
   assertImportRegistryStillAtPreviousActive,
   assertImportWorkspaceIdAvailable,
   createImportedWorkspaceEntry,
-  publishImportedWorkspaceEntry,
   readWorkspaceBackupImportRegistry,
 } from './workspaceBackupImportRegistry.js';
 import type {
   WorkspaceBackupImportJournalState,
-  WorkspaceBackupImportJournalStore,
   WorkspaceBackupImportJournal,
   WorkspaceBackupImportOperationId,
 } from './workspaceBackupImportTypes.js';
@@ -48,11 +55,12 @@ export interface WorkspaceBackupImportCoordinatorOptions {
   readonly backupContainer: WorkspaceBackupContainerPort;
   readonly generateOperationId?: () => WorkspaceBackupImportOperationId;
   readonly generateWorkspaceId?: () => WorkspaceId;
-  readonly importJournal: WorkspaceBackupImportJournalStore;
+  readonly captureImportOwner: (lease: WorkspaceMaintenanceLeaseHandle) => WorkspaceBackupImportOwner;
+  readonly importJournal: Pick<SelectedImportJournalStore, 'inspectSlots' | 'writeSelected' | 'removeSelected' | 'discardBeforePublicationSelected'>;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
   readonly now?: () => Date;
   readonly plaintextQuarantine: WorkspaceBackupPlaintextQuarantineRecoveryPort;
-  readonly registry: WorkspaceRegistryPort;
+  readonly registry: Pick<WorkspaceRegistryStore, 'inspectSlots'>;
   readonly rootStore: WorkspaceBackupImportRootStore;
   readonly userDataRoot: string;
   readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
@@ -72,6 +80,7 @@ export class WorkspaceBackupImportCoordinator {
   private readonly generateOperationId: () => WorkspaceBackupImportOperationId;
   private readonly generateWorkspace: () => WorkspaceId;
   private readonly now: () => Date;
+  private readonly captureImportOwner: WorkspaceBackupImportCoordinatorOptions['captureImportOwner'];
 
   constructor(
     private readonly options: Readonly<WorkspaceBackupImportCoordinatorOptions>,
@@ -80,6 +89,7 @@ export class WorkspaceBackupImportCoordinator {
       options.generateOperationId ?? generateWorkspaceBackupImportOperationId;
     this.generateWorkspace = options.generateWorkspaceId ?? generateWorkspaceId;
     this.now = options.now ?? (() => new Date());
+    this.captureImportOwner = options.captureImportOwner.bind(options);
   }
 
   async import(
@@ -92,21 +102,136 @@ export class WorkspaceBackupImportCoordinator {
     let writesQuiesced = false;
     let previousRuntimeEnsureAttempted = false;
     let operationFailure: WorkspaceBackupImportError | undefined;
+    let owner: Readonly<WorkspaceBackupImportOwner> | undefined;
+    let binding: WorkspaceBackupImportBindingPort | undefined;
+    let paths: Readonly<WorkspaceBackupImportPaths> | undefined;
+    let originalRegistry: ReadOnlyJournalSlots<LocalWorkspaceRegistry> | undefined;
+    let selected: Readonly<{ bytes: Uint8Array; identity: Readonly<CrashSafeFileSlotIdentity> }> | undefined;
+    let terminal = false;
+    let uncertain = false;
+    let firstGuardFailure: { error: unknown } | undefined;
+    const markUncertain = (): void => {
+      if (uncertain) return;
+      uncertain = true;
+      if (owner !== undefined) assertSynchronousProfileRestoreMutationAuthority(owner.onUncertain);
+    };
+    const rejectGuard = (error: unknown): never => {
+      firstGuardFailure ??= { error };
+      try { markUncertain(); }
+      catch (secondary) { throw new AggregateError([firstGuardFailure.error, secondary], 'WORKSPACE_IMPORT_RECOVERY_REQUIRED'); }
+      throw firstGuardFailure.error;
+    };
+    const assertCurrent = (): void => {
+      if (uncertain) throw firstGuardFailure?.error ?? new WorkspaceBackupImportError('WORKSPACE_IMPORT_RECOVERY_REQUIRED', 'recovery');
+      try {
+        if (owner === undefined) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+        assertSynchronousProfileRestoreMutationAuthority(owner.assertCurrent);
+      } catch (error) { rejectGuard(error); }
+    };
+    const assertStopped = async (): Promise<void> => {
+      try {
+        assertCurrent();
+        await this.assertRuntimeAbsent(); assertCurrent();
+        assertSynchronousProfileRestoreMutationAuthority(owner!.assertMainCurrent);
+        await owner!.assertMainOwned(); assertCurrent();
+        assertSynchronousProfileRestoreMutationAuthority(owner!.assertMainCurrent);
+      } catch (error) { rejectGuard(error); }
+    };
+    const assertOriginalRegistry = async (): Promise<void> => {
+      try {
+        await assertStopped();
+        const current = await this.options.registry.inspectSlots(assertCurrent); assertCurrent();
+        if (originalRegistry?.current === undefined || !sameSelected(current, originalRegistry.current)) throw new Error('WORKSPACE_IMPORT_REGISTRY_CHANGED');
+      } catch (error) { rejectGuard(error); }
+    };
+    const assertJournalSelection = async (): Promise<void> => {
+      try {
+        assertCurrent();
+        const current = await this.options.importJournal.inspectSlots(assertCurrent); assertCurrent();
+        if (selected === undefined || !sameSelected(current, selected)) throw new Error('WORKSPACE_IMPORT_JOURNAL_CHANGED');
+      } catch (error) { rejectGuard(error); }
+    };
+    const assertBound = async (): Promise<void> => {
+      try {
+        await assertStopped();
+        if (binding === undefined) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+        await binding.assertPublished(); await assertJournalSelection(); await binding.assertPublished(); assertCurrent();
+      } catch (error) { rejectGuard(error); }
+    };
+    const mutationAuthority = { assertCurrent: assertBound, assertMutationCurrent: () => {
+      assertCurrent(); binding!.assertMutationCurrent();
+    } };
+    const assertPayloadsAbsent = async (): Promise<void> => {
+      await assertStopped();
+      if (paths === undefined) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+      await this.options.rootStore.assertOperationAbsent(paths, assertCurrent);
+      await assertStopped();
+    };
+    const writeSelectedJournal = async (next: Readonly<WorkspaceBackupImportJournal>): Promise<void> => {
+      const external = async () => {
+        try {
+          if (binding === undefined) await assertOriginalRegistry();
+          else { await binding.assertPublished(); assertCurrent(); }
+        } catch (error) { rejectGuard(error); }
+      };
+      try {
+        const bytes = serializeWorkspaceBackupImportJournal(next);
+        const identity = await this.options.importJournal.writeSelected(next, journalSelection(selected, assertCurrent, external));
+        const current = await this.options.importJournal.inspectSlots(assertCurrent); assertCurrent();
+        if (!sameSelected(current, { bytes, identity })) throw new Error('WORKSPACE_IMPORT_JOURNAL_RECEIPT_CHANGED');
+        await external();
+        selected = Object.freeze({ bytes: Uint8Array.from(bytes), identity: Object.freeze({ ...identity }) });
+        journal = next;
+      } catch (error) { rejectGuard(mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_JOURNAL_FAILED', 'journal')); }
+    };
+    const advance = async (current: Readonly<WorkspaceBackupImportJournal>, state: WorkspaceBackupImportJournalState,
+      lineageIdentity: Readonly<WorkspaceLineageIdentityV1> | null = current.lineageIdentity) => {
+      const next = Object.freeze({ ...current, state, lineageIdentity });
+      await writeSelectedJournal(next); return next;
+    };
+    const retire = async (completed: boolean): Promise<void> => {
+      try {
+        await binding!.clearAfterPayloadsAbsent(assertPayloadsAbsent, assertJournalSelection);
+        const external = () => binding!.assertRetired(assertPayloadsAbsent);
+        const selection = journalSelection(selected, assertCurrent, external);
+        try {
+          if (completed) await this.options.importJournal.removeSelected(journal!.operationId, selection);
+          else await this.options.importJournal.discardBeforePublicationSelected(journal!.operationId, selection);
+        } catch (error) { rejectGuard(mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_JOURNAL_FAILED', 'journal')); }
+        const current = await this.options.importJournal.inspectSlots(assertCurrent); assertCurrent();
+        if (Object.values(current).some(value => value !== undefined)) throw new Error('WORKSPACE_IMPORT_JOURNAL_REMAINS');
+        await external(); terminal = true;
+      } catch (error) { rejectGuard(error); }
+    };
     try {
-      if ((await this.readJournal()) !== undefined) {
+      owner = captureOwner(this.captureImportOwner(lease));
+      assertCurrent();
+      const initial = await this.options.importJournal.inspectSlots(assertCurrent).catch(error => {
+        throw mapWorkspaceBackupImportError(firstGuardFailure?.error ?? error, 'WORKSPACE_IMPORT_JOURNAL_FAILED', 'journal');
+      }); assertCurrent();
+      if (Object.values(initial).some(value => value !== undefined)) {
         throw new WorkspaceBackupImportError(
           'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
           'journal',
         );
       }
       await this.recoverPlaintextQuarantine();
+      assertCurrent();
 
       const preflight = await this.inspectBackup(input);
+      assertCurrent();
       const sourceLineage = createLineage(preflight.profileId);
 
-      const registry = readWorkspaceBackupImportRegistry(
-        await this.readRegistry('registryRead'),
-      );
+      originalRegistry = await this.options.registry.inspectSlots(assertCurrent).catch(error => {
+        throw mapWorkspaceBackupImportError(firstGuardFailure?.error ?? error, 'WORKSPACE_IMPORT_REGISTRY_FAILED', 'registryRead');
+      }); assertCurrent();
+      if (originalRegistry.current?.identity === undefined || originalRegistry.next !== undefined || originalRegistry.backup !== undefined) {
+        throw new WorkspaceBackupImportError('WORKSPACE_IMPORT_REGISTRY_FAILED', 'registryRead');
+      }
+      originalRegistry = Object.freeze({ current: Object.freeze({ ...originalRegistry.current,
+        bytes: Uint8Array.from(originalRegistry.current.bytes), identity: Object.freeze({ ...originalRegistry.current.identity }) }),
+        next: undefined, backup: undefined });
+      const registry = readWorkspaceBackupImportRegistry(originalRegistry.current!.value);
       assertImportLineageAvailable(registry, sourceLineage);
       assertImportWorkspaceLabelAvailable(registry, workspaceLabel, 'registryRead');
       previousActiveWorkspaceId = registry.activeWorkspaceId;
@@ -117,6 +242,7 @@ export class WorkspaceBackupImportCoordinator {
         ),
       );
       writesQuiesced = true;
+      assertCurrent();
       const stopped = await this.runLifecycle('activeRuntimeStop', () =>
         this.options.activeWorkspaceLifecycle.stopAndProveHandlesClosed(
           previousActiveWorkspaceId,
@@ -128,12 +254,12 @@ export class WorkspaceBackupImportCoordinator {
           'activeRuntimeStop',
         );
       }
-      await this.assertRuntimeAbsent();
+      await assertStopped();
 
       const operationId = this.createOperationId();
       const workspaceId = this.createWorkspaceId();
       assertImportWorkspaceIdAvailable(registry, workspaceId);
-      const paths = deriveWorkspaceBackupImportPaths(
+      paths = deriveWorkspaceBackupImportPaths(
         this.options.userDataRoot,
         operationId,
         workspaceId,
@@ -149,13 +275,19 @@ export class WorkspaceBackupImportCoordinator {
         createdAt,
         lineageIdentity: null,
       });
-      await this.writeJournal(journal);
+      await writeSelectedJournal(journal);
+      try {
+        binding = owner.createBinding({ operationId, workspaceId, lineageIdentity: sourceLineage,
+          registrySelection: originalRegistry, assertJournalSelection, onUncertain: markUncertain });
+        await binding.publish(); await assertBound();
+      } catch (error) { rejectGuard(error); }
 
       await this.runRootOperation('candidateRoot', () =>
-        this.options.rootStore.createCandidate(paths),
+        this.options.rootStore.createCandidate(paths!, mutationAuthority),
       );
-      journal = await this.advanceJournal(journal, 'candidateRootCreated');
+      journal = await advance(journal, 'candidateRootCreated');
 
+      await assertBound();
       await this.stageBackup({
         containerPath: input.containerPath,
         password: input.password,
@@ -164,8 +296,10 @@ export class WorkspaceBackupImportCoordinator {
         expectedProfileId: preflight.profileId,
         importStagingRoot: paths.importStagingRoot,
       });
-      journal = await this.advanceJournal(journal, 'backupStaged');
+      await assertBound();
+      journal = await advance(journal, 'backupStaged');
 
+      await assertBound();
       const migrationResult = await this.migrateCandidate({
         operationId,
         workspaceId,
@@ -177,15 +311,16 @@ export class WorkspaceBackupImportCoordinator {
         expectedSourceMigrationChainIdentity: preflight.migrationChainIdentity,
       });
       validateWorkspaceBackupMigrationResult(migrationResult);
-      await this.assertRuntimeAbsent();
+      await assertBound();
       if (migrationResult.profileId !== preflight.profileId) {
         throw new WorkspaceBackupImportError(
           'WORKSPACE_IMPORT_VALIDATION_FAILED',
           'candidateMigration',
         );
       }
-      journal = await this.advanceJournal(journal, 'candidateMigrated');
+      journal = await advance(journal, 'candidateMigrated');
 
+      await assertBound();
       const readiness = await this.validateCandidate({
         operationId,
         workspaceId,
@@ -195,7 +330,7 @@ export class WorkspaceBackupImportCoordinator {
         artifactRoot: paths.artifactRoot,
         expectedProfileId: preflight.profileId,
       });
-      await this.assertRuntimeAbsent();
+      await assertBound();
       if (
         readiness.lineageIdentity.profileId !== preflight.profileId ||
         readiness.migrationChainIdentity !==
@@ -206,22 +341,21 @@ export class WorkspaceBackupImportCoordinator {
           'candidateValidation',
         );
       }
-      journal = await this.advanceJournal(
+      journal = await advance(
         journal,
         'candidateValidated',
         readiness.lineageIdentity,
       );
 
       await this.runRootOperation('cleanup', () =>
-        this.options.rootStore.removeImportStaging(paths),
+        this.options.rootStore.removeImportStaging(paths!, mutationAuthority),
       );
       await this.runRootOperation('candidateValidation', () =>
-        this.options.rootStore.inspectCandidate(paths),
+        this.options.rootStore.inspectCandidate(paths!),
       );
 
-      const publicationRegistry = readWorkspaceBackupImportRegistry(
-        await this.readRegistry('registryRead'),
-      );
+      await assertBound();
+      const publicationRegistry = registry;
       assertImportRegistryStillAtPreviousActive(
         publicationRegistry,
         previousActiveWorkspaceId,
@@ -234,15 +368,15 @@ export class WorkspaceBackupImportCoordinator {
       assertImportWorkspaceLabelAvailable(publicationRegistry, workspaceLabel, 'registryPublish');
 
       await this.runRootOperation('rootPublish', () =>
-        this.options.rootStore.publishCandidate(paths),
+        this.options.rootStore.publishCandidate(paths!, mutationAuthority),
       );
-      journal = await this.advanceJournal(
+      journal = await advance(
         journal,
         'rootPublished',
         readiness.lineageIdentity,
       );
       await this.runRootOperation('cleanup', () =>
-        this.options.rootStore.cleanupPublishedOperation(paths),
+        this.options.rootStore.cleanupPublishedOperation(paths!, mutationAuthority),
       );
 
       const entry = createImportedWorkspaceEntry({
@@ -251,38 +385,55 @@ export class WorkspaceBackupImportCoordinator {
         lineageIdentity: readiness.lineageIdentity,
         createdAt,
       });
-      await this.writeRegistry(
-        publishImportedWorkspaceEntry(publicationRegistry, entry),
-      );
-      journal = await this.advanceJournal(
+      try { await binding!.publishRegistry(entry, assertJournalSelection); }
+      catch (error) { rejectGuard(mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_REGISTRY_FAILED', 'registryPublish')); }
+      journal = await advance(
         journal,
         'registryPublished',
         readiness.lineageIdentity,
       );
 
       previousRuntimeEnsureAttempted = true;
+      await assertBound();
       await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
-      await this.removeJournal(operationId);
+      await assertBound();
+      await retire(true);
       return Object.freeze({ workspaceId, workspaceLabel });
     } catch (error) {
       const primaryFailure = mapWorkspaceBackupImportError(
-        error,
+        firstGuardFailure?.error ?? error,
         'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
         'recovery',
       );
       const recoveryFailures: unknown[] = [];
-      try {
-        await this.handleFailure(journal);
-      } catch (caught) {
-        recoveryFailures.push(caught);
+      if (primaryFailure.code === 'WORKSPACE_IMPORT_RECOVERY_REQUIRED' && primaryFailure.stage === 'plaintextQuarantine') {
+        try { markUncertain(); } catch (secondary) { recoveryFailures.push(secondary); }
       }
-      if (writesQuiesced && !previousRuntimeEnsureAttempted) {
-        previousRuntimeEnsureAttempted = true;
+      if (!uncertain && journal !== undefined) {
         try {
-          if (journal !== undefined) await this.assertRuntimeAbsent();
-          await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
+          await assertBound();
+          const presence = await this.options.rootStore.readPresence(paths!); await assertBound();
+          if (presence.finalExists || journal.state === 'rootPublished' || journal.state === 'registryPublished') {
+            markUncertain();
+          } else {
+            await this.options.rootStore.discardCandidate(paths!, mutationAuthority);
+            await retire(false);
+          }
         } catch (caught) {
           recoveryFailures.push(caught);
+          try { markUncertain(); } catch (secondary) { recoveryFailures.push(secondary); }
+        }
+      }
+      if (!uncertain && writesQuiesced && !previousRuntimeEnsureAttempted) {
+        previousRuntimeEnsureAttempted = true;
+        try {
+          assertCurrent();
+          if (journal !== undefined) await binding!.assertRetired(assertPayloadsAbsent);
+          await this.ensurePreviousWorkspaceRunning(previousActiveWorkspaceId);
+          assertCurrent(); terminal = true;
+        } catch (caught) {
+          recoveryFailures.push(caught);
+          try { markUncertain(); } catch (secondary) { recoveryFailures.push(secondary); }
         }
       }
       if (recoveryFailures.length > 0) {
@@ -307,13 +458,18 @@ export class WorkspaceBackupImportCoordinator {
       }
       throw operationFailure;
     } finally {
+      let released = false;
       try {
         await lease.release();
+        released = true;
+        if (terminal && !uncertain && owner !== undefined) assertSynchronousProfileRestoreMutationAuthority(owner.onTerminalAfterRelease);
       } catch (error) {
+        let failure = error;
+        try { markUncertain(); } catch (secondary) { failure = new AggregateError([error, secondary], 'WORKSPACE_IMPORT_RECOVERY_REQUIRED'); }
         const releaseFailure = mapWorkspaceBackupImportError(
-          error,
+          failure,
           'WORKSPACE_IMPORT_LIFECYCLE_FAILED',
-          'lease',
+          released ? 'activeRuntimeRestart' : 'lease',
         );
         if (operationFailure === undefined) throw releaseFailure;
         throw new WorkspaceBackupImportError(
@@ -328,61 +484,6 @@ export class WorkspaceBackupImportCoordinator {
         );
       }
     }
-  }
-
-  private async handleFailure(
-    journal: Readonly<WorkspaceBackupImportJournal> | undefined,
-  ): Promise<void> {
-    if (journal === undefined) return;
-    await this.assertRuntimeAbsent();
-
-    let persistedJournal: Readonly<WorkspaceBackupImportJournal> | undefined;
-    try {
-      persistedJournal = await this.options.importJournal.read();
-    } catch (error) {
-      throw new WorkspaceBackupImportError(
-        'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
-        'recovery',
-        { cause: error },
-      );
-    }
-    if (
-      persistedJournal !== undefined &&
-      persistedJournal.operationId !== journal.operationId
-    ) {
-      throw new WorkspaceBackupImportError(
-        'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
-        'recovery',
-      );
-    }
-
-    const paths = deriveWorkspaceBackupImportPaths(
-      this.options.userDataRoot,
-      journal.operationId,
-      journal.workspaceId,
-    );
-    const presence = await this.options.rootStore.readPresence(paths);
-    if (persistedJournal === undefined) {
-      if (presence.finalExists) {
-        throw new WorkspaceBackupImportError(
-          'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
-          'recovery',
-        );
-      }
-      await this.options.rootStore.discardCandidate(paths);
-      return;
-    }
-
-    const publicationMayHaveStarted =
-      presence.finalExists ||
-      persistedJournal.state === 'rootPublished' ||
-      persistedJournal.state === 'registryPublished';
-    if (publicationMayHaveStarted) return;
-
-    await this.options.rootStore.discardCandidate(paths);
-    await this.options.importJournal.discardBeforePublication(
-      persistedJournal.operationId,
-    );
   }
 
   private acquireLease() {
@@ -453,77 +554,6 @@ export class WorkspaceBackupImportCoordinator {
         error,
         'WORKSPACE_IMPORT_VALIDATION_FAILED',
         'candidateValidation',
-      );
-    }
-  }
-
-  private readJournal() {
-    return this.options.importJournal.read().catch((error) => {
-      throw mapWorkspaceBackupImportError(
-        error,
-        'WORKSPACE_IMPORT_JOURNAL_FAILED',
-        'journal',
-      );
-    });
-  }
-
-  private readRegistry(stage: 'registryRead' | 'registryPublish') {
-    return this.options.registry.read().catch((error) => {
-      throw mapWorkspaceBackupImportError(
-        error,
-        'WORKSPACE_IMPORT_REGISTRY_FAILED',
-        stage,
-      );
-    });
-  }
-
-  private async writeRegistry(value: unknown): Promise<void> {
-    try {
-      await this.options.registry.write(value);
-    } catch (error) {
-      throw mapWorkspaceBackupImportError(
-        error,
-        'WORKSPACE_IMPORT_REGISTRY_FAILED',
-        'registryPublish',
-      );
-    }
-  }
-
-  private async advanceJournal(
-    current: Readonly<WorkspaceBackupImportJournal>,
-    state: WorkspaceBackupImportJournalState,
-    lineageIdentity: Readonly<WorkspaceLineageIdentityV1> | null =
-      current.lineageIdentity,
-  ): Promise<Readonly<WorkspaceBackupImportJournal>> {
-    const next = Object.freeze({ ...current, state, lineageIdentity });
-    await this.writeJournal(next);
-    return next;
-  }
-
-  private async writeJournal(
-    journal: Readonly<WorkspaceBackupImportJournal>,
-  ): Promise<void> {
-    try {
-      await this.options.importJournal.write(journal);
-    } catch (error) {
-      throw mapWorkspaceBackupImportError(
-        error,
-        'WORKSPACE_IMPORT_JOURNAL_FAILED',
-        'journal',
-      );
-    }
-  }
-
-  private async removeJournal(
-    operationId: WorkspaceBackupImportOperationId,
-  ): Promise<void> {
-    try {
-      await this.options.importJournal.remove(operationId);
-    } catch (error) {
-      throw mapWorkspaceBackupImportError(
-        error,
-        'WORKSPACE_IMPORT_JOURNAL_FAILED',
-        'journal',
       );
     }
   }
@@ -631,4 +661,27 @@ function validateImportTime(now: () => Date): string {
 
 function createLineage(profileId: string): Readonly<WorkspaceLineageIdentityV1> {
   return Object.freeze({ formatVersion: 1, profileId });
+}
+
+function captureOwner(owner: WorkspaceBackupImportOwner): Readonly<WorkspaceBackupImportOwner> {
+  if (owner === undefined || owner === null ||
+      ['assertCurrent', 'assertMainCurrent', 'assertMainOwned', 'onUncertain', 'onTerminalAfterRelease', 'createBinding']
+        .some(key => typeof owner[key as keyof WorkspaceBackupImportOwner] !== 'function')) {
+    throw new WorkspaceBackupImportError('WORKSPACE_IMPORT_RECOVERY_REQUIRED', 'recovery');
+  }
+  return Object.freeze({ assertCurrent: owner.assertCurrent.bind(owner), assertMainCurrent: owner.assertMainCurrent.bind(owner),
+    assertMainOwned: owner.assertMainOwned.bind(owner), onUncertain: owner.onUncertain.bind(owner),
+    onTerminalAfterRelease: owner.onTerminalAfterRelease.bind(owner), createBinding: owner.createBinding.bind(owner) });
+}
+
+function sameSelected<T>(slots: ReadOnlyJournalSlots<T>, expected: Readonly<{ bytes: Uint8Array; identity?: Readonly<CrashSafeFileSlotIdentity> }>): boolean {
+  return slots.current?.identity !== undefined && expected.identity !== undefined && slots.next === undefined && slots.backup === undefined &&
+    slots.current.bytes.byteLength === expected.bytes.byteLength && slots.current.bytes.every((value, index) => value === expected.bytes[index]) &&
+    sameCrashSafeFileSlotIdentity(slots.current.identity, expected.identity);
+}
+
+function journalSelection(selected: Readonly<{ bytes: Uint8Array; identity: Readonly<CrashSafeFileSlotIdentity> }> | undefined,
+  assertAuthority: () => void, assertExternalSelection: () => Promise<void>): CrashSafeByteSlotSelection {
+  return { expectedSlots: { current: selected?.bytes, next: undefined, backup: undefined },
+    expectedIdentities: { current: selected?.identity, next: undefined, backup: undefined }, assertAuthority, assertExternalSelection };
 }

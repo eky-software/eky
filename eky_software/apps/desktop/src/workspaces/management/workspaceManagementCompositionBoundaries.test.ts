@@ -93,7 +93,7 @@ describe('workspace management composition boundaries', () => {
         workspaceComposition,
         'maintenanceLease: options.maintenanceLease,',
       ),
-    ).toBe(9); // Replacement binding and delete preparation borrow the installation owner.
+    ).toBe(10); // Import/replacement bindings and delete preparation borrow the installation owner.
     expect(workspaceComposition).toContain("completionMode: 'beforeRuntimeStart' as const");
     expect(workspaceComposition).toContain('assertRecoveryAdmission: options.assertRecoveryAdmission,');
     expect(workspaceComposition).toContain('workspaceRuntimeAbsence: options.workspaceRuntimeAbsence,');
@@ -104,7 +104,7 @@ describe('workspace management composition boundaries', () => {
       'runtimeRelaunchCompletion: {',
     );
     expect(workspaceComposition).not.toContain('runtimeRelaunchCompletion: deletion === undefined ?');
-    expect(workspaceComposition).toContain('options.runtimeRelaunch.complete(() => {\n            assertReplacementAvailable();');
+    expect(workspaceComposition).toContain('options.runtimeRelaunch.complete(() => {\n            if (assertImport !== undefined) assertUpdateJournalAuthority(assertImport);\n            assertReplacementAvailable();');
     expect(workspaceComposition).toContain('options.runtimeRelaunch.complete(() => {');
     expect(workspaceComposition).toContain('if (assertCurrent !== undefined) assertUpdateJournalAuthority(assertCurrent);');
     expect(workspaceComposition).toContain('if (assertReturn !== undefined) assertUpdateJournalAuthority(assertReturn);');

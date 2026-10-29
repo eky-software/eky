@@ -26,6 +26,8 @@ import {
 } from '../import/workspaceBackupImportJournalPaths.js';
 import { WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImportJournalStore.js';
 import { NodeWorkspaceBackupImportRootStore } from '../import/workspaceBackupImportRootStore.js';
+import { WorkspaceBackupImportBinding } from '../import/workspaceBackupImportBinding.js';
+import type { WorkspaceBackupImportOwner } from '../import/workspaceBackupImportOwner.js';
 import { WorkspaceBackupPlaintextQuarantine } from '../import/workspaceBackupPlaintextQuarantine.js';
 import type {
   InMemoryWorkspaceMaintenanceLease,
@@ -106,6 +108,12 @@ export interface WorkspaceManagementCompositionOptions {
   readonly replacementOwner: Readonly<{
     assertCurrent(): void;
     assertOwned(): Promise<void>;
+    invalidate(): void;
+  }>;
+  readonly importOwner: Readonly<{
+    assertCurrent(): void;
+    assertMainCurrent(): void;
+    assertMainOwned(): Promise<void>;
     invalidate(): void;
   }>;
   readonly resourcesPath: string;
@@ -203,6 +211,13 @@ export async function createWorkspaceManagementComposition(
   options: Readonly<WorkspaceManagementCompositionOptions | SelectorWorkspaceManagementCompositionOptions>,
 ): Promise<Readonly<WorkspaceManagementComposition | SelectorWorkspaceManagementComposition>> {
   const replacementOwner = options.mode === 'selector' ? undefined : captureReplacementOwner(options.replacementOwner);
+  const importOwner = Object.freeze({ assertCurrent: options.importOwner.assertCurrent.bind(options.importOwner),
+    assertMainCurrent: options.importOwner.assertMainCurrent.bind(options.importOwner),
+    assertMainOwned: options.importOwner.assertMainOwned.bind(options.importOwner), invalidate: options.importOwner.invalidate.bind(options.importOwner) });
+  let importUncertain = false;
+  let managementClosed = false;
+  let assertImportReturn: (() => void) | undefined;
+  let markImportUncertain: (() => void) | undefined;
   const candidateRuntimeFactory = await createCandidateRuntimeFactory(options);
   const backupCandidate = new PrivateWorkspaceBackupCandidateAdapter(
     candidateRuntimeFactory,
@@ -272,6 +287,49 @@ export async function createWorkspaceManagementComposition(
     activeWorkspaceLifecycle: options.activeWorkspaceLifecycle,
     backupCandidate,
     backupContainer,
+    captureImportOwner(lease) {
+      const assertLease = options.maintenanceLease.captureCurrentOwner(['import'], lease);
+      let terminal = false;
+      const generation = (): void => {
+        if (importUncertain || managementClosed) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+        assertUpdateJournalAuthority(importOwner.assertCurrent);
+      };
+      const current = (): void => { generation(); assertUpdateJournalAuthority(assertLease); };
+      const mainCurrent = (): void => { current(); assertUpdateJournalAuthority(importOwner.assertMainCurrent); };
+      const mainOwned = async (): Promise<void> => {
+        mainCurrent(); await importOwner.assertMainOwned(); mainCurrent();
+      };
+      const invalidate = (): void => {
+        if (importUncertain) return;
+        importUncertain = true;
+        const failures: unknown[] = [];
+        for (const close of [() => service.closeAdmission(), () => operationGuard.dispose(), () => assertUpdateJournalAuthority(importOwner.invalidate)]) {
+          try { close(); } catch (error) { failures.push(error); }
+        }
+        if (failures.length !== 0) throw new AggregateError(failures, 'WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+      };
+      markImportUncertain = invalidate;
+      current();
+      assertImportReturn = () => {
+        generation();
+        if (!terminal) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+        assertUpdateJournalAuthority(importOwner.assertMainCurrent);
+      };
+      return Object.freeze({ assertCurrent: current, assertMainCurrent: mainCurrent, assertMainOwned: mainOwned,
+        onUncertain: invalidate,
+        onTerminalAfterRelease() {
+          generation(); terminal = true;
+        },
+        createBinding(input: Parameters<WorkspaceBackupImportOwner['createBinding']>[0]) {
+          mainCurrent();
+          return new WorkspaceBackupImportBinding({ userDataRoot: options.userDataRoot, ...input,
+            lease, maintenanceLease: options.maintenanceLease, registry,
+            runtimeAbsence: options.activeWorkspaceLifecycle,
+            mainOwner: { assertCurrent: mainCurrent, assertOwned: mainOwned },
+          });
+        },
+      });
+    },
     importJournal: new WorkspaceBackupImportJournalStore({
       filePath: importJournalPath,
       installationRoot: options.userDataRoot,
@@ -413,15 +471,24 @@ export async function createWorkspaceManagementComposition(
       complete(assertCurrent) {
         // Only deletion's return borrows a live lease; replacement has released it.
         const assertReturn = assertDeletionReturn;
+        const assertImport = assertImportReturn;
         try {
+          if (importUncertain) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
           assertReplacementAvailable();
           options.runtimeRelaunch.complete(() => {
+            if (assertImport !== undefined) assertUpdateJournalAuthority(assertImport);
             assertReplacementAvailable();
             if (assertCurrent !== undefined) assertUpdateJournalAuthority(assertCurrent);
             if (assertReturn !== undefined) assertUpdateJournalAuthority(assertReturn);
             assertReplacementAvailable();
           });
-        } finally { assertDeletionReturn = undefined; }
+        } catch (error) {
+          if (assertImport !== undefined && markImportUncertain !== undefined) {
+            try { markImportUncertain(); }
+            catch (secondary) { throw new AggregateError([error, secondary], 'WORKSPACE_IMPORT_RECOVERY_REQUIRED'); }
+          }
+          throw error;
+        } finally { assertDeletionReturn = undefined; assertImportReturn = undefined; }
       },
     },
     switchWorkspace,
@@ -430,10 +497,12 @@ export async function createWorkspaceManagementComposition(
   const composition: SelectorWorkspaceManagementComposition = Object.freeze({
     service,
     dispose() {
+      // Capability disposal seals new requests, not the already captured import owner.
       service.closeAdmission();
       operationGuard.dispose();
     },
     async shutdown() {
+      managementClosed = true;
       await service.shutdown();
       operationGuard.dispose();
     },
