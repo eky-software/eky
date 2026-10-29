@@ -85,6 +85,7 @@ export interface ProfileRestoreColdRollbackMutationAuthority {
 export interface ProfileRestoreTerminalMutationAuthority {
   readonly census: ProfileRestoreTerminalCleanupCensus;
   assertCurrent(journal: Readonly<ProfileRestoreActivationJournal>, removed: ReadonlySet<string>): Promise<void>;
+  readonly assertMutationCurrent?: () => void;
 }
 
 export interface ProfileRestoreRollbackRootRemovalAuthority {
@@ -398,13 +399,15 @@ export class ProfileRestoreActivationTransaction {
     assertRecoveryAuthority?: () => Promise<void>,
     terminalAuthority?: ProfileRestoreTerminalMutationAuthority,
   ): Promise<Readonly<ProfileRestoreActivationJournal>> {
+    terminalAuthority = captureTerminalAuthority(terminalAuthority);
+    const assertMutation = terminalAuthority?.assertMutationCurrent;
     const assertTerminal = terminalAuthority === undefined ? assertRecoveryAuthority : async () => {
       await this.assertTerminalMutation(expected!, new Set(), assertRecoveryAuthority, terminalAuthority);
       await this.assertTerminalCleanupCensus(terminalAuthority.census, new Set(), expected!);
       await this.assertTerminalMutation(expected!, new Set(), assertRecoveryAuthority, terminalAuthority);
     };
     if (terminalAuthority !== undefined && expected === undefined) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
-    const journal = await this.requireTerminalJournal(expected, assertTerminal);
+    const journal = await this.requireTerminalJournal(expected, assertTerminal, assertMutation);
     if (journal.phase === 'accepted') {
       return captureJournal(journal);
     }
@@ -422,7 +425,8 @@ export class ProfileRestoreActivationTransaction {
     };
     await assertPublication(journal);
     return captureJournal(await this.advanceJournal(
-      journal, 'accepted', { previous: captureJournal(journal), assertCurrent: assertPublication },
+      journal, 'accepted', { previous: captureJournal(journal), assertCurrent: assertPublication,
+        ...(assertMutation === undefined ? {} : { assertMutationCurrent: assertMutation }) },
     ));
   }
 
@@ -431,12 +435,13 @@ export class ProfileRestoreActivationTransaction {
     assertRecoveryAuthority?: () => Promise<void>,
     terminalAuthority?: ProfileRestoreTerminalMutationAuthority,
   ): Promise<void> {
+    terminalAuthority = captureTerminalAuthority(terminalAuthority);
     const assertTerminal = terminalAuthority === undefined ? assertRecoveryAuthority : async () => {
       await this.assertTerminalMutation(expected, new Set(), assertRecoveryAuthority, terminalAuthority);
       await this.assertTerminalCleanupCensus(terminalAuthority.census, new Set(), expected);
       await this.assertTerminalMutation(expected, new Set(), assertRecoveryAuthority, terminalAuthority);
     };
-    const journal = await this.requireTerminalJournal(expected, assertTerminal);
+    const journal = await this.requireTerminalJournal(expected, assertTerminal, terminalAuthority?.assertMutationCurrent);
     if (journal.phase !== 'accepted') throw new Error('PROFILE_RESTORE_ACCEPT_INVALID');
     await this.cleanupAccepted(journal, assertRecoveryAuthority, terminalAuthority);
   }
@@ -903,6 +908,9 @@ export class ProfileRestoreActivationTransaction {
         await assertProfileRestoreCleanupEntry(entry, removed);
         // The asynchronous identity reads must not outlive the deletion grant.
         await this.assertTerminalMutation(journal, removed, assertRecoveryAuthority, terminalAuthority);
+        if (terminalAuthority?.assertMutationCurrent !== undefined) {
+          assertSynchronousRollbackRootAuthority(terminalAuthority.assertMutationCurrent);
+        }
         try {
           if (entry.kind === 'file') await fileSystem.unlink(entry.path);
           else await fileSystem.rmdir(entry.path);
@@ -918,7 +926,7 @@ export class ProfileRestoreActivationTransaction {
       await this.assertTerminalMutation(journal, removed, assertRecoveryAuthority, terminalAuthority);
       await this.assertTerminalCleanupCensus(census, removed, journal);
       await this.assertTerminalMutation(journal, removed, assertRecoveryAuthority, terminalAuthority);
-    });
+    }, terminalAuthority?.assertMutationCurrent);
   }
 
   private async assertTerminalMutation(
@@ -1335,6 +1343,16 @@ async function assertPathMissing(path: string): Promise<void> {
   if (await pathExists(path)) {
     throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
   }
+}
+
+function captureTerminalAuthority(authority?: ProfileRestoreTerminalMutationAuthority): ProfileRestoreTerminalMutationAuthority | undefined {
+  if (authority === undefined) return undefined;
+  if (authority === null || typeof authority.assertCurrent !== 'function' ||
+      (authority.assertMutationCurrent !== undefined && typeof authority.assertMutationCurrent !== 'function')) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+  return Object.freeze({ census: authority.census, assertCurrent: authority.assertCurrent.bind(authority),
+    ...(authority.assertMutationCurrent === undefined ? {} : { assertMutationCurrent: authority.assertMutationCurrent.bind(authority) }) });
 }
 
 async function pathExists(path: string): Promise<boolean> {

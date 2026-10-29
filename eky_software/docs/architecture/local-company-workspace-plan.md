@@ -5505,6 +5505,32 @@ Koko main-kytkentä ei ole hyväksytty. Seuraava työ on jäljellä olevan
 tarkistuskertautumisen rajaus ilman aikarajan nostoa tai samoja uusintoja;
 sen jälkeen live-/rolledBack-kytkentä ja puhtaan paketin portit.
 
+**Live-terminalin nykyinen kohdenäyttö 29.10.2026.** Uusi valinnainen
+valintaportti käyttää nykyistä 35 sekunnin työtä ja yhteistä 3 sekunnin
+sulkua. Se kaappaa callbackit ennen odotuksia, seuraa alkuperäistä työtä ja
+sulkee muutosvaltuuden ennen keskeytystä. Valinta tarkistetaan ennen tuoretta
+fence-/snapshot-/claim-todistusta. Journalin korjaus, julkaisu, jokainen
+payload-poisto ja terminal-clear saavat viimeisen synkronisen vartijan.
+Tavalliset ja C:n kutsujat ilman tätä porttia säilyttävät nykyisen polkunsa.
+
+Kesken jäänyt tai toistettu snapshot-callback sekä aloittamatta tai
+odottamatta jätetty tarkistus eivät tuota hyväksyntää. Ensivirhe säilyy
+ennen sulkuvirheitä. Epävarma työ tai sulku säilyttää leasen ja varaukset;
+myöhäinen tulos ei vapauta niitä. Sulkuajan sisällä valmistuva alkuperäinen
+varaus voidaan vielä sulkea omalla natiivivaltuudellaan. Pelkkä työodotuksen
+peruuntuminen ei mitätöi tätä sulkua. Varmasti päättynyt tavallinen virhepolku
+vapauttaa leasen vasta todetun sulun jälkeen, jotta nykyinen pysäytetyn
+backendin rollback säilyy mahdollisena.
+
+Jäädytetty neljän tiedoston sarja läpäisi 478 testiä, tyypitys ja rajattu
+riippumaton katselmus korjausdeltoineen läpäisivät. Mukana ovat aikarajan
+yli jatkuva alkuperäinen työ, myöhäinen varaus, sulun aikana valmistuva
+varaus, odottamaton ja päällekkäinen grant, callbackin elinikä, muuttunut
+valinta, ensivirhe sekä sulku- ja vapautusvirheet. Mainin 14 kohdekontrollia
+läpäisivät ennen viimeistä varauksen sulkutarkennusta. Koko main-ketjun
+katselmus ja regressiot ovat kesken; tämä ei hyväksy pakettia tai muita
+W7.4 A-F:n liitoksia. Aikarajoja ei muutettu.
+
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja
 `ProfileRestoreStartupRecovery`n testit laajennetaan, ei korvata. Todista

@@ -25,118 +25,32 @@ sulun sekä hallitun peruutuspaluun. **Varsinaista poistokanavaa, preload-
 metodia tai poistopainiketta ei ole avattu.** Hyväksytty valmistelu ei
 ole yrityksen poiston `completed`-tulos.
 
-**W7.4:n seuraava pala:** [omistava toteutussopimus](local-company-workspace-plan.md#w74n-toteutussopimus)
-nimeää nykyiset omistajat, pysyvän valtuuden luovutuksen, kohdesidonnat,
-inventaarion, journalin, yhteisen delete/resume-ketjun ja todennusjärjestyksen.
-A:n codecit, journalin slottitarkistus, viiden omistajan sidontatallennin sekä kohdeluettelon todellinen
-tiedostojulkaisu, takaisinluku ja journalin viimeiseksi jättävä tekninen
-loppusiivous ovat lähteessä. Nykyinen rajattu ajo läpäisi 352 testiä ja
-desktopin jälkityypityksen; kaksi POSIX-testiä odottaa Linux-näyttöä.
-Julkaisun, sidontojen ja loppusiivouksen katselmushavainnot toistettiin, korjattiin ja
-delta-katselmuksessa suljettiin. W7.4:llä ei vielä ole PR-/main-hyväksyntää.
-Ensimmäisen B-liitoksen [palautussidonnan toteutussopimus](local-company-workspace-plan.md#w74-b-replacement-sidonnan-valtuus-ja-epävarma-tulos)
-erottaa palautuksen oman sulun koko sovelluksen sammutuksesta sekä
-epävarman tallennuksen tavallisesta palautuksesta ja paluukäynnistyksestä.
-Sopimuskatselmus läpäisi korjaavan journal-luvun suojan täsmennyksen jälkeen.
-Sidonnan ensimmäinen toteutusosa ja pysyvät regressiot ovat nyt lähteessä;
-95 kohdetestiä, tyyppitarkistus ja rajattu riippumaton koodikatselmus
-läpäisivät. Yksi POSIX-testi odottaa Linux-näyttöä. Koordinaattorin,
-mainin ja korjaavan journal-luvun tuotantokytkentää ei vielä muutettu.
-Seuraavaksi tämä kytkentä ja oikean main-ketjun näyttö, sitten muut B:n
-omistajaliitokset sekä C:n W7.3-luovutusraja.
-Kahden paluupolun [rajattu toteutusratkaisu](local-company-workspace-plan.md#replacementin-käynnistyspolkujen-yhteinen-omistajuusraja)
-säilyttää tuotannon deferred-handoffin ja nykyisen startup-hyväksynnän.
-Testit käyttävät nyt luovutusta ja erillistä startup-recoveryä. Sen sekä
-uuden rajatun `rolledBack`-cleanup-portin 177 kohdetestiä, oikean backupin
-kolme system-testiä ja molempien pakettien tyypitys läpäisivät. Rajattu
-katselmushavainto korjattiin ja delta-katselmus läpäisi. Seuraavaksi uuden
-startup-omistajan main-valtuus ja pysyvän sidonnan tarkistusten kytkentä.
-Startup-lukija tarkistaa nyt molemmat nimetyt sidontapaikat ja erottaa
-sidonnattoman yhteensopivuushavainnon ilman arvattua omistajaa.
-Rekisteröity startup-valinta välittää validoidun lineagen muuttumattomana;
-adoptionin nykyinen polku säilyy. Nykyinen seitsemän tiedoston kohdesarja
-läpäisi 204 testiä; desktopin tyyppitarkistus ja rajattu riippumaton
-koodikatselmus läpäisivät. Aiemmat kohdeajot
-ovat päällekkäistä checkpoint-näyttöä, eivät tähän lisättäviä läpäisyjä;
-aiemmin nimetty POSIX-todennus on yhä kesken.
-Seuraavaksi katselmoidun sopimuksen vaihekohtaiset cold-/live-valtuudet
-sekä mainin alkuvalinta-, työlupa- ja `rolledBack`-cleanup-kytkentä
-säilyttäen nykyiset palautus-, kopioaktivointi- ja valitsinpalautustestit.
-Valintaportin alkuvalmistelulla ei ole nykyisessä cold-ketjussa käynnissä
-olevaa työdeadlinea. Rajattu katselmus ja neljä synteettistä koetta
-vahvistivat budjettirajan sekä alkuperäisen luvun ja sen sulun erottamisen
-odotuksen katkeamisesta. Omistaja hyväksyi 28.10.2026 vain uuden kytkennän
-saman 35 sekunnin työajan alkamisen ensimmäisestä valintatarkistuksesta
-ilman nollausta. Cold-apurien valinnainen määräaika-/valinta-/sulkuportti
-on nyt lähteessä: alkuperäinen työ seurataan sulkuun asti ja epävarmuus
-säilyttää oman tai lainatun huoltovarauksen. Yhdeksän tiedoston kohdesarja
-läpäisi 258 testiä (40 uutta); desktopin tyypitys ja rajattu riippumaton
-koodikatselmus läpäisivät. Aiemmat kohdeajot
-ovat päällekkäistä näyttöä, eivät tähän lisättäviä testimääriä.
-Main ei vielä välitä porttia. **29.10.2026 yhteinen
-[vaiheomistajien toteutussopimus](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus)**
-nimeää cold-alkuvalinnan saman 35 sekunnin määräajan, accepted-valinnan
-nykyisen backend-valmistelun sisällä sekä grantin alkuperäisen tehtävän
-seurannan. Live-terminal säilyttää oman nykyisen budjettinsa. RolledBack-
-loppusiivous käyttää tuoreen validointileasen ja saman sisältötarkistuksen
-jäljellä olevan ajan; uutta terminal-odotusta ei lisätä.
-Readonly-slottilukujen guardit ja mainin valmistelucallbackin vaihekohtainen
-vartija ovat nyt lähteessä. Yhdentoista tiedoston kohdesarja läpäisi
-422 testiä (41 uutta); desktopin tyypitys ja rajattu riippumaton koodikatselmus
-läpäisivät. Oikean synteettisen tiedoston viivästetty kahvasulku ei vapauta
-lukijaa tai salli seuraavaa slottilukua vanhentuneella luvalla. Aiemmat
-kohdeajot ovat päällekkäistä näyttöä, eivät näihin lisättäviä testimääriä.
-Startup-lukijan yhteinen registry-/switch-/sidontatilannekuva ja mainin
-rajattu valmisteluadapteri on toteutettu: niiden 65 kohdetestiä (21 uutta),
-tyypitys sekä rajattu katselmus ja korjausdelta läpäisivät. Mainin
-kaappaus-/cold-/accepted-/työlupakytkennän ehdokas ei vielä läpäise nykyistä
-source-null-paluutestiä. Rajattu koe vahvisti valintametadatan tarkistuksen
-kertautumisen. Rajattu sijoittelusopimus erottaa readonly-omistajuuden
-täydestä valinta- ja sisältötarkistuksesta; tiedostomuutosten tarkistukset
-ja aikarajat säilyvät. Yhdeksän tiedoston kohdesarja läpäisi 623 testiä
-(kolme alustakohtaista koetta jäi suorittamatta); katselmuksen korjausdelta
-läpäisi 15 kohdetestiä sekä tyypityksen ja riippumattoman katselmuksen.
-Sarjat ovat päällekkäistä näyttöä. Instrumentoimaton main-ketjun onnistunut
-source-null-paluu läpäisi, mutta `contentFailure` ylitti nykyisen testirajansa;
-seuraava tapaus estyi keskeneräisen työn vuoksi. Main-kytkentä ei vielä ole
-hyväksytty. Seuraava rajattu kirjoituskorjaus säilyttää journalin täydet
-valinta-/sisältövaatimukset todellisissa mutaatiokohdissa ja erottaa niiden
-sisäiset readonly-tarkistukset. Kuuden tiedoston loppusarja läpäisi 535
-testiä, tyypitys ja riippumaton katselmus korjausdeltoineen läpäisivät.
-Uudessa main-kohdeajossa onnistunut paluu läpäisi, mutta sisältövirhetapauksen
-aikakatkaisu ja sen jälkeinen jatkoesto säilyivät. Vaihekohtainen koe
-todensi kertautumisen vähentymisen, ei koko viiveen ratkaisua. Aikarajat
-säilyvät eikä samaa hylkäystä uusita vihreyden vuoksi. Rekisterin ja
-vaihtojournalin rajattu rinnakkaisluku säilyttää kaikki tarkistukset ja
-alkuperäisten töiden päättämisen; 88 kohdetestiä ja rajattu katselmus
-läpäisivät, mutta mainin sisältövirhetapauksen aikakatkaisu ei poistunut.
-Saman elävän snapshotin valinnainen validointijatko on toteutettu;
-sen ja valintaporttien viiden tiedoston yhteissarja läpäisi 200 testiä,
-desktopin tyypitys ja rajattu katselmus korjausdeltoineen läpäisivät.
-Recoveryn jatkoportti ja viimeiset poistovartijat on nyt kytketty alemmissa
-kerroksissa: 544 testin vaikutusalueen sarja sekä sen jälkeen 129 päällekkäisen
-kohdetestin katselmusdelta, tyypitys ja rajattu riippumaton katselmus
-läpäisivät. Mainin rolledBack-kytkentä on vielä todennettava ehdokas.
-Ankkurin valmistelun rajattu readonly-/valintatarkistusten erottelu läpäisi
-479 kohdetestiä, tyypityksen ja rajatun katselmuksen. Sen jälkeen oikean
-main-ketjun kolme source-null-rollback-tapausta läpäisivät nykyisillä
-aikarajoilla. Aiemmat aikakatkaisut säilyvät avoimina; uusi näyttö ei vielä
-hyväksy koko main-kytkentää. Live-jatkokytkentä,
-ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
-ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
-Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta
-läpäisivät; tämä valmistaa toteutuksen, ei sulje kytkennän näyttöporttia.
-Rajattu riippumaton sopimuskatselmus läpäisi migrationin switch-kontekstin
-ja source-nonnull-paluun odotusten täsmennysten jälkeen. Sopimustarkennus
-ei ole tämän kytkennän testinäyttö.
-Vanha välitön lähdehaara poistetaan vasta myös vastaavan main-ketjun näytön
-jälkeen; vanhaa replace-leasea tai runtime-poissaolon vartijaa ei käytetä
-elävän backendin loppuhyväksyntään. Native-/paketti-/PR-portit ovat kesken.
-Tekninen tallennusnäyttö ei hyväksy payload-poistoa.
-Tuotantokytkentä edellyttää W7-P4:n mukaista katselmoitua näyttöä, ei vain
-suunnitelman valmistumista. W7.5:n näkyvä käyttöönotto ja backenditon
-tukipaketti ovat erillinen seuraava pala; uusia käyttäytymispäätöksiä ei
-avata ilman todellista ristiriitaa.
+**W7.4:n nykyinen checkpoint 29.10.2026:** A:n journal-, inventaario- ja
+sidontatallennus on toteutettu. B:n replacement-liitos sekä palautuksen
+vaiheomistajien kytkentä ovat työn alla. Omistavat sopimukset:
+[W7.4 A-F](local-company-workspace-plan.md#w74n-omistajat-ja-muutosjärjestys) ja
+[mainin vaiheomistajat](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus).
+
+- Cold-valinta säilyttää saman 35 sekunnin työbudjetin valmistelusta lähtien.
+  Readonly-tarkistusten kertautumista on rajattu; täydet valinta-, sisältö-
+  ja mutaatiotarkistukset säilyvät omissa kohdissaan.
+- Live-terminalin valinnainen omistajuus ja viimeiset synkroniset
+  muutosvartijat on toteutettu. Alkuperäinen työ seurataan myös odotuksen
+  katketessa. Sulkuajan sisällä päättynyt työ voidaan sulkea normaalisti;
+  keskeneräinen työ säilyttää varaukset eikä myöhäinen tulos vapauta niitä.
+- Viimeisin jäädytetty alakerroksen neljän tiedoston sarja läpäisi 478 testiä;
+  desktopin tyyppitarkistus ja rajattu riippumaton katselmus läpäisivät.
+  Pääprosessin 14 kohdetestiä läpäisivät ennen viimeistä varauksen
+  sulkutarkennusta. Näyttö on päällekkäistä, ei yhteen laskettava testimäärä.
+- **Seuraava työ:** koko main-kytkennän katselmus ja palautusregressiot
+  samalla lähteellä, sitten B:n muut omistajaliitokset ja C:n W7.3-luovutus.
+  Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
+  W7.5:n poistokanavaa ei avata.
+
+[Aiemmat W7.4-checkpointit](release-0.3.0-integration-history.md#w74n-palautuskytkennän-checkpointit-29102026)
+säilyvät historiassa. Niiden väliaikaiset jatkoehdotukset eivät ole
+rinnakkainen työjono. Aiemmat aikakatkaisut ja epävarmat tulokset säilyvät
+avoimina; nykyiset läpäisyt eivät todista kaikkia niiden syitä korjatuiksi.
 
 **Avoimet havainnot:** korjatun PR-headin ensimmäinen workspace-paketin
 valmistelu päättyi luokittelemattomaan rakennusvirheeseen ennen valmista

@@ -614,6 +614,53 @@ describe('profile restore activation transaction', () => {
     })).rejects.toThrow('PROFILE_INSPECTION_TIMEOUT');
   });
 
+  it.each(['repair', 'publication', 'leaf', 'journalRemoval'] as const)(
+    'requires the pinned synchronous live guard at %s', async boundary => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      let selected = await f.transaction.advanceToValidation();
+      if (boundary !== 'publication') selected = await f.transaction.commitAcceptance(selected);
+      const census = await f.transaction.readTerminalCleanupCensus(selected);
+      const before = await captureEvidence(f);
+      const journalPath = join(dirname(dirname(f.activeDatabasePath)), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const first = new Error('SYNTHETIC_LIVE_MUTATION_REVOKED'); let revoked = boundary === 'repair' || boundary === 'leaf';
+      if (boundary === 'repair') await writeFile(`${journalPath}.backup`, 'retained side slot');
+      if (boundary === 'publication') {
+        const write = f.journalStore.write.bind(f.journalStore);
+        vi.spyOn(f.journalStore, 'write').mockImplementation(async (...args) => { revoked = true; await write(...args); });
+      }
+      if (boundary === 'journalRemoval') {
+        const clear = f.journalStore.clear.bind(f.journalStore);
+        vi.spyOn(f.journalStore, 'clear').mockImplementation(async (...args) => { revoked = true; await clear(...args); });
+      }
+      const mutation = vi.fn(() => { if (revoked) throw first; });
+      const authority = { census, assertMutationCurrent: mutation, async assertCurrent() {} };
+      const outcome = boundary === 'publication' ? f.transaction.commitAcceptance(selected, undefined, authority)
+        : f.transaction.clearAccepted(selected, undefined, authority);
+      const failure = await outcome.catch(error => error);
+      expect(failure === first || failure.cause === first).toBe(true);
+      expect(mutation).toHaveBeenCalled(); expect(await f.journalStore.peek()).toEqual(selected);
+      if (boundary === 'repair') expect(await readFile(`${journalPath}.backup`, 'utf8')).toBe('retained side slot');
+      if (boundary !== 'journalRemoval') expect(await captureEvidence(f)).toEqual(before);
+      else {
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      }
+    },
+  );
+
+  it('pins the live terminal mutation guard before awaiting a replaceable callback', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation();
+    const census = await f.transaction.readTerminalCleanupCensus(selected);
+    const foreign = vi.fn(() => { throw new Error('FOREIGN_GUARD'); }); const mutation = vi.fn();
+    const authority = { census, assertMutationCurrent: mutation, async assertCurrent() {
+      authority.assertCurrent = foreign; authority.assertMutationCurrent = foreign;
+    } };
+    const accepted = await f.transaction.commitAcceptance(selected, undefined, authority);
+    expect(accepted.phase).toBe('accepted'); expect(mutation).toHaveBeenCalledTimes(8);
+    expect(foreign).not.toHaveBeenCalled();
+  });
+
   it('does not delete a captured leaf when terminal authority expires during the final journal read', async () => {
     const f = await createFixture();
     await f.transaction.prepare(operationId);

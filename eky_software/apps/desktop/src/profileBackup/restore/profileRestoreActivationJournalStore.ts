@@ -26,6 +26,7 @@ const maximumJournalBytes = 64 * 1024;
 interface ProfileRestoreJournalSelectionAuthority {
   readonly previous: Readonly<ProfileRestoreActivationJournal>;
   assertCurrent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+  readonly assertMutationCurrent?: () => void;
 }
 
 export type ProfileRestoreJournalWriteAuthority = ProfileRestoreJournalSelectionAuthority & (
@@ -145,6 +146,10 @@ export class ProfileRestoreActivationJournalStore {
     }
 
     const suppliedContext = authority !== undefined && 'writeContext' in authority ? authority.writeContext : undefined;
+    const suppliedMutation = authority !== undefined && 'assertMutationCurrent' in authority ? authority.assertMutationCurrent : undefined;
+    if (suppliedMutation !== undefined && (typeof suppliedMutation !== 'function' || authority?.previous === undefined ||
+        typeof authority.assertCurrent !== 'function')) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+    const assertLiveMutation = suppliedMutation?.bind(authority);
     if (suppliedContext !== undefined && (authority === undefined || !('kind' in authority) ||
         authority.kind !== 'separateContent' || authority.previous === undefined || suppliedContext === null ||
         typeof suppliedContext.assertReadCurrent !== 'function' || typeof suppliedContext.assertMutationCurrent !== 'function')) {
@@ -155,13 +160,18 @@ export class ProfileRestoreActivationJournalStore {
       assertReadCurrent: suppliedContext.assertReadCurrent.bind(suppliedContext),
       assertMutationCurrent: suppliedContext.assertMutationCurrent.bind(suppliedContext),
     });
-    if (writeContext !== undefined) {
+    if (writeContext !== undefined || assertLiveMutation !== undefined) {
       const supplied = authority as Extract<ProfileRestoreJournalWriteAuthority, { kind: 'separateContent' }>;
-      if (typeof supplied.assertCurrent !== 'function' || typeof supplied.assertContent !== 'function') {
+      if (typeof supplied.assertCurrent !== 'function' ||
+          (supplied.kind === 'separateContent' && typeof supplied.assertContent !== 'function')) {
         throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
       }
-      authority = Object.freeze({ kind: 'separateContent', previous: captureProfileRestoreActivationJournal(supplied.previous),
-        assertCurrent: supplied.assertCurrent.bind(supplied), assertContent: supplied.assertContent.bind(supplied), writeContext });
+      authority = Object.freeze({ previous: captureProfileRestoreActivationJournal(supplied.previous),
+        assertCurrent: supplied.assertCurrent.bind(supplied),
+        ...(supplied.kind === 'separateContent' ? { kind: 'separateContent' as const,
+          assertContent: supplied.assertContent.bind(supplied), ...(writeContext === undefined ? {} : { writeContext }) }
+          : { kind: supplied.kind }),
+      });
     }
     const directoryPath = dirname(this.filePath);
     let previousMoved = false;
@@ -215,6 +225,7 @@ export class ProfileRestoreActivationJournalStore {
     };
     const assertMutationCurrent = () => {
       if (writeContext !== undefined) assertSynchronousProfileRestoreMutationAuthority(writeContext.assertMutationCurrent);
+      if (assertLiveMutation !== undefined) assertSynchronousProfileRestoreMutationAuthority(assertLiveMutation);
     };
     try {
       if (authority !== undefined && 'kind' in authority &&
@@ -229,10 +240,12 @@ export class ProfileRestoreActivationJournalStore {
         throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
       }
       await assertSelected();
-      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+      if (writeContext !== undefined) await assertMutation();
+      assertMutationCurrent();
       await mkdir(directoryPath, { mode: 0o700, recursive: true });
       await assertBefore();
-      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+      if (writeContext !== undefined) await assertMutation();
+      assertMutationCurrent();
       await chmod(directoryPath, 0o700);
       await assertPrivateDirectory(directoryPath);
       await assertSelected();
@@ -246,7 +259,8 @@ export class ProfileRestoreActivationJournalStore {
       if (contentAuthority !== undefined) {
         await assertSelected();
       }
-      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+      if (writeContext !== undefined) await assertMutation();
+      assertMutationCurrent();
       const nextFile = await open(this.nextPath, 'wx', 0o600);
       nextCreated = true;
       let writeFailure: unknown;
@@ -272,7 +286,8 @@ export class ProfileRestoreActivationJournalStore {
           await assertOpenedNext();
           await assertBefore();
         }
-        if (writeContext !== undefined) { await assertMutation(assertOpenedNext); assertMutationCurrent(); }
+        if (writeContext !== undefined) await assertMutation(assertOpenedNext);
+        assertMutationCurrent();
         await nextFile.writeFile(
           `${JSON.stringify(next)}\n`,
           'utf8',
@@ -289,7 +304,8 @@ export class ProfileRestoreActivationJournalStore {
         }
       }
       await assertBefore();
-      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+      if (writeContext !== undefined) await assertMutation();
+      assertMutationCurrent();
       await chmod(this.nextPath, 0o600);
 
       await assertSelected();
@@ -303,7 +319,8 @@ export class ProfileRestoreActivationJournalStore {
           if (contentAuthority !== undefined) {
             await assertSelected();
           }
-          if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+          if (writeContext !== undefined) await assertMutation();
+          assertMutationCurrent();
           await rename(this.filePath, this.backupPath);
           previousMoved = true;
         } catch (error) {
@@ -325,7 +342,8 @@ export class ProfileRestoreActivationJournalStore {
           assertProfileRestoreActivationJournalMatches(next, await readJournal(this.nextPath));
           await assertBefore();
         }
-        if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+        if (writeContext !== undefined) await assertMutation();
+        assertMutationCurrent();
         await rename(this.nextPath, this.filePath);
         published = true;
         await syncDirectory(directoryPath);
@@ -353,7 +371,8 @@ export class ProfileRestoreActivationJournalStore {
           await assertSlotsAbsent([this.nextPath]);
           await authority.assertCurrent(next);
         }
-        if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
+        if (writeContext !== undefined) await assertMutation();
+        assertMutationCurrent();
         await rm(this.backupPath, { force: true });
         await syncDirectory(directoryPath);
       }

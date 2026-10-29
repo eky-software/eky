@@ -30,6 +30,47 @@ afterEach(context => {
 const boundaries = ['mkdir', 'chmodDirectory', 'openNext', 'writeNext', 'chmodNext', 'movePrevious', 'publishNext', 'removePrevious'] as const;
 
 describe('scoped restore journal write ownership', () => {
+  it.each(boundaries.map((name, index) => ({ name, boundary: index + 1 })))(
+    'retains live-terminal evidence when the last guard fails before $name', async ({ boundary }) => {
+      const f = await fixture(); const first = new Error('SYNTHETIC_LIVE_OWNER_REVOKED'); let calls = 0;
+      await expect(f.store.write(f.next, { previous: f.previous, async assertCurrent() {},
+        assertMutationCurrent() { if (++calls === boundary) throw first; },
+      })).rejects.toMatchObject({ cause: first });
+      expect(calls).toBe(boundary); expect(await slots(f)).toEqual(expectedBefore(f, boundary));
+    },
+  );
+
+  it.each(['combined', 'separateContent'] as const)('pins a %s live guard and callbacks before the first await', async kind => {
+    const f = await fixture(); const foreign = vi.fn(() => { throw new Error('SYNTHETIC_FOREIGN_GUARD'); });
+    const guard = vi.fn(); const content = vi.fn(async () => {});
+    const authority: ProfileRestoreJournalWriteAuthority = { kind, previous: f.previous, assertMutationCurrent: guard,
+      async assertCurrent() { Object.assign(authority, { assertMutationCurrent: foreign, assertCurrent: foreign,
+        assertContent: foreign, previous: { ...f.previous, revision: 999 } }); },
+      ...(kind === 'separateContent' ? { assertContent: content } : {}),
+    } as ProfileRestoreJournalWriteAuthority;
+    await f.store.write(f.next, authority);
+    expect(guard).toHaveBeenCalledTimes(8); expect(foreign).not.toHaveBeenCalled();
+    expect(content).toHaveBeenCalledTimes(kind === 'separateContent' ? 2 : 0);
+    expect(await slots(f)).toEqual({ current: bytes(f.next) });
+  });
+
+  it('requires both cold and live guards when supplied together', async () => {
+    const f = await fixture(); const first = new Error('SYNTHETIC_LIVE_GUARD'); const cold = vi.fn();
+    await expect(f.store.write(f.next, { ...f.authority({ writeContext: {
+      async assertReadCurrent() {}, assertMutationCurrent: cold,
+    } }), assertMutationCurrent() { throw first; } })).rejects.toMatchObject({ cause: first });
+    expect(cold).toHaveBeenCalledOnce(); expect(await slots(f)).toEqual(expectedBefore(f, 1));
+  });
+
+  it.each([null, 1, () => Promise.resolve(), () => Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD'))])(
+    'rejects a malformed or asynchronous live mutation guard', async guard => {
+      const f = await fixture(); const before = await slots(f);
+      await expect(f.store.write(f.next, { previous: f.previous, async assertCurrent() {}, assertMutationCurrent: guard as never }))
+        .rejects.toThrow();
+      expect(await slots(f)).toEqual(before);
+    },
+  );
+
   it.each(['combined', 'separateContent'] as const)('does not add a microtask before next-slot open for legacy %s', async kind => {
     const f = await fixture(); let ticks = 0; let generation = 0;
     const seen: number[] = [];
