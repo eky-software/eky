@@ -66,6 +66,56 @@ afterEach(context => {
 });
 
 describe('profile restore activation transaction', () => {
+  it.each(['completed', 'changedCensus', 'expiredMutation'] as const)(
+    'forwards the paired journal context with the rollback census (%s)', async outcome => {
+      const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+      const read = vi.fn(async () => {}); const full = vi.fn(async () => {});
+      const census = vi.spyOn(f.transaction, 'readRollbackRecoverySources');
+      const content = vi.fn(async (journal: Readonly<ProfileRestoreActivationJournal>) => {
+        await f.transaction.readRollbackRecoverySources(journal);
+      });
+      let mutations = 0; let scopedReads = 0;
+      let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+      const originalWrite = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (authority === undefined || !('kind' in authority) || authority.kind !== 'separateContent' ||
+            authority.writeContext === undefined) throw new Error('missing paired write context');
+        const context = authority.writeContext;
+        await originalWrite(journal, { ...authority, writeContext: {
+          async assertReadCurrent(current) {
+            scopedReads++;
+            if (outcome === 'changedCensus' && scopedReads === 1) {
+              await writeFile(join(f.failedRoot, operationId, 'foreign-evidence'), 'retain foreign bytes');
+              retained = await captureEvidence(f);
+            }
+            const before = census.mock.calls.length; const metadataBefore = full.mock.calls.length;
+            await context.assertReadCurrent(current);
+            expect(census.mock.calls.length).toBeGreaterThan(before);
+            expect(full).toHaveBeenCalledTimes(metadataBefore);
+          },
+          assertMutationCurrent: context.assertMutationCurrent,
+        } });
+      });
+      const work = f.transaction.rollback(selected, full, { assertContent: content, async beforeStagingMove() {},
+        assertReadOwnership: read, assertMutationCurrent() {
+          mutations++;
+          if (outcome === 'expiredMutation') throw new Error('SYNTHETIC_MUTATION_REVOKED');
+        } });
+      if (outcome === 'completed') {
+        await expect(work).resolves.toMatchObject({ phase: 'rolledBack' });
+        expect(mutations).toBe(8);
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+      } else {
+        await expect(work).rejects.toThrow('PROFILE_RESTORE_ROLLBACK_FAILED');
+        if (retained !== undefined) expect(await captureEvidence(f)).toEqual(retained);
+        expect(await f.journalStore.peek()).toEqual(selected);
+        expect(mutations).toBe(outcome === 'expiredMutation' ? 1 : 0);
+      }
+      expect(scopedReads).toBeGreaterThan(0); expect(read).toHaveBeenCalled();
+    },
+  );
+
   it.each([false, true])('brackets rollback readonly checks without changing journal checkpoints (scoped: %s)', async scoped => {
     const f = await createFixture(); const selected = await beginInterruptedRollback(f);
     const full = vi.fn(async () => {}); const read = vi.fn(async () => {});

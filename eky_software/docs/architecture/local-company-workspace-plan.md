@@ -5407,11 +5407,45 @@ vajaa valtuus ei anna jatkolupaa. Vanha kutsuja ilman uutta porttia säilyy.
 
 Rollbackin readonly-ennakkotarkistuksessa kokonainen valinta ympäröi
 muuttumatonta journal-/tiedostoluettelo-/sisältötarkistusta. Sisäiset
-journal-luvut käyttävät fyysisen omistajuuden vartijaa. Journalin
-kirjoituscallbackien lukumäärä, tarkistuskohdat ja erillinen sisältövalidointi
-säilyvät: jokainen callback saa oman täyden alku-/lopputarkistuksen.
+journal-luvut käyttävät fyysisen omistajuuden vartijaa. Ensimmäisessä
+checkpointissa journalin jokainen kirjoituscallback säilytti oman täyden
+alku-/lopputarkistuksensa. Main-koe osoitti tämän ketjun olevan vielä kesken.
 Tämä ei ole muuttuvan metadatan välimuisti tai atomisen tilannekuvan lupaus.
 Portti syntyy vain nykyisestä valintaa seuraavasta cold-omistajasta.
+
+**Kirjoitusrajan rajattu jatkosopimus:** vain uuden cold-kutsun
+`separateContent`-valtuus saa paritetun readonly-/mutaatiokontekstin.
+Journal, valtuuden laji, callbackit ja kontekstin puuttuminen kaapataan ennen
+ensimmäistä odotusta. Vajaa konteksti tai käyttö muussa kirjoituslajissa
+hylätään ennen tiedostotyötä. Sisäiset luvut säilyttävät fyysisen omistajuuden,
+täsmällisen journalivalinnan ja saman palautusluettelon tarkistuksen.
+Koko yritysvalinta tarkistetaan ennen jokaista hakemiston luontia, oikeuksien
+muutosta, uuden slotin avausta/kirjoitusta, julkaisusiirtoa ja varaslotin poistoa.
+Sisältötarkistus säilyy ennen julkaisua ja varaslotin poistoa.
+
+Täyden tarkistuksen jälkeen sidotaan vielä kyseisen vaiheen todelliset slotit:
+puuttuva next; avattu tyhjä next samalla kahva-/polkuidentiteetillä; kirjoitettu
+next; backupiin siirretty edeltäjä; julkaistu current ja säilynyt edeltäjä.
+Lopuksi aidosti synkroninen vartija estää seuraavan muutoksen menetetyllä
+valtuudella. Tämä säilyttää nykyisen yhteistyöomistajuuden, ei lupaa atomista
+tiedostojärjestelmätilannekuvaa. Julkaisun jälkeinen kuittaus tarkistetaan.
+Jo aloitettu kirjoitus, flush ja kahvan sulku seurataan loppuun; peruutus
+ei oikeuta jättämään niitä kesken. Muut kutsujat säilyttävät nykyisen polkunsa.
+Rajattu toteutus ja sen negatiiviset regressiot on nyt todennettu.
+Kuuden tiedoston sarja läpäisi 535 testiä; aiemmat 450 ja 36 testin ajot
+ovat päällekkäistä näyttöä. Mukana ovat kaikki kahdeksan mutaatiokohtaa,
+slotin vaihto täyden tarkistuksen aikana, avatun kahvan identiteetti,
+vajaa/vanhentunut valtuus, sisältöhylkäys, viivästetty sulku ja alkuperäisen
+työn säilyminen cold-määräajan yli. Tyypitys sekä rajattu riippumaton
+katselmus korjausdeltoineen läpäisivät. Vanhat kirjoittajat eivät saa
+ylimääräistä odotuskohtaa ennen mutaatiota; testi todentaa myös tämän.
+Main-ketjun onnistunut source-null-paluu läpäisi uuden kohdeajon,
+mutta `contentFailure` aikakatkaistiin edelleen ja seuraava tapaus estyi
+keskeneräisen työn vuoksi. Vaihekohtainen koe todensi kirjoituskertautumisen
+vähenemisen, ei koko viiveen ratkaisua. Mittauskytkentä poistettiin testistä.
+Main-ketjun loppuhyväksyntä, live-/rolledBack-jatkot ja paketoitu todennus
+ovat yhä avoinna. Aikarajoja ei muutettu eikä muuttumatonta epäonnistunutta
+ajoa toisteta vihreyden hakemiseksi.
 
 Yhdeksän tiedoston kohdesarja läpäisi 623 testiä; kolme POSIX-koetta jäi
 alustarajauksen vuoksi suorittamatta. Sen jälkeen katselmuksen kaksi

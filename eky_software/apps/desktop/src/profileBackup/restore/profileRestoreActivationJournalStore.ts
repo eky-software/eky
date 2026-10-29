@@ -33,6 +33,10 @@ export type ProfileRestoreJournalWriteAuthority = ProfileRestoreJournalSelection
   | {
     readonly kind: 'separateContent';
     assertContent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+    readonly writeContext?: {
+      assertReadCurrent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+      assertMutationCurrent(): void;
+    };
   }
 );
 
@@ -140,15 +144,37 @@ export class ProfileRestoreActivationJournalStore {
       throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     }
 
+    const suppliedContext = authority !== undefined && 'writeContext' in authority ? authority.writeContext : undefined;
+    if (suppliedContext !== undefined && (authority === undefined || !('kind' in authority) ||
+        authority.kind !== 'separateContent' || authority.previous === undefined || suppliedContext === null ||
+        typeof suppliedContext.assertReadCurrent !== 'function' || typeof suppliedContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+    }
+    // Capture the optional port and callbacks before any asynchronous work.
+    const writeContext = suppliedContext === undefined ? undefined : Object.freeze({
+      assertReadCurrent: suppliedContext.assertReadCurrent.bind(suppliedContext),
+      assertMutationCurrent: suppliedContext.assertMutationCurrent.bind(suppliedContext),
+    });
+    if (writeContext !== undefined) {
+      const supplied = authority as Extract<ProfileRestoreJournalWriteAuthority, { kind: 'separateContent' }>;
+      if (typeof supplied.assertCurrent !== 'function' || typeof supplied.assertContent !== 'function') {
+        throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+      }
+      authority = Object.freeze({ kind: 'separateContent', previous: captureProfileRestoreActivationJournal(supplied.previous),
+        assertCurrent: supplied.assertCurrent.bind(supplied), assertContent: supplied.assertContent.bind(supplied), writeContext });
+    }
     const directoryPath = dirname(this.filePath);
     let previousMoved = false;
     let nextCreated = false;
+    let nextWritten = false;
+    let published = false;
     const next = captureProfileRestoreActivationJournal(journal);
     const previous = authority?.previous === undefined ? undefined
       : captureProfileRestoreActivationJournal(authority.previous);
     const contentAuthority = authority !== undefined && 'kind' in authority && authority.kind === 'separateContent'
       ? authority : undefined;
-    const assertBefore = () => authority === undefined ? undefined
+    const assertBefore = () => writeContext !== undefined ? writeContext.assertReadCurrent(previous!)
+      : authority === undefined ? undefined
       : authority.previous === undefined ? authority.assertAbsent()
       : authority.assertCurrent(previous!);
     const assertContent = async (expected: Readonly<ProfileRestoreActivationJournal>) => {
@@ -171,6 +197,25 @@ export class ProfileRestoreActivationJournalStore {
       if (!nextCreated) await assertSlotsAbsent([this.nextPath]);
       await assertBefore();
     };
+    const assertMutation = async (checkOpenedNext?: () => Promise<void>) => {
+      if (writeContext === undefined) return;
+      await authority!.assertCurrent(published ? next : previous!);
+      if (published) {
+        assertProfileRestoreActivationJournalMatches(next, await readJournal(this.filePath));
+        assertProfileRestoreActivationJournalMatches(previous!, await readJournal(this.backupPath));
+        await assertSlotsAbsent([this.nextPath]);
+      } else {
+        await assertSelected();
+        if (nextWritten) assertProfileRestoreActivationJournalMatches(next, await readJournal(this.nextPath));
+        else if (nextCreated) {
+          if (checkOpenedNext === undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+          await checkOpenedNext();
+        }
+      }
+    };
+    const assertMutationCurrent = () => {
+      if (writeContext !== undefined) assertSynchronousProfileRestoreMutationAuthority(writeContext.assertMutationCurrent);
+    };
     try {
       if (authority !== undefined && 'kind' in authority &&
           authority.kind !== undefined && authority.kind !== 'combined' && authority.kind !== 'separateContent') {
@@ -184,8 +229,10 @@ export class ProfileRestoreActivationJournalStore {
         throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
       }
       await assertSelected();
+      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
       await mkdir(directoryPath, { mode: 0o700, recursive: true });
       await assertBefore();
+      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
       await chmod(directoryPath, 0o700);
       await assertPrivateDirectory(directoryPath);
       await assertSelected();
@@ -199,6 +246,7 @@ export class ProfileRestoreActivationJournalStore {
       if (contentAuthority !== undefined) {
         await assertSelected();
       }
+      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
       const nextFile = await open(this.nextPath, 'wx', 0o600);
       nextCreated = true;
       let writeFailure: unknown;
@@ -208,7 +256,8 @@ export class ProfileRestoreActivationJournalStore {
         if (contentAuthority !== undefined) {
           await assertBefore();
         }
-        if (createdNext !== undefined) {
+        const assertOpenedNext = async () => {
+          if (createdNext === undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
           const openedNext = await nextFile.stat({ bigint: true });
           const selectedNext = await lstat(this.nextPath, { bigint: true });
           if (!createdNext.isFile() || createdNext.size !== 0n || createdNext.nlink !== 1n ||
@@ -218,13 +267,18 @@ export class ProfileRestoreActivationJournalStore {
               selectedNext.dev !== createdNext.dev || selectedNext.ino !== createdNext.ino) {
             throw new Error('PROFILE_RESTORE_JOURNAL_UNAVAILABLE');
           }
+        };
+        if (createdNext !== undefined) {
+          await assertOpenedNext();
           await assertBefore();
         }
+        if (writeContext !== undefined) { await assertMutation(assertOpenedNext); assertMutationCurrent(); }
         await nextFile.writeFile(
           `${JSON.stringify(next)}\n`,
           'utf8',
         );
         await nextFile.sync();
+        nextWritten = true;
       } catch (error) {
         writeFailure = error;
         throw error;
@@ -235,6 +289,7 @@ export class ProfileRestoreActivationJournalStore {
         }
       }
       await assertBefore();
+      if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
       await chmod(this.nextPath, 0o600);
 
       await assertSelected();
@@ -248,6 +303,7 @@ export class ProfileRestoreActivationJournalStore {
           if (contentAuthority !== undefined) {
             await assertSelected();
           }
+          if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
           await rename(this.filePath, this.backupPath);
           previousMoved = true;
         } catch (error) {
@@ -269,7 +325,9 @@ export class ProfileRestoreActivationJournalStore {
           assertProfileRestoreActivationJournalMatches(next, await readJournal(this.nextPath));
           await assertBefore();
         }
+        if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
         await rename(this.nextPath, this.filePath);
+        published = true;
         await syncDirectory(directoryPath);
       } catch (error) {
         if (previousMoved && authority === undefined) {
@@ -295,6 +353,7 @@ export class ProfileRestoreActivationJournalStore {
           await assertSlotsAbsent([this.nextPath]);
           await authority.assertCurrent(next);
         }
+        if (writeContext !== undefined) { await assertMutation(); assertMutationCurrent(); }
         await rm(this.backupPath, { force: true });
         await syncDirectory(directoryPath);
       }

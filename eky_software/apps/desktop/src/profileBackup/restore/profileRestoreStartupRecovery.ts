@@ -536,11 +536,13 @@ export class ProfileRestoreStartupRecovery {
       if (readContext !== undefined && (readContext === null || typeof readContext.assertReadOwnership !== 'function' ||
           typeof readContext.assertMutationCurrent !== 'function')) throw new Error('PROFILE_RESTORE_DECISION_INVALID');
       const assertReadOwnership = readContext?.assertReadOwnership.bind(readContext);
+      const assertMutationCurrent = readContext?.assertMutationCurrent.bind(readContext);
       this.selectedJournal = captureProfileRestoreActivationJournal(admission === undefined
         ? await this.dependencies.transaction.rollback(selected)
         : await this.dependencies.transaction.rollback(selected, admission.assertCurrent, {
             assertContent: admission.assertContent, beforeStagingMove: admission.beforeStagingMove,
             ...(assertReadOwnership === undefined ? {} : { assertReadOwnership }),
+            ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
           }));
       if (correlationId !== undefined) {
         this.observe({

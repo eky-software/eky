@@ -99,8 +99,14 @@ läpäisi 15 kohdetestiä sekä tyypityksen ja riippumattoman katselmuksen.
 Sarjat ovat päällekkäistä näyttöä. Instrumentoimaton main-ketjun onnistunut
 source-null-paluu läpäisi, mutta `contentFailure` ylitti nykyisen testirajansa;
 seuraava tapaus estyi keskeneräisen työn vuoksi. Main-kytkentä ei vielä ole
-hyväksytty. Jäljellä oleva kertautuminen selvitetään ennen uutta kohdeajoa;
-hylkäystä ei ohiteta. Live-/rolledBack-jatkot,
+hyväksytty. Seuraava rajattu kirjoituskorjaus säilyttää journalin täydet
+valinta-/sisältövaatimukset todellisissa mutaatiokohdissa ja erottaa niiden
+sisäiset readonly-tarkistukset. Kuuden tiedoston loppusarja läpäisi 535
+testiä, tyypitys ja riippumaton katselmus korjausdeltoineen läpäisivät.
+Uudessa main-kohdeajossa onnistunut paluu läpäisi, mutta sisältövirhetapauksen
+aikakatkaisu ja sen jälkeinen jatkoesto säilyivät. Vaihekohtainen koe
+todensi kertautumisen vähentymisen, ei koko viiveen ratkaisua. Aikarajat
+säilyvät eikä samaa hylkäystä uusita vihreyden vuoksi. Live-/rolledBack-jatkot,
 ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
 ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta

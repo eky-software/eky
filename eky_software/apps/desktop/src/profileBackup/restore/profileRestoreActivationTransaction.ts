@@ -79,6 +79,7 @@ export interface ProfileRestoreColdRollbackMutationAuthority {
   assertContent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
   beforeStagingMove(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
   readonly assertReadOwnership?: () => Promise<void>;
+  readonly assertMutationCurrent?: () => void;
 }
 
 export interface ProfileRestoreTerminalMutationAuthority {
@@ -514,15 +515,17 @@ export class ProfileRestoreActivationTransaction {
   ): Promise<ProfileRestoreActivationJournal> {
     if (coldAuthority !== undefined) {
       if (coldAuthority === null) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
-      const { assertContent, beforeStagingMove, assertReadOwnership } = coldAuthority;
+      const { assertContent, beforeStagingMove, assertReadOwnership, assertMutationCurrent } = coldAuthority;
       if (typeof assertContent !== 'function' || typeof beforeStagingMove !== 'function' ||
-          (assertReadOwnership !== undefined && typeof assertReadOwnership !== 'function')) {
+          (assertReadOwnership !== undefined && typeof assertReadOwnership !== 'function') ||
+          (assertMutationCurrent !== undefined && (typeof assertMutationCurrent !== 'function' || assertReadOwnership === undefined))) {
         throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
       }
       coldAuthority = Object.freeze({
         assertContent: assertContent.bind(coldAuthority),
         beforeStagingMove: beforeStagingMove.bind(coldAuthority),
         ...(assertReadOwnership === undefined ? {} : { assertReadOwnership: assertReadOwnership.bind(coldAuthority) }),
+        ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent: assertMutationCurrent.bind(coldAuthority) }),
       });
     }
     if (coldAuthority !== undefined && (expected === undefined || assertRecoveryAuthority === undefined ||
@@ -969,6 +972,11 @@ export class ProfileRestoreActivationTransaction {
       assertCurrent: current => this.assertRollbackMutation(current, assertRecoveryAuthority,
         coldAuthority.assertReadOwnership === undefined ? undefined : { assertReadOwnership: coldAuthority.assertReadOwnership }),
       assertContent: current => coldAuthority.assertContent(current),
+      ...(coldAuthority.assertMutationCurrent === undefined ? {} : { writeContext: Object.freeze({
+        assertReadCurrent: (current: Readonly<ProfileRestoreActivationJournal>) =>
+          this.assertRollbackMutation(current, coldAuthority.assertReadOwnership),
+        assertMutationCurrent: coldAuthority.assertMutationCurrent,
+      }) }),
     };
   }
 

@@ -1486,7 +1486,13 @@ ja viimeinen tavujen/identiteettien sidonta säilyvät tiedostomuutoksen
 edessä. Valitsimeen paluun loppusiivous tarkistaa sisällön myös oman
 rollback-varauksen vapautuksen jälkeen, ja viimeinen synkroninen vartija
 estää uuden poiston menetetyllä valtuudella. Vanhojen kutsujien polku ja
-journalin nykyiset kirjoituskohdat säilyvät. Täsmällinen rajaus ja avoin
+journalin nykyiset kirjoituskohdat säilyvät. Uuden cold-kirjoittajan
+paritettu konteksti erottaa sisäiset journal-/luetteloluvut täyden valinnan
+tarkistuksesta, joka säilyy jokaisen todellisen muutoksen edellä. Vaiheen
+täsmälliset slotit tarkistetaan sen jälkeen ja synkroninen vartija suojaa
+varsinaista muutosta. Sisältövalidointi, julkaisun kuittaus ja alkuperäisen
+I/O:n päättyminen säilyvät; vanhat kirjoittajat eivät saa uutta odotuskohtaa.
+Täsmällinen rajaus ja avoin
 integraationäyttö ovat [W7.4:n vaiheomistajasopimuksessa](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus).
 
 Vaatimus koskee myös epäonnistunutta käynnistystä ennen backend-kahvan

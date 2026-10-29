@@ -11,6 +11,7 @@ import { prepareProfileRestoreColdForwardRecovery, type ProfileRestoreColdConten
 import { prepareProfileRestoreColdRollbackRecovery, withProfileRestoreColdRollbackAuthority } from './prepareProfileRestoreColdRollbackRecovery.js';
 import type { ProfileRestoreActivationJournal } from './profileRestoreActivationJournal.js';
 import { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
+import { ProfileRestoreActivationJournalStore, profileRestoreActivationJournalFileName } from './profileRestoreActivationJournalStore.js';
 import type { ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
 import type { ProfileRestoreColdCleanupContext } from './profileRestoreMutationAuthority.js';
 
@@ -325,6 +326,49 @@ it.each([false, true])('retains the owner through the actual rollback preflight 
     expect(f.reservation.close).not.toHaveBeenCalled(); expect(f.selection.onUnsettledWork).toHaveBeenCalledOnce();
     expect(await outcome).toBe(failure);
   } finally { finish.resolve(); await settled.promise; await outcome; await f.held()?.release(); }
+});
+
+it.each([false, true])('retains the owner through the actual journal mutation grant (late rejection: %s)', async rejectLate => {
+  const f = fixture('rollback'); const entered = deferred(); const finish = deferred(); const settled = deferred();
+  const root = await mkdtemp(join(tmpdir(), 'eky-cold-journal-grant-'));
+  const path = join(root, profileRestoreActivationJournalFileName);
+  const bytes = `${JSON.stringify(f.journal)}\n`;
+  await writeFile(path, bytes);
+  const store = new ProfileRestoreActivationJournalStore(path);
+  let mutations = 0; let completed = false;
+  const outcome = withProfileRestoreColdRollbackAuthority(f.input, async admission => {
+    try {
+      await store.write({ ...f.journal, revision: 1 }, {
+        kind: 'separateContent', previous: f.journal,
+        async assertCurrent() {
+          entered.resolve(); await finish.promise;
+          if (rejectLate) throw new Error('synthetic late journal grant rejection');
+          await admission.assertCurrent();
+        },
+        assertContent: admission.assertContent,
+        writeContext: { assertReadCurrent: admission.coldCleanupContext!.assertReadOwnership,
+          assertMutationCurrent() { admission.coldCleanupContext!.assertMutationCurrent(); mutations++; } },
+      });
+      completed = true;
+    } finally { settled.resolve(); }
+  }).catch(error => error);
+  let passed = false;
+  try {
+    await entered.promise; await vi.advanceTimersByTimeAsync(profileInspectionWorkMilliseconds);
+    const failure = await outcome;
+    expect(failure).toMatchObject({ cause: { message: 'PROFILE_INSPECTION_TIMEOUT' } });
+    expect(f.lease.readState()).toBe('busy'); expect(f.reservation.close).not.toHaveBeenCalled();
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+    finish.resolve(); await settled.promise; await vi.advanceTimersByTimeAsync(0);
+    expect(mutations).toBe(0); expect(completed).toBe(false);
+    expect(await readFile(path, 'utf8')).toBe(bytes);
+    expect(f.lease.readState()).toBe('busy'); expect(f.reservation.close).not.toHaveBeenCalled();
+    expect(f.selection.onUnsettledWork).toHaveBeenCalledOnce(); expect(await outcome).toBe(failure);
+    passed = true;
+  } finally {
+    finish.resolve(); await settled.promise; await outcome; await f.held()?.release();
+    if (passed) await rm(root, { recursive: true, force: true });
+  }
 });
 
 it.each(['staging', 'rollback', 'anchor'] as const)('retains acquired and late rollback claims at %s', async stage => {
