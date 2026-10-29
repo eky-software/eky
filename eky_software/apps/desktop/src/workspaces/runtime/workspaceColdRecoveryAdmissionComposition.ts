@@ -22,6 +22,7 @@ import {
   createWorkspaceBackupImportJournalPaths,
   WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME,
 } from '../import/workspaceBackupImportJournalPaths.js';
+import { inspectWorkspaceBackupImportBindingAdmission } from '../import/workspaceBackupImportBindingAdmission.js';
 import { createReadOnlyJournalSlotPaths } from '../management/mainOwnedWorkspaceManagementOperationGuard.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import { CrashSafeByteSlotStore } from '../persistence/crashSafeByteSlotStore.js';
@@ -150,6 +151,7 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
     if (journal === undefined || journal.formatVersion !== 2) {
       throw new WorkspaceManagementRecoveryRequiredError();
     }
+    if (!creation) await inspectWorkspaceBackupImportBindingAdmission(userDataRoot, journal);
 
     const root = creationPaths.directoryPath;
     const registryPaths = createWorkspaceRegistryPaths(

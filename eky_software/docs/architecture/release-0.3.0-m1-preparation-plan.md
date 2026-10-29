@@ -123,6 +123,12 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   rajattu riippumaton katselmus läpäisivät. Se sisältää aiemman suunnittelun
   vanhoja kontrollitestejä. Tämä ei vielä ole koordinaattori-/main-kytkentä
   tai kylmäpalautuksen hyväksyntä; puuttuva sidonta ei anna poistovaltuutta.
+- Kylmävalinnan korjaamaton sidontatarkistus on nyt kytketty nykyiseen
+  readonly-admissioniin. Sidontaslotit, kohde, tunnettu lineage ja journalin
+  valinta tarkistetaan; epävarmaa sidontaa ei ohiteta. Jäädytetty 12 tiedoston
+  419 testin sarja, tyypitys ja rajattu katselmus läpäisivät. Sarja sisältää
+  yllä olevia testejä.
+  Tämä ei vielä todista korjaavan palautusomistajan uusia muutosvartijoita.
 - **Seuraava työ:** kytke B:n import-valtuusosa koordinaattoriin, mainin
   loppukäynnistykseen ja kylmäpalautukseen yllä olevan sopimuksen pienissä
   paloissa hyväksytyltä HTTP-adapterihuollon lähtörevisiolta. Nykyinen B:n

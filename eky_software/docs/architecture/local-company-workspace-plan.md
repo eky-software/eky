@@ -4974,6 +4974,21 @@ kattavuutta. Koordinaattori, mainin loppukäynnistys ja kylmäpalautus eivät
 vielä käytä uutta sidontaa; seuraava pala on niiden kytkentä ja pysyvät
 ketjuregressiot. Tämä checkpoint ei ole native-, paketti- tai PR-hyväksyntä.
 
+**Kylmävalinnan lukukytkentä 29.10.2026:** nykyinen
+`readColdWorkspaceRecoveryAdmissionFromRoot` kutsuu tuonnin
+`inspectWorkspaceBackupImportBindingAdmission`-tarkistusta valitun v2-journalin
+jälkeen. Se tarkistaa kaikki sidontaslotit ja tunnetut kohde-/lineage-viitteet
+sekä todentaa journalin saman semanttisen valinnan uudelleen sidontaluvun yli.
+Tämä on vain korjaamaton aloitustarkistus: se ei kaappaa tiedostomuutoksen
+valtuutta eikä korvaa palautusomistajan täsmällistä slot-/identiteettivalintaa,
+leasea tai runtime-poissaolon todistusta. Sidonnaton tuettu v2-palautus säilyy;
+osittainen tai ristiriitainen metadata ei siirry sidonnattomaan polkuun.
+Jäädytetty 12 tiedoston 419 testin sarja, desktopin tyypitys ja rajattu
+riippumaton lähde-/testisuunnittelukatselmus läpäisivät.
+Sarja sisältää aiemman 259 testin kontrollijoukon, ei yhteen laskettavaa
+lisäkattavuutta. Live-tuonnin ja korjaavan palautuksen uudet vartijat sekä
+terminal-/paluukytkentä ovat edelleen seuraava pala.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa
