@@ -5380,7 +5380,22 @@ SQLite ja prosessivaraus sekä historiallisen sidonnattoman tuonnin ja
 luonnin täsmällinen rekisteri ja tiedostotavut toisessakin käynnistyksessä.
 Koe pysähtyy ennen business-backendia. Uuden sidonnan prosessinäyttö ja
 paketoitu business-restart eivät seuraa tästä läpäisystä.
-Sidotun tuonnin native-/pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
+**Sidotun tuonnin Electron-todennus:** nykyinen proof käyttää nyt kolmea
+erillistä aineistoa: luonti, sidonnaton tuonti ja sidottu tuonti. Testin
+valmistelu julkaisee ja lukee bindingin todellisen prosessivarauksen sekä
+täsmällisen valmisteluleasen alla. Jokaisen varsinaisen startupin jälkeen
+bindingin kaikki slotit vaaditaan puuttuviksi; registry ja sisältötavut
+verrataan myös toisessa käynnistyksessä. Factoryn nykyisestä scopesta
+annetut vartijat torjuvat vanhentuneen callbackin myös fyysisen luvun jälkeen.
+Yhteinen wire-tulos ja vanhat tapaukset säilyvät; uutta tuotantokanavaa ei avata.
+
+Testiapurin 21 kontrollia, tyypitys, E2E-käännös ja rajattu katselmus
+läpäisivät. Oikea Electron-koe läpäisi yhden sallitun kohdeuusinnan jälkeen.
+Ensimmäinen ajo pysähtyi ennen testirunkoa backendin `EADDRINUSE`-virheeseen;
+sen syy säilyy avoimena, mutta prosessipuun ja portin siivous todennettiin.
+Tämä ei muuta vanhaa häiriötä onnistumiseksi tai korjatuksi viaksi.
+Pysäytysraja on edelleen ennen business-backendia. Sidotun tuonnin
+pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
 W7.5 pysyy suljettuna.
 
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos

@@ -172,8 +172,16 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   sidonnattoman tuonnin ja luonnin tavut myös toisessa käynnistyksessä.
   Pysäytysraja on ennen business-backendia; tämä ei ole sidotun tuonnin
   native- tai paketoitu business-restart-todiste.
-- **Seuraava työ:** täydennä sidotun kylmäimportin prosessinäyttö ja yhteisen
-  palautusportin paketoitu todennus. Puuttuva sidonta ei anna W7-poistovaltuutta
+- Sidotun kylmäimportin prosessinäyttö on nyt lisätty samaan nykyiseen
+  Electron-kokeeseen erillisenä kolmantena tapauksena. Valmistelu todentaa
+  bindingin olemassaolon ja loppuehto sen kaikkien slottien poiston myös
+  toisessa käynnistyksessä. Testiapurin 21 kontrollia, tyypitys, käännös ja
+  rajattu katselmus läpäisivät. Electron-koe läpäisi yhden ennen testirunkoa
+  tapahtuneen `EADDRINUSE`-valmisteluvirheen kohdeuusinnan jälkeen samoilla
+  lähteillä. Ensivirhe säilyy avoimena; prosessipuu ja portti vapautuivat.
+  Tämäkin koe pysähtyy ennen business-backendia, ei paketoituun palautukseen.
+- **Seuraava työ:** yhteisen palautusportin paketoitu todennus myös sidotulle
+  tuonnille. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen

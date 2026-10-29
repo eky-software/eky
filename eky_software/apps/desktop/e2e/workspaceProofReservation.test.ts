@@ -163,10 +163,31 @@ describe('candidate proof reservation scopes', () => {
       const before = await readdir(root, { recursive: true });
       expect(() => previous.bindCandidate({ generationId: 'old', operationId: 'old' })).toThrow();
       await expect(previousScope!.createCurrentFixture()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => previousScope!.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(previousScope!.assertMainOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
       expect(await readdir(root, { recursive: true })).toEqual(before);
       expect(hooks.acquire).toHaveBeenLastCalledWith(expect.objectContaining({ userDataRoot: join(root, 'next') }));
     });
     expect(owner.close).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechecks the current proof scope after its physical ownership read completes', async () => {
+    const factories = await prepare();
+    let finish!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    owner.assertMainOwned.mockImplementationOnce(async () => { entered(); await gate; });
+    const work = factories.withWorkspaceReservation(root, async scope => {
+      scope.assertCurrent();
+      await scope.assertMainOwned();
+      throw new Error('STALE_SCOPE_ACCEPTED');
+    });
+    const rejected = expect(work).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    try { await began; hooks.hasLock.mockReturnValue(false); }
+    finally { finish(); }
+    await rejected;
+    expect(owner.close).not.toHaveBeenCalled();
+    await expect(factories.cleanup()).rejects.toThrow();
   });
 
   it('uses the current Electron single-instance state for every grant', async () => {

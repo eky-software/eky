@@ -947,8 +947,13 @@ voi rajata selvitystä, mutta viestin puuttuminen tai viimeiseksi jääminen
 ei todista kyseistä kutsua aikakatkaisun syyksi. Testi- ja prosessitulos
 sekä havaintojen saatavuus pidetään erillään.
 
-`DESK-WORKSPACE-STARTUP-001` tarkistaa V2:n julkaistun luonti- ja
-tuontikohteen cold-recoveryn oikealla compositionilla ja Electron-kandidaatilla.
+`DESK-WORKSPACE-STARTUP-001` tarkistaa V2:n julkaistun luontikohteen sekä
+sidonnattoman ja sidotun tuontikohteen cold-recoveryn erillisillä aineistoilla,
+oikealla compositionilla ja Electron-kandidaatilla. Sidotun tapauksen
+valmistelu todentaa bindingin julkaisun ennen startupia; loppuehto vaatii
+kaikkien binding-slottien puuttumisen kummankin käynnistyksen jälkeen.
+Valmistelun viimeinen valtuus ja fyysisen main-varauksen tarkistus tulevat
+nykyisen proof-factoryn täsmällisestä varaus-scopesta, eivät runtime-tuloksesta.
 Valmistelun varaus suljetaan ennen compositionia ja hankitaan uudelleen
 ennen jälkitarkistusta. Rekisteri, journalin poisto ja business-tavut
 verrataan myös idempotentissa toisessa käynnistyksessä. Testin pysäytysraja
