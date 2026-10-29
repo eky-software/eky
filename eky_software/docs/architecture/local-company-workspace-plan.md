@@ -4893,6 +4893,14 @@ kolme system-tapausta läpäisivät. Rajattu kytkentäkatselmus läpäisi.
 Mallinnettu prosessivaraus ei ole native-todiste. Muut B:n omistajat ja
 F:n puhdas paketti sekä PR/main-portit jäävät erillisiksi hyväksyntärajoiksi.
 
+Migraatiosidonnan katselmuksen yhteydessä myös replacement-sidonnasta
+poistettiin kolme samaa tulkinta-aukkoa: puuttuva kahva ei valitse nykyistä
+varausta, päällekkäinen kutsu lukitsee jatkon ja lukemisen sisäinen
+vartijavirhe talletetaan ennen kahvan sulkemista. Molempien sidontaosien
+ja nykyisten kuluttajien seitsemän tiedoston sarja läpäisi 242 testiä;
+desktop-tyypitys ja rajattu katselmus läpäisivät. Tämä lisänäyttö on
+päällekkäistä aiempien sarjojen kanssa, ei uusi kokonaiskattavuuden summa.
+
 **B:n muutosportit:** sidontakirjoittajan viimeinen synkroninen vartija
 vaatii julkaistun kuitin, saman leasen ja nykyisen main-omistajuuden.
 Epävarmuus on pysyvä; käynnissä olevaa kuitin lukua ei hyväksytä luvaksi.
@@ -5031,6 +5039,42 @@ operational-lukijat tarkistetaan toteutuksen mukana; uusia julkisia
 raakakenttiä ei lisätä. B:n koko jäännösluettelo-/cleanup- ja cold-liitos
 sekä F:n prosessi-, paketti-, salaus/purku- ja PR/main-portit jäävät erillisiksi
 vaatimuksiksi. Tämä suunnitelma ei yksin todista yhtäkään niistä.
+
+##### W7.4 B: activation-migrationin vaihekohtainen sidonta
+
+Migraation palautuspiste muodostetaan edelleen ennen kohteen startup-backendin
+sulkua. Sidonnan julkaisu ei siksi voi käyttää replacementin suljetun runtimen
+ehtoa sellaisenaan. Nykyinen switch-lease, käynnistyksen elinikäomistaja,
+prosessivarauksen omistaja ja snapshot-omistaja säilyvät erillisinä vastuina.
+
+- `WorkspaceActivationMigrationBinding` kaappaa täsmällisen switch-kahvan,
+  validoidun proofin tavut sekä omistajaportit ennen ensimmäistä odotusta.
+  Puuttuva tai vieras kahva ei tarkoita nykyisen varauksen automaattista valintaa.
+- Ennen snapshotia julkaistava metadata vaatii saman käynnistysvaltuuden sekä
+  registry- ja switch-journalin muuttumattomat current-slotit. Niiden tavut ja
+  tiedostoidentiteetit kaapataan korjaamattomalla luvulla; sivuslotti tai myöhempi
+  muutos estää jatkon. Pelkkä sama normalisoitu arvo ei korvaa raakavalintaa.
+- Vasta onnistuneen tiukan sulun jälkeen `enterStopped()` todistaa runtimen
+  poissaolon ja mainin fyysisen omistajuuden. Candidate-prosessille siirretty
+  varaus ei ole mainin muutoslupa, vaikka vanha startup-backend olisi päättynyt.
+  Nykyinen candidate-omistaja vastaa siirrosta ja palautuksesta.
+- Päällekkäinen kutsu, menetetty valtuus tai epävarma julkaisu lukitsee sidonnan
+  jatkon. Ensimmäinen vartijavirhe säilyy jo ennen alkuperäisen tiedostoluvun
+  päättämistä; ilmoitus- ja sulkuvirheet säilyvät sen rinnalla. Aloitettu työ
+  odotetaan, eikä myöhäinen onnistuminen tai uusi lease elvytä vartijaa.
+- Migraation epävarmuusilmoitus estää loogisen jatkon. Se ei vapauta tai
+  mitätöi lapsiprosessin fyysistä varausta ennen nykyistä exit/reclaim-ketjua.
+  Sulku ja päättäminen ovat yhä niiden nykyisten omistajien tehtäviä.
+
+**Osan checkpoint 29.10.2026:** sidontaosa ja valitsimen rinnakkaiset
+regressiot läpäisivät 169 testiä; desktop-tyypitys ja rajattu riippumaton
+katselmus läpäisivät. Tämä todistaa sidontaosan, ei vielä migraation
+koordinaattori-/main-kytkentää tai paketoitua hyväksyntää.
+Kytkennässä on vielä vietävä vartijat snapshotin valmisteluun, alkuperäisen
+snapshot-omistajan siivoukseen, korjaavaan journal-lukuun ja payload-muutoksiin.
+Normaalin source-recoveryn tarkoituksellinen valinnanmuutos ja selector-paluun
+leasen vaihto tarvitsevat omat nykyisiin omistajiin perustuvat luovutusrajansa;
+vanhaa sidontaa ei saa vain päivittää uusiin havaittuihin tavuihin.
 
 ##### Replacementin käynnistyspolkujen yhteinen omistajuusraja
 

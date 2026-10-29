@@ -43,10 +43,12 @@ export class WorkspaceBackupReplacementBinding {
   private receipt: BindingReceipt | undefined;
   private attempted = false;
   private uncertain = false;
+  private firstFailure: { error: unknown } | undefined;
   private activeIo = false;
 
   constructor(options: Readonly<WorkspaceBackupReplacementBindingOptions>, fileSystem?: CrashSafeFileSlotFileSystem) {
     // Capture immediately after acquisition, before any registry or file await.
+    if (options.lease === null || typeof options.lease !== 'object' || typeof options.lease.release !== 'function') throw unavailable();
     this.assertLease = options.maintenanceLease.captureCurrentOwner(['replace'], options.lease);
     this.inspectRegistry = options.registry.inspectSlots.bind(options.registry);
     this.assertRuntimeAbsent = options.runtimeAbsence.assertNoActiveWorkspaceRuntime.bind(options.runtimeAbsence);
@@ -81,6 +83,7 @@ export class WorkspaceBackupReplacementBinding {
 
   // Last synchronous check after fresh readback and immediately before mutation.
   assertMutationCurrent(): void {
+    if (this.uncertain) throw unavailable(this.firstFailure?.error);
     try {
       if (this.receipt === undefined || this.activeIo) throw unavailable();
       this.assertAuthority();
@@ -88,9 +91,11 @@ export class WorkspaceBackupReplacementBinding {
   }
 
   private assertAuthority = (): void => {
-    if (this.uncertain) throw unavailable();
-    assertSynchronous(this.assertLease);
-    assertSynchronous(this.assertMainCurrent);
+    if (this.firstFailure !== undefined) throw this.firstFailure.error;
+    try {
+      assertSynchronous(this.assertLease);
+      assertSynchronous(this.assertMainCurrent);
+    } catch (error) { this.rejectUncertain(error); }
   };
 
   private authority() {
@@ -103,7 +108,7 @@ export class WorkspaceBackupReplacementBinding {
     this.assertAuthority();
     await this.assertMainOwned();
     this.assertAuthority();
-    const slots = await this.inspectRegistry();
+    const slots = await this.inspectRegistry(this.assertAuthority);
     this.assertAuthority();
     const selected = slots.current;
     if (selected === undefined || selected.identity === undefined || slots.next !== undefined || slots.backup !== undefined) {
@@ -127,25 +132,37 @@ export class WorkspaceBackupReplacementBinding {
   }
 
   private async run(work: () => Promise<void>): Promise<void> {
-    if (this.activeIo || this.uncertain) throw unavailable();
+    if (this.uncertain) throw unavailable(this.firstFailure?.error);
+    if (this.activeIo) this.rejectUncertain(unavailable());
     this.activeIo = true;
-    try { await work(); }
-    catch (primary) { this.rejectUncertain(primary); }
+    try {
+      await work();
+      if (this.firstFailure !== undefined) throw this.firstFailure.error;
+    } catch (primary) {
+      // A reader may fail again while joining its original file close.
+      if (this.firstFailure !== undefined && primary !== this.firstFailure.error) {
+        throw new AggregateError([this.firstFailure.error, primary], 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      }
+      this.rejectUncertain(primary);
+    }
     finally { this.activeIo = false; }
   }
 
   private rejectUncertain(primary: unknown): never {
     if (this.attempted && !this.uncertain) {
       this.uncertain = true;
+      this.firstFailure = { error: primary };
       try { assertSynchronous(this.onUncertain); }
-      catch (secondary) { throw new AggregateError([primary, secondary], 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED'); }
+      catch (secondary) {
+        this.firstFailure = { error: new AggregateError([primary, secondary], 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED') };
+      }
     }
-    throw primary;
+    throw this.firstFailure === undefined ? primary : this.firstFailure.error;
   }
 }
 
-function unavailable() {
-  return new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED', 'rollback');
+function unavailable(cause?: unknown) {
+  return new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED', 'rollback', { cause });
 }
 
 function assertSynchronous(assertCurrent: () => void): void {

@@ -69,7 +69,13 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Jäädytetty 11 tiedoston sarja läpäisi 613 testiä; oikean salatun backupin
   kolme system-tapausta ja rajattu riippumaton katselmus läpäisivät.
   Main-kokeiden prosessivaraus on mallinnettu, ei native- tai pakettitodiste.
-- **Seuraava työ:** B:n activation-migration-sidonnan vaiheomistajuus ja
+- Activation-migrationin vaihekohtainen sidontaosa on todennettu: julkaisu
+  ennen snapshotia, tiedostojen muutoslupa vasta varmennetun sulun jälkeen.
+  Sidontaosan ja valitsimen 169 kohdetestiä, tyypitys ja katselmus läpäisivät.
+  Koordinaattorin ja mainin kytkentää tämä ei vielä todista.
+  Molempien sidontaosien tarkennetut varaus-/ensivirhesäännöt ja nykyiset
+  kuluttajat läpäisivät seitsemän tiedoston 242 testin sarjan sekä tyypityksen.
+- **Seuraava työ:** B:n activation-migration-sidonnan koordinaattori-/main-
   kytkentä, sitten import-, adoption- ja inspection-liitokset sekä
   C:n W7.3-luovutus. Migraation palautuspiste muodostuu edelleen ennen sulkua.
   Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.

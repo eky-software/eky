@@ -84,6 +84,16 @@ describe('workspace replacement binding authority', () => {
     await second.release();
   });
 
+  it.for([undefined, null, {}, { release: async () => {} }])('refuses a missing or foreign exact lease: %j', async (lease, context) => {
+    const f = await fixture(context);
+    const before = await snapshot(f.root);
+    expect(() => new WorkspaceBackupReplacementBinding({ ...f.options,
+      lease: lease as WorkspaceBackupReplacementBindingOptions['lease'] })).toThrow();
+    expect(await snapshot(f.root)).toEqual(before);
+    expect(f.onUncertain).not.toHaveBeenCalled();
+    f.lease.captureCurrentOwner(['replace'], f.held)();
+  });
+
   for (const slot of ['next', 'backup'] as const) {
     it(`rejects registry ${slot} without repairing it or creating a binding`, async context => {
       const f = await fixture(context);
@@ -203,6 +213,72 @@ describe('workspace replacement binding authority', () => {
     ] });
     await expect(f.binding.publish()).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
     expect(f.onUncertain).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates an overlapping call while joining the original publication', async context => {
+    const f = await fixture(context);
+    const entered = gate(); const finish = gate();
+    const open = f.fileSystem.createNextWriter.bind(f.fileSystem);
+    let closed = false;
+    f.fileSystem.createNextWriter = async guard => {
+      const writer = await open(guard);
+      return { write: writer.write.bind(writer), sync: writer.sync.bind(writer), readIdentity: () => writer.readIdentity!(),
+        async close() { entered.resolve(); await finish.promise; await writer.close(); closed = true; } };
+    };
+    const pending = f.binding.publish().then(() => undefined, error => error as unknown);
+    let result: unknown;
+    try {
+      await Promise.race([entered.promise, pending.then(() => { throw new Error('WRITER_DID_NOT_ENTER_CLOSE'); })]);
+      await expect(f.binding.assertPublished()).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(f.onUncertain).toHaveBeenCalledOnce();
+      expect(closed).toBe(false);
+      f.lease.captureCurrentOwner(['replace'], f.held)();
+    } finally { finish.resolve(); result = await pending; }
+    expect(result).toBeInstanceOf(Error);
+    expect(closed).toBe(true);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    const before = await snapshot(f.root);
+    await expect(f.binding.publish()).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(() => f.binding.assertMutationCurrent()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  it('latches guard loss inside registry reading before finalization and retains all failure causes', async context => {
+    const f = await fixture(context);
+    const entered = gate(); const finish = gate();
+    const first = new Error('SYNTHETIC_FIRST_GUARD');
+    const notification = new Error('SYNTHETIC_NOTIFICATION');
+    const close = new Error('SYNTHETIC_READER_CLOSE');
+    let inject = false; let current = true; let finalized = false;
+    const read = f.options.registry.inspectSlots.bind(f.options.registry);
+    f.onUncertain.mockImplementation(() => { throw notification; });
+    const binding = new WorkspaceBackupReplacementBinding({ ...f.options,
+      mainOwner: { assertCurrent() { if (!current) throw first; }, assertOwned: f.assertOwned },
+      registry: { async inspectSlots(guard) {
+        if (!inject) return read(guard);
+        current = false;
+        try { guard?.(); }
+        finally { entered.resolve(); await finish.promise; finalized = true; throw close; }
+      } },
+    });
+    await binding.publish();
+    inject = true;
+    const before = await snapshot(f.root);
+    const pending = binding.assertPublished().then(() => undefined, error => error as unknown);
+    let result: unknown;
+    try {
+      await Promise.race([entered.promise, pending.then(() => { throw new Error('READER_DID_NOT_ENTER_FINALLY'); })]);
+      expect(f.onUncertain).toHaveBeenCalledOnce();
+      expect(finalized).toBe(false);
+      current = true;
+      await expect(binding.assertPublished()).rejects.toMatchObject({ cause: { errors: [first, notification] } });
+      f.lease.captureCurrentOwner(['replace'], f.held)();
+    } finally { finish.resolve(); result = await pending; }
+    expect(result).toMatchObject({ errors: [{ errors: [first, notification] }, close] });
+    expect(finalized).toBe(true);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(() => binding.assertMutationCurrent()).toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+    expect(await snapshot(f.root)).toEqual(before);
   });
 
   it('rejects an asynchronous main assertion without accepting later completion as authority', async context => {
