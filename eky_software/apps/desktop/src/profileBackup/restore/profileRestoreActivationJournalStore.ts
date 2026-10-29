@@ -27,6 +27,10 @@ interface ProfileRestoreJournalSelectionAuthority {
   readonly previous: Readonly<ProfileRestoreActivationJournal>;
   assertCurrent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
   readonly assertMutationCurrent?: () => void;
+  readonly writeContext?: {
+    assertReadCurrent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+    assertMutationCurrent(): void;
+  };
 }
 
 export type ProfileRestoreJournalWriteAuthority = ProfileRestoreJournalSelectionAuthority & (
@@ -34,10 +38,6 @@ export type ProfileRestoreJournalWriteAuthority = ProfileRestoreJournalSelection
   | {
     readonly kind: 'separateContent';
     assertContent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
-    readonly writeContext?: {
-      assertReadCurrent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
-      assertMutationCurrent(): void;
-    };
   }
 );
 
@@ -152,7 +152,9 @@ export class ProfileRestoreActivationJournalStore {
         typeof authority.assertCurrent !== 'function')) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     const assertLiveMutation = suppliedMutation?.bind(authority);
     if (suppliedContext !== undefined && (authority === undefined || !('kind' in authority) ||
-        authority.kind !== 'separateContent' || authority.previous === undefined || suppliedContext === null ||
+        (authority.kind !== 'separateContent' && authority.kind !== 'combined') ||
+        (authority.kind === 'combined' && (suppliedMutation === undefined || authority.assertContent !== undefined)) ||
+        authority.previous === undefined || suppliedContext === null ||
         typeof suppliedContext.assertReadCurrent !== 'function' || typeof suppliedContext.assertMutationCurrent !== 'function')) {
       throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     }
@@ -172,7 +174,7 @@ export class ProfileRestoreActivationJournalStore {
         assertCurrent: supplied.assertCurrent.bind(supplied),
       });
     } else if (writeContext !== undefined || assertLiveMutation !== undefined) {
-      const supplied = authority as Extract<ProfileRestoreJournalWriteAuthority, { kind: 'separateContent' }>;
+      const supplied = authority as ProfileRestoreJournalWriteAuthority;
       if (typeof supplied.assertCurrent !== 'function' ||
           (supplied.kind === 'separateContent' && typeof supplied.assertContent !== 'function')) {
         throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
@@ -180,8 +182,9 @@ export class ProfileRestoreActivationJournalStore {
       authority = Object.freeze({ previous: captureProfileRestoreActivationJournal(supplied.previous),
         assertCurrent: supplied.assertCurrent.bind(supplied),
         ...(supplied.kind === 'separateContent' ? { kind: 'separateContent' as const,
-          assertContent: supplied.assertContent.bind(supplied), ...(writeContext === undefined ? {} : { writeContext }) }
-          : { kind: supplied.kind }),
+          assertContent: supplied.assertContent.bind(supplied) }
+          : supplied.kind === undefined ? {} : { kind: supplied.kind }),
+        ...(writeContext === undefined ? {} : { writeContext }),
       });
     }
     const directoryPath = dirname(this.filePath);

@@ -1,9 +1,18 @@
-import { resolve } from 'node:path';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { WorkspaceActivationMigrationCoordinatorOptions, WorkspaceActivationMigrationRecoveryReceipt } from './workspaceActivationMigrationCoordinator.js';
 import { createWorkspaceActivationMigrationComposition, type WorkspaceActivationMigrationCompositionOptions } from './workspaceActivationMigrationComposition.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
+import { createSwitchRegistry, createSwitchJournal, TEST_SOURCE_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
+import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
+import { createWorkspaceSwitchJournalPaths, serializeVersionedWorkspaceSwitchJournal } from '../switch/workspaceSwitchJournal.js';
+import { createWorkspaceRemnantBindingPaths } from '../deletion/workspaceRemnantBindingPaths.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 
 const boundary = vi.hoisted(() => ({
   coordinator: undefined as WorkspaceActivationMigrationCoordinatorOptions | undefined,
@@ -32,6 +41,51 @@ beforeEach(() => {
 });
 
 describe('activation composition selector recovery handoff', () => {
+  it.for(['startupLost', 'leaseLost', 'unprovedStop'] as const)(
+    'wires the real binding to the exact lease and phase owners: %s', async (failure, context) => {
+    const f = fixture(false);
+    const root = await mkdtemp(join(tmpdir(), 'eky-migration-composition-'));
+    const maintenance = new InMemoryWorkspaceMaintenanceLease();
+    const held = await maintenance.acquire('switch');
+    context.onTestFinished(async () => {
+      await held.release();
+      if (context.task.result?.state === 'pass') await rm(root, { recursive: true, force: true });
+    });
+    const registry = serializeWorkspaceRegistry(createSwitchRegistry(targetId));
+    const journal = serializeVersionedWorkspaceSwitchJournal(createSwitchJournal('targetSelected'));
+    const journalPaths = createWorkspaceSwitchJournalPaths(root);
+    await mkdir(journalPaths.directoryPath, { recursive: true, mode: 0o700 });
+    await writeFile(join(root, WORKSPACE_REGISTRY_FILE_NAME), registry, { mode: 0o600 });
+    await writeFile(journalPaths.currentPath, journal, { mode: 0o600 });
+    let current = true;
+    const block = vi.fn();
+    const assertCurrent = vi.fn(() => { if (!current) throw new Error('SYNTHETIC_STARTUP_LOST'); });
+    const assertOwned = vi.fn(async () => {});
+    Object.assign(f.options, { userDataRoot: root, maintenanceLease: maintenance,
+      assertStartupCurrent: assertCurrent, assertMainReservationOwned: assertOwned,
+      blockContinuation: block });
+    Object.assign(f.options.activeWorkspace.switchContext!, { targetProfileId: 'b'.repeat(64) });
+    await createWorkspaceActivationMigrationComposition(f.options);
+    Object.assign(f.options, { assertStartupCurrent() {}, blockContinuation() {} });
+    const binding = boundary.coordinator!.createBinding({ lease: held, proof: {
+      operationId: validateWorkspaceBackupImportOperationId(operationId), profileId: 'b'.repeat(64),
+      sourceWorkspaceId: TEST_SOURCE_WORKSPACE_ID, targetWorkspaceId: targetId,
+      registrySnapshot: registry, switchJournalSnapshot: journal,
+    } });
+    await binding.publishBeforeSnapshot();
+    expect(binding.assertSnapshotCleanupCurrent()).toBeUndefined();
+    expect(assertOwned).not.toHaveBeenCalled();
+    const paths = createWorkspaceRemnantBindingPaths(root, { owner: 'workspaceActivationMigration', operationId });
+    const published = await readFile(paths.currentPath);
+    if (failure === 'startupLost') current = false;
+    else if (failure === 'leaseLost') await held.release();
+    if (failure === 'unprovedStop') await expect(binding.enterStopped()).rejects.toThrow();
+    else await expect(binding.assertPublished()).rejects.toThrow();
+    expect(block).toHaveBeenCalledOnce();
+    expect(await readFile(paths.currentPath)).toEqual(published);
+    expect(assertCurrent).toHaveBeenCalled();
+  });
+
   it('requires the named main completion handler before resolving runtime paths', async () => {
     const f = fixture();
     const { completeSelectorRollback: _omitted, ...options } = f.options;
@@ -135,10 +189,12 @@ function fixture(selector = true) {
       recoverFromFailure: recover,
     },
     appVersion: '0.2.8', buildRevision: 'a'.repeat(40), completeSelectorRollback: complete,
-    maintenanceLease: { acquire: unexpected }, recoveryPointService: { createPreMigration: unexpected },
+    maintenanceLease: { acquire: unexpected, captureCurrentOwner() { throw new Error('unexpected lease capture'); } },
+    recoveryPointService: { createPreMigration: unexpected },
     recoveryPointStore: { stageForRestore: unexpected }, recoveryPointStagingRoot: root,
     recoveryPointStagingOwner: { removeProfileSnapshot: unexpected }, requestRelaunch() { throw new Error('unexpected relaunch'); },
     resourcesPath: root, userDataRoot: root, assertMainReservationOwned: unexpected,
+    assertStartupCurrent() {}, assertMainReservationCurrent() {}, blockContinuation() {},
     reservationOwner: { assertMainOwned: unexpected, bindCandidate() { throw new Error('unexpected candidate'); } },
   };
   return { options, complete, recover };

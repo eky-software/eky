@@ -21,6 +21,55 @@ import type { WorkspaceActivationMigrationProof } from './workspaceActivationMig
 const required = 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED';
 
 describe('activation migration binding authority', () => {
+  it.for([false, true])('refuses read ownership without published stopped authority (published: %s)', async (published, context) => {
+    const f = await fixture(context);
+    if (published) await f.binding.publishBeforeSnapshot();
+    const before = await snapshot(f.root);
+    await expect(f.binding.assertReadOwnership()).rejects.toThrow(required);
+    expect(f.assertOwned).not.toHaveBeenCalled();
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  it('checks read ownership without rereading metadata, but requires changed bytes at the next full check', async context => {
+    const f = await fixture(context);
+    const registryRead = vi.spyOn(f.options.registry, 'inspectSlots');
+    const journalRead = vi.spyOn(f.options.switchJournal, 'inspectSlots');
+    const binding = new WorkspaceActivationMigrationBinding(f.options);
+    await binding.publishBeforeSnapshot();
+    f.state.absent = true; f.state.mainOwned = true;
+    await binding.enterStopped();
+    registryRead.mockClear(); journalRead.mockClear();
+    await writeFile(f.registryPaths.currentPath, Buffer.concat([Buffer.from(' '), await readFile(f.registryPaths.currentPath)]));
+    const before = await snapshot(f.root);
+    await binding.assertReadOwnership();
+    expect(registryRead).not.toHaveBeenCalled(); expect(journalRead).not.toHaveBeenCalled();
+    await expect(binding.assertPublished()).rejects.toThrow();
+    expect(registryRead).toHaveBeenCalled();
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  it.for(['lease', 'startup', 'present', 'main', 'absenceAwait', 'ownedAwait'] as const)(
+    'latches read-owner loss at %s without changing evidence', async (loss, context) => {
+      const f = await fixture(context);
+      await f.binding.publishBeforeSnapshot();
+      f.state.absent = true; f.state.mainOwned = true;
+      await f.binding.enterStopped();
+      if (loss === 'lease') await f.held.release();
+      if (loss === 'startup') f.state.current = false;
+      if (loss === 'present') f.state.absent = false;
+      if (loss === 'main') f.state.mainOwned = false;
+      if (loss === 'absenceAwait') f.assertAbsent.mockImplementationOnce(async () => { f.state.current = false; });
+      if (loss === 'ownedAwait') f.assertOwned.mockImplementationOnce(async () => { f.state.current = false; });
+      const before = await snapshot(f.root);
+      await expect(f.binding.assertReadOwnership()).rejects.toThrow();
+      f.state.current = true; f.state.absent = true; f.state.mainOwned = true;
+      await expect(f.binding.assertReadOwnership()).rejects.toThrow(required);
+      expect(f.onUncertain).toHaveBeenCalledOnce();
+      expect(await snapshot(f.root)).toEqual(before);
+    },
+  );
+
   it.for([false, true])('publishes before target stop and grants mutations only after verified stop (selector: %s)', async (selector, context) => {
     const f = await fixture(context, selector);
     await f.binding.publishBeforeSnapshot();

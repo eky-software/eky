@@ -5,7 +5,7 @@ import type { RecoveryPointStore } from '../../profileBackup/recoveryPoint/recov
 import type { ProfileSnapshotInspectionPort } from '../../profileBackup/profileSnapshotInspectionPort.js';
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
 import { PrivateWorkspaceBackupCandidateAdapter } from '../import/privateWorkspaceBackupCandidateAdapter.js';
-import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import type { InMemoryWorkspaceMaintenanceLease, WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from '../replacement/workspaceBackupReplacementActivationFactory.js';
@@ -23,6 +23,7 @@ import { WorkspaceActivationMigrationGuard } from './workspaceActivationMigratio
 import { WorkspaceActivationMigrationInspector } from './workspaceActivationMigrationInspector.js';
 import { WorkspaceActivationMigrationRecoveryPoint } from './workspaceActivationMigrationRecoveryPoint.js';
 import { WorkspaceActivationMigrationStartup } from './workspaceActivationMigrationStartup.js';
+import { WorkspaceActivationMigrationBinding } from './workspaceActivationMigrationBinding.js';
 
 export interface WorkspaceActivationMigrationCompositionOptions {
   readonly activeWorkspace: Readonly<ActiveWorkspaceStartupSelection>;
@@ -30,7 +31,7 @@ export interface WorkspaceActivationMigrationCompositionOptions {
   readonly buildRevision: string;
   readonly beforeCandidateMigration?: () => void;
   readonly completeSelectorRollback?: (receipt: WorkspaceActivationMigrationRecoveryReceipt) => Promise<void>;
-  readonly maintenanceLease: WorkspaceMaintenanceLease;
+  readonly maintenanceLease: WorkspaceMaintenanceLease & Pick<InMemoryWorkspaceMaintenanceLease, 'captureCurrentOwner'>;
   readonly recoveryPointService: Pick<
     RecoveryPointService,
     'createPreMigration'
@@ -42,6 +43,9 @@ export interface WorkspaceActivationMigrationCompositionOptions {
   readonly resourcesPath: string;
   readonly reservationOwner: WorkspaceCandidateReservationOwner;
   readonly assertMainReservationOwned: () => Promise<void>;
+  readonly assertMainReservationCurrent: () => void;
+  readonly assertStartupCurrent: () => void;
+  readonly blockContinuation: () => void;
   readonly userDataRoot: string;
 }
 
@@ -50,6 +54,12 @@ export async function createWorkspaceActivationMigrationComposition(
 ): Promise<WorkspaceActivationMigrationStartup> {
   const selector = options.activeWorkspace.switchContext?.sourceWorkspaceId === null;
   const completeSelectorRollback = options.completeSelectorRollback?.bind(options);
+  const assertStartupCurrent = options.assertStartupCurrent.bind(options);
+  const assertMainCurrent = options.assertMainReservationCurrent.bind(options);
+  const assertMainOwned = options.assertMainReservationOwned.bind(options);
+  const blockContinuation = options.blockContinuation.bind(options);
+  const maintenanceLease = options.maintenanceLease;
+  const userDataRoot = options.userDataRoot;
   if (
     options.activeWorkspace.mode !== 'targetValidation' ||
     options.activeWorkspace.switchContext === undefined ||
@@ -89,18 +99,18 @@ export async function createWorkspaceActivationMigrationComposition(
       : { beforeMigration: options.beforeCandidateMigration }),
   });
   const registry = new WorkspaceRegistryStore({
-    filePath: join(options.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
-    installationRoot: options.userDataRoot,
+    filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
+    installationRoot: userDataRoot,
   });
   const switchJournal = new WorkspaceSwitchJournalStore(
-    options.userDataRoot,
+    userDataRoot,
   );
   const guard = new WorkspaceActivationMigrationGuard(
     registry,
     switchJournal,
     options.activeWorkspace.selectorActivationAuthority,
   );
-  const runtimeAbsence = new StartupWorkspaceRuntimeAbsence(options.assertMainReservationOwned);
+  const runtimeAbsence = new StartupWorkspaceRuntimeAbsence(assertMainOwned);
   const recoveryPoint = new WorkspaceActivationMigrationRecoveryPoint(
     options.recoveryPointService,
     options.recoveryPointStore,
@@ -113,8 +123,16 @@ export async function createWorkspaceActivationMigrationComposition(
     activationAuthorityFactory:
       new ProfileRestoreWorkspaceReplacementActivationFactory(),
     backupCandidate: migrationCandidate,
+    createBinding: ({ lease, proof }) => new WorkspaceActivationMigrationBinding({
+      userDataRoot, proof, lease,
+      maintenanceLease, registry, switchJournal,
+      startupOwner: { assertCurrent: assertStartupCurrent },
+      stoppedOwner: { assertCurrent: assertMainCurrent, assertOwned: assertMainOwned },
+      runtimeAbsence, onUncertain: blockContinuation,
+    }),
+    blockContinuation,
     guard,
-    maintenanceLease: options.maintenanceLease,
+    maintenanceLease,
     recoveryPoint,
     requestRelaunch: options.requestRelaunch,
     rootStore: new NodeWorkspaceBackupReplacementRootStore(),
@@ -146,7 +164,7 @@ export async function createWorkspaceActivationMigrationComposition(
       },
       requireRecovery: () => options.activeWorkspace.requireRecovery!(),
     },
-    userDataRoot: options.userDataRoot,
+    userDataRoot,
     workspaceRuntimeAbsence: runtimeAbsence,
   });
   const profilePaths = createDesktopProfilePaths(
@@ -168,7 +186,7 @@ export async function createWorkspaceActivationMigrationComposition(
       publishedRoot: options.activeWorkspace.workspaceRoot,
     },
     requestRelaunch: options.requestRelaunch,
-    userDataRoot: options.userDataRoot,
+    userDataRoot,
   });
 }
 

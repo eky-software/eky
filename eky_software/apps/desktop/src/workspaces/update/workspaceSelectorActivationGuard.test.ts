@@ -208,10 +208,17 @@ it('preserves activation evidence when selector authority expires during lease a
   const requestRelaunch = vi.fn();
   const stop = vi.fn(async () => undefined);
   const absent = vi.fn(async () => undefined);
+  const release = vi.fn(async () => undefined);
+  const blockContinuation = vi.fn();
   const unexpected = vi.fn(async () => { throw new Error('unexpected forward action'); });
   const coordinator = new WorkspaceActivationMigrationCoordinator({
     guard: f.guard, userDataRoot: f.root,
-    maintenanceLease: { async acquire() { f.current = false; return { release: unexpected }; } },
+    maintenanceLease: { async acquire() { f.current = false; return { release }; } },
+    blockContinuation,
+    createBinding: () => ({ publishBeforeSnapshot: unexpected, assertPublished: unexpected, enterStopped: unexpected,
+      assertReadOwnership: unexpected,
+      assertMutationCurrent() { throw new Error('unexpected mutation'); },
+      assertSnapshotCleanupCurrent() { throw new Error('unexpected cleanup'); } }),
     workspaceRuntimeAbsence: { assertNoActiveWorkspaceRuntime: absent },
     activationAuthorityFactory: { create: () => ({
       journalStore: { read: activationRead, peek: activationRead }, transaction: {
@@ -228,8 +235,10 @@ it('preserves activation evidence when selector authority expires during lease a
   const before = await f.snapshot();
   await expect(coordinator.migrateAndActivate({ proof, expectedSourceMigrationChainIdentity: 'c'.repeat(64),
     stopTargetStartupRuntime: stop })).rejects.toMatchObject(recoveryCode);
-  expect(stop).toHaveBeenCalledOnce();
-  expect(absent).toHaveBeenCalledOnce();
+  expect(stop).not.toHaveBeenCalled();
+  expect(absent).not.toHaveBeenCalled();
+  expect(blockContinuation).toHaveBeenCalledOnce();
+  expect(release).toHaveBeenCalledOnce();
   expect(activationRead).not.toHaveBeenCalled();
   expect(discard).not.toHaveBeenCalled();
   expect(rollback).not.toHaveBeenCalled();

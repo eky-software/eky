@@ -5092,18 +5092,91 @@ toteutettu nykyisissä snapshot-, palautuspiste- ja staging-omistajissa.
 Jäädytetty 14 tiedoston regressiosarja läpäisi 404 testiä ja desktopin
 tyyppitarkistus läpäisi. Rajattu katselmus ja sen sulkuvirhekorjaukset kattavat
 myös alkuperäisen työn päättymisen sekä ylemmän virhesiivouksen eston.
-Tämä ei vielä todista migraation koordinaattori-/main-kytkentää tai
-paketoitua hyväksyntää. Kytkennässä on annettava sama lisävaltuus snapshotin
-valmisteluun ja siivoukseen sekä vietävä vartijat korjaavaan journal-lukuun
-ja payload-muutoksiin.
-Normaalin source-recoveryn tarkoituksellinen valinnanmuutos ja selector-paluun
-leasen vaihto tarvitsevat omat nykyisiin omistajiin perustuvat luovutusrajansa;
-vanhaa sidontaa ei saa vain päivittää uusiin havaittuihin tavuihin.
+Koordinaattori-/main-liitos välittää nyt saman lisävaltuuden snapshotin
+valmisteluun ja siivoukseen sekä vartijat korjaavaan journal-lukuun ja
+payload-muutoksiin. Source-recoveryn tarkoituksellinen valinnanmuutos päättää
+vanhan sidonnan käytön ennen luovutusta; selector-paluu säilyttää nykyisen
+erillisen restore-omistajan switch-leasen vapautumisen jälkeen.
+Vanhaa sidontaa ei päivitetä uusiin havaittuihin tavuihin. Mainin looginen
+jatkoesto ei mitätöi fyysistä prosessivarausta ennen lapsen exit/reclaim-ketjua.
+Alkuperäinen valmisteluvirhe säilyy myös siivousvartijan hylätessä jatkon;
+paluukäynnistyksen ja jatkoestoilmoituksen lisävirheet eivät peitä sitä.
+Nykyisen scoped-combined-korjauksen jälkeen molemmat oikeita sidonta- ja
+aktivointitiedostoja käyttävät onnistumispolut ja neljä virhepolkua läpäisivät
+nykyisillä aikarajoilla. Vaikutusalueen kahdeksan tiedoston 740 testiä,
+desktopin tyypitys ja rajattu riippumaton katselmus läpäisivät.
+Testin oma varaus vapautetaan
+vasta alkuperäisen työn päätyttyä; epäonnistunut tai keskeneräinen aineisto
+säilyy. Aiempi main-näyttö ja hylkäykset on erotettu
+[integraatiohistoriaan](release-0.3.0-integration-history.md#activation-migrationin-kertautuvat-tarkistukset).
+Main-/startup-ketjun ja migraation kuuden tiedoston jälkitodennus läpäisi
+383 testiä. Yhteisen korvausportin kolme system-tapausta läpäisivät oikealla
+salatulla backupilla, SQLitellä ja PDF-aineistolla; E2E:n tyypitys läpäisi.
+Ne eivät korvaa activation-migrationin native- ja pakettinäyttöä.
+Koko liitoksen hyväksyntäportit ovat vielä kesken; uuden toiminnallisen
+vaiheen edellä käsitellään [M1:n uusi auditointieste](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Erillisiä päällekkäisiä testisarjoja ei lasketa yhteen.
+Prosessirajan mallinnus ei korvaa native- tai paketoitua hyväksyntää.
 Valitsimesta alkavan avauksen nykyinen proof- ja alkuperäisvalinnan tarkistus
 säilyy myös uuden sidonnan rinnalla. Nykyiseen valintaan otettu uusi sidonta
 ei saa korvata aiemmin myönnetyn valtuuden tarkistusta. Muusta yrityksestä
 alkavan koordinaattoripolun korjaavat registry-/switch-uusintaluvut korvataan
 sidonnan täsmällisillä readonly-luvuilla, ei poistamalla tuoreuden tarkistusta.
+
+**Yhdistetyn eteenpäin-kirjoituksen lukukonteksti.** Alla kuvattu rajattu
+kytkentä ja sen kaksi kertautumiskorjausta on toteutettu. Nykyinen näyttö
+on yllä; seuraava työ on liitoksen jälkitodennus, ei uusi yleinen
+tarkistusten vähennys. Aikarajat, sisältövaatimukset ja muutosvartijat säilyvät.
+
+- `ProfileRestoreActivationJournalStore` saa käyttää nykyistä
+  `writeContext`-mekanismia myös nimenomaiselle `kind: 'combined'` -kutsulle.
+  Tämä on nimetty lisäys alempana kuvattuun cold-`separateContent`-rajaan,
+  ei sen korvaaminen. Puuttuva laji, alkujulkaisu ilman edeltäjää,
+  vajaa konteksti, combined-kutsun sisältöcallback tai puuttuva viimeinen
+  synkroninen live-vartija hylätään ennen tiedostomuutoksia.
+- Sisäiset luvut tarkistavat saman omistajan sekä tarkan journalirevision
+  ja nykyiset slotit. Täysi yhdistetty valtuus tarkistetaan ennen jokaista
+  kahdeksaa nykyistä journal-mutaatiota. Sen jälkeen tarkistetaan kyseisen
+  vaiheen slotit ja avattu kahva sekä viimeisenä synkroniset vartijat.
+  Julkaisun jälkeinen täysi kuittaus säilyy. Tavujen atomista suojaa
+  ulkopuoliselta tiedostomuutokselta ei luvata.
+- `WorkspaceActivationMigrationBinding` antaa rajatun lukuomistajuuden
+  vain julkaistulle, pysäytetylle vaiheelle. Sama switch-lease, startup,
+  runtimen poissaolo ja mainin fyysinen omistajuus tarkistetaan nykyisillä
+  porteilla odotusten ympärillä. Registry-/switch-/sidontatavuja ei lueta
+  uudelleen tämän sisäisen lukuvartijan sisällä. Täysi `assertPublished`
+  ja valitsimen alkuperäisen proofin `reprove` säilyvät muutosrajalla.
+- Koordinaattorin oma jatkolupa tarkistetaan myös lukuvartijan alussa ja
+  lopussa. Hylkäys kulkee nykyiseen pysyvään epävarmuustilaan; luovutus,
+  sulku tai myöhäinen callback ei elvytä valtuutta. Ensivirhe ja aineisto
+  säilyvät ja aloitettu työ odotetaan loppuun.
+- Transaktio käyttää kontekstia vain valitun eteenpäin-aktivoinnin
+  journal-kirjoituksiin. Edeltäjä, laji, callbackit vastaanottajineen ja
+  kontekstin läsnäolo kaapataan ennen odotusta. Payload-siirrot, rollback,
+  alkujulkaisu ja vanhat kontekstittomat kutsut säilyttävät nykyiset porttinsa.
+  Tyhjää sisältöcallbackia ei käytetä uuden polun avaamiseen.
+- Vain tämän eksplisiittisen combined-kontekstin täysi kirjoitusvaltuus
+  kutsuu kaapattua ulkoista valtuutta kerran. Transaktio ei lue samaa
+  journalia sen sisällä uudelleen: kirjoittaja tarkistaa edelleen jokaisella
+  kahdeksalla muutosrajalla vaiheen current-/backup-/next-slotit sekä avatun
+  next-kahvan ja viimeiset synkroniset vartijat. Julkaisun readback ja
+  edeltäjän poiston suojat säilyvät. Sisäinen lukuvaltuus on yhä
+  journal-sidottu. Tämä ei poista journalin tarkistusta payload-siirroista
+  eikä muuta separateContent-, rollback-, alkujulkaisu- tai kontekstittomia
+  kutsuja. Rajattu lähdekatselmus edeltää uuden haaran todennusta.
+- Saman validoidun combined-kontekstin payload-siirto ja kohdekansion
+  valmistelu säilyttävät yhden kokonaisen omistajuus -> tarkka journal ->
+  omistajuus -tarkistuksen ennen viimeisiä synkronisia vartijoita.
+  Sisältöcallbackin puuttuessa sen ympärille ei tehdä kahta peräkkäistä
+  identtistä tarkistusta. Jokainen muutos ja mahdollinen rename-uusinta
+  hankkii tarkistuksen uudelleen. Kontekstittoman ja separateContent-polun
+  järjestys säilyy; tämä ei ole ulkoisten tiedostomuutosten atominen lukko.
+- Laajenna nykyisiä regressioita: väärä/vajaa konteksti, kaikki kahdeksan
+  viimeistä muutosvartijaa, vaihtunut slotti/kahva, lukujen aikana muuttunut
+  yritysvalinta, menetetty fyysinen omistajuus sekä callbackin korvaus ja
+  viivästetty kahvasulku. Vertaa säilyneitä tavuja. Molemmat oikean sidonnan
+  onnistumispolut ja neljä virhepolkua vaaditaan nykyisillä aikarajoilla;
+  uusi hylkäys tutkitaan, ei uusita vihreään asti.
 
 ##### Replacementin käynnistyspolkujen yhteinen omistajuusraja
 

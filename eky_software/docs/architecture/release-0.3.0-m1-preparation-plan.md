@@ -14,6 +14,14 @@ yrityspoisto ja keskeytyneen poiston jatkaminen.** Lähtö on
 Mergepuu vastaa katselmoitua headia
 `a0ee78343396cabbe6eb206a2d22ad7139e863b9`.
 
+**Uusi integraatioeste 29.10.2026:** saman main-revision myöhempi
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/40844462629)
+hylkäsi nykyisen `@hono/node-server`-version
+[GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
+vuoksi. Aiempaa W7.3-hyväksyntää ei muuteta jälkikäteen, mutta uuden
+integraation portti ei ole vihreä. Rajattu 2.1.0 -> 2.1.3 -korjausehdotus
+odottaa riippuvuuspäätöstä; riippuvuuksia ei vielä muutettu.
+
 | Hyväksytty raja | Revision oma näyttö |
 | --- | --- |
 | PR #323 | [V2, yritys 2](https://github.com/eky-software/eky/actions/runs/40672393035/attempts/2) ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/40672392980) läpäisivät. Yksi rajattu valmistelutyön uusinta, ei ensivirheen uudelleenluokitusta. |
@@ -80,8 +88,31 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   virhepolussa; ensivirhe ja sulkuvirhe erottuvat. Jäädytetyn 14 tiedoston
   404 testiä, desktopin tyypitys ja rajattu katselmus läpäisivät.
   Tämä on kytkennän edellytys, ei vielä koordinaattori-/main- tai pakettinäyttö.
-- **Seuraava työ:** B:n activation-migration-sidonnan koordinaattori-/main-
-  kytkentä, sitten import-, adoption- ja inspection-liitokset sekä
+- Activation-migrationin nykyinen sidonta-/aktivointiketju läpäisi nyt
+  molemmat onnistumispolut ja neljä virhepolkua nykyisellä testirajalla.
+  Kirjoittajan omistamaa journal-valintaa ei toisteta ulkoisen valtuuden
+  sisällä. Scoped-combined-polun tiedostosiirto ja hakemiston valmistelu
+  säilyttävät kokonaisen omistajuus/journal/omistajuus-tarkistuksen ilman
+  tyhjän sisältöcallbackin ympärille syntyvää kaksoistarkistusta.
+  Kaikki kahdeksan journal-muutosrajaa, kuittaukset, synkroniset vartijat
+  ja vanhojen kutsujien järjestys säilyvät. Kahdeksan tiedoston 740 testiä,
+  desktopin tyypitys ja rajattu riippumaton katselmus läpäisivät.
+  Kuuden ketjutestin näyttö
+  käyttää oikeita sidonta-/aktivointitavuja mutta mallinnettua snapshotia
+  ja prosessiomistajaa: se ei ole SQLite-, native- tai pakettihyväksyntä.
+  [Aiemmat hylkäykset](release-0.3.0-integration-history.md#activation-migrationin-kertautuvat-tarkistukset)
+  säilyvät historiassa; aikarajoja tai sisältövaatimuksia ei muutettu.
+- Main-/startup-ketjun ja migraation kuuden tiedoston jälkisarja läpäisi
+  383 testiä. Nykyisen korvauksen kolme system-tapausta läpäisivät oikealla
+  salatulla backupilla, SQLitellä ja PDF-aineistolla; E2E:n tyypitys läpäisi.
+  System-tapaukset todistavat yhteisen palautusportin säilymistä, eivät
+  activation-migrationin native-prosessivarausta tai paketoitua hyväksyntää.
+- **Seuraava työ:** yllä nimetyn auditointiesteen riippuvuuspäätös ja
+  hyväksytyn ratkaisun todennus ennen uutta toiminnallista vaihetta.
+  Nykyinen B:n activation-migration-toteutuscheckpoint noudattaa
+  [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)
+  rajaa; sen paikallinen läpäisy ei vielä sulje koko liitoksen portteja.
+  Sen jälkeen import-, adoption- ja inspection-liitokset sekä
   C:n W7.3-luovutus. Migraation palautuspiste muodostuu edelleen ennen sulkua.
   Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
   W7.5:n poistokanavaa ei avata.

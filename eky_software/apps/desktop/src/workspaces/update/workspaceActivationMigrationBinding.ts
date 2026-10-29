@@ -95,6 +95,13 @@ export class WorkspaceActivationMigrationBinding {
     });
   }
 
+  assertReadOwnership(): Promise<void> {
+    return this.run(async () => {
+      if (this.receipt === undefined || this.phase !== 'stopped') throw required();
+      await this.assertStoppedOwnership();
+    });
+  }
+
   // Only the caller's successfully settled strict stop may request this transition.
   enterStopped(): Promise<void> {
     return this.run(async () => {
@@ -137,8 +144,7 @@ export class WorkspaceActivationMigrationBinding {
   private assertSelection = async (): Promise<void> => {
     this.assertAuthority();
     if (this.phase === 'stopped') {
-      await this.assertAbsent(); this.assertAuthority();
-      await this.assertMainOwned(); this.assertAuthority();
+      await this.assertStoppedOwnership();
     }
     const registry = await this.readRegistry(this.assertAuthority);
     this.assertAuthority();
@@ -157,6 +163,12 @@ export class WorkspaceActivationMigrationBinding {
       this.selection.assertJournalSelection(journal);
     }
   };
+
+  private async assertStoppedOwnership(): Promise<void> {
+    this.assertAuthority();
+    await this.assertAbsent(); this.assertAuthority();
+    await this.assertMainOwned(); this.assertAuthority();
+  }
 
   private async verifyReceipt(receipt: Receipt): Promise<void> {
     const observed = await this.store.inspect(this.authority());

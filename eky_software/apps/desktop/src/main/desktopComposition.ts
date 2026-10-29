@@ -2183,6 +2183,15 @@ async function startDesktopCompositionRuntime({
           resourcesPath: options.resourcesPath,
           reservationOwner: startupReservationOwner,
           assertMainReservationOwned: workspaceReservation.assertMainOwned,
+          assertMainReservationCurrent: workspaceReservation.assertMainCurrent,
+          assertStartupCurrent() {
+            assertStartupAuthority();
+            if (restoreRuntimeRecoveryBlocked) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+          },
+          blockContinuation() {
+            // The existing startup owner must still reclaim its child before invalidation.
+            restoreRuntimeRecoveryBlocked = true;
+          },
           userDataRoot: options.userDataPath,
           ...(w6b2PackagedFaultInjection === undefined
             ? {}

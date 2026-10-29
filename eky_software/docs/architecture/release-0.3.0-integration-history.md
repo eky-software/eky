@@ -7,6 +7,39 @@ eivät nykyinen työjono tai uusi valtuus.
 
 ## W7.4:n palautuskytkennän checkpointit 29.10.2026
 
+### Activation-migrationin kertautuvat tarkistukset
+
+Alla oleva M1:n aiempi välitila edeltää rajattua kirjoittajan ja
+payload-siirtojen tarkistusjärjestyksen korjausta. Nykyinen näyttö on
+M1:ssä; ensiajot ja niiden epävarmuudet säilyvät.
+
+- Activation-migrationin koordinaattori-/main-kytkentä on toteutettu mutta
+  sen yhdistelmätodennus on kesken. Mainin 344 testin palautussarja läpäisi;
+  myöhemmät ensivirheketjun korjaukset läpäisivät 54 koordinaattoritestiä
+  ja neljä main-kohdetapausta. Desktopin tyypitys läpäisi. Näitä päällekkäisiä
+  sarjoja ei lasketa yhteen eikä mallinnettua prosessia nimetä native-näytöksi.
+  Kaksi uutta oikeita sidonta- ja aktivointitiedostoja käyttävää onnistumispolkua
+  ylitti nykyisen testirajan; ne ovat avoin este tämän liitoksen hyväksynnälle.
+  Testin alkuperäinen työ päättyy nyt ennen testivarauksen vapautusta.
+  Yhden identtisen kaksoistarkistuksen poiston jälkeen transaktion ja journalin
+  464 testiä läpäisi, mutta kaksi yhdistelmätestiä aikakatkaistiin edelleen.
+  Täsmennetyt neljä järjestysregressiota, 61 elinikä-/kirjoitusrajan kontrollia
+  ja desktopin tyypitys läpäisivät. Näyttö on päällekkäistä.
+  Ensiajot säilyvät, eikä aikarajaa tai tarkistuksia ole lievennetty.
+- Sisäisen lukuomistajuuden ja täyden muutosvaltuuden erottelu on nyt
+  kytketty nykyiseen journal-kontekstiin. Vaikutusalueen seitsemän tiedoston
+  678 testiä, tyypitys ja rajattu lähdekatselmus läpäisivät.
+  Uusi kuuden oikean tiedostopolun koe läpäisi neljä virhepolkua, mutta
+  kaksi onnistumispolkua aikakatkaistiin edelleen. Näyttö ei sulje liitosta.
+
+Seuraava rajattu kirjoittajakorjaus läpäisi yhden onnistumispolun ja neljä
+virhepolkua; valitsimesta alkava onnistumispolku aikakatkaistiin edelleen.
+Sen jälkeen poistettiin vain scoped-combined-polun tyhjän sisältöcallbackin
+ympärille muodostuva peräkkäinen kaksoistarkistus. Molemmille todetuille
+kertautumiskohdille oli ensin epäonnistuva järjestysregressio. Näitä
+korjauksia tai myöhempää läpäisyä ei nimetä kaikkien vanhojen viiveiden
+juurisyyksi. Testien, sovelluksen ja CI:n aikarajoja ei muutettu.
+
 ### Main-kytkennän edellinen ajotulos
 
 Koko main-/startup-recovery-kierros läpäisi 413 testiä; yksi cold-forward-

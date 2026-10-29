@@ -229,7 +229,8 @@ export class ProfileRestoreActivationTransaction {
       throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
     }
     if (journalWriteContext !== undefined && (expected === undefined || typeof assertRecoveryAuthority !== 'function' ||
-        typeof assertContent !== 'function' || journalWriteContext === null ||
+        (assertContent === undefined ? typeof assertLiveMutationCurrent !== 'function' : typeof assertContent !== 'function') ||
+        journalWriteContext === null ||
         typeof journalWriteContext.assertReadOwnership !== 'function' || typeof journalWriteContext.assertMutationCurrent !== 'function')) {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
     }
@@ -248,6 +249,8 @@ export class ProfileRestoreActivationTransaction {
     };
     const assertMutation = async () => {
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      // With scoped combined ownership, no content work needs a second bracket.
+      if (assertRead !== undefined && assertContent === undefined) return;
       await assertContent?.(captureJournal(journal));
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
     };
@@ -257,23 +260,26 @@ export class ProfileRestoreActivationTransaction {
       await this.readForwardRecoverySources(journal);
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
     };
+    const writeContext = assertRead === undefined ? undefined : Object.freeze({
+      assertReadCurrent: (current: Readonly<ProfileRestoreActivationJournal>) => this.assertJournalMutation(current, assertRead),
+      assertMutationCurrent: () => assertSynchronousRollbackRootAuthority(mutation!),
+    });
     const writeAuthority = (): ProfileRestoreJournalWriteAuthority => assertContent === undefined ? ({
       previous: captureJournal(journal),
-      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
-      assertCurrent: async (expectedJournal: Readonly<ProfileRestoreActivationJournal>) => {
-        await this.assertJournalMutation(expectedJournal, assertRecoveryAuthority);
-        await this.assertJournalMutation(expectedJournal, assertRecoveryAuthority);
-      },
+      ...(writeContext === undefined ? {} : { kind: 'combined' as const, writeContext }),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent: writeContext === undefined
+        ? assertMutationCurrent : () => assertSynchronousRollbackRootAuthority(assertLiveMutationCurrent!) }),
+      // The scoped writer validates its evolving slots after each external grant.
+      assertCurrent: writeContext === undefined
+        ? expectedJournal => this.assertJournalMutation(expectedJournal, assertRecoveryAuthority)
+        : assertRecoveryAuthority!,
     }) : ({
       kind: 'separateContent',
       previous: captureJournal(journal),
       assertCurrent: current => this.assertJournalMutation(current, assertRecoveryAuthority),
       assertContent,
       ...(assertLiveMutationCurrent === undefined ? {} : { assertMutationCurrent: assertLiveMutationCurrent }),
-      ...(assertRead === undefined ? {} : { writeContext: Object.freeze({
-        assertReadCurrent: (current: Readonly<ProfileRestoreActivationJournal>) => this.assertJournalMutation(current, assertRead),
-        assertMutationCurrent: () => assertSynchronousRollbackRootAuthority(mutation!),
-      }) }),
+      ...(writeContext === undefined ? {} : { writeContext }),
     });
     try {
       await assertCurrent();

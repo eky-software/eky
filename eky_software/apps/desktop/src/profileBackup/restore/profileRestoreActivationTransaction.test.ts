@@ -127,9 +127,10 @@ describe('profile restore activation transaction', () => {
     ['movingCurrentDatabase', 3], ['movingCurrentDocuments', 3],
     ['activatingStagedDatabase', 4], ['activatingStagedDocuments', 4],
   ] as const;
-  for (const [phase, count] of liveForwardCuts) {
+  for (const { phase, count, scoped } of liveForwardCuts.flatMap(([phase, count]) =>
+    [false, true].map(scoped => ({ phase, count, scoped })))) {
     it.each(Array.from({ length: count }, (_, index) => index + 1))(
-      `retains exact live forward evidence at ${phase} payload mutation %s`, async boundary => {
+      `retains exact live forward evidence at ${phase} payload mutation %s (scoped: ${scoped})`, async boundary => {
         const f = await createFixture(); await f.transaction.prepare(operationId);
         const selected = (await f.journalStore.peek())!;
         let armed = false; let calls = 0; let revoked = false;
@@ -149,7 +150,7 @@ describe('profile restore activation transaction', () => {
         };
         await expect(transaction.advanceToValidation(selected, async () => {
           if (armed && !revoked) retained = await captureEvidence(f);
-        }, undefined, undefined, guard)).rejects.toThrow();
+        }, undefined, scoped ? { async assertReadOwnership() {}, assertMutationCurrent() {} } : undefined, guard)).rejects.toThrow();
         expect(revoked).toBe(true); expect(calls).toBe(boundary);
         expect(mutationCounts()).toEqual(mutations);
         expect(await captureEvidence(f)).toEqual(retained);
@@ -461,6 +462,69 @@ describe('profile restore activation transaction', () => {
       expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
       expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
       expect(await readFile(f.stagedPdfPath, 'utf8')).toBe('new pdf');
+    },
+  );
+
+  it.each(['completed', 'ownerBefore', 'journalChanged', 'ownerAfter'] as const)(
+    'uses one paired journal read per combined forward check (%s)', async outcome => {
+      const f = await createFixture();
+      await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!;
+      const before = await captureEvidence(f);
+      const journalPath = join(dirname(dirname(f.activeDatabasePath)),
+        'profile-restore-state', profileRestoreActivationJournalFileName);
+      const foreign = { ...selected, operationId: '22222222-2222-4222-8222-222222222222' };
+      const order: string[] = [];
+      let inspecting = false;
+      let current = true;
+      let inspected = false;
+      const peek = f.journalStore.peek.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'peek').mockImplementation(async () => {
+        const value = await peek();
+        if (!inspecting) return value;
+        order.push('journal');
+        if (outcome === 'ownerAfter') current = false;
+        if (outcome === 'journalChanged') {
+          await writeFile(journalPath, JSON.stringify(foreign));
+          return peek();
+        }
+        return value;
+      });
+      const assertOwner = async () => {
+        if (inspecting) order.push('owner');
+        if (!current) throw new Error('SYNTHETIC_FORWARD_OWNER_REVOKED');
+      };
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (journal.phase === 'movingCurrentDatabase') {
+          if (authority?.previous === undefined) throw new Error('SYNTHETIC_PREDECESSOR_REQUIRED');
+          inspected = true;
+          inspecting = true;
+          if (outcome === 'ownerBefore') current = false;
+          try { await authority.assertCurrent(selected); }
+          finally { inspecting = false; }
+        }
+        await write(journal, authority);
+      });
+      const work = f.transaction.advanceToValidation(selected, assertOwner, undefined, undefined, () => {
+        if (!current) throw new Error('SYNTHETIC_FORWARD_OWNER_REVOKED');
+      });
+      if (outcome === 'completed') {
+        await expect(work).resolves.toMatchObject({ phase: 'validationStarting' });
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      } else {
+        await expect(work).rejects.toThrow(outcome === 'journalChanged'
+          ? 'PROFILE_RESTORE_ACTIVATION_STATE_INVALID' : 'SYNTHETIC_FORWARD_OWNER_REVOKED');
+        expect(await peek()).toEqual(outcome === 'journalChanged' ? foreign : selected);
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+        expect(await readFile(f.stagedPdfPath, 'utf8')).toBe('new pdf');
+        if (outcome !== 'journalChanged') expect(await captureEvidence(f)).toEqual(before);
+      }
+      expect(inspected).toBe(true);
+      expect(order).toEqual(outcome === 'ownerBefore' ? ['owner']
+        : outcome === 'journalChanged' ? ['owner', 'journal'] : ['owner', 'journal', 'owner']);
     },
   );
 
@@ -2027,6 +2091,45 @@ describe('profile restore activation transaction', () => {
     },
   );
 
+  for (const revoked of ['external', 'context', 'live'] as const) {
+    it.each([1, 2, 3, 4, 5, 6, 7, 8])(`retains mapped combined evidence when ${revoked} authority fails before mutation %s`, async boundary => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const previousBytes = await readFile(path, 'utf8');
+      const first = new Error('SYNTHETIC_MAPPED_COMBINED_REVOKED');
+      let insideWrite = false; let externalCalls = 0; let contextCalls = 0; let liveCalls = 0;
+      let nextBytes: string | undefined; let cutCounts: number[] | undefined;
+      const cut = () => { cutCounts = mutationCounts(); throw first; };
+      const external = async () => {
+        if (insideWrite && ++externalCalls === (boundary === 8 ? 12 : boundary) && revoked === 'external') cut();
+      };
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        nextBytes = `${JSON.stringify(journal)}\n`;
+        insideWrite = true;
+        try { await write(journal, authority); }
+        finally { insideWrite = false; }
+      });
+      await expect(f.transaction.advanceToValidation(selected, external, undefined, {
+        async assertReadOwnership() {}, assertMutationCurrent() {
+          if (insideWrite && ++contextCalls === boundary && revoked === 'context') cut();
+        },
+      }, () => {
+        if (insideWrite && ++liveCalls === boundary && revoked === 'live') cut();
+      })).rejects.toMatchObject({ cause: first });
+      expect(cutCounts).toBeDefined(); expect(mutationCounts()).toEqual(cutCounts);
+      expect(await captureEvidence(f)).toEqual(before); expect(nextBytes).toBeDefined();
+      const expected = boundary <= 3 ? [previousBytes, undefined, undefined]
+        : boundary === 4 ? [previousBytes, '', undefined]
+          : boundary <= 6 ? [previousBytes, nextBytes, undefined]
+            : boundary === 7 ? [undefined, nextBytes, previousBytes] : [nextBytes, undefined, previousBytes];
+      const observed = await Promise.all(['', '.next', '.backup'].map(suffix =>
+        readFile(`${path}${suffix}`, 'utf8').catch(allowMissing)));
+      expect(observed).toEqual(expected);
+    });
+  }
+
   it.each([
     { operationId: '33333333-3333-4333-8333-333333333333' },
     { revision: 99 }, { phase: 'accepted' as const },
@@ -2088,6 +2191,77 @@ describe('profile restore activation transaction', () => {
     expect(error.cause.errors[0]).toMatchObject({ message: 'synthetic interruption' });
     expect(error.cause.errors[1]).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED', cause: primary });
     expect(await fixture.journalStore.peek()).toMatchObject({ phase: 'currentDatabaseMoved' });
+  });
+
+  it('leaves exact combined journal selection with its writer and checks external authority once per grant', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!;
+    const full = vi.fn(async () => {}); const peek = vi.spyOn(f.journalStore, 'peek');
+    const write = f.journalStore.write.bind(f.journalStore);
+    let writes = 0; let grants = 0;
+    vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+      if (authority === undefined || !('kind' in authority) || authority.kind !== 'combined' ||
+          authority.writeContext === undefined) throw new Error('MISSING_COMBINED_CONTEXT');
+      writes++;
+      const current = authority.assertCurrent.bind(authority);
+      await write(journal, { ...authority, async assertCurrent(expected) {
+        const beforeFull = full.mock.calls.length; const beforePeek = peek.mock.calls.length;
+        await current(expected);
+        expect(full.mock.calls.length - beforeFull).toBe(1);
+        expect(peek.mock.calls.length - beforePeek).toBe(0);
+        grants++;
+      } });
+    });
+    await expect(f.transaction.advanceToValidation(selected, full, undefined, {
+      async assertReadOwnership() {}, assertMutationCurrent() {},
+    }, () => {})).resolves.toMatchObject({ phase: 'validationStarting', revision: 9 });
+    expect(writes).toBe(9); expect(grants).toBe(108);
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+  });
+
+  it.each([
+    { boundary: 8, slot: 'current' }, { boundary: 9, slot: 'backup' },
+    { boundary: 11, slot: 'next' }, { boundary: 12, slot: 'authority' },
+  ] as const)('retains combined publication evidence after $slot changes at acknowledgement $boundary', async ({ boundary, slot }) => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+    const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+    const foreign = JSON.stringify({ ...selected, operationId: '33333333-3333-4333-8333-333333333333' });
+    const first = new Error('SYNTHETIC_COMBINED_ACKNOWLEDGEMENT_REVOKED');
+    const write = f.journalStore.write.bind(f.journalStore);
+    const retained: Record<string, string | undefined> = {};
+    let injected = false;
+    vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+      if (authority === undefined || !('kind' in authority) || authority.kind !== 'combined' ||
+          authority.writeContext === undefined) throw new Error('MISSING_COMBINED_CONTEXT');
+      let calls = 0; const current = authority.assertCurrent.bind(authority);
+      await write(journal, { ...authority, async assertCurrent(expected) {
+        await current(expected);
+        if (++calls !== boundary) return;
+        if (slot !== 'authority') await writeFile(slot === 'current' ? path : `${path}.${slot}`, foreign);
+        for (const suffix of ['', '.next', '.backup']) {
+          retained[suffix] = await readFile(`${path}${suffix}`, 'utf8').catch(error => {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+            throw error;
+          });
+        }
+        injected = true;
+        if (slot === 'authority') throw first;
+      } });
+    });
+    const result = f.transaction.advanceToValidation(selected, async () => {}, undefined, {
+      async assertReadOwnership() {}, assertMutationCurrent() {},
+    }, () => {});
+    if (slot === 'authority') await expect(result).rejects.toMatchObject({ cause: first });
+    else await expect(result).rejects.toThrow('PROFILE_RESTORE_JOURNAL_UNAVAILABLE');
+    expect(injected).toBe(true); expect(await captureEvidence(f)).toEqual(before);
+    expect(Object.keys(retained).sort()).toEqual(['', '.backup', '.next']);
+    if (slot !== 'authority') expect(retained[slot === 'current' ? '' : `.${slot}`]).toBe(foreign);
+    for (const [suffix, bytes] of Object.entries(retained)) {
+      if (bytes === undefined) await expect(readFile(`${path}${suffix}`)).rejects.toMatchObject({ code: 'ENOENT' });
+      else expect(await readFile(`${path}${suffix}`, 'utf8')).toBe(bytes);
+    }
   });
 
   it.each(['completed', 'changedJournal', 'changedSelection', 'expiredMutation'] as const)(
@@ -2233,7 +2407,7 @@ describe('profile restore activation transaction', () => {
     expect(JSON.parse(await readFile(nextPath, 'utf8'))).toMatchObject({ phase: 'movingCurrentDatabase', revision: 1 });
   });
 
-  it('pins paired forward callbacks before a full ownership await', async () => {
+  it.each(['separateContent', 'combined'] as const)('pins paired %s forward callbacks before a full ownership await', async kind => {
     const f = await createFixture(); await f.transaction.prepare(operationId);
     const selected = (await f.journalStore.peek())!;
     const foreign = vi.fn(() => { throw new Error('SYNTHETIC_FOREIGN_OWNER'); });
@@ -2241,9 +2415,58 @@ describe('profile restore activation transaction', () => {
     const context = { assertReadOwnership: read, assertMutationCurrent: mutation };
     await expect(f.transaction.advanceToValidation(selected, async () => {
       Object.assign(context, { assertReadOwnership: foreign, assertMutationCurrent: foreign });
-    }, async () => {}, context)).resolves.toMatchObject({ phase: 'validationStarting' });
-    expect(read).toHaveBeenCalled(); expect(mutation).toHaveBeenCalledTimes(72); expect(foreign).not.toHaveBeenCalled();
+    }, kind === 'combined' ? undefined : async () => {}, context,
+    kind === 'combined' ? () => {} : undefined)).resolves.toMatchObject({ phase: 'validationStarting' });
+    expect(read).toHaveBeenCalled();
+    if (kind === 'separateContent') expect(mutation).toHaveBeenCalledTimes(72);
+    else expect(mutation.mock.calls.length).toBeGreaterThanOrEqual(72);
+    expect(foreign).not.toHaveBeenCalled();
   });
+
+  it.each(['completed', 'changedJournal', 'changedSelection', 'expiredMutation'] as const)(
+    'uses the combined forward context without substituting content (%s)', async outcome => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const foreign = { ...selected, operationId: '33333333-3333-4333-8333-333333333333' };
+      let scopedReads = 0; let mutations = 0;
+      const full = vi.fn(async () => {
+        if (outcome === 'changedSelection' && scopedReads > 0) throw new Error('SYNTHETIC_COMBINED_SELECTION_CHANGED');
+      });
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (authority === undefined || !('kind' in authority) || authority.kind !== 'combined' ||
+            authority.writeContext === undefined || authority.assertContent !== undefined) throw new Error('MISSING_COMBINED_CONTEXT');
+        const context = authority.writeContext;
+        await write(journal, { ...authority, writeContext: {
+          async assertReadCurrent(current) {
+            scopedReads++;
+            if (outcome === 'changedJournal' && scopedReads === 1) await writeFile(path, JSON.stringify(foreign));
+            const checks = full.mock.calls.length;
+            await context.assertReadCurrent(current);
+            expect(full).toHaveBeenCalledTimes(checks);
+          }, assertMutationCurrent: context.assertMutationCurrent,
+        } });
+      });
+      const result = f.transaction.advanceToValidation(selected, full, undefined, {
+        async assertReadOwnership() {}, assertMutationCurrent() {
+          if (scopedReads > 0 && ++mutations === 1 && outcome === 'expiredMutation') throw new Error('SYNTHETIC_COMBINED_MUTATION_REVOKED');
+        },
+      }, () => {});
+      if (outcome === 'completed') {
+        await expect(result).resolves.toMatchObject({ phase: 'validationStarting', revision: 9 });
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      } else {
+        const cause = outcome === 'changedJournal' ? 'PROFILE_RESTORE_ACTIVATION_STATE_INVALID'
+          : outcome === 'changedSelection' ? 'SYNTHETIC_COMBINED_SELECTION_CHANGED' : 'SYNTHETIC_COMBINED_MUTATION_REVOKED';
+        await expect(result).rejects.toMatchObject({ cause: { message: cause } });
+        expect(await captureEvidence(f)).toEqual(before);
+        expect(await f.journalStore.peek()).toEqual(outcome === 'changedJournal' ? foreign : selected);
+      }
+      expect(scopedReads).toBeGreaterThan(0);
+    },
+  );
 
   it.each([null, {}, { async assertReadOwnership() {} }, { assertMutationCurrent() {} }])(
     'rejects an incomplete forward write context before repairing reads', async context => {
@@ -2253,6 +2476,72 @@ describe('profile restore activation transaction', () => {
       await expect(f.transaction.advanceToValidation(selected, async () => {}, async () => {}, context as never))
         .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
       expect(read).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(before);
+    },
+  );
+
+  it.each([
+    { mode: 'scopedCombined', outcome: 'completed' },
+    { mode: 'scopedCombined', outcome: 'ownerBefore' },
+    { mode: 'scopedCombined', outcome: 'journalChanged' },
+    { mode: 'scopedCombined', outcome: 'ownerAfter' },
+    { mode: 'unscopedCombined', outcome: 'completed' },
+    { mode: 'scopedSeparateContent', outcome: 'completed' },
+  ] as const)(
+    'preserves the selected forward payload check sequence ($mode, $outcome)', async ({ mode, outcome }) => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const first = new Error('SYNTHETIC_SCOPED_PAYLOAD_OWNER_REVOKED');
+      const foreign = { ...selected, operationId: '33333333-3333-4333-8333-333333333333' };
+      const orders: string[][] = []; let order: string[] | undefined; let valid = true;
+      const peek = f.journalStore.peek.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'peek').mockImplementation(async () => {
+        if (order === undefined) return peek();
+        order.push('journal');
+        if (outcome === 'journalChanged') await writeFile(path, JSON.stringify(foreign));
+        const observed = await peek();
+        if (outcome === 'ownerAfter') valid = false;
+        return observed;
+      });
+      const move = fileMoves.renameProfilePathWithRetry;
+      vi.spyOn(fileMoves, 'renameProfilePathWithRetry').mockImplementation(async options => {
+        order = []; orders.push(order);
+        if (outcome === 'ownerBefore') valid = false;
+        try { return await move(options); }
+        finally { order = undefined; }
+      });
+      vi.mocked(rename).mockImplementation(async (...args) => {
+        order?.push('mutation'); return fileSystem.rename(...args);
+      });
+      const result = f.transaction.advanceToValidation(selected, async () => {
+        order?.push('owner'); if (!valid) throw first;
+      }, mode === 'scopedSeparateContent' ? async () => { order?.push('content'); } : undefined,
+      mode === 'unscopedCombined' ? undefined : {
+        async assertReadOwnership() {}, assertMutationCurrent() { order?.push('context-sync'); },
+      }, () => {
+        order?.push('live-sync');
+        if (!valid) throw first;
+      });
+      if (outcome === 'completed') {
+        await expect(result).resolves.toMatchObject({ phase: 'validationStarting' });
+        expect(orders).toHaveLength(4);
+        const expected = ['owner', 'journal', 'owner'];
+        if (mode === 'scopedSeparateContent') expected.push('content');
+        if (mode !== 'scopedCombined') expected.push('owner', 'journal', 'owner');
+        if (mode !== 'unscopedCombined') expected.push('context-sync');
+        expected.push('live-sync', 'mutation');
+        expect(orders).toEqual(Array.from({ length: 4 }, () => expected));
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      } else {
+        if (outcome === 'journalChanged') await expect(result).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+        else await expect(result).rejects.toBe(first);
+        expect(orders).toHaveLength(1);
+        expect(orders[0]).toEqual(outcome === 'ownerBefore' ? ['owner']
+          : outcome === 'journalChanged' ? ['owner', 'journal'] : ['owner', 'journal', 'owner']);
+        expect(await captureEvidence(f)).toEqual(before);
+        expect(await peek()).toMatchObject(outcome === 'journalChanged' ? foreign : { phase: 'movingCurrentDatabase' });
+      }
     },
   );
 

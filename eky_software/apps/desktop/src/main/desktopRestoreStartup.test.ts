@@ -257,6 +257,128 @@ function beginTrackedStartupTest(context: TestContext) {
   return lifetime;
 }
 
+describe('migration binding main ownership', () => {
+  it.for(['lostAcknowledgement', 'selectionChanged'] as const)(
+    'retains the first error through real migration composition: %s', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        let stopped = false;
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, replacementTarget: true, update: true, skipRestore: true,
+          completeStartup: true, pendingMigrationCount: 1,
+          inspectBackendStartup(input) {
+            const before = input.beforeMigrations;
+            input.beforeMigrations = async (inspection, control) => {
+              try {
+                return await before(inspection, { ...control, async stopStartupRuntime() {
+                  await control.stopStartupRuntime(); stopped = true;
+                } });
+              } catch (cause) {
+                // Model the backend runner's failure close/reclaim; the migration
+                // owner itself must not mutate recovery state after uncertainty.
+                if (!stopped) { await control.stopStartupRuntime(); stopped = true; }
+                const error = new DesktopBackendStartupError('BACKEND_MIGRATION_STARTUP_GATE_FAILED', {
+                  processState: stopped ? 'absent' : 'unknown', migrationGateSettled: true,
+                  reservationReclaimed: stopped,
+                });
+                error.cause = cause;
+                throw error;
+              }
+            };
+            return Promise.resolve();
+          },
+        }));
+        vi.spyOn(WorkspaceActivationMigrationInspector.prototype, 'inspect').mockResolvedValue({
+          status: 'compatiblePending', appliedMigrationCount: 1, pendingMigrationCount: 1,
+        });
+        const candidateOperations = installCompletedColdCandidate('historicalReadiness', originalProfileId);
+        const firstFailure = new Error(`SYNTHETIC_MIGRATION_${scenario}`);
+        const registryPath = join(f.root, WORKSPACE_REGISTRY_FILE_NAME);
+        const originalRegistry = await readFile(registryPath);
+        let expectedRegistry = originalRegistry;
+        const snapshot = vi.spyOn(RecoveryPointService.prototype, 'createPreMigration').mockImplementation(async () => {
+          expectedRegistry = Buffer.concat([originalRegistry, Buffer.from('\n')]);
+          await writeFile(registryPath, expectedRegistry);
+          throw firstFailure;
+        });
+        const publish = WorkspaceRemnantBindingStore.prototype.publish;
+        const published = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'publish').mockImplementation(async function (
+          this: WorkspaceRemnantBindingStore, value, authority,
+        ) {
+          const result = await publish.call(this, value, authority);
+          if (scenario === 'lostAcknowledgement') throw firstFailure;
+          return result;
+        });
+        const observe = vi.fn();
+        await lifetime.step('startup', async () => { await expect(f.start(observe)).rejects.toThrow(); });
+        expect(published).toHaveBeenCalledOnce();
+        expect(snapshot).toHaveBeenCalledTimes(scenario === 'selectionChanged' ? 1 : 0);
+        expect(candidateOperations).toEqual(['validateHistoricalPublished']);
+        expect(stopped).toBe(true);
+        expect(f.stopForUpdate).toHaveBeenCalledOnce();
+        expect(f.relaunch).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+        expect(observe.mock.calls.some(([error]) => hasErrorCause(error, firstFailure))).toBe(true);
+        const binding = captureWorkspaceRemnantBinding(published.mock.calls[0]![0]);
+        const bindingPaths = createWorkspaceRemnantBindingPaths(f.root, workspaceRemnantBindingKey(binding));
+        expect(JSON.parse(await readFile(bindingPaths.currentPath, 'utf8'))).toMatchObject({
+          owner: 'workspaceActivationMigration', workspaceId,
+        });
+        expect(await readFile(registryPath)).toEqual(expectedRegistry);
+        expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+        expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+      });
+    });
+
+  it.for(['beforeStop', 'afterStop'] as const)('blocks logical recovery without blocking child reclaim: %s', async (stage, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const recover = vi.fn(async () => 'relaunchRequired' as const);
+      const resolve: NonNullable<StartDesktopCompositionOptions['dependencies']>['resolveActiveWorkspace'] = async root => {
+        const current = await resolveActiveWorkspaceStartup(root);
+        return { ...current, mode: 'targetValidation', recoverFromFailure: recover, switchContext: {
+          operationId, sourceWorkspaceId: null, targetWorkspaceId: workspaceId, targetProfileId: originalProfileId,
+        } };
+      };
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, resolveActiveWorkspace: resolve,
+      }));
+      const primary = new Error('SYNTHETIC_MIGRATION_BINDING_UNCERTAIN');
+      let reclaimed = false;
+      vi.spyOn(activationComposition, 'createWorkspaceActivationMigrationComposition').mockImplementation(async options => ({
+        async prepareBeforeBackend() { return { status: 'migrationRequired', migrationStartupPolicy: 'restoreCompatible' }; },
+        async beforeMigrations(_inspection: unknown, control: { stopStartupRuntime(): Promise<void> }) {
+          expect(options.assertStartupCurrent()).toBeUndefined();
+          expect(() => options.assertMainReservationCurrent()).toThrow();
+          if (stage === 'beforeStop') options.blockContinuation();
+          await control.stopStartupRuntime();
+          expect(options.assertMainReservationCurrent()).toBeUndefined();
+          await options.assertMainReservationOwned();
+          reclaimed = true;
+          if (stage === 'afterStop') options.blockContinuation();
+          expect(() => options.assertStartupCurrent()).toThrow('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
+          const error = new DesktopBackendStartupError('BACKEND_MIGRATION_STARTUP_GATE_FAILED', {
+            processState: 'absent', migrationGateSettled: true, reservationReclaimed: true,
+          });
+          error.cause = primary;
+          throw error;
+        },
+      }) as unknown as Awaited<ReturnType<typeof activationComposition.createWorkspaceActivationMigrationComposition>>);
+      const observe = vi.fn();
+      await lifetime.step('startup', async () => { await expect(f.start(observe)).rejects.toThrow(); });
+      expect(reclaimed).toBe(true);
+      expect(f.stopForUpdate).toHaveBeenCalledOnce();
+      expect(recover).not.toHaveBeenCalled();
+      expect(f.relaunch).not.toHaveBeenCalled();
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+      expect(observe.mock.calls.some(([error]) => hasErrorCause(error, primary))).toBe(true);
+      expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+      expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+      await f.assertRegistryUnchanged();
+    });
+  });
+});
+
 describe('selector candidate rollback main handoff', () => {
   for (const scenario of ['noActivation', 'rolledBack', 'wrongReceipt', 'foreignProfile', 'contentFailure', 'ownerStillActive', 'releaseFailure',
     'anchorReleaseFailure', 'duplicate', 'duplicateAtRootRemoval', 'secretDrainFailure', 'inspectionDrainFailure', 'changedTarget'] as const) {
@@ -4474,7 +4596,9 @@ async function seedSelectorTarget(f: Awaited<ReturnType<typeof createFixture>>) 
   return new WorkspaceSwitchJournalStore(f.root);
 }
 
-function installCompletedColdCandidate() {
+function installCompletedColdCandidate(
+  kind: 'readiness' | 'historicalReadiness' = 'readiness', profileId = foreignProfileId,
+) {
   const operations: string[] = [];
   electronBoundary.fork.mockImplementation(() => {
     const child = new EventEmitter();
@@ -4491,7 +4615,7 @@ function installCompletedColdCandidate() {
           queueMicrotask(() => child.emit('message', createWorkspaceCandidateCompletedStatus({ ...command,
             result: { actorId: 'local-owner', artifactRootHealth: 'ready',
               companyId: 'local-company-1234567890abcdef1234567890abcdef', databaseHealth: 'healthy',
-              foreignKeyHealth: 'healthy', kind: 'readiness', migrationChainIdentity: 'c'.repeat(64), profileId: foreignProfileId },
+              foreignKeyHealth: 'healthy', kind, migrationChainIdentity: 'c'.repeat(64), profileId },
           })));
         } else queueMicrotask(() => child.emit('exit', 0));
       },
