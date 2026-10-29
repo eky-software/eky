@@ -5117,6 +5117,21 @@ tuleva täydellinen poissaolotodistus, mainin elinikäkytkentä tai korjaavan
 kylmäpalautuksen hyväksyntä. Näiden portit ja koko W7.4:n pakettinäyttö
 ovat edelleen avoinna.
 
+**Root-portin checkpoint 29.10.2026:** nykyinen import-root-store tarjoaa
+nyt `assertOperationAbsent`-tarkistuksen. Se kaappaa operaation polut ja
+synkronisen valtuuscallbackin ennen ensimmäistä odotusta, todentaa juuren
+ja emokansion nykyisellä tiedostoidentiteetin lukijalla sekä tarkistaa koko
+operaatiokansion poissaolon uudelleen. Linkki, vaihtunut juuri/parent tai
+pelkkä inspection-jäännös estää hyväksynnän; mitään ei luoda tai poisteta.
+Oikean root-, sidonta- ja journal-ketjun kaksi testiä todentavat sekä
+varmennetun siivouksen että säilyvät tiedostot hylkäyksessä. Tarkistus ei
+todista prosessien tai kirjoittajien päättymistä eikä anna muutosvaltuutta.
+Jäädytetty 16 tiedoston sarja läpäisi 401 testiä; yksi olemassa oleva
+POSIX-tapaus odottaa Linux-ajoa. Tyypitys ja rajattu riippumaton katselmus
+läpäisivät. Tämä sarja sisältää edellisen checkpointin kontrolleja.
+Varsinainen koordinaattori-/main- ja korjaavan palautuksen kytkentä sekä
+native-/pakettiportit ovat edelleen kesken.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa

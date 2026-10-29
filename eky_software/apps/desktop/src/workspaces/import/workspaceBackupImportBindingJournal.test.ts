@@ -1,4 +1,4 @@
-import { readFile, rename, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it, type TestContext } from 'vitest';
 import { sameCrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
@@ -7,6 +7,8 @@ import { createWorkspaceBackupImportJournalPaths, WORKSPACE_BACKUP_IMPORT_JOURNA
 import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
 import { WorkspaceBackupImportJournalStore } from './workspaceBackupImportJournalStore.js';
 import { validateWorkspaceBackupImportJournal } from './workspaceBackupImportJournalValidation.js';
+import { deriveWorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
+import { NodeWorkspaceBackupImportRootStore } from './workspaceBackupImportRootStore.js';
 
 // Real metadata owners; not the coordinator, native ownership or full import.
 async function fixture(context: TestContext) {
@@ -96,4 +98,34 @@ it.for(['registry', 'payload'] as const)('retains the selected journal when %s p
   if (change === 'payload') await expect(f.binding.assertRetired(async () => {})).rejects.toMatchObject({ cause: primary });
   else expect(await readFile(f.registryPaths.nextPath)).toEqual(await readFile(f.registryPaths.currentPath));
   expect(await readFile(f.journalPaths.currentPath)).toEqual(f.bytes);
+});
+
+it.for(['cleaned', 'inspectionRemains'] as const)('uses the root owner whole-operation proof before retiring binding: %s', async (mode, context) => {
+  const f = await fixture(context); await f.binding.publish();
+  const rootStore = new NodeWorkspaceBackupImportRootStore();
+  const paths = deriveWorkspaceBackupImportPaths(f.root, f.journal.operationId, f.journal.workspaceId);
+  const authority = { assertCurrent: () => f.binding.assertPublished(), assertMutationCurrent: () => f.binding.assertMutationCurrent() };
+  await rootStore.createCandidate(paths, authority);
+  await rootStore.discardCandidate(paths, authority);
+  const absent = () => rootStore.assertOperationAbsent(paths, f.assertCurrent);
+  if (mode === 'inspectionRemains') {
+    const inspection = join(paths.operationRoot, 'inspection');
+    await mkdir(inspection, { recursive: true, mode: 0o700 });
+    const evidence = join(inspection, 'retained'); await writeFile(evidence, 'synthetic inspection evidence');
+    const bindingBytes = await readFile(f.paths.currentPath);
+    await expect(f.binding.clearAfterPayloadsAbsent(absent, f.checkJournal)).rejects.toThrow('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+    expect(await readFile(evidence, 'utf8')).toBe('synthetic inspection evidence');
+    expect(await readFile(f.paths.currentPath)).toEqual(bindingBytes);
+    expect(await readFile(f.journalPaths.currentPath)).toEqual(f.bytes);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    return;
+  }
+  await f.binding.clearAfterPayloadsAbsent(absent, f.checkJournal);
+  await f.store.discardBeforePublicationSelected(f.journal.operationId, {
+    expectedSlots: { current: f.bytes, next: undefined, backup: undefined },
+    expectedIdentities: { current: f.identity, next: undefined, backup: undefined },
+    assertAuthority: f.assertCurrent, assertExternalSelection: () => f.binding.assertRetired(absent),
+  });
+  expect(await f.store.inspectSlots()).toEqual({ current: undefined, next: undefined, backup: undefined });
+  expect(f.onUncertain).not.toHaveBeenCalled();
 });

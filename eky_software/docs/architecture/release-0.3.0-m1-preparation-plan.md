@@ -137,7 +137,11 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   paluun. Rajattu 28 tapauksen koe läpäisi oikeilla tallentimilla mutta
   mallinnetulla koordinaattori-/prosessiomistajuudella. Sidonnan poiston
   kuittiehto sekä sidontaosan journal-vartija ja loppusiivous on nyt toteutettu
-  pysyvine regressioineen. Jäädytetty 13 tiedoston sarja läpäisi 237 testiä;
+  pysyvine regressioineen. Root-storeen on lisätty koko operaatiokansion
+  poissaolotarkistus; se ei korvaa kirjoittajien päättymistodistusta.
+  Root/sidonta/journal-ketjun onnistuminen ja tiedostojen säilyminen
+  jäännöksen estäessä siivouksen on todennettu. Jäädytetty 16 tiedoston
+  sarja läpäisi 401 testiä;
   yksi olemassa oleva POSIX-tapaus odottaa Linux-ajoa. Tyypitys ja rajattu
   riippumaton katselmus läpäisivät. Varsinainen koordinaattori-/main-kytkentä ja
   korjaavan palautusomistajan vartijat ovat vielä tekemättä;

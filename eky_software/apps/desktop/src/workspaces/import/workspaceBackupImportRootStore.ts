@@ -16,6 +16,8 @@ import {
 } from './workspaceBackupImportError.js';
 import type { WorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
 import { assertSynchronousProfileRestoreMutationAuthority } from '../../profileBackup/restore/profileRestoreMutationAuthority.js';
+import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
+import { validateWorkspaceBackupImportOperationId } from './workspaceBackupImportOperationId.js';
 
 export interface WorkspaceImportMutationAuthority {
   assertCurrent(): Promise<void>;
@@ -43,6 +45,7 @@ export interface WorkspaceBackupImportRootStore {
   readPresence(
     paths: Readonly<WorkspaceBackupImportPaths>,
   ): Promise<Readonly<WorkspaceBackupImportRootPresence>>;
+  assertOperationAbsent(paths: Readonly<WorkspaceBackupImportPaths>, assertAuthority: () => void): Promise<void>;
   discardCandidate(paths: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void>;
 }
 
@@ -182,6 +185,43 @@ export class NodeWorkspaceBackupImportRootStore
       await authority?.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_STORAGE_FAILED', 'cleanup');
+    }
+  }
+
+  async assertOperationAbsent(paths: Readonly<WorkspaceBackupImportPaths>, assertAuthority: () => void): Promise<void> {
+    try {
+      const { userDataRoot, operationsRoot, operationRoot } = paths;
+      const current = assertAuthority.bind(undefined);
+      const check = () => assertSynchronousProfileRestoreMutationAuthority(current);
+      check();
+      validateWorkspaceBackupImportOperationId(basename(operationRoot));
+      if (!pathsEqual(operationsRoot, join(userDataRoot, 'workspace-operations')) ||
+          !pathsEqual(dirname(operationRoot), operationsRoot)) throw new Error('invalid');
+      const identity = async (path: string) => {
+        check();
+        const value = await readWorkspaceProcessReservationIdentity(path);
+        check();
+        return value;
+      };
+      const rootIdentity = await identity(userDataRoot);
+      const parentPresent = await safePathExists(operationsRoot); check();
+      if (!parentPresent) {
+        if (await identity(userDataRoot) !== rootIdentity) throw new Error('invalid');
+        const appeared = await safePathExists(operationsRoot); check();
+        if (appeared) throw new Error('invalid');
+        return;
+      }
+      await assertRealDirectory(operationsRoot, true); check();
+      const parentIdentity = await identity(operationsRoot);
+      if (await safePathExists(operationRoot)) throw new Error('invalid');
+      check();
+      if (await identity(userDataRoot) !== rootIdentity || await identity(operationsRoot) !== parentIdentity) {
+        throw new Error('invalid');
+      }
+      const appeared = await safePathExists(operationRoot); check();
+      if (appeared) throw new Error('invalid');
+    } catch (error) {
+      throw mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_RECOVERY_REQUIRED', 'recovery');
     }
   }
 }

@@ -442,6 +442,7 @@ export class MemoryWorkspaceBackupImportRootStore
   candidateExists = false;
   finalExists = false;
   stagingExists = false;
+  operationExists = false;
   failure: ImportRootFailure | undefined;
 
   constructor(private readonly events: string[]) {}
@@ -450,6 +451,7 @@ export class MemoryWorkspaceBackupImportRootStore
     this.events.push('root.createCandidate');
     if (this.failure === 'createBefore') throw new Error('create');
     this.candidateExists = true;
+    this.operationExists = true;
     this.stagingExists = true;
     if (this.failure === 'createAfter') throw new Error('create');
   }
@@ -491,6 +493,7 @@ export class MemoryWorkspaceBackupImportRootStore
   async cleanupPublishedOperation(): Promise<void> {
     this.events.push('root.cleanupPublishedOperation');
     if (this.failure === 'cleanupPublished') throw new Error('cleanup');
+    this.operationExists = false;
   }
 
   async readPresence(): Promise<Readonly<WorkspaceBackupImportRootPresence>> {
@@ -506,6 +509,13 @@ export class MemoryWorkspaceBackupImportRootStore
     if (this.failure === 'discard') throw new Error('discard');
     this.candidateExists = false;
     this.stagingExists = false;
+    this.operationExists = false;
+  }
+
+  async assertOperationAbsent(_paths: unknown, assertAuthority: () => void): Promise<void> {
+    assertAuthority();
+    this.events.push('root.assertOperationAbsent');
+    if (this.operationExists || this.candidateExists || this.stagingExists) throw new Error('operation-remains');
   }
 }
 
