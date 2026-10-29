@@ -153,7 +153,9 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
         });
         await assertCurrent();
       }
-    }, assertCurrent));
+    }, assertCurrent, selection === undefined ? undefined : {
+      assertReadOwnership: assertOwnership, assertMutationCurrent: assertAuthority,
+    }));
     await assertCurrent();
     await run(async () => {
       anchor = await input.acquireReservation(roots.anchorRoot, roots.anchorIdentity, cancellation.signal);

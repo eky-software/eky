@@ -25,6 +25,31 @@ function deferred<T = void>() {
 beforeEach(() => vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] }));
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
+it.each([false, true])('supplies only pre-anchor ownership during preparation (revoked: %s)', async revoked => {
+  const f = fixture('rollback');
+  let captured: ProfileRestoreColdCleanupContext | undefined;
+  const prepare = f.input.transaction.prepareColdRollbackAnchor.getMockImplementation()!;
+  const first = new Error('SYNTHETIC_PRE_ANCHOR_OWNER_LOST');
+  f.input.transaction.prepareColdRollbackAnchor.mockImplementation(async (...args) => {
+    captured = args[3];
+    expect(captured).toBeDefined(); expect(f.acquire).not.toHaveBeenCalled();
+    const selections = f.selection.assertOperationSelection.mock.calls.length;
+    await captured!.assertReadOwnership(); captured!.assertMutationCurrent();
+    expect(f.selection.assertOperationSelection).toHaveBeenCalledTimes(selections);
+    if (revoked) {
+      f.input.assertAuthority = () => { throw first; };
+      captured!.assertMutationCurrent();
+    }
+    return prepare(...args);
+  });
+  if (revoked) {
+    await expect(f.run()).rejects.toMatchObject({ cause: first });
+    expect(f.acquire).not.toHaveBeenCalled(); expect(f.content).not.toHaveBeenCalled();
+  } else await expect(f.run()).resolves.toBe(f.result);
+  expect(captured!.assertMutationCurrent).toThrow();
+  await expect(captured!.assertReadOwnership()).rejects.toThrow();
+});
+
 for (const mode of ['forward', 'rollback'] as const) {
   describe(`cold ${mode} selection work`, () => {
     it('keeps nested readonly ownership separate from the full selection without reviving it after close', async () => {

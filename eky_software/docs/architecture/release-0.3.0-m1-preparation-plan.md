@@ -117,7 +117,11 @@ Recoveryn jatkoportti ja viimeiset poistovartijat on nyt kytketty alemmissa
 kerroksissa: 544 testin vaikutusalueen sarja sekä sen jälkeen 129 päällekkäisen
 kohdetestin katselmusdelta, tyypitys ja rajattu riippumaton katselmus
 läpäisivät. Mainin rolledBack-kytkentä on vielä todennettava ehdokas.
-Live-jatkokytkentä,
+Ankkurin valmistelun rajattu readonly-/valintatarkistusten erottelu läpäisi
+479 kohdetestiä, tyypityksen ja rajatun katselmuksen. Sen jälkeen oikean
+main-ketjun kolme source-null-rollback-tapausta läpäisivät nykyisillä
+aikarajoilla. Aiemmat aikakatkaisut säilyvät avoimina; uusi näyttö ei vielä
+hyväksy koko main-kytkentää. Live-jatkokytkentä,
 ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
 ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta

@@ -712,12 +712,23 @@ export class ProfileRestoreActivationTransaction {
     expected: Readonly<ProfileRestoreActivationJournal>,
     claimSources: (sources: ProfileRestoreColdRollbackRoots['sources']) => Promise<void>,
     assertRecoveryAuthority: () => Promise<void>,
+    preparationContext?: ProfileRestoreColdCleanupContext,
   ): Promise<ProfileRestoreColdRollbackRoots> {
+    if (preparationContext !== undefined && (preparationContext === null ||
+        typeof preparationContext.assertReadOwnership !== 'function' ||
+        typeof preparationContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    const assertRead = preparationContext?.assertReadOwnership.bind(preparationContext);
+    const assertMutation = preparationContext?.assertMutationCurrent.bind(preparationContext);
+    const assertSelection = assertRecoveryAuthority;
     const journal = captureJournal(expected);
     const paths = this.operationPaths(journal.operationId);
     const assertCurrent = async () => {
-      await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-      await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      if (assertRead !== undefined) await assertSelection();
+      await this.assertRollbackMutation(journal, assertRead ?? assertSelection);
+      await this.assertJournalMutation(journal, assertRead ?? assertSelection);
+      if (assertRead !== undefined) await assertSelection();
     };
     await assertCurrent();
     const anchorPresent = await inspectRecoverySlot(paths.failedOperationRoot, 'directory');
@@ -736,9 +747,10 @@ export class ProfileRestoreActivationTransaction {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
     }
     if (!anchorPresent) {
-      await createPrivateDirectory(this.paths.failedRoot, assertCurrent);
+      await createPrivateDirectory(this.paths.failedRoot, assertCurrent, assertMutation);
       await assertCurrent();
       // Exclusive leaf creation rejects a root that appeared after the last census.
+      if (assertMutation !== undefined) assertSynchronousRollbackRootAuthority(assertMutation);
       await mkdir(paths.failedOperationRoot, { mode: 0o700 });
     }
     await assertCurrent();
@@ -1337,10 +1349,12 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-async function createPrivateDirectory(path: string, assertAuthority?: () => Promise<void>): Promise<void> {
+async function createPrivateDirectory(path: string, assertAuthority?: () => Promise<void>, assertMutationCurrent?: () => void): Promise<void> {
   await assertAuthority?.();
+  if (assertMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertMutationCurrent);
   await mkdir(path, { mode: 0o700, recursive: true });
   await assertAuthority?.();
+  if (assertMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertMutationCurrent);
   await chmod(path, 0o700);
   await assertAuthority?.();
   if (!(await inspectOptionalDirectory(path))) {

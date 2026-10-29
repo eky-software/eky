@@ -932,6 +932,104 @@ describe('profile restore activation transaction', () => {
     expect(rollback).not.toHaveBeenCalled();
   });
 
+  it('brackets anchor readonly work without dropping journal or census reads', async () => {
+    const counts: { full: number; reads: number; census: number }[] = [];
+    for (const scoped of [false, true]) {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = await f.transaction.advanceToValidation();
+      const full = vi.fn(async () => {}); const read = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+      const peek = vi.spyOn(f.journalStore, 'peek');
+      const census = vi.spyOn(f.transaction, 'readRollbackRecoverySources');
+      await f.transaction.prepareColdRollbackAnchor(selected, async () => {}, full,
+        scoped ? { assertReadOwnership: read, assertMutationCurrent: mutation } : undefined);
+      counts.push({ full: full.mock.calls.length, reads: peek.mock.calls.length, census: census.mock.calls.length });
+      expect(mutation).toHaveBeenCalledTimes(scoped ? 3 : 0);
+      expect(read.mock.calls.length).toBe(scoped ? counts[0]!.full : 0);
+      expect(await f.journalStore.peek()).toEqual(selected);
+    }
+    expect(counts[1]!.full * 3).toBe(counts[0]!.full);
+    expect(counts[1]!.reads).toBe(counts[0]!.reads); expect(counts[1]!.census).toBe(counts[0]!.census);
+  });
+
+  it.each([1, 5])('rejects changed metadata in anchor readonly component %s', async readBoundary => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    let current = true;
+    const full = vi.fn(async () => { if (!current) throw new Error('SYNTHETIC_CHANGED_SELECTION'); });
+    const read = vi.fn(async () => { if (read.mock.calls.length === readBoundary) current = false; });
+    const claim = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    await expect(f.transaction.prepareColdRollbackAnchor(selected, claim, full,
+      { assertReadOwnership: read, assertMutationCurrent: mutation })).rejects.toThrow('SYNTHETIC_CHANGED_SELECTION');
+    expect(full).toHaveBeenCalledTimes(2); expect(claim).not.toHaveBeenCalled(); expect(mutation).not.toHaveBeenCalled();
+    expect(await captureEvidence(f)).toEqual(before);
+    await expect(readdir(join(f.failedRoot, operationId))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([false, true])('awaits the complete anchor postcheck before claiming sources (reject: %s)', async reject => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    let enter!: () => void; let release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; }); const finish = new Promise<void>(resolve => { release = resolve; });
+    const first = new Error('SYNTHETIC_POSTCHECK_FAILURE');
+    const full = vi.fn(async () => { if (full.mock.calls.length === 2) { enter(); await finish; if (reject) throw first; } });
+    const claim = vi.fn(async () => {}); let completed = false;
+    const outcome = f.transaction.prepareColdRollbackAnchor(selected, claim, full,
+      { async assertReadOwnership() {}, assertMutationCurrent() {} }).then(value => value, error => error)
+      .finally(() => { completed = true; });
+    try {
+      await Promise.race([entered, outcome.then(() => { throw new Error('POSTCHECK_NOT_ENTERED'); })]);
+      expect(completed).toBe(false); expect(claim).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(before);
+    } finally { release(); await outcome; }
+    if (reject) { expect(await outcome).toBe(first); expect(claim).not.toHaveBeenCalled(); }
+    else expect(claim).toHaveBeenCalledOnce();
+  });
+
+  it.each([1, 2, 3])('checks the last anchor mutation guard at syscall %s', async boundary => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    const mutation = vi.fn(() => { if (mutation.mock.calls.length === boundary) throw new Error('SYNTHETIC_ANCHOR_REVOKED'); });
+    const makeDirectory = vi.mocked(mkdir); const changeMode = vi.mocked(chmod);
+    makeDirectory.mockClear(); changeMode.mockClear();
+    await expect(f.transaction.prepareColdRollbackAnchor(selected, async () => {}, async () => {},
+      { async assertReadOwnership() {}, assertMutationCurrent: mutation })).rejects.toThrow('SYNTHETIC_ANCHOR_REVOKED');
+    expect(mutation).toHaveBeenCalledTimes(boundary);
+    expect(makeDirectory).toHaveBeenCalledTimes(boundary === 1 ? 0 : 1);
+    expect(changeMode).toHaveBeenCalledTimes(boundary === 3 ? 1 : 0);
+    expect(await captureEvidence(f)).toEqual(before); expect(await f.journalStore.peek()).toEqual(selected);
+    await expect(readdir(join(f.failedRoot, operationId))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([null, {}, { assertReadOwnership: async () => {} }, { assertMutationCurrent() {} }])(
+    'rejects an incomplete anchor preparation context', async context => {
+      const f = await createFixture(); const full = vi.fn(async () => {}); const claim = vi.fn(async () => {});
+      await f.transaction.prepare(operationId); const selected = await f.transaction.advanceToValidation();
+      await expect(f.transaction.prepareColdRollbackAnchor(selected, claim, full, context as never))
+        .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      expect(full).not.toHaveBeenCalled(); expect(claim).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['pending', 'rejected', 'resolved'] as const)('rejects a %s async anchor mutation guard', async state => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    await expect(f.transaction.prepareColdRollbackAnchor(selected, async () => {}, async () => {}, {
+      async assertReadOwnership() {}, assertMutationCurrent: () => state === 'pending' ? new Promise<void>(() => {})
+        : state === 'rejected' ? Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')) : Promise.resolve(),
+    })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it('pins anchor context callbacks before its first awaited selection', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation();
+    const read = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    const foreign = vi.fn(() => { throw new Error('SYNTHETIC_CHANGED_CALLBACK'); });
+    const context = { assertReadOwnership: read, assertMutationCurrent: mutation };
+    const full = vi.fn(async () => { context.assertReadOwnership = foreign; context.assertMutationCurrent = foreign; });
+    await f.transaction.prepareColdRollbackAnchor(selected, async () => {}, full, context);
+    expect(read).toHaveBeenCalled(); expect(mutation).toHaveBeenCalledTimes(3); expect(foreign).not.toHaveBeenCalled();
+  });
+
   it('prepares an exclusive stationary cold anchor only after source ownership is proven', async () => {
     const f = await createFixture();
     const journal = await beginInterruptedRollback(f);

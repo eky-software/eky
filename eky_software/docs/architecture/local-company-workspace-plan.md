@@ -5332,6 +5332,19 @@ Riippumaton katselmus ja korjausdelta läpäisivät. Oikeiden validointi- ja
 recovery-omistajien yhteinen keskeytyskoe säilytti alkuperäisen syyn ja
 varauksen nykyisissä rajoissa. Mainin kytkentä on vasta todennettava ehdokas.
 
+Rollback-ankkurin valmistelu käyttää uudessa valintapolussa täyttä
+valintatarkistusta readonly-journal- ja tiedostoluettelotarkistusten
+molemmin puolin. Sisäiset luvut ja niiden tarkistukset säilyvät; niiden
+sisällä käytetään saman valmistelun elävää omistajuutta. Ankkurin hakemiston
+luonti ja oikeusmuutos vaativat lisäksi synkronisen viimeisen vartijan.
+Valtuus on ankkuria edeltävä valmisteluvaltuus, ei vielä luomattoman
+ankkurin omistajuus. Vanha kutsutapa säilyy muuttumattomana.
+Neljästä tiedostosta koostuva vaikutusalueen sarja läpäisi 479 testiä,
+desktopin tyypitys ja rajattu katselmus läpäisivät. Mainin oikean
+source-null-rollbackin kolme nimettyä tapausta läpäisivät nykyisillä
+testirajoilla. Tämä ei sulje aiempia aikakatkaisuhavaintoja eikä hyväksy
+koko main-kytkentää tai paketoitua palautusta.
+
 Nykyinen `clearRolledBack` saa erillisen synkronisen viimeisen mutaatioguardin
 ennen jokaista uutta `rmdir`-kutsua ja journal-slotin poistoa viimeisen
 odotuksen jälkeen. Se ei korvaa nykyisiä async-sisältö-/journal-tarkistuksia
