@@ -42,7 +42,7 @@ metodia tai poistopainiketta ei ole avattu.** Hyväksytty valmistelu ei
 ole yrityksen poiston `completed`-tulos.
 
 **W7.4:n nykyinen checkpoint 30.10.2026:** A:n journal-, inventaario- ja
-sidontatallennus on toteutettu. B:n replacement- ja live-import-liitokset sekä
+sidontatallennus on toteutettu. B:n replacement- ja live-/cold-import-liitokset sekä
 palautuksen vaiheomistajien kytkentä on todennettu kohdetesteillä; muut B:n omistajat ja
 koko ketjun integraatio ovat kesken. Omistavat sopimukset:
 [W7.4 A-F](local-company-workspace-plan.md#w74n-omistajat-ja-muutosjärjestys) ja
@@ -135,19 +135,19 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   valinta tarkistetaan; epävarmaa sidontaa ei ohiteta. Jäädytetty 12 tiedoston
   419 testin sarja, tyypitys ja rajattu katselmus läpäisivät. Sarja sisältää
   yllä olevia testejä.
-  Tämä ei vielä todista korjaavan palautusomistajan uusia muutosvartijoita.
+  Tämä readonly-portin näyttö ei yksin todista korjaavan palautusomistajan vartijoita.
 - Kylmäpalautuksen journal-/rekisterivalinnan ja vartioidun korjauksen portit
   on toteutettu. Nykyiset ordinary-/live-portit säilyvät; katkenneita
   syrjäytettyjä sivuja ei muuteta uusiksi sisältörajoiksi. Kymmenen tiedoston
   457 testiä, desktopin tyypitys ja rajattu riippumaton katselmus läpäisivät.
   Tämä on tallennusporttien
-  näyttö, ei vielä palautusomistajan tai mainin kytkentä.
+  näyttö, ei yksin palautusomistajan tai mainin kytkennän todiste.
 - Sidonnan loppupoiston täsmällinen kaikkien slottien ehto ja nykyisen
   plaintext-karanteenin sisäiset muutosvartijat on toteutettu. Muuttunut
   kohde säilytetään; `deletionPurged` ja karanteenin ownership-raja eivät
   laajene. Kymmenen tiedoston 343 testiä, tyypitys ja rajattu katselmus
   läpäisivät; yksi POSIX-kohtainen vartijatesti odottaa Linux-ajoa.
-  Tämä ei vielä anna porteille cold-omistajan todellista valtuutta.
+  Porttien oma näyttö ei yksin anna cold-omistajan valtuutta; kytkentä kuvataan alla.
 - B:n importin
   [kylmäpalautuksen omistajuussopimus](local-company-workspace-plan.md#tuonnin-kylmäpalautuksen-omistajuussopimus)
   on kytketty nykyiseen recoveryyn ja management/mainiin. Käynnistyksen
@@ -185,24 +185,29 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   kontrollia, molempien E2E-pakettien tyypitys ja rajattu katselmus läpäisivät.
   System-tapaukset simuloivat jälkiehdot, eivät sovelluksen palautusta.
   Passiivisen kohteen ja tuonnin lähdetavut erotetaan aktiivisen työtilan
-  nykyisestä smoke-palautusvertailusta.
-- **Seuraava työ:** saman puhtaan paketin palautustodennus myös sidotulle
-  tuonnille. Puuttuva sidonta ei anna W7-poistovaltuutta
+  nykyisestä smoke-palautusvertailusta. Puhtaasta revisiosta `5da26f0b`
+  rakennettu sama hardened Windows -paketti läpäisi kaikki kolme kylmä-
+  palautustapausta ensimmäisellä yrityksellä: luonti, sidonnaton tuonti ja
+  sidottu tuonti. Jokainen kävi aktiivisen työtilan backup/inspect/restore/
+  restart-ketjun läpi. Paketin ja sovellusosan tavuidentiteetit säilyivät.
+  Nykyiset sisältö-, koko-, fuse- ja aikarajat säilyivät. Tämä on importin
+  paikallinen pakettinäyttö, ei koko W7.4:n tai PR/main-porttien hyväksyntä.
+- **Seuraava työ:** B:n adoption- ja inspection-liitokset, sitten
+  C:n W7.3-luovutus ja loput C-F-portit. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
   paluun. Sen porttien ja tiedostokokeiden aiemmat checkpointit säilyvät
   omistavassa suunnitelmassa. Koko operaatiokansion poissaolotarkistus ei
   korvaa kirjoittajien päättymistodistusta; POSIX-kohtainen porttitodennus
-  vaatii edelleen Linux-ajon. Live-kytkennän näyttö on yllä; kylmäpalautuksen
-  prosessi-/pakettinäyttö ja PR/main-portit eivät ole vielä hyväksyttyjä.
+  vaatii edelleen Linux-ajon. Live- ja cold-kytkennän kohdenäyttö on yllä;
+  koko W7.4:n puhtaan paketin ja PR/main-porttien hyväksyntä on edelleen auki.
   Nykyinen B:n
   activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)
   rajaa; sen paikallinen läpäisy ei vielä sulje koko liitoksen portteja.
-  Importin jälkeen adoption- ja inspection-liitokset sekä
-  C:n W7.3-luovutus. Migraation palautuspiste muodostuu edelleen ennen sulkua.
-  Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
+  Migraation palautuspiste muodostuu edelleen ennen sulkua.
+  Muut B-F-portit, koko W7.4:n lopullinen paketti ja PR/main-hyväksyntä ovat kesken.
   W7.5:n poistokanavaa ei avata.
 
 [Aiemmat W7.4-checkpointit](release-0.3.0-integration-history.md#w74n-palautuskytkennän-checkpointit-29102026)

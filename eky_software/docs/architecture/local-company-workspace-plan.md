@@ -5335,9 +5335,8 @@ POSIX-oikeuksien muutosvartijan testi odottaa Linux-ajoa. Sarja sisältää
 Näyttö kattaa muuttuneessa valinnassa säilyvät tiedostot ja viivästyneen
 luvun päättymisen ennen hylkäystä. Rajattu riippumaton lähde-/testikatselmus
 ja viimeinen rajatestidelta läpäisivät; katselmoija ei ajanut testejä.
-Cold-recoveryn ja mainin on vielä
-annettava näille porteille todellinen operaatiovaltuus. Tämä checkpoint ei
-todista niiden tuotantokytkentää tai koko W7.4:n hyväksyntää.
+Näiden vartijaporttien oma näyttö ei yksin todista recovery-/main-kytkentää
+tai koko W7.4:n hyväksyntää. Varsinainen kytkentä ja sen näyttö kuvataan alla.
 
 **Recovery-/main-kytkennän checkpoint 30.10.2026:** nykyinen
 `WorkspaceBackupImportRecovery` kaappaa pakollisen cold-omistajan heti
@@ -5394,9 +5393,8 @@ läpäisivät. Oikea Electron-koe läpäisi yhden sallitun kohdeuusinnan jälkee
 Ensimmäinen ajo pysähtyi ennen testirunkoa backendin `EADDRINUSE`-virheeseen;
 sen syy säilyy avoimena, mutta prosessipuun ja portin siivous todennettiin.
 Tämä ei muuta vanhaa häiriötä onnistumiseksi tai korjatuksi viaksi.
-Pysäytysraja on edelleen ennen business-backendia. Sidotun tuonnin
-pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
-W7.5 pysyy suljettuna.
+Pysäytysraja on edelleen ennen business-backendia. Paketoitu näyttö on
+erillinen alla; W7.4:n PR/main-portit ovat auki ja W7.5 pysyy suljettuna.
 
 Nykyisen paketoidun kylmäpalautuksen fixtureen on lisätty erillinen sidottu
 tuonti vanhojen kahden tapauksen rinnalle. Se todentaa bindingin lähtötilan
@@ -5405,7 +5403,19 @@ system-valmistelutapausta, 72 ajokytkennän kontrollia, tyypitykset ja rajattu
 katselmus läpäisivät. Valmistelun simuloidut jälkiehdot eivät todista runtimea.
 Passiivinen kohde ja tuonnin itsenäinen lähde verrataan tavuina; aktiivisen
 työtilan tarkoitukselliset smoke-muutokset ja palautus todennetaan nykyisessä
-smokessa erikseen. Uuden tapauksen varsinainen pakettisuoritus on vielä auki.
+smokessa erikseen.
+
+**Paikallinen pakettinäyttö:** puhtaasta revisiosta `5da26f0b` kerran
+rakennettu hardened Windows -paketti läpäisi luonnin, sidonnattoman tuonnin
+ja sidotun tuonnin kylmäpalautuksen nykyisessä packaged-legacy-kytkennässä.
+Kaikki kolme tapausta läpäisivät ensimmäisellä yrityksellä, kukin nykyisen
+kahden prosessin backup/inspect/restore/restart-smoken kautta. Sidonta ja
+journal poistuivat, rekisteri sekä passiivinen kohde ja itsenäinen tuontilähde
+säilyivät jälkitarkistuksessa. Aktiivisen työtilan palautuksen sisältövertailu
+on nykyisen smoken oma todiste. Paketin ja sovellusosan tavuidentiteetit,
+tiedostomäärät ja tavumäärät täsmäsivät ennen ja jälkeen. Nykyisiä sisältö-,
+koko-, fuse-, aika- tai hyväksyntärajoja ei muutettu. Tämä ei hyväksy koko
+W7.4:ää, uusia vielä kytkemättömiä omistajia tai sen PR/main-portteja.
 
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
