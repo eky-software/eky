@@ -10,8 +10,9 @@ import { InMemoryWorkspaceMaintenanceLease, type WorkspaceMaintenanceLeaseHandle
 import { prepareProfileRestoreColdForwardRecovery, type ProfileRestoreColdContentContext } from './prepareProfileRestoreColdForwardRecovery.js';
 import { prepareProfileRestoreColdRollbackRecovery, withProfileRestoreColdRollbackAuthority } from './prepareProfileRestoreColdRollbackRecovery.js';
 import type { ProfileRestoreActivationJournal } from './profileRestoreActivationJournal.js';
-import type { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
+import { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
 import type { ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
+import type { ProfileRestoreColdCleanupContext } from './profileRestoreMutationAuthority.js';
 
 function deferred<T = void>() {
   let resolve!: (value: T | PromiseLike<T>) => void;
@@ -25,6 +26,27 @@ afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 for (const mode of ['forward', 'rollback'] as const) {
   describe(`cold ${mode} selection work`, () => {
+    it('keeps nested readonly ownership separate from the full selection without reviving it after close', async () => {
+      const f = fixture(mode);
+      let captured!: ProfileRestoreColdContentContext;
+      f.content.mockImplementation(async context => {
+        captured = context;
+        const count = f.selection.assertOperationSelection.mock.calls.length;
+        expect(context.assertReadOwnership).toBeTypeOf('function');
+        await context.assertReadOwnership!();
+        await context.assertReadOwnership!();
+        expect(f.selection.assertOperationSelection).toHaveBeenCalledTimes(count);
+        await context.assertCurrent();
+        expect(f.selection.assertOperationSelection).toHaveBeenCalledTimes(count + 1);
+      });
+      await expect(f.run()).resolves.toBe(f.result);
+      const count = f.selection.assertOperationSelection.mock.calls.length;
+      await expect(captured.assertReadOwnership!()).rejects.toThrow();
+      await expect(captured.assertCurrent()).rejects.toThrow();
+      expect(f.selection.assertOperationSelection).toHaveBeenCalledTimes(count);
+      expect(f.lease.readState()).toBe('idle');
+    });
+
     it('preserves the existing clock origin for callers without the selection port', async () => {
       const f = fixture(mode); const entered = deferred(); const finish = deferred();
       const { operationSelection: _selection, ...legacy } = f.input;
@@ -32,6 +54,7 @@ for (const mode of ['forward', 'rollback'] as const) {
       f.main.mockImplementationOnce(async () => { entered.resolve(); await finish.promise; });
       f.content.mockImplementation(async context => {
         expect(context.deadline - performance.now()).toBe(profileInspectionWorkMilliseconds);
+        expect(context.assertReadOwnership).toBeUndefined();
       });
       const work = (mode === 'forward'
         ? prepareProfileRestoreColdForwardRecovery(legacy) : prepareProfileRestoreColdRollbackRecovery(legacy))
@@ -240,6 +263,69 @@ for (const mode of ['forward', 'rollback'] as const) {
     });
   });
 }
+
+it.each(['completed', 'failed', 'expired'] as const)('never revives scoped cleanup after %s rollback work', async outcome => {
+  const f = fixture('rollback'); let captured!: ProfileRestoreColdCleanupContext;
+  const first = new Error('synthetic cleanup failure');
+  const work = withProfileRestoreColdRollbackAuthority(f.input, async admission => {
+    captured = admission.coldCleanupContext!;
+    expect(Object.isFrozen(captured)).toBe(true);
+    const count = f.selection.assertOperationSelection.mock.calls.length;
+    await captured.assertReadOwnership(); captured.assertMutationCurrent();
+    expect(f.selection.assertOperationSelection).toHaveBeenCalledTimes(count);
+    if (outcome === 'failed') throw first;
+    if (outcome === 'expired') {
+      await vi.advanceTimersByTimeAsync(profileInspectionWorkMilliseconds);
+      captured.assertMutationCurrent();
+    }
+  }).catch(error => error);
+  const result = await work;
+  if (outcome === 'completed') expect(result).toBeUndefined();
+  else expect(result).toBeInstanceOf(Error);
+  await expect(captured.assertReadOwnership()).rejects.toThrow();
+  expect(() => captured.assertMutationCurrent()).toThrow();
+  await f.held()?.release();
+});
+
+it.each([false, true])('retains the owner through the actual rollback preflight postcheck (late rejection: %s)', async rejectLate => {
+  const f = fixture('rollback'); const entered = deferred(); const finish = deferred(); const settled = deferred();
+  const paths = { activeDatabasePath: join(tmpdir(), 'scoped', 'data', 'eky.sqlite'),
+    activeDocumentsRoot: join(tmpdir(), 'scoped', 'storage', 'invoices'),
+    failedRoot: join(tmpdir(), 'scoped', 'failed'), rollbackRoot: join(tmpdir(), 'scoped', 'rollback'),
+    stagingRoot: join(tmpdir(), 'scoped', 'staging') };
+  const transaction = new ProfileRestoreActivationTransaction({ paths, journalStore: {
+    peek: f.peek, read: vi.fn(async () => f.journal), write: vi.fn(async () => {}), clear: vi.fn(async () => {}),
+  } });
+  vi.spyOn(transaction, 'readRollbackRecoverySources').mockResolvedValue({ databaseSlot: 'active', documentsSlot: 'active' });
+  let continued = false; let checks = 0;
+  const outcome = withProfileRestoreColdRollbackAuthority(f.input, async admission => {
+    const preflight = transaction as unknown as { assertRollbackMutation(
+      journal: Readonly<ProfileRestoreActivationJournal>, full: () => Promise<void>,
+      read: { assertReadOwnership(): Promise<void> },
+    ): Promise<void> };
+    try {
+      await preflight.assertRollbackMutation(f.journal, async () => {
+        if (++checks === 2) {
+          entered.resolve(); await finish.promise;
+          if (rejectLate) throw new Error('synthetic late postcheck rejection');
+        }
+        await admission.assertCurrent();
+      }, { assertReadOwnership: admission.coldCleanupContext!.assertReadOwnership });
+      continued = true;
+    } finally { settled.resolve(); }
+  }).catch(error => error);
+  try {
+    await entered.promise; expect(continued).toBe(false);
+    await vi.advanceTimersByTimeAsync(profileInspectionWorkMilliseconds);
+    const failure = await outcome;
+    expect(failure).toMatchObject({ cause: { message: 'PROFILE_INSPECTION_TIMEOUT' } });
+    expect(f.lease.readState()).toBe('busy'); expect(f.reservation.close).not.toHaveBeenCalled();
+    finish.resolve(); await settled.promise; await vi.advanceTimersByTimeAsync(0);
+    expect(continued).toBe(false); expect(f.lease.readState()).toBe('busy');
+    expect(f.reservation.close).not.toHaveBeenCalled(); expect(f.selection.onUnsettledWork).toHaveBeenCalledOnce();
+    expect(await outcome).toBe(failure);
+  } finally { finish.resolve(); await settled.promise; await outcome; await f.held()?.release(); }
+});
 
 it.each(['staging', 'rollback', 'anchor'] as const)('retains acquired and late rollback claims at %s', async stage => {
   const f = fixture('rollback', true); const entered = deferred(); const finish = deferred();

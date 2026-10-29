@@ -5384,10 +5384,51 @@ Rajattu riippumaton katselmus ja async-vartijan ajonaikaisen tarkistuksen
 korjausdelta läpäisivät. Tämä todistaa adapterit, ei mainin koko ketjua.
 Mainin cold-/accepted-/grant-ehdokas ei vielä läpäise source-null-paluun
 nykyistä yhdistelmätestiä: valintametadatan tarkistus kertautuu sisäisten
-omistajuustarkistusten mukana. Jatkoratkaisu tarvitsee tämän tarkistuksen
-sijoittelun rajatun arvioinnin nykyisessä omistajuussopimuksessa; aikarajoja
-ei kasvateta eikä tätä hylkäystä merkitä korjatuksi. Live-/rolledBack-
+omistajuustarkistusten mukana. Jatkoratkaisun rajattu arviointi on tehty:
+readonly-lukujen omistajuus erotetaan alla kuvatusti koko valinnan tarkistuksesta.
+Aikarajoja ei kasvateta eikä aiempaa hylkäystä merkitä korjatuksi. Live-/rolledBack-
 liitosten, main-ketjun ja puhtaan paketin hyväksyntä säilyvät avoimina.
+
+**Readonly-tarkistusten sijoittelu 29.10.2026:** uuden startup-sidontalukijan
+registry-/switch-tarkistus ympäröi molempien sidontapaikkojen yhteistä lukua.
+Jokainen sisäinen odotus säilyttää synkronisen vaiheguardin. Cold-sisältöportin
+sisäiset journal-/luettelo-/lineage-luvut käyttävät saman omistajan rajattua
+readonly-vartijaa; koko valinta tarkistetaan sisääntulossa, inspectorin
+lähdeluvun ympärillä myös exitin jälkeen ja ennen viimeistä tavujen sekä
+tiedostoidentiteettien uudelleensidontaa. Sisältövaatimukset eivät muutu.
+
+Valitsimeen paluun loppusiivouksen sisäiset readonly-kutsut eivät saa
+käynnistää toistuvasti koko alkuperäissisällön tarkistusta. Tuore sisältö
+vaaditaan silti jokaisen hakemistopoiston ja journal-slotin poiston edellä,
+myös rollback-varauksen vapautuksen jälkeen. Viimeinen synkroninen vartija
+suojaa varsinaisia poistoja ja journalin korjaavan luvun muutoksia.
+Rajattu cleanup-valtuus sulkeutuu saman operaation päättyessä; vanha tai
+vajaa valtuus ei anna jatkolupaa. Vanha kutsuja ilman uutta porttia säilyy.
+
+Rollbackin readonly-ennakkotarkistuksessa kokonainen valinta ympäröi
+muuttumatonta journal-/tiedostoluettelo-/sisältötarkistusta. Sisäiset
+journal-luvut käyttävät fyysisen omistajuuden vartijaa. Journalin
+kirjoituscallbackien lukumäärä, tarkistuskohdat ja erillinen sisältövalidointi
+säilyvät: jokainen callback saa oman täyden alku-/lopputarkistuksen.
+Tämä ei ole muuttuvan metadatan välimuisti tai atomisen tilannekuvan lupaus.
+Portti syntyy vain nykyisestä valintaa seuraavasta cold-omistajasta.
+
+Yhdeksän tiedoston kohdesarja läpäisi 623 testiä; kolme POSIX-koetta jäi
+alustarajauksen vuoksi suorittamatta. Sen jälkeen katselmuksen kaksi
+täsmennystä, puuttuvan readonly-portin kaappaaminen ja viimeiseen
+journal-lukuun osuva virheinjektio, läpäisivät 15 kohdetestiä. Näitä
+päällekkäisiä sarjoja ei lasketa yhteen. Desktopin tyyppitarkistus ja
+rajattu riippumaton katselmus korjausdeltoineen läpäisivät.
+Viivästetyn lopputarkistuksen alkuperäinen työ säilyttää omistajuuden
+aikakatkaisun yli; myöhäinen tulos ei salli muutosta tai peitä ensivirhettä.
+
+Instrumentoimaton main-ketjun onnistunut source-null-paluu läpäisi nykyisen
+testirajansa. Saman ryhmän `contentFailure`-tapaus aikakatkaistiin, minkä
+jälkeen `releaseFailure` jäi suorittamatta keskeneräisen työn vartijan vuoksi.
+Tämä on yksi aikakatkaisu ja yksi jatkoesto, ei kaksi osoitettua sovellusvikaa.
+Koko main-kytkentä ei ole hyväksytty. Seuraava työ on jäljellä olevan
+tarkistuskertautumisen rajaus ilman aikarajan nostoa tai samoja uusintoja;
+sen jälkeen live-/rolledBack-kytkentä ja puhtaan paketin portit.
 
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja

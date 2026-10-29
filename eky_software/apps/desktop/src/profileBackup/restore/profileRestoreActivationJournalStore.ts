@@ -16,6 +16,7 @@ import {
   parseProfileRestoreActivationJournal,
   type ProfileRestoreActivationJournal,
 } from './profileRestoreActivationJournal.js';
+import { assertSynchronousProfileRestoreMutationAuthority } from './profileRestoreMutationAuthority.js';
 
 export const profileRestoreActivationJournalFileName =
   'profile-restore-activation-journal-v1.json';
@@ -61,7 +62,10 @@ export class ProfileRestoreActivationJournalStore {
   async clear(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
+    if (assertMutationCurrent !== undefined && (expected === undefined || typeof assertAuthority !== 'function' ||
+        typeof assertMutationCurrent !== 'function')) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     if (expected !== undefined) {
       const captured = captureProfileRestoreActivationJournal(expected);
       // Keep the authoritative current slot until every lower slot is removed.
@@ -69,6 +73,7 @@ export class ProfileRestoreActivationJournalStore {
         await assertAuthority?.();
         assertProfileRestoreActivationJournalMatches(captured, await this.peek());
         await assertAuthority?.();
+        if (assertMutationCurrent !== undefined) assertSynchronousProfileRestoreMutationAuthority(assertMutationCurrent);
         await rm(path, { force: true });
       }
       await syncDirectory(dirname(this.filePath));
@@ -97,9 +102,12 @@ export class ProfileRestoreActivationJournalStore {
   async read(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<
     ProfileRestoreActivationJournal | undefined
   > {
+    if (assertMutationCurrent !== undefined && (expected === undefined || typeof assertAuthority !== 'function' ||
+        typeof assertMutationCurrent !== 'function')) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     const captured = expected === undefined
       ? undefined
       : captureProfileRestoreActivationJournal(expected);
@@ -111,13 +119,14 @@ export class ProfileRestoreActivationJournalStore {
     await assertAuthority?.();
     if (selected === undefined) return undefined;
     if (selected.path === this.filePath) {
-      await this.removeRecoverySlots(assertAuthority);
+      await this.removeRecoverySlots(assertAuthority, assertMutationCurrent);
       return selected.journal;
     }
 
+    if (assertMutationCurrent !== undefined) assertSynchronousProfileRestoreMutationAuthority(assertMutationCurrent);
     await rename(selected.path, this.filePath);
     if (selected.path === this.backupPath) {
-      await this.removePresentRecoverySlot(this.nextPath, assertAuthority);
+      await this.removePresentRecoverySlot(this.nextPath, assertAuthority, assertMutationCurrent);
     }
     await syncDirectory(dirname(this.filePath));
     return selected.journal;
@@ -302,10 +311,10 @@ export class ProfileRestoreActivationJournalStore {
     }
   }
 
-  private async removeRecoverySlots(assertAuthority?: () => Promise<void>): Promise<void> {
+  private async removeRecoverySlots(assertAuthority?: () => Promise<void>, assertMutationCurrent?: () => void): Promise<void> {
     if (assertAuthority !== undefined) {
       for (const path of [this.nextPath, this.backupPath]) {
-        await this.removePresentRecoverySlot(path, assertAuthority);
+        await this.removePresentRecoverySlot(path, assertAuthority, assertMutationCurrent);
       }
       return;
     }
@@ -318,7 +327,7 @@ export class ProfileRestoreActivationJournalStore {
     }
   }
 
-  private async removePresentRecoverySlot(path: string, assertAuthority?: () => Promise<void>): Promise<void> {
+  private async removePresentRecoverySlot(path: string, assertAuthority?: () => Promise<void>, assertMutationCurrent?: () => void): Promise<void> {
     if (assertAuthority !== undefined) {
       try { await lstat(path); }
       catch (error) {
@@ -327,6 +336,7 @@ export class ProfileRestoreActivationJournalStore {
       }
       await assertAuthority();
     }
+    if (assertMutationCurrent !== undefined) assertSynchronousProfileRestoreMutationAuthority(assertMutationCurrent);
     await rm(path, { force: true });
   }
 

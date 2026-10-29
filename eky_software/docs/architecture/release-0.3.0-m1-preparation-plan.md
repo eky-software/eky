@@ -91,8 +91,16 @@ rajattu valmisteluadapteri on toteutettu: niiden 65 kohdetestiä (21 uutta),
 tyypitys sekä rajattu katselmus ja korjausdelta läpäisivät. Mainin
 kaappaus-/cold-/accepted-/työlupakytkennän ehdokas ei vielä läpäise nykyistä
 source-null-paluutestiä. Rajattu koe vahvisti valintametadatan tarkistuksen
-kertautumisen; seuraavaksi sen sijoittelu arvioidaan samojen omistajien ja
-aikarajojen sisällä. Hylkäystä ei ohiteta. Live-/rolledBack-jatkot,
+kertautumisen. Rajattu sijoittelusopimus erottaa readonly-omistajuuden
+täydestä valinta- ja sisältötarkistuksesta; tiedostomuutosten tarkistukset
+ja aikarajat säilyvät. Yhdeksän tiedoston kohdesarja läpäisi 623 testiä
+(kolme alustakohtaista koetta jäi suorittamatta); katselmuksen korjausdelta
+läpäisi 15 kohdetestiä sekä tyypityksen ja riippumattoman katselmuksen.
+Sarjat ovat päällekkäistä näyttöä. Instrumentoimaton main-ketjun onnistunut
+source-null-paluu läpäisi, mutta `contentFailure` ylitti nykyisen testirajansa;
+seuraava tapaus estyi keskeneräisen työn vuoksi. Main-kytkentä ei vielä ole
+hyväksytty. Jäljellä oleva kertautuminen selvitetään ennen uutta kohdeajoa;
+hylkäystä ei ohiteta. Live-/rolledBack-jatkot,
 ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
 ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta

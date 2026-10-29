@@ -7,6 +7,7 @@ import {
 import type { ProfileRestoreActivationJournalStore } from './profileRestoreActivationJournalStore.js';
 import type { ProfileRestoreActivationTransaction, ProfileRestoreRollbackRootRemovalAuthority, ProfileRestoreTerminalMutationAuthority } from './profileRestoreActivationTransaction.js';
 import { assertSynchronousRollbackRootAuthority } from './profileRestoreActivationTransaction.js';
+import type { ProfileRestoreColdCleanupContext } from './profileRestoreMutationAuthority.js';
 import {
   assertProfileRestoreActivationJournalMatches,
   captureProfileRestoreActivationJournal,
@@ -23,6 +24,7 @@ export interface ProfileRestoreColdForwardAdmission {
 
 export interface ProfileRestoreColdRollbackAdmission extends ProfileRestoreColdForwardAdmission {
   readonly kind: 'rollback';
+  readonly coldCleanupContext?: ProfileRestoreColdCleanupContext;
   beforeStagingMove(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
   beforeRollbackRootRemoval?(journal: Readonly<ProfileRestoreActivationJournal>): Promise<ProfileRestoreRollbackRootRemovalAuthority>;
 }
@@ -333,6 +335,15 @@ export class ProfileRestoreStartupRecovery {
         await assertContent(selected);
         await assertAuthority();
       };
+      const cleanup = admission.coldCleanupContext;
+      if (cleanup !== undefined && (cleanup === null || typeof cleanup.assertReadOwnership !== 'function' ||
+          typeof cleanup.assertMutationCurrent !== 'function')) throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+      const readOwnership = cleanup?.assertReadOwnership.bind(cleanup);
+      const mutationCurrent = cleanup?.assertMutationCurrent.bind(cleanup);
+      const coldCleanupContext = cleanup === undefined ? undefined : {
+        async assertReadOwnership() { assertSelected(); await readOwnership!(); assertSelected(); },
+        assertMutationCurrent() { assertSelected(); assertSynchronousRollbackRootAuthority(mutationCurrent!); },
+      };
       await assertOriginal();
       await this.dependencies.transaction.clearRolledBack(selected, assertOriginal, async journal => {
         assertProfileRestoreActivationJournalMatches(selected, journal);
@@ -344,7 +355,7 @@ export class ProfileRestoreStartupRecovery {
         return Object.freeze({ identity, assertCurrent() {
           assertSelected(); assertSynchronousRollbackRootAuthority(assertRootOwner);
         } });
-      });
+      }, coldCleanupContext);
       await assertAuthority();
       const remaining = await this.dependencies.journalStore.peek();
       await assertAuthority();
@@ -521,10 +532,15 @@ export class ProfileRestoreStartupRecovery {
     }
     try {
       const selected = this.requireSelectedJournal();
+      const readContext = admission?.coldCleanupContext;
+      if (readContext !== undefined && (readContext === null || typeof readContext.assertReadOwnership !== 'function' ||
+          typeof readContext.assertMutationCurrent !== 'function')) throw new Error('PROFILE_RESTORE_DECISION_INVALID');
+      const assertReadOwnership = readContext?.assertReadOwnership.bind(readContext);
       this.selectedJournal = captureProfileRestoreActivationJournal(admission === undefined
         ? await this.dependencies.transaction.rollback(selected)
         : await this.dependencies.transaction.rollback(selected, admission.assertCurrent, {
             assertContent: admission.assertContent, beforeStagingMove: admission.beforeStagingMove,
+            ...(assertReadOwnership === undefined ? {} : { assertReadOwnership }),
           }));
       if (correlationId !== undefined) {
         this.observe({

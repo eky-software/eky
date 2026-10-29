@@ -32,6 +32,8 @@ export interface ProfileRestoreColdContentContext {
   readonly signal: AbortSignal;
   readonly deadline: number;
   assertCurrent(): Promise<void>;
+  /** Only internal readonly probes; never grants inspection, publication or mutation. */
+  assertReadOwnership?(): Promise<void>;
   assertAuthority(): void;
 }
 
@@ -146,6 +148,7 @@ export async function prepareProfileRestoreColdForwardRecovery(input: {
     const assertContent = (current: Readonly<ProfileRestoreActivationJournal>) => run(() => input.assertContent({
       journal: current, reservation: reservation!, signal: cancellation.signal, deadline: deadline!,
       assertAuthority, assertCurrent,
+      ...(selection === undefined ? {} : { assertReadOwnership: assertOwnership }),
     }));
     await assertContent(journal);
     recoveryStarted = true;

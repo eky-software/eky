@@ -141,12 +141,30 @@ export async function captureWorkspaceBackupReplacementStartupSelection(
       },
     });
   };
-  const binding = await captureWorkspaceBackupReplacementStartupBinding(captured, owner(assertAuthority));
+  // One readonly observation has no publication between its two binding reads.
+  // Bracket it with fresh metadata; retain the phase guard inside every read.
+  const observe = async <T>(assertPhaseCurrent: () => void,
+    read: (authority: WorkspaceRemnantBindingAuthority) => Promise<T>): Promise<T> => {
+    const authority = owner(assertPhaseCurrent);
+    await authority.assertExternalSelection();
+    const result = await read({ assertAuthority: authority.assertAuthority,
+      async assertExternalSelection() { authority.assertAuthority(); } });
+    await authority.assertExternalSelection();
+    return result;
+  };
+  const binding = await observe(assertAuthority,
+    authority => captureWorkspaceBackupReplacementStartupBinding(captured, authority));
   if (pinned === undefined) throw required();
+  let active = false;
+  let failed = false;
   return Object.freeze({
     mode: binding.mode,
-    assertCurrent(assertPhaseCurrent: () => void): Promise<void> {
-      return binding.assertCurrent(owner(assertPhaseCurrent));
+    async assertCurrent(assertPhaseCurrent: () => void): Promise<void> {
+      if (active || failed || closed) throw required();
+      active = true;
+      try { await observe(assertPhaseCurrent, authority => binding.assertCurrent(authority)); }
+      catch (error) { failed = true; throw error; }
+      finally { active = false; }
     },
     close() { closed = true; },
   });

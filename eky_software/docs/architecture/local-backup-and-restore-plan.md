@@ -1478,6 +1478,17 @@ Voimassaolo tarkistetaan uudelleen viimeisen journal-odotuksen jälkeen.
 Alkuperäiskannan poissaolon palauttava onnistunut tiedostorollback säilyttää
 journalin eikä anna lupaa vaihtaa yritysosoitinta tai käynnistää toista runtimea.
 
+W7.4:n uusi valintaa seuraava cold-kutsu erottaa sisäisen readonly-
+omistajuustarkistuksen koko valinnan ja sisällön tarkistuksesta. Täysi
+tarkistus ympäröi kokonaisen lukuvaiheen; fyysinen omistajuus, määräaika,
+journalivalinta ja luettelot tarkistetaan edelleen sen sisällä. Koko sisältö
+ja viimeinen tavujen/identiteettien sidonta säilyvät tiedostomuutoksen
+edessä. Valitsimeen paluun loppusiivous tarkistaa sisällön myös oman
+rollback-varauksen vapautuksen jälkeen, ja viimeinen synkroninen vartija
+estää uuden poiston menetetyllä valtuudella. Vanhojen kutsujien polku ja
+journalin nykyiset kirjoituskohdat säilyvät. Täsmällinen rajaus ja avoin
+integraationäyttö ovat [W7.4:n vaiheomistajasopimuksessa](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus).
+
 Vaatimus koskee myös epäonnistunutta käynnistystä ennen backend-kahvan
 palauttamista. Puuttuva kahva ei osoita, ettei prosessia syntynyt.
 Recovery edellyttää [startup-omistajan todistusta](local-desktop-implementation-plan.md#käynnistyksen-omistajuus-ennen-backend-kahvaa)

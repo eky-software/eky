@@ -15,9 +15,98 @@ import type { ProfileRestoreActivationJournal } from './profileRestoreActivation
 import type { ProfileRestoreColdInspectionResult } from './runProfileRestoreColdInspection.js';
 
 const roots: string[] = [];
-afterEach(async () => { vi.restoreAllMocks(); for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true }); });
+afterEach(context => {
+  vi.restoreAllMocks();
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') for (const root of owned) await rm(root, { recursive: true, force: true });
+  });
+});
 
 describe('cold forward content admission', () => {
+  it('keeps full selection at admission, inspection and final bytes without repeating it inside readonly probes', async () => {
+    const f = await fixture();
+    const full = vi.spyOn(f.context, 'assertCurrent');
+    f.context.assertReadOwnership = vi.fn(async () => { f.context.assertAuthority(); });
+    await f.admit(f.context);
+    expect(full).toHaveBeenCalledTimes(6);
+    expect(f.context.assertReadOwnership).toHaveBeenCalled();
+    full.mockClear();
+    await f.admit(f.context);
+    expect(full).toHaveBeenCalledTimes(2);
+    expect(f.inspect).toHaveBeenCalledOnce();
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])('rejects changed selection at full boundary %s and preserves source bytes', async boundary => {
+    const f = await fixture();
+    const cause = new Error('SYNTHETIC_SELECTION_CHANGED');
+    const pdfPath = join(f.documentsRoot, 'invoice.pdf');
+    const pdf = await readFile(pdfPath);
+    let calls = 0;
+    f.context.assertReadOwnership = async () => { f.context.assertAuthority(); };
+    f.context.assertCurrent = async () => { if (++calls === boundary) throw cause; };
+    await expect(f.admit(f.context)).rejects.toBe(cause);
+    expect(calls).toBe(boundary);
+    expect(f.inspect).toHaveBeenCalledTimes(boundary === 1 ? 0 : 1);
+    expect(await readFile(f.databasePath)).toEqual(f.database);
+    expect(await readFile(pdfPath)).toEqual(pdf);
+  });
+
+  it.each([4, 5])('rejects cancellation at post-exit inspection boundary %s', async boundary => {
+    const f = await fixture();
+    const pdfPath = join(f.documentsRoot, 'invoice.pdf');
+    const pdf = await readFile(pdfPath);
+    let calls = 0;
+    f.context.assertReadOwnership = async () => { f.context.assertAuthority(); };
+    f.context.assertCurrent = async () => {
+      if (++calls === boundary) f.cancellation.abort();
+      f.context.assertAuthority();
+    };
+    await expect(f.admit(f.context)).rejects.toThrow('PROFILE_INSPECTION_TIMEOUT');
+    expect(calls).toBe(boundary);
+    expect(f.inspect).toHaveBeenCalledOnce();
+    await expect(f.admit(f.context)).rejects.toThrow('PROFILE_INSPECTION_TIMEOUT');
+    expect(f.inspect).toHaveBeenCalledOnce();
+    expect(await readFile(f.databasePath)).toEqual(f.database);
+    expect(await readFile(pdfPath)).toEqual(pdf);
+  });
+
+  it.each([1, 2])('rejects changed selection on reused content at boundary %s', async boundary => {
+    const f = await fixture();
+    f.context.assertReadOwnership = async () => { f.context.assertAuthority(); };
+    await f.admit(f.context);
+    const cause = new Error('SYNTHETIC_SELECTION_CHANGED');
+    let calls = 0;
+    f.context.assertCurrent = async () => { if (++calls === boundary) throw cause; };
+    await expect(f.admit(f.context)).rejects.toBe(cause);
+    expect(calls).toBe(boundary);
+    expect(f.inspect).toHaveBeenCalledOnce();
+    expect(await readFile(f.databasePath)).toEqual(f.database);
+  });
+
+  it('rejects lost ownership during an internal read before inspection', async () => {
+    const f = await fixture();
+    const cause = new Error('SYNTHETIC_READ_OWNER_LOST');
+    let current = true;
+    f.context.assertReadOwnership = async () => { if (!current) throw cause; };
+    f.peek.mockImplementationOnce(async () => { current = false; return f.journal; });
+    await expect(f.admit(f.context)).rejects.toBe(cause);
+    expect(f.inspect).not.toHaveBeenCalled();
+    expect(await readFile(f.databasePath)).toEqual(f.database);
+  });
+
+  it('rebinds the actual PDF after the final full metadata callback', async () => {
+    const f = await fixture();
+    const changed = Buffer.from('%PDF-1.7 changed!!');
+    const pdfPath = join(f.documentsRoot, 'invoice.pdf');
+    let calls = 0;
+    f.context.assertReadOwnership = async () => { f.context.assertAuthority(); };
+    f.context.assertCurrent = async () => { if (++calls === 6) await writeFile(pdfPath, changed); };
+    await expect(f.admit(f.context)).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+    expect(await readFile(pdfPath)).toEqual(changed);
+    expect(await readFile(f.databasePath)).toEqual(f.database);
+  });
+
   it('rechecks bytes on the same slots without launching another utility', async () => {
     const f = await fixture();
     await f.admit(f.context);
@@ -112,7 +201,11 @@ async function fixture() {
   const journal: ProfileRestoreActivationJournal = { operationId, formatVersion: 1, phase: 'prepared', revision: 0,
     hadActiveDatabase: false, hadActiveDocuments: false };
   const cancellation = new AbortController(); const peek = vi.fn(async () => journal); const assertLineage = vi.fn((_profileId: string) => {});
-  const inspect = vi.fn(async (input: Parameters<typeof import('./runProfileRestoreColdInspection.js').runProfileRestoreColdInspection>[0]) => result(await input.readSources(input as { deadline: number; signal: AbortSignal })));
+  const inspect = vi.fn(async (input: Parameters<typeof import('./runProfileRestoreColdInspection.js').runProfileRestoreColdInspection>[0]) => {
+    // The real inspector reads at preparation and again after process exit.
+    await input.readSources({ deadline: input.deadline!, signal: input.signal });
+    return result(await input.readSources({ deadline: input.deadline!, signal: input.signal }));
+  });
   const context: ProfileRestoreColdContentContext = { journal, signal: cancellation.signal, deadline: performance.now() + 35_000,
     assertCurrent: async () => {}, assertAuthority() { if (cancellation.signal.aborted || performance.now() >= context.deadline) throw new Error('PROFILE_INSPECTION_TIMEOUT'); },
     reservation: { assertMainOwned: async () => {}, assertMainCurrent() {}, close: async () => {}, invalidate: vi.fn(() => {}),

@@ -172,12 +172,17 @@ export async function withProfileRestoreColdRollbackAuthority<T>(
       const expected = { ...selected, phase: journal.phase, revision: selected.revision + index };
       assertProfileRestoreActivationJournalMatches(expected, journal);
       await run(() => input.assertContent({ journal, reservation: anchor!, signal: cancellation.signal, deadline: deadline!,
-        assertAuthority, assertCurrent }));
+        assertAuthority, assertCurrent,
+        ...(selection === undefined ? {} : { assertReadOwnership: assertOwnership }) }));
     };
     await assertContent(selected);
     recoveryStarted = true;
     result = await run(() => use({
       kind: 'rollback', journal: selected, assertCurrent, assertContent,
+      ...(selection === undefined ? {} : { coldCleanupContext: Object.freeze({
+        assertReadOwnership: assertOwnership,
+        assertMutationCurrent() { assertAuthority(); anchor!.assertMainCurrent(); },
+      }) }),
       async beforeStagingMove(current) {
         await assertContent(current);
         await assertCurrent();

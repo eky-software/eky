@@ -311,6 +311,131 @@ describe('workspace replacement startup binding observation', () => {
 });
 
 describe('workspace replacement startup metadata selection', () => {
+  it('brackets each readonly binding observation with fresh metadata without caching across calls', async context => {
+    const f = await selectionFixture(context, true);
+    const registryRead = vi.spyOn(f.registry, 'inspectSlots');
+    const switchRead = vi.spyOn(f.sources.switchJournal, 'inspectSlots');
+    const before = await snapshot(f.root);
+    const selected = await f.capture();
+    expect(registryRead).toHaveBeenCalledTimes(2);
+    expect(switchRead).toHaveBeenCalledTimes(2);
+    for (const count of [4, 6]) {
+      await selected.assertCurrent(f.owner.assertAuthority);
+      expect(registryRead).toHaveBeenCalledTimes(count);
+      expect(switchRead).toHaveBeenCalledTimes(count);
+    }
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
+  for (const initial of [true, false]) {
+    for (const kind of ['registry', 'switch'] as const) {
+      for (const bindingRead of [1, 2]) {
+        it(`rejects ${kind} changed during binding read ${bindingRead}, initial=${initial}`, async context => {
+          const f = await selectionFixture(context, true);
+          const selected = initial ? undefined : await f.capture();
+          const inspect = WorkspaceRemnantBindingStore.prototype.inspect;
+          let reads = 0;
+          let changedFiles: readonly unknown[] | undefined;
+          const spy = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'inspect')
+            .mockImplementation(async function (this: WorkspaceRemnantBindingStore, authority) {
+              const value = await inspect.call(this, authority);
+              if (++reads === bindingRead) {
+                if (kind === 'registry') {
+                  await writeFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME),
+                    serializeWorkspaceRegistry({ ...f.registryValue, workspaces: f.registryValue.workspaces.map(entry =>
+                      ({ ...entry, workspaceLabel: 'Changed synthetic company' })) }));
+                } else {
+                  const paths = createWorkspaceSwitchJournalPaths(f.root);
+                  await mkdir(paths.directoryPath, { recursive: true });
+                  await writeFile(paths.currentPath, serializeVersionedWorkspaceSwitchJournal({ formatVersion: 1, operationId,
+                    sourceWorkspaceId: '99999999-9999-4999-8999-999999999999', targetWorkspaceId: workspaceId,
+                    state: 'targetSelected', createdAt: '2026-10-29T00:00:00.000Z' }), { flag: 'wx' });
+                }
+                changedFiles = await snapshot(f.root);
+              }
+              return value;
+            });
+          try {
+            await expect(selected === undefined ? f.capture() : selected.assertCurrent(f.owner.assertAuthority))
+              .rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+            expect(changedFiles).toBeDefined();
+            expect(await snapshot(f.root)).toEqual(changedFiles);
+            if (selected !== undefined) {
+              await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+            }
+          } finally { spy.mockRestore(); }
+        });
+      }
+    }
+  }
+
+  for (const failingRead of [1, 2]) {
+    it(`keeps the first failure of metadata bracket ${failingRead} terminal after the source recovers`, async context => {
+      const f = await selectionFixture(context, true);
+      const inspect = f.registry.inspectSlots.bind(f.registry);
+      const cause = new Error('SYNTHETIC_METADATA_READ_FAILED');
+      let reads = 0;
+      let fail = false;
+      const spy = vi.spyOn(f.registry, 'inspectSlots').mockImplementation(async authority => {
+        if (fail && ++reads === failingRead) throw cause;
+        return inspect(authority);
+      });
+      const selected = await f.capture();
+      const before = await snapshot(f.root);
+      fail = true;
+      await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toBe(cause);
+      fail = false;
+      const calls = spy.mock.calls.length;
+      await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(spy).toHaveBeenCalledTimes(calls);
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
+  for (const interruption of ['overlap', 'close', 'phaseLoss'] as const) {
+    it(`joins the final metadata read on ${interruption} before returning`, async context => {
+      const f = await selectionFixture(context, true);
+      const entered = gate();
+      const finish = gate();
+      const inspect = f.registry.inspectSlots.bind(f.registry);
+      let reads = 0;
+      let delay = false;
+      let current = true;
+      let settled = false;
+      const cause = new Error('SYNTHETIC_PHASE_LOST');
+      vi.spyOn(f.registry, 'inspectSlots').mockImplementation(async authority => {
+        const value = await inspect(authority);
+        if (delay && ++reads === 2) { entered.resolve(); await finish.promise; }
+        return value;
+      });
+      const selected = await f.capture();
+      const before = await snapshot(f.root);
+      const guard = () => { f.owner.assertAuthority(); if (!current) throw cause; };
+      delay = true;
+      const pending = selected.assertCurrent(guard);
+      const outcome = pending.then(() => { settled = true; return undefined; }, error => { settled = true; return error; });
+      try {
+        await entered.promise;
+        await expect(selected.assertCurrent(guard)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+        expect(reads).toBe(2);
+        if (interruption === 'close') selected.close();
+        if (interruption === 'phaseLoss') current = false;
+        expect(settled).toBe(false);
+      } finally { finish.resolve(); }
+      const result = await outcome;
+      if (interruption === 'overlap') {
+        expect(result).toBeUndefined();
+        await selected.assertCurrent(guard);
+      } else {
+        if (interruption === 'phaseLoss') expect(result).toBe(cause);
+        else expect(result).toMatchObject({ message: 'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED' });
+        current = true;
+        await expect(selected.assertCurrent(guard)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      }
+      expect(await snapshot(f.root)).toEqual(before);
+    });
+  }
+
   it.for([false, true])('pins the selected registry and absent switch with binding published=%s', async (published, context) => {
     const f = await selectionFixture(context, published);
     const before = await snapshot(f.root);

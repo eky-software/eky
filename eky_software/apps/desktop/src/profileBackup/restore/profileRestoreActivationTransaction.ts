@@ -41,6 +41,10 @@ import {
   readProfileRestoreRollbackRecoverySlot,
   type ProfileRestoreOriginalRecoverySlot,
 } from './profileRestoreRollbackRecoverySlot.js';
+import { assertSynchronousProfileRestoreMutationAuthority as assertSynchronousRollbackRootAuthority,
+  type ProfileRestoreColdCleanupContext } from './profileRestoreMutationAuthority.js';
+
+export { assertSynchronousProfileRestoreMutationAuthority as assertSynchronousRollbackRootAuthority } from './profileRestoreMutationAuthority.js';
 
 const operationIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -74,6 +78,7 @@ export interface ProfileRestoreColdRollbackRoots {
 export interface ProfileRestoreColdRollbackMutationAuthority {
   assertContent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
   beforeStagingMove(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+  readonly assertReadOwnership?: () => Promise<void>;
 }
 
 export interface ProfileRestoreTerminalMutationAuthority {
@@ -86,13 +91,6 @@ export interface ProfileRestoreRollbackRootRemovalAuthority {
   assertCurrent(): void;
 }
 
-export function assertSynchronousRollbackRootAuthority(assertCurrent: () => void): void {
-  const result: unknown = assertCurrent();
-  if (result !== undefined) {
-    void Promise.resolve(result).catch(() => undefined);
-    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
-  }
-}
 
 export class ProfileRestoreActivationTransaction {
   private readonly paths: ProfileRestoreActivationPaths;
@@ -514,6 +512,19 @@ export class ProfileRestoreActivationTransaction {
     assertRecoveryAuthority?: () => Promise<void>,
     coldAuthority?: ProfileRestoreColdRollbackMutationAuthority,
   ): Promise<ProfileRestoreActivationJournal> {
+    if (coldAuthority !== undefined) {
+      if (coldAuthority === null) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      const { assertContent, beforeStagingMove, assertReadOwnership } = coldAuthority;
+      if (typeof assertContent !== 'function' || typeof beforeStagingMove !== 'function' ||
+          (assertReadOwnership !== undefined && typeof assertReadOwnership !== 'function')) {
+        throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      }
+      coldAuthority = Object.freeze({
+        assertContent: assertContent.bind(coldAuthority),
+        beforeStagingMove: beforeStagingMove.bind(coldAuthority),
+        ...(assertReadOwnership === undefined ? {} : { assertReadOwnership: assertReadOwnership.bind(coldAuthority) }),
+      });
+    }
     if (coldAuthority !== undefined && (expected === undefined || assertRecoveryAuthority === undefined ||
         (expected.phase !== 'validationStarting' && expected.phase !== 'rollbackStarting' && expected.phase !== 'rolledBack'))) {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
@@ -570,31 +581,47 @@ export class ProfileRestoreActivationTransaction {
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
     beforeRollbackRootRemoval?: (journal: Readonly<ProfileRestoreActivationJournal>) => Promise<ProfileRestoreRollbackRootRemovalAuthority>,
+    coldCleanupContext?: ProfileRestoreColdCleanupContext,
   ): Promise<void> {
-    const journal = await this.requireTerminalJournal(expected, assertRecoveryAuthority);
+    if (coldCleanupContext !== undefined && (expected === undefined || typeof assertRecoveryAuthority !== 'function' ||
+        typeof beforeRollbackRootRemoval !== 'function' || coldCleanupContext === null ||
+        typeof coldCleanupContext.assertReadOwnership !== 'function' || typeof coldCleanupContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    const assertRead = coldCleanupContext?.assertReadOwnership.bind(coldCleanupContext) ?? assertRecoveryAuthority;
+    const assertMutation = coldCleanupContext?.assertMutationCurrent.bind(coldCleanupContext);
+    // Repair remains a full-content mutation boundary, never a readonly probe.
+    const journal = await this.requireTerminalJournal(expected, assertRecoveryAuthority, assertMutation);
     if (journal.phase !== 'rolledBack') {
       throw new Error('PROFILE_RESTORE_ROLLBACK_INVALID');
     }
-    await this.assertRollbackMutation(journal, assertRecoveryAuthority);
+    await this.assertRollbackMutation(journal, assertRead);
     const root = this.operationPaths(journal.operationId).rollbackOperationRoot;
     await assertEmptyRollbackOperationStructure(root);
     for (const path of [join(root, 'data'), join(root, 'storage'), root]) {
-      await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-      await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      await this.assertRollbackMutation(journal, assertRead);
+      await this.assertJournalMutation(journal, assertRead);
       await assertEmptyRollbackOperationStructure(root);
       if (!(await inspectRecoverySlot(path, 'directory'))) continue;
+      if (coldCleanupContext !== undefined) {
+        await assertRecoveryAuthority!();
+        await this.assertJournalMutation(journal, assertRead);
+        await assertEmptyRollbackOperationStructure(root);
+      }
       if (path === root && beforeRollbackRootRemoval !== undefined) {
         const proof = await beforeRollbackRootRemoval(journal);
         const identity = proof.identity;
         const assertRootOwner = proof.assertCurrent.bind(proof);
-        await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-        await this.assertJournalMutation(journal, assertRecoveryAuthority);
+        if (coldCleanupContext !== undefined) await assertRecoveryAuthority!();
+        await this.assertRollbackMutation(journal, assertRead);
+        await this.assertJournalMutation(journal, assertRead);
         await assertEmptyRollbackOperationStructure(root);
         if (await readWorkspaceProcessReservationIdentity(root) !== identity) {
           throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
         }
         assertSynchronousRollbackRootAuthority(assertRootOwner);
       }
+      if (assertMutation !== undefined) assertSynchronousRollbackRootAuthority(assertMutation);
       try {
         // A late entry must stop cleanup, never be recursively removed.
         await fileSystem.rmdir(path);
@@ -603,10 +630,11 @@ export class ProfileRestoreActivationTransaction {
       }
     }
     await this.dependencies.journalStore.clear(journal, async () => {
-      await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-      await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      await this.assertRollbackMutation(journal, assertRead);
+      await this.assertJournalMutation(journal, assertRead);
+      if (coldCleanupContext !== undefined) await assertRecoveryAuthority!();
       await assertPathMissing(root);
-    });
+    }, assertMutation);
   }
 
   async readRollbackRecoverySources(expected: Readonly<ProfileRestoreActivationJournal>): Promise<Readonly<{
@@ -882,6 +910,7 @@ export class ProfileRestoreActivationTransaction {
   private async requireTerminalJournal(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<ProfileRestoreActivationJournal> {
     if (expected === undefined && assertRecoveryAuthority !== undefined) {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
@@ -890,7 +919,7 @@ export class ProfileRestoreActivationTransaction {
       ? await this.dependencies.journalStore.peek()
       : captureJournal(expected);
     if (captured === undefined) throw new Error('PROFILE_RESTORE_JOURNAL_REQUIRED');
-    return this.requireJournal(captured, () => this.assertJournalMutation(captured, assertRecoveryAuthority));
+    return this.requireJournal(captured, () => this.assertJournalMutation(captured, assertRecoveryAuthority), assertMutationCurrent);
   }
 
   private async assertJournalMutation(
@@ -915,12 +944,18 @@ export class ProfileRestoreActivationTransaction {
   private async assertRollbackMutation(
     journal: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
-    coldAuthority?: Pick<ProfileRestoreColdRollbackMutationAuthority, 'assertContent'>,
+    coldAuthority?: Partial<Pick<ProfileRestoreColdRollbackMutationAuthority, 'assertContent' | 'assertReadOwnership'>>,
   ): Promise<void> {
-    await this.assertJournalMutation(journal, assertRecoveryAuthority);
+    const assertRead = coldAuthority?.assertReadOwnership;
+    if (assertRead !== undefined) {
+      if (assertRecoveryAuthority === undefined) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      await assertRecoveryAuthority();
+    }
+    await this.assertJournalMutation(journal, assertRead ?? assertRecoveryAuthority);
     await this.readRollbackRecoverySources(journal);
-    await coldAuthority?.assertContent(journal);
-    await this.assertJournalMutation(journal, assertRecoveryAuthority);
+    await coldAuthority?.assertContent?.(journal);
+    await this.assertJournalMutation(journal, assertRead ?? assertRecoveryAuthority);
+    if (assertRead !== undefined) await assertRecoveryAuthority!();
   }
 
   private coldRollbackJournalAuthority(
@@ -931,7 +966,8 @@ export class ProfileRestoreActivationTransaction {
     return {
       kind: 'separateContent',
       previous: captureJournal(journal),
-      assertCurrent: current => this.assertRollbackMutation(current, assertRecoveryAuthority),
+      assertCurrent: current => this.assertRollbackMutation(current, assertRecoveryAuthority,
+        coldAuthority.assertReadOwnership === undefined ? undefined : { assertReadOwnership: coldAuthority.assertReadOwnership }),
       assertContent: current => coldAuthority.assertContent(current),
     };
   }
@@ -939,10 +975,11 @@ export class ProfileRestoreActivationTransaction {
   private async requireJournal(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<ProfileRestoreActivationJournal> {
     const journal = expected === undefined
       ? await this.dependencies.journalStore.read()
-      : await this.dependencies.journalStore.read(expected, assertAuthority);
+      : await this.dependencies.journalStore.read(expected, assertAuthority, assertMutationCurrent);
     if (journal === undefined) {
       throw new Error('PROFILE_RESTORE_JOURNAL_REQUIRED');
     }

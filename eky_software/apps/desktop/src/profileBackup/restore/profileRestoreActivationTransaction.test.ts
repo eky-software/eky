@@ -22,12 +22,14 @@ import {
   profileRestoreActivationJournalFileName,
   ProfileRestoreActivationJournalStore,
 } from './profileRestoreActivationJournalStore.js';
-import { ProfileRestoreActivationTransaction, type ProfileRestoreRollbackRootRemovalAuthority } from './profileRestoreActivationTransaction.js';
+import { ProfileRestoreActivationTransaction, type ProfileRestoreRollbackRootRemovalAuthority,
+  type ProfileRestoreColdRollbackMutationAuthority } from './profileRestoreActivationTransaction.js';
 import { ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
 import { ProfileRestoreActivationService } from './profileRestoreActivationService.js';
 import { PreparedProfileRestoreOwner } from './preparedProfileRestoreOwner.js';
 import { withProfileRestoreColdRollbackAuthority } from './prepareProfileRestoreColdRollbackRecovery.js';
 import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
+import { profileInspectionWorkMilliseconds } from '../../runtime/profileInspectionMessages.js';
 import * as processReservations from '../../runtime/workspaceProcessReservation.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 import * as fileMoves from './profileRestoreFileMove.js';
@@ -52,19 +54,117 @@ vi.mock('node:fs/promises', async importOriginal => {
   return { ...actual, mkdir: vi.fn(actual.mkdir), chmod: vi.fn(actual.chmod), rename: vi.fn(actual.rename) };
 });
 
-afterEach(async () => {
+afterEach(context => {
   vi.restoreAllMocks();
   vi.mocked(mkdir).mockReset();
   vi.mocked(chmod).mockReset();
   vi.mocked(rename).mockReset();
-  await Promise.all(
-    roots.splice(0).map((root) =>
-      rm(root, { force: true, recursive: true }),
-    ),
-  );
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') for (const root of owned) await rm(root, { force: true, recursive: true });
+  });
 });
 
 describe('profile restore activation transaction', () => {
+  it.each([false, true])('brackets rollback readonly checks without changing journal checkpoints (scoped: %s)', async scoped => {
+    const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+    const full = vi.fn(async () => {}); const read = vi.fn(async () => {});
+    const content = vi.fn(async (journal: Readonly<ProfileRestoreActivationJournal>) => {
+      await f.transaction.readRollbackRecoverySources(journal);
+    });
+    const write = f.journalStore.write.bind(f.journalStore);
+    let callbacks = 0;
+    vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+      if (authority === undefined || !('kind' in authority) || authority.kind !== 'separateContent') throw new Error('missing cold authority');
+      const current = authority.assertCurrent.bind(authority);
+      await write(journal, { ...authority, async assertCurrent(expected) {
+        const before = full.mock.calls.length; const contentBefore = content.mock.calls.length;
+        await current(expected); callbacks++;
+        expect(full.mock.calls.length - before).toBe(scoped ? 2 : 4);
+        expect(content).toHaveBeenCalledTimes(contentBefore);
+      } });
+    });
+    await f.transaction.rollback(selected, full, { assertContent: content, async beforeStagingMove() {},
+      ...(scoped ? { assertReadOwnership: read } : {}) });
+    expect(callbacks).toBeGreaterThan(8);
+    expect(content).toHaveBeenCalled(); expect(read.mock.calls.length > 0).toBe(scoped);
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(await f.journalStore.peek()).toMatchObject({ phase: 'rolledBack' });
+  });
+
+  it.each(['before', 'after', 'journalFirst', 'journalLast', 'census', 'content', 'owner'] as const)(
+    'preserves evidence when a scoped rollback preflight fails at %s', async failure => {
+      const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+      const evidence = await captureEvidence(f); const first = new Error(`synthetic ${failure} rejection`);
+      let changed = false; let fullCalls = 0; let reads = 0;
+      const full = vi.fn(async () => {
+        fullCalls++;
+        if (changed || (failure === 'before' && fullCalls === 1) || (failure === 'after' && fullCalls === 2)) throw first;
+      });
+      const read = vi.fn(async () => { if (failure === 'owner') throw first; });
+      const peek = f.journalStore.peek.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'peek').mockImplementation(async () => {
+        const journal = await peek(); reads++;
+        if ((failure === 'journalFirst' && reads === 1) || (failure === 'journalLast' && reads === 4)) changed = true;
+        return journal;
+      });
+      const census = f.transaction.readRollbackRecoverySources.bind(f.transaction);
+      const censusSpy = vi.spyOn(f.transaction, 'readRollbackRecoverySources').mockImplementation(async journal => {
+        const result = await census(journal); if (failure === 'census') changed = true; return result;
+      });
+      const content = vi.fn(async () => { if (failure === 'content') throw first; });
+      const preflight = f.transaction as unknown as { assertRollbackMutation(
+        journal: Readonly<ProfileRestoreActivationJournal>, full: () => Promise<void>,
+        content: { assertContent(): Promise<void>; assertReadOwnership(): Promise<void> },
+      ): Promise<void> };
+      await expect(preflight.assertRollbackMutation(selected, full, { assertContent: content, assertReadOwnership: read }))
+        .rejects.toBe(first);
+      if (failure === 'before') { expect(read).not.toHaveBeenCalled(); expect(censusSpy).not.toHaveBeenCalled(); }
+      if (failure === 'journalLast') expect(reads).toBe(4);
+      expect(await captureEvidence(f)).toEqual(evidence); expect(await peek()).toEqual(selected);
+    },
+  );
+
+  it('rejects a malformed readonly rollback port before repairing a journal', async () => {
+    const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+    const repair = vi.spyOn(f.journalStore, 'read');
+    const evidence = await captureEvidence(f);
+    await expect(f.transaction.rollback(selected, async () => {}, { async assertContent() {}, async beforeStagingMove() {},
+      assertReadOwnership: null as unknown as () => Promise<void> })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(repair).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(evidence);
+  });
+
+  it.each(['addReadPort', 'replaceCallbacks', 'removeContent'] as const)(
+    'pins the original rollback callbacks and missing read port before %s', async change => {
+      const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+      const content = vi.fn(async () => {}); const move = vi.fn(async () => {});
+      const foreign = vi.fn(async () => {});
+      const authority: ProfileRestoreColdRollbackMutationAuthority = { assertContent: content, beforeStagingMove: move };
+      let changed = false;
+      const full = vi.fn(async () => {
+        if (changed) return;
+        changed = true;
+        if (change === 'addReadPort') Object.assign(authority, { assertReadOwnership: foreign });
+        if (change === 'replaceCallbacks') { authority.assertContent = foreign; authority.beforeStagingMove = foreign; }
+        if (change === 'removeContent') Reflect.deleteProperty(authority, 'assertContent');
+      });
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, current) => {
+        if (current === undefined || !('kind' in current) || current.kind !== 'separateContent') throw new Error('missing cold authority');
+        const check = current.assertCurrent.bind(current);
+        await write(journal, { ...current, async assertCurrent(expected) {
+          const before = full.mock.calls.length; await check(expected);
+          expect(full.mock.calls.length - before).toBe(4);
+        } });
+      });
+      await expect(f.transaction.rollback(selected, full, authority)).resolves.toMatchObject({ phase: 'rolledBack' });
+      expect(content).toHaveBeenCalled(); expect(move).toHaveBeenCalledOnce(); expect(foreign).not.toHaveBeenCalled();
+      expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+      expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    },
+  );
+
   it.each(['ordinary', 'cold'] as const)(
     'uses separate journal content authority only for %s content-bearing recovery', async mode => {
       const f = await createFixture();
@@ -1114,6 +1214,55 @@ describe('profile restore activation transaction', () => {
     expect(await readFile(fixture.activeDatabasePath, 'utf8')).toBe('old database');
   });
 
+  it('keeps full content checks at cleanup boundaries without repeating them in readonly journal probes', async () => {
+    const legacy = await createColdSelectorReturnFixture();
+    await legacy.complete();
+    const scoped = await createColdSelectorReturnFixture(true);
+    await scoped.complete();
+    expect(scoped.assertContent.mock.calls.length).toBeGreaterThan(8);
+    expect(scoped.assertContent.mock.calls.length).toBeLessThan(legacy.assertContent.mock.calls.length);
+    expect(scoped.beforeRead).toHaveBeenCalled();
+    expect(scoped.beforeMutation).toHaveBeenCalledTimes(6);
+    expect(await scoped.base.journalStore.peek()).toBeUndefined();
+    expect(await readFile(scoped.base.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(scoped.base.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(scoped.lease.readState()).toBe('idle');
+  });
+
+  it.each(['content', 'selection', 'owner'] as const)('rejects changed %s during a cheap cleanup read before deletion', async fault => {
+    const f = await createColdSelectorReturnFixture(true);
+    const first = new Error('SYNTHETIC_CLEANUP_SELECTION_CHANGED');
+    let changed = false;
+    f.beforeRead.mockImplementationOnce(async () => {
+      changed = true;
+      if (fault === 'content') await writeFile(f.base.activeDatabasePath, 'changed original');
+    });
+    if (fault === 'selection') f.selection.assertOperationSelection.mockImplementation(async guard => {
+      guard(); if (changed) throw first;
+    });
+    if (fault === 'owner') f.assertAuthority.mockImplementation(() => { if (changed) throw first; });
+    await expect(f.complete()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(changed).toBe(true);
+    expect(f.beforeMutation).not.toHaveBeenCalled();
+    expect(await readdir(f.rollbackOperationRoot)).toEqual(['data', 'storage']);
+    expect(await f.base.journalStore.peek()).toEqual(f.selected);
+    expect(await readFile(f.base.activePdfPath, 'utf8')).toBe('old pdf');
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])('retains evidence when the final cleanup guard rejects mutation %s', async boundary => {
+    const f = await createColdSelectorReturnFixture(true);
+    const first = new Error('SYNTHETIC_CLEANUP_REVOKED');
+    f.beforeMutation.mockImplementation(() => { if (f.beforeMutation.mock.calls.length === boundary) throw first; });
+    await expect(f.complete()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(f.beforeMutation).toHaveBeenCalledTimes(boundary);
+    expect(await f.base.journalStore.peek()).toEqual(f.selected);
+    if (boundary <= 3) expect(await readdir(f.rollbackOperationRoot)).toEqual(
+      boundary === 1 ? ['data', 'storage'] : boundary === 2 ? ['storage'] : []);
+    else await expect(readdir(f.rollbackOperationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(f.base.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.base.activePdfPath, 'utf8')).toBe('old pdf');
+  });
+
   it.each([false, true])('finishes cold selector return with a real rollback root (already removed: %s)', async removed => {
     const f = await createColdSelectorReturnFixture();
     if (removed) await rm(f.rollbackOperationRoot, { recursive: true });
@@ -1129,9 +1278,9 @@ describe('profile restore activation transaction', () => {
     expect(f.recovery.readAcceptanceState()).toBe('notStarted');
   });
 
-  it.each(['replacement', 'emptyReplacement', 'content', 'closeFailure'] as const)(
-    'preserves the journal when rollback-root release encounters %s', async fault => {
-      const f = await createColdSelectorReturnFixture();
+  it.each([false, true].flatMap(scoped => ['replacement', 'emptyReplacement', 'content', 'closeFailure'].map(fault => ({ scoped, fault }))))(
+    'preserves the journal when rollback-root release encounters $fault (scoped: $scoped)', async ({ scoped, fault }) => {
+      const f = await createColdSelectorReturnFixture(scoped);
       const retained = join(f.base.rollbackRoot, 'preserved-original');
       f.beforeClose.mockImplementation(async root => {
         if (root !== f.rollbackOperationRoot) return;
@@ -1170,8 +1319,8 @@ describe('profile restore activation transaction', () => {
     await expect(f.recovery.prepareBeforeBackend()).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
   });
 
-  it('preserves the rollback root when authority expires during its final identity read', async () => {
-    const f = await createColdSelectorReturnFixture();
+  it.each([false, true])('preserves the rollback root when authority expires during its final identity read (scoped: %s)', async scoped => {
+    const f = await createColdSelectorReturnFixture(scoped);
     const readIdentity = processReservations.readWorkspaceProcessReservationIdentity;
     let released = false; let reads = 0; let expired = false;
     f.beforeClose.mockImplementation(async root => { if (root === f.rollbackOperationRoot) released = true; });
@@ -2202,7 +2351,7 @@ async function beginInterruptedRollback(fixture: Awaited<ReturnType<typeof creat
   return selected;
 }
 
-async function createColdSelectorReturnFixture() {
+async function createColdSelectorReturnFixture(scoped = false) {
   const base = await createFixture();
   const selected = await base.transaction.rollback(await beginInterruptedRollback(base));
   const transaction = base.createTransaction();
@@ -2213,17 +2362,21 @@ async function createColdSelectorReturnFixture() {
   const assertAuthority = vi.fn(() => {});
   const beforeClose = vi.fn(async (_root: string) => {});
   const rootProof = vi.fn((proof: ProfileRestoreRollbackRootRemovalAuthority) => proof);
+  const beforeRead = vi.fn(async () => {});
+  const beforeMutation = vi.fn(() => {});
+  const selection = { deadline: performance.now() + profileInspectionWorkMilliseconds,
+    assertOperationSelection: vi.fn(async (guard: () => void) => { guard(); }), onUnsettledWork: vi.fn() };
+  const assertContent = vi.fn(async (context: import('./prepareProfileRestoreColdForwardRecovery.js').ProfileRestoreColdContentContext) => {
+    await context.assertCurrent();
+    if (await readFile(base.activeDatabasePath, 'utf8') !== 'old database' ||
+        await readFile(base.activePdfPath, 'utf8') !== 'old pdf') throw new Error('synthetic original content mismatch');
+    await context.assertCurrent();
+  });
   const complete = () => withProfileRestoreColdRollbackAuthority({
     journal: selected, journalStore: base.journalStore, transaction, maintenanceLease: lease,
     assertAuthority, async assertMainOwned() {},
-    async assertContent(context) {
-      await context.assertCurrent();
-      if (await readFile(base.activeDatabasePath, 'utf8') !== 'old database' ||
-          await readFile(base.activePdfPath, 'utf8') !== 'old pdf') {
-        throw new Error('synthetic original content mismatch');
-      }
-      await context.assertCurrent();
-    },
+    ...(scoped ? { operationSelection: selection } : {}),
+    assertContent,
     async acquireReservation(root, identity) {
       let active = true;
       const assertCurrent = () => { if (!active) throw new Error('synthetic closed claim'); };
@@ -2242,10 +2395,15 @@ async function createColdSelectorReturnFixture() {
     expect(await recovery.prepareBeforeBackend(admission)).toBe('validateRolledBackProfile');
     const releaseRoot = admission.beforeRollbackRootRemoval!.bind(admission);
     await recovery.completeRolledBackBeforeSelectorReturn({ ...admission,
+      ...(admission.coldCleanupContext === undefined ? {} : { coldCleanupContext: {
+        async assertReadOwnership() { await beforeRead(); await admission.coldCleanupContext!.assertReadOwnership(); },
+        assertMutationCurrent() { beforeMutation(); admission.coldCleanupContext!.assertMutationCurrent(); },
+      } }),
       async beforeRollbackRootRemoval(journal) { return rootProof(await releaseRoot(journal)); },
     });
   });
-  return { base, selected, recovery, lease, rollbackOperationRoot, closed, beforeClose, rootProof, assertAuthority, complete };
+  return { base, selected, recovery, lease, rollbackOperationRoot, closed, beforeClose, rootProof, assertAuthority, complete,
+    beforeRead, beforeMutation, selection, assertContent };
 }
 
 async function simulateRollbackMoves(fixture: Awaited<ReturnType<typeof createFixture>>, count: number) {
