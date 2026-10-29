@@ -962,7 +962,8 @@ sovelluksen backup/restore/restart- tai päivitysportteja. Virheessä aineisto
 ja migraatioprefiksi säilyvät; siivousvirhe ei korvaa ensivirhettä.
 
 Paketoidut `DESK-WORKSPACE-COLD-PACKAGED-CREATION-001` ja
-`DESK-WORKSPACE-COLD-PACKAGED-IMPORT-001` täydentävät tätä nykyisessä
+`DESK-WORKSPACE-COLD-PACKAGED-IMPORT-001` sekä erillinen
+`DESK-WORKSPACE-COLD-PACKAGED-BOUND-IMPORT-001` täydentävät tätä nykyisessä
 `playwright.packaged-legacy.config.ts`-portissa. Ne valmistelevat yksilölliseen
 smoke-juureen suljetun synteettisen V2 `rootPublished` -tilan, eivät
 sovelluksen ajonaikaista testiohjainta. Normaali paketoitu startup palauttaa
@@ -970,6 +971,14 @@ passiivisen kohteen, ja aktiivinen alkuperäinen työtila suorittaa nykyisen
 backup/inspect/restore/restart-smoken. Tarkistus kummankin poistumisen jälkeen
 vaatii OS-varauksen, täsmällisen rekisterin, journalin kaikkien slottien
 puuttumisen sekä kohteen ja tuonnin lähteen itsenäisten tavujen säilymisen.
+Sidotun tuonnin fixture käyttää samaa nykyistä sidontatallenninta ja todentaa
+julkaisun ennen sovelluksen käynnistämistä. Jälkitarkistus vaatii myös
+bindingin kaikkien slottien puuttumisen. Testin `bindImport`-valinta on vain
+tuonnin suljetun fixture-portin valinta; se ei avaa tuotannon ohjauskanavaa.
+Väärä tyyppi tai valinta luontifixturessa hylätään ennen valmistelua.
+Vertailun aloitetut tiedostoluvut odotetaan loppuun myös virheessä ennen
+testin prosessivarauksen vapauttamista. System-vastine simuloi jälkiehdot,
+ei sovelluksen palautusta.
 Virhe säilyttää molemmat tutkimusjuuret. Molemmat nykyiset 120 sekunnin
 vaiherajat, testikohtainen 300 sekunnin raja ja uusintojen kielto säilyvät.
 Käynnistin hyväksyy vain yhden valmistelulajin kerrallaan; tämä polku ei

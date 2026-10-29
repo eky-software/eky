@@ -5398,6 +5398,15 @@ Pysäytysraja on edelleen ennen business-backendia. Sidotun tuonnin
 pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
 W7.5 pysyy suljettuna.
 
+Nykyisen paketoidun kylmäpalautuksen fixtureen on lisätty erillinen sidottu
+tuonti vanhojen kahden tapauksen rinnalle. Se todentaa bindingin lähtötilan
+ja kaikkien slottien puuttumisen sovelluksen palautuksen jälkeen. Viisi
+system-valmistelutapausta, 72 ajokytkennän kontrollia, tyypitykset ja rajattu
+katselmus läpäisivät. Valmistelun simuloidut jälkiehdot eivät todista runtimea.
+Passiivinen kohde ja tuonnin itsenäinen lähde verrataan tavuina; aktiivisen
+työtilan tarkoitukselliset smoke-muutokset ja palautus todennetaan nykyisessä
+smokessa erikseen. Uuden tapauksen varsinainen pakettisuoritus on vielä auki.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa

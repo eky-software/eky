@@ -180,7 +180,13 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   tapahtuneen `EADDRINUSE`-valmisteluvirheen kohdeuusinnan jälkeen samoilla
   lähteillä. Ensivirhe säilyy avoimena; prosessipuu ja portti vapautuivat.
   Tämäkin koe pysähtyy ennen business-backendia, ei paketoituun palautukseen.
-- **Seuraava työ:** yhteisen palautusportin paketoitu todennus myös sidotulle
+- Sidotun pakettikokeen valmistelu ja jälkitarkistin on lisätty nykyiseen
+  fixtureen vanhojen tapausten rinnalle. Viisi system-tapausta, 72 ajokytkennän
+  kontrollia, molempien E2E-pakettien tyypitys ja rajattu katselmus läpäisivät.
+  System-tapaukset simuloivat jälkiehdot, eivät sovelluksen palautusta.
+  Passiivisen kohteen ja tuonnin lähdetavut erotetaan aktiivisen työtilan
+  nykyisestä smoke-palautusvertailusta.
+- **Seuraava työ:** saman puhtaan paketin palautustodennus myös sidotulle
   tuonnille. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)

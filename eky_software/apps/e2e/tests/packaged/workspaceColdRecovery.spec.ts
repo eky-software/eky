@@ -5,8 +5,10 @@ import { prepareWorkspaceColdRecoveryPackagedSmoke } from '../../src/data/prepar
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 
-for (const kind of ['creation', 'import'] as const) {
-  test(`DESK-WORKSPACE-COLD-PACKAGED-${kind.toUpperCase()}-001 recovers a published workspace and preserves it across restore restart`, async () => {
+for (const scenario of ['creation', 'import', 'boundImport'] as const) {
+  const kind = scenario === 'creation' ? 'creation' : 'import';
+  const name = scenario === 'boundImport' ? 'BOUND-IMPORT' : kind.toUpperCase();
+  test(`DESK-WORKSPACE-COLD-PACKAGED-${name}-001 recovers a published workspace and preserves it across restore restart`, async () => {
     if (process.platform !== 'win32') throw new Error('WORKSPACE_COLD_PACKAGED_REQUIRES_WINDOWS');
     const runRoot = createE2eRunRoot();
     const previous = process.env.EKY_E2E;
@@ -16,7 +18,7 @@ for (const kind of ['creation', 'import'] as const) {
     try {
       await runPackagedSmoke({ workspaceRecoveryPreparation: {
         async prepare({ smokeToken, smokeRootDirectory }) {
-          prepared = await prepareWorkspaceColdRecoveryPackagedSmoke({ kind, runRoot, smokeToken });
+          prepared = await prepareWorkspaceColdRecoveryPackagedSmoke({ kind, runRoot, smokeToken, bindImport: scenario === 'boundImport' });
           expect(prepared.smokeRoot).toBe(smokeRootDirectory);
         },
         async afterRestoreExit() {
