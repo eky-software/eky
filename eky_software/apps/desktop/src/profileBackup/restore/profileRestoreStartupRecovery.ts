@@ -20,6 +20,7 @@ export interface ProfileRestoreColdForwardAdmission {
   readonly journal: Readonly<ProfileRestoreActivationJournal>;
   assertCurrent(): Promise<void>;
   assertContent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+  readonly journalWriteContext?: ProfileRestoreColdCleanupContext;
 }
 
 export interface ProfileRestoreColdRollbackAdmission extends ProfileRestoreColdForwardAdmission {
@@ -109,12 +110,31 @@ export class ProfileRestoreStartupRecovery {
     this.activeCorrelationId = expected?.operationId;
     const rollbackAdmission = admission !== undefined && 'kind' in admission && admission.kind === 'rollback'
       ? admission : undefined;
+    const suppliedWriteContext = admission?.journalWriteContext;
+    let writeContext: ProfileRestoreColdCleanupContext | undefined;
+    let forwardCurrent: (() => Promise<void>) | undefined;
+    let forwardContent: ProfileRestoreColdForwardAdmission['assertContent'] | undefined;
     const assertCurrent = async () => {
-      try { await admission?.assertCurrent(); }
+      try { if (forwardCurrent !== undefined) await forwardCurrent(); else await admission?.assertCurrent(); }
       catch (error) { throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED', { cause: error }); }
     };
     let stored: ProfileRestoreActivationJournal | undefined;
     try {
+      if (suppliedWriteContext !== undefined) {
+        if (rollbackAdmission !== undefined || expected === undefined || admission === undefined ||
+            typeof admission.assertCurrent !== 'function' || typeof admission.assertContent !== 'function' ||
+            suppliedWriteContext === null || typeof suppliedWriteContext.assertReadOwnership !== 'function' ||
+            typeof suppliedWriteContext.assertMutationCurrent !== 'function') {
+          throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+        }
+        forwardCurrent = admission.assertCurrent.bind(admission);
+        forwardContent = admission.assertContent.bind(admission);
+        const mutation = suppliedWriteContext.assertMutationCurrent.bind(suppliedWriteContext);
+        writeContext = Object.freeze({
+          assertReadOwnership: suppliedWriteContext.assertReadOwnership.bind(suppliedWriteContext),
+          assertMutationCurrent() { assertSynchronousRollbackRootAuthority(mutation); },
+        });
+      }
       if (admission !== undefined && expected !== undefined && (rollbackAdmission === undefined
           ? !(profileRestoreForwardActivationPhases as readonly string[]).includes(expected.phase)
           : expected.phase !== 'rollbackStarting' && expected.phase !== 'rolledBack')) {
@@ -131,7 +151,8 @@ export class ProfileRestoreStartupRecovery {
       if (!deferTerminalRepair || stored?.phase !== 'accepted') stored = expected === undefined
         ? await this.dependencies.journalStore.read()
         : admission === undefined ? await this.dependencies.journalStore.read(expected)
-          : await this.dependencies.journalStore.read(expected, () => admission.assertContent(expected));
+          : writeContext === undefined ? await this.dependencies.journalStore.read(expected, () => admission.assertContent(expected))
+            : await this.dependencies.journalStore.read(expected, () => forwardContent!(expected), writeContext.assertMutationCurrent);
       await assertCurrent();
       if (expected !== undefined) assertProfileRestoreActivationJournalMatches(expected, stored);
     } catch (error) {
@@ -181,7 +202,9 @@ export class ProfileRestoreStartupRecovery {
         );
       } else {
         this.selectedJournal = captureProfileRestoreActivationJournal(
-          await this.dependencies.transaction.advanceToValidation(journal, assertCurrent, admission.assertContent),
+          writeContext === undefined
+            ? await this.dependencies.transaction.advanceToValidation(journal, assertCurrent, admission.assertContent)
+            : await this.dependencies.transaction.advanceToValidation(journal, assertCurrent, forwardContent!, writeContext),
         );
       }
       await assertCurrent();

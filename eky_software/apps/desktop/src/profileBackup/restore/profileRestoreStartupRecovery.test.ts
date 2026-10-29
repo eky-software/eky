@@ -657,6 +657,69 @@ describe('profile restore startup recovery', () => {
     },
   );
 
+  it.each([false, true])('pins the forward write context and its absence before awaits (%s)', async scoped => {
+    const id = randomUUID(); const journal = createJournal(id, 'prepared');
+    const transaction = createTransaction(id);
+    const foreign = vi.fn(() => { throw new Error('SYNTHETIC_FOREIGN_CALLBACK'); });
+    const readOwner = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    const content = vi.fn(async (_journal: Readonly<ProfileRestoreActivationJournal>) => {});
+    const context = { assertReadOwnership: readOwner, assertMutationCurrent: mutation };
+    const admission = { journal, assertContent: content, async assertCurrent() {
+      Object.assign(context, { assertReadOwnership: foreign, assertMutationCurrent: foreign });
+      if (scoped) Object.assign(admission, { assertCurrent: foreign, assertContent: foreign,
+        journal: { ...journal, revision: 99 } });
+      Object.assign(admission, { journalWriteContext: context });
+    }, ...(scoped ? { journalWriteContext: context } : {}) };
+    const read = vi.fn(async (_expected?: Readonly<ProfileRestoreActivationJournal>, assertContent?: () => Promise<void>, guard?: () => void) => {
+      await assertContent?.(); guard?.(); return journal;
+    });
+    transaction.advanceToValidation.mockImplementation(async (...args) => {
+      expect(args).toHaveLength(scoped ? 4 : 3);
+      const [selected, assertCurrent, assertContent, writeContext] = args;
+      expect(selected).toEqual(journal); await assertCurrent!(); await assertContent!(journal);
+      if (scoped) { await writeContext!.assertReadOwnership(); writeContext!.assertMutationCurrent(); }
+      else expect(writeContext).toBeUndefined();
+      return createJournal(id, 'validationStarting');
+    });
+    const recovery = new ProfileRestoreStartupRecovery({ journalStore: { peek: unexpectedJournalPeek, read }, transaction });
+    await expect(recovery.prepareBeforeBackend(admission)).resolves.toBe('validateRestoredProfile');
+    expect(read.mock.calls[0]).toHaveLength(scoped ? 3 : 2);
+    expect(readOwner).toHaveBeenCalledTimes(scoped ? 1 : 0);
+    expect(mutation).toHaveBeenCalledTimes(scoped ? 2 : 0);
+    expect(foreign).not.toHaveBeenCalled();
+  });
+
+  it.each(['null', 'missingRead', 'missingMutation', 'missingContent', 'missingOwner', 'rollback'] as const)(
+    'rejects incomplete or misapplied forward write context %s before repairing reads', async variant => {
+      const id = randomUUID(); const journal = createJournal(id, variant === 'rollback' ? 'rolledBack' : 'prepared');
+      const transaction = createTransaction(id); const read = vi.fn(async () => journal);
+      const context = { async assertReadOwnership() {}, assertMutationCurrent() {} };
+      const admission = { journal, async assertCurrent() {}, async assertContent() {}, journalWriteContext: context };
+      if (variant === 'null') Object.assign(admission, { journalWriteContext: null });
+      if (variant === 'missingRead') Object.assign(context, { assertReadOwnership: undefined });
+      if (variant === 'missingMutation') Object.assign(context, { assertMutationCurrent: undefined });
+      if (variant === 'missingContent') Object.assign(admission, { assertContent: undefined });
+      if (variant === 'missingOwner') Object.assign(admission, { assertCurrent: undefined });
+      if (variant === 'rollback') Object.assign(admission, { kind: 'rollback' });
+      const recovery = new ProfileRestoreStartupRecovery({ journalStore: { peek: unexpectedJournalPeek, read }, transaction });
+      await expect(recovery.prepareBeforeBackend(admission)).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      expect(read).not.toHaveBeenCalled(); expect(transaction.advanceToValidation).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['pending', 'rejected', 'resolved'] as const)('rejects a %s forward repair guard', async result => {
+    const id = randomUUID(); const journal = createJournal(id, 'prepared');
+    const transaction = createTransaction(id); let repaired = false;
+    const recovery = new ProfileRestoreStartupRecovery({ transaction, journalStore: { peek: unexpectedJournalPeek,
+      async read(_expected, content, guard) { await content!(); guard!(); repaired = true; return journal; },
+    } });
+    await expect(recovery.prepareBeforeBackend({ journal, async assertCurrent() {}, async assertContent() {},
+      journalWriteContext: { async assertReadOwnership() {}, assertMutationCurrent: () => result === 'pending'
+        ? new Promise<void>(() => {}) : result === 'rejected' ? Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')) : Promise.resolve() },
+    })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(repaired).toBe(false); expect(transaction.advanceToValidation).not.toHaveBeenCalled();
+  });
+
   it('passes a frozen checked journal into forward continuation', async () => {
     const operationId = randomUUID();
     const original = createJournal(operationId, 'currentDatabaseMoved');
@@ -1153,7 +1216,7 @@ function createTransaction(operationId: string) {
     })),
     clearAccepted: vi.fn(),
     assertForwardRecoveryState: vi.fn(async (_journal: Readonly<ReturnType<typeof createJournal>>) => undefined),
-    advanceToValidation: vi.fn(async () =>
+    advanceToValidation: vi.fn<ProfileRestoreActivationTransaction['advanceToValidation']>(async () =>
       createJournal(operationId, 'validationStarting'),
     ),
     clearRolledBack: vi.fn(),

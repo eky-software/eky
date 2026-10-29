@@ -10,6 +10,10 @@ import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } fro
 
 import { ProfileSnapshotBrokerClient } from '../profileBackup/profileSnapshotBrokerClient.js';
 import { ProfileSnapshotInspectionClient } from '../profileBackup/profileSnapshotInspectionClient.js';
+import * as ownedProfileValidation from '../profileBackup/validateOwnedActiveProfile.js';
+import * as terminalRestore from '../profileBackup/restore/withProfileRestoreTerminalAuthority.js';
+import * as coldForwardRestore from '../profileBackup/restore/prepareProfileRestoreColdForwardRecovery.js';
+import * as restoreSelectionPreparation from './prepareDesktopWorkspaceRestoreSelection.js';
 import * as snapshotInspection from '../profileBackup/runProfileSnapshotInspection.js';
 import * as profileBackupComposition from '../profileBackup/profileBackupComposition.js';
 import { createProfileBackupIpcChannel } from '../profileBackup/portableProfileBackupTypes.js';
@@ -19,6 +23,7 @@ import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryP
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
 import { BackendShutdownExitError, type BackendShutdownOutcome } from '../runtime/backendShutdown.js';
 import { startDesktopBackend, type StartDesktopBackendOptions } from '../runtime/backendProcess.js';
+import { desktopBackendReadinessTimeoutMilliseconds } from '../runtime/backendMessages.js';
 import { DesktopBackendStartupError, DesktopBackendStartupStoppedError } from '../runtime/backendStartupFailure.js';
 import {
   createWorkspaceCandidateCompletedStatus,
@@ -46,7 +51,8 @@ import { ProfileRestoreActivationService } from '../profileBackup/restore/profil
 import { RecoveryPointRestoreStagingService } from '../profileBackup/restore/recoveryPointRestoreStagingService.js';
 import * as coldInspection from '../profileBackup/restore/runProfileRestoreColdInspection.js';
 import * as originalInspection from '../profileBackup/restore/runProfileRestoreOriginalInspection.js';
-import { profileInspectionProtocolVersion } from '../runtime/profileInspectionMessages.js';
+import { profileInspectionProtocolVersion, profileInspectionShutdownMilliseconds,
+  profileInspectionWorkMilliseconds } from '../runtime/profileInspectionMessages.js';
 import { ProfileInspectionProcessError } from '../runtime/profileInspectionProcess.js';
 import { encodeProfileInspectionDocumentBindings } from '../runtime/profileInspectionDocumentBindings.js';
 import { createProfileSnapshotArtifactIdentity } from '../runtime/profileInspectionArtifactIdentity.js';
@@ -2538,6 +2544,266 @@ describe('desktop restore startup composition', () => {
     },
   );
 
+  it.for(['completed', 'changedSelection'] as const)(
+    'binds live replacement acceptance to the main selection (%s)', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          replacementTarget: true, acceptedRestore: true, ownedRoots: lifetime.roots,
+        }));
+        const selected = await f.journal.peek();
+        const terminal = terminalRestore.withProfileRestoreTerminalAuthority;
+        const owner = vi.spyOn(terminalRestore, 'withProfileRestoreTerminalAuthority').mockImplementation((input, use) => {
+          expect(input.operationSelection).toBeDefined(); return terminal(input, use);
+        });
+        const clear = ProfileRestoreActivationTransaction.prototype.clearAccepted;
+        vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'clearAccepted')
+          .mockImplementation(async function (this: ProfileRestoreActivationTransaction, ...args) {
+            expect(args[2]?.assertMutationCurrent).toBeTypeOf('function');
+            if (scenario === 'changedSelection') {
+              const registry = (await f.registry.read())!;
+              await f.registry.write({ ...registry,
+                workspaces: registry.workspaces.map(entry => ({ ...entry, workspaceLabel: `${entry.workspaceLabel} changed` })),
+              });
+            }
+            return clear.apply(this, args);
+          });
+        await lifetime.step('startup', async () => {
+          if (scenario === 'completed') await expect(f.start()).rejects.toThrow(windowBoundary);
+          else await expect(f.start()).rejects.toThrow();
+        });
+        expect(owner).toHaveBeenCalledOnce(); expect(f.relaunch).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).toHaveBeenCalledTimes(scenario === 'completed' ? 1 : 0);
+        expect(await f.journal.peek()).toEqual(scenario === 'completed' ? undefined : selected);
+        expect(await readFile(f.databasePath, 'utf8')).toBe(f.restoredBytes);
+      });
+    },
+  );
+
+  it('retains reclaimed main ownership while a live terminal mutation remains pending', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget: true, acceptedRestore: true, ownedRoots: lifetime.roots,
+      }));
+      const selected = await f.journal.peek();
+      const entered = createCompletionGate(); const finish = createCompletionGate();
+      const settled = createCompletionGate(); const closing = createCompletionGate();
+      let expireWork: (() => void) | undefined; let expireClose: (() => void) | undefined;
+      let captureWork = false; let captureClose = false;
+      let captureClientClose = false; let expireClientClose: (() => void) | undefined;
+      const clientClosing = createCompletionGate();
+      const shutdown = ProfileSnapshotInspectionClient.prototype.shutdown;
+      vi.spyOn(ProfileSnapshotInspectionClient.prototype, 'shutdown').mockImplementation(function (this: ProfileSnapshotInspectionClient) {
+        captureClientClose = expireClose !== undefined && expireClientClose === undefined;
+        return shutdown.call(this);
+      });
+      const terminal = terminalRestore.withProfileRestoreTerminalAuthority;
+      vi.spyOn(terminalRestore, 'withProfileRestoreTerminalAuthority').mockImplementation((input, use) => {
+        expect(input.operationSelection).toBeDefined(); captureWork = true; return terminal(input, use);
+      });
+      const setTimer = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, timeout, ...args) => {
+        if (captureWork && timeout === profileInspectionWorkMilliseconds) {
+          captureWork = false; expireWork = () => { captureClose = true; callback(...args); };
+        }
+        if (captureClose && timeout === profileInspectionShutdownMilliseconds) {
+          captureClose = false; expireClose = () => callback(...args); closing.resolve();
+        }
+        if (captureClientClose && typeof timeout === 'number' && timeout <= 2 * profileInspectionShutdownMilliseconds) {
+          captureClientClose = false; expireClientClose = () => callback(...args); clientClosing.resolve();
+        }
+        return setTimer(callback, timeout, ...args);
+      });
+      const clear = ProfileRestoreActivationTransaction.prototype.clearAccepted;
+      let guardedLateWrite = false; let workEntered = false;
+      vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'clearAccepted')
+        .mockImplementation(async function (this: ProfileRestoreActivationTransaction, ...args) {
+          workEntered = true; entered.resolve();
+          try {
+            await finish.promise;
+            try { args[2]!.assertMutationCurrent!(); } catch (error) { guardedLateWrite = true; throw error; }
+            await clear.apply(this, args);
+          } finally { settled.resolve(); }
+        });
+      const result = lifetime.step('startup', () => f.start().then(() => undefined, (error: unknown) => error));
+      try {
+        await Promise.race([entered.promise, result.then(() => { throw new Error('TERMINAL_NOT_ENTERED'); })]);
+        expect(expireWork).toBeTypeOf('function'); expireWork!(); await closing.promise;
+        expect(expireClose).toBeTypeOf('function'); expireClose!();
+        await clientClosing.promise;
+        expect(expireClientClose).toBeTypeOf('function'); expireClientClose!();
+        expect(await result).toBeInstanceOf(Error);
+        expect(f.events).toContain('backendStopped');
+        expect(electronBoundary.reservationAcquired.mock.calls.filter(([input]) => input.userDataRoot === f.root)).toHaveLength(2);
+        expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root)).toHaveLength(1);
+        expect(ProfileSnapshotBrokerClient.prototype.invalidateRestoreMaintenance).toHaveBeenCalled();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled(); expect(f.relaunch).not.toHaveBeenCalled();
+        expect(await f.journal.peek()).toEqual(selected);
+      } finally {
+        finish.resolve(); if (workEntered) await settled.promise;
+        await result; await nextEventLoopTurn();
+      }
+      expect(guardedLateWrite).toBe(true);
+      expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root)).toHaveLength(1);
+      expect(await f.journal.peek()).toEqual(selected);
+      expect(await readFile(f.databasePath, 'utf8')).toBe(f.restoredBytes);
+      await f.assertRegistryUnchanged();
+    });
+  });
+
+  it.for(['completed', 'changedSelection', 'healthFailure', 'releaseFailure'] as const)(
+    'keeps replacement rolled-back cleanup inside the validated main owner (%s)', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          replacementTarget: true, coldRollback: true, rolledBack: true, ownedRoots: lifetime.roots,
+        }));
+        const selected = await f.journal.peek();
+        let insideContinuation = false;
+        const finalChecks: string[] = [];
+        const inspectSelection = WorkspaceRegistryStore.prototype.inspectSlots;
+        vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots').mockImplementation(async function (this: WorkspaceRegistryStore, ...args) {
+          const slots = await inspectSelection.apply(this, args);
+          if (insideContinuation) finalChecks.push('selection');
+          return slots;
+        });
+        const validate = ownedProfileValidation.validateOwnedActiveProfile;
+        const validation = vi.spyOn(ownedProfileValidation, 'validateOwnedActiveProfile').mockImplementation(input => {
+          if (input.useValidatedProfile === undefined) return validate(input);
+          const use = input.useValidatedProfile;
+          return validate({ ...input, useValidatedProfile: async authority => {
+            insideContinuation = true;
+            try { await use({ ...authority, async assertCurrent() {
+              await authority.assertCurrent(); finalChecks.push('content');
+            } }); } finally { insideContinuation = false; }
+          } });
+        });
+        const withSnapshot = vi.spyOn(ProfileSnapshotInspectionClient.prototype, 'withProfileSnapshot');
+        const clear = ProfileRestoreActivationTransaction.prototype.clearRolledBack;
+        const cleanup = vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'clearRolledBack')
+          .mockImplementation(async function (this: ProfileRestoreActivationTransaction, ...args) {
+            expect(insideContinuation).toBe(true);
+            expect(args[4]).toBeTypeOf('function');
+            expect(ProfileSnapshotBrokerClient.prototype.endRestoreMaintenance).not.toHaveBeenCalled();
+            if (scenario === 'completed') {
+              await args[1]!();
+              expect(finalChecks).toContain('selection'); expect(finalChecks.at(-1)).toBe('content');
+            }
+            if (scenario === 'changedSelection') {
+              const registry = (await f.registry.read())!;
+              await f.registry.write({ ...registry,
+                workspaces: registry.workspaces.map(entry => ({ ...entry, workspaceLabel: `${entry.workspaceLabel} changed` })),
+              });
+            }
+            return clear.apply(this, args);
+          });
+        if (scenario === 'healthFailure') electronBoundary.fetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
+        if (scenario === 'releaseFailure') vi.mocked(ProfileSnapshotBrokerClient.prototype.endRestoreMaintenance)
+          .mockRejectedValueOnce(new Error('SYNTHETIC_FENCE_RELEASE_FAILURE'));
+        await lifetime.step('startup', async () => {
+          await expect(f.start()).rejects.toThrow(scenario === 'completed' ? windowBoundary : 'PROFILE_RESTORE_RECOVERY_REQUIRED');
+        });
+        await lifetime.step('restoredContentCheck', async () => {
+          expect(validation).toHaveBeenCalledOnce(); expect(withSnapshot).toHaveBeenCalledOnce();
+          expect(snapshotInspection.runProfileSnapshotInspection).toHaveBeenCalledOnce();
+          expect(cleanup).toHaveBeenCalledTimes(scenario === 'healthFailure' ? 0 : 1);
+          expect(electronBoundary.createWindow).toHaveBeenCalledTimes(scenario === 'completed' ? 1 : 0);
+          expect(f.relaunch).not.toHaveBeenCalled();
+          expect(await f.journal.peek()).toEqual(['completed', 'releaseFailure'].includes(scenario) ? undefined : selected);
+          expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+          expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        });
+      });
+    },
+  );
+
+  it.for(['timeout', 'guardFailure'] as const)('retains reclaimed main ownership after rolled-back continuation work outlives close (%s)', async (failure, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget: true, coldRollback: true, rolledBack: true, ownedRoots: lifetime.roots,
+      }));
+      const selected = await f.journal.peek();
+      const entered = createCompletionGate(); const finish = createCompletionGate();
+      const settled = createCompletionGate(); const closing = createCompletionGate();
+      let expireWork: (() => void) | undefined; let expireClose: (() => void) | undefined;
+      let captureValidationTimer = false;
+      let revokeGuard = false;
+      const firstGuardFailure = new Error('SYNTHETIC_ROLLED_BACK_GUARD_FAILURE');
+      const validate = ownedProfileValidation.validateOwnedActiveProfile;
+      vi.spyOn(ownedProfileValidation, 'validateOwnedActiveProfile').mockImplementation(input => {
+        captureValidationTimer = input.useValidatedProfile !== undefined;
+        const use = input.useValidatedProfile;
+        return use === undefined ? validate(input) : validate({ ...input, useValidatedProfile: authority => use({
+          ...authority, assertMutationCurrent() {
+            if (revokeGuard) throw firstGuardFailure;
+            authority.assertMutationCurrent();
+          },
+        }) });
+      });
+      const setTimer = globalThis.setTimeout;
+      vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, timeout, ...args) => {
+        if (captureValidationTimer && timeout === profileInspectionWorkMilliseconds) {
+          captureValidationTimer = false; expireWork = () => callback(...args);
+        }
+        if (timeout === 2 * profileInspectionShutdownMilliseconds) {
+          expireClose = () => callback(...args); closing.resolve();
+        }
+        return setTimer(callback, timeout, ...args);
+      });
+      const clear = ProfileRestoreActivationTransaction.prototype.clearRolledBack;
+      let guardedLateWrite = false; let workEntered = false; let cleaning = false;
+      const inspect = WorkspaceRegistryStore.prototype.inspectSlots;
+      vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots').mockImplementation(async function (this: WorkspaceRegistryStore, ...args) {
+        if (failure !== 'guardFailure' || !cleaning || workEntered) return inspect.apply(this, args);
+        workEntered = true; revokeGuard = true; entered.resolve();
+        try { args[0]!(); return await inspect.apply(this, args); }
+        finally { await finish.promise; settled.resolve(); }
+      });
+      vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'clearRolledBack')
+        .mockImplementation(async function (this: ProfileRestoreActivationTransaction, ...args) {
+          if (failure === 'guardFailure') { cleaning = true; return clear.apply(this, args); }
+          workEntered = true; entered.resolve();
+          try {
+            await finish.promise;
+            try { args[4]!(); } catch (error) { guardedLateWrite = true; throw error; }
+            await clear.apply(this, args);
+          } finally { settled.resolve(); }
+        });
+      const observed: unknown[] = [];
+      const result = lifetime.step('startup', () => f.start(error => { observed.push(error); })
+        .then(() => undefined, (error: unknown) => error));
+      try {
+        await Promise.race([entered.promise, result.then(() => { throw new Error('STARTUP_FINISHED_BEFORE_CLEANUP_GATE'); })]);
+        expect(expireWork).toBeTypeOf('function'); if (failure === 'timeout') expireWork!();
+        await closing.promise;
+        expect(expireClose).toBeTypeOf('function'); expireClose!();
+        expect(await result).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+        expect(((observed[0] as Error).cause as AggregateError).errors[0]).toMatchObject({
+          message: failure === 'timeout' ? 'PROFILE_INSPECTION_TIMEOUT' : firstGuardFailure.message,
+        });
+        expect(f.events).toContain('backendStopped');
+        expect(electronBoundary.reservationAcquired.mock.calls.filter(([input]) => input.userDataRoot === f.root))
+          .toHaveLength(2);
+        expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root)).toHaveLength(1);
+        expect(ProfileSnapshotBrokerClient.prototype.invalidateRestoreMaintenance).toHaveBeenCalled();
+        expect(ProfileSnapshotBrokerClient.prototype.endRestoreMaintenance).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).not.toHaveBeenCalled(); expect(f.relaunch).not.toHaveBeenCalled();
+        expect(await f.journal.peek()).toEqual(selected);
+      } finally {
+        finish.resolve(); if (workEntered) await settled.promise;
+        await result; await nextEventLoopTurn();
+      }
+      expect(guardedLateWrite).toBe(failure === 'timeout');
+      expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root)).toHaveLength(1);
+      expect(await f.journal.peek()).toEqual(selected);
+      expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+      expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+      await f.assertRegistryUnchanged();
+    });
+  });
+
   it.each([false, true])('uses original cold admission across startup rollback (replacement: %s)', async replacementTarget => {
     const fixture = await createFixture(originalProfileId, { replacementTarget, coldRollback: true });
     const exceptions: unknown[] = [];
@@ -2565,23 +2831,48 @@ describe('desktop restore startup composition', () => {
     expect(await readFile(fixture.databasePath)).toEqual(bytes);
   });
 
-  it.each([false, true])('uses cold content admission across actual forward moves (replacement: %s)', async replacementTarget => {
-    const fixture = await createFixture(originalProfileId, { replacementTarget, coldForward: true });
-    let reachedWindow = false;
-    const startupExceptions: unknown[] = [];
-    try { await fixture.start(error => { startupExceptions.push(error); }); }
-    catch (error) {
-      if (!(error instanceof Error) || error.message !== windowBoundary) {
-        throw startupExceptions[0] ?? error;
+  it.for([false, true])('uses cold content admission across actual forward moves (replacement: %s)', async (replacementTarget, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget, coldForward: true, ownedRoots: lifetime.roots,
+      }));
+      let capturedDeadline: number | undefined;
+      let captureCompleted = false;
+      const prepare = restoreSelectionPreparation.prepareDesktopWorkspaceRestoreSelection;
+      const preparation = vi.spyOn(restoreSelectionPreparation, 'prepareDesktopWorkspaceRestoreSelection').mockImplementation(async input => {
+        capturedDeadline = input.deadline;
+        expect(capturedDeadline).toBeTypeOf('number'); expect(input.signal).toBeUndefined();
+        const result = await prepare(input);
+        expect((input.maintenanceLease as InMemoryWorkspaceMaintenanceLease).readState()).toBe('idle');
+        captureCompleted = true; return result;
+      });
+      const forward = coldForwardRestore.prepareProfileRestoreColdForwardRecovery;
+      vi.spyOn(coldForwardRestore, 'prepareProfileRestoreColdForwardRecovery').mockImplementation(input => {
+        expect(captureCompleted).toBe(replacementTarget);
+        if (replacementTarget) expect(input.operationSelection!.deadline).toBe(capturedDeadline);
+        else expect(input.operationSelection).toBeUndefined();
+        return forward(input);
+      });
+      let reachedWindow = false;
+      const startupExceptions: unknown[] = [];
+      try { await lifetime.step('startup', () => fixture.start(error => { startupExceptions.push(error); })); }
+      catch (error) {
+        if (!(error instanceof Error) || error.message !== windowBoundary) {
+          throw startupExceptions[0] ?? error;
+        }
+        reachedWindow = true;
       }
-      reachedWindow = true;
-    }
-    expect(reachedWindow).toBe(true);
-    expect(vi.mocked(coldInspection.runProfileRestoreColdInspection)).toHaveBeenCalledTimes(3);
-    expect(fixture.events).toEqual(['backendStarted', 'accept']);
-    expect(await readFile(fixture.databasePath, 'utf8')).toBe(fixture.restoredBytes);
-    expect(await fixture.journal.peek()).toBeUndefined();
-    await fixture.assertRegistryUnchanged();
+      await lifetime.step('restoredContentCheck', async () => {
+        expect(reachedWindow).toBe(true);
+        expect(preparation).toHaveBeenCalledTimes(replacementTarget ? 1 : 0);
+        expect(vi.mocked(coldInspection.runProfileRestoreColdInspection)).toHaveBeenCalledTimes(3);
+        expect(fixture.events).toEqual(['backendStarted', 'accept']);
+        expect(await readFile(fixture.databasePath, 'utf8')).toBe(fixture.restoredBytes);
+        expect(await fixture.journal.peek()).toBeUndefined();
+        await fixture.assertRegistryUnchanged();
+      });
+    });
   });
 
   it.each([false, true])('rejects foreign cold content before moving either generation (replacement: %s)', async replacementTarget => {
@@ -2723,6 +3014,82 @@ describe('desktop restore startup composition', () => {
       }));
       expect(JSON.stringify(incidents)).not.toContain(fixture.root);
       expect(JSON.stringify(incidents)).not.toMatch(/runtimeInstanceId|correlationId|operationId/u);
+    },
+  );
+
+  it.for(['preparation', 'postGrant'] as const)(
+    'retains accepted startup ownership while selected %s work remains pending', async (stage, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const entered = createCompletionGate(); const finish = createCompletionGate();
+        const settled = createCompletionGate(); const closing = createCompletionGate();
+        let workEntered = false; let processExited = false;
+        let expireWork: (() => void) | undefined; let expireClose: (() => void) | undefined;
+        const child = new EventEmitter();
+        const kill = vi.fn(() => { processExited = true; child.emit('exit', 1); return true; });
+        const postMessage = vi.fn(message => {
+          if (message.type === 'prepare') child.emit('message', { type: 'reservationReady', reservation: message.reservation });
+        });
+        electronBoundary.fork.mockImplementation(() => {
+          queueMicrotask(() => child.emit('spawn')); return Object.assign(child, { kill, postMessage });
+        });
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          replacementTarget: true, acceptedRestore: true, realBackend: true, ownedRoots: lifetime.roots,
+        }));
+        const selected = await f.journal.peek();
+        const setTimer = globalThis.setTimeout;
+        vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, timeout, ...args) => {
+          if (timeout === desktopBackendReadinessTimeoutMilliseconds) expireWork = () => callback(...args);
+          if (processExited && typeof timeout === 'number' && timeout <= profileInspectionShutdownMilliseconds) {
+            expireClose = () => callback(...args); closing.resolve();
+          }
+          return setTimer(callback, timeout, ...args);
+        });
+        const prepare = restoreSelectionPreparation.prepareDesktopWorkspaceRestoreSelection;
+        vi.spyOn(restoreSelectionPreparation, 'prepareDesktopWorkspaceRestoreSelection').mockImplementation(async input => {
+          expect(input.deadline).toBeUndefined(); expect(input.signal).toBeInstanceOf(AbortSignal);
+          if (stage === 'preparation') {
+            try {
+              return await prepare({ ...input, sources: { ...input.sources, registry: {
+                async inspectSlots(...args) {
+                  workEntered = true; entered.resolve(); await finish.promise;
+                  return input.sources.registry.inspectSlots(...args);
+                },
+              } } });
+            } finally { settled.resolve(); }
+          }
+          const selection = await prepare(input); let calls = 0;
+          return { ...selection, async assertCurrent(...args) {
+            if (++calls !== 2) return selection.assertCurrent(...args);
+            workEntered = true; entered.resolve();
+            try { await finish.promise; return await selection.assertCurrent(...args); }
+            finally { settled.resolve(); }
+          } };
+        });
+        const result = lifetime.step('startup', () => f.start().then(() => undefined, (error: unknown) => error));
+        try {
+          await Promise.race([entered.promise, result.then(() => { throw new Error('SELECTED_STARTUP_WORK_NOT_ENTERED'); })]);
+          expect(expireWork).toBeTypeOf('function'); expireWork!(); await closing.promise;
+          expect(expireClose).toBeTypeOf('function'); expireClose!();
+          expect(await result).toMatchObject({ message: 'BACKEND_READINESS_TIMEOUT' });
+          expect(kill).toHaveBeenCalledOnce();
+          expect(postMessage.mock.calls.some(([message]) => message.type === 'start')).toBe(false);
+          expect(electronBoundary.reservationAcquired.mock.calls.filter(([input]) => input.userDataRoot === f.root)).toHaveLength(1);
+          expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root))
+            .toHaveLength(stage === 'preparation' ? 0 : 1);
+          expect(f.relaunch).not.toHaveBeenCalled(); expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+          expect(await f.journal.peek()).toEqual(selected);
+        } finally {
+          finish.resolve(); if (workEntered) await settled.promise;
+          await result; await nextEventLoopTurn();
+        }
+        expect(postMessage.mock.calls.some(([message]) => message.type === 'start')).toBe(false);
+        expect(electronBoundary.reservationAcquired.mock.calls.filter(([input]) => input.userDataRoot === f.root)).toHaveLength(1);
+        expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root))
+          .toHaveLength(stage === 'preparation' ? 0 : 1);
+        expect(await f.journal.peek()).toEqual(selected); await f.assertRegistryUnchanged();
+        expect(await readFile(f.databasePath, 'utf8')).toBe(f.restoredBytes);
+      });
     },
   );
 

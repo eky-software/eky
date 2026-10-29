@@ -38,12 +38,20 @@ vaiheomistajien kytkentä ovat työn alla. Omistavat sopimukset:
   muutosvartijat on toteutettu. Alkuperäinen työ seurataan myös odotuksen
   katketessa. Sulkuajan sisällä päättynyt työ voidaan sulkea normaalisti;
   keskeneräinen työ säilyttää varaukset eikä myöhäinen tulos vapauta niitä.
-- Viimeisin jäädytetty alakerroksen neljän tiedoston sarja läpäisi 478 testiä;
-  desktopin tyyppitarkistus ja rajattu riippumaton katselmus läpäisivät.
-  Pääprosessin 14 kohdetestiä läpäisivät ennen viimeistä varauksen
-  sulkutarkennusta. Näyttö on päällekkäistä, ei yhteen laskettava testimäärä.
-- **Seuraava työ:** koko main-kytkennän katselmus ja palautusregressiot
-  samalla lähteellä, sitten B:n muut omistajaliitokset ja C:n W7.3-luovutus.
+- Mainin cold-/accepted-/grant-/live-/rolledBack-kytkentä ja cold-forwardin
+  journal-konteksti on toteutettu. Ensivirhe talletetaan ennen keskeneräisen
+  työn odottamista; lopullinen sisältötodiste seuraa valintametadatan lukua.
+- Jäädytetty mainin ja palautusomistajien 11 tiedoston sarja läpäisi
+  1 058 testiä nykyisillä aikarajoilla. Katselmuksen viimeinen testitäsmennys
+  läpäisi lisäksi 345 testin transaktiosarjan: kahvan myöhäinen sulku ei
+  oikeuta seuraavaan tiedostomuutokseen. Sarjat ovat päällekkäisiä.
+  Desktopin tyyppitarkistus ja rajattu riippumaton delta-katselmus läpäisivät.
+  Aiempi cold-forward-testin aikakatkaisu
+  ja kilpaillut testisiivous säilyvät historiassa; epävarman testin aineisto
+  säilytetään.
+- **Seuraava työ:** täydennä coordinator -> uusi startup -virheketjujen
+  todellinen tiedostonäyttö ja poista korvattu välitön replacement-paluupolku,
+  sitten B:n muut omistajaliitokset ja C:n W7.3-luovutus.
   Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
   W7.5:n poistokanavaa ei avata.
 

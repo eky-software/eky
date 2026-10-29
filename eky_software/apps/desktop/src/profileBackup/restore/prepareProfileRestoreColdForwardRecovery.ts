@@ -152,7 +152,12 @@ export async function prepareProfileRestoreColdForwardRecovery(input: {
     }));
     await assertContent(journal);
     recoveryStarted = true;
-    result = await run(() => input.recovery.prepareBeforeBackend({ journal, assertCurrent, assertContent }));
+    result = await run(() => input.recovery.prepareBeforeBackend({ journal, assertCurrent, assertContent,
+      ...(selection === undefined ? {} : { journalWriteContext: Object.freeze({
+        assertReadOwnership: assertOwnership,
+        assertMutationCurrent() { assertAuthority(); reservation!.assertMainCurrent(); },
+      }) }),
+    }));
     await assertCurrent();
   } catch (error) {
     failures.push(error);

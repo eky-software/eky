@@ -132,7 +132,8 @@ import { createProfileBackupComposition } from '../profileBackup/profileBackupCo
 import { createProfileInspectionDeployment } from '../profileBackup/createProfileInspectionDeployment.js';
 import { ProfileSnapshotInspectionClient } from '../profileBackup/profileSnapshotInspectionClient.js';
 import { withProfileRestoreTerminalAuthority } from '../profileBackup/restore/withProfileRestoreTerminalAuthority.js';
-import type { ProfileRestoreTerminalAcceptance, ProfileRestoreRollbackAcceptance } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
+import type { ProfileRestoreTerminalAcceptance, ProfileRestoreRollbackAcceptance,
+  ProfileRestoreRolledBackCleanup, ProfileRestoreValidatedRollback } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
 import {
   ProfileSnapshotBrokerClient,
   ProfileSnapshotBrokerError,
@@ -148,7 +149,9 @@ import { ProfileRestoreActivationJournalStore } from '../profileBackup/restore/p
 import { ProfileRestoreActivationService } from '../profileBackup/restore/profileRestoreActivationService.js';
 import { ProfileRestoreActivationTransaction } from '../profileBackup/restore/profileRestoreActivationTransaction.js';
 import { assertProfileRestoreActivationJournalMatches, captureProfileRestoreActivationJournal, profileRestoreForwardActivationPhases } from '../profileBackup/restore/profileRestoreActivationJournal.js';
-import { prepareProfileRestoreColdForwardRecovery } from '../profileBackup/restore/prepareProfileRestoreColdForwardRecovery.js';
+import { prepareProfileRestoreColdForwardRecovery, type ProfileRestoreColdOperationSelection } from '../profileBackup/restore/prepareProfileRestoreColdForwardRecovery.js';
+import { profileInspectionWorkMilliseconds } from '../runtime/profileInspectionMessages.js';
+import { prepareDesktopWorkspaceRestoreSelection } from './prepareDesktopWorkspaceRestoreSelection.js';
 import { prepareProfileRestoreColdRollbackRecovery, withProfileRestoreColdRollbackAuthority } from '../profileBackup/restore/prepareProfileRestoreColdRollbackRecovery.js';
 import { createProfileRestoreOriginalContentAdmission } from '../profileBackup/restore/createProfileRestoreOriginalContentAdmission.js';
 import { createProfileRestoreColdContentAdmission } from '../profileBackup/restore/createProfileRestoreColdContentAdmission.js';
@@ -213,7 +216,8 @@ import { WorkspaceSwitchError } from '../workspaces/switch/workspaceSwitchError.
 import type { WorkspaceSelectorSwitchStartupAuthority } from '../workspaces/switch/workspaceSelectorSwitchStartup.js';
 import { createWorkspaceSwitchJournalPaths, WorkspaceSwitchJournalStore } from '../workspaces/switch/workspaceSwitchJournal.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
-import { validateOwnedActiveProfile, type OwnedActiveProfileValidation } from '../profileBackup/validateOwnedActiveProfile.js';
+import { validateOwnedActiveProfile, type OwnedActiveProfileValidation,
+  type OwnedActiveProfileContinuation } from '../profileBackup/validateOwnedActiveProfile.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import { createWorkspaceManagementComposition, recoverWorkspaceManagementBeforeRuntime } from '../workspaces/management/workspaceManagementComposition.js';
@@ -1400,12 +1404,13 @@ async function startDesktopCompositionRuntime({
       observer: profileRecoveryOperationalObserver,
       paths: workspaceReplacementRuntimePaths,
       withTerminalAuthority: (journal, use): Promise<void> => withRestoreTerminalAuthority(
-        workspaceReplacementStartupRecovery.activation.transaction, journal, use,
+        workspaceReplacementStartupRecovery.activation.transaction, journal, use, true,
       ),
       withRollbackAuthority: (journal, use): Promise<void> => withRestoreRollbackAuthority(
         workspaceReplacementStartupRecovery.activation.transaction, workspaceReplacementStartupRecovery.journalStore,
         workspaceReplacementRuntimePaths.activationFailedRoot, 'workspaceReplacement', journal, use,
       ),
+      withRolledBackCleanupAuthority: (journal, use): Promise<void> => withWorkspaceRolledBackCleanupAuthority(journal, use),
     });
   const secretFilePath = join(
     workspaceRuntimeRoot,
@@ -1451,14 +1456,31 @@ async function startDesktopCompositionRuntime({
   });
   let updateRollbackTerminalValidation: Parameters<typeof withProfileRestoreTerminalAuthority>[0]['beforeUpdateRollbackMigrations'];
   let restoreRuntimeRecoveryBlocked = false;
+  let workspaceRolledBackValidationFailed = false;
+  let workspaceTerminalWorkUnsettled = false;
+  let workspaceRestoreSelection: Awaited<ReturnType<typeof prepareDesktopWorkspaceRestoreSelection>> | undefined;
+  let workspaceRestoreSelectionRequired = false;
+  const retainWorkspaceRestoreOwner = () => {
+    restoreRuntimeRecoveryBlocked = true;
+    workspaceReservation.invalidate();
+  };
+  const assertWorkspaceRestoreSelection = async (assertCurrent: () => void) => {
+    if (!workspaceRestoreSelectionRequired || workspaceRestoreSelection === undefined) {
+      throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    }
+    try { await workspaceRestoreSelection.assertCurrent(assertCurrent); }
+    catch (error) { restoreRuntimeRecoveryBlocked = true; throw error; }
+  };
   let acceptedSelectorProfileId: string | undefined;
   let activeValidationOwner: {
     release(): Promise<void>;
     assertCurrent(): void;
   } | undefined;
+  let workspaceRolledBackValidation: OwnedActiveProfileContinuation | undefined;
   async function validateStartupActiveProfile(
     afterValidation?: () => Promise<void>,
     beforeUpdateRollbackMigrations?: Parameters<typeof validateOwnedActiveProfile>[0]['beforeUpdateRollbackMigrations'],
+    useValidatedProfile?: (authority: OwnedActiveProfileContinuation) => Promise<void>,
   ): Promise<Readonly<OwnedActiveProfileValidation>> {
     assertStartupAuthority();
     const lease = await workspaceMaintenanceLease.acquire('restore');
@@ -1473,12 +1495,54 @@ async function startDesktopCompositionRuntime({
         else if (profileId !== acceptedSelectorProfileId) throw new WorkspaceSwitchError('WORKSPACE_SWITCH_RECOVERY_REQUIRED');
       },
       ...(beforeUpdateRollbackMigrations === undefined ? {} : { beforeUpdateRollbackMigrations }),
+      ...(useValidatedProfile === undefined ? {} : { useValidatedProfile: async (authority: OwnedActiveProfileContinuation) => {
+        await afterValidation?.();
+        authority.assertMutationCurrent();
+        await useValidatedProfile(authority);
+      } }),
     });
-    await afterValidation?.();
+    if (useValidatedProfile === undefined) await afterValidation?.();
     assertStartupAuthority(); owner.assertCurrent();
     await owner.release();
-    activeValidationOwner = undefined;
+    if (activeValidationOwner === owner) activeValidationOwner = undefined;
     return validation;
+  }
+  async function withWorkspaceRolledBackCleanupAuthority(
+    journal: Parameters<ProfileRestoreRolledBackCleanup>[0],
+    use: Parameters<ProfileRestoreRolledBackCleanup>[1],
+  ): Promise<void> {
+    const validation = workspaceRolledBackValidation;
+    if (validation === undefined || journal.phase !== 'rolledBack' || !workspaceRestoreSelectionRequired) {
+      throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    }
+    const assertCurrent = () => {
+      try {
+        assertStartupAuthority();
+        if (workspaceRolledBackValidation !== validation || restoreRuntimeRecoveryBlocked) {
+          throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+        }
+        validation.assertMutationCurrent();
+      } catch (error) {
+        validation.reportFirstFailure(error);
+        restoreRuntimeRecoveryBlocked = true;
+        throw error;
+      }
+    };
+    try {
+      assertCurrent();
+      await use(async () => {
+        assertCurrent();
+        await assertWorkspaceRestoreSelection(assertCurrent);
+        assertCurrent();
+        await validation.assertCurrent();
+        assertCurrent();
+      }, assertCurrent);
+      assertCurrent();
+    } catch (error) {
+      validation.reportFirstFailure(error);
+      restoreRuntimeRecoveryBlocked = true;
+      throw error;
+    }
   }
   async function withRestoreRollbackAuthority(
     transaction: Pick<ProfileRestoreActivationTransaction, 'prepareColdRollbackAnchor' | 'readRollbackRecoverySources'>,
@@ -1497,6 +1561,10 @@ async function startDesktopCompositionRuntime({
       await workspaceReservation.assertMainOwned();
       await withProfileRestoreColdRollbackAuthority({
         journal, journalStore, transaction, maintenanceLease: workspaceMaintenanceLease,
+        ...(layout !== 'workspaceReplacement' || !workspaceRestoreSelectionRequired ? {} : {
+          operationSelection: { deadline: performance.now() + profileInspectionWorkMilliseconds,
+            assertOperationSelection: assertWorkspaceRestoreSelection, onUnsettledWork: retainWorkspaceRestoreOwner },
+        }),
         ...(validationOwner === undefined ? {} : { assertBorrowedRestoreOwner: validationOwner.assertCurrent }),
         assertAuthority() {
           assertStartupAuthority();
@@ -1535,10 +1603,19 @@ async function startDesktopCompositionRuntime({
     transaction: Pick<ProfileRestoreActivationTransaction, 'readTerminalCleanupCensus' | 'assertTerminalCleanupCensus'>,
     journal: Parameters<ProfileRestoreTerminalAcceptance>[0],
     use: Parameters<ProfileRestoreTerminalAcceptance>[1],
+    workspaceReplacement = false,
   ): Promise<void> {
     return withProfileRestoreTerminalAuthority({
       journal, transaction, maintenanceLease: workspaceMaintenanceLease,
       snapshotClient: profileSnapshotInspectionClient,
+      ...(!workspaceReplacement || !workspaceRestoreSelectionRequired ? {} : { operationSelection: {
+        assertOperationSelection: assertWorkspaceRestoreSelection,
+        onUnsettledWork() {
+          // The live child's reservation must first return through the existing stop/reclaim path.
+          workspaceTerminalWorkUnsettled = true;
+          restoreRuntimeRecoveryBlocked = true;
+        },
+      } }),
       ...(updateRollbackTerminalValidation === undefined ? {} : {
         beforeUpdateRollbackMigrations: updateRollbackTerminalValidation,
       }),
@@ -1871,6 +1948,50 @@ async function startDesktopCompositionRuntime({
       : profileRestoreStartupRecovery;
   const selectedRestoreJournal = startupRecoveryAuthority === 'workspaceReplacement'
     ? pendingWorkspaceReplacementJournal : pendingProfileRestoreJournal;
+  workspaceRestoreSelectionRequired = startupRecoveryAuthority === 'workspaceReplacement' && selectedRestoreJournal !== undefined;
+  if (workspaceRestoreSelectionRequired && selectedRestoreJournal!.phase === 'failedSafe') {
+    throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+  }
+  const captureWorkspaceRestoreSelection = async (
+    assertPhaseCurrent: () => void, work: Readonly<{ deadline: number } | { signal: AbortSignal }>,
+  ) => {
+    if (!workspaceRestoreSelectionRequired || selectedRestoreJournal === undefined) throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    const expected = captureProfileRestoreActivationJournal(selectedRestoreJournal);
+    try {
+      return await prepareDesktopWorkspaceRestoreSelection({
+        selection: { userDataRoot: options.userDataPath, operationId: expected.operationId,
+          workspaceId: activeWorkspace.workspaceId, lineageIdentity: activeWorkspace.registeredLineageIdentity,
+          mode: activeWorkspace.mode,
+          ...(activeWorkspace.switchContext === undefined ? {} : { switchContext: activeWorkspace.switchContext }),
+        },
+        sources: {
+          registry: new WorkspaceRegistryStore({ installationRoot: options.userDataPath,
+            filePath: join(options.userDataPath, WORKSPACE_REGISTRY_FILE_NAME) }),
+          switchJournal: new WorkspaceSwitchJournalStore(options.userDataPath),
+        },
+        maintenanceLease: workspaceMaintenanceLease, ...work,
+        assertAuthority: assertPhaseCurrent,
+        async assertMainOwned() {
+          assertPhaseCurrent();
+          if ('deadline' in work) await workspaceReservation.assertMainOwned();
+          assertPhaseCurrent();
+        },
+        async assertJournalSelection() {
+          assertPhaseCurrent();
+          assertProfileRestoreActivationJournalMatches(expected, await workspaceReplacementStartupRecovery.journalStore.peek());
+          assertPhaseCurrent();
+        },
+        onUnsettledWork: retainWorkspaceRestoreOwner,
+      });
+    } catch (error) { restoreRuntimeRecoveryBlocked = true; throw error; }
+  };
+  let coldWorkspaceRestoreSelection: ProfileRestoreColdOperationSelection | undefined;
+  if (workspaceRestoreSelectionRequired && selectedRestoreJournal!.phase !== 'accepted') {
+    const deadline = performance.now() + profileInspectionWorkMilliseconds;
+    workspaceRestoreSelection = await captureWorkspaceRestoreSelection(assertStartupAuthority, { deadline });
+    coldWorkspaceRestoreSelection = { deadline, assertOperationSelection: assertWorkspaceRestoreSelection,
+      onUnsettledWork: retainWorkspaceRestoreOwner };
+  }
   const profileRestoreStartupMode = selectedRestoreJournal !== undefined &&
     (profileRestoreForwardActivationPhases as readonly string[]).includes(selectedRestoreJournal.phase)
     ? await prepareProfileRestoreColdForwardRecovery({
@@ -1880,6 +2001,7 @@ async function startDesktopCompositionRuntime({
         journalStore: startupRecoveryAuthority === 'workspaceReplacement'
           ? workspaceReplacementStartupRecovery.journalStore : profileRestoreActivationJournalStore,
         maintenanceLease: workspaceMaintenanceLease,
+        ...(coldWorkspaceRestoreSelection === undefined ? {} : { operationSelection: coldWorkspaceRestoreSelection }),
         assertAuthority: assertStartupAuthority,
         assertContent: createProfileRestoreColdContentAdmission({
           operationId: selectedRestoreJournal.operationId,
@@ -1916,6 +2038,7 @@ async function startDesktopCompositionRuntime({
           transaction: startupRecoveryAuthority === 'workspaceReplacement'
             ? workspaceReplacementStartupRecovery.activation.transaction : profileRestoreActivationTransaction,
           maintenanceLease: workspaceMaintenanceLease,
+          ...(coldWorkspaceRestoreSelection === undefined ? {} : { operationSelection: coldWorkspaceRestoreSelection }),
           assertAuthority: assertStartupAuthority,
           assertContent: createProfileRestoreOriginalContentAdmission({
             operationId: selectedRestoreJournal.operationId,
@@ -2370,13 +2493,34 @@ async function startDesktopCompositionRuntime({
     assertStartupAuthority();
     await rollbackBackendAdmission?.assertCurrent();
     const backendReservation = workspaceReservation.bind(randomUUID(), assertStartupAuthority,
-      rollbackBackendAdmission === undefined ? undefined : () => rollbackBackendAdmission.assertCurrent());
-    const reservationTransfer = rollbackBackendAdmission === undefined ? backendReservation : Object.freeze({
+      rollbackBackendAdmission === undefined && !workspaceRestoreSelectionRequired ? undefined
+        : async (signal, assertPreparationCurrent) => {
+          await rollbackBackendAdmission?.assertCurrent();
+          assertPreparationCurrent();
+          if (workspaceRestoreSelectionRequired && workspaceRestoreSelection === undefined) {
+            workspaceRestoreSelection = await captureWorkspaceRestoreSelection(assertPreparationCurrent, { signal });
+          }
+          assertPreparationCurrent();
+        });
+    const reservationTransfer = rollbackBackendAdmission === undefined && !workspaceRestoreSelectionRequired ? backendReservation : Object.freeze({
       ...backendReservation,
       async assertGrant(signal: AbortSignal) {
-        await rollbackBackendAdmission.assertCurrent();
+        const assertCurrent = () => {
+          assertStartupAuthority();
+          if (signal.aborted || restoreRuntimeRecoveryBlocked) throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+        };
+        if (workspaceRestoreSelectionRequired) await assertWorkspaceRestoreSelection(assertCurrent);
+        await rollbackBackendAdmission?.assertCurrent();
         await backendReservation.assertGrant(signal);
-        await rollbackBackendAdmission.assertCurrent();
+        await rollbackBackendAdmission?.assertCurrent();
+        if (workspaceRestoreSelectionRequired) await assertWorkspaceRestoreSelection(assertCurrent);
+        assertCurrent();
+      },
+      assertCurrent() {
+        if (workspaceRestoreSelectionRequired && (workspaceRestoreSelection === undefined || restoreRuntimeRecoveryBlocked)) {
+          throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+        }
+        backendReservation.assertCurrent();
       },
     });
     backendStartAttempted = true;
@@ -2590,6 +2734,24 @@ async function startDesktopCompositionRuntime({
           ? { deferRestoredProfileAcceptance: true }
           : {}),
         mode: profileRestoreStartupMode,
+        ...(workspaceRestoreSelectionRequired && profileRestoreStartupMode === 'validateRolledBackProfile' ? {
+          async withValidatedRolledBackProfile(use: Parameters<ProfileRestoreValidatedRollback>[0]) {
+            try {
+              activeProfileValidation = await validateStartupActiveProfile(() => assertBackendHealth(
+                `http://127.0.0.1:${backendHandle!.port}`, runtimeSessionSecret,
+              ), undefined, async authority => {
+                if (workspaceRolledBackValidation !== undefined) throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+                workspaceRolledBackValidation = authority;
+                try { await use(authority.reportFirstFailure); }
+                finally { if (workspaceRolledBackValidation === authority) workspaceRolledBackValidation = undefined; }
+              });
+            } catch (error) {
+              workspaceRolledBackValidationFailed = true;
+              restoreRuntimeRecoveryBlocked = true;
+              throw error;
+            }
+          },
+        } : {}),
         async stopBackend() {
           await secretBrokerHandle.sealAndDrain();
           if (await backendHandle!.stop() !== 'exited') {
@@ -2647,6 +2809,7 @@ async function startDesktopCompositionRuntime({
       restoredProfileAwaitingDecision = false;
     }
     selectorAcceptanceReady = true;
+    workspaceRestoreSelection?.close();
     try { await activeWorkspace.accept(activeProfileValidation.profileId); }
     finally { selectorAcceptanceReady = false; }
     // The switch is now sealed. Later FirstStart validation still checks fresh
@@ -2678,7 +2841,10 @@ async function startDesktopCompositionRuntime({
           error.ownership.reservationReclaimed)
       : await Promise.resolve().then(() => startedBackend.stop()).then(outcome => outcome === 'exited', () => false);
     // Unsettled startup work must retain ownership even if broker cleanup fails.
-    if (!backendStopped || inspectionCleanupFailed || !secretsSettled) workspaceReservation.invalidate();
+    // Reclaim from the stopped child before retaining ownership for uncertain main I/O.
+    if (!backendStopped || inspectionCleanupFailed || !secretsSettled || workspaceRolledBackValidationFailed || workspaceTerminalWorkUnsettled) {
+      workspaceReservation.invalidate();
+    }
     let brokerCleanupFailed = inspectionCleanupFailed || !secretsSettled;
     for (const broker of [
       profileSnapshotBrokerClient,
@@ -2699,9 +2865,9 @@ async function startDesktopCompositionRuntime({
       // No recovery may change profile files or select another live runtime.
       throw error;
     }
-    await workspaceReservation.assertMainOwned();
     // Rejected original-content authority is not permission to select another runtime.
     if (restoreRuntimeRecoveryBlocked) throw error;
+    await workspaceReservation.assertMainOwned();
     if (
       error instanceof DesktopBackendStartupStoppedError &&
       (updateRecoveryRelaunchRequested ||

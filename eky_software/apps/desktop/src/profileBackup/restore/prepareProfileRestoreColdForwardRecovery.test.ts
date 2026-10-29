@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { acquireWorkspaceProcessReservation } from '../../runtime/workspaceProcessReservation.js';
+import { profileInspectionWorkMilliseconds } from '../../runtime/profileInspectionMessages.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { ProfileRecoveryOperationalEvent } from '../profileRecoveryOperationalObserver.js';
 import { prepareProfileRestoreColdForwardRecovery } from './prepareProfileRestoreColdForwardRecovery.js';
@@ -18,6 +19,29 @@ afterEach(async () => {
 });
 
 describe('cold forward restore admission', () => {
+  it.each([false, true])('exposes journal write ownership only with selected operation (%s)', async selected => {
+    const f = await createFixture();
+    let retained: import('./profileRestoreMutationAuthority.js').ProfileRestoreColdCleanupContext | undefined;
+    f.recovery.prepareBeforeBackend.mockImplementation(async admission => {
+      retained = admission!.journalWriteContext;
+      expect(retained === undefined).toBe(!selected);
+      if (retained !== undefined) {
+        await retained.assertReadOwnership();
+        retained.assertMutationCurrent();
+        const first = new Error('SYNTHETIC_STAGING_OWNER_LOST');
+        f.reservation.assertMainCurrent.mockImplementationOnce(() => { throw first; });
+        expect(() => retained!.assertMutationCurrent()).toThrow(first);
+      }
+      return 'validateRestoredProfile';
+    });
+    await expect(prepareProfileRestoreColdForwardRecovery({ ...f.input,
+      ...(selected ? { operationSelection: { deadline: performance.now() + profileInspectionWorkMilliseconds,
+        async assertOperationSelection() {}, onUnsettledWork: vi.fn() } } : {}),
+    })).resolves.toBe('validateRestoredProfile');
+    if (retained !== undefined) expect(() => retained!.assertMutationCurrent()).toThrow('PROFILE_INSPECTION_TIMEOUT');
+    expect(f.lease.readState()).toBe('idle');
+  });
+
   it('holds the exact operation and installation lease across recovery, then releases before returning', async () => {
     const fixture = await createFixture();
     const order: string[] = [];

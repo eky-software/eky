@@ -5505,6 +5505,29 @@ Koko main-kytkentä ei ole hyväksytty. Seuraava työ on jäljellä olevan
 tarkistuskertautumisen rajaus ilman aikarajan nostoa tai samoja uusintoja;
 sen jälkeen live-/rolledBack-kytkentä ja puhtaan paketin portit.
 
+**Cold-forwardin saman kirjoitusrajan liitos 29.10.2026.** Uuden valitun
+palautuksen eteenpäin aktivointi saa saman paritetun journal-kontekstin kuin
+kylmä rollback. Sisäiset lukutarkistukset tarkistavat kunkin siirtymän oman
+journalirevision ja elävän omistajuuden. Koko valinta, sisältö ja kahdeksan
+varsinaista journal-mutaatiota säilyttävät nykyiset tuoreet tarkistuksensa.
+Payloadin siirtoja tai sisältösääntöjä ei muuteta. Valinnan puuttuminen,
+callbackit ja vastaanottajat lukitaan ennen odotusta; vajaa konteksti ja sen
+käyttö rollback-admissionissa hylätään. Viimeinen synkroninen vartija
+tarkistaa myös staging-varauksen main-omistajuuden. Sama vartija suojaa
+recoveryn ja transaktion korjaavia journal-lukuja. Vanha kutsutapa ei saa
+uutta kontekstia. Yhdistetty main-/palautusomistajien 11 tiedoston sarja
+läpäisi 1 058 testiä. Katselmuksen viimeinen keskeytysregressio läpäisi
+345 testin transaktiosarjan; näyttö on päällekkäistä. Alkuperäisen journal-
+kahvan sulun viivästys säilyttää varaukset ja ensivirheen, eikä myöhäinen
+valmistuminen tee seuraavaa tiedostomuutosta. Mainin accepted-valmistelun
+ja grantin jälkeisen valintaluvun keskeneräinen työ estää uuden omistajan.
+Cold-valmistelu välittää saman alkuperäisen määräajan eteenpäin.
+RolledBack-kytkentä raportoi ensimmäisen vartijavirheen jo kesken
+metadata-I/O:n ja tekee tuoreen sisältötarkistuksen valintalukujen jälkeen.
+Tämä korvaa yllä olevat aiemmat main-kytkennän keskeneräisyysväitteet
+kohdetodennuksen osalta, ei native-/paketti-/PR-portteja. Aiempi
+cold-forward-aikakatkaisu jää omaksi havainnokseen.
+
 **Live-terminalin nykyinen kohdenäyttö 29.10.2026.** Uusi valinnainen
 valintaportti käyttää nykyistä 35 sekunnin työtä ja yhteistä 3 sekunnin
 sulkua. Se kaappaa callbackit ennen odotuksia, seuraa alkuperäistä työtä ja
@@ -5528,8 +5551,8 @@ yli jatkuva alkuperäinen työ, myöhäinen varaus, sulun aikana valmistuva
 varaus, odottamaton ja päällekkäinen grant, callbackin elinikä, muuttunut
 valinta, ensivirhe sekä sulku- ja vapautusvirheet. Mainin 14 kohdekontrollia
 läpäisivät ennen viimeistä varauksen sulkutarkennusta. Koko main-ketjun
-katselmus ja regressiot ovat kesken; tämä ei hyväksy pakettia tai muita
-W7.4 A-F:n liitoksia. Aikarajoja ei muutettu.
+myöhempi kohdenäyttö on kirjattu yllä cold-forwardin liitokseen; tämä ei
+hyväksy pakettia tai muita W7.4 A-F:n liitoksia. Aikarajoja ei muutettu.
 
 **Toteutuksen regressioportti:** olemassa olevat startup-sidonnan,
 `resolveActiveWorkspaceStartup`in, cold-forward/rollbackin, terminalin ja

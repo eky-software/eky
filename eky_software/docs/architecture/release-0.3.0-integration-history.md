@@ -7,6 +7,18 @@ eivät nykyinen työjono tai uusi valtuus.
 
 ## W7.4:n palautuskytkennän checkpointit 29.10.2026
 
+### Main-kytkennän edellinen ajotulos
+
+Koko main-/startup-recovery-kierros läpäisi 413 testiä; yksi cold-forward-
+palautustapaus ylitti viiden sekunnin testirajan. Erillinen rajattu koe
+paikansi odotuksen eteenpäin aktivointiin ennen loppuhyväksyntää. Vanhan
+testin siivous kilpaili vielä työn kanssa; sen aineistonsäilytys sovitettiin
+nykyiseen testikohtaiseen elinikään. Aikarajoja ei muutettu. Tämä edeltää
+M1:n nykyistä main-/cold-forward-kytkennän näyttöä, eikä uusi läpäisy yksin
+todista kaikkia vanhan aikakatkaisun syitä korjatuiksi.
+
+### Aiempi jatkamisteksti
+
 Alla oleva aiempi jatkamisteksti on säilytetty muuttamattomana. Nykyisen
 työn omistaa M1; nämä välitulokset eivät yksin hyväksy koko W7.4-kytkentää.
 

@@ -211,11 +211,20 @@ export class ProfileRestoreActivationTransaction {
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
     assertContent?: (journal: Readonly<ProfileRestoreActivationJournal>) => Promise<void>,
+    journalWriteContext?: ProfileRestoreColdCleanupContext,
   ): Promise<ProfileRestoreActivationJournal> {
     if ((assertRecoveryAuthority !== undefined && expected === undefined) ||
         (assertContent !== undefined && (expected === undefined || assertRecoveryAuthority === undefined))) {
       throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
     }
+    if (journalWriteContext !== undefined && (expected === undefined || typeof assertRecoveryAuthority !== 'function' ||
+        typeof assertContent !== 'function' || journalWriteContext === null ||
+        typeof journalWriteContext.assertReadOwnership !== 'function' || typeof journalWriteContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    const assertRead = journalWriteContext?.assertReadOwnership.bind(journalWriteContext);
+    const mutation = journalWriteContext?.assertMutationCurrent.bind(journalWriteContext);
+    const assertMutationCurrent = mutation === undefined ? undefined : () => assertSynchronousRollbackRootAuthority(mutation);
     const captured = expected === undefined ? undefined : captureJournal(expected);
     let journal: ProfileRestoreActivationJournal;
     const assertCurrent = async () => {
@@ -244,13 +253,17 @@ export class ProfileRestoreActivationTransaction {
       previous: captureJournal(journal),
       assertCurrent: current => this.assertJournalMutation(current, assertRecoveryAuthority),
       assertContent,
+      ...(assertRead === undefined ? {} : { writeContext: Object.freeze({
+        assertReadCurrent: (current: Readonly<ProfileRestoreActivationJournal>) => this.assertJournalMutation(current, assertRead),
+        assertMutationCurrent: assertMutationCurrent!,
+      }) }),
     });
     try {
       await assertCurrent();
       journal = await this.requireJournal(captured, assertRecoveryAuthority === undefined ? undefined : async () => {
         await assertCurrent();
         if (captured !== undefined) await assertContent?.(captured);
-      });
+      }, assertMutationCurrent);
       await assertCurrent();
       if (captured !== undefined) assertJournalMatches(captured, journal);
     } catch (error) {
