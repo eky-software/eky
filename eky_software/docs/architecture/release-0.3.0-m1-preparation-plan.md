@@ -19,8 +19,17 @@ Mergepuu vastaa katselmoitua headia
 hylkäsi nykyisen `@hono/node-server`-version
 [GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
 vuoksi. Aiempaa W7.3-hyväksyntää ei muuteta jälkikäteen, mutta uuden
-integraation portti ei ole vihreä. Rajattu 2.1.0 -> 2.1.3 -korjausehdotus
-odottaa riippuvuuspäätöstä; riippuvuuksia ei vielä muutettu.
+integraation portti ei ole vihreä. Omistaja hyväksyi rajatun
+2.1.0 -> 2.1.3 -päivityksen ja tarkistukset 29.10.2026. Täsmäversio,
+lukituksen rajaus, rekisteriallekirjoitukset sekä tuotanto- ja koko auditointi
+on todennettu. Alkuperäisen poikkeaman synteettinen regressio ja HTTP:n
+61 kohdetestiä läpäisivät; katselmuksen testitäsmennys läpäisi 25 testiä.
+Backendin hallittu uusinta läpäisi 4 156 testiä, viisi jäi suorittamatta;
+ensimmäisen diagnostiikan sulkutestin aikakatkaisun syy jää avoimeksi.
+Uudet 15 system-tapausta, tyypitys ja build läpäisivät. Sarjat ovat
+päällekkäistä näyttöä. Päivitys viedään erillisenä korjaushaarana normaalien
+PR/main-porttien läpi ennen uutta W7.4-toteutusosaa. Mainin aiempi
+auditointihylkäys ei vielä ole suljettu.
 
 | Hyväksytty raja | Revision oma näyttö |
 | --- | --- |
@@ -107,8 +116,8 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   salatulla backupilla, SQLitellä ja PDF-aineistolla; E2E:n tyypitys läpäisi.
   System-tapaukset todistavat yhteisen palautusportin säilymistä, eivät
   activation-migrationin native-prosessivarausta tai paketoitua hyväksyntää.
-- **Seuraava työ:** yllä nimetyn auditointiesteen riippuvuuspäätös ja
-  hyväksytyn ratkaisun todennus ennen uutta toiminnallista vaihetta.
+- **Seuraava työ:** hyväksytyn HTTP-adapteripäivityksen normaalit PR/main-
+  portit ennen uutta toiminnallista vaihetta.
   Nykyinen B:n activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)
   rajaa; sen paikallinen läpäisy ei vielä sulje koko liitoksen portteja.

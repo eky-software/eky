@@ -1,9 +1,16 @@
 import { once } from 'node:events';
-import { get, type Server } from 'node:http';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { get, type RequestOptions, type Server } from 'node:http';
 import { createConnection, type Socket } from 'node:net';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
+import { serveStatic } from '@hono/node-server/serve-static';
+import { Hono } from 'hono';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { createLocalRuntimeIdentity } from '../infrastructure/identity/localRuntimeIdentity.js';
+import { createRuntimeTrustMiddleware, localRuntimeSessionHeaderName, type BackendEnvironment } from './runtimeTrust.js';
 import { startServer } from './server.js';
 
 const boundary = vi.hoisted(() => ({
@@ -39,7 +46,8 @@ vi.mock('@hono/node-server', async importOriginal => {
 });
 
 const clients = new Set<Socket>();
-afterEach(async () => {
+const roots: string[] = [];
+afterEach(async context => {
   for (const socket of [...clients, ...boundary.sockets]) socket.destroy();
   clients.clear();
   boundary.sockets.clear();
@@ -50,6 +58,12 @@ afterEach(async () => {
   boundary.fetch.mockReset();
   boundary.assertSecretsSettled.mockReset();
   boundary.closeDiagnostics.mockReset();
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') {
+      for (const root of owned) await rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 async function connect(port: number): Promise<Socket> {
@@ -79,6 +93,83 @@ function deferred<T>() {
   const promise = new Promise<T>(complete => { resolve = complete; });
   return { promise, resolve };
 }
+
+async function readHttpResponse(port: number, options: Pick<RequestOptions, 'path' | 'headers'>) {
+  const request = get({ host: '127.0.0.1', port, agent: false, ...options });
+  request.on('socket', socket => clients.add(socket));
+  try {
+    const [response] = await once(request, 'response');
+    const chunks: Buffer[] = [];
+    response.on('data', (chunk: Buffer) => chunks.push(chunk));
+    await once(response, 'end');
+    return { status: response.statusCode, headers: response.headers, body: Buffer.concat(chunks) };
+  } finally { request.destroy(); }
+}
+
+describe('backend HTTP adapter compatibility', () => {
+  it('rejects double-decoded static paths without bypassing protected middleware', async () => {
+    const root = await mkdtemp(join(tmpdir(), 'eky-http-static-contract-'));
+    roots.push(root);
+    await mkdir(join(root, 'static', 'admin'), { recursive: true });
+    await writeFile(join(root, 'static', 'public.txt'), 'synthetic public');
+    await writeFile(join(root, 'static', 'admin', 'private.txt'), 'synthetic protected');
+    const app = new Hono();
+    app.use('/static/admin/*', async context => context.text('denied', 401));
+    app.use('/static/*', serveStatic({ root }));
+    boundary.fetch.mockImplementation(request => app.fetch(request));
+    const server = await startServer({ port: 0 });
+    expect((await readHttpResponse(server.port, { path: '/static/public.txt' })).body.toString()).toBe('synthetic public');
+    expect((await readHttpResponse(server.port, { path: '/static/admin/private.txt' })).status).toBe(401);
+    for (const path of ['/static/%%36%31dmin/private.txt', '/static/%25%36%31dmin/private.txt']) {
+      const response = await readHttpResponse(server.port, { path });
+      expect(response.status).toBe(404);
+      expect(response.body.toString()).not.toContain('synthetic protected');
+    }
+    await expectClosed(server.close());
+  });
+
+  it.each(['missing', 'valid', 'wrong', 'duplicateValid', 'validThenWrong', 'wrongThenValid'] as const)(
+    'preserves the runtime-session boundary for %s wire headers', async mode => {
+      const session = 'a'.repeat(43); const wrong = 'b'.repeat(43);
+      const app = new Hono<BackendEnvironment>();
+      app.use('*', createRuntimeTrustMiddleware({ mode: 'localSession', sessionSecret: session }, createLocalRuntimeIdentity({
+        actorId: 'local-owner', companyId: 'local-company-test', installationId: 'b'.repeat(32),
+      })));
+      const handler = vi.fn(() => new Response('synthetic accepted'));
+      app.get('/protected', handler);
+      boundary.fetch.mockImplementation(request => app.fetch(request));
+      const server = await startServer({ port: 0 });
+      const values = mode === 'missing' ? [] : mode === 'valid' ? [session] : mode === 'wrong' ? [wrong]
+        : mode === 'duplicateValid' ? [session, session] : mode === 'validThenWrong' ? [session, wrong] : [wrong, session];
+      const headers = ['Host', 'localhost', ...values.flatMap((value, index) =>
+        [index === 0 ? localRuntimeSessionHeaderName : 'X-Eky-Local-Session', value])];
+      const response = await readHttpResponse(server.port, { path: '/protected', headers });
+      expect(response.status).toBe(mode === 'valid' ? 200 : 401);
+      expect(handler).toHaveBeenCalledTimes(mode === 'valid' ? 1 : 0);
+      expect(response.body.toString()).not.toContain(session);
+      await expectClosed(server.close());
+    },
+  );
+
+  it('preserves UTF-8 body lengths and shared frozen response headers across requests', async () => {
+    const headers = Object.freeze({ 'content-type': 'text/plain; charset=utf-8', 'x-synthetic': 'preserved' });
+    const bodies = ['first', '\u00e4\u00f6\u20ac', '']; let index = 0;
+    const app = new Hono();
+    // Keep the caller's frozen record on the adapter's cached-response path.
+    app.get('/body', () => new Response(bodies[index++]!, { status: 200, headers }));
+    boundary.fetch.mockImplementation(request => app.fetch(request));
+    const server = await startServer({ port: 0 });
+    for (const body of bodies) {
+      const response = await readHttpResponse(server.port, { path: '/body' });
+      expect(response.status).toBe(200);
+      expect(response.body).toEqual(Buffer.from(body));
+      expect(response.headers['content-length']).toBe(String(Buffer.byteLength(body)));
+      expect(response.headers['x-synthetic']).toBe('preserved');
+      expect(headers).toEqual({ 'content-type': 'text/plain; charset=utf-8', 'x-synthetic': 'preserved' });
+    }
+    await expectClosed(server.close());
+  });
+});
 
 describe('backend HTTP graceful shutdown', () => {
   it('waits for the diagnostic reader after HTTP has drained', async () => {
