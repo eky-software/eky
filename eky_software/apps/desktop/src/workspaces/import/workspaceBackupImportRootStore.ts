@@ -15,6 +15,12 @@ import {
   mapWorkspaceBackupImportError,
 } from './workspaceBackupImportError.js';
 import type { WorkspaceBackupImportPaths } from './workspaceBackupImportPaths.js';
+import { assertSynchronousProfileRestoreMutationAuthority } from '../../profileBackup/restore/profileRestoreMutationAuthority.js';
+
+export interface WorkspaceImportMutationAuthority {
+  assertCurrent(): Promise<void>;
+  assertMutationCurrent(): void;
+}
 
 export interface WorkspaceBackupImportRootPresence {
   readonly candidateExists: boolean;
@@ -22,20 +28,22 @@ export interface WorkspaceBackupImportRootPresence {
 }
 
 export interface WorkspaceBackupImportRootStore {
-  createCandidate(paths: Readonly<WorkspaceBackupImportPaths>): Promise<void>;
+  createCandidate(paths: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void>;
   removeImportStaging(
     paths: Readonly<WorkspaceBackupImportPaths>,
+    authority?: Readonly<WorkspaceImportMutationAuthority>,
   ): Promise<void>;
   inspectCandidate(paths: Readonly<WorkspaceBackupImportPaths>): Promise<void>;
-  publishCandidate(paths: Readonly<WorkspaceBackupImportPaths>): Promise<void>;
+  publishCandidate(paths: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void>;
   inspectPublished(paths: Readonly<WorkspaceBackupImportPaths>): Promise<void>;
   cleanupPublishedOperation(
     paths: Readonly<WorkspaceBackupImportPaths>,
+    authority?: Readonly<WorkspaceImportMutationAuthority>,
   ): Promise<void>;
   readPresence(
     paths: Readonly<WorkspaceBackupImportPaths>,
   ): Promise<Readonly<WorkspaceBackupImportRootPresence>>;
-  discardCandidate(paths: Readonly<WorkspaceBackupImportPaths>): Promise<void>;
+  discardCandidate(paths: Readonly<WorkspaceBackupImportPaths>, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void>;
 }
 
 export class NodeWorkspaceBackupImportRootStore
@@ -43,19 +51,23 @@ export class NodeWorkspaceBackupImportRootStore
 {
   async createCandidate(
     paths: Readonly<WorkspaceBackupImportPaths>,
+    suppliedAuthority?: Readonly<WorkspaceImportMutationAuthority>,
   ): Promise<void> {
     try {
+      const authority = captureAuthority(suppliedAuthority);
+      await authority?.assertCurrent();
       await assertRealDirectory(paths.userDataRoot, false);
-      await ensurePrivateDirectory(paths.userDataRoot, paths.operationsRoot);
+      await ensurePrivateDirectory(paths.userDataRoot, paths.operationsRoot, authority);
       await assertPathMissing(paths.finalRoot);
-      await createPrivateDirectory(paths.operationsRoot, paths.operationRoot);
-      await createPrivateDirectory(paths.operationRoot, paths.candidateRoot);
-      await createPrivateDirectory(paths.candidateRoot, paths.candidateRuntimeRoot);
+      await createPrivateDirectory(paths.operationsRoot, paths.operationRoot, authority);
+      await createPrivateDirectory(paths.operationRoot, paths.candidateRoot, authority);
+      await createPrivateDirectory(paths.candidateRoot, paths.candidateRuntimeRoot, authority);
       const dataRoot = dirname(paths.databaseFilePath);
       const storageRoot = dirname(paths.artifactRoot);
-      await createPrivateDirectory(paths.candidateRuntimeRoot, dataRoot);
-      await createPrivateDirectory(paths.candidateRuntimeRoot, storageRoot);
-      await createPrivateDirectory(storageRoot, paths.artifactRoot);
+      await createPrivateDirectory(paths.candidateRuntimeRoot, dataRoot, authority);
+      await createPrivateDirectory(paths.candidateRuntimeRoot, storageRoot, authority);
+      await createPrivateDirectory(storageRoot, paths.artifactRoot, authority);
+      await authority?.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupImportError(
         error,
@@ -67,10 +79,16 @@ export class NodeWorkspaceBackupImportRootStore
 
   async removeImportStaging(
     paths: Readonly<WorkspaceBackupImportPaths>,
+    suppliedAuthority?: Readonly<WorkspaceImportMutationAuthority>,
   ): Promise<void> {
     try {
+      const authority = captureAuthority(suppliedAuthority);
+      await authority?.assertCurrent();
       await assertSafeTree(paths.importStagingRoot);
+      await authority?.assertCurrent();
+      assertMutationCurrent(authority);
       await rm(paths.importStagingRoot, { recursive: true });
+      await authority?.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_STORAGE_FAILED', 'cleanup');
     }
@@ -92,12 +110,18 @@ export class NodeWorkspaceBackupImportRootStore
 
   async publishCandidate(
     paths: Readonly<WorkspaceBackupImportPaths>,
+    suppliedAuthority?: Readonly<WorkspaceImportMutationAuthority>,
   ): Promise<void> {
     try {
+      const authority = captureAuthority(suppliedAuthority);
+      await authority?.assertCurrent();
       await this.inspectCandidate(paths);
-      await ensurePrivateDirectory(paths.userDataRoot, paths.workspacesRoot);
+      await ensurePrivateDirectory(paths.userDataRoot, paths.workspacesRoot, authority);
       await assertPathMissing(paths.finalRoot);
+      await authority?.assertCurrent();
+      assertMutationCurrent(authority);
       await rename(paths.candidateRoot, paths.finalRoot);
+      await authority?.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_STORAGE_FAILED', 'rootPublish');
     }
@@ -120,10 +144,14 @@ export class NodeWorkspaceBackupImportRootStore
 
   async cleanupPublishedOperation(
     paths: Readonly<WorkspaceBackupImportPaths>,
+    suppliedAuthority?: Readonly<WorkspaceImportMutationAuthority>,
   ): Promise<void> {
     try {
-      if (!(await safePathExists(paths.operationRoot))) return;
-      await removeEmptyRealDirectory(paths.operationRoot);
+      const authority = captureAuthority(suppliedAuthority);
+      await authority?.assertCurrent();
+      if (!(await safePathExists(paths.operationRoot))) { await authority?.assertCurrent(); return; }
+      await removeEmptyRealDirectory(paths.operationRoot, authority);
+      await authority?.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_STORAGE_FAILED', 'cleanup');
     }
@@ -142,11 +170,16 @@ export class NodeWorkspaceBackupImportRootStore
     }
   }
 
-  async discardCandidate(paths: Readonly<WorkspaceBackupImportPaths>): Promise<void> {
+  async discardCandidate(paths: Readonly<WorkspaceBackupImportPaths>, suppliedAuthority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
     try {
-      if (!(await safePathExists(paths.operationRoot))) return;
+      const authority = captureAuthority(suppliedAuthority);
+      await authority?.assertCurrent();
+      if (!(await safePathExists(paths.operationRoot))) { await authority?.assertCurrent(); return; }
       await assertPartialOperationTree(paths);
+      await authority?.assertCurrent();
+      assertMutationCurrent(authority);
       await rm(paths.operationRoot, { recursive: true });
+      await authority?.assertCurrent();
     } catch (error) {
       throw mapWorkspaceBackupImportError(error, 'WORKSPACE_IMPORT_STORAGE_FAILED', 'cleanup');
     }
@@ -263,25 +296,41 @@ async function assertSafeTree(path: string): Promise<void> {
 async function ensurePrivateDirectory(
   parentPath: string,
   directoryPath: string,
+  authority?: Readonly<WorkspaceImportMutationAuthority>,
 ): Promise<void> {
   await assertRealDirectory(parentPath, false);
+  await authority?.assertCurrent();
+  assertMutationCurrent(authority);
   try {
     await mkdir(directoryPath, { mode: 0o700 });
   } catch (error) {
     if (!isNodeError(error) || error.code !== 'EEXIST') throw error;
   }
-  if (process.platform !== 'win32') await chmod(directoryPath, 0o700);
+  if (process.platform !== 'win32') {
+    await authority?.assertCurrent();
+    assertMutationCurrent(authority);
+    await chmod(directoryPath, 0o700);
+  }
   await assertRealDirectory(directoryPath, true);
+  await authority?.assertCurrent();
 }
 
 async function createPrivateDirectory(
   parentPath: string,
   directoryPath: string,
+  authority?: Readonly<WorkspaceImportMutationAuthority>,
 ): Promise<void> {
   await assertRealDirectory(parentPath, true);
+  await authority?.assertCurrent();
+  assertMutationCurrent(authority);
   await mkdir(directoryPath, { mode: 0o700 });
-  if (process.platform !== 'win32') await chmod(directoryPath, 0o700);
+  if (process.platform !== 'win32') {
+    await authority?.assertCurrent();
+    assertMutationCurrent(authority);
+    await chmod(directoryPath, 0o700);
+  }
   await assertRealDirectory(directoryPath, true);
+  await authority?.assertCurrent();
 }
 
 async function assertRealDirectory(
@@ -315,10 +364,26 @@ async function assertExactEntries(
   }
 }
 
-async function removeEmptyRealDirectory(path: string): Promise<void> {
+async function removeEmptyRealDirectory(path: string, authority?: Readonly<WorkspaceImportMutationAuthority>): Promise<void> {
   await assertRealDirectory(path, true);
   if ((await readdir(path)).length !== 0) throw new Error('invalid');
+  await authority?.assertCurrent();
+  assertMutationCurrent(authority);
   await rmdir(path);
+}
+
+function captureAuthority(authority?: Readonly<WorkspaceImportMutationAuthority>) {
+  if (authority === undefined) return undefined;
+  if (authority === null || typeof authority.assertCurrent !== 'function' || typeof authority.assertMutationCurrent !== 'function') {
+    throw new WorkspaceBackupImportError('WORKSPACE_IMPORT_RECOVERY_REQUIRED', 'recovery');
+  }
+  return Object.freeze({ assertCurrent: authority.assertCurrent.bind(authority),
+    assertMutationCurrent: authority.assertMutationCurrent.bind(authority) });
+}
+
+function assertMutationCurrent(authority: Readonly<WorkspaceImportMutationAuthority> | undefined): void {
+  if (authority === undefined) return;
+  assertSynchronousProfileRestoreMutationAuthority(authority.assertMutationCurrent);
 }
 
 async function assertPathMissing(path: string): Promise<void> {

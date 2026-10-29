@@ -115,12 +115,21 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   salatulla backupilla, SQLitellä ja PDF-aineistolla; E2E:n tyypitys läpäisi.
   System-tapaukset todistavat yhteisen palautusportin säilymistä, eivät
   activation-migrationin native-prosessivarausta tai paketoitua hyväksyntää.
-- **Seuraava työ:** jatka B:n vielä puuttuvia omistajaliitoksia hyväksytyltä
-  HTTP-adapterihuollon lähtörevisiolta. Nykyinen B:n
+- Importin [vaihekohtainen valtuussopimus](local-company-workspace-plan.md#w74-b-tuonnin-vaihekohtainen-valtuus)
+  on katselmoitu. Valtuusosa, journalin readonly-/selected-portit ja
+  root-storen muutosvartijat on toteutettu; oma lisäys erotetaan vieraasta
+  muutoksesta ja vartijan ensisyy säilyy ennen tallentimen virhemuunnosta.
+  Jäädytetty kymmenen tiedoston 259 testin sarja, desktopin tyypitys ja
+  rajattu riippumaton katselmus läpäisivät. Se sisältää aiemman suunnittelun
+  vanhoja kontrollitestejä. Tämä ei vielä ole koordinaattori-/main-kytkentä
+  tai kylmäpalautuksen hyväksyntä; puuttuva sidonta ei anna poistovaltuutta.
+- **Seuraava työ:** kytke B:n import-valtuusosa koordinaattoriin, mainin
+  loppukäynnistykseen ja kylmäpalautukseen yllä olevan sopimuksen pienissä
+  paloissa hyväksytyltä HTTP-adapterihuollon lähtörevisiolta. Nykyinen B:n
   activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)
   rajaa; sen paikallinen läpäisy ei vielä sulje koko liitoksen portteja.
-  Sen jälkeen import-, adoption- ja inspection-liitokset sekä
+  Importin jälkeen adoption- ja inspection-liitokset sekä
   C:n W7.3-luovutus. Migraation palautuspiste muodostuu edelleen ennen sulkua.
   Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
   W7.5:n poistokanavaa ei avata.

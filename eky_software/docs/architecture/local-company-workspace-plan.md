@@ -4867,6 +4867,113 @@ poistamiseen. Uuden clear-portin todelliset ennen-/jälkeen-keskeytykset,
 inspection-juuren poissaolo, samanniminen vieras slotti ja menetetty valtuus
 todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet niitä.
 
+##### W7.4 B: tuonnin vaihekohtainen valtuus
+
+**29.10.2026: rajattu suunnitelma ja tiedostokoe, ei tuotantokytkentä.**
+Tuonti lisää rekisteriin uuden yrityksen. Replacementin muuttumatonta
+alkuvalintaa ei siksi kopioida sellaisenaan eikä nykyistä rekisteriä hyväksytä
+uudeksi valtuudeksi pelkän onnistuneen luvun perusteella.
+
+**Omistajat ja järjestys:** `WorkspaceBackupImportCoordinator` kaappaa oman
+import-leasen, nykyisen main-omistajan ja alkuperäisen rekisterivalinnan.
+Nykyinen autentikoitu preflight, tunnistevaraus sekä runtime-/kahvasulku
+säilyvät. Tuonnin sidonta julkaistaan autentikoidulle source-lineagelle ja
+uudelle workspaceId:lle ennen `createCandidate/stageBackup`a. Nykyinen v2-
+journal säilyy; sen aikainen `lineageIdentity: null` ei todista sisällön
+validointia. Kohteeton preflight ja yhteisen plaintext-quarantinen siivous
+säilyvät nykyisten omistajiensa vastuulla, eivät saa aktiivisen yrityksen
+sidontaa tai yhteisen juuren poistovaltuutta.
+
+| Vaihe | Rekisterin hyväksytty valinta | Muutosvaltuus |
+| --- | --- | --- |
+| Ennen omaa julkaisua | Kaapatut nykyiset tavut, tiedostoidentiteetti ja sivuslottien poissaolo. | Tuore täsmällinen lease/main, sidonta ja kutsun vaatima runtime-poissaolo; journalin/root-storen oma valintatarkistus säilyy. |
+| Oma rekisterikirjoitus | Alkuvalinta luovutetaan nykyiselle `writeSelected`-kirjoittajalle. | Kirjoittaja seuraa itse omia muuttuvia slottejaan. Ulkoinen vartija tarkistaa mainin, leasen, sidonnan ja täsmällisen julkaistun import-journalin, ei lue samaa rekisteritallenninta uudelleen. |
+| Varmennettu oma julkaisu | Vain alkuvalinnasta nykyisellä `publishImportedWorkspaceEntry`-säännöllä muodostettu lisäys. | Kirjoittajan palauttama tiedostoidentiteetti, täsmällinen readonly-readback ja sivuslottien poissaolo vaaditaan ennen valinnan vaihtamista. Muut yritykset ja aiempi aktiivivalinta säilyvät. |
+| Epävarma tulos | Ei uutta hyväksyttyä valintaa. | Ei korjaavaa lukua, aineiston siivousta tai jonotetun paluun toteutusta samassa ajossa. Ensimmäinen syy säilyy. |
+
+Kadonnut kuittaus ei muutu onnistumiseksi sillä, että myöhempi luku näyttää
+odotetut tavut. Myös samat tavut uudessa tiedostoidentiteetissä, vieras
+sivuslotti, toinen samanlajinen lease tai vanhentunut main hylätään.
+Rekisterin oma kirjoitus ja import-journalin oma kirjoitus eivät ristiin
+korjaa toistensa välitiloja. Journalin nykyinen slot-omistaja saa rajatun
+valinta-/muutosvartijan: se todentaa omat slot-muutoksensa itse, kun ulkoinen
+vartija todentaa rekisterin, sidonnan ja mainin. Sama periaate estää
+rekursiivisen tarkistuksen kummankin tallentimen sisällä.
+
+**Pienet tuotantopalat:** importin oma sidonta-/vaiheapu; nykyisen journal-
+ja root-storen vartioidut portit; koordinaattorin julkaisu ja virhepolut;
+aktiivisen ja backendittoman mainin composition sekä kylmäpalautus. Apu
+ei omista palautusta, yleistä siivousta tai prosessienhallintaa. Nykyinen
+root-store tarkistaa valtuuden odotusten jälkeen ja juuri ennen omia
+luonteja, siirtoja ja poistoja. Tavalliset tunnetut tuontivirheet säilyttävät
+nykyisen turvallisen candidate-siivoamisen ja paluun. Vain osoitettu
+valtuuden menetys, epävarma julkaisu tai päättymätön työ sulkee ne;
+kaikkia validointivirheitä ei muuteta pysyväksi sulkuvirheeksi.
+Rekisterin valinta todetaan uudelleen sidonnan I/O:n jälkeen ennen siivousta
+tai paluupyyntöä; ennen sidontalukua tehty tarkistus ei yksin riitä.
+
+**Paluu ja elinikä:** `ensurePreviousWorkspaceRunning()` vain pyytää nykyistä
+lykättyä paluuta. Pyynnön tekeminen, journalin loppusiivous, työn päättyminen,
+leasen vapautus ja todellinen käynnistys ovat eri rajat. Myöhäinen
+epävarmuus sulkee myös jo jonotetun pyynnön nykyisen composition-omistajan
+kautta. Ennen toteutusta vaaditaan kaikkien omistettujen töiden päättyminen
+ja terminal-toimien tulos. Lopullinen käynnistysvartija tarkistaa nykyisen
+main-sukupolven ja säilytetyn epävarmuuden, ei jo asianmukaisesti vapautettua
+leasea. Ensivirhe säilyy erillään journal-, sulku- ja vapautusvirheistä.
+
+**Kylmäpalautus ennen korjaavaa lukua:** nykyinen readonly-admission valitsee
+import-journalin nykyisessä `current -> backup -> next`-järjestyksessä ja
+validoi v2:n korjaamatta slotteja. Näin saadaan operationId, workspaceId ja
+käytettävissä oleva lineage sidonnan kaikkien slottien lukuun. Palautusomistaja
+kaappaa oman täsmällisen leasen; nykyinen main-/runtime-omistaja todistaa
+kirjoittajien poissaolon. Journalin ja sidonnan sama valinta varmennetaan
+uudelleen tässä valtuudessa ennen korjaavaa journal-lukua tai payload-muutosta.
+Vaihtunut operaatio ei saa vaihtaa valittua sidonta-avainta hiljaisesti.
+
+| Sidontahavainto | Nykyisen tuontipalautuksen oikeus |
+| --- | --- |
+| Kaikki slotit puuttuvat | Sidonnaton, ei todistetusti vanha. Tuetun v2-journalin nykyinen palautus voi jatkua vain omilla riippumattomilla C/R18-, journal-, juuri- ja sisältötodisteillaan. Puuttuminen ei anna W7-poistovaltuutta eikä luo jälkikäteen sidontaa. |
+| Current on julkaistu ja olemassa olevat sivuslotit vastaavat sitä | Owner, operationId, workspaceId ja tunnettu lineage täsmäävät valittuun journaliin; tuore palautusvaltuus vaaditaan edelleen. Aikainen null-lineage ei ohita myöhempää sisältötarkistusta. |
+| Osittainen, virheellinen tai ristiriitainen sidonta | Pysähdys ennen korjausta tai siivousta; ei siirtymistä sidonnattomaan polkuun. Aineisto säilyy. |
+
+Historiallisen v1-journalin ja selittämättömän journalittoman plaintextin
+nykyisiä estoja ei avata. Tämä ei muuta journal- tai backup-formaattia.
+Normaali sidontametadatan poisto vaatii kaikkien saman operaation jäännösten
+poissaolon ja työn päättymisen. Hyväksytty lopullinen yritysjuuri ei enää ole
+importCandidate-jäännös; pelkkä journalin poistuminen ei kuitenkaan todista
+operaatiokansion, stagingin tai tarkistuskopioiden siivousta.
+
+**Näyttö ja seuraava portti:** 16 synteettistä tiedostotapausta läpäisi
+oikeilla rekisteri-/sidontatallentimilla, leasella ja lykätyn paluun apurilla.
+Ne kattavat oman lisäyksen aktiivisessa ja valitsintilassa, vieraat tavut/
+identiteetit/sivuslotit, vanhentuneen omistajan, katkenneet kuittaukset,
+sidontaluvun yli muuttuneen rekisterin sekä myöhäisen paluun eston.
+Nykyiset tuonnin virhe- ja palautuskontrollit läpäisivät erikseen 139 testiä
+muuttamattomina; ne eivät todista uuden kytkennän toimivuutta.
+Rajattu riippumaton sopimuskatselmus hyväksyi täsmennetyn omistajuusrajan.
+Main, candidate ja koordinaattorin vaiheistus ovat
+kokeessa mallinnettuja. Kokeessa ei ole journal-kytkentää eikä se todista
+kokonaista tuontia, kylmäpalautusta, SQLiteä, native-prosessia tai pakettia.
+Ennen kytkentää pysyvät regressiot todistavat myös sidonta-ennen-payloadia,
+kaikki journal-/root-muutosrajat, normaalin virhesiivouksen, työn päättymisen,
+aktiivisen/valitsimen todellisen composition-ketjun sekä yllä olevan
+kylmäpalautusmatriisin. W7.4:n paketti-, katselmus- ja PR/main-portit säilyvät.
+
+**Toteutuscheckpoint 29.10.2026:** `WorkspaceBackupImportBinding` kaappaa
+alkuvalinnan tavut ja tiedostoidentiteetin sekä täsmällisen import-varauksen.
+Oma lisäys käyttää nykyistä valittuun tilaan sidottua rekisterikirjoitusta;
+journal-vartijan ensisyy säilytetään ennen tallentimen virhemuunnosta.
+Tuontijournalin readonly-/selected-portit ja root-storen valinnaiset
+muutosvartijat on toteutettu. Viimeinen synkroninen vartija on suoraan
+tiedostomuutoksen edessä; myös mikrotyöjonossa väliin tuleva valtuuden
+menetys on testattu. Vanhat portteja käyttämättömät kutsut säilyvät.
+Jäädytetty kymmenen tiedoston kohdesarja läpäisi 259 testiä, desktopin
+tyypitys ja rajattu riippumaton delta-katselmus läpäisivät. Sarja sisältää
+edellä mainittuja vanhoja kontrollitestejä, ei erillistä uutta 139 testin
+kattavuutta. Koordinaattori, mainin loppukäynnistys ja kylmäpalautus eivät
+vielä käytä uutta sidontaa; seuraava pala on niiden kytkentä ja pysyvät
+ketjuregressiot. Tämä checkpoint ei ole native-, paketti- tai PR-hyväksyntä.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa

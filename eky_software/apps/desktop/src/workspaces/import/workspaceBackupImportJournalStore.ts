@@ -1,8 +1,10 @@
 import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
+  type CrashSafeByteSlotSelection,
 } from '../persistence/crashSafeByteSlotStore.js';
-import { CrashSafeFileSlotError } from '../persistence/crashSafeFileSlot.js';
+import { CrashSafeFileSlotError, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
+import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { parseWorkspaceBackupImportJournalBytes } from './workspaceBackupImportJournalBytes.js';
 import {
   WORKSPACE_BACKUP_IMPORT_JOURNAL_BUSY,
@@ -36,6 +38,7 @@ export interface WorkspaceBackupImportJournalStoreOptions {
 export class WorkspaceBackupImportJournalStore
   implements WorkspaceBackupImportJournalStorePort {
   private readonly byteStore: CrashSafeByteSlotStore;
+  private readonly fileSystem: WorkspaceBackupImportJournalFileSystem;
   private activeOperation = false;
 
   constructor(options: Readonly<WorkspaceBackupImportJournalStoreOptions>) {
@@ -46,6 +49,46 @@ export class WorkspaceBackupImportJournalStore
     const fileSystem = options.fileSystem ??
       createNodeWorkspaceBackupImportJournalFileSystem(paths);
     this.byteStore = new CrashSafeByteSlotStore(fileSystem);
+    this.fileSystem = fileSystem;
+  }
+
+  inspectSlots(assertAuthority?: () => void): Promise<ReadOnlyJournalSlots<WorkspaceBackupImportJournal>> {
+    return this.runExclusive(async () => {
+      try {
+        const result: Record<'current' | 'next' | 'backup', ReadOnlyJournalSlots<WorkspaceBackupImportJournal>['current']> = {
+          current: undefined, next: undefined, backup: undefined,
+        };
+        for (const slot of ['current', 'next', 'backup'] as const) {
+          assertSynchronousAuthority(assertAuthority);
+          let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+          const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
+          assertSynchronousAuthority(assertAuthority);
+          if (bytes !== undefined) result[slot] = Object.freeze({ bytes: Uint8Array.from(bytes),
+            value: parseWorkspaceBackupImportJournalBytes(bytes), ...(identity === undefined ? {} : { identity }) });
+        }
+        assertSynchronousAuthority(assertAuthority);
+        return Object.freeze(result);
+      } catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  // These ports pin live writes without repairing or adopting another operation.
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    return this.runExclusive(async () => {
+      const next = validateWorkspaceBackupImportJournal(value);
+      const current = this.selectedCurrent(selection, true);
+      assertWorkspaceBackupImportJournalTransition(current, next);
+      try { return await this.byteStore.replaceSelected(serializeWorkspaceBackupImportJournal(next), selection); }
+      catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  removeSelected(operationId: WorkspaceBackupImportOperationId, selection: CrashSafeByteSlotSelection): Promise<void> {
+    return this.clearSelected(operationId, selection, true);
+  }
+
+  discardBeforePublicationSelected(operationId: WorkspaceBackupImportOperationId, selection: CrashSafeByteSlotSelection): Promise<void> {
+    return this.clearSelected(operationId, selection, false);
   }
 
   read(): Promise<Readonly<WorkspaceBackupImportJournal> | undefined> {
@@ -109,6 +152,30 @@ export class WorkspaceBackupImportJournalStore
     }
   }
 
+  private selectedCurrent(selection: CrashSafeByteSlotSelection, allowAbsent: boolean) {
+    if (selection.expectedSlots.next !== undefined || selection.expectedSlots.backup !== undefined) {
+      throw new WorkspaceBackupImportJournalValidationError();
+    }
+    const bytes = selection.expectedSlots.current;
+    if (bytes === undefined) {
+      if (!allowAbsent) throw new WorkspaceBackupImportJournalValidationError();
+      return undefined;
+    }
+    return parseWorkspaceBackupImportJournalBytes(bytes);
+  }
+
+  private clearSelected(operationId: WorkspaceBackupImportOperationId, selection: CrashSafeByteSlotSelection, completed: boolean): Promise<void> {
+    return this.runExclusive(async () => {
+      const current = this.selectedCurrent(selection, false)!;
+      if (current.operationId !== operationId || (completed ? current.state !== 'registryPublished'
+        : current.state === 'rootPublished' || current.state === 'registryPublished')) {
+        throw new WorkspaceBackupImportJournalValidationError();
+      }
+      try { await this.byteStore.clearSelected(selection); }
+      catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
   private async removeAllSlots(): Promise<void> {
     try {
       await this.byteStore.clear();
@@ -160,5 +227,14 @@ export class WorkspaceBackupImportJournalStore
     return new WorkspaceBackupImportJournalStoreError(
       WORKSPACE_BACKUP_IMPORT_JOURNAL_UNAVAILABLE,
     );
+  }
+}
+
+function assertSynchronousAuthority(assertAuthority: (() => void) | undefined): void {
+  if (assertAuthority === undefined) return;
+  const result: unknown = assertAuthority();
+  if (result !== undefined) {
+    void Promise.resolve(result).catch(() => undefined);
+    throw new WorkspaceBackupImportJournalValidationError();
   }
 }
