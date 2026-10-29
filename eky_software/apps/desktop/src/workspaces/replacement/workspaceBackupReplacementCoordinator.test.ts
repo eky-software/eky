@@ -84,7 +84,6 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
 
   it('hands the activated candidate to startup recovery before accepting it', async () => {
     const fixture = createWorkspaceBackupReplacementFixture({
-      useRuntimeHandoff: true,
     });
 
     await expect(fixture.coordinator.replace(replacementInput)).resolves.toEqual({
@@ -108,7 +107,6 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
 
   it('leaves a rolled-back journal for startup recovery after an activated handoff failure', async () => {
     const fixture = createWorkspaceBackupReplacementFixture({
-      useRuntimeHandoff: true,
     });
     fixture.activation.fail = 'replace';
 
@@ -129,7 +127,6 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
 
   it('relaunches the unchanged workspace only after pre-activation cleanup', async () => {
     const fixture = createWorkspaceBackupReplacementFixture({
-      useRuntimeHandoff: true,
     });
     fixture.candidate.failure = 'migration';
 
@@ -148,9 +145,9 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
     await expect(fixture.completeStartup()).resolves.toBe('ready');
   });
 
-  it.each([false, true])(
-    'preserves unresolved inspection evidence without restarting the source (handoff=%s)',
-    async (useRuntimeHandoff) => {
+  it(
+    'preserves unresolved inspection evidence without restarting the source',
+    async () => {
       const root = await mkdtemp(join(tmpdir(), 'eky-replacement-preservation-'));
       cleanupRoots.push(root);
       const paths = deriveWorkspaceBackupReplacementPaths(
@@ -171,7 +168,6 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
       );
       const inspectionPath = join(inspectionRoot, 'inspection.sqlite');
       const fixture = createWorkspaceBackupReplacementFixture({
-        useRuntimeHandoff,
         userDataRoot: root,
       });
       const registryBefore = fixture.registry.value;
@@ -309,7 +305,6 @@ describe('WorkspaceBackupReplacementCoordinator', () => {
 
   it('quiesces accepted writes before creating preRestore and stops only after it succeeds', async () => {
     const fixture = createWorkspaceBackupReplacementFixture({
-      useRuntimeHandoff: true,
     });
     fixture.preRestore.fail = true;
 

@@ -32,8 +32,6 @@ import type {
   WorkspaceReplacementActivationAuthorityFactory,
   WorkspaceReplacementOperationGuardPort,
   WorkspaceReplacementRuntimeHandoffPort,
-  WorkspaceReplacementRuntimeReadiness,
-  WorkspaceReplacementRuntimeReadinessPort,
 } from './workspaceBackupReplacementPorts.js';
 import {
   assertWorkspaceReplacementLineage,
@@ -56,8 +54,7 @@ export interface WorkspaceBackupReplacementCoordinatorOptions {
   readonly preRestoreRecoveryPoint: WorkspacePreRestoreRecoveryPointPort;
   readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
   readonly rootStore: WorkspaceBackupReplacementRootStore;
-  readonly runtimeHandoff?: WorkspaceReplacementRuntimeHandoffPort;
-  readonly runtimeReadiness: WorkspaceReplacementRuntimeReadinessPort;
+  readonly runtimeHandoff: WorkspaceReplacementRuntimeHandoffPort;
   readonly userDataRoot: string;
   readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
 }
@@ -205,32 +202,7 @@ export class WorkspaceBackupReplacementCoordinator {
 
       await this.prepareActivation(authority, operationId);
       await this.replaceActiveRoot(authority);
-      if (this.options.runtimeHandoff !== undefined) {
-        this.options.runtimeHandoff.requestRelaunch();
-        return Object.freeze({
-          migrationChainIdentity: migration.migrationChainIdentity,
-          profileId: preflight.profileId,
-          workspaceId: targetWorkspaceId,
-        });
-      }
-      await this.ensureRuntimeRunning(targetWorkspaceId);
-      await this.validateRunningRuntime({
-        workspaceId: targetWorkspaceId,
-        expectedProfileId: preflight.profileId,
-        expectedMigrationChainIdentity: migration.migrationChainIdentity,
-      });
-
-      const commitRegistry = await this.readRegistry('registryRevalidation');
-      assertWorkspaceReplacementRegistryUnchanged(
-        initialTarget.registrySnapshot,
-        commitRegistry,
-      );
-      validateWorkspaceReplacementTarget(
-        commitRegistry,
-        targetWorkspaceId,
-      );
-      await this.acceptActivation(authority);
-
+      this.options.runtimeHandoff.requestRelaunch();
       return Object.freeze({
         migrationChainIdentity: migration.migrationChainIdentity,
         profileId: preflight.profileId,
@@ -316,32 +288,13 @@ export class WorkspaceBackupReplacementCoordinator {
       await this.stopRuntime(context.target.entry.workspaceId);
       await this.assertRuntimeAbsent();
       await context.authority.transaction.rollback();
-      if (this.options.runtimeHandoff !== undefined) {
-        this.options.runtimeHandoff.requestRelaunch();
-        return;
-      }
-      await this.ensureRuntimeRunning(context.target.entry.workspaceId);
-      await this.validateRunningRuntime({
-        workspaceId: context.target.entry.workspaceId,
-        expectedProfileId:
-          context.target.entry.lineageIdentity.profileId,
-      });
-      await context.authority.transaction.clearRolledBack();
+      this.options.runtimeHandoff.requestRelaunch();
       return;
     }
 
     await this.options.rootStore.discardBeforeActivation(context.paths);
     if (context.writesQuiesced) {
-      if (this.options.runtimeHandoff !== undefined) {
-        this.options.runtimeHandoff.requestRelaunch();
-        return;
-      }
-      await this.ensureRuntimeRunning(context.target.entry.workspaceId);
-      await this.validateRunningRuntime({
-        workspaceId: context.target.entry.workspaceId,
-        expectedProfileId:
-          context.target.entry.lineageIdentity.profileId,
-      });
+      this.options.runtimeHandoff.requestRelaunch();
     }
   }
 
@@ -572,66 +525,6 @@ export class WorkspaceBackupReplacementCoordinator {
         'activationReplace',
       );
     });
-  }
-
-  private acceptActivation(
-    authority: Readonly<WorkspaceReplacementActivationAuthority>,
-  ): Promise<void> {
-    return authority.transaction.accept().catch((error) => {
-      throw mapWorkspaceBackupReplacementError(
-        error,
-        'WORKSPACE_REPLACEMENT_ACTIVATION_FAILED',
-        'activationReplace',
-      );
-    });
-  }
-
-  private ensureRuntimeRunning(workspaceId: WorkspaceId): Promise<void> {
-    return this.options.activeWorkspaceLifecycle
-      .ensurePreviousWorkspaceRunning(workspaceId)
-      .catch((error) => {
-        throw mapWorkspaceBackupReplacementError(
-          error,
-          'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED',
-          'activeRuntimeRestart',
-        );
-      });
-  }
-
-  private async validateRunningRuntime(input: {
-    readonly expectedMigrationChainIdentity?: string;
-    readonly expectedProfileId: string;
-    readonly workspaceId: WorkspaceId;
-  }): Promise<void> {
-    let result: Readonly<WorkspaceReplacementRuntimeReadiness>;
-    try {
-      result = await this.options.runtimeReadiness.assertReady(input);
-    } catch (error) {
-      throw mapWorkspaceBackupReplacementError(
-        error,
-        'WORKSPACE_REPLACEMENT_VALIDATION_FAILED',
-        'activeRuntimeValidation',
-      );
-    }
-    if (
-      result.workspaceId !== input.workspaceId ||
-      result.profileId !== input.expectedProfileId ||
-      (input.expectedMigrationChainIdentity !== undefined &&
-        result.migrationChainIdentity !==
-          input.expectedMigrationChainIdentity) ||
-      result.artifactRootHealth !== 'ready' ||
-      result.backendOwnerCount !== 1 ||
-      result.databaseHealth !== 'healthy' ||
-      result.foreignKeyHealth !== 'healthy' ||
-      result.runtimeSessionState !== 'rotated' ||
-      result.sqliteOwnerCount !== 1 ||
-      !sha256Pattern.test(result.migrationChainIdentity)
-    ) {
-      throw new WorkspaceBackupReplacementError(
-        'WORKSPACE_REPLACEMENT_VALIDATION_FAILED',
-        'activeRuntimeValidation',
-      );
-    }
   }
 
   private createOperationId(): WorkspaceBackupReplacementOperationId {

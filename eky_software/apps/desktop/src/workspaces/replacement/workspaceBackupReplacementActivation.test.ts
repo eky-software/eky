@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { promises as fileSystem } from 'node:fs';
 import {
   mkdir,
   lstat,
@@ -10,7 +11,7 @@ import {
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProfileRestoreActivationPhase } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
 import { ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
@@ -24,6 +25,9 @@ import {
   TEST_REPLACEMENT_OPERATION_ID,
   TEST_REPLACEMENT_OTHER_WORKSPACE_ID,
   TEST_REPLACEMENT_WORKSPACE_ID,
+  TEST_REPLACEMENT_CONTAINER_PATH,
+  TEST_REPLACEMENT_PASSWORD,
+  createWorkspaceBackupReplacementFixture,
 } from './workspaceBackupReplacementTestSupport.js';
 
 const interruptiblePhases: readonly ProfileRestoreActivationPhase[] = [
@@ -40,15 +44,186 @@ const interruptiblePhases: readonly ProfileRestoreActivationPhase[] = [
 ];
 const cleanupRoots: string[] = [];
 
-afterEach(async () => {
-  await Promise.all(
-    cleanupRoots
-      .splice(0)
-      .map((root) => rm(root, { force: true, recursive: true })),
-  );
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal<typeof import('node:fs/promises')>();
+  return { ...actual, rm: vi.fn(actual.rm) };
+});
+
+afterEach(context => {
+  vi.restoreAllMocks();
+  vi.mocked(rm).mockReset();
+  const owned = cleanupRoots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') {
+      await Promise.all(owned.map(root => rm(root, { force: true, recursive: true })));
+    }
+  });
 });
 
 describe('workspace backup replacement activation', () => {
+  it.each(['validationFailure', 'validationAndStopFailure', 'acceptedCleanupFailure', 'preRestoreFailure'] as const)(
+    'continues the real coordinator and startup factory across %s', async failure => {
+      const f = await createFixture();
+      const before = await f.readUnrelatedHashes();
+      const fixture = createWorkspaceBackupReplacementFixture({ userDataRoot: f.root,
+        activationAuthorityFactory: new ProfileRestoreWorkspaceReplacementActivationFactory() });
+      const replace = () => fixture.coordinator.replace({ targetWorkspaceId: TEST_REPLACEMENT_WORKSPACE_ID,
+        containerPath: TEST_REPLACEMENT_CONTAINER_PATH, password: TEST_REPLACEMENT_PASSWORD });
+      if (failure === 'preRestoreFailure') {
+        fixture.preRestore.fail = true;
+        await expect(replace()).rejects.toMatchObject({ code: 'WORKSPACE_REPLACEMENT_RECOVERY_POINT_FAILED' });
+        expect(await f.journalStore.peek()).toBeUndefined();
+        expect(fixture.lifecycle.runningOwners).toBe(1);
+        // The still-running, quiesced source must leave before the requested new process starts.
+        await fixture.lifecycle.stopAndProveHandlesClosed();
+      } else {
+        await expect(replace()).resolves.toMatchObject({ workspaceId: TEST_REPLACEMENT_WORKSPACE_ID });
+        expect(await f.journalStore.peek()).toMatchObject({ phase: 'validationStarting' });
+      }
+      expect(fixture.runtimeHandoff.requests).toBe(1);
+      expect(fixture.lifecycle.runningOwners).toBe(0);
+      expect(fixture.lease.held).toBe(false);
+      const first = new Error('SYNTHETIC_STARTUP_VALIDATION_FAILED');
+      const cleanup = new Error('SYNTHETIC_ACCEPTED_CLEANUP_FAILED');
+      const startup = createWorkspaceBackupReplacementStartupRecovery({
+        paths: deriveWorkspaceBackupReplacementRuntimePaths(f.root, TEST_REPLACEMENT_WORKSPACE_ID),
+        async withRollbackAuthority(journal, use) {
+          const assertCurrent = async () => {
+            if (!fixture.lease.held || fixture.lifecycle.runningOwners !== 0 || fixture.lifecycle.sqliteOwners !== 0) {
+              throw new Error('SYNTHETIC_ROLLBACK_OWNER_INVALID');
+            }
+            expect(await startup.journalStore.peek()).toMatchObject({ operationId: journal.operationId });
+          };
+          await assertCurrent();
+          await startup.activation.transaction.prepareColdRollbackAnchor(journal, assertCurrent, async () => {});
+          await use({ kind: 'rollback', journal, assertCurrent,
+            async assertContent(current) { await startup.activation.transaction.readRollbackRecoverySources(current); },
+            beforeStagingMove: assertCurrent });
+        },
+      });
+      const rollback = vi.spyOn(startup.activation.transaction, 'rollback');
+      if (failure === 'acceptedCleanupFailure') {
+        vi.spyOn(startup.activation.transaction, 'clearAccepted').mockRejectedValueOnce(cleanup);
+      }
+      const lease = await fixture.lease.acquire('restore');
+      try {
+        const mode = await startup.recovery.prepareBeforeBackend();
+        await fixture.lifecycle.ensurePreviousWorkspaceRunning();
+        const validate = async () => {
+          expect(fixture.lifecycle.runningOwners).toBe(1); expect(fixture.lifecycle.sqliteOwners).toBe(1);
+          expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe(failure === 'preRestoreFailure' ? 'old database' : 'new database');
+          expect(await readFile(f.activePdfPath, 'utf8')).toBe(failure === 'preRestoreFailure' ? 'old pdf' : 'new pdf');
+          if (failure === 'validationFailure' || failure === 'validationAndStopFailure') throw first;
+        };
+        if (mode === 'normal') await validate();
+        const work = startup.recovery.validateAfterBackend({ mode, validateActiveProfile: validate,
+          async stopBackend() {
+            if (failure === 'validationAndStopFailure') throw cleanup;
+            await fixture.lifecycle.stopAndProveHandlesClosed();
+          } });
+        if (failure === 'validationAndStopFailure') {
+          await expect(work).rejects.toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED',
+            cause: { errors: [first, cleanup] } });
+          expect(rollback).not.toHaveBeenCalled();
+          expect(await f.journalStore.peek()).toMatchObject({ phase: 'validationStarting' });
+          expect(fixture.lifecycle.runningOwners).toBe(1);
+          expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('new database');
+          expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+          expect(await readFile(join(f.paths.activationRollbackRoot, TEST_REPLACEMENT_OPERATION_ID, 'data', 'eky.sqlite'), 'utf8')).toBe('old database');
+        } else if (failure === 'acceptedCleanupFailure') {
+          await expect(work).rejects.toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED', cause: cleanup });
+          expect(await f.journalStore.peek()).toMatchObject({ phase: 'accepted' });
+          expect(rollback).not.toHaveBeenCalled();
+          expect(fixture.lifecycle.runningOwners).toBe(0);
+          expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('new database');
+          expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+        } else if (failure === 'validationFailure') {
+          await expect(work).resolves.toBe('relaunchRequired');
+          expect(rollback).toHaveBeenCalledOnce();
+          expect(fixture.lifecycle.runningOwners).toBe(0);
+          expect(await f.journalStore.peek()).toMatchObject({ phase: 'rolledBack' });
+          expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('old database');
+          expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+        } else {
+          await expect(work).resolves.toBe('ready');
+          expect(rollback).not.toHaveBeenCalled();
+          expect(await f.journalStore.peek()).toBeUndefined();
+        }
+      } finally { await lease.release(); }
+      if (failure === 'validationFailure') {
+        const next = createWorkspaceBackupReplacementStartupRecovery({
+          paths: deriveWorkspaceBackupReplacementRuntimePaths(f.root, TEST_REPLACEMENT_WORKSPACE_ID) });
+        const nextLease = await fixture.lease.acquire('restore');
+        try {
+          const mode = await next.recovery.prepareBeforeBackend();
+          expect(mode).toBe('validateRolledBackProfile');
+          await fixture.lifecycle.ensurePreviousWorkspaceRunning();
+          await expect(next.recovery.validateAfterBackend({ mode,
+            async validateActiveProfile() {
+              expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('old database');
+              expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+            },
+            async stopBackend() { await fixture.lifecycle.stopAndProveHandlesClosed(); },
+          })).resolves.toBe('ready');
+          expect(await f.journalStore.peek()).toBeUndefined();
+        } finally { await nextLease.release(); }
+      }
+      expect(await f.readUnrelatedHashes()).toEqual(before);
+      expect(fixture.lifecycle.maxRunningOwners).toBe(1); expect(fixture.lifecycle.maxSqliteOwners).toBe(1);
+      expect(fixture.lease.held).toBe(false);
+    },
+  );
+
+  it.each(['next', 'backup'] as const)('retains remaining real journal slots when cleanup authority expires after %s deletion', async slot => {
+    const f = await createFixture();
+    const transaction = f.createTransaction();
+    await transaction.prepare(TEST_REPLACEMENT_OPERATION_ID);
+    await transaction.advanceToValidation(); await transaction.rollback();
+    const before = await f.readUnrelatedHashes();
+    const selected = await f.journalStore.peek();
+    const currentBytes = await readFile(f.paths.activationJournalPath);
+    let revoked = false; let stopped = false; let removalsAfterRevocation = 0;
+    const startup = createWorkspaceBackupReplacementStartupRecovery({
+      paths: deriveWorkspaceBackupReplacementRuntimePaths(f.root, TEST_REPLACEMENT_WORKSPACE_ID),
+      async withRolledBackCleanupAuthority(journal, use) {
+        expect(journal).toEqual(selected);
+        await use(async () => { if (revoked) throw new Error('SYNTHETIC_SLOT_CLEANUP_REVOKED'); });
+      },
+    });
+    const mode = await startup.recovery.prepareBeforeBackend();
+    expect(mode).toBe('validateRolledBackProfile');
+    const journalStore = startup.journalStore;
+    if (!(journalStore instanceof ProfileRestoreActivationJournalStore)) throw new Error('SYNTHETIC_REAL_JOURNAL_REQUIRED');
+    const clearJournal = journalStore.clear.bind(journalStore);
+    const clear = vi.spyOn(journalStore, 'clear').mockImplementation(async (...args) => {
+      expect(await pathPresent(join(f.paths.activationRollbackRoot, TEST_REPLACEMENT_OPERATION_ID))).toBe(false);
+      for (const suffix of ['next', 'backup']) await writeFile(`${f.paths.activationJournalPath}.${suffix}`, currentBytes);
+      return clearJournal(...args);
+    });
+    vi.mocked(rm).mockImplementation(async (...args) => {
+      if (revoked) removalsAfterRevocation++;
+      await fileSystem.rm(...args);
+      if (args[0] === `${f.paths.activationJournalPath}.${slot}`) revoked = true;
+    });
+    await expect(startup.recovery.validateAfterBackend({ mode,
+      async validateActiveProfile() {
+        expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('old database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+      },
+      async stopBackend() { stopped = true; },
+    })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(clear).toHaveBeenCalledOnce();
+    expect(revoked).toBe(true); expect(stopped).toBe(true); expect(removalsAfterRevocation).toBe(0);
+    expect(await readFile(f.paths.activationJournalPath)).toEqual(currentBytes);
+    expect(await pathPresent(`${f.paths.activationJournalPath}.next`)).toBe(false);
+    if (slot === 'next') expect(await readFile(`${f.paths.activationJournalPath}.backup`)).toEqual(currentBytes);
+    else expect(await pathPresent(`${f.paths.activationJournalPath}.backup`)).toBe(false);
+    expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(await readFile(join(f.paths.activationFailedRoot, TEST_REPLACEMENT_OPERATION_ID, 'active', 'data', 'eky.sqlite'), 'utf8')).toBe('new database');
+    expect(await f.readUnrelatedHashes()).toEqual(before);
+  });
+
   it.each(['success', 'directoryAuthorityLost', 'journalBindingChanged'] as const)(
     'uses fresh startup authority for rolled-back cleanup: %s', async failure => {
       const fixture = await createFixture();

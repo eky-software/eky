@@ -438,11 +438,6 @@ async function createReplacementSystemFixture(
         lifecycle.events.push('runtime.relaunchRequested');
       },
     },
-    runtimeReadiness: {
-      assertReady: async () => {
-        throw new Error('SYNTHETIC_COORDINATOR_RESTART_FORBIDDEN');
-      },
-    },
     userDataRoot: input.root,
     workspaceRuntimeAbsence: {
       assertNoActiveWorkspaceRuntime: async () => {

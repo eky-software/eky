@@ -49,9 +49,17 @@ vaiheomistajien kytkentä ovat työn alla. Omistavat sopimukset:
   Aiempi cold-forward-testin aikakatkaisu
   ja kilpaillut testisiivous säilyvät historiassa; epävarman testin aineisto
   säilytetään.
-- **Seuraava työ:** täydennä coordinator -> uusi startup -virheketjujen
-  todellinen tiedostonäyttö ja poista korvattu välitön replacement-paluupolku,
-  sitten B:n muut omistajaliitokset ja C:n W7.3-luovutus.
+- Koordinaattorin korvattu välitön paluupolku ja sen readiness-portit on
+  poistettu. Pakollinen luovutus käyttää nykyistä startup-omistajaa;
+  172 kohdetestiä ja oikean salatun backupin kolme system-tapausta läpäisivät.
+  Uudet tiedostokokeet kattavat validointivirheen rollbackin, accepted-tilan
+  säilymisen, kaksi journalin loppupoiston katkoa sekä ensivirheen ja
+  sulkuvirheen erottamisen. Mainin neljä valintakontrollia läpäisivät.
+  Molempien pakettien tyypitys ja rajattu katselmus läpäisivät.
+  Mallinnettua prosessiomistajaa ei nimetä native-näytöksi.
+- **Seuraava työ:** B:n replacement-sidonnan julkaisu- ja epävarmuuskytkentä
+  koordinaattoriin ja management/mainiin, sitten muut B:n omistajaliitokset
+  ja C:n W7.3-luovutus.
   Muut B-F-portit, oikea paketti ja PR/main-hyväksyntä ovat edelleen kesken.
   W7.5:n poistokanavaa ei avata.
 

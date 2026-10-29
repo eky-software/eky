@@ -7,6 +7,7 @@ import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutation
 import type { WorkspaceBackupCandidateReadiness } from '../import/workspaceBackupImportPorts.js';
 import { WorkspaceBackupReplacementCoordinator } from './workspaceBackupReplacementCoordinator.js';
 import type { WorkspaceBackupReplacementOperationId } from './workspaceBackupReplacementOperationId.js';
+import type { WorkspaceReplacementActivationAuthorityFactory } from './workspaceBackupReplacementPorts.js';
 
 export const TEST_REPLACEMENT_WORKSPACE_ID =
   '11111111-1111-4111-8111-111111111111' as WorkspaceId;
@@ -24,11 +25,11 @@ const TEST_REPLACEMENT_USER_DATA_ROOT = resolve(
 );
 
 export function createWorkspaceBackupReplacementFixture(options?: {
+  readonly activationAuthorityFactory?: WorkspaceReplacementActivationAuthorityFactory;
   readonly activeWorkspaceId?: WorkspaceId | null;
   readonly duplicateLineage?: boolean;
   readonly lifecycleState?: 'ready' | 'recoveryRequired';
   readonly profileId?: string;
-  readonly useRuntimeHandoff?: boolean;
   readonly userDataRoot?: string;
 }) {
   const events: string[] = [];
@@ -318,7 +319,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
   };
 
   const coordinator = new WorkspaceBackupReplacementCoordinator({
-    activationAuthorityFactory: {
+    activationAuthorityFactory: options?.activationAuthorityFactory ?? {
       create() {
         events.push('activationFactory.create');
         return {
@@ -336,8 +337,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     preRestoreRecoveryPoint: preRestore,
     registry,
     rootStore,
-    ...(options?.useRuntimeHandoff === false ? {} : { runtimeHandoff }),
-    runtimeReadiness,
+    runtimeHandoff,
     userDataRoot: options?.userDataRoot ?? TEST_REPLACEMENT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
   });

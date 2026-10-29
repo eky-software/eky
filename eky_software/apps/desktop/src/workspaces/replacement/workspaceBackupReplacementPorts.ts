@@ -15,26 +15,6 @@ export interface WorkspacePreRestoreRecoveryPointPort {
   }): Promise<void>;
 }
 
-export interface WorkspaceReplacementRuntimeReadiness {
-  readonly artifactRootHealth: 'ready';
-  readonly backendOwnerCount: 1;
-  readonly databaseHealth: 'healthy';
-  readonly foreignKeyHealth: 'healthy';
-  readonly migrationChainIdentity: string;
-  readonly profileId: string;
-  readonly runtimeSessionState: 'rotated';
-  readonly sqliteOwnerCount: 1;
-  readonly workspaceId: WorkspaceId;
-}
-
-export interface WorkspaceReplacementRuntimeReadinessPort {
-  assertReady(input: {
-    readonly expectedMigrationChainIdentity?: string;
-    readonly expectedProfileId: string;
-    readonly workspaceId: WorkspaceId;
-  }): Promise<Readonly<WorkspaceReplacementRuntimeReadiness>>;
-}
-
 export interface WorkspaceReplacementRuntimeHandoffPort {
   requestRelaunch(): void;
 }

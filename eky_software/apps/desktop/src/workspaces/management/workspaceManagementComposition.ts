@@ -38,7 +38,6 @@ import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from '../replacement/workspaceBackupReplacementActivationFactory.js';
 import { WorkspaceBackupReplacementCoordinator } from '../replacement/workspaceBackupReplacementCoordinator.js';
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
-import type { WorkspaceReplacementRuntimeReadinessPort } from '../replacement/workspaceBackupReplacementPorts.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
 import type { WorkspaceRuntimeRelaunchCompletion } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
@@ -295,7 +294,6 @@ export async function createWorkspaceManagementComposition(
     runtimeHandoff: {
       requestRelaunch: () => options.runtimeRelaunch.request(),
     },
-    runtimeReadiness: relaunchOnlyRuntimeReadiness,
     userDataRoot: options.userDataRoot,
     workspaceRuntimeAbsence: options.activeWorkspaceLifecycle,
   });
@@ -448,10 +446,3 @@ async function createCandidateRuntimeFactory(options: Readonly<WorkspaceCandidat
     reservationOwner: options.reservationOwner,
   });
 }
-
-const relaunchOnlyRuntimeReadiness: WorkspaceReplacementRuntimeReadinessPort =
-  Object.freeze({
-    async assertReady() {
-      throw new Error('WORKSPACE_RUNTIME_RELAUNCH_REQUIRED');
-    },
-  });

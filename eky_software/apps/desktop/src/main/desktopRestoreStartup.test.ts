@@ -2544,7 +2544,7 @@ describe('desktop restore startup composition', () => {
     },
   );
 
-  it.for(['completed', 'changedSelection'] as const)(
+  it.for(['completed', 'changedSelection', 'wrongWorkspace', 'changedSideSlot'] as const)(
     'binds live replacement acceptance to the main selection (%s)', async (scenario, context) => {
       const lifetime = beginTrackedStartupTest(context);
       await lifetime.run(async () => {
@@ -2560,11 +2560,18 @@ describe('desktop restore startup composition', () => {
         vi.spyOn(ProfileRestoreActivationTransaction.prototype, 'clearAccepted')
           .mockImplementation(async function (this: ProfileRestoreActivationTransaction, ...args) {
             expect(args[2]?.assertMutationCurrent).toBeTypeOf('function');
-            if (scenario === 'changedSelection') {
+            if (scenario === 'changedSelection' || scenario === 'wrongWorkspace') {
               const registry = (await f.registry.read())!;
-              await f.registry.write({ ...registry,
-                workspaces: registry.workspaces.map(entry => ({ ...entry, workspaceLabel: `${entry.workspaceLabel} changed` })),
-              });
+              if (scenario === 'wrongWorkspace') {
+                const other = registry.workspaces.find(entry => entry.workspaceId !== registry.activeWorkspaceId);
+                expect(other).toBeDefined();
+                await f.registry.write({ ...registry, activeWorkspaceId: other!.workspaceId });
+              } else await f.registry.write({ ...registry,
+                  workspaces: registry.workspaces.map(entry => ({ ...entry, workspaceLabel: `${entry.workspaceLabel} changed` })),
+                });
+            } else if (scenario === 'changedSideSlot') {
+              const path = join(f.root, WORKSPACE_REGISTRY_FILE_NAME);
+              await writeFile(`${path}.next`, await readFile(path), { flag: 'wx', mode: 0o600 });
             }
             return clear.apply(this, args);
           });
@@ -2576,6 +2583,10 @@ describe('desktop restore startup composition', () => {
         expect(electronBoundary.createWindow).toHaveBeenCalledTimes(scenario === 'completed' ? 1 : 0);
         expect(await f.journal.peek()).toEqual(scenario === 'completed' ? undefined : selected);
         expect(await readFile(f.databasePath, 'utf8')).toBe(f.restoredBytes);
+        if (scenario === 'changedSideSlot') {
+          const path = join(f.root, WORKSPACE_REGISTRY_FILE_NAME);
+          expect(await readFile(`${path}.next`)).toEqual(await readFile(path));
+        }
       });
     },
   );

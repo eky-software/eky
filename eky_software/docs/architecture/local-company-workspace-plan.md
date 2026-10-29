@@ -5672,9 +5672,26 @@ Tämä liitos ei korvaa cold-rollbackin pysähtyneen kirjoittajan todistusta.
    pakettien tyypitys, vaikutusalueen testit ja riippumaton kytkentäkatselmus;
    koko W7.4 tarvitsee yhä F:n puhtaan paketin ja PR/main-portit.
 
-Tämä ratkaisu ja yllä rajattu kohdenäyttö eivät vielä hyväksy main-kytkentää.
-Vanha polku säilyy lähteessä, kunnes korvaava näyttö on olemassa; sitä ei
-jätetä pysyväksi valinnaiseksi turvarajaksi. Epäselvä uusi valtuus pysäyttää
+**Poistamisen checkpoint 29.10.2026:** `runtimeHandoff` on pakollinen;
+koordinaattorin välitön käynnistys-/hyväksyntähaara, sen readiness-portit ja
+compositionin stub on poistettu. Nykyiset koordinaattori-, sidonta-,
+tallennin- ja palautuskokeet läpäisivät 172 testiä. Todellisilla tiedostoilla
+ajettu coordinator -> startup -ketju säilyttää alkuperäisen sisällön
+rollbackissa, uuden sisällön hyväksynnän jälkeisessä siivousvirheessä ja
+ensivirheen erillään epäonnistuneesta sulusta. Journalin kaksi loppupoiston
+katkoa tapahtuvat vasta rollback-juuren poiston jälkeen, eivät aikaisemman
+korjaavan luvun aikana. Jäljellä olevat slotit säilyvät eikä seuraava poisto
+ala menetetyllä valtuudella.
+
+Kolme nykyistä salatun backupin system-tapausta läpäisivät uudella buildilla;
+ne jatkavat oikean startup-tehtaan kautta ja käyttävät oikeita SQLite-/PDF-
+tavuja. Mainin neljä live-valintakontrollia kattavat onnistumisen, nimen
+muutoksen, vääräksi vaihtuneen kohteen ja kesken työn ilmestyvän sivuslotin.
+Rajattu poistodeltan katselmus läpäisi. Tämä näyttö ja aiempi main-kytkennän
+checkpoint eivät korvaa F:n Electron-/paketti- tai PR/main-portteja.
+B:n sidontakirjoittajan koordinaattori-/composition-kytkentä on vielä kesken.
+Korvattu polku poistettiin vasta vastaavan näytön jälkeen eikä sitä jätetty
+pysyväksi valinnaiseksi turvarajaksi. Epäselvä uusi valtuus pysäyttää
 vain vaikutusalueen toteutuksen, ei avaa koko palautusjärjestelmää uudelleen.
 
 ##### W7.4:n valtuuden luovutus ja elinikä
