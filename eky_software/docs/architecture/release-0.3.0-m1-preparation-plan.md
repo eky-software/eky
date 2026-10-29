@@ -106,7 +106,15 @@ testiä, tyypitys ja riippumaton katselmus korjausdeltoineen läpäisivät.
 Uudessa main-kohdeajossa onnistunut paluu läpäisi, mutta sisältövirhetapauksen
 aikakatkaisu ja sen jälkeinen jatkoesto säilyivät. Vaihekohtainen koe
 todensi kertautumisen vähentymisen, ei koko viiveen ratkaisua. Aikarajat
-säilyvät eikä samaa hylkäystä uusita vihreyden vuoksi. Live-/rolledBack-jatkot,
+säilyvät eikä samaa hylkäystä uusita vihreyden vuoksi. Rekisterin ja
+vaihtojournalin rajattu rinnakkaisluku säilyttää kaikki tarkistukset ja
+alkuperäisten töiden päättämisen; 88 kohdetestiä ja rajattu katselmus
+läpäisivät, mutta mainin sisältövirhetapauksen aikakatkaisu ei poistunut.
+Saman elävän snapshotin valinnainen validointijatko on toteutettu;
+sen ja valintaporttien viiden tiedoston yhteissarja läpäisi 200 testiä,
+desktopin tyypitys ja rajattu katselmus korjausdeltoineen läpäisivät.
+Tämä ei vielä ole mainin tai recoveryn tuotantokytkennän näyttö.
+Live-/rolledBack-jatkokytkennät,
 ensivirheen ja viimeisten poistovartijoiden main-näyttö sekä puhdas paketti
 ovat edelleen kesken; adapterit eivät hyväksy koko palautusketjua.
 Yhteisen vaiheomistajasopimuksen rajattu riippumaton katselmus ja delta

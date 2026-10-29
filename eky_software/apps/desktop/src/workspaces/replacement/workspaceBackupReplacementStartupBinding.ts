@@ -113,9 +113,26 @@ export async function captureWorkspaceBackupReplacementStartupSelection(
       assertAuthority: assertCurrent,
       async assertExternalSelection() {
         assertCurrent();
-        const registry = await readRegistry(assertCurrent);
-        assertCurrent();
-        const journal = await readSwitch(assertCurrent);
+        let failure: { readonly cause: unknown } | undefined;
+        const assertReading = () => {
+          if (failure !== undefined) throw failure.cause;
+          try { assertCurrent(); }
+          catch (cause) { failure ??= { cause }; throw cause; }
+        };
+        const read = async <T>(inspect: (guard: () => void) => Promise<T>): Promise<T> => {
+          try {
+            assertReading();
+            const value = await inspect(assertReading);
+            assertReading();
+            return value;
+          } catch (cause) { failure ??= { cause }; throw cause; }
+        };
+        // Independent readonly stores share one guard; join both original reads, including closes.
+        const [registryResult, journalResult] = await Promise.allSettled([read(readRegistry), read(readSwitch)]);
+        if (failure !== undefined) throw failure.cause;
+        if (registryResult.status !== 'fulfilled' || journalResult.status !== 'fulfilled') throw required();
+        const registry = registryResult.value;
+        const journal = journalResult.value;
         assertCurrent();
         if (pinned === undefined) {
           const selected = (registry.current ?? registry.backup ?? registry.next)?.value;

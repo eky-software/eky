@@ -1,6 +1,7 @@
 import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import { describe, expect, it, vi, type TestContext } from 'vitest';
 import { captureWorkspaceRemnantBinding, maximumWorkspaceRemnantBindingBytes,
   serializeWorkspaceRemnantBinding } from '../deletion/workspaceRemnantBindingCodec.js';
@@ -311,6 +312,93 @@ describe('workspace replacement startup binding observation', () => {
 });
 
 describe('workspace replacement startup metadata selection', () => {
+  for (const initial of [true, false]) {
+    for (const failedSource of ['registry', 'switch'] as const) {
+      for (const rejectLate of [false, true]) {
+        it(`joins both original reads after ${failedSource} fails, initial=${initial}, late rejection=${rejectLate}`, async context => {
+          const f = await selectionFixture(context, true);
+          const before = await snapshot(f.root);
+          const bothStarted = gate(); const finish = gate(); const firstRejected = gate();
+          const first = new Error('SYNTHETIC_FIRST_METADATA_FAILURE');
+          const late = new Error('SYNTHETIC_LATE_METADATA_FAILURE');
+          let testing = initial; let started = 0; let settled = false; let resumed = false;
+          let nextReadStarted = false;
+          const wrap = <T>(source: 'registry' | 'switch', inspect: (guard?: () => void) => Promise<T>) =>
+            async (guard?: () => void): Promise<T> => {
+              if (!testing) return inspect(guard);
+              guard?.();
+              if (++started === 2) bothStarted.resolve();
+              await bothStarted.promise;
+              if (source === failedSource) { firstRejected.resolve(); throw first; }
+              await finish.promise;
+              resumed = true;
+              if (rejectLate) throw late;
+              guard?.();
+              nextReadStarted = true;
+              return inspect(guard);
+            };
+          const readRegistry = f.registry.inspectSlots.bind(f.registry);
+          const readSwitch = f.sources.switchJournal.inspectSlots.bind(f.sources.switchJournal);
+          vi.spyOn(f.registry, 'inspectSlots').mockImplementation(wrap('registry', readRegistry));
+          vi.spyOn(f.sources.switchJournal, 'inspectSlots').mockImplementation(wrap('switch', readSwitch));
+          const selected = initial ? undefined : await f.capture();
+          testing = true;
+          const work = initial ? f.capture() : selected!.assertCurrent(f.owner.assertAuthority);
+          const outcome = work.then(() => undefined, error => error).finally(() => { settled = true; });
+          try {
+            await bothStarted.promise;
+            await firstRejected.promise;
+            await nextTurn();
+            expect(started).toBe(2); expect(settled).toBe(false); expect(resumed).toBe(false);
+          } finally { finish.resolve(); await outcome; }
+          expect(await outcome).toBe(first);
+          expect(resumed).toBe(true); expect(nextReadStarted).toBe(false); expect(started).toBe(2);
+          if (selected !== undefined) {
+            await expect(selected.assertCurrent(f.owner.assertAuthority)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+            expect(started).toBe(2);
+          }
+          expect(await snapshot(f.root)).toEqual(before);
+        });
+      }
+    }
+  }
+
+  it('latches the first guard failure before its reader settles and a sibling fails', async context => {
+    const f = await selectionFixture(context, true);
+    const before = await snapshot(f.root);
+    const bothStarted = gate(); const guardFailed = gate(); const finish = gate(); const siblingFailed = gate();
+    const first = new Error('SYNTHETIC_FIRST_GUARD_FAILURE');
+    const second = new Error('SYNTHETIC_LATER_READER_FAILURE');
+    let started = 0; let current = true; let settled = false;
+    vi.spyOn(f.registry, 'inspectSlots').mockImplementation(async guard => {
+      if (++started === 2) bothStarted.resolve();
+      await bothStarted.promise;
+      current = false;
+      try { guard!(); throw new Error('guard did not reject'); }
+      catch (error) {
+        guardFailed.resolve();
+        await finish.promise;
+        throw error;
+      }
+    });
+    vi.spyOn(f.sources.switchJournal, 'inspectSlots').mockImplementation(async () => {
+      if (++started === 2) bothStarted.resolve();
+      await guardFailed.promise;
+      siblingFailed.resolve();
+      throw second;
+    });
+    const work = captureWorkspaceBackupReplacementStartupSelection({ ...f.input, mode: 'normal' },
+      () => { if (!current) throw first; }, f.sources);
+    const outcome = work.then(() => undefined, error => error).finally(() => { settled = true; });
+    try {
+      await siblingFailed.promise;
+      await nextTurn();
+      expect(settled).toBe(false);
+    } finally { finish.resolve(); await outcome; }
+    expect(await outcome).toBe(first);
+    expect(await snapshot(f.root)).toEqual(before);
+  });
+
   it('brackets each readonly binding observation with fresh metadata without caching across calls', async context => {
     const f = await selectionFixture(context, true);
     const registryRead = vi.spyOn(f.registry, 'inspectSlots');
@@ -536,10 +624,10 @@ describe('workspace replacement startup metadata selection', () => {
     const result = original.then(() => { settled = true; return 'completed'; }, () => { settled = true; return 'failed'; });
     await entered.promise;
     current = false;
-    try { expect(settled).toBe(false); expect(switchRead).not.toHaveBeenCalled(); }
+    try { expect(settled).toBe(false); expect(switchRead).toHaveBeenCalledOnce(); }
     finally { finish.resolve(); }
     expect(await result).toBe('failed');
-    expect(switchRead).not.toHaveBeenCalled();
+    expect(switchRead).toHaveBeenCalledOnce();
   });
 });
 

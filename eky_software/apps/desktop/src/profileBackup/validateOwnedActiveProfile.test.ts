@@ -3,11 +3,200 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { profileInspectionShutdownMilliseconds, profileInspectionWorkMilliseconds,
   type ProfileInspectionReceipt } from '../runtime/profileInspectionMessages.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
-import { validateOwnedActiveProfile } from './validateOwnedActiveProfile.js';
+import { validateOwnedActiveProfile, type OwnedActiveProfileContinuation } from './validateOwnedActiveProfile.js';
 
 afterEach(() => { vi.restoreAllMocks(); vi.useRealTimers(); });
 
 describe('owned active profile validation', () => {
+  it('runs the captured continuation inside the same snapshot and closes its authority', async () => {
+    const f = fixture();
+    let captured: OwnedActiveProfileContinuation | undefined;
+    const use = vi.fn(async (authority: OwnedActiveProfileContinuation) => {
+      captured = authority;
+      expect(f.isSnapshotActive()).toBe(true); expect(Object.isFrozen(authority)).toBe(true);
+      expect(authority.validation).toEqual(f.metadata);
+      expect(f.client.endRestoreMaintenance).not.toHaveBeenCalled();
+      await authority.assertCurrent(); authority.assertMutationCurrent();
+      f.events.push('continuation');
+    });
+    const input = { ...f.input, useValidatedProfile: use };
+    const result = validateOwnedActiveProfile(input);
+    input.useValidatedProfile = vi.fn(async () => { throw new Error('LATE_CALLBACK'); });
+    await expect(result).resolves.toEqual(f.metadata);
+    expect(use).toHaveBeenCalledOnce(); expect(input.useValidatedProfile).not.toHaveBeenCalled();
+    expect(f.client.withInspectionOperation).toHaveBeenCalledOnce();
+    expect(f.client.withProfileSnapshot).toHaveBeenCalledOnce();
+    expect(f.client.validateProfileSnapshot).toHaveBeenCalledOnce();
+    expect(f.events.indexOf('continuation')).toBeLessThan(f.events.indexOf('remove'));
+    expect(f.lease.readState()).toBe('idle');
+    expect(() => captured!.assertMutationCurrent()).toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
+    await expect(captured!.assertCurrent()).rejects.toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
+    expect(() => captured!.reportFirstFailure(new Error('LATE_FAILURE'))).not.toThrow();
+  });
+
+  it.each(['owner', 'lineage', 'borrowed'] as const)('rejects an asynchronous %s guard for a continuation', async kind => {
+    const f = fixture();
+    const use = vi.fn(async () => {});
+    const held = kind === 'borrowed' ? await f.lease.acquire('restore') : undefined;
+    try {
+      const asynchronous = () => Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD'));
+      await expect(validateOwnedActiveProfile({ ...f.input, useValidatedProfile: use,
+        ...(kind === 'owner' ? { assertAuthority: asynchronous } : kind === 'lineage'
+          ? { assertLineage: asynchronous } : { assertBorrowedRestoreOwner: asynchronous }),
+      })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      expect(use).not.toHaveBeenCalled(); expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled();
+    } finally { await held?.release(); }
+  });
+
+  it.each(['mismatch', 'lineage', 'inspection'] as const)('does not enter continuation on %s rejection', async failure => {
+    const f = fixture(); const use = vi.fn(async () => {});
+    if (failure === 'mismatch') f.receipt.profileId = 'b'.repeat(64);
+    if (failure === 'lineage') f.input.assertLineage.mockImplementation(() => { throw new Error('SYNTHETIC_LINEAGE'); });
+    if (failure === 'inspection') f.hooks.inspect = async () => { throw new Error('SYNTHETIC_INSPECTION'); };
+    await expect(validateOwnedActiveProfile({ ...f.input, useValidatedProfile: use })).rejects.toThrow();
+    expect(use).not.toHaveBeenCalled(); expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled();
+  });
+
+  it.each(['throw', 'report', 'lostOwner', 'lostFence'] as const)('preserves continuation failure from %s', async kind => {
+    const f = fixture(); const first = new Error('SYNTHETIC_FIRST_CONTINUATION_FAILURE');
+    const secondary = new Error('SYNTHETIC_INVALIDATION_FAILURE');
+    f.client.invalidateRestoreMaintenance.mockRejectedValueOnce(secondary);
+    let captured: OwnedActiveProfileContinuation | undefined;
+    await expect(validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+      captured = authority;
+      if (kind === 'throw') throw first;
+      if (kind === 'report') { authority.reportFirstFailure(first); return; }
+      if (kind === 'lostOwner') f.input.assertAuthority.mockImplementation(() => { throw first; });
+      else f.client.assertRestoreMaintenance.mockRejectedValueOnce(first);
+      await authority.assertCurrent();
+    } })).rejects.toMatchObject({ errors: [first, secondary] });
+    expect(() => captured!.assertMutationCurrent()).toThrow();
+    expect(f.client.endRestoreMaintenance).not.toHaveBeenCalled();
+    expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled();
+    expect(f.lease.readState()).toBe('busy');
+  });
+
+  it.each([false, true])('retains first cause and ownership through late continuation work (early report: %s)', async reportEarly => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const f = fixture(); const entered = deferred(); const finish = deferred(); const settled = deferred();
+    const first = new Error('SYNTHETIC_REPORTED_BEFORE_JOIN');
+    let captured: OwnedActiveProfileContinuation | undefined; let mutations = 0;
+    const result = validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+      captured = authority; entered.resolve();
+      if (reportEarly) authority.reportFirstFailure(first);
+      try { await finish.promise; authority.assertMutationCurrent(); mutations++; }
+      finally { settled.resolve(); }
+    } });
+    const outcome = result.catch(error => error);
+    try {
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync((reportEarly ? 0 : profileInspectionWorkMilliseconds) + 2 * profileInspectionShutdownMilliseconds);
+      const error = await outcome;
+      expect(error).toBeInstanceOf(AggregateError);
+      expect(error.errors[0]).toMatchObject({ message: reportEarly ? first.message : 'PROFILE_INSPECTION_TIMEOUT' });
+      if (reportEarly) expect(error.errors[0]).toBe(first);
+      expect(f.client.invalidateRestoreMaintenance).toHaveBeenCalledOnce();
+      expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('busy');
+      expect(() => captured!.assertMutationCurrent()).toThrow();
+      finish.resolve(); await settled.promise; await vi.advanceTimersByTimeAsync(0);
+      captured!.reportFirstFailure(new Error('SYNTHETIC_LATE_REPORT'));
+      expect(await outcome).toBe(error); expect(mutations).toBe(0); expect(f.lease.readState()).toBe('busy');
+    } finally { finish.resolve(); await settled.promise; await vi.runAllTimersAsync(); await outcome; }
+  });
+
+  it('does not reset the work budget after inspection and ignores a late report during cancellation', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const f = fixture(); const entered = deferred(); const finish = deferred(); const settled = deferred();
+    f.hooks.inspect = async () => { await vi.advanceTimersByTimeAsync(10_000); };
+    const original = validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+      entered.resolve();
+      try {
+        await finish.promise;
+        authority.reportFirstFailure(new Error('SYNTHETIC_LATE_FAILURE'));
+        authority.assertMutationCurrent();
+      } finally { settled.resolve(); }
+    } });
+    const outcome = original.catch(error => error);
+    try {
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync(profileInspectionWorkMilliseconds - 10_000);
+      expect(f.client.invalidateRestoreMaintenance).toHaveBeenCalledOnce();
+      finish.resolve(); await settled.promise;
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(outcome).resolves.toMatchObject({ message: 'PROFILE_INSPECTION_TIMEOUT' });
+      expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('busy');
+    } finally { finish.resolve(); await settled.promise; await vi.runAllTimersAsync(); await outcome; }
+  });
+
+  it('rejects early continuation return while its original grant is still pending', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const f = fixture(); const entered = deferred(); const finish = deferred(); const settled = deferred();
+    let grant: Promise<unknown> | undefined;
+    const original = validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+      f.client.assertRestoreMaintenance.mockImplementationOnce(async () => {
+        entered.resolve();
+        try { await finish.promise; return 'busy' as const; }
+        finally { settled.resolve(); }
+      });
+      grant = authority.assertCurrent().catch(error => error);
+    } });
+    const outcome = original.catch(error => error);
+    try {
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync(2 * profileInspectionShutdownMilliseconds);
+      const error = await outcome;
+      expect(error.errors[0]).toMatchObject({ message: 'ACTIVE_PROFILE_VALIDATION_FAILED' });
+      expect(f.client.invalidateRestoreMaintenance).toHaveBeenCalledOnce();
+      expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('busy');
+    } finally { finish.resolve(); await settled.promise; await vi.runAllTimersAsync(); await grant; await outcome; }
+  });
+
+  it('does not let a completed continuation poison a later validation', async () => {
+    const f = fixture(); let previous: OwnedActiveProfileContinuation | undefined;
+    await validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => { previous = authority; } });
+    await expect(validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+      previous!.reportFirstFailure(new Error('OLD_GENERATION_FAILURE'));
+      expect(() => previous!.assertMutationCurrent()).toThrow();
+      await authority.assertCurrent(); authority.assertMutationCurrent();
+    } })).resolves.toEqual(f.metadata);
+    expect(f.lease.readState()).toBe('idle');
+  });
+
+  it.each(['pendingMutation', 'discardedGrant'] as const)('fails closed for %s without an unhandled rejection', async kind => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'performance'] });
+    const f = fixture(); const entered = deferred(); const finish = deferred(); const settled = deferred();
+    const unhandled: unknown[] = [];
+    const observeUnhandled = (error: unknown) => { unhandled.push(error); };
+    process.on('unhandledRejection', observeUnhandled);
+    let mutations = 0;
+    const original = validateOwnedActiveProfile({ ...f.input, useValidatedProfile: async authority => {
+      f.client.assertRestoreMaintenance.mockImplementationOnce(async () => {
+        entered.resolve();
+        try { await finish.promise; return 'busy' as const; }
+        finally { settled.resolve(); }
+      });
+      void authority.assertCurrent();
+      if (kind === 'pendingMutation') {
+        await entered.promise;
+        expect(() => { authority.assertMutationCurrent(); mutations++; }).toThrow('ACTIVE_PROFILE_VALIDATION_FAILED');
+      }
+    } });
+    const outcome = original.catch(error => error);
+    try {
+      await entered.promise;
+      await vi.advanceTimersByTimeAsync(2 * profileInspectionShutdownMilliseconds);
+      expect((await outcome).errors[0]).toMatchObject({ message: 'ACTIVE_PROFILE_VALIDATION_FAILED' });
+      expect(mutations).toBe(0); expect(f.lease.readState()).toBe('busy');
+      expect(f.client.removeProfileSnapshot).not.toHaveBeenCalled();
+      finish.resolve(); await settled.promise; await vi.advanceTimersByTimeAsync(0);
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandled).toEqual([]); expect(f.lease.readState()).toBe('busy');
+    } finally {
+      finish.resolve(); await settled.promise; await vi.runAllTimersAsync(); await outcome;
+      process.off('unhandledRejection', observeUnhandled);
+    }
+  });
+
   it.each([false, true])('retains the exact borrowed restore owner (rejected: %s)', async rejected => {
     const f = fixture(); const held = await f.lease.acquire('restore');
     const assertBorrowedRestoreOwner = f.lease.captureCurrentOwner(['restore']);
@@ -271,6 +460,7 @@ function fixture(policy: ProfileInspectionReceipt['migrationPolicy'] = 'exactCur
   const hooks = { inspect: async () => {}, remove: async () => {} };
   const inspection = deferred(); const removal = deferred();
   let operationId: string | undefined;
+  let snapshotActive = false;
   const client = {
     async withInspectionOperation<T>(use: () => Promise<T>): Promise<T> { events.push('operation'); return use(); },
     beginRestoreMaintenance: vi.fn(async (id: string) => { operationId = id; events.push('begin'); return 'busy' as const; }),
@@ -284,7 +474,9 @@ function fixture(policy: ProfileInspectionReceipt['migrationPolicy'] = 'exactCur
     }),
     async withProfileSnapshot<T>(_id: string,
       use: (receipt: ProfileInspectionReceipt, assertCurrent: () => Promise<void>) => Promise<T>): Promise<T> {
-      events.push('use'); return use(receipt, async () => { events.push('current'); });
+      events.push('use'); snapshotActive = true;
+      try { return await use(receipt, async () => { events.push('current'); }); }
+      finally { snapshotActive = false; }
     },
     removeProfileSnapshot: vi.fn(async () => { events.push('remove'); removal.resolve(); await hooks.remove(); }),
     releaseProfileSnapshot: vi.fn(async () => { events.push('release'); }),
@@ -298,6 +490,7 @@ function fixture(policy: ProfileInspectionReceipt['migrationPolicy'] = 'exactCur
   const input = { snapshotClient: client, maintenanceLease: lease,
     assertAuthority: vi.fn(() => {}), assertLineage: vi.fn((_profileId: string) => {}) };
   return { client, input, lease, events, metadata, receipt, inspected, hooks,
+    isSnapshotActive: () => snapshotActive,
     inspectionStarted: inspection.promise, removalStarted: removal.promise,
     operationId: () => operationId };
 }

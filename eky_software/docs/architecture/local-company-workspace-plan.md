@@ -5311,6 +5311,15 @@ ensisyytä. Sisältö-/health-hylkäys, cleanup-hylkäys ja sulkuvirhe
 säilyvät eri vaiheina; cleanup-virhe ei käynnistä uutta rollbackia.
 `ready` vaatii jatkon, snapshot-/fence-sulun ja leasen vapautuksen onnistumisen.
 
+Jatkon validointiapuri on toteutettu valinnaisena porttina: se lainaa samaa
+elävää snapshotia ja jäljellä olevaa työaikaa. Keskeneräinen tarkistuspyyntö
+estää viimeisen synkronisen muutosluvan; ensimmäinen virhe sulkee jatkon
+ennen keskeytystä ja alkuperäinen työ säilyy sulun seurannassa. Myöhäinen
+kutsu ei muuta seuraavan operaation tulosta. Viiden tiedoston yhteissarja
+läpäisi 200 testiä, desktopin tyypitys ja rajattu katselmus korjausdeltoineen
+läpäisivät. Mainin ja recoveryn jatkokytkentä sekä koko palautusketjun näyttö
+ovat edelleen kesken; apurin hyväksyntä ei sulje niitä.
+
 Nykyinen `clearRolledBack` saa erillisen synkronisen viimeisen mutaatioguardin
 ennen jokaista uutta `rmdir`-kutsua ja journal-slotin poistoa viimeisen
 odotuksen jälkeen. Se ei korvaa nykyisiä async-sisältö-/journal-tarkistuksia
@@ -5372,6 +5381,13 @@ sidontalukija yhdistää nyt registry-/switch-valinnan molempiin sidontapaikkoih
 Odotetut tunnisteet ja valintakonteksti kaapataan ennen ensimmäistä odotusta.
 Lukija tarkistaa rekisteröidyn kohteen nykyisen lineagen sekä lukitsee
 kaikkien slottien tavut, identiteetit ja puuttumisen.
+Yksi readonly-havainto lukee rekisterin ja vaihtojournalin enintään kahtena
+rinnakkaisena työnä. Yhteinen vartija tallentaa ensimmäisen hylkäyksen heti,
+estää seuraavat luvut ja odottaa molemmat alkuperäiset työt sulkuineen.
+Molemmat metadatahavainnot sidontalukujen ympärillä säilyvät; tämä ei ole
+välimuisti eikä atomisen tilannekuvan lupaus. Tämän täsmennyksen 88
+kohdetestiä ja riippumaton katselmus läpäisivät. Uusi main-koe läpäisi
+onnistuneen paluun, mutta sisältövirheen aikakatkaisu säilyi avoimena.
 Mainin rajattu valmisteluadapteri käyttää omaa täsmällistä restore-leasea:
 cold-kutsuja välittää saman absoluuttisen deadlinen, backend-valmistelu oman
 signaalinsa ja saa koko alkuperäisen tehtävän sulkuineen. Keskeneräinen työ
