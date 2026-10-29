@@ -20,10 +20,14 @@ import {
 } from '../creation/emptyWorkspaceCreationTestSupport.js';
 import type { WorkspaceCreationJournal } from '../creation/workspaceCreationTypes.js';
 import { WorkspaceBackupImportRecovery } from '../import/workspaceBackupImportRecovery.js';
+import { WorkspaceBackupImportColdContext } from '../import/workspaceBackupImportColdContext.js';
+import type { CaptureWorkspaceBackupImportColdOwner } from '../import/workspaceBackupImportColdOwner.js';
 import {
   createTestImportJournal,
   MemoryWorkspaceBackupImportJournal,
+  MemoryWorkspaceBackupImportRegistry,
   MemoryWorkspaceBackupImportRootStore,
+  RecordingImportMaintenanceLease,
   RecordingWorkspaceBackupCandidate,
   RecordingWorkspaceBackupPlaintextQuarantine,
 } from '../import/workspaceBackupImportTestSupport.js';
@@ -31,6 +35,7 @@ import type { WorkspaceBackupImportJournal } from '../import/workspaceBackupImpo
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
+import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry, WORKSPACE_REGISTRY_MAX_ENTRIES } from '../registry/workspaceRegistryValidation.js';
 
 type RecoveryKind = 'creation' | 'import';
@@ -85,7 +90,7 @@ async function createFixture(kind: RecoveryKind, input: {
     createdAt: value.createdAt,
   });
   const registryFormatVersion = input.registryFormatVersion ?? 1;
-  const registry = new MemoryWorkspaceRegistry(events, validateWorkspaceRegistry({
+  const registryValue = validateWorkspaceRegistry({
     ...createTestRegistry(),
     formatVersion: registryFormatVersion,
     activeWorkspaceId: previousId ?? (registryFormatVersion === 1 && input.registryPublished ? value.workspaceId : null),
@@ -93,13 +98,18 @@ async function createFixture(kind: RecoveryKind, input: {
       ...(previousId === null && !input.selector ? [] : [previousEntry]),
       ...(input.registryPublished ? [targetEntry] : []),
     ],
-  }));
+  });
+  const registry = kind === 'creation'
+    ? new MemoryWorkspaceRegistry(events, registryValue)
+    : new MemoryWorkspaceBackupImportRegistry(events, registryValue);
   const previousRoot = deriveWorkspaceRoot(userDataRoot, previousEntry.workspaceId, 1).workspaceRoot;
   const targetRoot = deriveWorkspaceRoot(userDataRoot, targetEntry.workspaceId, 1).workspaceRoot;
   await mkdir(join(userDataRoot, 'workspaces'), { mode: 0o700 });
   if (previousId !== null || input.selector) await mkdir(previousRoot, { mode: 0o700 });
   if (input.published) await mkdir(targetRoot, { mode: 0o700 });
-  const lease = new RecordingWorkspaceMaintenanceLease(events);
+  const lease = kind === 'creation'
+    ? new RecordingWorkspaceMaintenanceLease(events)
+    : new RecordingImportMaintenanceLease(events);
   const absence = new RecordingWorkspaceRuntimeAbsence(events);
   const quarantine = new RecordingWorkspaceBackupPlaintextQuarantine(events);
   quarantine.stalePayloadCount = 1;
@@ -134,6 +144,33 @@ async function createFixture(kind: RecoveryKind, input: {
       failValidation: () => { validation.fail = true; },
     };
   }
+  if (!(registry instanceof MemoryWorkspaceBackupImportRegistry) || !(lease instanceof RecordingImportMaintenanceLease)) {
+    throw new Error('invalid import fixture ports');
+  }
+  const coldModel = { generationCurrent: true, childOwnsReservation: false, recoveryConflict: false };
+  const captureColdOwner: CaptureWorkspaceBackupImportColdOwner = (held) => {
+    const assertLease = lease.captureCurrentOwner(held);
+    let first: { error: unknown } | undefined;
+    const assertCurrent = () => {
+      if (first !== undefined) throw first.error;
+      assertLease();
+      if (!coldModel.generationCurrent) throw new Error('SYNTHETIC_COLD_IMPORT_OWNER_STALE');
+    };
+    assertCurrent();
+    return {
+      assertCurrent,
+      // Modeled reservation only, independent of revoked mutation authority.
+      async assertMainOwned() {
+        assertLease();
+        if (coldModel.childOwnsReservation) throw new Error('SYNTHETIC_COLD_IMPORT_MAIN_NOT_OWNED');
+      },
+      async assertRecoveryConflicts() {
+        assertCurrent();
+        if (coldModel.recoveryConflict) throw new Error('SYNTHETIC_COLD_IMPORT_RECOVERY_CONFLICT');
+      },
+      onUncertain(error) { first ??= { error }; },
+    };
+  };
   const journal = new MemoryWorkspaceBackupImportJournal(events, input.state === undefined ? undefined : value as WorkspaceBackupImportJournal);
   const rootStore = new MemoryWorkspaceBackupImportRootStore(events);
   rootStore.finalExists = input.published ?? false;
@@ -141,15 +178,48 @@ async function createFixture(kind: RecoveryKind, input: {
   const candidate = new RecordingWorkspaceBackupCandidate(events);
   const validatePublished = candidate.validatePublished.bind(candidate);
   vi.spyOn(candidate, 'validatePublished').mockImplementation(async (value) => {
-    const result = await validatePublished(value);
-    input.afterPublishedValidation?.();
-    return result;
+    coldModel.childOwnsReservation = true;
+    try {
+      const result = await validatePublished(value);
+      input.afterPublishedValidation?.();
+      return result;
+    } finally {
+      coldModel.childOwnsReservation = false;
+    }
   });
-  return { ...commonFixture, journal, rootStore,
-    recovery: new WorkspaceBackupImportRecovery({ ...base, backupCandidate: candidate,
+  return { ...commonFixture, registry, lease, journal, rootStore, coldModel, captureColdOwner,
+    recovery: new WorkspaceBackupImportRecovery({ ...base, registry, maintenanceLease: lease, captureColdOwner, backupCandidate: candidate,
       importJournal: journal, plaintextQuarantine: quarantine, rootStore }),
     failValidation: () => { candidate.failure = 'validatePublished'; },
   };
+}
+
+function changeRegistryAfterRecoveryReads(
+  registry: MemoryWorkspaceRegistry | MemoryWorkspaceBackupImportRegistry,
+  unchangedReads: number,
+  changed: Readonly<LocalWorkspaceRegistry> | undefined,
+): void {
+  if (registry instanceof MemoryWorkspaceBackupImportRegistry) {
+    const read = WorkspaceBackupImportColdContext.prototype.readRegistry;
+    // Keep the same logical read boundary while exercising actual selected guards.
+    vi.spyOn(WorkspaceBackupImportColdContext.prototype, 'readRegistry').mockImplementation(async function (this: WorkspaceBackupImportColdContext) {
+      if (unchangedReads-- === 0) registry.value = changed;
+      return read.call(this);
+    });
+  } else {
+    const expected = registry.value;
+    const read = vi.spyOn(registry, 'read').mockResolvedValue(changed);
+    for (let index = 0; index < unchangedReads; index++) read.mockResolvedValueOnce(expected);
+  }
+}
+
+function expectReadBeforeRemoval(events: readonly string[], event: string, kind: RecoveryKind): void {
+  const removal = events.indexOf('journal.remove');
+  expect(removal).toBeGreaterThan(-1);
+  // Cold import also rechecks authority after removal; retain the pre-removal proof.
+  const reads = kind === 'import' ? events.slice(0, removal) : events;
+  expect(reads.lastIndexOf(event)).toBeGreaterThan(-1);
+  expect(reads.lastIndexOf(event)).toBeLessThan(removal);
 }
 
 describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
@@ -198,7 +268,7 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     expect(fixture.registry.value?.formatVersion).toBe(2);
     expect(fixture.journal.current).toBeUndefined();
     expect(fixture.events).not.toContain('lifecycle.ensure');
-    expect(fixture.events.lastIndexOf('runtimeAbsence.assert')).toBeLessThan(fixture.events.indexOf('journal.remove'));
+    expectReadBeforeRemoval(fixture.events, 'runtimeAbsence.assert', kind);
     await expect(fixture.recovery.recover()).resolves.toBe('nothingToRecover');
     expect(fixture.lease.held).toBe(false);
   });
@@ -314,7 +384,7 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     expect(fixture.registry.value?.activeWorkspaceId).toBe(fixture.previousId);
     expect(fixture.journal.current).toBeUndefined();
     expect(fixture.events).not.toContain('lifecycle.ensure');
-    expect(fixture.events.lastIndexOf('registry.read')).toBeLessThan(fixture.events.indexOf('journal.remove'));
+    expectReadBeforeRemoval(fixture.events, kind === 'import' ? 'registry.inspect' : 'registry.read', kind);
     const registry = fixture.registry.value;
     await expect(fixture.recovery.recover()).resolves.toBe('nothingToRecover');
     expect(fixture.registry.value).toEqual(registry);
@@ -352,7 +422,7 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
       const validationEvent = kind === 'creation' ? 'publishedValidation.run' : 'candidate.validatePublished';
       expect(fixture.events.indexOf('root.inspectPublished')).toBeLessThan(fixture.events.indexOf(validationEvent));
       expect(fixture.events.indexOf(validationEvent)).toBeLessThan(fixture.events.indexOf('registry.write'));
-      expect(fixture.events.lastIndexOf('runtimeAbsence.assert')).toBeLessThan(fixture.events.indexOf('journal.remove'));
+      expectReadBeforeRemoval(fixture.events, 'runtimeAbsence.assert', kind);
       expect(fixture.events).not.toContain('lifecycle.ensure');
       expect(fixture.journal.current).toBeUndefined();
       expect(fixture.lease.held).toBe(false);
@@ -550,8 +620,7 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     const fixture = await createFixture(kind, { state: 'registryPublished', published: true, registryPublished: true });
     const expected = fixture.registry.value!;
     const changed = { ...expected, activeWorkspaceId: fixture.targetEntry.workspaceId };
-    vi.spyOn(fixture.registry, 'read').mockResolvedValue(changed)
-      .mockResolvedValueOnce(expected).mockResolvedValueOnce(expected);
+    changeRegistryAfterRecoveryReads(fixture.registry, 2, changed);
     await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
     expect(fixture.journal.current?.state).toBe('registryPublished');
   });
@@ -589,7 +658,7 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
             ...(change === 'lineage' ? { lineageIdentity: { formatVersion: 1 as const, profileId: 'c'.repeat(64) } } : {}),
           }),
       };
-      vi.spyOn(fixture.registry, 'read').mockResolvedValue(changed).mockResolvedValueOnce(expected);
+      changeRegistryAfterRecoveryReads(fixture.registry, 1, changed);
       await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
       expect(fixture.journal.current?.state).toBe('registryPublished');
       expect(fixture.events).not.toContain('journal.remove');
@@ -621,5 +690,6 @@ describe.each(['creation', 'import'] as const)('%s cold recovery', (kind) => {
     await expect(fixture.recovery.recover()).rejects.toMatchObject({ code: errorCode });
     expect(fixture.quarantine.stalePayloadCount).toBe(1);
     expect(fixture.events).not.toContain('journal.read');
+    expect(fixture.events).not.toContain('journal.inspect');
   });
 });

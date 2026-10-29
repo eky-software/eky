@@ -3401,6 +3401,44 @@ describe('desktop restore startup composition', () => {
     },
   );
 
+  it.for(['prepared', 'rootPublished'] as const)(
+    'retires the observed cold import binding through main after $0 recovery', async (state, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, skipRestore: true, completeStartup: true,
+        }));
+        const pending = await prepareColdJournal(fixture.root, 'import', { state });
+        const binding = captureWorkspaceRemnantBinding({ formatVersion: 1, owner: 'workspaceImport',
+          operationId: pending.value.operationId, workspaceId: pending.value.workspaceId,
+          lineageIdentity: { formatVersion: 1, profileId: foreignProfileId } });
+        const store = new WorkspaceRemnantBindingStore(fixture.root, workspaceRemnantBindingKey(binding));
+        // Fixture setup owns these synthetic files before main acquires startup.
+        const setupLease = new InMemoryWorkspaceMaintenanceLease();
+        const held = await setupLease.acquire('import');
+        const assertAuthority = setupLease.captureCurrentOwner(['import'], held);
+        await store.publish(binding, { assertAuthority, async assertExternalSelection() { assertAuthority(); } });
+        await held.release();
+        const operations = installCompletedColdCandidate();
+        const database = await readFile(fixture.databasePath);
+        const pdf = await readFile(fixture.pdfPath);
+        const lifecycle = await lifetime.step('startup', () => fixture.start());
+        try {
+          expect(lifecycle).toBeDefined();
+          expect(operations).toEqual(state === 'prepared' ? [] : ['validatePublished']);
+          await expect(pending.journal.read()).resolves.toBeUndefined();
+          const slots = createWorkspaceRemnantBindingPaths(fixture.root, workspaceRemnantBindingKey(binding));
+          for (const slot of ['currentPath', 'backupPath', 'nextPath'] as const) {
+            await expect(readFile(slots[slot])).rejects.toMatchObject({ code: 'ENOENT' });
+          }
+          await expect(readFile(fixture.databasePath)).resolves.toEqual(database);
+          await expect(readFile(fixture.pdfPath)).resolves.toEqual(pdf);
+          expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+        } finally { await lifecycle?.shutdown(); }
+      });
+    },
+  );
+
   describe.each(['creation', 'import'] as const)('cold %s production wiring', (kind) => {
     it.each([
       { terminal: 'completed', state: 'rootPublished', duplicateLabel: false },

@@ -1,9 +1,12 @@
 import { resolve } from 'node:path';
 import type { CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
+import type { ObservedRecoveryAuthority, ObservedRecoverySelection } from '../persistence/crashSafeObservedRecovery.js';
 import { sameCrashSafeFileSlotIdentity, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import { serializeWorkspaceRegistry } from '../registry/workspaceRegistrySerializer.js';
+import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
 import { createRecordingImportOwner } from './workspaceBackupImportOwnerTestSupport.js';
+import type { ColdImportJournalPort, ColdImportRegistryPort } from './workspaceBackupImportColdOwner.js';
 
 import type {
   WorkspaceMaintenanceLease,
@@ -269,7 +272,7 @@ export class RecordingImportMaintenanceLease
 }
 
 export class MemoryWorkspaceBackupImportJournal
-  implements WorkspaceBackupImportJournalStore {
+  implements WorkspaceBackupImportJournalStore, ColdImportJournalPort {
   current: Readonly<WorkspaceBackupImportJournal> | undefined;
   readonly states: WorkspaceBackupImportJournal['state'][] = [];
   readonly writes: Readonly<WorkspaceBackupImportJournal>[] = [];
@@ -341,6 +344,14 @@ export class MemoryWorkspaceBackupImportJournal
     assertCurrent?.(); return { current, next: undefined, backup: undefined };
   }
 
+  inspectRecoverySelection(assertCurrent: () => void) {
+    return inspectMemoryImportRecoverySelection(check => this.inspectSlots(check), assertCurrent);
+  }
+
+  recoverObservedSelection(selection: ObservedRecoverySelection, authority: ObservedRecoveryAuthority) {
+    return recoverMemoryImportObservedSelection(() => this.inspectSlots(), selection, authority);
+  }
+
   async writeSelected(value: unknown, selection: CrashSafeByteSlotSelection) {
     const next = validateWorkspaceBackupImportJournal(value);
     await assertMemorySelection(() => this.inspectSlots(), selection);
@@ -365,7 +376,7 @@ export class MemoryWorkspaceBackupImportJournal
 }
 
 export class MemoryWorkspaceBackupImportRegistry
-  implements WorkspaceRegistryPort {
+  implements WorkspaceRegistryPort, ColdImportRegistryPort {
   failRead = false;
   failWriteBefore = false;
   failWriteAfter = false;
@@ -399,20 +410,95 @@ export class MemoryWorkspaceBackupImportRegistry
       identity: memoryImportIdentity(this.revision, serializeWorkspaceRegistry(this.value).byteLength) };
     assertCurrent?.(); return { current, next: undefined, backup: undefined };
   }
+
+  inspectRecoverySelection(assertCurrent: () => void) {
+    return inspectMemoryImportRecoverySelection(check => this.inspectSlots(check), assertCurrent);
+  }
+
+  recoverObservedSelection(selection: ObservedRecoverySelection, authority: ObservedRecoveryAuthority) {
+    return recoverMemoryImportObservedSelection(() => this.inspectSlots(), selection, authority);
+  }
+
+  async writeSelected(value: unknown, selection: CrashSafeByteSlotSelection) {
+    const next = validateWorkspaceRegistry(value);
+    await assertMemorySelection(() => this.inspectSlots(), selection);
+    if (this.value?.formatVersion === 2 && next.formatVersion === 1) throw new Error('registry');
+    const bytes = serializeWorkspaceRegistry(next);
+    const identity = memoryImportIdentity(this.revision + 1, bytes.byteLength);
+    await this.write(next);
+    selection.assertAuthority(); await selection.assertExternalSelection(); selection.assertAuthority();
+    if (!this.value || !sameCrashSafeFileSlotIdentity(identity, memoryImportIdentity(this.revision, serializeWorkspaceRegistry(this.value).byteLength)) ||
+        !Buffer.from(bytes).equals(Buffer.from(serializeWorkspaceRegistry(this.value)))) throw new Error('SYNTHETIC_REGISTRY_RECEIPT_INVALID');
+    return identity;
+  }
 }
 
 export function memoryImportIdentity(revision: number, size: number): Readonly<CrashSafeFileSlotIdentity> {
   return Object.freeze({ dev: 1, ino: revision, size, mtimeMs: revision, ctimeMs: revision });
 }
 
-async function assertMemorySelection(read: () => ReturnType<MemoryWorkspaceBackupImportJournal['inspectSlots']>, selection: CrashSafeByteSlotSelection) {
+type MemoryImportSlots<T> = Readonly<Record<keyof ObservedRecoverySelection['identities'],
+  Readonly<{ value: T; bytes: Uint8Array; identity: Readonly<CrashSafeFileSlotIdentity> }> | undefined>>;
+
+// Clean-current model only. Real side-slot repair remains a file-store test concern.
+async function inspectMemoryImportRecoverySelection<T>(
+  read: (assertCurrent: () => void) => Promise<MemoryImportSlots<T>>,
+  assertCurrent: () => void,
+): Promise<ObservedRecoverySelection & Readonly<{ value: T | undefined }>> {
+  assertCurrent();
+  const slots = await read(assertCurrent);
+  assertCurrent();
+  if (slots.next !== undefined || slots.backup !== undefined) throw new Error('SYNTHETIC_IMPORT_SIDE_SLOTS_UNSUPPORTED');
+  const current = slots.current;
+  return Object.freeze({
+    source: current === undefined ? undefined : 'current',
+    bytes: current === undefined ? undefined : Uint8Array.from(current.bytes),
+    identities: Object.freeze({ current: current === undefined ? undefined : Object.freeze({ ...current.identity }), next: undefined, backup: undefined }),
+    value: current?.value,
+  });
+}
+
+async function recoverMemoryImportObservedSelection<T>(
+  read: () => Promise<MemoryImportSlots<T>>,
+  observation: ObservedRecoverySelection,
+  authority: ObservedRecoveryAuthority,
+) {
+  const assertAuthority = authority.assertAuthority.bind(authority);
+  const assertExternalSelection = authority.assertExternalSelection.bind(authority);
+  const onUncertain = authority.onUncertain.bind(authority);
+  try {
+    assertAuthority();
+    if (observation.source !== 'current' || observation.bytes === undefined || observation.identities.current === undefined ||
+        observation.identities.next !== undefined || observation.identities.backup !== undefined ||
+        observation.identities.current.ino === 0 || observation.bytes.byteLength < 1 ||
+        observation.bytes.byteLength !== observation.identities.current.size) throw new Error('SYNTHETIC_SELECTED_JOURNAL_CHANGED');
+    const bytes = Uint8Array.from(observation.bytes);
+    const identity = Object.freeze({ ...observation.identities.current });
+    const selection = { assertAuthority, assertExternalSelection,
+      expectedSlots: { current: bytes, next: undefined, backup: undefined },
+      expectedIdentities: { current: identity, next: undefined, backup: undefined } };
+    await assertMemorySelection(read, selection);
+    const slots = await assertMemorySelection(read, selection);
+    assertAuthority();
+    if (slots.current === undefined) throw new Error('SYNTHETIC_SELECTED_JOURNAL_CHANGED');
+    return Object.freeze({ bytes, identity, value: slots.current.value });
+  } catch (error) {
+    try { onUncertain(error); } catch { /* Preserve the recovery failure. */ }
+    throw error;
+  }
+}
+
+async function assertMemorySelection<T>(read: () => Promise<MemoryImportSlots<T>>, selection: CrashSafeByteSlotSelection) {
   selection.assertAuthority(); await selection.assertExternalSelection(); selection.assertAuthority();
   const slots = await read(); selection.assertAuthority();
-  if (selection.expectedSlots.next !== undefined || selection.expectedSlots.backup !== undefined ||
-      (slots.current === undefined ? selection.expectedSlots.current !== undefined :
+  if (slots.next !== undefined || slots.backup !== undefined ||
+      selection.expectedSlots.next !== undefined || selection.expectedSlots.backup !== undefined ||
+      selection.expectedIdentities.next !== undefined || selection.expectedIdentities.backup !== undefined ||
+      (slots.current === undefined ? selection.expectedSlots.current !== undefined || selection.expectedIdentities.current !== undefined :
         selection.expectedSlots.current === undefined || selection.expectedIdentities.current === undefined ||
         !Buffer.from(slots.current.bytes).equals(Buffer.from(selection.expectedSlots.current)) ||
         !sameCrashSafeFileSlotIdentity(slots.current.identity, selection.expectedIdentities.current))) throw new Error('SYNTHETIC_SELECTED_JOURNAL_CHANGED');
+  return slots;
 }
 
 export class RecordingWorkspaceBackupContainer

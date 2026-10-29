@@ -28,6 +28,7 @@ import { WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImpo
 import { NodeWorkspaceBackupImportRootStore } from '../import/workspaceBackupImportRootStore.js';
 import { WorkspaceBackupImportBinding } from '../import/workspaceBackupImportBinding.js';
 import type { WorkspaceBackupImportOwner } from '../import/workspaceBackupImportOwner.js';
+import type { CaptureWorkspaceBackupImportColdOwner } from '../import/workspaceBackupImportColdOwner.js';
 import { WorkspaceBackupPlaintextQuarantine } from '../import/workspaceBackupPlaintextQuarantine.js';
 import type {
   InMemoryWorkspaceMaintenanceLease,
@@ -149,6 +150,7 @@ export async function recoverWorkspaceManagementBeforeRuntime(
   options: Readonly<WorkspaceCandidateCompositionOptions & {
     admission: WorkspaceColdRecoveryAdmission;
     assertRecoveryAdmission(): Promise<void>;
+    captureColdImportOwner: CaptureWorkspaceBackupImportColdOwner;
     maintenanceLease: WorkspaceMaintenanceLease;
     userDataRoot: string;
     workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
@@ -189,6 +191,7 @@ export async function recoverWorkspaceManagementBeforeRuntime(
   } else {
     await new WorkspaceBackupImportRecovery({
       ...shared,
+      captureColdOwner: options.captureColdImportOwner,
       importJournal: new WorkspaceBackupImportJournalStore({
         installationRoot: options.userDataRoot,
         filePath: join(options.userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME),

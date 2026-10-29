@@ -224,7 +224,8 @@ import { createWorkspaceManagementComposition, recoverWorkspaceManagementBeforeR
 import { createWorkspaceDeletionConfirmations } from '../workspaces/management/createWorkspaceDeletionConfirmations.js';
 import type { WorkspaceDeletionPreparationOptions } from '../workspaces/management/workspaceDeletionPreparation.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../workspaces/management/workspaceManagementOperationGuard.js';
-import { assertNoSelectorWorkspaceRecoveryFromRoot, readColdWorkspaceRecoveryAdmissionFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
+import { assertNoSelectorWorkspaceRecoveryFromRoot, readColdWorkspaceRecoveryAdmissionFromRoot,
+  assertColdImportRecoveryConflictsFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
 import type { WorkspaceColdRecoveryAdmission } from '../workspaces/runtime/workspaceColdRecoveryAdmission.js';
 import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistryStore.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../workspaces/registry/workspaceRegistryPaths.js';
@@ -675,8 +676,27 @@ export async function startDesktopComposition(
         assertAuthority: assertStartupAuthority,
       });
     let preWorkspaceBuildAdmission = await readBuildAdmission();
+    let coldImportUncertain = false;
     await recoverWorkspaceManagementBeforeRuntime({
       admission: coldRecoveryAdmission,
+      captureColdImportOwner(held) {
+        const assertLease = workspaceMaintenanceLease.captureCurrentOwner(['import'], held);
+        const assertCurrent = () => {
+          assertStartupAuthority(); assertLease();
+          if (coldImportUncertain) throw new WorkspaceManagementRecoveryRequiredError();
+        };
+        assertCurrent();
+        return {
+          assertCurrent,
+          assertMainOwned: workspaceReservation.assertMainOwned,
+          async assertRecoveryConflicts({ journal, registry }) {
+            assertCurrent();
+            await assertColdImportRecoveryConflictsFromRoot(options.userDataPath, journal, registry);
+            assertCurrent();
+          },
+          onUncertain() { coldImportUncertain = true; },
+        };
+      },
       async assertRecoveryAdmission() {
         assertStartupAuthority();
         await workspaceReservation.assertMainOwned();

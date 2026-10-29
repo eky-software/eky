@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, readdir, rm, symlink, writeFile } from 'node:
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi, type TestContext } from 'vitest';
 
 import { createProfileSnapshotRuntimePaths } from '../../profileBackup/profileSnapshotRuntimePaths.js';
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
@@ -24,9 +24,13 @@ import { createWorkspaceSwitchJournalPaths } from '../switch/workspaceSwitchJour
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
 import {
   assertColdWorkspaceRecoveryAdmissionFromRoot,
+  assertColdImportRecoveryConflictsFromRoot,
   readColdWorkspaceRecoveryAdmissionFromRoot,
 } from './workspaceColdRecoveryAdmissionComposition.js';
 import * as admission from './workspaceColdRecoveryAdmission.js';
+import * as journalSlots from '../persistence/readOnlyJournalSlots.js';
+import { validateWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalValidation.js';
+import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
 
 const roots: string[] = [];
 const target = validateWorkspaceId('11111111-1111-4111-8111-111111111111');
@@ -40,9 +44,12 @@ afterEach(async () => {
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
-async function createFixture() {
+async function createFixture(context?: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-cold-admission-composition-'));
-  roots.push(root);
+  if (context) context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') await rm(root, { recursive: true, force: true });
+  });
+  else roots.push(root);
   const creation = createWorkspaceCreationJournalPaths(
     root, join(root, WORKSPACE_CREATION_JOURNAL_FILE_NAME),
   );
@@ -131,6 +138,80 @@ function restoreJournal(root: string, id?: typeof target): string {
   return createProfileSnapshotRuntimePaths(createDesktopProfilePaths(profile).runtimeRoot)
     .restoreActivationJournalPath;
 }
+
+describe('selected cold import foreign-conflict census', () => {
+  it.for(['creation', 'import'] as const)('joins initial presence reads before rejecting a failed %s observation', async (kind, context) => {
+    const fixture = await createFixture(context);
+    const failing = kind === 'creation' ? fixture.creation : fixture.importBackup;
+    const delayed = kind === 'creation' ? fixture.importBackup : fixture.creation;
+    let finish!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    vi.spyOn(journalSlots, 'hasAnyJournalSlot').mockImplementation(async paths => {
+      if (paths.currentPath === failing.currentPath) throw new Error('SYNTHETIC_PRESENCE_FAILURE');
+      if (paths.currentPath === delayed.currentPath) { entered(); await gate; }
+      return false;
+    });
+    let settled = false;
+    const result = fixture.read().then(() => { settled = true; return undefined; }, error => { settled = true; return error as Error; });
+    try { await began; await new Promise<void>(resolve => setImmediate(resolve)); expect(settled).toBe(false); }
+    finally { finish(); }
+    expect(await result).toMatchObject({ message: required });
+  });
+
+  it('does not reread or repair its own partial metadata', async context => {
+    const fixture = await createFixture(context);
+    await put(fixture.importBackup.nextPath, '{partial own write');
+    await put(fixture.registry.backupPath, 'own registry transition');
+    const before = await snapshot(fixture.root);
+    await expect(assertColdImportRecoveryConflictsFromRoot(fixture.root,
+      validateWorkspaceBackupImportJournal(journal()), validateWorkspaceRegistry(registryValue())))
+      .resolves.toBeUndefined();
+    expect(await snapshot(fixture.root)).toEqual(before);
+  });
+
+  it.for(['creation', 'switch', 'migration', 'targetRestore', 'passiveRestore', 'replacement'] as const)(
+    'rejects and preserves a newly observed $0 owner', async (owner, context) => {
+      const fixture = await createFixture(context);
+      const path = owner === 'creation' ? fixture.creation.nextPath
+        : owner === 'switch' ? createWorkspaceSwitchJournalPaths(fixture.root).nextPath
+        : owner === 'migration' ? createWorkspaceFirstStartMigrationJournalPaths(fixture.root).nextPath
+        : owner === 'targetRestore' ? restoreJournal(fixture.root, target)
+        : owner === 'passiveRestore' ? restoreJournal(fixture.root, passive)
+        : deriveWorkspaceBackupReplacementRuntimePaths(fixture.root, target).activationJournalPath;
+      await put(path, 'foreign unresolved operation');
+      const before = await snapshot(fixture.root);
+      await expect(assertColdImportRecoveryConflictsFromRoot(fixture.root,
+        validateWorkspaceBackupImportJournal(journal()), validateWorkspaceRegistry(registryValue())))
+        .rejects.toThrow(required);
+      expect(await snapshot(fixture.root)).toEqual(before);
+    },
+  );
+
+  it('joins already started sibling observations before rejecting a failed census', async context => {
+    const fixture = await createFixture(context);
+    let finish!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    vi.spyOn(journalSlots, 'hasAnyJournalSlot').mockImplementation(async paths => {
+      if (paths.currentPath === createWorkspaceLegacyAdoptionJournalPaths(fixture.root).currentPath) {
+        throw new Error('SYNTHETIC_FIRST_CENSUS_FAILURE');
+      }
+      if (paths.currentPath === createWorkspaceFirstStartMigrationJournalPaths(fixture.root).currentPath) {
+        entered(); await gate;
+      }
+      return false;
+    });
+    vi.spyOn(journalSlots, 'hasTerminalJournalConflict').mockResolvedValue(false);
+    let settled = false;
+    const result = assertColdImportRecoveryConflictsFromRoot(fixture.root,
+      validateWorkspaceBackupImportJournal(journal()), validateWorkspaceRegistry(registryValue()))
+      .then(() => { settled = true; return undefined; }, error => { settled = true; return error as Error; });
+    try { await began; await new Promise<void>(resolve => setImmediate(resolve)); expect(settled).toBe(false); }
+    finally { finish(); }
+    expect(await result).toMatchObject({ message: required });
+  });
+});
 
 describe('cold recovery admission composed from the main-owned root', () => {
   it('does not create missing roots or inspect unrelated recovery without an owner', async () => {

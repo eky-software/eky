@@ -41,7 +41,7 @@ sulun sekä hallitun peruutuspaluun. **Varsinaista poistokanavaa, preload-
 metodia tai poistopainiketta ei ole avattu.** Hyväksytty valmistelu ei
 ole yrityksen poiston `completed`-tulos.
 
-**W7.4:n nykyinen checkpoint 29.10.2026:** A:n journal-, inventaario- ja
+**W7.4:n nykyinen checkpoint 30.10.2026:** A:n journal-, inventaario- ja
 sidontatallennus on toteutettu. B:n replacement- ja live-import-liitokset sekä
 palautuksen vaiheomistajien kytkentä on todennettu kohdetesteillä; muut B:n omistajat ja
 koko ketjun integraatio ovat kesken. Omistavat sopimukset:
@@ -148,25 +148,34 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   laajene. Kymmenen tiedoston 343 testiä, tyypitys ja rajattu katselmus
   läpäisivät; yksi POSIX-kohtainen vartijatesti odottaa Linux-ajoa.
   Tämä ei vielä anna porteille cold-omistajan todellista valtuutta.
-- **Seuraava työ:** kytke B:n importin
+- B:n importin
   [kylmäpalautuksen omistajuussopimus](local-company-workspace-plan.md#tuonnin-kylmäpalautuksen-omistajuussopimus)
-  nykyisiin recovery-/binding-/karanteeniomistajiin ja sitten main-ketjuun.
-  Uuden käynnistyksen todennettu alkuvalinta erotetaan oman muutoksen
-  kuittauksesta. Vanha next-only- ja katkenneen sivuslotin palautuminen
-  säilyy; live-sidonnan kuittia ei rakenneta jälkikäteen.
-  Rajattu 33 tapauksen tiedostokoe, nykyiset 404 kontrollitestiä ja
-  riippumaton sopimuskatselmus läpäisivät. Koe mallinsi mainin ja
-  runtime-poissaolon, ei tuotantokytkentää.
-  Säilytä tuettu
-  sidonnaton v2-palautus riippumattomine C/R18-todisteineen; puuttuva sidonta
-  ei anna W7-poistovaltuutta eikä osittaista sidontaa ohiteta.
+  on kytketty nykyiseen recoveryyn ja management/mainiin. Käynnistyksen
+  täsmällinen lease ja sukupolvi, havaittu alkuvalinta sekä omien muutosten
+  kuittaukset ovat erillisiä todisteita. Sidonta poistuu vasta payloadin
+  sulun ja poissaolon jälkeen, journal viimeisenä. Vanha sidonnaton v2,
+  slottipalautus, rekisteriversiot ja historialliset nimet säilyvät.
+  Kirjoittajan sisällä havaittu ensivirhe talletetaan ennen tallentimen
+  virhemuunnosta; vapautusvirhe ei peitä sitä. Jo aloitetut alkuluvut ja
+  vieraan recoveryn havainnot odotetaan loppuun myös virheessä.
+  Yhtenäinen 28 tiedoston sarja läpäisi 741 testiä; yksi POSIX-testi odottaa
+  Linux-todennusta. Desktopin tyypitys läpäisi. Oikeiden tiedostojen kokeet
+  kattavat myös kadonneet kuittaukset ja muuttuneessa valinnassa säilyvän
+  aineiston. Prosessirajat ovat niissä mallinnettuja, eivät native-näyttöä.
+  Pääprosessin 43 valittua käynnistys-/palautustestiä, E2E:n tyypitys ja
+  rajattu riippumaton katselmus läpäisivät. Valitsemattomat testit eivät ole
+  tämän kohdeajon läpäisyjä. Katselmuksen ensivirhelöydös korjattiin ja
+  todennettiin oikean tallentimen sisältä laukeavilla virheillä.
+- **Seuraava työ:** todenna kylmäimportin todellinen prosessi-/restart-ketju
+  ja yhteinen palautusportti. Puuttuva sidonta ei anna W7-poistovaltuutta
+  eikä osittaista sidontaa ohiteta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
   paluun. Sen porttien ja tiedostokokeiden aiemmat checkpointit säilyvät
   omistavassa suunnitelmassa. Koko operaatiokansion poissaolotarkistus ei
   korvaa kirjoittajien päättymistodistusta; POSIX-kohtainen porttitodennus
-  vaatii edelleen Linux-ajon. Live-kytkennän näyttö on yllä; kylmäpalautus,
-  uusi puhdas paketti ja PR/main-portit eivät ole vielä hyväksyttyjä.
+  vaatii edelleen Linux-ajon. Live-kytkennän näyttö on yllä; kylmäpalautuksen
+  prosessi-/pakettinäyttö ja PR/main-portit eivät ole vielä hyväksyttyjä.
   Nykyinen B:n
   activation-migration-toteutuscheckpoint noudattaa
   [omistavan sopimuksen](local-company-workspace-plan.md#w74-b-activation-migrationin-vaihekohtainen-sidonta)

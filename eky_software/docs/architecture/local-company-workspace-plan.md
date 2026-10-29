@@ -5339,6 +5339,44 @@ Cold-recoveryn ja mainin on vielä
 annettava näille porteille todellinen operaatiovaltuus. Tämä checkpoint ei
 todista niiden tuotantokytkentää tai koko W7.4:n hyväksyntää.
 
+**Recovery-/main-kytkennän checkpoint 30.10.2026:** nykyinen
+`WorkspaceBackupImportRecovery` kaappaa pakollisen cold-omistajan heti
+leasen hankinnan jälkeen. Main antaa täsmällisen kahvan ja startup-sukupolven;
+fyysinen main-varaus tarkistetaan erikseen candidate-työn ulkopuolella.
+Rajattu `WorkspaceBackupImportColdContext` säilyttää tämän operaation
+havaitut journal-/rekisteri-/binding-valinnat ja omien muutosten kuittaukset.
+Se ei valitse uusia palautushaaroja tai korvaa nykyistä recovery-omistajaa.
+
+Cold käyttää nyt havaintoon sidottua korjausta sekä nykyisiä selected-write-
+portteja, readonly-jatkolukijaa ja root-/karanteeniomistajien muutosvartijoita.
+Muiden palautusoperaatioiden ristiriitatarkistus on yhteinen main-admissionin
+kanssa; oman aktiivisen tallentimen slotteja ei lueta sen ulkovartijassa.
+Kaikki käynnistetyt alkuluvut ja vieraan recoveryn havainnot päättyvät ennen
+hylkäyksen palautumista. Sidonnan kaikkien slottien ehto välitetään sen omaan
+loppupoistoon. Sidonnaton v2 ei saa keksittyä julkaisukuittia tai bindingia.
+
+Store-rajan callback kaappaa ensimmäisen vartijavirheen ennen tallentimen
+turvallista virhemuunnosta. Menetetty kuittaus sulkee vanhan kontekstin;
+uusi riippumattomasti hyväksytty käynnistys voi arvioida levyllä säilyneen
+tilan uudelleen. Varauksen vapautus vaatii alkuperäisen työn päättymisen ja
+erillisen fyysisen omistajuustodisteen myös epävarmassa virhepolussa.
+Vapautusvirhe ei korvaa ensivirhettä. Tavallisen `running`-palautuksen
+haaravalinnat ja kutsusopimukset säilyvät.
+
+Yhtenäinen 28 tiedoston sarja läpäisi 741 testiä; yksi POSIX-testi odottaa
+Linux-todennusta. Desktopin tyypitys läpäisi. Sarjan 13 uutta tiedostokoetta
+käyttävät oikeita journal-/rekisteri-/binding-, root- ja karanteenitavuja;
+ne kattavat myös selected-writen sisäisen vartijavirheen, kadonneen
+kuittauksen, keskeneräisen työn ja erillisen vapautusvirheen. Pääprosessin
+43 valittua käynnistys-/palautustestiä, E2E:n tyypitys ja rajattu riippumaton
+katselmus läpäisivät. Katselmuksessa löytynyt ensivirheen muunnos korjattiin
+ja tarkistettiin oikean selected-writen sisällä laukeavalla ristiriidalla;
+katselmoija ei ajanut testejä itsenäisesti. Prosessiomistaja on näissä
+mallinnettu. Valitsemattomia testejä ei lasketa läpäisyiksi, ja aiemmat sarjat
+ovat päällekkäisiä, eivät lisäkattavuutta.
+Native-/SQLite-/pakettipalautus ja W7.4:n PR/main-portit ovat edelleen auki;
+W7.5 pysyy suljettuna.
+
 ##### W7.4 B: replacement-sidonnan valtuus ja epävarma tulos
 
 **Ensimmäinen toteutusosa (checkpoint-historia):** `WorkspaceBackupReplacementBinding` kaappaa
