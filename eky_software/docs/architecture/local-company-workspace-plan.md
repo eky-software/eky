@@ -3331,11 +3331,126 @@ Vanhan valmistelun ja siivouksen luku-/muutosjärjestys säilyy. Yhtenäinen
 riippumaton katselmus läpäisivät. Tämä on tuotantoon tulevan kopioportin
 tukiosa, ei vielä pysyvän inspection-sidonnan julkaisu tai native-/pakettinäyttö.
 
-Seuraava kytkentä erottaa nimettyjen kutsujien tunnetun kohteen kohteettomasta
-backup-ennakkotarkistuksesta. `runOwnedProfileInspection` säilyttää nykyisen
-prepare/grant/exit-järjestyksen; epävarma sidontakirjoitus ei saa muuttua
-kopion tai sidonnan siivousluvaksi. Kutsujakohtainen kohteen alkuperä,
-valtuus ja alkuperäisen main-I/O:n päättyminen todetaan ennen tätä kytkentää.
+##### Tarkistuskopion kutsuja- ja vaihevaltuus
+
+**30.10.2026, lähteestä tarkennettu toteutussopimus; kytkentä ja sen näyttö
+ovat vielä kesken.** Tämä täsmentää yllä olevaa inspection-sopimusta, ei
+muuta backup-formaattia, alkuperäisen aineiston puuttumisen käsittelyä tai
+W7.4:n hyväksyntäportteja. Sidonta kuvaa tarkistustyön todistettua kohdetta,
+ei todista vielä tarkistettavan sisällön eheyttä tai anna poistolupaa.
+
+**Kohde ennen valmistelua.** `runOwnedProfileInspection` ja sen kolme
+runneria saavat pakollisen mainin sisäisen valinnan: joko nimenomaisesti
+kohteeton tai muuttumaton `workspaceId`/lineage sekä sen nykyinen
+readonly-valtuustarkistus. Puuttuva argumentti ei tarkoita kohteetonta.
+Sidotun valinnan tarkistusvirhe ei saa vaihtaa haaraa kohteettomaksi.
+Kohdetta ei päätellä polusta, nimestä, migration-policysta, aktiivisen
+profiilin tunnisteesta tai lapsen myöhemmästä tuloksesta. Valinta ei kulje
+rendererille tai inspection-protokollaan; nykyinen sidontaformaatti säilyy.
+Main antaa nykyisen sidontastoren käyttäjäasennuksen validoidusta juuresta;
+inspection-operaation erillinen aineistojuuri ei korvaa tätä metadatajuurta.
+
+| Nykyinen kutsuja | Kohteen lähde ja säilyvä raja |
+| --- | --- |
+| `ProfileSnapshotInspectionClient.createSnapshot` | Mainin jo valitun yrityksen varmennettu registry-entry ja nykyinen broker-/runtime-sukupolvi. Lähdesnapshotin alkuperä ja valinta talletetaan sen omaan muistikirjaukseen ennen snapshot-pyyntöä; pelkkä kirjauksen olemassaolo ei todista alkuperää. |
+| Oman viennin tai palautuspisteen uudelleentarkistus | Lähteen nykyinen omistaja antaa samaan työhön rajatun validatorin, joka säilyttää lähteen todistetun valinnan ja eliniän. Uusi inspection-operation/generation säilyy erillisenä. Yleistä clientin kohdetta ei vaihdeta hetkeksi eikä ulkoista syötettä sidota vientipolun oletuksella. |
+| Käyttäjän backupin inspect/staging ja `inspectOwnedEncryptedProfileBackup` | Nimenomaisesti kohteeton ennen todistettua kohdevalintaa. `profileMatchesActive` on sisältövertailu, ei yrityskohteen omistajuus. Myöhempi kohdistettu aktivointitarkistus voi käyttää omaa tuoretta valintaansa, ei muuttaa aiemman tarkistuksen sidontaa takautuvasti. |
+| Mainin cold-forward, cold-original ja suljetun backendin rollback-original | `activeWorkspace.workspaceId` ja `registeredLineageIdentity` valitusta registry-entrystä, nykyisen palautusvaiheen valtuudella. `sourceWorkspaceId: null` ei tee valitsimessa valittua kohdetta tuntemattomaksi. Rollback käyttää todella valittua yritystä, ei sokeasti switch-journalin targetia. |
+| Vanhan työtilan adoption ennen todistettua lineagea | Nimenomaisesti kohteeton. `assertCanAccept` tai palautusjournal ei tuota puuttuvaa registry-lineagea. Hyväksytyn adoption jälkeinen uusi työ saa kohteen vasta nykyisestä hyväksytystä Main-/registry-kontekstista; vanhaa tarkistusta ei sidota jälkikäteen. |
+
+Main muodostaa cold-/original-valinnan molempiin nykyisiin
+`createProfileRestore*ContentAdmission`-tehtaisiin; ne välittävät sen
+runnerille. Tunnettu yrityskohde säilyy, vaikka original-DB puuttuu.
+Tuntemattoman originalin lineagea ei lainata palautettavasta candidatesta;
+nykyinen absent-tulos ja sisältövalidoinnin puuttuvan DB:n haara säilyvät.
+
+Replacement käyttää jo kaapattua `workspaceRestoreSelection`-valintaa.
+Tavallinen profile-restore käyttää valitun registry-entryn korjaamatonta
+slot-lukua, alkuperäistä kohdetta sekä nykyisen journalin ja vaiheen
+vartijoita. Se ei saa ottaa uutta maintenance-leasea valtuustarkistuksen
+sisällä eikä kutsua sisältöadmissionia uudelleen sidontastoren vartijasta.
+Valinnan lukija tarkistaa vain täsmälliset registry-/journal-havainnot;
+fyysisen vaiheen tarkistus kuuluu sen ulommalle omistajalle.
+Live-snapshotissa business-varauksen omistaa backend: sen
+nykyinen generation/granted-valtuus ja kohdevalinta ovat eri asia kuin
+inspection-operaation oma fyysinen varaus. Startup-vartijaa ei jatketa
+huomaamatta tavallisen runtimen eliniäksi. Kohteen vaihtuminen kesken
+työn hylkää työn; uusi luku ei vaihda kaapattua kohdetta.
+Kohteen readonly-tarkistus ei kapseloi valmistelun fyysistä porttia,
+työajan peruutusta, clientin uusien töiden admissionia tai päättynyttä
+työdeadlinea. Julkaisu ja exitin jälkeinen siivous yhdistävät saman kohteen
+omiin vaihevaltuuksiinsa. Siivous käyttää nykyistä siivousbudjettia ja
+palautuneen varauksen fyysistä valtuutta. Lähteen valinnan kaappaus ei aloita uutta
+rajaamatonta tiedostotyötä: inspectionin tuoreet luvut kuuluvat sen nykyiseen
+työbudjettiin ja alkuperäisten tehtävien sulkuseurantaan.
+
+**Nykyisen varausomistajan valmisteluportti.**
+`acquireDesktopWorkspaceReservation.bind` saa nykyiseen callbackiin
+kolmannen, async `assertPreparationOwned`-portin. Se tarkistaa saman
+transferin, `preparing`-vaiheen, keskeneräisen valmistelun, saman pidetyn
+varauksen, peruutuksen ja valtuuden ennen ja jälkeen alkuperäisen
+varauksen `assertOwned`-luvun. Vanhentunut callback hylätään ennen
+mahdollista nykyiseen omistajaan vaikuttavaa invalidointia. Portti ei
+kuluta grantia eikä jää käyttökelpoiseksi valmistelun jälkeen.
+Tavallinen `assertMainOwned` säilyy tiukkana: aktiivisen transferin aikana
+se ei kelpaa tämän portin korvikkeeksi. Muiden bind-kutsujien toiminta
+säilyy; ne eivät tarvitse uutta porttia, elleivät käytä sitä.
+
+**Julkaisu ja todellinen työn päättyminen.** `runOwnedProfileInspection`
+tekee nykyisen prepare-callbackin sisällä järjestyksessä kopion luonnin,
+alkuperäisen luontikuitin tyhjyys-/identiteettitarkistuksen, sidonnan
+julkaisun ja readbackin sekä tuoreen kohde-/valmisteluvaltuuden tarkistuksen.
+Sidontastore käyttää juuri tämän vaiheen fyysistä valmisteluporttia.
+Lapsen prepare/grant ja ensimmäinen kopiotavu seuraavat vasta tätä.
+Kohteeton haara käyttää nykyistä kopio-/prosessipolkua ilman sidontaa.
+
+Alkuperäinen publish-promise odotetaan callbackissa, ei vain siitä tehtyä
+timeout-wrapperia. Nykyinen `profileInspectionProcess` seuraa valmistelun
+ja grant-valtuutuksen alkuperäisiä tehtäviä sulussa. Julkaisun aloitus,
+onnistunut täsmällinen kuitti, tehtävän päättyminen ja epävarma vaikutus
+pidetään erillään. Kadonnut kuittaus säilyy epävarmana, vaikka current
+näkyisi levyllä. Myöhäinen onnistuminen ei avaa peruttua työtä uudelleen.
+Varausta ei mitätöidä pelkän sidontaepävarmuuden vuoksi ennen nykyisen
+lapsen stop/exit/reclaim-yritystä; epävarmuus sulkee silti grantin ja
+aineiston siivouksen. Aito varauksen menetys säilyttää nykyisen käsittelyn.
+
+**Siivous ja lopputulos.** Ensin todetaan lapsen poistuminen, alkuperäisten
+main-tehtävien päättyminen ja fyysisen varauksen palautuminen. Vain tunnettu
+julkaisutulos ja nykyinen kopio-omistaja voivat sallia oman kopion poiston.
+Sen jälkeen täsmällinen julkaistun sidonnan kuitti, kaikki slotit, saman
+vanhemman identiteetti ja payloadin tuore poissaolo sallivat nykyisen
+`clearAfterPayloadsAbsent`-metadataoperaation. Tämä vaihe ei enää vaadi
+poistetun kopiojuuren olemassaoloa. Epävarma julkaisu, keskeneräinen
+kirjoitus tai epävarma siivous säilyttää aineiston eikä anna ulommalle
+snapshot-/staging-siivoukselle poistovaltaa. Ensivirhe säilyy erillään
+sulkutuloksesta. Tulos hyväksytään vasta oman sulun jälkeen.
+
+**Toteutusjärjestys ja pienet näyttöportit:**
+
+1. Valmistelun fyysinen portti nykyiseen reservation-omistajaan ja tyyppeihin:
+   oikea preparing-vaihe, menetetty varaus, keskeytys, readin yli muuttunut
+   valtuus ja vanhan callbackin käyttö grantin/uuden omistajan aikana.
+2. Pakollinen bound/unbound-valinta ja sidonnan elinkaari nykyiseen runneriin:
+   oikeat slot-tavut ennen lapsen kirjoitusta, nykyinen onnistuva/kohteeton
+   haara, kaikki julkaisukatkot sekä kopion ja metadatan erilliset siivouskatkot.
+   Viivästetty alkuperäinen publish todistaa, ettei timeout/exit yksin salli
+   reclaimia, ulompaa poistoa tai uuden generationin aloittamista.
+   Tavallinen virhe-/close-kontrolli todistaa myös onnistuvan siivouksen,
+   kun työ on todella päättynyt ja kohde, julkaisutulos sekä varaus ovat varmat.
+3. Yllä nimetyt client-/Main-kutsujat nykyisillä elinkaarivartijoilla:
+   lähteen ja vieraan backupin erottelu, vaihdettu kohde, source-null,
+   original-absence, hyväksytty adoption sekä historialliset palautukset.
+   Menetetty sidontakuittaus säilytetään myös ulomman virhepolun jälkeen.
+4. Nykyisen Main-/inspection-/backend-fixturen oikea SQLite/prosessitodistus,
+   pakotetun ensivirheen nykyinen salattu lukuketju ja rajattu riippumaton
+   katselmus. Tämän jälkeen W7.4:n yhteiset paketti-/integraatioportit.
+
+Valmistelu ja työn tarkistukset käyttävät nykyistä samaa 35 sekunnin
+määräaikaa; siivous käyttää nykyisiä erillisiä sulkurajoja. Ei lisäaikaa,
+uutta manageria, kirjoitinta, protokollaa, yleistä lokitusta tai uutta
+palautuksen tilakonetta. Rajattu riippumaton lähdekatselmus ja sen sulkuvaltuuden
+täsmennyksen jälkitarkistus valmistuivat ilman tämän sopimuksen avoimia löydöksiä.
+Suunnitelma tai aiemmat kopioportin testit eivät korvaa näitä kytkentätodisteita.
 
 ##### Poiston backup-todisteen vastaavuus
 

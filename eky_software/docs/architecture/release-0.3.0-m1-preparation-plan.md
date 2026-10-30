@@ -192,7 +192,7 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   restart-ketjun läpi. Paketin ja sovellusosan tavuidentiteetit säilyivät.
   Nykyiset sisältö-, koko-, fuse- ja aikarajat säilyivät. Tämä on importin
   paikallinen pakettinäyttö, ei koko W7.4:n tai PR/main-porttien hyväksyntä.
-- **Seuraava työ:** B:n adoption- ja inspection-liitokset, sitten
+- **Seuraava työ:** B:n jäljellä olevat inspection-liitokset, sitten
   C:n W7.3-luovutus ja loput C-F-portit. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
   Adoption [omistajuussopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
@@ -234,8 +234,12 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   **Seuraavana** ovat jäljellä olevat B:n inspection-liitokset, sitten C-F.
   Inspection-kopion alkuperäinen muuttumaton luontikuitti ja readonly-
   tyhjyys-/identiteettiportti on toteutettu: 394 kohdetestiä, tyypitys ja
-  rajattu katselmus läpäisivät. Pysyvän sidonnan julkaisu ja kutsujakohtainen
-  kohdevalinta ovat edelleen auki; tukiosa ei korvaa niiden native-näyttöä.
+  rajattu katselmus läpäisivät. Pysyvän sidonnan julkaisun ja kutsujakohtaisen
+  kohdevalinnan katselmoitu [toteutussopimus](local-company-workspace-plan.md#tarkistuskopion-kutsuja--ja-vaihevaltuus)
+  erottaa lähdesnapshotin, kohteettoman backupin ja palautuksen valitun yrityksen.
+  Toteutus alkaa nykyisen varausomistajan fyysisestä valmisteluportista;
+  alkuperäisen sidontakirjoituksen päättyminen erotetaan lapsen exitistä.
+  Julkaisu- ja kutsujakytkentä sekä niiden native-näyttö ovat vielä auki.
   Puhtaan paketin ja koko W7.4:n PR/main-hyväksyntä ovat vielä auki.
   Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
