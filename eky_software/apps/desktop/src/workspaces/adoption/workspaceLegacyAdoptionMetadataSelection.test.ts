@@ -244,6 +244,40 @@ describe('one adoption attempt metadata selection', () => {
     expect(await selected.journal.read()).toEqual(f.values.journal);
   });
 
+  it('rejects uncertainty delivered in the last completion continuation', async context => {
+    const f = await fixture(context);
+    const selected = await f.capture();
+    const view = selected as unknown as { assertObservedBoth(): Promise<void> };
+    const read = view.assertObservedBoth.bind(view);
+    const first = new Error('synthetic final owner invalidation');
+    let reads = 0;
+    const spy = vi.spyOn(view, 'assertObservedBoth').mockImplementation(async () => {
+      await read();
+      if (++reads === 2) queueMicrotask(() => selected.onUncertain(first));
+    });
+    try { await expect(selected.assertCurrent()).rejects.toMatchObject({ cause: first }); }
+    finally { spy.mockRestore(); }
+    expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(first);
+  });
+
+  it('preserves closing failure after ownership expiry already recorded the first cause', async context => {
+    const f = await fixture(context);
+    const selected = await f.capture();
+    const closing = new Error('synthetic close failure after owner loss');
+    const create = f.fs.journal.createNextWriter.bind(f.fs.journal);
+    vi.spyOn(f.fs.journal, 'createNextWriter').mockImplementation(async guard => {
+      const writer = await create(guard);
+      return { write: writer.write.bind(writer), readIdentity: writer.readIdentity!.bind(writer),
+        async sync() { await writer.sync(); f.state.current = false; },
+        async close() { await writer.close(); throw closing; } };
+    });
+    const result = await selected.journal.write(createAdoptionJournal('prepared')).catch(error => error);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+    expect(result.cause).toBeInstanceOf(AggregateError);
+    expect(result.cause.errors).toEqual([f.onUncertain.mock.calls[0]![0], closing]);
+    expect(await fileBytes(f.paths.journal.nextPath)).toEqual(f.bytes.journal);
+  });
+
   it('joins the other initial read after one observation fails', async context => {
     const f = await fixture(context);
     const entered = gate(), release = gate();

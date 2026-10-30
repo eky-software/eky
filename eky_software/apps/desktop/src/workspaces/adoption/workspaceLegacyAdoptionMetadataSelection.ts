@@ -27,7 +27,7 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
   private selected!: Record<Owner, ObservedRecoverySelection>;
   private active = false;
   private retired = false;
-  private failure: { reason: unknown } | undefined;
+  private failure: { reason: unknown; completion?: AggregateError } | undefined;
 
   readonly journal: WorkspaceLegacyAdoptionJournalPort = Object.freeze({
     read: () => this.run(async () => {
@@ -102,16 +102,23 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
   assertCurrent(): Promise<void> { return this.run(() => this.assertBoth()); }
 
   assertMutationCurrent = (): void => {
+    if (this.retired && this.failure === undefined) this.onUncertain(required());
+    this.assertCompletionCurrent();
+  };
+
+  private assertCompletionCurrent(): void {
     if (this.failure !== undefined) throw this.failure.reason;
     try {
-      if (this.retired) throw required();
       const result: unknown = this.checkOwner();
       if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); throw required(); }
     } catch (error) { this.onUncertain(error); throw this.failure!.reason; }
-  };
+  }
 
   onUncertain = (reason: unknown): void => {
-    if (this.failure !== undefined) return;
+    if (this.failure !== undefined) {
+      if (reason instanceof AggregateError && reason.errors.includes(this.failure.reason)) this.failure.completion = reason;
+      return;
+    }
     this.failure = { reason };
     try {
       const result: unknown = this.notifyUncertain(reason);
@@ -196,11 +203,15 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
   private async run<T>(work: () => Promise<T>): Promise<T> {
     if (this.active || this.retired || this.failure !== undefined) {
       this.onUncertain(required());
-      throw required(this.failure?.reason);
+      throw required(this.failure?.completion ?? this.failure?.reason);
     }
     this.active = true;
-    try { this.assertMutationCurrent(); return await work(); }
-    catch (error) { this.onUncertain(error); throw required(this.failure!.reason); }
+    try {
+      this.assertMutationCurrent();
+      const result = await work();
+      this.assertCompletionCurrent();
+      return result;
+    } catch (error) { this.onUncertain(error); throw required(this.failure!.completion ?? this.failure!.reason); }
     finally { this.active = false; }
   }
 }

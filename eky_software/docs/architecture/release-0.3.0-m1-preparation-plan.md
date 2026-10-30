@@ -199,14 +199,17 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   erottaa backendia edeltävän main-varauksen, elävän backendin rajatun
   metadatahyväksynnän ja exitin jälkeisen palautumisen. Nykyistä käynnistystä
   ei pysäytetä vain sidonnan vuoksi. Varaus-/käyntihavainnot, valitut journal-
-  portit ja root-vartijat on toteutettu. Adoption metadata-adapteri säilyttää
-  alkuvalinnan ja omat kirjoituskuitit, estää epävarman suoritusyrityksen jatkon ja
-  odottaa aloitetun I/O:n loppuun. Yhteisen 26 tiedoston 591 testiä, tyypitys
+  portit ja root-vartijat on toteutettu. Adoption metadata- ja sidonta-adapterit
+  säilyttävät alkuvalinnan ja omat kirjoituskuitit, estävät epävarman
+  suoritusyrityksen jatkon ja odottavat aloitetun I/O:n loppuun. Lopullinen
+  valtuustarkistus ja ensivirheen rinnalla säilyvä sulkuvirhe on todennettu.
+  Yhteisen 30 tiedoston 701 testiä, tyypitys
   ja rajattu katselmus läpäisivät; kolme POSIX-tapausta jäi alustaehtonsa
   vuoksi ajamatta. Edeltävien porttien tarkka näyttö säilyy omistavassa
   suunnitelmassa, eikä päällekkäisiä ajoja lasketa yhteen. Seuraavana ovat
-  binding-valinta, koko startupin root-kuitit ja varsinainen startup-/recovery-/
-  main-kytkentä. Adapterikoe ei vielä todista mainin pakollista valtuutta,
+  kirjoittajakohtainen metadata-/sidontavartijoiden yhdistäminen, koko
+  startupin root-kuitit ja varsinainen startup-/recovery-/main-kytkentä.
+  Adapterikoe ei vielä todista mainin pakollista valtuutta,
   prosessirajaa tai puhtaan paketin hyväksyntää. Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
   avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan

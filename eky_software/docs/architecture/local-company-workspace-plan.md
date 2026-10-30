@@ -5123,6 +5123,37 @@ binding-valinnan, koko käynnistyksen root-kuittien tai prosessi-/pakettirajan
 todiste. Niiden todellinen startup-/recovery-/main-kytkentä on edelleen
 seuraava työ; tuotannossa ei sallita vartioimatonta fallbackia.
 
+**Sidontavalinnan checkpoint 30.10.2026:**
+`WorkspaceLegacyAdoptionBindingSelection` säilyttää yhden adoption
+alkuperäisen sidontahavainnon ja oman julkaisun kuitin nykyisellä
+binding-tallentimella. Kaikkien slottien tavut ja tiedostoidentiteetit
+säilyvät valinnassa. Olemassa oleva täsmällinen sidonta hyväksytään strict-
+lukijalla; pelkkä next/backup, väärä kohde tai ristiriita estää jatkon
+aineistoa muuttamatta. Oman julkaisun arvo, tiiviste, kuitti ja nykyisen
+tiedoston täsmällinen readback vaaditaan ennen valinnan muuttamista.
+Ulkopuolelta ilmestynyttä samannäköistä sidontaa ei oteta omaksi kuitiksi.
+Fresh-polku ei julkaise legacy-sidontaa. Adapteri ei poista sidontaa tai
+payloadia eikä itsessään todista prosessin omistajuutta.
+
+Rajatussa katselmuksessa toistettiin ja korjattiin molempien valinta-
+adapterien viimeisen paluun valtuustarkistus sekä ensivirheen säilyminen,
+kun jo ilmoitettua valtuusvirhettä seuraa kirjoittajan sulkuvirhe. Molemmat
+syyt säilyvät, eikä jälkimmäinen ilmoitus korvaa ensimmäistä.
+Sidonnan 36 testiä ja metadatan 36 testiä läpäisivät. Yhteinen 30 tiedoston
+vaikutusalueajo läpäisi 701 testiä; kolme nykyistä POSIX-tapausta jäi
+alustaehtonsa vuoksi ajamatta. Tyypitys ja rajattu riippumaton jälkikatselmus
+läpäisivät. Päällekkäisten ajojen tuloksia ei lasketa yhteen.
+
+Seuraava liitos yhdistää metadatan, sidonnan ja koko käynnistyksen yli
+säilyvät root-kuitit nykyisiin startup-/recovery-/main-omistajiin.
+Kirjoittajakohtainen ulkoinen tarkistus ei saa palata samaan keskeneräiseen
+kirjoittajaan tai muodostaa adapterien välistä rekursiota. Nykyiset
+root-portit valitsevat juuren yhden kutsun ajaksi; se ei vielä säilytä
+prepare/publish/accept-ketjun alkuperäistä identiteettiä. Vaihekohtainen
+main-/backend-valtuus, sidotun palautuksen sama-operaatio-jatko ja oikea
+prosessi-/pakettinäyttö ovat edelleen auki. Nykyinen tuotannon käynnistys-
+ja palautuskytkentä ei tämän checkpointin vuoksi muutu.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on
