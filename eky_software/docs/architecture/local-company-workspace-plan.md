@@ -5227,21 +5227,47 @@ Live-backend saa edelleen muuttaa oman final-runtime-tietokantansa sisältöä;
 sen sisältöhashia tai mtimea ei jäädytetä käynnistyksen yli. Hyväksynnän
 siivous ei koskaan kohdistu tähän elävään juureen tai legacy-lähteeseen.
 
-**Mainin täsmälliset liitoskohdat:**
+**Mainin täsmälliset liitoskohdat ja kutsusopimus:**
+
+Seuraavat nimet kuvaavat toteutettavaa sisäistä rajapintaa, eivät jo kytkettyä
+tuotantokoodia. Käyttötapauksen tiedostotyö säilyy adoption-omistajalla;
+main antaa vain oman vaiheensa valtuuden.
+
+| Nykyinen kutsukohta | Toteutettava rajattu muutos |
+| --- | --- |
+| `ActiveWorkspaceStartupOptions` | `adoptionAuthority` välittää valmistelun synkronisen `assertMutationCurrent`-tarkistuksen, asynkronisen `assertCurrent`-varaustodisteen ja `onUncertain`-ilmoituksen. Adoption-haara vaatii sen ennen korjaavaa lukua; normaali ja selector-haara eivät saa adoption-portteja. |
+| `ActiveWorkspaceStartupSelection` | Adoption palauttaa muuttumattoman `adoptionContext`-olion: alkuperäinen valmisteluomistaja, operationId, workspaceId, sourceKind ja johdetut polut. Main tarkistaa omistajaolion samuuden omaan startupiin. Konteksti ei itsessään anna kirjoitusoikeutta. |
+| `accept(profileId, adoptionAuthority?)` | Normaali/switch säilyttävät nykyisen kutsun. Adoption vaatii erillisen live-hyväksyntävaltuuden, täsmälleen palautetun kontekstiviitteen ja saman validoidun profileId:n. Puuttuva valtuus ei palauta vanhaa suojaamatonta polkua. |
+| `recoverFromFailure(adoptionAuthority?)` | Adoption vaatii saman kontekstin exitin jälkeisen main-valtuuden. Normaali/switch ja niiden aktivointipalautus eivät käytä sitä. |
+| Alempi `resolveWorkspaceLegacyAdoptionStartup` | `accept` saa pakolliset nimetyt hyväksyntäportit: journal, registry, bindingin julkaisu/tarkistus ja rajattu cleanup. `recoverFromFailure` saa vain kyseisen vaiheen journal-portin. Kumpikaan ei enää käytä valmistelusta talteen jääneitä portteja. |
+
+Valmiin vaihenäkymän vertaisvartijat kutsuvat **saman vaiheen** muiden
+näkymien readonly-lehtiä. Alkuperäisen `observe()`-olion valmisteluvaltuutta
+ei käytetä live- tai recovery-vaiheessa. Kaikki kolme näkymää rakennetaan
+ennen niiden ensimmäistä yhteistarkistusta; osittain alustettua porttia ei
+palauteta. Metodit sidotaan alkuperäiseen vastaanottajaansa. Vaihetyyppi,
+kontekstiviite ja voimassaolo tarkistetaan ennen I/O:ta ja odotusten jälkeen.
+Vaiheolio ei korvaa alkuperäisen startup-omistajan `onUncertain`-kohdetta;
+sama ensivirhe ja epävarmuus kulkevat kaikkien vaiheiden läpi.
 
 1. `desktopComposition` antaa ennen `resolveDesktopWorkspaceStartup`-kutsua
    nimetyn adoption-portin. Se sitoo kerran valitun operaation, työtilan,
    lähdelajin ja johdetut juuret samaan startupiin, installation-valtuuteen
    ja main-varaukseen. Portti välitetään `resolveActiveWorkspaceStartup`iin
    ennen ensimmäistä korjaavaa journal-lukua. Valinnan kohde ei voi vaihtua
-   myöhemmässä terminal-pyynnössä. Myös suorat tuotanto-/proof-kutsujat saavat
-   oikean varausportin; alemman tason testikaksoinen ei ole fallback.
+   myöhemmässä terminal-pyynnössä. Journalittoman alun tunnisteet ja aika
+   välitetään nykyisillä generator-/now-porteilla, ei tuoteta toista valintaa.
+   Myös suorat tuotanto-/proof-kutsujat saavat oikean varausportin; alemman
+   tason testikaksoinen ei ole fallback. `resolveDesktopWorkspaceStartup` ja
+   `resolveElectronE2eWorkspaceStartup` välittävät adoption-valtuuden myös
+   ilman selector-valtuutta.
 2. Nykyisen runtimen liitos palauttaa adoption-portille nimetyt hyväksyntä-
    ja virhepalautusvaltuudet, ei selectorin tai importin oikeuksia.
    Main muodostaa hyväksyntänäkymän vain `activeWorkspace.accept(profileId)`-
    kutsun ajaksi nykyisten health-/profiilitarkistusten jälkeen. Näkymä sitoo
    täsmälleen tämän `backendHandle`-olion, `backendReservation`-siirron,
-   profileId:n ja alkuvalinnan. Se käyttää jo toteutettuja
+   profileId:n ja alkuvalinnan. Vaiheolio annetaan suoraan hyväksyntäkutsulle,
+   ei vaihdettavan current-phase-callbackin kautta. Se käyttää jo toteutettuja
    `assertRunning()`- ja `assertGrantedCurrent()`-havaintoja. `finally` sulkee
    näkymän; uusi kutsu ei elvytä vanhaa. Ei ylimääräistä stop/startia tai
    fyysisen main-varauksen vaatimusta backendin ollessa käynnissä.
@@ -5249,18 +5275,32 @@ siivous ei koskaan kohdistu tähän elävään juureen tai legacy-lähteeseen.
    joka tarjoaa vain `discardCandidate`-toiminnon. Koko bound-root-storea
    tai pelkkää sen TypeScript-tyypin kavennusta ei välitetä hyväksyntään;
    final-juuren recovery-poisto ei saa olla tämän valtuuden kautta kutsuttavissa.
+   Olemassa olevan registryn lineage tarkistetaan ennen bindingin julkaisua.
+   Sen jälkeen järjestys on binding, registry, registryPublished-journal,
+   operaation siivous ja journal viimeisenä. Fresh-haara ei julkaise bindingiä.
 3. Virhepolku sulkee hyväksynnän, odottaa alkuperäiset adoption-tehtävät sekä
    nykyiset broker-/inspection-sulut ja todellisen backend-exitin/takaisinoton.
    Vasta sitten main antaa samalle valinnalle recovery-näkymän. Ilman
    palautunutta backend-kahvaa vaaditaan nykyinen startup-errorin poissaolo-
-   ja valmistelun päättymistodiste. Vanha päättynyt lupa ei yksin pilaa
-   turvallista uutta vaihetta; valinnan/kuittauksen epävarmuus estää sen.
+   ja valmistelun päättymistodiste. Recovery-valtuus käyttää takaisin saatua
+   `assertMainOwned()`-varausta, ei vanhaa live-kahvaa. Vanha päättynyt lupa
+   ei yksin pilaa turvallista uutta vaihetta; valinnan/kuittauksen epävarmuus
+   estää sen.
 4. Adoption alkuperäiset tehtävät kytketään nykyiseen startupin
    settlement-/varauksen mitätöintiin myös ennen `runtimeEntered`-kohtaa.
+   Nykyinen startup seuraa alkuperäistä prepare-/accept-/recovery-lupausta;
+   vain sen päättyminen lopettaa pending-tilan. Virheilmoitus tai peruutus
+   ei ole valmistumistodiste. `onUncertain` tallettaa ensimmäisen syyn heti,
+   mutta ei mitätöi backendin käyttämää varausta ennen stop/takaisinottoa:
+   nykyisen varausomistajan mitätöinti estäisi myös takaisinoton. Runtime-catch
+   mitätöi epävarman omistajuuden takaisinoton yrityksen jälkeen; ennen
+   runtimea tapahtuva virhe tekee sen ennen ulompaa closea. Kummassakaan
+   tapauksessa epävarmuus ei anna recovery- tai siivouslupaa.
    Ulompi composition-catch ei saa sulkea varausta eikä aloittaa recoverya
    keskeneräisen tiedostotyön rinnalla. Uutta timeoutia tai Promise.race-
    pohjaista valmistumistodistetta ei lisätä. Ensivirhe ja myöhempi sulkuvirhe
    säilyvät nykyisessä syyketjussa ennen turvallista virhemuunnosta.
+   Myöhempi recovery-virhe liitetään ensivirheeseen eikä korvaa sitä.
 
 **Palautumisen yhteensopivuus:** nykyisen `recoverWorkspaceLegacyAdoption`in
 viimeinen `Promise.all([journal.read(), registry.read()])` ei sovi saman
@@ -5275,6 +5315,13 @@ epävarmuushavaintoa ei muuteta no-effect-todisteeksi pelkän virhekoodin
 perusteella. Sidotun haaran same-ID-jatko ja sidonnattoman kolme vanhaa
 palautushaaraa toteutetaan yllä olevan sopimuksen mukaan, ei yhteisellä
 uusia tunnisteita luovalla fallbackilla.
+
+Sidotun prepared-siirtymän adapteri käyttää vain nykyistä
+`prepareRecoveredSelection`-kirjoittajaa ja sen omaa kuittia. Lopullinen
+vartija vaatii kaikkien registry-slottien poissaolon, saman bindingin sekä
+candidate-, final- ja operation-juurten todetun poissaolon. Juuriin kohdistuva
+lehtitarkistus ei saa kutsua writerin sisältä takaisin metadata-vartijaan.
+Tämä kapea portti ei kuulu live-hyväksynnän journal- tai cleanup-olioon.
 
 **Toiminnallinen toteutusjärjestys ja näyttö:**
 
@@ -5294,6 +5341,59 @@ uusia tunnisteita luovalla fallbackilla.
    säilyneitä tiedostoja ja alkuperäistä syytä, ei vain virhekoodia. Aiempi
    main-sarjan aikakatkaisu säilyy erillisenä avoimena havaintona; tämä
    sopimustarkennus ei anna lisäuusintaa tai muuta nykyisiä aikarajoja.
+
+**Historiallinen tavukoe ja oikea backend-näyttö:**
+
+`workspaceStartupRecoveryProof`in tekstitavut säilyvät tarkoituksellisena
+historiallisena aineistona. Sen adoption-osuus käyttää alempia nykyisiä
+startup-/recovery-omistajia oikeilla tiedostotallentimilla ja nimetyillä
+testivaltuuksilla. `resolveDesktopWorkspaceStartup`in nykyinen resolverin
+injektio säilyttää relaunch- ja session-luontitarkistukset; niitä ei poisteta
+alemman tason kokeeseen siirryttäessä. Molemmat build-admission-tarkistukset,
+luonnin ja sidotun/sidonnattoman tuonnin cold-tapaukset sekä
+`DESK-WORKSPACE-STARTUP-001`:n prosessi- ja ikkunamääräehdot säilyvät.
+Tämän kokeen onnistuminen ei todista live-backend-hyväksyntää.
+
+Oikea adoption-hyväksyntä on erillinen tapaus nykyisessä Electron-fixturessa:
+
+1. `createWorkspaceFirstStartProofFactories` ja sen `withWorkspaceReservation`
+   / `createCurrentFixture` tuottavat nykyisen todellisen SQLite/PDF-aineiston.
+   Suljetun aineiston DB ja artifactit kopioidaan itsenäisinä tavuina erillisen
+   testiasennuksen legacy-runtimeen. Siemenfixturen registryä tai workspace-
+   juuria ei kopioida adoption-kohteeseen, eikä siemen ole sen alihakemisto.
+2. Käytetään nykyistä `shutdownBeforeWorkspaceProof`-sulkua ja
+   `startDesktopComposition`-polkua oikealla `startDesktopBackend`illa sekä
+   saman paketin build-/release-identiteetillä. Health, profiilivalidointi,
+   varauksen siirto ja adoption-hyväksyntä eivät ole testikaksoisia.
+   Havaintokääre delegoi alkuperäiset callbackit ja säilyttää virheen syyketjun.
+3. Tarkistetaan registryn puuttuminen ennen backend-käynnistystä, täsmälleen
+   yksi oikeaan profileId:hen sidottu julkaisu, legacy-lähteen muuttumattomat
+   tavut, journalin poistuminen ja legacy-bindingin täsmällinen sisältö.
+   Normaalin sulun ja uuden käynnistyksen jälkeen verrataan liiketoimintarivejä
+   ja PDF-tavuja nykyisellä snapshot-apurilla, ei aktiivisen SQLite-tiedoston
+   pysyvää byte-hashia. Backend saa tehdä omat normaalit kirjoituksensa.
+4. Sulun todistus vaatii oikean exit-tuloksen ja prosessivarauksen vapautumisen.
+   Havaitsijan kahvalaskurin nollautuminen ei yksin riitä. Virheessä aineisto
+   säilyy nykyisessä yksityisessä/salatussa ketjussa, myös alkuperäinen syy.
+
+Tapausta ei yhdistetä vanhan tavukokeen muuttumattomiin prosessilaskureihin.
+Nykyiset packaged cold-recovery -tapaukset ja 038-legacy-paketin
+backup/inspect/restore/restart/compare säilyvät erillisinä hyväksyntöinä.
+Olemassa olevien apurien löytyminen on lähdenäyttöä, ei uuden kokeen läpäisy.
+
+Kytkennän kohderegressiot vaativat puuttuvan/väärän vaiheen, samanarvoisen
+mutta vieraan kontekstin, vanhan callbackin ja väärän backend-siirron hylkäyksen
+ennen vaikutusta. Kesken I/O:n kadonnut valtuus säilyttää ensivirheen ja estää
+recoveryyn tai ulompaan closeen etenemisen. Samalla testataan, että epävarman
+adoption-työn ilmoitus ei estä oikean backendin stop/takaisinoton yritystä.
+Tavallinen valmistunut sisältövirhe, fresh, legacy ja jo julkaistu registry
+säilyttävät omat onnistumis- ja palautusehtonsa.
+
+**Kutsusopimuksen katselmus 30.10.2026:** rajattu riippumaton lähdekatselmus
+ei löytänyt estävää puutetta yllä olevista mainin vaiheporteista, alkuperäisten
+tehtävien päättymisestä tai sidotusta prepared-siirtymästä. Kutsusopimus ja
+testien kattavuuskartta ovat toteutusvalmiit. Uutta main-/SQLite-/pakettiajoa
+ei tässä dokumentointivaiheessa tehty; niitä ei merkitä läpäistyiksi.
 
 **Sopimuksen tarkistus 30.10.2026:** rajattu riippumaton lähdekatselmus ei
 löytänyt estävää sopimuspuutetta. Sen alustusjärjestystä koskeva täsmennys

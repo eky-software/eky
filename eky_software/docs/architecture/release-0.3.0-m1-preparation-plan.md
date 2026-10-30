@@ -216,15 +216,17 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   mallinnetun live-hyväksynnän, ei oikeaa backendia. Seuraavana on
   startup-/recovery-/main-kytkentä todellisine valtuuksineen. Elävä hyväksyntä
   saa vain nimetyn operation-siivoamisen, ei final-juuren poistokanavaa.
-  Kytkentä ei voi käyttää hyväksynnässä valmistelun vanhoja portteja:
-  nykyinen adoption `accept/recoverFromFailure` käyttää startupissa talteen
-  otettuja portteja.
-  Vaiheportit liitetään samaan nykyiseen käyttöönotto-omistajaan.
-  Suoran `workspaceStartupRecoveryProof`-todentajan historiallinen aineisto
-  on tarkoituksellinen tiedostotavukoe, ei avattava SQLite-profiili. Sen
-  kattavuus säilytetään ja oikean backendin hyväksyntä todistetaan nykyisessä
-  testipohjassa aidolla synteettisellä SQLite-aineistolla. Kaikki suorat
-  kutsujat ja E2E:n option-välitys kuuluvat saman kytkennän tarkistukseen.
+  Katselmoitu kutsusopimus antaa `accept/recoverFromFailure`-kutsuille
+  erillisen, samaan muuttumattomaan adoption-kontekstiin sidotun vaihevaltuuden.
+  Alempi käyttöönotto saa nimetyt vaiheportit, ei valmistelun vanhoja portteja.
+  Epävarmuus kirjataan heti; varauksen mitätöinti ei saa estää backendin
+  stop/takaisinottoa. Kaikki alkuperäiset työt päättyvät ennen jatkoa.
+  Historiallinen `workspaceStartupRecoveryProof` säilyttää oikeat tiedostotavut,
+  relaunch-/session-ehdot sekä entiset prosessi- ja ikkunamäärät.
+  Erillinen aito backend-tapaus käyttää nykyistä SQLite/PDF-fixtureä ja
+  Mainin tuotantokäynnistystä; health tai grant eivät ole testikaksoisia.
+  Kaikki suorat kutsujat ja E2E:n option-välitys kuuluvat samaan kytkentään.
+  Tämä on toteutussopimus, ei vielä uuden main-/backend-kokeen läpäisy.
   Palautumisen rinnakkaiset metadata-
   luvut korvataan sarjallisilla ja lopullisella valinnan tarkistuksella.
   Adapterikoe ei vielä todista mainin pakollista valtuutta,
