@@ -18,6 +18,155 @@ import { createAdoptionJournal, createPublishedAdoptionRegistry, TEST_ADOPTION_C
 
 const owners = ['journal', 'registry'] as const;
 
+describe('selected adoption recovery preparation', () => {
+  it.for(['current', 'next', 'backup'] as const)('checks registry %s absence without repair or external recursion', async (slot, context) => {
+    const f = await fixture(context);
+    await f.seed('registry', slot);
+    const selected = await f.capture();
+    f.external.mockRejectedValue(new Error('readonly leaf must not call a peer'));
+    f.external.mockClear();
+    const before = await f.snapshot();
+    await expect(selected.assertRegistryAbsentCurrent()).rejects.toThrow();
+    expect(await f.snapshot()).toEqual(before);
+    expect(f.external).not.toHaveBeenCalled();
+  });
+
+  it('retains journal identity and advances only its own prepared receipt', async context => {
+    const f = await recoveryFixture(context);
+    await f.selected.prepareRecoveredSelection(f.checks);
+    expect(await f.selected.journal.read()).toEqual(createAdoptionJournal('prepared'));
+    expect(await fileBytes(f.paths.journal.currentPath)).toEqual(f.bytes.journal);
+    expect(await slotBytes(f.paths.registry)).toEqual({ current: undefined, next: undefined, backup: undefined });
+    expect(f.checks.assertBindingCurrent).toHaveBeenCalled();
+    expect(f.checks.assertPayloadAbsent).toHaveBeenCalled();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  });
+
+  it.for(['current', 'next', 'backup'] as const)('refuses an initially present registry %s without repairing it', async (slot, context) => {
+    const f = await fixture(context);
+    await writeFile(f.paths.journal.currentPath, serializeWorkspaceLegacyAdoptionJournal(createAdoptionJournal('recoveryRequired')));
+    await f.seed('registry', slot);
+    const before = await f.snapshot();
+    const writer = vi.spyOn(f.journal, 'prepareRecoveredSelection');
+    const selected = await f.capture();
+    await expect(selected.prepareRecoveredSelection(recoveryChecks())).rejects.toThrow();
+    expect(writer).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(before);
+  });
+
+  it.for(['prepared', 'candidatePrepared', 'rootPublished', 'registryPublished', 'fresh', 'absent'] as const)(
+    'does not reset an invalid recovery input: %s', async (state, context) => {
+      const f = await fixture(context);
+      if (state !== 'absent') await writeFile(f.paths.journal.currentPath, serializeWorkspaceLegacyAdoptionJournal(
+        state === 'fresh' ? { ...createAdoptionJournal('recoveryRequired'), sourceKind: 'fresh' } : createAdoptionJournal(state)));
+      const selected = await f.capture();
+      const before = await f.snapshot();
+      await expect(selected.prepareRecoveredSelection(recoveryChecks())).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
+    });
+
+  it.for(['assertBindingCurrent', 'assertPayloadAbsent'] as const)('preserves the first %s rejection before publication', async (check, context) => {
+    const f = await recoveryFixture(context);
+    const first = new Error('synthetic recovery authority rejected');
+    f.checks[check].mockRejectedValueOnce(first);
+    const before = await f.snapshot();
+    await expect(f.selected.prepareRecoveredSelection(f.checks)).rejects.toMatchObject({ cause: first });
+    expect(await f.snapshot()).toEqual(before);
+    expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(first);
+    await expect(f.selected.forPhase(f.authority).assertCurrent()).rejects.toMatchObject({ cause: first });
+  });
+
+  it.for(['journal', 'registry'] as const)('rechecks %s drift during the payload-absence wait', async (changed, context) => {
+    const f = await recoveryFixture(context);
+    f.checks.assertPayloadAbsent.mockImplementationOnce(async () => {
+      await writeFile(f.paths[changed].nextPath, 'foreign recovery evidence', { flag: 'wx' });
+    });
+    await expect(f.selected.prepareRecoveredSelection(f.checks)).rejects.toThrow();
+    expect(await fileBytes(f.paths[changed].nextPath)).toEqual(Buffer.from('foreign recovery evidence'));
+    expect(await fileBytes(f.paths.journal.currentPath)).toEqual(Buffer.from(serializeWorkspaceLegacyAdoptionJournal(createAdoptionJournal('recoveryRequired'))));
+  });
+
+  it('does not replace an uncertain reset receipt with a later observation', async context => {
+    const f = await recoveryFixture(context);
+    const first = new Error('synthetic recovery reset reply lost');
+    const move = f.fs.journal.moveSlot.bind(f.fs.journal);
+    const spy = vi.spyOn(f.fs.journal, 'moveSlot').mockImplementation(async (...args) => {
+      await move(...args);
+      if (args[1] === 'current') throw first;
+    });
+    await expect(f.selected.prepareRecoveredSelection(f.checks)).rejects.toMatchObject({ cause: first });
+    const retained = await f.snapshot();
+    spy.mockRestore();
+    await expect(f.selected.prepareRecoveredSelection(f.checks)).rejects.toMatchObject({ cause: first });
+    expect(await f.snapshot()).toEqual(retained);
+    expect(await (await f.capture()).journal.read()).toEqual(createAdoptionJournal('prepared'));
+    expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(first);
+  });
+
+  it('expires saved reset callbacks before I/O without poisoning the next phase', async context => {
+    const f = await fixture(context);
+    await writeFile(f.paths.journal.currentPath, serializeWorkspaceLegacyAdoptionJournal(createAdoptionJournal('recoveryRequired')));
+    const writer = vi.spyOn(f.journal, 'prepareRecoveredSelection');
+    const selected = await f.capture();
+    const checks = recoveryChecks();
+    await selected.prepareRecoveredSelection(checks);
+    expect(writer).toHaveBeenCalledOnce();
+    const saved = writer.mock.calls[0]![0];
+    checks.assertBindingCurrent.mockClear();
+    checks.assertPayloadAbsent.mockClear();
+    await expect(saved.assertExternalSelection()).rejects.toThrow();
+    expect(() => saved.assertAuthority()).toThrow();
+    saved.onUncertain(new Error('synthetic late reset notification'));
+    expect(checks.assertBindingCurrent).not.toHaveBeenCalled();
+    expect(checks.assertPayloadAbsent).not.toHaveBeenCalled();
+    await expect(selected.forPhase(f.authority).assertCurrent()).resolves.toBeUndefined();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  });
+
+  it('keeps the ordinary recoveryRequired transition terminal', async context => {
+    const f = await recoveryFixture(context);
+    const before = await f.snapshot();
+    await expect(f.selected.journal.write(createAdoptionJournal('prepared'))).rejects.toThrow();
+    expect(await f.snapshot()).toEqual(before);
+    expect('prepareRecoveredSelection' in f.selected.journal).toBe(false);
+  });
+
+  it('joins the original recovery check after ownership expires', async context => {
+    const f = await recoveryFixture(context);
+    const entered = gate(), release = gate();
+    f.checks.assertPayloadAbsent.mockImplementationOnce(async () => { entered.resolve(); await release.promise; });
+    let settled = false;
+    const work = f.selected.prepareRecoveredSelection(f.checks);
+    const result = work.then(() => { settled = true; }, error => { settled = true; return error; });
+    try { await entered.promise; f.state.current = false; expect(settled).toBe(false); }
+    finally { release.resolve(); await result; }
+    await expect(work).rejects.toThrow();
+    expect(await fileBytes(f.paths.journal.currentPath)).toEqual(Buffer.from(serializeWorkspaceLegacyAdoptionJournal(createAdoptionJournal('recoveryRequired'))));
+  });
+
+  it('joins reset writer close and retains both the first failure and close failure', async context => {
+    const f = await recoveryFixture(context);
+    const first = new Error('synthetic reset sync failure'), closing = new Error('synthetic reset close failure');
+    const entered = gate(), release = gate();
+    const create = f.fs.journal.createNextWriter.bind(f.fs.journal);
+    vi.spyOn(f.fs.journal, 'createNextWriter').mockImplementation(async guard => {
+      const writer = await create(guard);
+      return { write: writer.write.bind(writer), readIdentity: writer.readIdentity!.bind(writer),
+        async sync() { throw first; },
+        async close() { entered.resolve(); await release.promise; await writer.close(); throw closing; } };
+    });
+    let settled = false;
+    const work = f.selected.prepareRecoveredSelection(f.checks);
+    const result = work.then(() => { settled = true; }, error => { settled = true; return error; });
+    try { await entered.promise; expect(settled).toBe(false); }
+    finally { release.resolve(); await result; }
+    await expect(work).rejects.toMatchObject({ cause: { errors: [first, closing] } });
+    expect(await fileBytes(f.paths.journal.currentPath)).toEqual(Buffer.from(serializeWorkspaceLegacyAdoptionJournal(createAdoptionJournal('recoveryRequired'))));
+    expect(await fileBytes(f.paths.journal.nextPath)).toEqual(f.bytes.journal);
+    expect(f.onUncertain).toHaveBeenCalledOnce();
+  });
+});
+
 describe('one adoption attempt metadata selection', () => {
   it.for(owners)('observes all initial %s slots before any repair and accepts only its own recovery receipt', async (owner, context) => {
     const f = await fixture(context);
@@ -366,6 +515,16 @@ async function fixture(context: TestContext) {
   const seed = (owner: typeof owners[number], slot: 'current' | 'next' | 'backup') => writeFile(paths[owner][`${slot}Path`], bytes[owner], { flag: 'wx' });
   const snapshot = async () => ({ journal: await slotBytes(paths.journal), registry: await slotBytes(paths.registry) });
   return { root, paths, fs, journal, registry, values, bytes, state, external, onUncertain, authority, capture, seed, snapshot };
+}
+
+function recoveryChecks() {
+  return { assertBindingCurrent: vi.fn(async () => {}), assertPayloadAbsent: vi.fn(async () => {}) };
+}
+
+async function recoveryFixture(context: TestContext) {
+  const f = await fixture(context);
+  await writeFile(f.paths.journal.currentPath, serializeWorkspaceLegacyAdoptionJournal(createAdoptionJournal('recoveryRequired')));
+  return { ...f, selected: await f.capture(), checks: recoveryChecks() };
 }
 
 async function slotBytes(paths: { currentPath: string; nextPath: string; backupPath: string }) {

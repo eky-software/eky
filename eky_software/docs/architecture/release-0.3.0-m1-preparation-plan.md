@@ -227,8 +227,13 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Mainin tuotantokäynnistystä; health tai grant eivät ole testikaksoisia.
   Kaikki suorat kutsujat ja E2E:n option-välitys kuuluvat samaan kytkentään.
   Tämä on toteutussopimus, ei vielä uuden main-/backend-kokeen läpäisy.
-  Palautumisen rinnakkaiset metadata-
-  luvut korvataan sarjallisilla ja lopullisella valinnan tarkistuksella.
+  Palautumisen metadata-luvut ovat nyt sarjallisia. Sidotun prepared-jatkon
+  portti vaatii kaikkien registry-slottien ja välijuurten poissaolon, saman
+  sidonnan ja oman kirjoituskuitin. Oikeat tiedostot kattavat uuden omistajan
+  jatkon samoilla tunnisteilla sekä keskeytykset siivouksen ja julkaisun
+  ympärillä. Yhtenäisen 32 tiedoston 817 testiä, tyypitys ja rajattu katselmus
+  läpäisivät; kolme nykyistä POSIX-tapausta jäi ajamatta. Tämä on alempien
+  omistajien näyttö, ei mainin tai aidon backendin hyväksyntä.
   Adapterikoe ei vielä todista mainin pakollista valtuutta,
   prosessirajaa tai puhtaan paketin hyväksyntää. Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät

@@ -5449,6 +5449,28 @@ kolmen roolin ja todellisen acceptance-cleanup-fasadin mukaan. Saman
 operaation sidottu jatko, todellinen exit/takaisinotto, native-/pakettinäyttö
 sekä koko W7.4:n PR/main-portit ovat edelleen auki.
 
+**Sidotun palautusportin checkpoint 30.10.2026:** metadata-omistaja tarjoaa
+nyt valitun `prepareRecoveredSelection`-siirtymän omalla kuitillaan sekä
+kaikkien registry-slottien readonly-poissaolotarkistuksen. Root-valinnan
+poissaololehti ei kutsu metadataa takaisin. Puuttuva kuittaus, muuttunut
+sidonta tai juuri ja vanhentunut kutsu estävät jatkon; ensimmäinen syy ja
+erillinen kirjoittajan sulkuvirhe säilyvät. Tavallisen journal-writen
+recoveryRequired-siirtymää ei avattu.
+
+Nykyinen recovery-käyttötapaus lukee lopputarkistuksen metadatan sarjallisesti.
+Erikseen annettu sidottu palautusportti jatkaa samoin tunnistein prepared-
+tilasta; vanha sidonnaton haara tyhjentää journalin edelleen entisin ehdoin.
+Oikeiden tiedostojen testit kattavat kaikki kolme lähtötilaa, uuden omistajan
+copy/publish-jatkon ja katkot final- sekä operation-juuren poiston välissä
+ja prepared-julkaisun ympärillä. Testin uudelleenkäynnistys on tässä
+omistajanvaihdos, ei vielä todellinen prosessikatko tai business-backend.
+
+Yhtenäinen 32 tiedoston sarja läpäisi 817 testiä; kolme nykyistä
+POSIX-tapausta jäi alustaehtonsa vuoksi ajamatta. Desktopin tyypitys ja
+rajattu riippumaton katselmus läpäisivät. Mainin pakollinen alkuvaltuus,
+live-hyväksynnän vaiheportit ja oikea SQLite/backend-/pakettinäyttö ovat
+edelleen seuraava kytkentä, eivät tämän tukipalan läpäisseitä portteja.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on

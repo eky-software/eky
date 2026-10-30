@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, expect, it, vi, type TestContext } from 'vitest';
@@ -17,12 +17,117 @@ import { WorkspaceLegacyAdoptionMetadataSelection } from './workspaceLegacyAdopt
 import { deriveWorkspaceLegacyAdoptionPaths } from './workspaceLegacyAdoptionPaths.js';
 import { WorkspaceLegacyAdoptionRootSelection, type WorkspaceLegacyAdoptionRootObservation } from './workspaceLegacyAdoptionRootSelection.js';
 import { NodeWorkspaceLegacyAdoptionRootStore } from './workspaceLegacyAdoptionRootStore.js';
+import { recoverWorkspaceLegacyAdoption } from './workspaceLegacyAdoptionRecovery.js';
+import { resolveWorkspaceLegacyAdoptionStartup } from './workspaceLegacyAdoptionStartup.js';
 import { createAdoptionJournal, createPublishedAdoptionRegistry, TEST_ADOPTION_OPERATION_ID,
   TEST_ADOPTION_WORKSPACE_ID } from './workspaceLegacyAdoptionTestSupport.js';
 
 const profileId = 'c'.repeat(64);
 
 describe('adoption phase views of the same selected bytes', () => {
+  it.for(['empty', 'candidate', 'published'] as const)('recovers a bound %s interruption with the same journal identity', async (branch, context) => {
+    const f = await interruptedRecoveryFixture(context, branch);
+    const { recovering } = f;
+    const result = await recoverWorkspaceLegacyAdoption(f.recoveryOptions);
+    expect(result).toBe('relaunchRequired');
+    expect(f.journalClear).not.toHaveBeenCalled();
+    expect(await recovering.metadata.journal.read()).toEqual(createAdoptionJournal('prepared'));
+    expect(await fileBytes(f.paths.binding.currentPath)).toEqual(f.bindingBytes);
+    expect(await fileBytes(f.paths.registry.currentPath)).toBeUndefined();
+    await recovering.roots!.assertRecoveredPayloadAbsent();
+    expect(await readFile(f.source, 'utf8')).toBe('synthetic preserved legacy bytes');
+    // A later owner sees the same prepared IDs, not a generated replacement.
+    recovering.state.current = false;
+    const nextRoots = await WorkspaceLegacyAdoptionRootSelection.observe(f.adoptionPaths, {
+      assertMutationCurrent() {}, onUncertain: f.onUncertain,
+    });
+    const next = f.phase(await f.observe(), nextRoots);
+    expect(await next.metadata.journal.read()).toEqual(createAdoptionJournal('prepared'));
+    await next.binding.assertPublished(profileId);
+    const noNewIdentity = () => { throw new Error('must retain the recovered adoption identity'); };
+    const readoption = await resolveWorkspaceLegacyAdoptionStartup({
+      journal: next.metadata.journal, registry: next.metadata.registry,
+      rootStore: new NodeWorkspaceLegacyAdoptionRootStore(next.roots), userDataRoot: f.root,
+      generateOperationId: noNewIdentity, generateWorkspaceId: noNewIdentity, now: noNewIdentity,
+    });
+    expect(readoption.workspaceId).toBe(TEST_ADOPTION_WORKSPACE_ID);
+    expect(readoption.workspaceRoot).toBe(f.adoptionPaths.finalRoot);
+    expect(await readFile(join(readoption.workspaceRoot, 'runtime', 'data', 'eky.sqlite'), 'utf8')).toBe('synthetic preserved legacy bytes');
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  });
+
+  it.for(['beforeReset', 'lostResetReply', 'rootReappeared', 'bindingChanged'] as const)(
+    'retains evidence instead of relaunching after %s', async (cut, context) => {
+      const f = await interruptedRecoveryFixture(context, 'empty');
+      const first = new Error('synthetic bound recovery interruption');
+      if (cut === 'beforeReset') f.recoveryOptions.boundRecovery.prepareRecoveredSelection = async () => { throw first; };
+      if (cut === 'lostResetReply') {
+        const move = f.fs.journal.moveSlot.bind(f.fs.journal);
+        vi.spyOn(f.fs.journal, 'moveSlot').mockImplementation(async (...args) => {
+          await move(...args); if (args[1] === 'current') throw first;
+        });
+      }
+      if (cut === 'rootReappeared') f.checks.assertPayloadAbsent.mockImplementationOnce(async () => {
+        await mkdir(f.adoptionPaths.operationRoot, { mode: 0o700 });
+        await f.recovering.roots!.assertRecoveredPayloadAbsent();
+      });
+      if (cut === 'bindingChanged') f.checks.assertBindingCurrent.mockImplementationOnce(async () => {
+        await writeFile(f.paths.binding.nextPath, 'foreign binding evidence', { flag: 'wx' });
+        await f.recovering.binding.assertObservedCurrent();
+      });
+      const failure = await recoverWorkspaceLegacyAdoption(f.recoveryOptions).catch(error => error);
+      expect(failure.code).toBe('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+      if (cut === 'beforeReset' || cut === 'lostResetReply') expect(failure.cause).toBe(first);
+      expect(await f.journal.read()).toEqual(createAdoptionJournal(cut === 'lostResetReply' ? 'prepared' : 'recoveryRequired'));
+      expect(await readFile(f.source, 'utf8')).toBe('synthetic preserved legacy bytes');
+      expect(await fileBytes(f.paths.binding.currentPath)).toEqual(f.bindingBytes);
+      expect(f.journalClear).not.toHaveBeenCalled();
+      if (cut === 'bindingChanged') expect(await fileBytes(f.paths.binding.nextPath)).toEqual(Buffer.from('foreign binding evidence'));
+      if (cut !== 'beforeReset') {
+        const retained = await f.snapshot();
+        await expect(f.recovering.metadata.assertCurrent()).rejects.toThrow();
+        expect(await f.snapshot()).toEqual(retained);
+      }
+    });
+
+  it.for(['afterFinalRemoval', 'afterOperationRemoval'] as const)(
+    'retains the bound journal and resumes with a new owner after %s', async (cut, context) => {
+      const f = await interruptedRecoveryFixture(context, 'published');
+      const first = new Error('synthetic interrupted recovery cleanup');
+      if (cut === 'afterFinalRemoval') vi.spyOn(f.recoveryOptions.rootStore, 'discardEmptyRecoveryOperation').mockRejectedValueOnce(first);
+      else f.recoveryOptions.boundRecovery.prepareRecoveredSelection = async () => { throw first; };
+      await expect(recoverWorkspaceLegacyAdoption(f.recoveryOptions)).rejects.toMatchObject({ cause: first });
+      expect(await fileBytes(join(f.adoptionPaths.finalRoot, 'runtime', 'data', 'eky.sqlite'))).toBeUndefined();
+      if (cut === 'afterFinalRemoval') await expect(readdir(f.adoptionPaths.operationRoot)).resolves.toEqual([]);
+      else await expect(readdir(f.adoptionPaths.operationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await f.journal.read()).toEqual(createAdoptionJournal('recoveryRequired'));
+      expect(await fileBytes(f.paths.binding.currentPath)).toEqual(f.bindingBytes);
+      expect(f.journalClear).not.toHaveBeenCalled();
+      f.recovering.state.current = false;
+      const roots = await WorkspaceLegacyAdoptionRootSelection.observe(f.adoptionPaths, {
+        assertMutationCurrent() {}, onUncertain: f.onUncertain,
+      });
+      const successor = f.phase(await f.observe(), roots);
+      await expect(recoverWorkspaceLegacyAdoption({
+        journal: successor.metadata.journal, registry: successor.metadata.registry,
+        rootStore: new NodeWorkspaceLegacyAdoptionRootStore(successor.roots), userDataRoot: f.root,
+        boundRecovery: {
+          async assertCurrent() {
+            await successor.binding.assertPublished(profileId);
+            await successor.metadata.assertRegistryAbsentCurrent();
+          },
+          prepareRecoveredSelection: () => successor.metadata.prepareRecoveredSelection({
+            assertBindingCurrent: () => successor.binding.assertObservedCurrent(),
+            assertPayloadAbsent: () => successor.roots!.assertRecoveredPayloadAbsent(),
+          }),
+        },
+      })).resolves.toBe('relaunchRequired');
+      expect(await successor.metadata.journal.read()).toEqual(createAdoptionJournal('prepared'));
+      await successor.roots!.assertRecoveredPayloadAbsent();
+      expect(await readFile(f.source, 'utf8')).toBe('synthetic preserved legacy bytes');
+      expect(await fileBytes(f.paths.binding.currentPath)).toEqual(f.bindingBytes);
+    });
+
   it('uses the same root, metadata and binding selections through prepare, publish and live acceptance', async context => {
     const f = await fixture(context);
     const paths = deriveWorkspaceLegacyAdoptionPaths(f.root, TEST_ADOPTION_OPERATION_ID, TEST_ADOPTION_WORKSPACE_ID);
@@ -272,6 +377,51 @@ describe('adoption phase views of the same selected bytes', () => {
     expect(await fileBytes(f.paths.journal.currentPath)).toBeUndefined();
   });
 });
+
+async function interruptedRecoveryFixture(context: TestContext, branch: 'empty' | 'candidate' | 'published') {
+  const f = await fixture(context);
+  const adoptionPaths = deriveWorkspaceLegacyAdoptionPaths(f.root, TEST_ADOPTION_OPERATION_ID, TEST_ADOPTION_WORKSPACE_ID);
+  const source = join(adoptionPaths.legacyRuntimeRoot, 'data', 'eky.sqlite');
+  await mkdir(join(adoptionPaths.legacyRuntimeRoot, 'data'), { recursive: true, mode: 0o700 });
+  await mkdir(join(adoptionPaths.legacyRuntimeRoot, 'storage', 'invoices'), { recursive: true, mode: 0o700 });
+  await writeFile(source, 'synthetic preserved legacy bytes');
+  const preparing = f.phase(await f.observe());
+  const initialStore = new NodeWorkspaceLegacyAdoptionRootStore();
+  await preparing.metadata.journal.write(createAdoptionJournal('prepared'));
+  if (branch !== 'empty') {
+    await initialStore.prepareCandidate(adoptionPaths, 'legacy');
+    await preparing.metadata.journal.write(createAdoptionJournal('candidatePrepared'));
+  }
+  if (branch === 'published') {
+    await initialStore.publishCandidate(adoptionPaths);
+    await preparing.metadata.journal.write(createAdoptionJournal('rootPublished'));
+  }
+  await preparing.binding.publish(profileId);
+  await preparing.metadata.journal.write(createAdoptionJournal('recoveryRequired'));
+  preparing.state.current = false;
+  const bindingBytes = await fileBytes(f.paths.binding.currentPath);
+  const roots = await WorkspaceLegacyAdoptionRootSelection.observe(adoptionPaths, {
+    assertMutationCurrent() {}, onUncertain: f.onUncertain,
+  });
+  const journalClear = vi.spyOn(f.journal, 'clearSelected');
+  const recovering = f.phase(await f.observe(), roots);
+  const checks = {
+    assertBindingCurrent: vi.fn(async () => recovering.binding.assertObservedCurrent()),
+    assertPayloadAbsent: vi.fn(async () => recovering.roots!.assertRecoveredPayloadAbsent()),
+  };
+  const recoveryOptions = {
+    journal: recovering.metadata.journal, registry: recovering.metadata.registry,
+    rootStore: new NodeWorkspaceLegacyAdoptionRootStore(recovering.roots), userDataRoot: f.root,
+    boundRecovery: {
+      async assertCurrent() {
+        await recovering.binding.assertPublished(profileId);
+        await recovering.metadata.assertRegistryAbsentCurrent();
+      },
+      prepareRecoveredSelection: () => recovering.metadata.prepareRecoveredSelection(checks),
+    },
+  };
+  return { ...f, adoptionPaths, source, recovering, bindingBytes, journalClear, checks, recoveryOptions };
+}
 
 async function fixture(context: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-adoption-phase-'));

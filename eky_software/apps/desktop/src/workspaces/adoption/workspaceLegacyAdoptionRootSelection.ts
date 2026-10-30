@@ -66,6 +66,17 @@ export class WorkspaceLegacyAdoptionRootSelection {
   // No external callback, repair, receipt update or mutation is allowed in this leaf.
   assertObservedCurrent(): Promise<void> { return this.run(() => this.assertRoots()); }
 
+  assertRecoveredPayloadAbsent(): Promise<void> {
+    return this.run(async () => {
+      for (const path of [this.paths.operationRoot, this.paths.candidateRoot,
+        this.paths.candidateRuntimeRoot, this.paths.finalRoot, join(this.paths.finalRoot, 'runtime')]) {
+        if (this.entry(path).identity !== undefined) throw required();
+      }
+      // A readonly leaf: never re-enter metadata from its journal writer.
+      await this.assertRoots();
+    });
+  }
+
   async runRead<T>(paths: Readonly<WorkspaceLegacyAdoptionPaths>, work: () => Promise<T>): Promise<T> {
     let readFailure: { reason: unknown } | undefined;
     const outcome = await this.run(async () => {

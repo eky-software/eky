@@ -58,6 +58,39 @@ afterEach(() => {
 });
 
 describe('retained adoption root receipts', () => {
+  it.for(['empty', 'candidate', 'published'] as const)('proves recovered payload absence only after its own %s cleanup', async (branch, context) => {
+    const f = await fixture(context);
+    const view = (await f.observe()).forPhase(f.owner);
+    const store = new NodeWorkspaceLegacyAdoptionRootStore(view);
+    if (branch !== 'empty') await store.prepareCandidate(f.paths, 'legacy');
+    if (branch === 'published') await store.publishCandidate(f.paths);
+    if (branch === 'candidate') await store.discardRecoveryCandidateMatchingLegacy(f.paths);
+    if (branch === 'published') await store.discardUnregisteredPublishedRootMatchingLegacy(f.paths);
+    await store.discardEmptyRecoveryOperation(f.paths);
+    f.owner.assertCurrent.mockRejectedValue(new Error('readonly leaf must not re-enter metadata'));
+    await view.assertRecoveredPayloadAbsent();
+    await f.assertPreserved();
+    expect(f.owner.onUncertain).not.toHaveBeenCalled();
+  });
+
+  it.for(['candidate', 'published', 'unacknowledgedRemoval', 'reappeared'] as const)(
+    'does not turn %s into recovery payload absence', async (branch, context) => {
+      const f = await fixture(context);
+      const view = (await f.observe()).forPhase(f.owner);
+      const store = new NodeWorkspaceLegacyAdoptionRootStore(view);
+      await store.prepareCandidate(f.paths, 'legacy');
+      if (branch === 'published') await store.publishCandidate(f.paths);
+      if (branch === 'unacknowledgedRemoval') await rm(f.paths.operationRoot, { recursive: true });
+      if (branch === 'reappeared') {
+        await store.discardRecoveryCandidateMatchingLegacy(f.paths);
+        await mkdir(f.paths.operationRoot, { mode: 0o700 });
+      }
+      const contents = await readdir(f.paths.operationsRoot);
+      await expect(view.assertRecoveredPayloadAbsent()).rejects.toThrow();
+      expect(await readdir(f.paths.operationsRoot)).toEqual(contents);
+      await f.assertPreserved();
+    });
+
   it.for(['assertCurrent', 'authority', 'mutationGuard', 'mkdir', 'rename', 'rm'].flatMap(callback => [false, true].map(expired => ({ callback, expired }))))(
     'rejects saved $callback callback before I/O after its invocation closes (expired=$expired)', async ({ callback, expired }, context) => {
       const f = await fixture(context);

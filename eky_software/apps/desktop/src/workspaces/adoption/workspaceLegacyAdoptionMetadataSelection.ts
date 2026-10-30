@@ -10,7 +10,7 @@ import { parseWorkspaceLegacyAdoptionJournalBytes, serializeWorkspaceLegacyAdopt
 
 export interface WorkspaceLegacyAdoptionMetadataOptions extends ObservedRecoveryAuthority {
   readonly journal: Pick<WorkspaceLegacyAdoptionJournalStore,
-    'inspectRecoverySelection' | 'recoverObservedSelection' | 'writeSelected' | 'clearSelected'>;
+    'inspectRecoverySelection' | 'recoverObservedSelection' | 'writeSelected' | 'clearSelected' | 'prepareRecoveredSelection'>;
   readonly registry: Pick<WorkspaceRegistryStore,
     'inspectRecoverySelection' | 'recoverObservedSelection' | 'writeSelected'>;
 }
@@ -27,6 +27,11 @@ export interface WorkspaceLegacyAdoptionMetadataObservation {
   readJournal(): ReturnType<WorkspaceLegacyAdoptionJournalPort['read']>;
   assertObservedCurrent(): Promise<void>;
   forPhase(authority: Readonly<ObservedRecoveryAuthority>): WorkspaceLegacyAdoptionMetadataSelection;
+}
+
+export interface WorkspaceLegacyAdoptionRecoveredSelectionChecks {
+  assertBindingCurrent(): Promise<void>;
+  assertPayloadAbsent(): Promise<void>;
 }
 
 // One adoption attempt's observed metadata and own acknowledged writes, not a
@@ -136,6 +141,58 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
 
   assertCurrent(): Promise<void> { return this.run(() => this.assertBoth()); }
   assertObservedCurrent(): Promise<void> { return this.run(() => this.assertObservedBoth()); }
+
+  assertRegistryAbsentCurrent(): Promise<void> {
+    return this.run(async () => { await this.assertObservedBoth(); this.assertRegistryAbsent(); });
+  }
+
+  // Recovery alone receives this port; ordinary journal writes remain terminal.
+  prepareRecoveredSelection(checks: Readonly<WorkspaceLegacyAdoptionRecoveredSelectionChecks>): Promise<void> {
+    const assertBindingCurrent = checks.assertBindingCurrent.bind(checks);
+    const assertPayloadAbsent = checks.assertPayloadAbsent.bind(checks);
+    return this.run(async () => {
+      await this.assertBoth();
+      this.assertRegistryAbsent();
+      const bytes = this.selected.journal.bytes;
+      const current = bytes === undefined ? undefined : parseWorkspaceLegacyAdoptionJournalBytes(bytes);
+      if (current?.state !== 'recoveryRequired' || current.sourceKind !== 'legacy') throw required();
+      const next = serializeWorkspaceLegacyAdoptionJournal({ ...current, state: 'prepared' });
+      const selected = this.guard('journal');
+      let open = true;
+      const assertInvocation = () => {
+        if (!open || this.state.active !== this) throw required();
+        this.assertMutationCurrent();
+      };
+      const guard: CrashSafeByteSlotSelection & ObservedRecoveryAuthority = {
+        ...selected,
+        assertAuthority: assertInvocation,
+        assertExternalSelection: async () => {
+          assertInvocation();
+          await selected.assertExternalSelection();
+          assertInvocation();
+          this.assertRegistryAbsent();
+          await assertBindingCurrent();
+          assertInvocation();
+          await assertPayloadAbsent();
+          assertInvocation();
+          await selected.assertExternalSelection();
+          assertInvocation();
+          this.assertRegistryAbsent();
+        },
+        onUncertain: error => { if (open && this.state.active === this) this.onUncertain(error); },
+      };
+      try {
+        const receipt = await this.stores.journal.prepareRecoveredSelection(guard);
+        await this.acknowledge('journal', next, receipt);
+      } finally { open = false; }
+    });
+  }
+
+  private assertRegistryAbsent(): void {
+    const registry = this.selected.registry;
+    if (registry.source !== undefined || registry.bytes !== undefined ||
+        Object.values(registry.identities).some(identity => identity !== undefined)) throw required();
+  }
 
   assertMutationCurrent = (): void => {
     if (this.scoped && this.state.active !== this) this.assertAdmissionOwner();
@@ -271,6 +328,7 @@ function captureStores(options: Pick<WorkspaceLegacyAdoptionMetadataOptions, 'jo
       recover: options.journal.recoverObservedSelection.bind(options.journal),
       writeSelected: options.journal.writeSelected.bind(options.journal),
       clearSelected: options.journal.clearSelected.bind(options.journal),
+      prepareRecoveredSelection: options.journal.prepareRecoveredSelection.bind(options.journal),
     }),
     registry: Object.freeze({
       inspect: options.registry.inspectRecoverySelection.bind(options.registry),
