@@ -3314,6 +3314,29 @@ valmiiksi tämän osanäytön perusteella.
 Rajattu riippumaton katselmus ja luontikuitin täsmennyksen jälkitarkistus
 valmistuivat ilman tämän koerajauksen avoimia löydöksiä.
 
+**Luontikuitin tuotantoportti 30.10.2026:** nykyinen kopio-omistaja tarjoaa
+nyt onnistuneesta omasta luonnistaan muuttumattoman juuri-/vanhempi-
+identiteetin. Muunnos käyttää prosessivarauksen nykyistä keskitettyä
+identiteettiesitystä; myöhempi polun stat ei korvaa tallennettua kuittia.
+Readonly-tyhjyystarkistus varmentaa saman omistajan, alkuperäiset identiteetit
+ja tyhjän kansion myös viimeisen luetteloluvun ja polkutarkistuksen jälkeen.
+Vanhentunut valtuus, keskeytys tai samanniminen korvaava juuri estää jatkon
+säilyttäen aineiston. Kuitti poistuu muistista oman onnistuneen siivouksen
+jälkeen eikä anna uudelle oliolle poistolupaa.
+
+Kahdessa erillisessä tiedostokokeessa toistetut luetteloluvun ja viimeisen
+polkutarkistuksen vaihtumisvälit suljettiin uuteen readonly-porttiin.
+Vanhan valmistelun ja siivouksen luku-/muutosjärjestys säilyy. Yhtenäinen
+12 tiedoston sarja läpäisi 394 testiä, desktopin tyypitys ja rajattu
+riippumaton katselmus läpäisivät. Tämä on tuotantoon tulevan kopioportin
+tukiosa, ei vielä pysyvän inspection-sidonnan julkaisu tai native-/pakettinäyttö.
+
+Seuraava kytkentä erottaa nimettyjen kutsujien tunnetun kohteen kohteettomasta
+backup-ennakkotarkistuksesta. `runOwnedProfileInspection` säilyttää nykyisen
+prepare/grant/exit-järjestyksen; epävarma sidontakirjoitus ei saa muuttua
+kopion tai sidonnan siivousluvaksi. Kutsujakohtainen kohteen alkuperä,
+valtuus ja alkuperäisen main-I/O:n päättyminen todetaan ennen tätä kytkentää.
+
 ##### Poiston backup-todisteen vastaavuus
 
 **25.10.2026, lähteeseen perustuva suunnitelma, pieni sopimuskoe ja rajattu katselmus valmis.**

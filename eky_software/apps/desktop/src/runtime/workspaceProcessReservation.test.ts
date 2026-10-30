@@ -9,6 +9,7 @@ vi.mock('node:net', () => ({ createServer: io.createServer }));
 
 import {
   acquireWorkspaceProcessReservation,
+  createWorkspaceProcessReservationIdentity,
   readWorkspaceProcessReservationIdentity,
   WorkspaceProcessReservationError,
 } from './workspaceProcessReservation.js';
@@ -55,6 +56,23 @@ const acquire = (signal = new AbortController().signal, expectedIdentity?: strin
     ...(expectedIdentity === undefined ? {} : { expectedIdentity }) });
 
 describe('workspace reservation identity', () => {
+  it('uses the same encoding for captured directory identities without issuing a reservation', async () => {
+    const original = { dev: 7n, ino: 19n };
+    expect(createWorkspaceProcessReservationIdentity(original)).toBe(await readWorkspaceProcessReservationIdentity(root));
+    io.lstat.mockClear();
+    expect(createWorkspaceProcessReservationIdentity(original)).toMatch(/^[a-f0-9]{64}$/);
+    expect(io.lstat).not.toHaveBeenCalled();
+    expect(io.createServer).not.toHaveBeenCalled();
+    expect(createWorkspaceProcessReservationIdentity({ ...original, ino: 20n }))
+      .not.toBe(createWorkspaceProcessReservationIdentity(original));
+  });
+
+  it.each([{ dev: -1n, ino: 1n }, { dev: 0n, ino: 0n }])('rejects invalid captured identities %#', identity => {
+    expect(() => createWorkspaceProcessReservationIdentity(identity)).toThrow(WorkspaceProcessReservationError);
+    expect(io.lstat).not.toHaveBeenCalled();
+    expect(io.createServer).not.toHaveBeenCalled();
+  });
+
   it('binds identity to bigint filesystem identity, not the spelling of the root', async () => {
     const first = await readWorkspaceProcessReservationIdentity(root);
     expect(first).toMatch(/^[a-f0-9]{64}$/);

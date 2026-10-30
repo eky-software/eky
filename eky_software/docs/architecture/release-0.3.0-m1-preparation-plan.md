@@ -232,6 +232,10 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Entinen historiallinen palautuskontrolli läpäisi samalla runtimella ilman
   uusintaa. Pakotettu virhe löytyi puretusta nykyisestä salatusta paketista.
   **Seuraavana** ovat jäljellä olevat B:n inspection-liitokset, sitten C-F.
+  Inspection-kopion alkuperäinen muuttumaton luontikuitti ja readonly-
+  tyhjyys-/identiteettiportti on toteutettu: 394 kohdetestiä, tyypitys ja
+  rajattu katselmus läpäisivät. Pysyvän sidonnan julkaisu ja kutsujakohtainen
+  kohdevalinta ovat edelleen auki; tukiosa ei korvaa niiden native-näyttöä.
   Puhtaan paketin ja koko W7.4:n PR/main-hyväksyntä ovat vielä auki.
   Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät

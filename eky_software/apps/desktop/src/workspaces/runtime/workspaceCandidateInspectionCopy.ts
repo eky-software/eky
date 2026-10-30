@@ -1,15 +1,22 @@
 import { promises as fileSystem, type BigIntStats } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { profileInspectionDocumentBindingsFileName, profileInspectionMaximumCatalogBytes } from '../../runtime/profileInspectionDocumentBindings.js';
+import { createWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 
 const failureCode = 'WORKSPACE_CANDIDATE_INSPECTION_CLEANUP_FAILED';
 const databaseFileName = 'profile.sqlite';
 const databaseNames = [databaseFileName, `${databaseFileName}-wal`, `${databaseFileName}-shm`];
 
+export interface WorkspaceInspectionCopyCreationIdentity {
+  readonly rootIdentity: string;
+  readonly parentIdentity: string;
+}
+
 /** Main keeps the receipt locally; the child's path never authorizes deletion. */
 export class WorkspaceCandidateInspectionCopy {
   private rootIdentity: BigIntStats | undefined;
   private parentIdentity: BigIntStats | undefined;
+  private creationIdentity: Readonly<WorkspaceInspectionCopyCreationIdentity> | undefined;
 
   constructor(readonly root: string, private readonly kind?: 'coldRestoreContent') {}
 
@@ -22,6 +29,43 @@ export class WorkspaceCandidateInspectionCopy {
     this.rootIdentity = await inspectDirectory(this.root);
     assertIdentity(this.parentIdentity, await inspectDirectory(parent));
     if (signal.aborted) throw new Error(failureCode);
+    this.creationIdentity = Object.freeze({
+      rootIdentity: createWorkspaceProcessReservationIdentity(this.rootIdentity),
+      parentIdentity: createWorkspaceProcessReservationIdentity(this.parentIdentity),
+    });
+  }
+
+  captureCreationIdentity(): Readonly<WorkspaceInspectionCopyCreationIdentity> {
+    if (this.creationIdentity === undefined) throw new Error(failureCode);
+    return this.creationIdentity;
+  }
+
+  /** Readonly pre-grant proof; never recaptures identities from the current path. */
+  async assertEmptyCreationCurrent(authority: Readonly<{
+    assertCurrent(): void;
+    assertMainOwned(): Promise<void>;
+    signal: AbortSignal;
+  }>): Promise<void> {
+    const receipt = this.captureCreationIdentity();
+    const checkCurrent = authority.assertCurrent.bind(authority);
+    const checkMainOwned = authority.assertMainOwned.bind(authority);
+    const signal = authority.signal;
+    const assertCurrent = () => {
+      if (signal.aborted || this.creationIdentity !== receipt) throw new Error(failureCode);
+      checkCurrent();
+    };
+    for (let pass = 0; pass < 2; pass += 1) {
+      assertCurrent();
+      await checkMainOwned();
+      assertCurrent();
+      await this.assertOwnedDirectory(assertCurrent);
+      assertCurrent();
+      const names = await fileSystem.readdir(this.root);
+      assertCurrent();
+      if (names.length !== 0) throw new Error(failureCode);
+    }
+    await this.assertOwnedDirectory(assertCurrent);
+    assertCurrent();
   }
 
   async discard(assertMainOwned: () => Promise<void>, signal: AbortSignal): Promise<void> {
@@ -66,6 +110,7 @@ export class WorkspaceCandidateInspectionCopy {
     }
     if (signal.aborted) throw new Error(failureCode);
     await fileSystem.rmdir(this.root);
+    this.creationIdentity = undefined;
   }
 
   /** Only a caller with proven child exit may use the unused-copy terminal. */
@@ -89,19 +134,35 @@ export class WorkspaceCandidateInspectionCopy {
     if (signal.aborted || finalNames.length !== 0) throw new Error(failureCode);
     // rmdir rejects an entry arriving after the final empty-directory check.
     await fileSystem.rmdir(this.root);
+    this.creationIdentity = undefined;
   }
 
-  private async assertOwnedDirectory(): Promise<void> {
-    assertIdentity(this.parentIdentity!, await inspectDirectory(dirname(this.root)));
-    assertIdentity(this.rootIdentity!, await inspectDirectory(this.root));
+  private async assertOwnedDirectory(assertCurrent?: () => void): Promise<void> {
+    assertCurrent?.();
+    assertIdentity(this.parentIdentity!, await inspectDirectory(dirname(this.root), assertCurrent));
+    assertCurrent?.();
+    assertIdentity(this.rootIdentity!, await inspectDirectory(this.root, assertCurrent));
+    assertCurrent?.();
   }
 }
 
-async function inspectDirectory(path: string): Promise<BigIntStats> {
+async function inspectDirectory(path: string, assertCurrent?: () => void): Promise<BigIntStats> {
+  assertCurrent?.();
   const metadata = await fileSystem.lstat(path, { bigint: true });
-  if (!metadata.isDirectory() || metadata.isSymbolicLink() ||
-      !pathsEqual(await fileSystem.realpath(path), path) ||
+  assertCurrent?.();
+  if (!metadata.isDirectory() || metadata.isSymbolicLink()) throw new Error(failureCode);
+  const canonical = await fileSystem.realpath(path);
+  assertCurrent?.();
+  if (!pathsEqual(canonical, path) ||
       (process.platform !== 'win32' && (metadata.mode & 0o077n) !== 0n)) throw new Error(failureCode);
+  if (assertCurrent !== undefined) {
+    // The readonly publication proof must not return pre-realpath identity.
+    const after = await fileSystem.lstat(path, { bigint: true });
+    assertCurrent();
+    if (!after.isDirectory() || after.isSymbolicLink() ||
+        (process.platform !== 'win32' && (after.mode & 0o077n) !== 0n)) throw new Error(failureCode);
+    assertIdentity(metadata, after);
+  }
   return metadata;
 }
 
