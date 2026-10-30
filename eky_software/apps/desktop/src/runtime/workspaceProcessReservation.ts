@@ -32,6 +32,13 @@ export interface WorkspaceProcessReservation {
   release(): Promise<void>;
 }
 
+/** Borrowed only while the same main-owned preparation callback is active. */
+export type WorkspaceProcessReservationPreparation = (
+  signal: AbortSignal,
+  assertPreparationCurrent: () => void,
+  assertPreparationOwned: () => Promise<void>,
+) => Promise<void>;
+
 /** Main binds this port to one current authority and one child generation. */
 export interface WorkspaceProcessReservationTransfer {
   readonly descriptor: WorkspaceProcessReservationDescriptor;

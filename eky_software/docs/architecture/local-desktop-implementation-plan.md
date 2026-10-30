@@ -638,13 +638,19 @@ valmistelun jälkeen valtuus tarkistetaan ennen runtime-resurssien avausta.
 Vanha myöhäinen tulos ei anna uuden käynnistyksen valtuutta.
 
 `bind`in valinnainen `prepareMainOwned`-callback saa signaalin lisäksi saman
-`preparing`-vaiheen toistettavan synkronisen vartijan. Se tarkistaa startupin,
-siirtosukupolven, peruutuksen ja saman hallussa olevan varauksen, eikä vaadi
-aktiivisen siirron aikana kiellettyä yleistä main-omistajuusväitettä.
-Vartija lakkaa kelpaamasta callbackin päätyttyä myös virheessä; vanha vartija
-ei valtuuta tai mitätöi seuraavaa sukupolvea. Callbackin alkuperäinen tehtävä
-säilyy nykyisessä prepare-/sulkuseurannassa. Portti ei aloita uutta aikarajaa
-eikä korvaa backendin erillistä grantia tai mainin native-omistajuustarkistusta.
+`preparing`-vaiheen toistettavan synkronisen vartijan ja asynkronisen
+`assertPreparationOwned`-portin. Yhteinen callback-tyyppi sijaitsee nykyisen
+prosessivarauksen rajapinnassa. Vartija tarkistaa startupin, siirtosukupolven,
+peruutuksen ja saman hallussa olevan varauksen. Async-portti tekee fyysisen
+varausluvun ja toistaa vartijat ennen ja jälkeen sen.
+Yleinen main-omistajuusväite säilyy kiellettynä aktiivisen siirron aikana.
+Molemmat portit sulkeutuvat heti callbackin päätyttyä myös virheessä, ennen
+ulompaa viimeistä varauslukua tai vapautusta. Vanha vartija tai myöhäisen
+fyysisen luvun tulos ei valtuuta tai mitätöi seuraavaa sukupolvea.
+Kutsuja odottaa kaikki aloittamansa async-tarkistukset callbackissa;
+sen alkuperäinen tehtävä säilyy nykyisessä prepare-/sulkuseurannassa.
+Portti ei aloita uutta aikarajaa eikä korvaa backendin erillistä grantia,
+todettua poistumista tai exitin jälkeistä takaisinottoa.
 
 Mainin `bind`-tulos tarjoaa lisäksi toistettavan `assertGrantedCurrent`-
 havainnon vain saman myönnetyn siirron eliniäksi. Se ei kuluta uudelleen

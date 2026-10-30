@@ -49,6 +49,7 @@ import {
   readWorkspaceProcessReservationIdentity,
   WorkspaceProcessReservationError,
   type WorkspaceProcessReservation,
+  type WorkspaceProcessReservationPreparation,
   type WorkspaceProcessReservationTransfer,
 } from '../runtime/workspaceProcessReservation.js';
 import { parseWorkspaceProcessReservationDescriptor } from '../runtime/workspaceProcessReservationDescriptor.js';
@@ -399,7 +400,7 @@ export async function acquireDesktopWorkspaceReservation(options: {
     bind(
       generationId: string,
       assertAuthority: () => void,
-      prepareMainOwned?: (signal: AbortSignal, assertPreparationCurrent: () => void) => Promise<void>,
+      prepareMainOwned?: WorkspaceProcessReservationPreparation,
     ): WorkspaceProcessReservationTransfer & { assertGrantedCurrent(): void } {
       assertMainInstance();
       if (active !== undefined || held === undefined) throw fail();
@@ -445,12 +446,31 @@ export async function acquireDesktopWorkspaceReservation(options: {
             assertSignal(signal);
             assertAuthorityCurrent();
             if (prepareMainOwned !== undefined) {
+              let preparationActive = true;
+              const assertPreparationActive = () => {
+                if (!preparationActive || invalid || closing || active !== transfer ||
+                    transfer.phase !== 'preparing' || !transfer.pending || held !== reservation) throw fail();
+              };
               const assertPreparationCurrent = () => {
+                // Reject an old callback before evaluating its expired authority.
+                assertPreparationActive();
                 assertSignal(signal);
                 assertAuthorityCurrent();
-                if (transfer.phase !== 'preparing' || !transfer.pending || held !== reservation) throw fail();
+                assertSignal(signal);
+                assertPreparationActive();
               };
-              await prepareMainOwned(signal, assertPreparationCurrent);
+              const assertPreparationOwned = async () => {
+                assertPreparationCurrent();
+                try { await reservation.assertOwned(); }
+                catch {
+                  assertPreparationCurrent();
+                  invalidate();
+                  throw fail();
+                }
+                assertPreparationCurrent();
+              };
+              try { await prepareMainOwned(signal, assertPreparationCurrent, assertPreparationOwned); }
+              finally { preparationActive = false; }
               assertSignal(signal);
               assertAuthorityCurrent();
               try { await reservation.assertOwned(); }

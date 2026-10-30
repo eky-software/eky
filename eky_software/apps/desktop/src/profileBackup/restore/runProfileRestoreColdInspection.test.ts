@@ -6,7 +6,7 @@ import {
   profileInspectionWorkMilliseconds, type ColdProfileInspectionReceipt, type ProfileInspectionColdSources,
 } from '../../runtime/profileInspectionMessages.js';
 import { ProfileInspectionProcessError } from '../../runtime/profileInspectionProcess.js';
-import type { WorkspaceProcessReservationTransfer } from '../../runtime/workspaceProcessReservation.js';
+import type { WorkspaceProcessReservationPreparation, WorkspaceProcessReservationTransfer } from '../../runtime/workspaceProcessReservation.js';
 import { runProfileRestoreColdInspection } from './runProfileRestoreColdInspection.js';
 
 const boundary = vi.hoisted(() => ({ run: vi.fn() }));
@@ -259,11 +259,12 @@ function fixture() {
   const assertLineage = vi.fn((_profileId: string) => {});
   const reservation = {
     assertMainOwned, invalidate,
-    bind(generationId: string, authority: () => void, prepare: (signal: AbortSignal) => Promise<void>): WorkspaceProcessReservationTransfer {
+    bind(generationId: string, authority: () => void, prepare: WorkspaceProcessReservationPreparation): WorkspaceProcessReservationTransfer {
       authority();
       return {
         descriptor: { generationId, identity: 'b'.repeat(64), userDataRoot: resolve('synthetic-staging', operationId) },
-        prepare, assertGrant: async () => {}, assertCurrent: () => {}, reclaimAfterExit: async () => {}, invalidate,
+        prepare: signal => prepare(signal, authority, assertMainOwned),
+        assertGrant: async () => {}, assertCurrent: () => {}, reclaimAfterExit: async () => {}, invalidate,
       };
     },
   };

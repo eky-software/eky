@@ -237,8 +237,11 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   rajattu katselmus läpäisivät. Pysyvän sidonnan julkaisun ja kutsujakohtaisen
   kohdevalinnan katselmoitu [toteutussopimus](local-company-workspace-plan.md#tarkistuskopion-kutsuja--ja-vaihevaltuus)
   erottaa lähdesnapshotin, kohteettoman backupin ja palautuksen valitun yrityksen.
-  Toteutus alkaa nykyisen varausomistajan fyysisestä valmisteluportista;
-  alkuperäisen sidontakirjoituksen päättyminen erotetaan lapsen exitistä.
+  Nykyisen varausomistajan fyysinen valmisteluportti on toteutettu:
+  551 kohdetestiä, tyypitys ja rajattu katselmus läpäisivät. Paikallinen IPC-koe
+  käyttää myös uutta porttia; se ei ole Electron-/pakettitodiste.
+  Seuraavaksi kytketään sidonnan julkaisu ja erotetaan alkuperäisen
+  sidontakirjoituksen päättyminen lapsen exitistä.
   Julkaisu- ja kutsujakytkentä sekä niiden native-näyttö ovat vielä auki.
   Puhtaan paketin ja koko W7.4:n PR/main-hyväksyntä ovat vielä auki.
   Laajan

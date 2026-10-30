@@ -3452,6 +3452,18 @@ palautuksen tilakonetta. Rajattu riippumaton lähdekatselmus ja sen sulkuvaltuud
 täsmennyksen jälkitarkistus valmistuivat ilman tämän sopimuksen avoimia löydöksiä.
 Suunnitelma tai aiemmat kopioportin testit eivät korvaa näitä kytkentätodisteita.
 
+**Valmisteluportin tukiosa toteutettu 30.10.2026:** nykyinen varausomistaja
+tarjoaa fyysisen `assertPreparationOwned`-tarkistuksen samassa callbackissa.
+Molemmat lainatut vartijat sulkeutuvat heti callbackin päätyttyä;
+myöhäinen onnistuva tai epäonnistuva luku ei mitätöi seuraajaa.
+Yhtenäinen 13 tiedoston sarja läpäisi 551 testiä nykyisillä aikarajoilla;
+desktopin ja sen E2E-kutsujien tyyppitarkistukset läpäisivät.
+Mukana oleva paikallisen IPC-varauksen koe käytti uutta fyysistä porttia
+ja säilytti kilpailevan hankinnan eston sekä entisen siirto-/takaisinottopolun.
+Rajattu riippumaton katselmus ja myöhäisen luvun testitäsmennyksen
+jälkitarkistus valmistuivat ilman avoimia löydöksiä. Tämä ei vielä julkaise
+inspection-sidontaa tai todista erillisen Electron-lapsen/paketin kytkentää.
+
 ##### Poiston backup-todisteen vastaavuus
 
 **25.10.2026, lähteeseen perustuva suunnitelma, pieni sopimuskoe ja rajattu katselmus valmis.**

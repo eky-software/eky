@@ -4,13 +4,13 @@ import {
   type ProfileInspectionRequestIdentity,
 } from '../runtime/profileInspectionMessages.js';
 import { runProfileInspectionProcess } from '../runtime/profileInspectionProcess.js';
-import type { WorkspaceProcessReservationTransfer } from '../runtime/workspaceProcessReservation.js';
+import type { WorkspaceProcessReservationPreparation, WorkspaceProcessReservationTransfer } from '../runtime/workspaceProcessReservation.js';
 import { runOwnedProfileInspection, type OwnedProfileInspectionControl } from './runOwnedProfileInspection.js';
 
 export interface ProfileSnapshotInspectionReservation {
   assertMainOwned(): Promise<void>;
   bind(generationId: string, assertAuthority: () => void,
-    prepareMainOwned: (signal: AbortSignal) => Promise<void>): WorkspaceProcessReservationTransfer;
+    prepareMainOwned: WorkspaceProcessReservationPreparation): WorkspaceProcessReservationTransfer;
   invalidate(): void;
 }
 

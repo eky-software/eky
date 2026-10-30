@@ -7,6 +7,7 @@ import {
   type ProfileInspectionActiveContext, type ProfileInspectionReceipt,
 } from '../runtime/profileInspectionMessages.js';
 import { ProfileInspectionProcessError } from '../runtime/profileInspectionProcess.js';
+import type { WorkspaceProcessReservationPreparation } from '../runtime/workspaceProcessReservation.js';
 import { runProfileSnapshotInspection } from './runProfileSnapshotInspection.js';
 
 const boundary = vi.hoisted(() => ({ run: vi.fn() }));
@@ -541,10 +542,11 @@ function fixture() {
   const assertMainOwned = vi.fn(async () => {});
   const assertAuthority = vi.fn(() => {});
   const invalidate = vi.fn(() => {});
-  const bind = vi.fn((generationId: string, _assertAuthority: () => void,
-    prepareMainOwned: (signal: AbortSignal) => Promise<void>) => ({
+  const bind = vi.fn((generationId: string, authority: () => void,
+    prepareMainOwned: WorkspaceProcessReservationPreparation) => ({
     descriptor: { generationId, identity: 'd'.repeat(64), userDataRoot: resolve('private-staging', operationId) },
-    prepare: async (signal: AbortSignal) => prepareMainOwned(signal), assertGrant: async () => {}, assertCurrent: () => {},
+    prepare: async (signal: AbortSignal) => prepareMainOwned(signal, authority, assertMainOwned),
+    assertGrant: async () => {}, assertCurrent: () => {},
     reclaimAfterExit: async () => {}, invalidate,
   }));
   const readActiveContext = vi.fn(async (_request: Parameters<Parameters<typeof runProfileSnapshotInspection>[0]['readActiveContext']>[0]) => context);
