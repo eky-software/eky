@@ -225,11 +225,14 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   omistavassa suunnitelmassa, eivät ole uusia main-/native-hyväksyntöjä.
   Historiallinen tavukoe säilyttää entiset relaunch-/session- ja prosessi-/
   ikkunamittarit alemmalla omistajalla; tekstifixture ei ole SQLite-näyttö.
-  **Seuraavana** on erillinen nykyiseen SQLite/PDF-fixtureen perustuva
-  todellinen main/backend-startup, sulku ja restart-vertailu. Healthia tai
-  grantia ei korvata testikaksoisilla. Testi on toteutettu ja katselmoitu;
-  sen pakotettu virhe löytyi puretusta nykyisestä salatusta paketista.
-  Itse Electron-kohdeajo ja puhtaan paketin hyväksyntä ovat vielä auki.
+  Nykyiseen SQLite/PDF-fixtureen perustuva todellinen main/backend-startup,
+  sulku ja toinen composition-startup läpäisivät puhtaalla `8dcd52cc`-
+  revisiolla. Health ja grant eivät ole testikaksoisia; metadata tarkistetaan
+  myös backendin käydessä ja sama sidonta uudelleen normaalissa startupissa.
+  Entinen historiallinen palautuskontrolli läpäisi samalla runtimella ilman
+  uusintaa. Pakotettu virhe löytyi puretusta nykyisestä salatusta paketista.
+  **Seuraavana** ovat jäljellä olevat B:n inspection-liitokset, sitten C-F.
+  Puhtaan paketin ja koko W7.4:n PR/main-hyväksyntä ovat vielä auki.
   Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
   avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan

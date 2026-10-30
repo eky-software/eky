@@ -5506,9 +5506,13 @@ todellisen exitin sekä fyysisen varauksen takaisin hankinnan jälkeen.
 Alkuperäinen sidonta verrataan myös toisen composition-startupin jälkeen.
 Ensivirhe kulkee nykyiseen yksityiseen runner-sinkkiin ennen virhekuljetusta;
 pakotetun virheen viesti, pino ja syy löytyivät puretusta OpenPGP-paketista.
-Raportointi-/ajokytkennän 89 testiä ja rajattu koetoteutuksen katselmus
-läpäisivät. Seuraava portti on tämän aidon main-/backend-kokeen suoritus;
-puhtaan paketin, koko W7.4:n ja PR/main-porttien hyväksyntää ei vielä ole.
+Raportointi-/ajokytkennän 89 testiä, kuusi valitsimen järjestelmäkontrollia
+ja rajattu koetoteutuksen katselmus läpäisivät. Puhtaan `8dcd52cc`-revision
+uusi `DESK-WORKSPACE-ADOPTION-001` ja entinen `DESK-WORKSPACE-STARTUP-001`
+läpäisivät samalla valmistellulla Electron/SQLite-runtimella ilman uusintaa.
+Todiste on todellinen development-backend ja kaksi composition-startupia,
+ei kahden Electron-pääprosessin restart tai hardened-pakettihyväksyntä.
+Muut B:n omistajaliitokset, koko W7.4:n integraatio ja PR/main-portit ovat auki.
 
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
