@@ -211,8 +211,10 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   erottaa saman valinnan vaihekohtaisista käyttöluvista: ulkoiset vartijat
   lukevat toistensa readonly-havainnot ilman rekursiota, root-kuitit säilyvät
   startupin yli ja main sitoo hyväksynnän täsmälliseen elävään backend-kahvaan.
-  Seuraava toteutus on näiden valintanäkymien ja root-kuittien yhteinen pala,
-  sitten startup-/recovery-/main-kytkentä. Palautumisen rinnakkaiset metadata-
+  Metadata- ja binding-valintojen vaihenäkymät ja readonly-vertaisvartijat
+  on toteutettu: 19 uutta regressiota, yhdeksän tiedoston 168 kontrollia ja
+  tyypitys läpäisivät. Seuraavana ovat säilyvät root-kuitit ja sitten
+  startup-/recovery-/main-kytkentä. Palautumisen rinnakkaiset metadata-
   luvut korvataan sarjallisilla ja lopullisella valinnan tarkistuksella.
   Adapterikoe ei vielä todista mainin pakollista valtuutta,
   prosessirajaa tai puhtaan paketin hyväksyntää. Laajan

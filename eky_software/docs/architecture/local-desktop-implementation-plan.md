@@ -671,8 +671,11 @@ yhteiskytkentää, mainin vaihevaltuutta tai koko startupin root-kuitteja.
 [Yhteiskytkennän tarkennus](local-company-workspace-plan.md#adoption-vartijoiden-yhteiskytkentä)
 nimeää readonly-tarkistusten syklittömän kutsugraafin, saman valinnan
 vaihekohtaiset näkymät ja alkuperäisten tehtävien sulun ennen vaiheen vaihtoa.
-Myös ennen runtimeen siirtymistä alkanut adoption-työ on mukana ulomman
-varauksen sulkuehdossa. Tämä on toteutussopimus, ei main-kytkennän näyttö.
+Sopimus vaatii myös ennen runtimeen siirtymistä alkaneen adoption-työn
+ulomman varauksen sulkuehtoon. Metadata-/binding-vaihenäkymät ja readonly-
+vertaisvartijat on nyt toteutettu; sama valinta ja kuitit säilyvät eikä
+vanha näkymä uudistu vaiheen vaihtuessa. Niiden 19 uutta tiedostotestiä ja
+nykyiset kontrollit eivät vielä ole root-kuittien tai main-kytkennän näyttö.
 
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:

@@ -16,18 +16,35 @@ export interface WorkspaceLegacyAdoptionMetadataOptions extends ObservedRecovery
 }
 
 type Owner = 'journal' | 'registry';
+type MetadataStores = ReturnType<typeof captureStores>;
+interface MetadataState {
+  selected?: Record<Owner, ObservedRecoverySelection>;
+  active?: WorkspaceLegacyAdoptionMetadataSelection | undefined;
+  retired: boolean;
+  failure?: { reason: unknown; completion?: AggregateError } | undefined;
+}
+export interface WorkspaceLegacyAdoptionMetadataObservation {
+  readJournal(): ReturnType<WorkspaceLegacyAdoptionJournalPort['read']>;
+  assertObservedCurrent(): Promise<void>;
+  forPhase(authority: Readonly<ObservedRecoveryAuthority>): WorkspaceLegacyAdoptionMetadataSelection;
+}
 
 // One adoption attempt's observed metadata and own acknowledged writes, not a
 // lifecycle owner. The main caller must supply its current phase authority.
 export class WorkspaceLegacyAdoptionMetadataSelection {
-  private readonly stores;
+  private readonly stores: MetadataStores;
   private readonly checkOwner: () => void;
   private readonly checkExternal: () => Promise<void>;
   private readonly notifyUncertain: (error: unknown) => void;
-  private selected!: Record<Owner, ObservedRecoverySelection>;
-  private active = false;
-  private retired = false;
-  private failure: { reason: unknown; completion?: AggregateError } | undefined;
+  private readonly state: MetadataState;
+  private get selected() { if (this.state.selected === undefined) throw required(); return this.state.selected; }
+  private set selected(value: Record<Owner, ObservedRecoverySelection>) { this.state.selected = value; }
+  private get active() { return this.state.active !== undefined; }
+  private set active(value: boolean) { this.state.active = value ? this : undefined; }
+  private get retired() { return this.state.retired; }
+  private set retired(value: boolean) { this.state.retired = value; }
+  private get failure() { return this.state.failure; }
+  private set failure(value: MetadataState['failure']) { this.state.failure = value; }
 
   readonly journal: WorkspaceLegacyAdoptionJournalPort = Object.freeze({
     read: () => this.run(async () => {
@@ -69,27 +86,17 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
     },
   });
 
-  private constructor(options: Readonly<WorkspaceLegacyAdoptionMetadataOptions>) {
+  private constructor(options: Readonly<ObservedRecoveryAuthority>, stores: MetadataStores,
+    state: MetadataState = { retired: false }, private readonly scoped = false) {
     this.checkOwner = options.assertAuthority.bind(options);
     this.checkExternal = options.assertExternalSelection.bind(options);
     this.notifyUncertain = options.onUncertain.bind(options);
-    this.stores = Object.freeze({
-      journal: Object.freeze({
-        inspect: options.journal.inspectRecoverySelection.bind(options.journal),
-        recover: options.journal.recoverObservedSelection.bind(options.journal),
-        writeSelected: options.journal.writeSelected.bind(options.journal),
-        clearSelected: options.journal.clearSelected.bind(options.journal),
-      }),
-      registry: Object.freeze({
-        inspect: options.registry.inspectRecoverySelection.bind(options.registry),
-        recover: options.registry.recoverObservedSelection.bind(options.registry),
-        writeSelected: options.registry.writeSelected.bind(options.registry),
-      }),
-    });
+    this.stores = stores;
+    this.state = state;
   }
 
   static async capture(options: Readonly<WorkspaceLegacyAdoptionMetadataOptions>) {
-    const selected = new WorkspaceLegacyAdoptionMetadataSelection(options);
+    const selected = new WorkspaceLegacyAdoptionMetadataSelection(options, captureStores(options));
     await selected.run(async () => {
       await selected.assertOutside();
       const observations = await selected.inspectBoth();
@@ -99,9 +106,39 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
     return selected;
   }
 
+  static async observe(options: Readonly<Omit<WorkspaceLegacyAdoptionMetadataOptions, 'assertExternalSelection'>>)
+    : Promise<Readonly<WorkspaceLegacyAdoptionMetadataObservation>> {
+    const selected = new WorkspaceLegacyAdoptionMetadataSelection({
+      assertAuthority: options.assertAuthority.bind(options),
+      onUncertain: options.onUncertain.bind(options),
+      assertExternalSelection: async () => { throw required(); },
+    }, captureStores(options), undefined, true);
+    await selected.run(async () => {
+      const observations = await selected.inspectBoth();
+      selected.selected = { journal: captureObservation(observations[0]), registry: captureObservation(observations[1]) };
+      await selected.assertObservedBoth();
+    });
+    // No repairing or writing port escapes the readonly initialization phase.
+    return Object.freeze({
+      readJournal: () => selected.run(async () => {
+        await selected.assertObservedBoth();
+        const bytes = selected.selected.journal.bytes;
+        return bytes === undefined ? undefined : parseWorkspaceLegacyAdoptionJournalBytes(bytes);
+      }),
+      assertObservedCurrent: () => selected.assertObservedCurrent(),
+      forPhase: (authority: Readonly<ObservedRecoveryAuthority>) => selected.forPhase(authority),
+    });
+  }
+
+  forPhase(authority: Readonly<ObservedRecoveryAuthority>): WorkspaceLegacyAdoptionMetadataSelection {
+    return new WorkspaceLegacyAdoptionMetadataSelection(authority, this.stores, this.state, true);
+  }
+
   assertCurrent(): Promise<void> { return this.run(() => this.assertBoth()); }
+  assertObservedCurrent(): Promise<void> { return this.run(() => this.assertObservedBoth()); }
 
   assertMutationCurrent = (): void => {
+    if (this.scoped && this.state.active !== this) this.assertAdmissionOwner();
     if (this.retired && this.failure === undefined) this.onUncertain(required());
     this.assertCompletionCurrent();
   };
@@ -109,9 +146,19 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
   private assertCompletionCurrent(): void {
     if (this.failure !== undefined) throw this.failure.reason;
     try {
-      const result: unknown = this.checkOwner();
-      if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); throw required(); }
+      this.assertOwner();
     } catch (error) { this.onUncertain(error); throw this.failure!.reason; }
+  }
+
+  private assertOwner(): void {
+    const result: unknown = this.checkOwner();
+    if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); throw required(); }
+  }
+
+  private assertAdmissionOwner(): void {
+    if (!this.scoped) return;
+    try { this.assertOwner(); }
+    catch (error) { throw required(error); }
   }
 
   onUncertain = (reason: unknown): void => {
@@ -201,6 +248,7 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
   }
 
   private async run<T>(work: () => Promise<T>): Promise<T> {
+    this.assertAdmissionOwner();
     if (this.active || this.retired || this.failure !== undefined) {
       this.onUncertain(required());
       throw required(this.failure?.completion ?? this.failure?.reason);
@@ -214,6 +262,22 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
     } catch (error) { this.onUncertain(error); throw required(this.failure!.completion ?? this.failure!.reason); }
     finally { this.active = false; }
   }
+}
+
+function captureStores(options: Pick<WorkspaceLegacyAdoptionMetadataOptions, 'journal' | 'registry'>) {
+  return Object.freeze({
+    journal: Object.freeze({
+      inspect: options.journal.inspectRecoverySelection.bind(options.journal),
+      recover: options.journal.recoverObservedSelection.bind(options.journal),
+      writeSelected: options.journal.writeSelected.bind(options.journal),
+      clearSelected: options.journal.clearSelected.bind(options.journal),
+    }),
+    registry: Object.freeze({
+      inspect: options.registry.inspectRecoverySelection.bind(options.registry),
+      recover: options.registry.recoverObservedSelection.bind(options.registry),
+      writeSelected: options.registry.writeSelected.bind(options.registry),
+    }),
+  });
 }
 
 function captureObservation(value: ObservedRecoverySelection): ObservedRecoverySelection {

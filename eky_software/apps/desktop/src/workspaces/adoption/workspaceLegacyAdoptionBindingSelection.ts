@@ -15,31 +15,48 @@ export interface WorkspaceLegacyAdoptionBindingOptions extends WorkspaceRemnantB
 }
 
 type Observation = Awaited<ReturnType<WorkspaceRemnantBindingStore['inspect']>>;
+type BindingAuthority = Omit<WorkspaceLegacyAdoptionBindingOptions, 'userDataRoot' | 'journal'>;
+interface BindingState {
+  selected?: Observation;
+  original?: WorkspaceRemnantBindingV1 | undefined;
+  active?: WorkspaceLegacyAdoptionBindingSelection | undefined;
+  failure?: { reason: unknown; completion?: AggregateError } | undefined;
+}
+export interface WorkspaceLegacyAdoptionBindingObservation {
+  readonly initialBinding: Readonly<WorkspaceRemnantBindingV1> | undefined;
+  assertObservedCurrent(): Promise<void>;
+  forPhase(authority: Readonly<BindingAuthority>): WorkspaceLegacyAdoptionBindingSelection;
+}
 
 // One journal-selected adoption's binding observation and own publication receipt.
 // Process authority and the other selected owners still belong to the caller.
 export class WorkspaceLegacyAdoptionBindingSelection {
-  private readonly journal;
-  private readonly store: WorkspaceRemnantBindingStore;
   private readonly checkOwner: () => void;
   private readonly checkExternal: () => Promise<void>;
   private readonly notifyUncertain: (error: unknown) => void;
-  private selected!: Observation;
-  private original!: WorkspaceRemnantBindingV1 | undefined;
-  private active = false;
-  private failure: { reason: unknown; completion?: AggregateError } | undefined;
+  private get selected() { if (this.state.selected === undefined) throw required(); return this.state.selected; }
+  private set selected(value: Observation) { this.state.selected = value; }
+  private get original() { return this.state.original; }
+  private set original(value: WorkspaceRemnantBindingV1 | undefined) { this.state.original = value; }
+  private get active() { return this.state.active !== undefined; }
+  private set active(value: boolean) { this.state.active = value ? this : undefined; }
+  private get failure() { return this.state.failure; }
+  private set failure(value: BindingState['failure']) { this.state.failure = value; }
 
-  private constructor(options: Readonly<WorkspaceLegacyAdoptionBindingOptions>, fileSystem?: CrashSafeFileSlotFileSystem) {
-    this.journal = validateWorkspaceLegacyAdoptionJournal(options.journal);
+  private constructor(options: Readonly<BindingAuthority>,
+    private readonly journal: Readonly<WorkspaceLegacyAdoptionJournalV1>,
+    private readonly store: WorkspaceRemnantBindingStore,
+    private readonly state: BindingState = {}, private readonly scoped = false) {
     this.checkOwner = options.assertAuthority.bind(options);
     this.checkExternal = options.assertExternalSelection.bind(options);
     this.notifyUncertain = options.onUncertain.bind(options);
-    this.store = new WorkspaceRemnantBindingStore(options.userDataRoot,
-      { owner: 'workspaceLegacyAdoption', workspaceId: this.journal.workspaceId }, fileSystem);
   }
 
   static async capture(options: Readonly<WorkspaceLegacyAdoptionBindingOptions>, fileSystem?: CrashSafeFileSlotFileSystem) {
-    const selected = new WorkspaceLegacyAdoptionBindingSelection(options, fileSystem);
+    const journal = validateWorkspaceLegacyAdoptionJournal(options.journal);
+    const selected = new WorkspaceLegacyAdoptionBindingSelection(options, journal,
+      new WorkspaceRemnantBindingStore(options.userDataRoot,
+        { owner: 'workspaceLegacyAdoption', workspaceId: journal.workspaceId }, fileSystem));
     await selected.run(async () => {
       await selected.assertOutside();
       const observed = await selected.readBindingOnly();
@@ -51,12 +68,42 @@ export class WorkspaceLegacyAdoptionBindingSelection {
     return selected;
   }
 
+  static async observe(options: Readonly<Omit<WorkspaceLegacyAdoptionBindingOptions, 'assertExternalSelection'>>,
+    fileSystem?: CrashSafeFileSlotFileSystem): Promise<Readonly<WorkspaceLegacyAdoptionBindingObservation>> {
+    const journal = validateWorkspaceLegacyAdoptionJournal(options.journal);
+    const selected = new WorkspaceLegacyAdoptionBindingSelection({
+      assertAuthority: options.assertAuthority.bind(options),
+      onUncertain: options.onUncertain.bind(options),
+      assertExternalSelection: async () => { throw required(); },
+    }, journal, new WorkspaceRemnantBindingStore(options.userDataRoot,
+      { owner: 'workspaceLegacyAdoption', workspaceId: journal.workspaceId }, fileSystem), undefined, true);
+    await selected.run(async () => {
+      const observed = await selected.readBindingOnly();
+      selected.assertJournalTarget(observed);
+      selected.selected = captureObservation(observed);
+      selected.original = observed.mode === 'published' ? captureWorkspaceRemnantBinding(observed.value) : undefined;
+      assertSameObservation(selected.selected, await selected.readBindingOnly());
+    });
+    return Object.freeze({
+      get initialBinding() { return selected.initialBinding; },
+      assertObservedCurrent: () => selected.assertObservedCurrent(),
+      forPhase: (authority: Readonly<BindingAuthority>) => selected.forPhase(authority),
+    });
+  }
+
+  forPhase(authority: Readonly<BindingAuthority>): WorkspaceLegacyAdoptionBindingSelection {
+    return new WorkspaceLegacyAdoptionBindingSelection(authority, this.journal, this.store, this.state, true);
+  }
+
   get initialBinding(): Readonly<WorkspaceRemnantBindingV1> | undefined {
     this.assertMutationCurrent();
     return this.original;
   }
 
   assertCurrent(): Promise<void> { return this.run(() => this.assertSelected()); }
+  assertObservedCurrent(): Promise<void> {
+    return this.run(async () => { assertSameObservation(this.selected, await this.readBindingOnly()); });
+  }
 
   async publish(profileId: string): Promise<void> {
     const lineageIdentity = validateWorkspaceLineage({ formatVersion: 1, profileId });
@@ -96,12 +143,23 @@ export class WorkspaceLegacyAdoptionBindingSelection {
   }
 
   assertMutationCurrent = (): void => {
+    if (this.scoped && this.state.active !== this) this.assertAdmissionOwner();
     if (this.failure !== undefined) throw this.failure.reason;
     try {
-      const result: unknown = this.checkOwner();
-      if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); throw required(); }
+      this.assertOwner();
     } catch (error) { this.onUncertain(error); throw this.failure!.reason; }
   };
+
+  private assertOwner(): void {
+    const result: unknown = this.checkOwner();
+    if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); throw required(); }
+  }
+
+  private assertAdmissionOwner(): void {
+    if (!this.scoped) return;
+    try { this.assertOwner(); }
+    catch (error) { throw required(error); }
+  }
 
   onUncertain = (reason: unknown): void => {
     if (this.failure !== undefined) {
@@ -143,6 +201,7 @@ export class WorkspaceLegacyAdoptionBindingSelection {
   }
 
   private async run<T>(work: () => Promise<T>): Promise<T> {
+    this.assertAdmissionOwner();
     if (this.active || this.failure !== undefined) {
       this.onUncertain(required());
       throw required(this.failure?.completion ?? this.failure?.reason);

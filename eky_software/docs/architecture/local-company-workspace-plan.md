@@ -5299,6 +5299,23 @@ Nykyisen käyttöönoton, palautumisen ja valinta-adapterien viiden tiedoston
 vaihenäkymien, yhteisvartijoiden tai main-kytkennän tulevaa toteutusta.
 Tuotantokoodia tai aikarajoja ei tässä sopimustarkennuksessa muutettu.
 
+**Vaihenäkymien checkpoint 30.10.2026:** metadata- ja binding-adapterit
+tarjoavat nyt erillisen readonly-alkuhavainnon, syklittömän vertaisvartijan
+ja saman valinnan `forPhase`-näkymät. Vanhentunut näkymä hylätään ennen
+I/O:ta seuraavaa vaihetta mitätöimättä. Aloitetun työn valtuuskatko,
+muuttuneet tavut, kadonnut kuitti ja päällekkäinen työ sulkevat edelleen
+saman suoritusyrityksen; clearin retired-tila säilyy. Omien julkaisujen
+kuitit kulkevat vaiheiden yli ilman uutta tiedostovalintaa.
+
+Katselmuksessa todettu alkuvaltuuden callback-vastaanottajan kopiointivirhe
+toistettiin neljällä regressiolla ennen korjausta. Sidonta säilyttää nyt
+alkuperäisen omistajan myös elävän getterin ja prototyyppimetodin tapauksessa.
+Uuden tiedoston 19 testiä sekä yhtenäisen yhdeksän tiedoston 168 testiä ja
+desktopin tyypitys läpäisivät. Ajot ovat päällekkäisiä, eivät yhteenlaskettava
+hyväksyntämäärä. Root-kuittien ja mainin vaihevaltuuden kytkentä sekä niiden
+prosessi-/pakettinäyttö ovat edelleen erillisiä avoimia portteja. Nykyiset
+tuotannon startup-/recovery-kutsujat eivät vielä käytä näitä uusia näkymiä.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on
