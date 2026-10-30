@@ -195,13 +195,18 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
 - **Seuraava työ:** B:n adoption- ja inspection-liitokset, sitten
   C:n W7.3-luovutus ja loput C-F-portit. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
-  Adoption lähdekartoitus vahvisti täsmennettävän rajan: `accept(profileId)`
-  tapahtuu backendin käynnistyksen ja terveystarkistuksen jälkeen. Cold-importin
-  fyysisen main-varauksen vartijaa ei voi kopioida siihen sellaisenaan, eikä
-  kertakäyttöistä grant-kutsua käyttää toistuvana lukuvaltuutena. Ennen
-  toteutusta täsmennetään hyväksyntävaiheen omistajuus sekä journalin ja
-  rekisterin tuore tarkistus; nykyistä toimivaa käynnistystä ei pysäytetä
-  uuden sidonnan vuoksi ilman erillistä sopimusta.
+  Adoption [omistajuussopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
+  erottaa backendia edeltävän main-varauksen, elävän backendin rajatun
+  metadatahyväksynnän ja exitin jälkeisen palautumisen. Nykyistä käynnistystä
+  ei pysäytetä vain sidonnan vuoksi. Seuraava toteutuspala on nykyisen
+  varausomistajan toistettava granted-havainto ja backendin pysyvä tilahavainto
+  regressioineen, sitten valitut journal-/registry-portit ja adoption kytkentä.
+  Sidottu keskeytysjatko säilyttää saman operaation tunnisteet; vanha
+  sidonnaton palautus ei muutu. Nykyisten kuuden tiedoston 151 kontrollia ja
+  kahden startup-/W6-tiedoston 41 kontrollia läpäisivät. Nämä ovat nykytilan
+  näyttöä, eivät uusien vartijoiden tai keskeytysjatkon toteutustodisteita.
+  Rajattu sopimuskatselmus ja sidotun keskeytyksen täsmennyksen jälkikatselmus
+  valmistuivat ilman avoimia estäviä sopimuslöydöksiä.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
   paluun. Sen porttien ja tiedostokokeiden aiemmat checkpointit säilyvät

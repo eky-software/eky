@@ -4867,6 +4867,193 @@ poistamiseen. Uuden clear-portin todelliset ennen-/jälkeen-keskeytykset,
 inspection-juuren poissaolo, samanniminen vieras slotti ja menetetty valtuus
 todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet niitä.
 
+##### W7.4 B: adoption hyväksynnän omistajuus
+
+**30.10.2026: rajattu toteutussopimus, ei vielä tuotantokytkentä.** Tämä
+täsmentää B:n legacy-adoption-sidontaa. ADR-0011:n copy/validate/switch,
+`fresh`-ensikäyttö ja julkaisemattoman legacy-kopion palautuminen säilyvät.
+`accept(profileId)` kutsutaan nykyisin backendin käynnistyksen, healthin ja
+aktiivisen profiilin validoinnin jälkeen. Cold-importin fyysistä main-
+varausta vaativaa vartijaa ei käytetä tässä vaiheessa. Backendia ei pysäytetä
+tai käynnistetä uudelleen vain metadatan julkaisemista varten.
+
+**Kolme valtuutta, samat nykyiset omistajat:**
+
+| Vaihe | Todiste ja sallittu työ |
+| --- | --- |
+| Ennen backendia | Nykyinen startup-sukupolvi, installation-valtuus ja fyysinen main-varaus. Adoption alkuvalinta, candidate-copy/publish ja nykyinen unpublished-recovery tapahtuvat tässä. |
+| Hyväksyntä backendin käydessä | Sama startup, täsmälleen business-backendille annettu siirtokahva, voimassa oleva granted-vaihe, saman backend-kahvan elävä tila ja validoitu profileId. Vain adoption valitun rekisterin/journalin ja legacy-sidonnan julkaisu sekä oman erillisen operation-rootin loppusiivous. Ei aktiivisen final-juuren, legacy-lähteen tai toisen yrityksen payload-muutosta. |
+| Virhepalautuminen | Hyväksyntälupa on ensin suljettu ja sen alkuperäiset tehtävät päättyneet. Nykyiset broker-/inspection-sulut, backendin todettu exit ja varauksen takaisinotto edeltävät main-owned-recoverya. Aiempi epävarma kirjoitus tai omistajuus ei muutu valtuudeksi takaisinoton perusteella. |
+
+`desktopComposition.ts` omistaa vaiheiden yhdistämisen. Nykyisen
+`acquireDesktopWorkspaceReservation().bind()`-tulokseen lisätään mainin
+sisäinen, **vain lukeva** `assertGrantedCurrent()`-vartija. Se tarkistaa
+saman active-transfer-olion, granted-vaiheen, siirron signaalin ja alkuperäisen
+valtuuden. Se ei suorita uudelleen kertakäyttöistä `assertCurrent()`-grantia,
+hanki native-varausta, anna payload-oikeutta tai muuta backendin protokollaa.
+Vanhan siirtokahvan tarkistus hylätään koskematta seuraavan siirron tilaan.
+Nykyinen yleinen `WorkspaceProcessReservationTransfer` pysyy backendin
+työlupaporttina; adoption lisähavaintoa ei vaadita muilta kutsujilta.
+
+`backendProcess.ts` omistaa toistettavan synkronisen `assertRunning()`-
+havainnon omasta olemassa olevasta tilastaan: ready, granted, ei stopping,
+ei havaittua exitiä, ei mitätöityä siirtoa eikä peruttua startup-signaalia.
+Tämä ei ole uusi health-kysely, poistumistodiste tai lupapalvelu. Pelkkä
+`onUnexpectedExit`-callback ei riitä: exit voi tulla ennen callbackin
+rekisteröintiä, ja tarkoituksellinen stop ei kutsu sitä. Nykyinen pysyvä
+exit-havainto kattaa myös tämän välin. Handle-testikaksoiset päivitetään
+eksplisiittisesti; puuttuvaa havaintoa ei tulkita onnistumiseksi.
+
+Main kaappaa adoption operationId/workspaceId/root-valinnan ennen backendia
+nykyiseen startup-ketjuun. `resolveDesktopWorkspaceStartup` ja
+`resolveActiveWorkspaceStartup` välittävät vain adoption nimetyn omistajaportin.
+Tuotannon adoption-kutsuja ei saa pudota vartioimattomaan oletukseen, jos
+portti puuttuu; myös nykyiset suorat proof-kutsujat saavat oman aidon
+varauskytkentän. Alemman tason testikaksoinen ei ole tuotannon fallback.
+Main avaa hyväksyntäluvan vasta nykyisten health-/profiilitarkistusten jälkeen
+juuri `activeWorkspace.accept()`-kutsun ajaksi ja sulkee sen `finally`ssa.
+Lupa sitoo myös saman backend-kahvan, transferin ja profileId:n; yleinen
+boolean tai sama polkumerkkijono ei riitä. `assertCurrent()` tarkistaa nämä
+synkronisesti jokaisen odotuksen jälkeen ja ennen vaikutusta. Tarkistus
+ei kierrä nykyisiä build-, FirstStart-, restore- tai update-portteja.
+Hyväksynnän aikana ei avata rendererin business- tai management-käyttöä.
+
+**Valittu metadata ennen ensimmäistä korjaavaa lukua:**
+
+1. Adoption journal saa nykyisen byte-slot-omistajan `inspectRecoverySelection`
+   / `recoverObservedSelection`- sekä valitut write/clear-portit. Alkuhavainnon
+   kaikki slotit, niiden identiteetit, nykyinen current/backup/initial-next-
+   etusija ja syrjäytettyjen katkenneiden sivujen käsittely säilyvät. Registry
+   käyttää jo olemassa olevia vastaavia porttejaan. Pelkkä `peek` tai arvon
+   operationId ei ole mutation-valtuus.
+2. Guarded-reitti alkaa jo `resolveActiveWorkspaceStartup`in ensimmäisestä
+   adoption-journalin korjaavasta luvusta. Tavallinen `journal.read()` ei saa
+   korjata slotteja ennen valintaa. Ennen backendia otettu ja omilla kuiteilla
+   päivitetty valinta kulkee saman adoption yli hyväksyntään; siellä ei
+   omaksuta uutta ulkoista rekisteriä tai journalia alkutilaksi.
+3. Adoption rajattu in-memory-valinta erottaa havaitun alkutilan ja jokaisen
+   oman kirjoituksen kuittauksen/readbackin. Registry saa muuttua vain oman
+   täsmällisen julkaisun kautta. Tallennin vartioi omia slot-siirtymiään;
+   ulkoinen vartija tarkistaa muut omistajat eikä lue saman kirjoittajan
+   journalia rekursiivisesti. Aloitetut rinnakkaiset luvut odotetaan loppuun
+   myös hylkäyksessä. Valinnan epävarmuus jää pysyväksi tälle suoritusyritykselle.
+4. Nykyinen cold-admission, build-admission ja W6/FirstStart-järjestys
+   säilyvät. Create/import-admissionin `none` ei ole adoption kaikkien
+   ristiriitojen tarkistustodiste. Importin conflict-censusta ei kopioida:
+   se hylkäisi adoption oman journalin ja voisi hylätä hyväksytyn käynnissä
+   olevan päivityksen. Adoption omat journal-/registry-/binding-valinnat
+   tarkistetaan tässä; installation-/päivitysvalinnan nykyinen omistaja
+   tarkistaa oman sallitun tilansa. W6:n legacy-adoption-haaran nykyinen
+   `notRequired` ja passiivisen registry-tilan esto säilyvät. Näiden
+   järjestysten regressionäyttö kuuluu main-kytkentään. Lopullisen W7-poiston
+   admission tulee edelleen E-palassa ennen adoptionia, ei uutena recoveryna.
+
+**Hyväksynnän tarkka järjestys:** validoitu profileId ja sama elävä backend
+-> tuore journal-/registry-valinta -> legacy-sidonnan publish ja exact readback
+-> nykyinen registry-julkaisu tai täsmällisen jo julkaistun arvon varmistus
+-> `registryPublished`-journal ja kuitti -> oman candidate/operation-rootin
+vartioitu loppusiivous ja poissaolotodiste -> journalin valittu clear.
+Sidonta säilyy alkuperäisen legacy-lähteen vuoksi; journalin loppuminen ei
+poista sitä. Käynnistyksen lopullinen hyväksyntä seuraa nykyisiä portteja.
+
+- `fresh` ei julkaise legacy-sidontaa. Legacy-sidonta syntyy vain käynnissä
+  olevan, journalin nimeämän adoption validoidulle kohteelle. Jo päättynyttä
+  historiallista adoptiota ei jälkisidota aktiivisen yrityksen perusteella.
+- Ensijulkaisu edellyttää kaikkien binding-slottien poissaoloa. Jo julkaistu
+  täsmälleen sama sidonta hyväksytään vain nykyisellä strict-lukijalla;
+  next-only, väärä lineage/operaatio, vieras tai ristiriitainen slotti estää
+  jatkon. Epävarmaa kirjoitusta ei ratkaista saman käynnistysyrityksen
+  myöhemmällä luvulla uudeksi onnistumiseksi. Uusi käynnistys saa todentaa tilan
+  itsenäisesti.
+- Mainin root-omistaja tarkistaa operation/candidate-juuren alkuperäisen
+  valinnan, tyypit/linkit ja nykyiset sallitut merkinnät uudelleen viimeisten
+  ulkoisten odotusten jälkeen ennen omaa poistoaan. Final-root ja vanhan
+  runtime-lähteen 13 sallittua yritysmerkintää säilyvät. Installation-update-
+  aineistoa tai ulkoista arkistoa ei siivota. Oikea I/O odotetaan loppuun;
+  timeout ei anna lupaa aloittaa recoverya sen rinnalla.
+- Tavallinen todettu sisältövirhe saa nykyisen `recoveryRequired`-merkinnän
+  vain edelleen täsmällisen valinnan ja kyseisen vaiheen valtuuden alla.
+  Kadonnut kuittaus, muuttunut valinta tai sulkeutunut hyväksyntälupa eivät
+  saa pudota nykyiseen korjaavaan `markRecoveryRequired/read/clear`-polkuun.
+  Ensivirhe säilyy ja erillinen sulkuvirhe kirjataan nykyisen sopimuksen mukaan.
+- Sidonnaton cold-recovery säilyttää ADR-0011:n kolme unpublished-matching-
+  legacy-haaraa, journalin loppupoiston ja relaunchin. Julkaistua rekisteri-
+  kohdetta tai muuttunutta finalia ei poisteta. Sidonta ei anna aiempaa
+  laajempaa payloadin recovery-oikeutta.
+
+**Sidotun keskeytyksen jatkuvuus:** katko sidonnan julkaisun jälkeen ennen
+rekisterijulkaisua ei saa jättää vanhaa sidontaa ja aloittaa käyttöönottoa
+uusilla operationId/workspaceId-tunnisteilla. Uudessa sidotussa
+`recoveryRequired`-haarassa current-sidonnan kaikki slotit, täsmällinen
+journal-kohde ja sourceKind tarkistetaan ennen muutoksia. Rekisterin kaikkien
+slottien pitää puuttua ennen siivousta ja uudelleen ennen vaikutuksia;
+julkaistu kohde tai muu myöhemmin ilmestynyt rekisteri ei anna tämän
+haaran jatkovaltuutta. Sidonnaton vanha haara säilyttää nykyisen sallintansa
+myös vain muita yrityksiä sisältävälle rekisterille.
+
+Kun vanhat lähdevertailu-, layout-, linkki-, omistajuus- ja sulkutarkistukset
+sekä omien candidate/final-juurten poissaolo on todennettu, sidottu haara
+kirjoittaa **saman** journalin valitusti takaisin nykyiseen `prepared`-tilaan
+ja pyytää nykyisen hallitun relaunchin. OperationId, workspaceId, sourceKind,
+createdAt ja alkuperäinen sidonta säilyvät. Uusi käynnistys käyttää nykyistä
+copy/validate/switch-ketjua samalla operaatiolla; uusi validoitu profileId
+verrataan säilyneeseen lineageen ennen registry-julkaisua. Uutta tilaa,
+formaattia, palautusjärjestelmää tai ylimääräistä restart-silmukkaa ei lisätä.
+Nykyinen tavallinen journal-write ei salli recoveryRequired -> prepared
+-siirtymää eikä sen sääntöä avata yleisesti. Sama journal-omistaja tarjoaa
+vain tähän todennettuun palautukseen nimetyn `prepareRecoveredSelection`-
+portin: täsmälleen valittu recoveryRequired, muuttumattomat tunnisteet,
+tuore main-/binding-/registry-valtuus ja palautusjuurten poissaolotodiste
+vaaditaan. Tallennin vartioi omia slot-siirtymiään kuten muutkin valitut
+kirjoitukset. Tavallisen write-portin hylkäys testataan säilyväksi.
+
+Keskeytys ennen prepared-kuittausta jättää nykyisen recoveryRequired- tai
+byte-slot-säännöillä erikseen havaittavan oman prepared-tilan seuraavalle
+käynnistykselle. Kadonnut kuittaus tai epävarma siivous estää saman ajon
+relaunchin; omistajuuden takaisinotto ei ratkaise sitä. Puuttuva, vieras,
+next-only tai ristiriitainen sidonta estää jo sidotuksi valitun haaran eikä
+pudota sitä sidonnattomaksi. Alkutilassa kaikkien slottien todettu poissaolo
+säilyttää vanhan sidonnattoman haaran; puuttuvaa historiallista tapahtumaa
+ei arvata. Osittainen tai virheellinen alkutila ei ole poissaolo.
+Legacy-lähde ja sidonta säilyvät. Sama-operaatio-jatko ja
+katkot jokaisessa poiston sekä prepared-julkaisun välissä todistetaan
+oikeilla tavuilla ja uudella omistajalla ennen tämän haaran main-kytkentää.
+Osittainen poisto ei anna oikeutta jatkaa enää lähdettä vastaamattoman puun
+siivousta. Sama operationId ei uusi vanhaa vartijaa tai juuri-identiteetin
+kuittia; uusi käynnistys hankkii oman nykyisen valtuutensa ja havaintonsa.
+
+**Toteutuspalat ja regressiot:**
+
+1. Nykyisen main-varausomistajan granted-havainto ja backend-kahvan pysyvä
+   tilahavainto. Testaa toistettava hyväksytty luku, bound/authorized/stop/exit/
+   reclaim/mitätöity/sukupolven vaihto, myöhäinen callback sekä vanhan guardin
+   hylkäys seuraavaa omistajaa rikkomatta. Ei uutta siirtoviestiä tai ajastinta.
+2. Adoption journalin valitut portit, registry-kuitit ja root-vartijat.
+   Oikeilla tavuilla current/backup/next, katkennut sivu, lost ack, alkuperäisen
+   identiteetin vaihto ja drift viimeisen ulkoisen awaitin aikana. Binding-
+   store ja registry-persistence käytetään yhteisinä, ei kopioituina.
+3. `workspaceLegacyAdoptionStartup/Recovery` ja main-kutsujat. Säilytä fresh,
+   legacy, jo julkaistu registry, vanha keskeytysjournal ja epäonnistuneen
+   backendin nykyinen palautuminen. Katko hyväksyntä jokaisessa yllä nimetyssä
+   julkaisuvälissä; tarkista säilyneet tavut, ei vain virhekoodia. Vaihekohtaiset
+   testit osoittavat ettei elävän backendin hyväksyntä kutsu stop/reclaimia.
+4. Oikea main/backend/Electron-kytkentä ja saman puhtaan hardened-paketin
+   backup/inspect/restore/restart/compare. Syntynyt binding säilyy journalin
+   poiston ja uuden prosessin yli; alkuperäinen legacy sekä muiden yritysten
+   aineisto säilyvät. Ensivirhe kulkee nykyiseen salattuun testiaineistoon.
+
+Toteutuksen nimet täsmennetään nykyisiin portteihin; sopimus ei hyväksy uutta
+manageria, pysyvää formaattia, yleistä callback-kehystä tai timeout-muutosta.
+Sopimuskatselmus ja nykyisten kontrollien läpäisy eivät yksin todista uusia
+vartijoita, native-omistajuutta tai koko W7.4:n hyväksyntää.
+
+**Rajattu sopimuskatselmus 30.10.2026:** sidotun keskeytyksen tunnisteiden
+jatkuvuuspuute täsmennettiin yllä, ja jälkikatselmus valmistui ilman avoimia
+estäviä löydöksiä sopimuksen rajauksessa. Nykyiset adoption-, varaus- ja
+backend-kontrollit läpäisivät 151 testiä; startup-/W6-kontrollit 41 testiä.
+Tuotantokoodia ei tämän sopimuksen valmistelussa muutettu. Uuden
+palautussiirtymän ja vartijoiden näyttö jää nimetyille toteutuspaloille.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on
