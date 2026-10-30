@@ -108,8 +108,8 @@ describe('desktop first-start boundaries', () => {
       join(
         sourceRoot,
         'workspaces',
-        'runtime',
-        'resolveActiveWorkspaceStartup.ts',
+        'adoption',
+        'resolveGuardedWorkspaceLegacyAdoption.ts',
       ),
       'utf8',
     );

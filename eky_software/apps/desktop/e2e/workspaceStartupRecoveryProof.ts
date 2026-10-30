@@ -17,7 +17,10 @@ import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimeP
 import { WorkspaceLegacyAdoptionJournalStore } from '../src/workspaces/adoption/workspaceLegacyAdoptionJournal.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
-import { resolveActiveWorkspaceStartup } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import { ActiveWorkspaceStartupRelaunchRequiredError, resolveActiveWorkspaceStartup } from '../src/workspaces/runtime/resolveActiveWorkspaceStartup.js';
+import { resolveWorkspaceLegacyAdoptionStartup } from '../src/workspaces/adoption/workspaceLegacyAdoptionStartup.js';
+import { recoverWorkspaceLegacyAdoption } from '../src/workspaces/adoption/workspaceLegacyAdoptionRecovery.js';
+import { NodeWorkspaceLegacyAdoptionRootStore } from '../src/workspaces/adoption/workspaceLegacyAdoptionRootStore.js';
 import { provePublishedWorkspaceColdRecovery } from './workspacePublishedColdRecoveryProof.js';
 import type {
   WorkspaceStartupRecoveryProofInput,
@@ -51,7 +54,7 @@ export async function runWorkspaceStartupRecoveryProof(
     stage = 'historicalFixture';
     const historicalRoot = join(proofRoot, 'historical');
     const legacyArtifacts = await createLegacyArtifacts(historicalRoot);
-    const firstAdoption = await resolveActiveWorkspaceStartup(historicalRoot);
+    const firstAdoption = await resolveHistoricalByteWorkspace(historicalRoot);
     const unpublishedWorkspaceRoot = firstAdoption.workspaceRoot;
     await firstAdoption.recoverFromFailure();
 
@@ -72,7 +75,7 @@ export async function runWorkspaceStartupRecoveryProof(
       relaunchApplication: () => {
         relaunchCount += 1;
       },
-      resolveActiveWorkspace: resolveActiveWorkspaceStartup,
+      resolveActiveWorkspace: resolveHistoricalByteWorkspace,
       userDataRoot: historicalRoot,
     });
     requireProof(
@@ -99,7 +102,7 @@ export async function runWorkspaceStartupRecoveryProof(
       relaunchApplication: () => {
         relaunchCount += 1;
       },
-      resolveActiveWorkspace: resolveActiveWorkspaceStartup,
+      resolveActiveWorkspace: resolveHistoricalByteWorkspace,
       userDataRoot: historicalRoot,
     });
     requireProof(
@@ -183,6 +186,27 @@ export async function runWorkspaceStartupRecoveryProof(
   } finally {
     if (succeeded) await rm(proofRoot, { force: true, recursive: true });
   }
+}
+
+// This historical byte fixture deliberately does not start or validate a backend.
+async function resolveHistoricalByteWorkspace(userDataRoot: string) {
+  assertProofSingleInstanceOwnership();
+  const journal = new WorkspaceLegacyAdoptionJournalStore(userDataRoot);
+  const registry = new WorkspaceRegistryStore({ installationRoot: userDataRoot,
+    filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME) });
+  const rootStore = new NodeWorkspaceLegacyAdoptionRootStore();
+  if ((await journal.read())?.state === 'recoveryRequired') {
+    await recoverWorkspaceLegacyAdoption({ journal, registry, rootStore, userDataRoot });
+    throw new ActiveWorkspaceStartupRelaunchRequiredError();
+  }
+  const selected = await resolveWorkspaceLegacyAdoptionStartup({ journal, registry, rootStore, userDataRoot });
+  return Object.freeze({ ...selected,
+    accept: (profileId: string) => selected.accept(profileId, {
+      journal, registry, publishBinding: async () => {},
+      cleanup: Object.freeze({ discardCandidate: paths => rootStore.discardCandidate(paths) }),
+    }),
+    recoverFromFailure: () => selected.recoverFromFailure({ journal }),
+  });
 }
 
 async function proveBuildAdmission(

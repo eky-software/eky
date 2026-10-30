@@ -12,9 +12,11 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { NodeWorkspaceLegacyAdoptionRootStore } from '../adoption/workspaceLegacyAdoptionRootStore.js';
+import { resolveWorkspaceLegacyAdoptionStartup } from '../adoption/workspaceLegacyAdoptionStartup.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import {
   WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
@@ -29,20 +31,115 @@ import {
   TEST_SOURCE_WORKSPACE_ID,
   TEST_TARGET_WORKSPACE_ID,
 } from '../switch/workspaceSwitchTestSupport.js';
-import { resolveActiveWorkspaceStartup } from './resolveActiveWorkspaceStartup.js';
+import { resolveActiveWorkspaceStartup, type ActiveWorkspaceStartupOptions } from './resolveActiveWorkspaceStartup.js';
 
 const temporaryRoots: string[] = [];
 const profileId = 'a'.repeat(64);
 
-afterEach(async () => {
+afterEach(async context => {
+  const roots = temporaryRoots.splice(0);
+  if (context.task.result?.state !== 'pass') return;
   await Promise.all(
-    temporaryRoots.splice(0).map((root) =>
+    roots.map((root) =>
       rm(root, { force: true, recursive: true }),
     ),
   );
 });
 
 describe('active workspace startup resolution', () => {
+  it('requires preparation authority before creating or repairing adoption files', async () => {
+    const root = await createPrivateTemporaryRoot();
+    const before = await readdir(root);
+    await expect(resolveActiveWorkspaceStartup(root)).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    expect(await readdir(root)).toEqual(before);
+  });
+
+  it('rejects a legacy database appearing after the original fresh selection', async () => {
+    const root = await createPrivateTemporaryRoot();
+    await mkdir(join(root, 'runtime'), { recursive: true });
+    const database = join(root, 'runtime', 'data', 'eky.sqlite');
+    const bytes = 'synthetic database arriving between source observations';
+    const detect = NodeWorkspaceLegacyAdoptionRootStore.prototype.detectSourceKind;
+    const observed: string[] = [];
+    let calls = 0;
+    const spy = vi.spyOn(NodeWorkspaceLegacyAdoptionRootStore.prototype, 'detectSourceKind')
+      .mockImplementation(async function (this: NodeWorkspaceLegacyAdoptionRootStore, paths) {
+        const call = ++calls;
+        if (call === 2) {
+          await mkdir(join(root, 'runtime', 'data'), { recursive: true });
+          await writePrivateFile(database, bytes);
+        }
+        const kind = await detect.call(this, paths);
+        if (call <= 2) observed.push(kind);
+        return kind;
+      });
+    try {
+      await expect(resolveActiveWorkspaceStartup(root, { adoptionAuthority: {
+        assertMutationCurrent() {}, async assertCurrent() {}, onUncertain: vi.fn(),
+      } })).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+      expect(observed).toEqual(['fresh', 'legacy']);
+      expect(await readFile(database, 'utf8')).toBe(bytes);
+      expect(await new WorkspaceLegacyAdoptionJournalStore(root).read()).toBeUndefined();
+      expect(await new WorkspaceRegistryStore({ installationRoot: root,
+        filePath: join(root, WORKSPACE_REGISTRY_FILE_NAME) }).inspect()).toBeUndefined();
+    } finally { spy.mockRestore(); }
+  });
+
+  it('requires exact phase and context authority without poisoning later valid acceptance', async () => {
+    const root = await createPrivateTemporaryRoot();
+    const preparation = { assertMutationCurrent() {}, async assertCurrent() {}, onUncertain: vi.fn() };
+    const selected = await resolveActiveWorkspaceStartup(root, { adoptionAuthority: preparation });
+    const context = selected.adoptionContext!;
+    const authority = { phase: 'acceptance' as const, context, profileId,
+      assertMutationCurrent() {}, async assertCurrent() {} };
+    expect(context.preparationAuthority).toBe(preparation);
+    await expect(selected.accept(profileId)).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    await expect(selected.accept(profileId, { ...authority, context: { ...context } })).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    await expect(selected.accept('b'.repeat(64), authority)).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    await selected.accept(profileId, authority);
+    expect(preparation.onUncertain).not.toHaveBeenCalled();
+  });
+
+  it('requires a current after-exit context before recording startup recovery', async () => {
+    const root = await createPrivateTemporaryRoot();
+    const preparation = { assertMutationCurrent() {}, async assertCurrent() {}, onUncertain: vi.fn() };
+    const selected = await resolveActiveWorkspaceStartup(root, { adoptionAuthority: preparation });
+    await expect(selected.recoverFromFailure()).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    const authority = { phase: 'afterExit' as const, context: selected.adoptionContext!,
+      assertMutationCurrent() {}, async assertCurrent() {} };
+    await expect(selected.recoverFromFailure({ ...authority, context: { ...authority.context } })).rejects.toThrow('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    await expect(selected.recoverFromFailure(authority)).resolves.toBe('notRecovered');
+    expect((await new WorkspaceLegacyAdoptionJournalStore(root).read())?.state).toBe('recoveryRequired');
+    expect(preparation.onUncertain).not.toHaveBeenCalled();
+  });
+
+  it('retains the original terminal guard across an asynchronous ownership check', async () => {
+    const root = await createPrivateTemporaryRoot();
+    const preparation = { assertMutationCurrent() {}, async assertCurrent() {}, onUncertain: vi.fn() };
+    const selected = await resolveActiveWorkspaceStartup(root, { adoptionAuthority: preparation });
+    const first = new Error('synthetic original terminal owner expired');
+    let current = true;
+    let enter!: () => void, release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const waiting = new Promise<void>(resolve => { release = resolve; });
+    const authority = { phase: 'acceptance' as const, context: selected.adoptionContext!, profileId,
+      assertMutationCurrent() { if (!current) throw first; },
+      async assertCurrent() { enter(); await waiting; },
+    };
+    const work = selected.accept(profileId, authority);
+    const observed = work.catch(error => error);
+    try {
+      await entered;
+      current = false;
+      authority.assertMutationCurrent = () => {};
+      authority.assertCurrent = async () => {};
+    } finally { release(); await observed; }
+    await expect(work).rejects.toBe(first);
+    const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: join(root, WORKSPACE_REGISTRY_FILE_NAME) });
+    expect(await registry.inspect()).toBeUndefined();
+    expect((await new WorkspaceLegacyAdoptionJournalStore(root).read())?.state).toBe('rootPublished');
+  });
+
   for (const state of ['normal', 'targetSelected', 'rollbackSelected'] as const) {
     it(`exposes the immutable registered lineage for ${state} without granting cleanup`, async context => {
       const f = await createSwitchStartupFixture(state);
@@ -51,7 +148,7 @@ describe('active workspace startup resolution', () => {
         if (context.task.result?.state === 'pass') await rm(f.userDataRoot, { recursive: true, force: true });
       });
       const registry = await f.registry.inspect();
-      const selected = await resolveActiveWorkspaceStartup(f.userDataRoot);
+      const selected = await resolveTestWorkspaceStartup(f.userDataRoot);
       const expected = registry!.workspaces.find(entry => entry.workspaceId === selected.workspaceId)!.lineageIdentity;
       expect(selected.registeredLineageIdentity).toEqual(expected);
       expect(selected.registeredLineageIdentity).not.toBe(expected);
@@ -65,7 +162,7 @@ describe('active workspace startup resolution', () => {
 
   it('does not repair registry slots while resolving an ordinary workspace before schema inventory', async () => {
     const userDataRoot = await createPrivateTemporaryRoot();
-    const first = await resolveActiveWorkspaceStartup(userDataRoot);
+    const first = await resolveTestWorkspaceStartup(userDataRoot);
     await first.accept(profileId);
     const paths = [
       join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME),
@@ -76,7 +173,7 @@ describe('active workspace startup resolution', () => {
     await writePrivateFile(paths[2]!, 'unselected-next-evidence');
     const before = await Promise.all(paths.map(path => readFile(path)));
 
-    const selected = await resolveActiveWorkspaceStartup(userDataRoot);
+    const selected = await resolveTestWorkspaceStartup(userDataRoot);
 
     expect(selected.mode).toBe('normal');
     expect(selected.workspaceId).toBe(first.workspaceId);
@@ -87,7 +184,7 @@ describe('active workspace startup resolution', () => {
     const userDataRoot = await createPrivateTemporaryRoot();
     const progress: string[] = [];
 
-    const selection = await resolveActiveWorkspaceStartup(userDataRoot, {
+    const selection = await resolveTestWorkspaceStartup(userDataRoot, {
       reportProgress(event) {
         progress.push(`${event.phase}:${event.state}`);
         if (event.state === 'completed') throw new Error('observer failure');
@@ -106,7 +203,7 @@ describe('active workspace startup resolution', () => {
   it('adopts a fresh installation once and reopens the same workspace normally', async () => {
     const userDataRoot = await createPrivateTemporaryRoot();
 
-    const first = await resolveActiveWorkspaceStartup(userDataRoot);
+    const first = await resolveTestWorkspaceStartup(userDataRoot);
 
     expect(first.mode).toBe('adoption');
     expect(first.registeredLineageIdentity).toBeUndefined();
@@ -115,7 +212,7 @@ describe('active workspace startup resolution', () => {
       [],
     );
 
-    const second = await resolveActiveWorkspaceStartup(userDataRoot);
+    const second = await resolveTestWorkspaceStartup(userDataRoot);
 
     expect(second).toMatchObject({
       mode: 'normal',
@@ -148,7 +245,7 @@ describe('active workspace startup resolution', () => {
     await writePrivateFile(sourcePdf, '%PDF-1.7\nsynthetic');
     const sourceIdentity = await hashFiles([sourceDatabase, sourcePdf]);
 
-    const first = await resolveActiveWorkspaceStartup(userDataRoot);
+    const first = await resolveTestWorkspaceStartup(userDataRoot);
 
     expect(first.mode).toBe('adoption');
     expect(
@@ -165,7 +262,7 @@ describe('active workspace startup resolution', () => {
     ).toBe(sourceIdentity);
     await first.accept(profileId);
 
-    const second = await resolveActiveWorkspaceStartup(userDataRoot);
+    const second = await resolveTestWorkspaceStartup(userDataRoot);
 
     expect(second).toMatchObject({
       mode: 'normal',
@@ -194,13 +291,17 @@ describe('active workspace startup resolution', () => {
     await writePrivateFile(sourceDatabase, 'synthetic-sqlite-profile');
     await writePrivateFile(sourcePdf, '%PDF-1.7\nsynthetic');
     const sourceIdentity = await hashFiles([sourceDatabase, sourcePdf]);
-    const first = await resolveActiveWorkspaceStartup(userDataRoot);
-    await first.recoverFromFailure();
     const journal = new WorkspaceLegacyAdoptionJournalStore(userDataRoot);
+    // Seed interrupted bytes through the lower owner; recovery below is the subject.
+    const first = await resolveWorkspaceLegacyAdoptionStartup({ journal,
+      registry: new WorkspaceRegistryStore({ installationRoot: userDataRoot, filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME) }),
+      rootStore: new NodeWorkspaceLegacyAdoptionRootStore(), userDataRoot,
+    });
+    await first.recoverFromFailure({ journal });
     const progress: string[] = [];
 
     await expect(
-      resolveActiveWorkspaceStartup(userDataRoot, {
+      resolveTestWorkspaceStartup(userDataRoot, {
         reportProgress(event) {
           progress.push(`${event.phase}:${event.state}`);
         },
@@ -219,7 +320,7 @@ describe('active workspace startup resolution', () => {
       'legacyAdoptionRecovery:completed',
     ]);
 
-    const retry = await resolveActiveWorkspaceStartup(userDataRoot);
+    const retry = await resolveTestWorkspaceStartup(userDataRoot);
     expect(retry.mode).toBe('adoption');
     await retry.accept(profileId);
     expect(await hashFiles([sourceDatabase, sourcePdf])).toBe(sourceIdentity);
@@ -231,7 +332,7 @@ describe('active workspace startup resolution', () => {
     const progress: string[] = [];
 
     await expect(
-      resolveActiveWorkspaceStartup(fixture.userDataRoot, {
+      resolveTestWorkspaceStartup(fixture.userDataRoot, {
         reportProgress(event) {
           progress.push(`${event.phase}:${event.state}`);
         },
@@ -252,7 +353,7 @@ describe('active workspace startup resolution', () => {
       'workspaceRootInspection:started',
     ]);
 
-    const sourceStartup = await resolveActiveWorkspaceStartup(
+    const sourceStartup = await resolveTestWorkspaceStartup(
       fixture.userDataRoot,
     );
     expect(sourceStartup).toMatchObject({
@@ -273,7 +374,7 @@ describe('active workspace startup resolution', () => {
     );
 
     await expect(
-      resolveActiveWorkspaceStartup(fixture.userDataRoot),
+      resolveTestWorkspaceStartup(fixture.userDataRoot),
     ).rejects.toMatchObject({
       code: 'ACTIVE_WORKSPACE_STARTUP_RELAUNCH_REQUIRED',
     });
@@ -290,7 +391,7 @@ describe('active workspace startup resolution', () => {
     let caught: unknown;
 
     try {
-      await resolveActiveWorkspaceStartup(fixture.userDataRoot, {
+      await resolveTestWorkspaceStartup(fixture.userDataRoot, {
         reportProgress(event) {
           progress.push(`${event.phase}:${event.state}`);
         },
@@ -323,7 +424,7 @@ describe('active workspace startup resolution', () => {
     const registryBefore = await readFile(registryPath);
 
     await expect(
-      resolveActiveWorkspaceStartup(fixture.userDataRoot),
+      resolveTestWorkspaceStartup(fixture.userDataRoot),
     ).rejects.toMatchObject({ code: 'WORKSPACE_ROOT_INVALID' });
 
     expect(await readFile(registryPath)).toEqual(registryBefore);
@@ -335,7 +436,7 @@ describe('active workspace startup resolution', () => {
     await rm(fixture.sourcePaths.workspaceRoot, { recursive: true });
 
     await expect(
-      resolveActiveWorkspaceStartup(fixture.userDataRoot),
+      resolveTestWorkspaceStartup(fixture.userDataRoot),
     ).rejects.toMatchObject({ code: 'WORKSPACE_SWITCH_RECOVERY_REQUIRED' });
 
     expect((await fixture.registry.read())?.activeWorkspaceId)
@@ -379,6 +480,20 @@ async function createSwitchStartupFixture(
     }
   }
   return { journal, registry, sourcePaths, targetPaths, userDataRoot };
+}
+
+// Explicit phase doubles for this lower filesystem suite, never production grants.
+async function resolveTestWorkspaceStartup(root: string,
+  options: Readonly<Omit<ActiveWorkspaceStartupOptions, 'selectorAuthority'>> = {}) {
+  const preparation = { assertMutationCurrent() {}, async assertCurrent() {}, onUncertain() {} };
+  const selected = await resolveActiveWorkspaceStartup(root, { ...options, adoptionAuthority: preparation });
+  const phase = { assertMutationCurrent() {}, async assertCurrent() {} };
+  return Object.freeze({ ...selected,
+    accept: (profileId: string) => selected.accept(profileId, selected.adoptionContext === undefined ? undefined
+      : { ...phase, phase: 'acceptance', context: selected.adoptionContext, profileId }),
+    recoverFromFailure: () => selected.recoverFromFailure(selected.adoptionContext === undefined ? undefined
+      : { ...phase, phase: 'afterExit', context: selected.adoptionContext }),
+  });
 }
 
 async function createPrivateTemporaryRoot(): Promise<string> {

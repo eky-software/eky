@@ -484,7 +484,10 @@ describe('one adoption attempt metadata selection', () => {
       rootStore: new NodeWorkspaceLegacyAdoptionRootStore(), userDataRoot: f.root,
       generateOperationId: () => TEST_ADOPTION_OPERATION_ID, generateWorkspaceId: () => TEST_ADOPTION_WORKSPACE_ID,
       now: () => new Date(TEST_ADOPTION_CREATED_AT) });
-    await startup.accept('a'.repeat(64));
+    await startup.accept('a'.repeat(64), {
+      journal: selected.journal, registry: selected.registry, publishBinding: async () => {},
+      cleanup: Object.freeze({ discardCandidate: paths => new NodeWorkspaceLegacyAdoptionRootStore().discardCandidate(paths) }),
+    });
     expect(await fileBytes(f.paths.journal.currentPath)).toBeUndefined();
     expect(await fileBytes(f.paths.registry.currentPath)).toEqual(f.bytes.registry);
     expect(ordinaryJournalRead).not.toHaveBeenCalled();

@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
@@ -23,7 +23,7 @@ import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryP
 import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
 import { BackendShutdownExitError, type BackendShutdownOutcome } from '../runtime/backendShutdown.js';
-import { startDesktopBackend, type StartDesktopBackendOptions } from '../runtime/backendProcess.js';
+import { startDesktopBackend, type DesktopBackendHandle, type StartDesktopBackendOptions } from '../runtime/backendProcess.js';
 import { desktopBackendReadinessTimeoutMilliseconds } from '../runtime/backendMessages.js';
 import { DesktopBackendStartupError, DesktopBackendStartupStoppedError } from '../runtime/backendStartupFailure.js';
 import {
@@ -60,6 +60,7 @@ import { createProfileSnapshotArtifactIdentity } from '../runtime/profileInspect
 import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
 import { createTestJournal } from '../workspaces/creation/emptyWorkspaceCreationTestSupport.js';
 import { createWorkspaceLegacyAdoptionJournalPaths, WorkspaceLegacyAdoptionJournalStore } from '../workspaces/adoption/workspaceLegacyAdoptionJournal.js';
+import type { WorkspaceLegacyAdoptionAcceptanceAuthority } from '../workspaces/adoption/workspaceLegacyAdoptionPhaseAuthority.js';
 import { hasWorkspaceLabelConflict } from '../workspaces/registry/workspaceLabelComparison.js';
 import { createWorkspaceCreationJournalPaths, WORKSPACE_CREATION_JOURNAL_FILE_NAME } from '../workspaces/creation/workspaceCreationJournalPaths.js';
 import { WorkspaceCreationJournalStore } from '../workspaces/creation/workspaceCreationJournalStore.js';
@@ -1913,6 +1914,90 @@ describe('selector installation-state startup wiring', () => {
       expect(electronBoundary.fork).not.toHaveBeenCalled();
     });
   });
+});
+
+describe('W7.4 adoption main phase ownership', () => {
+  it.for(['accepted', 'backendStopped', 'bindingReplyLost'] as const)(
+    'uses the real main phase boundary when %s', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        let backend: DesktopBackendHandle | undefined;
+        let authority: WorkspaceLegacyAdoptionAcceptanceAuthority | undefined;
+        let f!: Awaited<ReturnType<typeof createFixture>>;
+        const resolve: NonNullable<StartDesktopCompositionOptions['dependencies']>['resolveActiveWorkspace'] = async (root, options) => {
+          if (options?.selectorAuthority === undefined) throw new Error('SYNTHETIC_MAIN_AUTHORITY_MISSING');
+          const selected = await resolveActiveWorkspaceStartup(root, { ...options, selectorAuthority: options.selectorAuthority });
+          if (selected.mode === 'selector') throw new Error('SYNTHETIC_ADOPTION_EXPECTED');
+          return Object.freeze({ ...selected, async accept(profileId: string, current?: WorkspaceLegacyAdoptionAcceptanceAuthority) {
+            authority = current;
+            expect(current?.context).toBe(selected.adoptionContext);
+            expect(current?.profileId).toBe(originalProfileId);
+            current!.assertMutationCurrent();
+            expect(f.stop).not.toHaveBeenCalled();
+            if (scenario === 'backendStopped') await backend!.stop();
+            await selected.accept(profileId, current);
+          } });
+        };
+        f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+          resolveActiveWorkspace: resolve, observeControlledBackend: handle => { backend = handle; },
+        }));
+        electronBoundary.fetch.mockImplementation(async url => String(url).endsWith('/customers')
+          ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+        const legacy = createDesktopProfilePaths(f.root);
+        const legacyPdf = join(legacy.invoiceDocumentStorageRoot, 'company-1', 'invoice-1', 'approved-invoice.pdf');
+        await mkdir(dirname(legacy.databaseFilePath), { recursive: true });
+        await mkdir(dirname(legacyPdf), { recursive: true });
+        await copyFile(f.databasePath, legacy.databaseFilePath);
+        await copyFile(f.pdfPath, legacyPdf);
+        await rm(f.stagingRoot, { recursive: true, force: true });
+        await rm(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+        const journal = new WorkspaceLegacyAdoptionJournalStore(f.root);
+        for (const state of ['prepared', 'candidatePrepared', 'rootPublished'] as const) {
+          await journal.write({ formatVersion: 1, operationId, workspaceId, sourceKind: 'legacy', state, createdAt: '2026-08-18T10:00:00.000Z' });
+        }
+        const publish = WorkspaceRemnantBindingStore.prototype.publish;
+        const first = new Error('SYNTHETIC_ADOPTION_BINDING_REPLY_LOST');
+        const published = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'publish').mockImplementation(async function (this: WorkspaceRemnantBindingStore, value, guard) {
+          expect(f.stop).not.toHaveBeenCalled();
+          const receipt = await publish.call(this, value, guard);
+          if (scenario === 'bindingReplyLost') throw first;
+          return receipt;
+        });
+        const observe = vi.fn();
+        let lifecycle: Awaited<ReturnType<typeof f.start>>;
+        try {
+          if (scenario === 'accepted') lifecycle = await lifetime.step('startup', () => f.start(observe));
+          else await lifetime.step('startup', async () => { await expect(f.start(observe)).rejects.toThrow(); });
+          expect(authority?.phase).toBe('acceptance');
+          expect(() => authority!.assertMutationCurrent()).toThrow();
+          if (scenario === 'accepted') {
+            expect(lifecycle).toBeDefined();
+            expect((await f.registry.read())?.activeWorkspaceId).toBe(workspaceId);
+            expect(await journal.read()).toBeUndefined();
+            expect(f.stop).not.toHaveBeenCalled();
+            expect(published).toHaveBeenCalledOnce();
+          } else {
+            expect(await f.registry.inspect()).toBeUndefined();
+            expect(f.stop).toHaveBeenCalled();
+            if (scenario === 'backendStopped') {
+              expect(published).not.toHaveBeenCalled();
+              expect((await journal.read())?.state).toBe('recoveryRequired');
+            } else {
+              expect(published).toHaveBeenCalledOnce();
+              expect(observe.mock.calls.some(([error]) => hasErrorCause(error, first))).toBe(true);
+              expect((await journal.read())?.state).toBe('rootPublished');
+              expect(electronBoundary.reservationAcquired.mock.calls.filter(([input]) => input.userDataRoot === f.root)).toHaveLength(2);
+              // Initial handoff only: uncertainty did not prevent child reclaim,
+              // and did not release the reclaimed main reservation afterwards.
+              expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root)).toHaveLength(1);
+            }
+          }
+          expect(await readFile(legacy.databaseFilePath, 'utf8')).toBe(f.originalBytes);
+          expect(await readFile(legacyPdf, 'utf8')).toBe('%PDF-1.7 original pdf');
+        } finally { await lifecycle?.shutdown(); }
+      });
+    });
 });
 
 describe('desktop restore startup composition', () => {
@@ -4671,6 +4756,7 @@ async function createFixture(
     smoke?: boolean;
     skipRestore?: boolean;
     inspectBackendStartup?(input: StartDesktopBackendOptions): Promise<void>;
+    observeControlledBackend?(handle: DesktopBackendHandle): void;
     realBackend?: boolean;
     beforeMigrations?: StartDesktopBackendOptions['beforeMigrations'];
     update?: boolean;
@@ -5051,7 +5137,7 @@ async function createFixture(
               throw new DesktopBackendStartupStoppedError();
             }
           }
-          return {
+          const handle: DesktopBackendHandle = {
             port: 12345, stop: stopOwnedBackend, onUnexpectedExit: vi.fn(),
             assertRunning() {
               if (stopping) throw new Error('BACKEND_PROCESS_RESERVATION_FAILED');
@@ -5065,6 +5151,8 @@ async function createFixture(
               await reclaimAfterExit();
             },
           };
+          options.observeControlledBackend?.(handle);
+          return handle;
         },
       },
       quitApplication: quit,

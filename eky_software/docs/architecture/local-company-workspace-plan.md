@@ -4869,7 +4869,8 @@ todistetaan A-B:ssä ennen tuotantokytkentää; W7.0:n kokeet eivät kattaneet n
 
 ##### W7.4 B: adoption hyväksynnän omistajuus
 
-**30.10.2026: rajattu toteutussopimus, ei vielä tuotantokytkentä.** Tämä
+**30.10.2026: toteutussopimus ja rajattu main-kytkentä; native- ja
+pakettihyväksyntä ovat vielä auki.** Tämä
 täsmentää B:n legacy-adoption-sidontaa. ADR-0011:n copy/validate/switch,
 `fresh`-ensikäyttö ja julkaisemattoman legacy-kopion palautuminen säilyvät.
 `accept(profileId)` kutsutaan nykyisin backendin käynnistyksen, healthin ja
@@ -5470,6 +5471,38 @@ POSIX-tapausta jäi alustaehtonsa vuoksi ajamatta. Desktopin tyypitys ja
 rajattu riippumaton katselmus läpäisivät. Mainin pakollinen alkuvaltuus,
 live-hyväksynnän vaiheportit ja oikea SQLite/backend-/pakettinäyttö ovat
 edelleen seuraava kytkentä, eivät tämän tukipalan läpäisseitä portteja.
+
+**Mainin vaiheiden toteutuscheckpoint 30.10.2026:** tuotannon resolver vaatii
+alkuperäisen main-omistajan ennen adoption korjaavia lukuja. Sama metadata-,
+sidonta- ja root-valinta sekä omien muutosten kuitit jatkuvat valmistelusta
+elävään hyväksyntään ja exitin jälkeiseen palautumiseen. Alempi startup saa
+hyväksyntään ja palautumiseen nimetyt pakolliset vaiheportit; valmistelun
+vanhat sulkeumat eivät anna niihin valtuutta. Live-siivous saa todellisen
+vain `discardCandidate`-metodin sisältävän rajapinnan.
+
+Mainin hyväksyntä tarkistaa saman backend-kahvan elävän tilan ja granted-
+siirtokahvan. Ensimmäinen epävarmuus säilyy, mutta varaus mitätöidään vasta
+backendin stopin ja takaisinoton yrityksen jälkeen. Epävarma main-työ estää
+palautumisen ja ulomman varauksen vapautuksen. Kohdekokeet kattavat normaalin
+hyväksynnän, pysähtyneen backendin ja sidonnan kadonneen kuittauksen.
+Niiden prosessiomistaja on testikaksoinen, ei native-exit-todiste.
+
+Katselmuksessa löytynyt lähdeluokan vaihtuminen kahden havainnon välissä
+hylätään nyt ennen ensimmäisen journalin julkaisua. Alkuperäinen `fresh`-
+tai `legacy`-valinta kulkee alempaan valmisteluun; sitä ei korvata uudella
+päätöksellä. Oikean tiedoston ilmestymisen regressio säilyttää lähteen eikä
+julkaise journalia tai registryä. Testikääre säilyttää alkuperäisen virheen
+syyketjun turvallisen julkisen koodin taustalla ja välittää mainin valtuuden
+muuttumattomana. Historiallinen tavukoe käyttää alempaa omistajaa; se ei
+väitä tekstifixtureä SQLite- tai backend-hyväksynnäksi.
+
+Yhtenäinen 35 tiedoston regressiosarja läpäisi 881 testiä; kolme nykyistä
+POSIX-tapausta jäi alustaehtonsa vuoksi ajamatta. Desktopin ja E2E-runtimen
+tyyppitarkistukset sekä rajattu riippumaton katselmus läpäisivät.
+
+Seuraava portti on yllä määritelty erillinen todellisen SQLite/PDF-aineiston
+main-/backend-käynnistys ja sulku/restart-vertailu. Puhtaan paketin, koko
+W7.4:n ja PR/main-porttien hyväksyntää ei vielä ole.
 
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 

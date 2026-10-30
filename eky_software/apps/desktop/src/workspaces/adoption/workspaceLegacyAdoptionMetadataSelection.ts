@@ -25,6 +25,7 @@ interface MetadataState {
 }
 export interface WorkspaceLegacyAdoptionMetadataObservation {
   readJournal(): ReturnType<WorkspaceLegacyAdoptionJournalPort['read']>;
+  readRegistry(): ReturnType<WorkspaceRegistryPort['read']>;
   assertObservedCurrent(): Promise<void>;
   forPhase(authority: Readonly<ObservedRecoveryAuthority>): WorkspaceLegacyAdoptionMetadataSelection;
 }
@@ -129,6 +130,11 @@ export class WorkspaceLegacyAdoptionMetadataSelection {
         await selected.assertObservedBoth();
         const bytes = selected.selected.journal.bytes;
         return bytes === undefined ? undefined : parseWorkspaceLegacyAdoptionJournalBytes(bytes);
+      }),
+      readRegistry: () => selected.run(async () => {
+        await selected.assertObservedBoth();
+        const bytes = selected.selected.registry.bytes;
+        return bytes === undefined ? undefined : parseWorkspaceRegistryBytes(bytes);
       }),
       assertObservedCurrent: () => selected.assertObservedCurrent(),
       forPhase: (authority: Readonly<ObservedRecoveryAuthority>) => selected.forPhase(authority),

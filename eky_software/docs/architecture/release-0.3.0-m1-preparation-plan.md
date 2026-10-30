@@ -209,33 +209,26 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   erottaa saman valinnan vaihekohtaisista käyttöluvista: ulkoiset vartijat
   lukevat toistensa readonly-havainnot ilman rekursiota, root-kuitit säilyvät
   startupin yli ja main sitoo hyväksynnän täsmälliseen elävään backend-kahvaan.
-  Metadata-, binding- ja root-valintojen vaihenäkymät, readonly-vertaisvartijat
-  ja säilyvät root-kuitit on toteutettu. Yhteisen 32 tiedoston 779 testiä,
-  tyypitys ja rajattu riippumaton katselmus läpäisivät; kolme POSIX-tapausta
-  jäi ajamatta. Yhteinen tiedostoketju kattaa valmistelun, julkaisun ja
-  mallinnetun live-hyväksynnän, ei oikeaa backendia. Seuraavana on
-  startup-/recovery-/main-kytkentä todellisine valtuuksineen. Elävä hyväksyntä
-  saa vain nimetyn operation-siivoamisen, ei final-juuren poistokanavaa.
-  Katselmoitu kutsusopimus antaa `accept/recoverFromFailure`-kutsuille
-  erillisen, samaan muuttumattomaan adoption-kontekstiin sidotun vaihevaltuuden.
-  Alempi käyttöönotto saa nimetyt vaiheportit, ei valmistelun vanhoja portteja.
-  Epävarmuus kirjataan heti; varauksen mitätöinti ei saa estää backendin
-  stop/takaisinottoa. Kaikki alkuperäiset työt päättyvät ennen jatkoa.
-  Historiallinen `workspaceStartupRecoveryProof` säilyttää oikeat tiedostotavut,
-  relaunch-/session-ehdot sekä entiset prosessi- ja ikkunamäärät.
-  Erillinen aito backend-tapaus käyttää nykyistä SQLite/PDF-fixtureä ja
-  Mainin tuotantokäynnistystä; health tai grant eivät ole testikaksoisia.
-  Kaikki suorat kutsujat ja E2E:n option-välitys kuuluvat samaan kytkentään.
-  Tämä on toteutussopimus, ei vielä uuden main-/backend-kokeen läpäisy.
-  Palautumisen metadata-luvut ovat nyt sarjallisia. Sidotun prepared-jatkon
-  portti vaatii kaikkien registry-slottien ja välijuurten poissaolon, saman
-  sidonnan ja oman kirjoituskuitin. Oikeat tiedostot kattavat uuden omistajan
-  jatkon samoilla tunnisteilla sekä keskeytykset siivouksen ja julkaisun
-  ympärillä. Yhtenäisen 32 tiedoston 817 testiä, tyypitys ja rajattu katselmus
-  läpäisivät; kolme nykyistä POSIX-tapausta jäi ajamatta. Tämä on alempien
-  omistajien näyttö, ei mainin tai aidon backendin hyväksyntä.
-  Adapterikoe ei vielä todista mainin pakollista valtuutta,
-  prosessirajaa tai puhtaan paketin hyväksyntää. Laajan
+  Metadata-, binding- ja root-valinnat jatkuvat nyt tuotannon resolverin
+  valmistelusta mainin live-/afterExit-vaiheisiin samoilla kuiteilla.
+  Pakollinen alkuvaltuus, muuttumaton konteksti ja nimetyt alemman startupin
+  vaiheportit on kytketty. Live-siivous saa vain oman operation-juuren
+  siivoamisen, ei final-juuren poistokanavaa. Main vaatii saman käyvän
+  backendin ja granted-siirron. Epävarmuus säilyttää ensivirheen, mutta
+  ei estä backendin stop/takaisinoton yritystä ennen jatkon sulkemista.
+  Kohdetestit kattavat nämä kolme main-polkuvaihtoehtoa ja aiemman
+  recovery-omistajan säilymisen; prosessiomistaja on testikaksoinen.
+  Katselmuksen lähdeluokan kilpailu korjattiin: muuttunut fresh/legacy-valinta
+  estyy ennen ensimmäistä journalia. Wrapper säilyttää alkuperäisen syyn.
+  Sidottu prepared-jatko säilyttää tunnisteet, vaatii registry-/välijuurten
+  poissaolon ja oman kuitin. Aiemmat alempien porttien checkpointit säilyvät
+  omistavassa suunnitelmassa, eivät ole uusia main-/native-hyväksyntöjä.
+  Historiallinen tavukoe säilyttää entiset relaunch-/session- ja prosessi-/
+  ikkunamittarit alemmalla omistajalla; tekstifixture ei ole SQLite-näyttö.
+  **Seuraavana** on erillinen nykyiseen SQLite/PDF-fixtureen perustuva
+  todellinen main/backend-startup, sulku ja restart-vertailu. Healthia tai
+  grantia ei korvata testikaksoisilla. Puhtaan paketin hyväksyntä on auki.
+  Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
   avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan
   läpäisyä ei väitetä. Aikarajoja tai nykyisiä palautusvaatimuksia ei muutettu.

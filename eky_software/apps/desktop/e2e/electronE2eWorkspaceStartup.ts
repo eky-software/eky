@@ -18,7 +18,9 @@ export async function resolveElectronE2eWorkspaceStartup(
   };
   try {
     return await (options.selectorAuthority === undefined
-      ? resolveActiveWorkspaceStartup(userDataRoot, { reportProgress })
+      ? resolveActiveWorkspaceStartup(userDataRoot, {
+          ...(options.adoptionAuthority === undefined ? {} : { adoptionAuthority: options.adoptionAuthority }), reportProgress,
+        })
       : resolveActiveWorkspaceStartup(userDataRoot, {
           ...options, selectorAuthority: options.selectorAuthority, reportProgress,
         }));
@@ -26,6 +28,6 @@ export async function resolveElectronE2eWorkspaceStartup(
     // This is the production owner's completed recovery handoff, not a startup
     // failure. Its identity must reach resolveDesktopWorkspaceStartup intact.
     if (error instanceof ActiveWorkspaceStartupRelaunchRequiredError) throw error;
-    throw new Error(readSafeElectronE2eWorkspaceStartupFailureCode(error, phase));
+    throw new Error(readSafeElectronE2eWorkspaceStartupFailureCode(error, phase), { cause: error });
   }
 }
