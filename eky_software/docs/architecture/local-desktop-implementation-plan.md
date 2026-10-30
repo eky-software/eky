@@ -646,6 +646,16 @@ ei valtuuta tai mitätöi seuraavaa sukupolvea. Callbackin alkuperäinen tehtäv
 säilyy nykyisessä prepare-/sulkuseurannassa. Portti ei aloita uutta aikarajaa
 eikä korvaa backendin erillistä grantia tai mainin native-omistajuustarkistusta.
 
+Mainin `bind`-tulos tarjoaa lisäksi toistettavan `assertGrantedCurrent`-
+havainnon vain saman myönnetyn siirron eliniäksi. Se ei kuluta uudelleen
+kertakäyttöistä grantia tai anna fyysistä main-omistajuutta; vanha kahva
+hylätään ennen seuraavan omistajan tarkistuksia. Backend-kahvan
+`assertRunning` käyttää nykyistä ready/granted-, stop-, exit- ja
+peruutustilaa myös ennen odottamattoman exitin callbackin rekisteröintiä.
+Havainnot eivät yksin ole terveystarkistus tai muutoksen valtuus. Adoption
+[vaihekohtainen sopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
+omistaa niiden tulevan hyväksyntäkytkennän; porttien toteutus ei todista sitä.
+
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:
 readonly admission, nykyinen build-portti, tuore varaus sekä sama huoltolease

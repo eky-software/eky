@@ -5026,13 +5026,16 @@ async function createFixture(
           await input.reservationTransfer.assertGrant(signal);
           input.reservationTransfer.assertCurrent();
           let reclaim: Promise<void> | undefined;
+          let stopping = false;
           const reclaimAfterExit = () => reclaim ??= input.reservationTransfer.reclaimAfterExit(signal);
           const stopOwnedBackend = async () => {
+            stopping = true;
             const outcome = await stop();
             await reclaimAfterExit();
             return outcome;
           };
           const stopOwnedBackendForUpdate = async () => {
+            stopping = true;
             await stopForUpdate();
             await reclaimAfterExit();
           };
@@ -5050,10 +5053,14 @@ async function createFixture(
           }
           return {
             port: 12345, stop: stopOwnedBackend, onUnexpectedExit: vi.fn(),
+            assertRunning() {
+              if (stopping) throw new Error('BACKEND_PROCESS_RESERVATION_FAILED');
+            },
             stopForUpdate: stopOwnedBackendForUpdate,
             stopForRestore: async () => { throw new Error('RESTORE_FENCE_NOT_CONFIGURED_IN_FIXTURE'); },
             stopForDelete: async operationId => {
               if (options.stopForDelete === undefined) throw new Error('DELETE_FENCE_NOT_CONFIGURED_IN_FIXTURE');
+              stopping = true;
               await options.stopForDelete(operationId);
               await reclaimAfterExit();
             },

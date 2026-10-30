@@ -198,9 +198,16 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Adoption [omistajuussopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
   erottaa backendia edeltävän main-varauksen, elävän backendin rajatun
   metadatahyväksynnän ja exitin jälkeisen palautumisen. Nykyistä käynnistystä
-  ei pysäytetä vain sidonnan vuoksi. Seuraava toteutuspala on nykyisen
-  varausomistajan toistettava granted-havainto ja backendin pysyvä tilahavainto
-  regressioineen, sitten valitut journal-/registry-portit ja adoption kytkentä.
+  ei pysäytetä vain sidonnan vuoksi. Nykyisen varausomistajan toistettava
+  granted-havainto, backendin pysyvä tilahavainto ja adoption journalin valitut
+  portit on toteutettu. Yhtenäisen 12 tiedoston 334 testiä, desktopin tyypitys
+  sekä rajatut riippumattomat katselmukset läpäisivät. Seuraavana ovat
+  valintakuitit, root-vartijat ja adoption startup-/recovery-/main-kytkentä;
+  porttien oma näyttö ei vielä todista tätä kytkentää tai pakettirajaa.
+  Electron-testikahvojen 19 regressiota ja tyypitys läpäisivät. Laajan
+  main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
+  avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan
+  läpäisyä ei väitetä. Aikarajoja tai nykyisiä palautusvaatimuksia ei muutettu.
   Sidottu keskeytysjatko säilyttää saman operaation tunnisteet; vanha
   sidonnaton palautus ei muutu. Nykyisten kuuden tiedoston 151 kontrollia ja
   kahden startup-/W6-tiedoston 41 kontrollia läpäisivät. Nämä ovat nykytilan

@@ -201,6 +201,12 @@ export function createElectronE2eBackendController(
             ),
           );
           resolveStart({
+            assertRunning() {
+              if (!ready || handoff !== 'granted' || stopping ||
+                  processHandle !== child || startupCancellation.signal.aborted) {
+                throw new Error('BACKEND_PROCESS_RESERVATION_FAILED');
+              }
+            },
             onUnexpectedExit(callback) {
               unexpectedExitCallback = callback;
             },

@@ -17,6 +17,68 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
+describe('backend running observation', () => {
+  it('observes ready repeatedly without new grants, messages, timers or callbacks', async () => {
+    vi.useFakeTimers();
+    const f = await createFixture();
+    const messages = f.postMessage.mock.calls.length;
+    f.backend.assertRunning();
+    f.backend.assertRunning();
+    expect(f.transfer.assertCurrent).toHaveBeenCalledOnce();
+    expect(f.postMessage).toHaveBeenCalledTimes(messages);
+    expect(f.transfer.reclaimAfterExit).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+    const stopped = f.backend.stop();
+    f.process.emit('exit', 0);
+    await stopped;
+    expect(() => f.backend.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
+  });
+
+  it.each([0, 1])('retains an exit %s before the handle continuation or callback registration', async exitCode => {
+    vi.useFakeTimers();
+    const f = await createStartingFixture();
+    f.process.emit('message', readyMessage);
+    f.process.emit('exit', exitCode);
+    const backend = await f.started;
+    const callback = vi.fn();
+    backend.onUnexpectedExit(callback);
+    expect(callback).not.toHaveBeenCalled();
+    expect(() => backend.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
+    expect(() => backend.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
+    await expect(backend.stop()).rejects.toThrow();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
+    'closes observation synchronously when %s starts, before exit', async method => {
+      vi.useFakeTimers();
+      const f = await createFixture();
+      const callback = vi.fn();
+      f.backend.onUnexpectedExit(callback);
+      const stopped = method === 'stop' ? f.backend.stop() : f.backend[method](operationId);
+      expect(() => f.backend.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
+      f.process.emit('exit', 0);
+      await stopped;
+      expect(() => f.backend.assertRunning()).toThrow();
+      expect(callback).not.toHaveBeenCalled();
+      expect(vi.getTimerCount()).toBe(0);
+    },
+  );
+
+  it('does not revive observation after a failed shutdown with unknown exit', async () => {
+    vi.useFakeTimers();
+    const f = await createFixture();
+    const failed = expect(f.backend.stopForRestore(operationId)).rejects.toThrow();
+    await vi.advanceTimersByTimeAsync(3_000);
+    await failed;
+    expect(f.transfer.invalidate).toHaveBeenCalledOnce();
+    expect(() => f.backend.assertRunning()).toThrow();
+    f.process.emit('exit', 0);
+    expect(() => f.backend.assertRunning()).toThrow();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+});
+
 describe('backend process shutdown result', () => {
   it.each(['exited', 'forced'] as const)('preserves the observed %s outcome for its owner', async (outcome) => {
     vi.useFakeTimers();

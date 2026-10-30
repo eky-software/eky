@@ -5054,6 +5054,27 @@ backend-kontrollit läpäisivät 151 testiä; startup-/W6-kontrollit 41 testiä.
 Tuotantokoodia ei tämän sopimuksen valmistelussa muutettu. Uuden
 palautussiirtymän ja vartijoiden näyttö jää nimetyille toteutuspaloille.
 
+**Vartija- ja journal-porttien checkpoint 30.10.2026:** mainin toistettava
+granted-havainto ja backendin pysyvään tilaan perustuva käyntihavainto on
+toteutettu. Adoption journal käyttää nyt yhteisiä observed-/selected-portteja
+sekä rajattua `prepareRecoveredSelection`-siirtymää; tavallinen write pysyy
+ennallaan. Epävarmuushavainto saa alkuperäisen syyn ennen turvallista
+virhemuunnosta. Uuden portin kutsuja vastaa edelleen tuoreesta main-, sidonta-,
+registry- ja payload-poissaolovaltuudesta sekä saman ajon pysyvästä sulusta.
+Yhtenäisen 12 tiedoston sarjan 334 testiä, desktopin tyypitys sekä molempien
+palojen rajattu riippumaton katselmus läpäisivät. Sarja sisältää vanhoja
+kontrolleja, ei 334 uutta testiä. Tämä ei vielä kytke vartijoita adoption
+startup-/recovery-omistajaan tai todista native-/pakettirajaa. Seuraavana
+ovat valintakuittien, root-vartijoiden ja nykyisten kutsujien kytkennät.
+Electron-testiruntimen eksplisiittiset kahvat välittävät uuden käyntihavainnon;
+19 regressiota, testiruntimen tyypitys ja rajattu katselmus läpäisivät.
+Laajassa main-sarjassa yksi nykyinen cold-forward-replacement-tapaus
+aikakatkaisi ja keskeneräisen työn suoja esti myöhempiä tapauksia. Yksi
+sallittu kahden variantin kohdeuusinta läpäisi samoilla aikarajoilla.
+Ensiajo ja sen keskeneräinen siivoushavainto säilyvät avoimina; koko
+main-sarjaa tai alkuperäisen viiveen syytä ei merkitä tämän perusteella
+hyväksytyksi. Paketti- ja PR/main-portit ovat edelleen erillisiä ja avoimia.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on

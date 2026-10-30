@@ -13,6 +13,7 @@ export function observeSelectorTestBackend(start: (options: StartDesktopBackendO
       active = handle;
       const release = () => { if (active === handle) active = undefined; };
       return {
+        assertRunning() { handle.assertRunning(); },
         port: handle.port,
         onUnexpectedExit(callback) { handle.onUnexpectedExit(() => { release(); callback(); }); },
         async stop() { const result = await handle.stop(); release(); return result; },

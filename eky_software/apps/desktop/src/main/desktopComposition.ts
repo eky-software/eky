@@ -398,7 +398,7 @@ export async function acquireDesktopWorkspaceReservation(options: {
       generationId: string,
       assertAuthority: () => void,
       prepareMainOwned?: (signal: AbortSignal, assertPreparationCurrent: () => void) => Promise<void>,
-    ): WorkspaceProcessReservationTransfer {
+    ): WorkspaceProcessReservationTransfer & { assertGrantedCurrent(): void } {
       assertMainInstance();
       if (active !== undefined || held === undefined) throw fail();
       const descriptor = parseWorkspaceProcessReservationDescriptor({
@@ -486,6 +486,15 @@ export async function acquireDesktopWorkspaceReservation(options: {
           assertSignal(grantSignal);
           assertAuthorityCurrent();
           transfer.phase = 'granted';
+        },
+        assertGrantedCurrent() {
+          if (active !== transfer || transfer.phase !== 'granted' || grantSignal === undefined) throw fail();
+          assertSignal(grantSignal);
+          // Observe the captured authority without consuming a grant or invalidating
+          // a successor if this old handle is checked after its lifetime.
+          try { assertAuthority(); } catch { throw fail(); }
+          assertSignal(grantSignal);
+          if (transfer.phase !== 'granted') throw fail();
         },
         async reclaimAfterExit(signal: AbortSignal) {
           assertSignal(signal);

@@ -149,6 +149,121 @@ describe('selector lifecycle with the desktop reservation owner', () => {
 });
 
 describe('desktop composition workspace reservation owner', () => {
+  it('observes only the granted phase repeatedly without consuming or reclaiming it', async () => {
+    const f = await fixture();
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.transfer.prepare(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.transfer.assertGrant(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    f.transfer.assertCurrent();
+    const acquisitions = acquire.mock.calls.length;
+    const identityReads = readIdentity.mock.calls.length;
+    f.transfer.assertGrantedCurrent();
+    f.transfer.assertGrantedCurrent();
+    expect(acquire).toHaveBeenCalledTimes(acquisitions);
+    expect(readIdentity).toHaveBeenCalledTimes(identityReads);
+    expect(() => f.owner.assertMainCurrent()).toThrow();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.owner.assertMainOwned();
+    await f.handle.release();
+    await f.owner.close();
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+  });
+
+  it('rejects a stale granted observer without inspecting its old authority or harming the successor', async () => {
+    const f = await fixture();
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    const successor = f.owner.bind(randomUUID(), f.lease.captureCurrentOwner(['create']));
+    await successor.prepare(f.signal.signal);
+    await successor.assertGrant(f.signal.signal);
+    successor.assertCurrent();
+    f.assertAuthority.mockImplementation(() => { throw new Error('stale authority'); });
+    f.assertAuthority.mockClear();
+    const instanceChecks = f.assertSingleInstanceOwnership.mock.calls.length;
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    expect(f.assertAuthority).not.toHaveBeenCalled();
+    expect(f.assertSingleInstanceOwnership).toHaveBeenCalledTimes(instanceChecks);
+    successor.assertGrantedCurrent();
+    acquire.mockResolvedValueOnce(reservation().handle);
+    await successor.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('does not observe pending preparation or reclaim as a granted owner', async () => {
+    const entered = deferred();
+    const prepared = deferred();
+    const f = await fixture(async () => { entered.resolve(); await prepared.promise; });
+    const preparation = f.transfer.prepare(f.signal.signal);
+    await entered.promise;
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    prepared.resolve();
+    await preparation;
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    const acquired = deferred<WorkspaceProcessReservation>();
+    acquire.mockReturnValueOnce(acquired.promise);
+    const reclaim = f.transfer.reclaimAfterExit(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    acquired.resolve(f.reclaimed.handle);
+    await reclaim;
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('rechecks the owner after a synchronous authority callback invalidates it', async () => {
+    const f = await fixture();
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    f.assertAuthority.mockImplementationOnce(() => f.transfer.invalidate());
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await expect(f.owner.close()).rejects.toThrow();
+  });
+
+  it.each(['abort', 'reclaim'] as const)('rejects synchronous authority-triggered %s', async mode => {
+    const f = await fixture();
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    let reclaim: Promise<void> | undefined;
+    f.assertAuthority.mockImplementationOnce(() => {
+      if (mode === 'abort') f.signal.abort();
+      else reclaim = f.transfer.reclaimAfterExit(new AbortController().signal);
+    });
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await (reclaim ?? f.transfer.reclaimAfterExit(new AbortController().signal));
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['signal', 'lease', 'instance', 'invalidated'] as const)(
+    'rejects a granted observation after losing %s', async mode => {
+      const f = await fixture();
+      await f.transfer.prepare(f.signal.signal);
+      await f.transfer.assertGrant(f.signal.signal);
+      f.transfer.assertCurrent();
+      if (mode === 'signal') f.signal.abort();
+      else if (mode === 'lease') await f.handle.release();
+      else if (mode === 'instance') f.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('lost'); });
+      else f.transfer.invalidate();
+      expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+      expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+      if (mode === 'instance' || mode === 'invalidated') {
+        await expect(f.owner.close()).rejects.toThrow();
+      } else {
+        await f.transfer.reclaimAfterExit(new AbortController().signal);
+        await f.owner.close();
+      }
+    },
+  );
+
   it('lends a repeatable preparing guard without granting main ownership or a child grant', async () => {
     let f!: Awaited<ReturnType<typeof fixture>>;
     let captured!: () => void;
