@@ -216,6 +216,15 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   mallinnetun live-hyväksynnän, ei oikeaa backendia. Seuraavana on
   startup-/recovery-/main-kytkentä todellisine valtuuksineen. Elävä hyväksyntä
   saa vain nimetyn operation-siivoamisen, ei final-juuren poistokanavaa.
+  Kytkentä ei voi käyttää hyväksynnässä valmistelun vanhoja portteja:
+  nykyinen adoption `accept/recoverFromFailure` käyttää startupissa talteen
+  otettuja portteja.
+  Vaiheportit liitetään samaan nykyiseen käyttöönotto-omistajaan.
+  Suoran `workspaceStartupRecoveryProof`-todentajan historiallinen aineisto
+  on tarkoituksellinen tiedostotavukoe, ei avattava SQLite-profiili. Sen
+  kattavuus säilytetään ja oikean backendin hyväksyntä todistetaan nykyisessä
+  testipohjassa aidolla synteettisellä SQLite-aineistolla. Kaikki suorat
+  kutsujat ja E2E:n option-välitys kuuluvat saman kytkennän tarkistukseen.
   Palautumisen rinnakkaiset metadata-
   luvut korvataan sarjallisilla ja lopullisella valinnan tarkistuksella.
   Adapterikoe ei vielä todista mainin pakollista valtuutta,
