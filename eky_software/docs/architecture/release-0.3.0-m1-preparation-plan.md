@@ -195,6 +195,13 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
 - **Seuraava työ:** B:n adoption- ja inspection-liitokset, sitten
   C:n W7.3-luovutus ja loput C-F-portit. Puuttuva sidonta ei anna W7-poistovaltuutta
   eikä osittaista sidontaa ohiteta.
+  Adoption lähdekartoitus vahvisti täsmennettävän rajan: `accept(profileId)`
+  tapahtuu backendin käynnistyksen ja terveystarkistuksen jälkeen. Cold-importin
+  fyysisen main-varauksen vartijaa ei voi kopioida siihen sellaisenaan, eikä
+  kertakäyttöistä grant-kutsua käyttää toistuvana lukuvaltuutena. Ennen
+  toteutusta täsmennetään hyväksyntävaiheen omistajuus sekä journalin ja
+  rekisterin tuore tarkistus; nykyistä toimivaa käynnistystä ei pysäytetä
+  uuden sidonnan vuoksi ilman erillistä sopimusta.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
   paluun. Sen porttien ja tiedostokokeiden aiemmat checkpointit säilyvät
