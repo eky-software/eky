@@ -5,6 +5,7 @@ import { deletionTestId as id } from './workspaceDeletionDataTestSupport.js';
 import { readDeletionInventoryDirectoryIdentity } from './workspaceDeletionInventoryFile.js';
 import { captureWorkspaceRemnantBinding, serializeWorkspaceRemnantBinding } from './workspaceRemnantBindingCodec.js';
 import { remnantBindingFixture as fixture } from './workspaceRemnantBindingTestSupport.js';
+import { WorkspaceCandidateInspectionCopy } from '../runtime/workspaceCandidateInspectionCopy.js';
 
 for (const slot of ['next', 'backup', 'current'] as const) {
   for (const timing of ['before', 'after'] as const) {
@@ -153,6 +154,39 @@ it('clears inspection metadata after its original copy is absent, without requir
   expect(await readdir(f.paths.directoryPath)).toHaveLength(0);
   await expect(lstat(copy)).rejects.toMatchObject({ code: 'ENOENT' });
 });
+
+for (const recreate of [false, true]) {
+  it(`uses the original inspection owner's fresh removal proof for metadata cleanup (recreated: ${recreate})`, async context => {
+    const f = await fixture(context, 'profileInspection');
+    const copy = new WorkspaceCandidateInspectionCopy(join(f.root, 'owned-inspection-copy'));
+    const signal = new AbortController().signal;
+    const authority = { signal, assertCurrent: () => f.authority.assertAuthority(),
+      assertMainOwned: () => f.authority.assertExternalSelection() };
+    await copy.prepare(signal);
+    const binding = captureWorkspaceRemnantBinding({ ...f.binding, ...copy.captureCreationIdentity() });
+    const published = await f.store().publish(binding, {
+      ...f.authority, async assertExternalSelection() {
+        await f.authority.assertExternalSelection();
+        await copy.assertEmptyCreationCurrent(authority);
+      },
+    });
+    await writeFile(join(copy.root, 'profile.sqlite'), 'owned synthetic copy');
+    await copy.discardAfterExit(authority.assertMainOwned, signal);
+    if (recreate) { await mkdir(copy.root, { mode: 0o700 }); await writeFile(join(copy.root, 'foreign.txt'), 'preserve'); }
+    const proof = { ...f.cleanup(), bindingSha256: published.bindingSha256, expectedCurrentIdentity: published.identity,
+      assertPayloadsAbsent: () => copy.assertRemovedCreationCurrent(authority) };
+    if (recreate) {
+      const before = await f.snapshot();
+      await expect(f.store().clearAfterPayloadsAbsent(binding, proof)).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
+      expect(await readFile(join(copy.root, 'foreign.txt'), 'utf8')).toBe('preserve');
+    } else {
+      await f.store().clearAfterPayloadsAbsent(binding, proof);
+      expect(await readdir(f.paths.directoryPath)).toEqual([]);
+      await expect(lstat(copy.root)).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+  });
+}
 
 it('acknowledges proven metadata absence without creating or synchronizing a missing directory', async context => {
   const f = await fixture(context);

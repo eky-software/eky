@@ -240,6 +240,9 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Nykyisen varausomistajan fyysinen valmisteluportti on toteutettu:
   551 kohdetestiä, tyypitys ja rajattu katselmus läpäisivät. Paikallinen IPC-koe
   käyttää myös uutta porttia; se ei ole Electron-/pakettitodiste.
+  Kopio-omistajan readonly-poistumistodiste on toteutettu nykyistä
+  metadatasiivousta varten: 355 kohdetestiä läpäisi, yksi alustarajattu
+  tapaus jäi Windows-ajon ulkopuolelle. Kutsujakytkentä on edelleen auki.
   Seuraavaksi kytketään sidonnan julkaisu ja erotetaan alkuperäisen
   sidontakirjoituksen päättyminen lapsen exitistä.
   Julkaisu- ja kutsujakytkentä sekä niiden native-näyttö ovat vielä auki.

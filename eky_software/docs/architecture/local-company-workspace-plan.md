@@ -3464,6 +3464,20 @@ Rajattu riippumaton katselmus ja myöhäisen luvun testitäsmennyksen
 jälkitarkistus valmistuivat ilman avoimia löydöksiä. Tämä ei vielä julkaise
 inspection-sidontaa tai todista erillisen Electron-lapsen/paketin kytkentää.
 
+**Poistetun kopion readonly-todiste:** saman kopio-omistajan
+`assertRemovedCreationCurrent` toteaa oman onnistuneesti kuitatun poistonsa
+jälkeen alkuperäisen vanhemman ja kopiojuuren tuoreen poissaolon.
+Uusi olio, ulkopuolinen poisto tai kadonnut
+poistokuittaus ei saa tätä valtuutta. Lukuvirhe ei ole poissaolo; tarkistus
+ei poista tiedostoja. Viimeisen vanhempiluvun jälkeen tarkistetaan poissaolo
+uudelleen. Oikeiden slot-tavujen ja julkaisukuitin yhteiskoe kattaa sekä
+metadatan siivouksen että korvaavan kopion ja metadatan säilymisen.
+Kymmenen tiedoston sarja läpäisi 355 testiä; yksi entinen POSIX-linkkitapaus
+ei kuulu Windows-ajoon. Desktopin tyypitys ja rajattu riippumaton katselmus
+sekä viimeisen lukuvälin täsmennyksen jälkitarkistus läpäisivät.
+Tämä on sidonnan loppusiivouksen tukiosa,
+ei vielä `runOwnedProfileInspection`-julkaisun tai prosessikytkennän näyttö.
+
 ##### Poiston backup-todisteen vastaavuus
 
 **25.10.2026, lähteeseen perustuva suunnitelma, pieni sopimuskoe ja rajattu katselmus valmis.**

@@ -12,11 +12,18 @@ export interface WorkspaceInspectionCopyCreationIdentity {
   readonly parentIdentity: string;
 }
 
+export interface WorkspaceInspectionCopyReadAuthority {
+  assertCurrent(): void;
+  assertMainOwned(): Promise<void>;
+  readonly signal: AbortSignal;
+}
+
 /** Main keeps the receipt locally; the child's path never authorizes deletion. */
 export class WorkspaceCandidateInspectionCopy {
   private rootIdentity: BigIntStats | undefined;
   private parentIdentity: BigIntStats | undefined;
   private creationIdentity: Readonly<WorkspaceInspectionCopyCreationIdentity> | undefined;
+  private removedCreationIdentity: Readonly<WorkspaceInspectionCopyCreationIdentity> | undefined;
 
   constructor(readonly root: string, private readonly kind?: 'coldRestoreContent') {}
 
@@ -41,11 +48,7 @@ export class WorkspaceCandidateInspectionCopy {
   }
 
   /** Readonly pre-grant proof; never recaptures identities from the current path. */
-  async assertEmptyCreationCurrent(authority: Readonly<{
-    assertCurrent(): void;
-    assertMainOwned(): Promise<void>;
-    signal: AbortSignal;
-  }>): Promise<void> {
+  async assertEmptyCreationCurrent(authority: Readonly<WorkspaceInspectionCopyReadAuthority>): Promise<void> {
     const receipt = this.captureCreationIdentity();
     const checkCurrent = authority.assertCurrent.bind(authority);
     const checkMainOwned = authority.assertMainOwned.bind(authority);
@@ -65,6 +68,31 @@ export class WorkspaceCandidateInspectionCopy {
       if (names.length !== 0) throw new Error(failureCode);
     }
     await this.assertOwnedDirectory(assertCurrent);
+    assertCurrent();
+  }
+
+  /** Metadata cleanup only: the original owner must have acknowledged its own rmdir. */
+  async assertRemovedCreationCurrent(authority: Readonly<WorkspaceInspectionCopyReadAuthority>): Promise<void> {
+    const receipt = this.removedCreationIdentity;
+    if (receipt === undefined) throw new Error(failureCode);
+    const checkCurrent = authority.assertCurrent.bind(authority);
+    const checkMainOwned = authority.assertMainOwned.bind(authority);
+    const signal = authority.signal;
+    const assertCurrent = () => {
+      if (signal.aborted || this.removedCreationIdentity !== receipt || this.creationIdentity !== undefined) throw new Error(failureCode);
+      checkCurrent();
+    };
+    for (let pass = 0; pass < 2; pass += 1) {
+      assertCurrent();
+      await checkMainOwned();
+      assertCurrent();
+      assertIdentity(this.parentIdentity!, await inspectDirectory(dirname(this.root), assertCurrent));
+      assertCurrent();
+      await this.assertCopyAbsent(assertCurrent);
+    }
+    assertIdentity(this.parentIdentity!, await inspectDirectory(dirname(this.root), assertCurrent));
+    assertCurrent();
+    await this.assertCopyAbsent(assertCurrent);
     assertCurrent();
   }
 
@@ -110,6 +138,7 @@ export class WorkspaceCandidateInspectionCopy {
     }
     if (signal.aborted) throw new Error(failureCode);
     await fileSystem.rmdir(this.root);
+    this.removedCreationIdentity = this.creationIdentity;
     this.creationIdentity = undefined;
   }
 
@@ -134,6 +163,7 @@ export class WorkspaceCandidateInspectionCopy {
     if (signal.aborted || finalNames.length !== 0) throw new Error(failureCode);
     // rmdir rejects an entry arriving after the final empty-directory check.
     await fileSystem.rmdir(this.root);
+    this.removedCreationIdentity = this.creationIdentity;
     this.creationIdentity = undefined;
   }
 
@@ -143,6 +173,18 @@ export class WorkspaceCandidateInspectionCopy {
     assertCurrent?.();
     assertIdentity(this.rootIdentity!, await inspectDirectory(this.root, assertCurrent));
     assertCurrent?.();
+  }
+
+  private async assertCopyAbsent(assertCurrent: () => void): Promise<void> {
+    assertCurrent();
+    let absent = false;
+    try { await fileSystem.lstat(this.root, { bigint: true }); }
+    catch (error) {
+      if (typeof error !== 'object' || error === null || !('code' in error) || error.code !== 'ENOENT') throw error;
+      absent = true;
+    }
+    assertCurrent();
+    if (!absent) throw new Error(failureCode);
   }
 }
 
