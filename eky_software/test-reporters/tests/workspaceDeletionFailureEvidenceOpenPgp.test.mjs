@@ -8,6 +8,7 @@ import { gunzipSync } from 'node:zlib';
 
 import { projectExceptionChain, STARTUP_EXCEPTION_LIMITS } from '../../apps/desktop/src/main/startupExceptionEvidence.ts';
 import { captureWorkspaceDeletionFailure } from '../../apps/e2e/src/fixtures/captureWorkspaceDeletionFailure.ts';
+import { runElectronWorkspaceAdoptionAcceptanceProof } from '../../apps/e2e/src/electron/electronMainCapabilities.ts';
 import { createRunnerFailureSink, validateRunnerFailureEvidence } from '../runnerFailureEvidence.mjs';
 import { collectJobFailureEvidence } from '../../apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../apps/desktop/installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
@@ -16,7 +17,7 @@ import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-a
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
-test('W7.3 main projections retain original causes and coverage through OpenPGP delivery', {
+test('workspace main projections retain original causes and coverage through OpenPGP delivery', {
   skip: !['win32', 'linux'].includes(process.platform), timeout: 240_000,
 }, async () => {
   const fixture = await createOpenPgpTestFixture(root);
@@ -46,13 +47,22 @@ test('W7.3 main projections retain original causes and coverage through OpenPGP 
       runtimeInstanceId: '11111111-1111-4111-8111-111111111111', testInfo,
     }, createRunnerFailureSink({ env: binding, tempRoot: temp }));
     assert.equal(testInfo.annotations[0].description, 'partial');
+    const adoptionInfo = { ...testInfo, title: 'W7.4 synthetic adoption boundary failure', testId: 'w74-proof', annotations: [] };
+    await assert.rejects(runElectronWorkspaceAdoptionAcceptanceProof({ evaluate: async () => ({
+      status: 'failed', runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+      exception: projectExceptionChain(new Error('SYNTHETIC_W74_ADOPTION_ORIGINAL', {
+        cause: new Error('SYNTHETIC_W74_ADOPTION_CAUSE'),
+      })),
+    }) }, adoptionInfo, createRunnerFailureSink({ env: binding, tempRoot: temp })),
+    /^Error: WORKSPACE_ADOPTION_ACCEPTANCE_PROOF_FAILED$/);
+    assert.equal(adoptionInfo.annotations[0].description, 'recorded');
     const originals = new Map();
     for (const directory of await readdir(temp)) {
       for (const file of await readdir(join(temp, directory))) {
         originals.set(`temporary/${directory}/${file}`, await readFile(join(temp, directory, file)));
       }
     }
-    assert.equal(originals.size, 3);
+    assert.equal(originals.size, 5);
     // Synthetic collector identity, not hosted admission or an artifact upload.
     const collected = await collectJobFailureEvidence({ ...binding,
       RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
@@ -82,6 +92,10 @@ test('W7.3 main projections retain original causes and coverage through OpenPGP 
     const shutdown = records.find(record => record.phase === 'workspaceDeletionShutdown');
     assert.equal(shutdown.exception.incomplete, true);
     assert.equal(shutdown.exception.chain.every(part => part.truncated), true);
+    const adoption = records.find(record => record.phase === 'workspaceAdoptionAcceptance');
+    assert.equal(adoption.exception.chain[0].message === 'SYNTHETIC_W74_ADOPTION_ORIGINAL', true);
+    assert.equal(adoption.exception.chain[1].message === 'SYNTHETIC_W74_ADOPTION_CAUSE', true);
+    assert.equal(adoption.exception.chain[0].stack.includes('workspaceDeletionFailureEvidenceOpenPgp'), true);
     for (const record of records) {
       assert.equal(record.test.attempt, 0);
       assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);

@@ -227,7 +227,9 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   ikkunamittarit alemmalla omistajalla; tekstifixture ei ole SQLite-näyttö.
   **Seuraavana** on erillinen nykyiseen SQLite/PDF-fixtureen perustuva
   todellinen main/backend-startup, sulku ja restart-vertailu. Healthia tai
-  grantia ei korvata testikaksoisilla. Puhtaan paketin hyväksyntä on auki.
+  grantia ei korvata testikaksoisilla. Testi on toteutettu ja katselmoitu;
+  sen pakotettu virhe löytyi puretusta nykyisestä salatusta paketista.
+  Itse Electron-kohdeajo ja puhtaan paketin hyväksyntä ovat vielä auki.
   Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
   avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan

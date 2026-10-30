@@ -25,6 +25,8 @@ import { createFirstStartProofAdmission, createFirstStartProofObserver } from '.
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
+import { projectExceptionChain } from '../src/main/startupExceptionEvidence.js';
+import type { WorkspaceAdoptionAcceptanceProofReply } from './workspaceAdoptionAcceptanceProof.js';
 import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSelectorTestRelease.js';
 import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
@@ -92,6 +94,7 @@ const createRuntimeSession = createElectronE2eRuntimeSessionFactory(config.backe
 let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefined;
 let secretShutdownProof: Promise<void> | undefined;
 let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
+let adoptionProofRequested = false;
 
 function requireSecretReplyHold() {
   if (secretReplyHold === undefined) throw new Error('ELECTRON_SECRET_REPLY_PROOF_UNAVAILABLE');
@@ -408,6 +411,34 @@ Object.assign(globalThis, {
         resourcesPath: config.paths.resourcesPath,
         userDataRoot: config.paths.userDataPath,
       });
+    },
+    async runWorkspaceAdoptionAcceptanceProof(): Promise<WorkspaceAdoptionAcceptanceProofReply> {
+      if (config.scenarioId !== 'DESK-WORKSPACE-ADOPTION-001' || adoptionProofRequested) {
+        throw new Error('WORKSPACE_ADOPTION_PROOF_NOT_ADMITTED');
+      }
+      adoptionProofRequested = true;
+      let first: ReturnType<typeof projectExceptionChain> | undefined;
+      let failedRuntimeInstanceId = config.runtimeInstanceId;
+      const observeFailure = (error: unknown, secrets: readonly string[] = [], runtimeInstanceId = config.runtimeInstanceId) => {
+        if (first !== undefined) return;
+        first = projectExceptionChain(error, [config.backend.sessionSecret, ...secrets]);
+        failedRuntimeInstanceId = runtimeInstanceId;
+      };
+      try {
+        if (lifecycle === undefined) throw new Error('WORKSPACE_ADOPTION_PROOF_LIFECYCLE_MISSING');
+        await shutdownBeforeWorkspaceProof(lifecycle);
+        if (backendController.isRunning()) throw new Error('WORKSPACE_ADOPTION_PROOF_BACKEND_RUNNING');
+        const { runWorkspaceAdoptionAcceptanceProof } = await import('./workspaceAdoptionAcceptanceProof.js');
+        const result = await runWorkspaceAdoptionAcceptanceProof({
+          applicationPath: config.paths.applicationPath, appVersion: e2eAppVersion,
+          resourcesPath: config.paths.resourcesPath, runtimeSessionSecret: config.backend.sessionSecret,
+          userDataRoot: config.paths.userDataPath, startBackend: startDesktopBackend, observeFailure,
+        });
+        return { status: 'completed', result };
+      } catch (error) {
+        observeFailure(error);
+        return { status: 'failed', runtimeInstanceId: failedRuntimeInstanceId, exception: first! };
+      }
     },
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,

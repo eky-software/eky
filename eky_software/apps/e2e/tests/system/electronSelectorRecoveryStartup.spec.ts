@@ -72,14 +72,17 @@ test('SYS-SELECTOR-BACKEND-001 @security delegates startup unchanged and never a
   for (const operation of ['stop', 'stopForUpdate', 'stopForRestore', 'stopForDelete'] as const) {
     let resolveStart!: (handle: DesktopBackendHandle) => void;
     let failClose = true;
+    let running = true;
     let observedId: string | undefined;
     let observedOptions: StartDesktopBackendOptions | undefined;
     const original = new Error('synthetic shutdown failure');
     const close = async (id?: string) => {
       observedId = id;
       if (failClose) throw original;
+      running = false;
     };
     const raw: DesktopBackendHandle = {
+      assertRunning() { if (!running) throw new Error('SYNTHETIC_BACKEND_STOPPED'); },
       port: 12345, onUnexpectedExit() {},
       async stop() { await close(); return 'forced'; }, stopForUpdate: close, stopForRestore: close, stopForDelete: close,
     };
@@ -93,14 +96,17 @@ test('SYS-SELECTOR-BACKEND-001 @security delegates startup unchanged and never a
     expect(observed.snapshot()).toEqual({ starts: 1, running: false, port: undefined });
     resolveStart(raw);
     const handle = await pending;
+    expect(() => handle.assertRunning()).not.toThrow();
     expect(observed.snapshot()).toEqual({ starts: 1, running: true, port: raw.port });
     const stop = () => operation === 'stop' ? handle.stop() : handle[operation]('synthetic-operation');
     await expect(stop()).rejects.toBe(original);
     expect(observed.snapshot().running).toBe(true);
+    expect(() => handle.assertRunning()).not.toThrow();
     failClose = false;
     expect(await stop()).toBe(operation === 'stop' ? 'forced' : undefined);
     expect(observedId).toBe(operation === 'stop' ? undefined : 'synthetic-operation');
     expect(observed.snapshot()).toEqual({ starts: 1, running: false, port: undefined });
+    expect(() => handle.assertRunning()).toThrow('SYNTHETIC_BACKEND_STOPPED');
   }
 });
 
@@ -111,15 +117,20 @@ test('SYS-SELECTOR-BACKEND-002 @security preserves startup failure and unexpecte
   expect(failed.snapshot()).toEqual({ starts: 1, running: false, port: undefined });
   let onExit!: () => void;
   let notified = false;
+  let running = true;
   const observed = observeSelectorTestBackend(async () => ({
-    port: 12345, onUnexpectedExit(callback) { onExit = callback; },
-    async stop() { return 'exited'; }, async stopForUpdate() {}, async stopForRestore() {},
+    assertRunning() { if (!running) throw new Error('SYNTHETIC_BACKEND_STOPPED'); },
+    port: 12345, onUnexpectedExit(callback) { onExit = () => { running = false; callback(); }; },
+    async stop() { running = false; return 'exited'; },
+    async stopForUpdate() { running = false; }, async stopForRestore() { running = false; },
     async stopForDelete() { throw new Error('UNEXPECTED_FIXTURE_DELETE_STOP'); },
   }));
   const handle = await observed.startBackend({} as StartDesktopBackendOptions);
+  expect(() => handle.assertRunning()).not.toThrow();
   handle.onUnexpectedExit(() => { notified = true; });
   onExit();
   expect(notified).toBe(true);
+  expect(() => handle.assertRunning()).toThrow('SYNTHETIC_BACKEND_STOPPED');
   expect(observed.snapshot()).toEqual({ starts: 1, running: false, port: undefined });
 });
 

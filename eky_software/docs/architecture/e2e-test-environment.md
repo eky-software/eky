@@ -566,6 +566,24 @@ uudelleenkäynnistys samassa Electron-prosessissa ei ole fyysisen restartin
 tai paketin todiste. [Testimatriisi](r0-e2e-test-matrix.md)
 erottaa avaus-, lähtömetadatan ja virhehaaran näytön.
 
+`DESK-WORKSPACE-ADOPTION-001` käyttää saman current-fixturen suljettua
+SQLite/PDF-aineistoa erillisen testiasennuksen legacy-lähteenä. Mainin
+tuotantoresolver, fyysinen prosessivaraus, backend, health ja profiilin
+hyväksyntä ovat todellisia; julkaisu vaatii elävän granted-vaiheen.
+Sulku vaatii `exited`-tuloksen ja varauksen uuden hankinnan ennen metadatan
+ja liiketoimintasnapshotin lukua. Toinen composition-startup vertaa rivit
+ja PDF-tavut sekä alkuperäisen legacy-lähteen muuttumattomat tavut.
+Tämä ei muuta vanhan `DESK-WORKSPACE-STARTUP-001`-tavukokeen mittareita eikä
+korvaa prosessien välistä restartia tai hardened-pakettitodistusta.
+
+Uuden kokeen ensimmäinen main-virhe projisoidaan nykyisellä rajatulla
+syyketjulla ennen Electronin virhekuljetusta. Vain testiohjain saa otteen;
+nykyinen runner-virhesinkki sitoo sen testitapaukseen, suoritusyritykseen ja
+runtime-sukupolveen. Julkinen testivirhe säilyy yleiskoodina. Keräys- tai
+raportointivirhe ei muuta alkuperäistä hylkäystä, eikä osittaista havaintoa
+nimetä täydelliseksi. Sama nykyinen salattu toimitus kerää tämän aineiston;
+uutta raakadatakategoriaa tai tuotannon kanavaa ei lisätä.
+
 `DESK-SELECTOR-RETURN-001` käyttää registry-only-fixturen puuttuvaa
 työtilajuurta ja täsmällistä synteettistä business-hyväksyntää. Tavallinen
 tuotannon build-admission säilyy. Testi vahvistaa avauksen UI:ssa, odottaa

@@ -5500,9 +5500,15 @@ Yhtenäinen 35 tiedoston regressiosarja läpäisi 881 testiä; kolme nykyistä
 POSIX-tapausta jäi alustaehtonsa vuoksi ajamatta. Desktopin ja E2E-runtimen
 tyyppitarkistukset sekä rajattu riippumaton katselmus läpäisivät.
 
-Seuraava portti on yllä määritelty erillinen todellisen SQLite/PDF-aineiston
-main-/backend-käynnistys ja sulku/restart-vertailu. Puhtaan paketin, koko
-W7.4:n ja PR/main-porttien hyväksyntää ei vielä ole.
+Erillinen todellisen SQLite/PDF-aineiston `DESK-WORKSPACE-ADOPTION-001`-
+koe on toteutettu: metadata tarkistetaan backendin käydessä ja uudelleen
+todellisen exitin sekä fyysisen varauksen takaisin hankinnan jälkeen.
+Alkuperäinen sidonta verrataan myös toisen composition-startupin jälkeen.
+Ensivirhe kulkee nykyiseen yksityiseen runner-sinkkiin ennen virhekuljetusta;
+pakotetun virheen viesti, pino ja syy löytyivät puretusta OpenPGP-paketista.
+Raportointi-/ajokytkennän 89 testiä ja rajattu koetoteutuksen katselmus
+läpäisivät. Seuraava portti on tämän aidon main-/backend-kokeen suoritus;
+puhtaan paketin, koko W7.4:n ja PR/main-porttien hyväksyntää ei vielä ole.
 
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
