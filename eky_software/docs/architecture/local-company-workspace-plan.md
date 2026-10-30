@@ -5075,6 +5075,32 @@ Ensiajo ja sen keskeneräinen siivoushavainto säilyvät avoimina; koko
 main-sarjaa tai alkuperäisen viiveen syytä ei merkitä tämän perusteella
 hyväksytyksi. Paketti- ja PR/main-portit ovat edelleen erillisiä ja avoimia.
 
+**Root-porttien checkpoint 30.10.2026:** nykyinen tiedosto-omistaja vastaanottaa
+valinnaisen vaihekohtaisen valtuuden valmisteluun, julkaisuun ja kolmeen
+vanhaan palautussiivoukseen sekä hyväksynnän operation-siivoamiseen. Se
+kaappaa kutsun polut ja hakemistoidentiteetit ennen ulkoista odotusta;
+ainoastaan oma kuitattu hakemistonluonti päivittää puuttuneen juuren valinnan.
+Vanhaa olemassa ollutta kohdejuurta ei valita uudelleen valmistelun jälkeen.
+Ennen julkaisua tai poistoa tarkistetaan nykyiset sallitut merkinnät,
+tiedostotyypit/linkit ja valittu juuri. Kopiointi ei aloita seuraavaa
+merkintää valtuuden menetyksen jälkeen. Virheen alkuperäinen syy toimitetaan
+epävarmuushavainnolle ennen turvallista virhemuunnosta; callbackin virhe ei
+peitä sitä. Rinnakkainen inventaarioluku odottaa molempien lukujen ja
+jokaisen aloitetun hash-virran sulkeutumista myös ensimmäisen virheen jälkeen.
+Yhtenäisen yhdeksän tiedoston 138 kohdetestiä, desktopin tyypitys ja rajattu
+riippumaton jälkikatselmus läpäisivät. Katselmuksen kolme puutetta
+(julkaisun rakenne/linkit, siivottavan candidaten ylimääräinen merkintä ja
+vaihtuneen kohdejuuren uudelleenvalinta) toistettiin oikeilla tiedostoilla
+ennen korjauksia; niiden säilyttämisregressiot ovat mukana samassa ajossa.
+
+Tämä portti ei ole koko käynnistyksen yli säilyvä root-kuitti tai uusi
+elinkaaren omistaja. Vanhojen alempien kutsujien rajapinta säilyy;
+tuotannon startup-/recovery-/main-kytkennän pitää seuraavassa palassa antaa
+todellinen valtuus ilman vartioimatonta fallbackia sekä säilyttää alkuperäinen
+metadata- ja root-valinta omien kuittien yli. Sidotun palautumisen samat
+tunnisteet, sticky-epävarmuus, prosessiraja ja pakettinäyttö ovat edelleen
+tämän liitoksen omia avoimia portteja, eivät root-porttitestien todisteita.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on

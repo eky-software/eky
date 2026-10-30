@@ -655,6 +655,12 @@ peruutustilaa myös ennen odottamattoman exitin callbackin rekisteröintiä.
 Havainnot eivät yksin ole terveystarkistus tai muutoksen valtuus. Adoption
 [vaihekohtainen sopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
 omistaa niiden tulevan hyväksyntäkytkennän; porttien toteutus ei todista sitä.
+Adoption tiedosto-omistajan valtuusportti tarkistaa valitun juuren ja sallitut
+merkinnät ennen valmistelua, julkaisua ja siivousta. Aloitettu hash-luku
+odotetaan sulkeutuneeksi, ja rinnakkaiset inventaariot päättyvät ennen virheen
+palautusta. Nämä alemmat portit eivät vielä sido saman startupin valintaa,
+elävää backendia ja metadatajulkaisuja yhdeksi hyväksyntäketjuksi; se tehdään
+edellä viitatun vaihekohtaisen sopimuksen mukaisessa main-kytkennässä.
 
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:

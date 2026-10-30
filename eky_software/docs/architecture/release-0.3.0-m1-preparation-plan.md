@@ -201,9 +201,13 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   ei pysäytetä vain sidonnan vuoksi. Nykyisen varausomistajan toistettava
   granted-havainto, backendin pysyvä tilahavainto ja adoption journalin valitut
   portit on toteutettu. Yhtenäisen 12 tiedoston 334 testiä, desktopin tyypitys
-  sekä rajatut riippumattomat katselmukset läpäisivät. Seuraavana ovat
-  valintakuitit, root-vartijat ja adoption startup-/recovery-/main-kytkentä;
-  porttien oma näyttö ei vielä todista tätä kytkentää tai pakettirajaa.
+  sekä rajatut riippumattomat katselmukset läpäisivät. Root-porttien
+  valmistelu-, julkaisu- ja siivousvartijat sekä aloitetun luku-I/O:n loppuun
+  odottaminen on toteutettu. Niiden 138 kohdetestiä, tyypitys ja rajattu
+  jälkikatselmus läpäisivät. Seuraavana ovat alkuperäisen valinnan omat
+  metadata-/root-kuitit ja adoption startup-/recovery-/main-kytkentä;
+  valinnaisen alemman portin oma näyttö ei vielä todista tuotannon pakollista
+  valtuuskytkentää tai pakettirajaa.
   Electron-testikahvojen 19 regressiota ja tyypitys läpäisivät. Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
   avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan

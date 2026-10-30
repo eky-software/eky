@@ -18,6 +18,8 @@ import type { WorkspaceLegacyAdoptionSourceKind } from './workspaceLegacyAdoptio
 import { WorkspaceLegacyAdoptionError } from './workspaceLegacyAdoptionError.js';
 import type { WorkspaceLegacyAdoptionPaths } from './workspaceLegacyAdoptionPaths.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import { assertAdoptionMutationCurrent, captureAdoptionMutationAuthority, captureAdoptionRootSelection,
+  observeAdoptionMutationFailure, type WorkspaceLegacyAdoptionMutationAuthority } from './workspaceLegacyAdoptionMutationAuthority.js';
 
 const maximumAdoptionFiles = 100_010;
 const maximumAdoptionBytes = 32n * 1024n * 1024n * 1024n;
@@ -59,12 +61,13 @@ export interface WorkspaceLegacyAdoptionRootPort {
   prepareCandidate(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
     sourceKind: WorkspaceLegacyAdoptionSourceKind,
+    authority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void>;
   inspectCandidate(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
     sourceKind: WorkspaceLegacyAdoptionSourceKind,
   ): Promise<void>;
-  publishCandidate(paths: Readonly<WorkspaceLegacyAdoptionPaths>): Promise<void>;
+  publishCandidate(paths: Readonly<WorkspaceLegacyAdoptionPaths>, authority?: WorkspaceLegacyAdoptionMutationAuthority): Promise<void>;
   inspectPublished(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
     sourceKind: WorkspaceLegacyAdoptionSourceKind,
@@ -72,19 +75,22 @@ export interface WorkspaceLegacyAdoptionRootPort {
   readPresence(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
   ): Promise<Readonly<WorkspaceLegacyAdoptionRootPresence>>;
-  discardCandidate(paths: Readonly<WorkspaceLegacyAdoptionPaths>): Promise<void>;
+  discardCandidate(paths: Readonly<WorkspaceLegacyAdoptionPaths>, authority?: WorkspaceLegacyAdoptionMutationAuthority): Promise<void>;
   assertRecoveryLayout(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
     registeredWorkspaceIds: readonly WorkspaceId[],
   ): Promise<void>;
   discardRecoveryCandidateMatchingLegacy(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    authority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void>;
   discardUnregisteredPublishedRootMatchingLegacy(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    authority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void>;
   discardEmptyRecoveryOperation(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    authority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void>;
 }
 
@@ -129,17 +135,35 @@ export class NodeWorkspaceLegacyAdoptionRootStore
   async prepareCandidate(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
     sourceKind: WorkspaceLegacyAdoptionSourceKind,
+    suppliedAuthority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void> {
+    const authority = captureAdoptionMutationAuthority(suppliedAuthority);
+    paths = Object.freeze({ ...paths });
     try {
+      const selection = await captureAdoptionRootSelection(paths, 'preparation', authority);
+      const publication = await captureAdoptionRootSelection(paths, 'published', authority);
+      await authority?.assertCurrent();
+      await selection?.assertCurrent();
+      await publication?.assertCurrent();
       await assertRealDirectory(paths.userDataRoot, false);
-      await ensurePrivateDirectory(paths.userDataRoot, paths.operationsRoot);
+      await ensurePrivateDirectory(paths.userDataRoot, paths.operationsRoot, authority, selection);
       await assertPathMissing(paths.finalRoot);
-      await createPrivateDirectory(paths.operationsRoot, paths.operationRoot);
-      await createPrivateDirectory(paths.operationRoot, paths.candidateRoot);
-      await createPrivateDirectory(
-        paths.candidateRoot,
-        paths.candidateRuntimeRoot,
-      );
+      for (const [parent, child] of [
+        [paths.operationsRoot, paths.operationRoot],
+        [paths.operationRoot, paths.candidateRoot],
+        [paths.candidateRoot, paths.candidateRuntimeRoot],
+      ] as const) {
+        await selection?.assertCurrent();
+        await createPrivateDirectory(parent, child, authority);
+        await selection?.acknowledgeCreatedDirectory(child);
+      }
+      const assertCopyCurrent = async () => {
+        await authority?.assertCurrent();
+        await selection?.assertCurrent();
+        await publication?.assertCurrent();
+        assertAdoptionMutationCurrent(authority);
+      };
+      await assertCopyCurrent();
       if (sourceKind === 'legacy') {
         const before = await inventoryLegacyWorkspaceEntries(
           paths.legacyRuntimeRoot,
@@ -148,25 +172,30 @@ export class NodeWorkspaceLegacyAdoptionRootStore
           paths.legacyRuntimeRoot,
           paths.candidateRuntimeRoot,
           before,
+          assertCopyCurrent,
+          authority,
         );
-        const [after, candidate] = await Promise.all([
-          inventoryLegacyWorkspaceEntries(paths.legacyRuntimeRoot),
-          inventoryTree(paths.candidateRuntimeRoot),
-        ]);
+        const [after, candidate] = await readRuntimeInventories(paths.legacyRuntimeRoot, paths.candidateRuntimeRoot);
         assertInventoriesEqual(before, after);
         assertInventoriesEqual(before, candidate);
       } else {
         const dataRoot = join(paths.candidateRuntimeRoot, 'data');
         const storageRoot = join(paths.candidateRuntimeRoot, 'storage');
-        await createPrivateDirectory(paths.candidateRuntimeRoot, dataRoot);
-        await createPrivateDirectory(paths.candidateRuntimeRoot, storageRoot);
+        await assertCopyCurrent();
+        await createPrivateDirectory(paths.candidateRuntimeRoot, dataRoot, authority);
+        await assertCopyCurrent();
+        await createPrivateDirectory(paths.candidateRuntimeRoot, storageRoot, authority);
+        await assertCopyCurrent();
         await createPrivateDirectory(
           storageRoot,
           join(storageRoot, 'invoices'),
+          authority,
         );
       }
       await this.inspectCandidate(paths, sourceKind);
+      await assertCopyCurrent();
     } catch (error) {
+      observeAdoptionMutationFailure(authority, error);
       throw mapRootError(error);
     }
   }
@@ -188,12 +217,30 @@ export class NodeWorkspaceLegacyAdoptionRootStore
 
   async publishCandidate(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    suppliedAuthority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void> {
+    const authority = captureAdoptionMutationAuthority(suppliedAuthority);
+    paths = Object.freeze({ ...paths });
     try {
-      await ensurePrivateDirectory(paths.userDataRoot, paths.workspacesRoot);
+      const selection = await captureAdoptionRootSelection(paths, 'operation', authority);
+      const beforePreparation = await captureAdoptionRootSelection(paths, 'published', authority);
+      await authority?.assertCurrent();
+      await beforePreparation?.assertCurrent();
+      await selection?.assertCurrent();
+      await ensurePrivateDirectory(paths.userDataRoot, paths.workspacesRoot, authority, beforePreparation);
       await assertPathMissing(paths.finalRoot);
+      await assertExactEntries(paths.operationRoot, [basename(paths.candidateRoot)]);
+      await assertExactEntries(paths.candidateRoot, ['runtime']);
+      await assertKnownDirectoryEntries(paths.candidateRuntimeRoot, workspaceOwnedEntryNames);
+      await assertSafeTree(paths.candidateRoot);
+      await selection?.assertCurrent();
+      await beforePreparation?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await rename(paths.candidateRoot, paths.finalRoot);
+      await authority?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
     } catch (error) {
+      observeAdoptionMutationFailure(authority, error);
       throw mapRootError(error);
     }
   }
@@ -229,9 +276,14 @@ export class NodeWorkspaceLegacyAdoptionRootStore
 
   async discardCandidate(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    suppliedAuthority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void> {
+    const authority = captureAdoptionMutationAuthority(suppliedAuthority);
+    paths = Object.freeze({ ...paths });
     try {
-      if (!(await pathExists(paths.operationRoot))) return;
+      const selection = await captureAdoptionRootSelection(paths, 'operation', authority);
+      await authority?.assertCurrent();
+      if (!(await pathExists(paths.operationRoot))) { await selection?.assertCurrent(); return; }
       await assertRealDirectory(paths.operationRoot, true);
       const entries = await readdir(paths.operationRoot);
       if (
@@ -240,9 +292,19 @@ export class NodeWorkspaceLegacyAdoptionRootStore
       ) {
         throw new Error('invalid');
       }
-      if (entries.length === 1) await assertSafeTree(paths.candidateRoot);
+      if (entries.length === 1) {
+        await assertExactEntries(paths.candidateRoot, ['runtime']);
+        await assertKnownDirectoryEntries(paths.candidateRuntimeRoot, workspaceOwnedEntryNames);
+        await assertSafeTree(paths.candidateRoot);
+      }
+      await selection?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await rm(paths.operationRoot, { recursive: true });
+      await authority?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
+      await assertPathMissing(paths.operationRoot);
     } catch (error) {
+      observeAdoptionMutationFailure(authority, error);
       throw mapRootError(error);
     }
   }
@@ -270,8 +332,13 @@ export class NodeWorkspaceLegacyAdoptionRootStore
 
   async discardRecoveryCandidateMatchingLegacy(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    suppliedAuthority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void> {
+    const authority = captureAdoptionMutationAuthority(suppliedAuthority);
+    paths = Object.freeze({ ...paths });
     try {
+      const selection = await captureAdoptionRootSelection(paths, 'operation', authority);
+      await authority?.assertCurrent();
       await assertRealDirectory(paths.operationRoot, true);
       await assertExactEntries(paths.operationRoot, [
         basename(paths.candidateRoot),
@@ -283,17 +350,27 @@ export class NodeWorkspaceLegacyAdoptionRootStore
         paths.candidateRuntimeRoot,
       );
       await assertSafeTree(paths.candidateRoot);
+      await selection?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await rm(paths.operationRoot, { recursive: true });
+      await authority?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await assertPathMissing(paths.operationRoot);
     } catch (error) {
+      observeAdoptionMutationFailure(authority, error);
       throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
     }
   }
 
   async discardUnregisteredPublishedRootMatchingLegacy(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    suppliedAuthority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void> {
+    const authority = captureAdoptionMutationAuthority(suppliedAuthority);
+    paths = Object.freeze({ ...paths });
     try {
+      const selection = await captureAdoptionRootSelection(paths, 'published', authority);
+      await authority?.assertCurrent();
       await assertRealDirectory(paths.workspacesRoot, true);
       await assertRealDirectory(paths.finalRoot, true);
       await assertExactEntries(paths.finalRoot, ['runtime']);
@@ -302,23 +379,38 @@ export class NodeWorkspaceLegacyAdoptionRootStore
         join(paths.finalRoot, 'runtime'),
       );
       await assertSafeTree(paths.finalRoot);
+      await selection?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await rm(paths.finalRoot, { recursive: true });
+      await authority?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await assertPathMissing(paths.finalRoot);
     } catch (error) {
+      observeAdoptionMutationFailure(authority, error);
       throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
     }
   }
 
   async discardEmptyRecoveryOperation(
     paths: Readonly<WorkspaceLegacyAdoptionPaths>,
+    suppliedAuthority?: WorkspaceLegacyAdoptionMutationAuthority,
   ): Promise<void> {
+    const authority = captureAdoptionMutationAuthority(suppliedAuthority);
+    paths = Object.freeze({ ...paths });
     try {
-      if (!(await pathExists(paths.operationRoot))) return;
+      const selection = await captureAdoptionRootSelection(paths, 'operation', authority);
+      await authority?.assertCurrent();
+      if (!(await pathExists(paths.operationRoot))) { await selection?.assertCurrent(); return; }
       await assertRealDirectory(paths.operationRoot, true);
       await assertExactEntries(paths.operationRoot, []);
+      await selection?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await rm(paths.operationRoot, { recursive: true });
+      await authority?.assertCurrent();
+      assertAdoptionMutationCurrent(authority);
       await assertPathMissing(paths.operationRoot);
     } catch (error) {
+      observeAdoptionMutationFailure(authority, error);
       throw mapRootError(error, 'WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
     }
   }
@@ -381,18 +473,25 @@ async function assertStableMatchingRuntimeInventories(
   legacyRuntimeRoot: string,
   recoveredRuntimeRoot: string,
 ): Promise<void> {
-  const [legacyBefore, recoveredBefore] = await Promise.all([
-    inventoryLegacyWorkspaceEntries(legacyRuntimeRoot),
-    inventoryTree(recoveredRuntimeRoot),
-  ]);
+  const [legacyBefore, recoveredBefore] = await readRuntimeInventories(legacyRuntimeRoot, recoveredRuntimeRoot);
   assertInventoriesEqual(legacyBefore, recoveredBefore);
-  const [legacyAfter, recoveredAfter] = await Promise.all([
-    inventoryLegacyWorkspaceEntries(legacyRuntimeRoot),
-    inventoryTree(recoveredRuntimeRoot),
-  ]);
+  const [legacyAfter, recoveredAfter] = await readRuntimeInventories(legacyRuntimeRoot, recoveredRuntimeRoot);
   assertInventoriesEqual(legacyBefore, legacyAfter);
   assertInventoriesEqual(recoveredBefore, recoveredAfter);
   assertInventoriesEqual(legacyAfter, recoveredAfter);
+}
+
+async function readRuntimeInventories(legacyRoot: string, copiedRoot: string) {
+  let firstFailure: { reason: unknown } | undefined;
+  const observe = (reason: unknown): never => { firstFailure ??= { reason }; throw reason; };
+  const results = await Promise.allSettled([
+    inventoryLegacyWorkspaceEntries(legacyRoot).catch(observe),
+    inventoryTree(copiedRoot).catch(observe),
+  ]);
+  if (firstFailure !== undefined) throw firstFailure.reason;
+  const [legacy, copied] = results;
+  if (legacy.status !== 'fulfilled' || copied.status !== 'fulfilled') throw new Error('invalid');
+  return [legacy.value, copied.value] as const;
 }
 
 async function appendInventory(
@@ -443,21 +542,32 @@ async function copyInventory(
   sourceRoot: string,
   destinationRoot: string,
   inventory: readonly AdoptionInventoryEntry[],
+  assertCurrent: () => Promise<void>,
+  authority: WorkspaceLegacyAdoptionMutationAuthority | undefined,
 ): Promise<void> {
   for (const entry of inventory) {
+    await assertCurrent();
     const sourcePath = join(sourceRoot, ...entry.relativePath.split('/'));
     const destinationPath = join(
       destinationRoot,
       ...entry.relativePath.split('/'),
     );
     if (entry.kind === 'directory') {
+      assertAdoptionMutationCurrent(authority);
       await mkdir(destinationPath, { mode: 0o700 });
-      if (process.platform !== 'win32') await chmod(destinationPath, 0o700);
+      if (process.platform !== 'win32') {
+        assertAdoptionMutationCurrent(authority);
+        await chmod(destinationPath, 0o700);
+      }
       continue;
     }
     await assertRealDirectory(dirname(destinationPath), true);
+    assertAdoptionMutationCurrent(authority);
     await copyFile(sourcePath, destinationPath, constants.COPYFILE_EXCL);
-    if (process.platform !== 'win32') await chmod(destinationPath, 0o600);
+    if (process.platform !== 'win32') {
+      assertAdoptionMutationCurrent(authority);
+      await chmod(destinationPath, 0o600);
+    }
   }
 }
 
@@ -499,10 +609,17 @@ async function hashFile(path: string): Promise<string> {
   if (!before.isFile() || before.nlink !== 1) throw new Error('invalid');
   const hash = createHash('sha256');
   await new Promise<void>((resolvePromise, reject) => {
-    const stream = createReadStream(path);
+    const stream = createReadStream(path, { autoClose: true, emitClose: true });
+    let failure: { reason: unknown } | undefined;
+    let ended = false;
     stream.on('data', (chunk: Buffer | string) => hash.update(chunk));
-    stream.on('error', reject);
-    stream.on('end', resolvePromise);
+    stream.once('error', reason => { failure ??= { reason }; stream.destroy(); });
+    stream.once('end', () => { ended = true; });
+    stream.once('close', () => {
+      if (failure !== undefined) reject(failure.reason);
+      else if (!ended) reject(new Error('invalid'));
+      else resolvePromise();
+    });
   });
   const after = await stat(path);
   if (
@@ -548,25 +665,43 @@ async function assertSafeRegularFile(path: string): Promise<void> {
 async function ensurePrivateDirectory(
   parentPath: string,
   directoryPath: string,
+  authority?: WorkspaceLegacyAdoptionMutationAuthority,
+  selection?: Awaited<ReturnType<typeof captureAdoptionRootSelection>>,
 ): Promise<void> {
   await assertRealDirectory(parentPath, false);
+  assertAdoptionMutationCurrent(authority);
+  let created = false;
   try {
     await mkdir(directoryPath, { mode: 0o700 });
+    created = true;
   } catch (error) {
     if (!isNodeError(error) || error.code !== 'EEXIST') throw error;
   }
-  if (process.platform !== 'win32') await chmod(directoryPath, 0o700);
+  await assertRealDirectory(directoryPath, false);
+  if (created) await selection?.acknowledgeCreatedDirectory(directoryPath);
+  else await selection?.assertCurrent();
+  if (process.platform !== 'win32') {
+    assertAdoptionMutationCurrent(authority);
+    await chmod(directoryPath, 0o700);
+  }
   await assertRealDirectory(directoryPath, true);
+  assertAdoptionMutationCurrent(authority);
 }
 
 async function createPrivateDirectory(
   parentPath: string,
   directoryPath: string,
+  authority?: WorkspaceLegacyAdoptionMutationAuthority,
 ): Promise<void> {
   await assertRealDirectory(parentPath, true);
+  assertAdoptionMutationCurrent(authority);
   await mkdir(directoryPath, { mode: 0o700 });
-  if (process.platform !== 'win32') await chmod(directoryPath, 0o700);
+  if (process.platform !== 'win32') {
+    assertAdoptionMutationCurrent(authority);
+    await chmod(directoryPath, 0o700);
+  }
   await assertRealDirectory(directoryPath, true);
+  assertAdoptionMutationCurrent(authority);
 }
 
 async function assertRealDirectory(
