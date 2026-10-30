@@ -14,12 +14,53 @@ import { WorkspaceLegacyAdoptionBindingSelection } from './workspaceLegacyAdopti
 import { createWorkspaceLegacyAdoptionJournalPaths, maximumWorkspaceLegacyAdoptionJournalBytes,
   serializeWorkspaceLegacyAdoptionJournal, WorkspaceLegacyAdoptionJournalStore } from './workspaceLegacyAdoptionJournal.js';
 import { WorkspaceLegacyAdoptionMetadataSelection } from './workspaceLegacyAdoptionMetadataSelection.js';
+import { deriveWorkspaceLegacyAdoptionPaths } from './workspaceLegacyAdoptionPaths.js';
+import { WorkspaceLegacyAdoptionRootSelection, type WorkspaceLegacyAdoptionRootObservation } from './workspaceLegacyAdoptionRootSelection.js';
+import { NodeWorkspaceLegacyAdoptionRootStore } from './workspaceLegacyAdoptionRootStore.js';
 import { createAdoptionJournal, createPublishedAdoptionRegistry, TEST_ADOPTION_OPERATION_ID,
   TEST_ADOPTION_WORKSPACE_ID } from './workspaceLegacyAdoptionTestSupport.js';
 
 const profileId = 'c'.repeat(64);
 
 describe('adoption phase views of the same selected bytes', () => {
+  it('uses the same root, metadata and binding selections through prepare, publish and live acceptance', async context => {
+    const f = await fixture(context);
+    const paths = deriveWorkspaceLegacyAdoptionPaths(f.root, TEST_ADOPTION_OPERATION_ID, TEST_ADOPTION_WORKSPACE_ID);
+    const sourceDatabase = join(paths.legacyRuntimeRoot, 'data', 'eky.sqlite');
+    await mkdir(join(paths.legacyRuntimeRoot, 'data'), { recursive: true, mode: 0o700 });
+    await mkdir(join(paths.legacyRuntimeRoot, 'storage', 'invoices'), { recursive: true, mode: 0o700 });
+    await writeFile(sourceDatabase, 'synthetic original database');
+    const roots = await WorkspaceLegacyAdoptionRootSelection.observe(paths, {
+      assertMutationCurrent() {}, onUncertain: f.onUncertain,
+    });
+    const observed = await f.observe();
+    const preparing = f.phase(observed, roots);
+    const rootStore = new NodeWorkspaceLegacyAdoptionRootStore(preparing.roots);
+    await preparing.metadata.journal.write(createAdoptionJournal('prepared'));
+    await rootStore.prepareCandidate(paths, 'legacy');
+    await preparing.metadata.journal.write(createAdoptionJournal('candidatePrepared'));
+    await rootStore.publishCandidate(paths);
+    await preparing.metadata.journal.write(createAdoptionJournal('rootPublished'));
+    preparing.state.current = false;
+    const accepting = f.phase(observed, roots);
+    const acceptedStore = new NodeWorkspaceLegacyAdoptionRootStore(accepting.roots);
+    const finalDatabase = join(paths.finalRoot, 'runtime', 'data', 'eky.sqlite');
+    // Business writes may change file content, never the selected root identity.
+    await writeFile(finalDatabase, 'synthetic business write');
+    await accepting.binding.publish(profileId);
+    await accepting.metadata.registry.write(createPublishedAdoptionRegistry(profileId));
+    await accepting.metadata.journal.write(createAdoptionJournal('registryPublished'));
+    await acceptedStore.discardCandidate(paths);
+    await accepting.binding.assertPublished(profileId);
+    await accepting.metadata.journal.clear(TEST_ADOPTION_OPERATION_ID);
+    await accepting.roots!.assertObservedCurrent();
+    expect(await readFile(sourceDatabase, 'utf8')).toBe('synthetic original database');
+    expect(await readFile(finalDatabase, 'utf8')).toBe('synthetic business write');
+    expect(await fileBytes(f.paths.binding.currentPath)).toBeDefined();
+    expect(await fileBytes(f.paths.journal.currentPath)).toBeUndefined();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  });
+
   it.for(['metadata', 'binding'] as const)('preserves the live %s bootstrap authority receiver', async (owner, context) => {
     const f = await fixture(context);
     const prepared = f.phase(await f.observe());
@@ -264,17 +305,20 @@ async function fixture(context: TestContext) {
     binding: await WorkspaceLegacyAdoptionBindingSelection.observe({ userDataRoot: root,
       journal: createAdoptionJournal('prepared'), assertAuthority() {}, onUncertain }, fs.binding),
   });
-  const phase = (observed: Awaited<ReturnType<typeof observe>>) => {
+  const phase = (observed: Awaited<ReturnType<typeof observe>>, rootObservation?: Readonly<WorkspaceLegacyAdoptionRootObservation>) => {
     const state = { current: true };
     const assertAuthority = () => { if (!state.current) throw new Error('synthetic phase expired'); };
-    const external = { metadata: vi.fn(async () => { await binding.assertObservedCurrent(); }),
-      binding: vi.fn(async () => { await metadata.assertObservedCurrent(); }) };
+    const external = { metadata: vi.fn(async () => { await binding.assertObservedCurrent(); await roots?.assertObservedCurrent(); }),
+      binding: vi.fn(async () => { await metadata.assertObservedCurrent(); await roots?.assertObservedCurrent(); }) };
     const authority = (owner: keyof typeof external): ObservedRecoveryAuthority => ({
       assertAuthority, assertExternalSelection: external[owner], onUncertain,
     });
     const metadata = observed.metadata.forPhase(authority('metadata'));
     const binding = observed.binding.forPhase(authority('binding'));
-    return { metadata, binding, state, external };
+    const roots = rootObservation?.forPhase({ assertMutationCurrent: assertAuthority, onUncertain,
+      async assertCurrent() { await metadata.assertObservedCurrent(); await binding.assertObservedCurrent(); },
+    });
+    return { metadata, binding, roots, state, external };
   };
   const snapshot = async () => Promise.all(Object.values(paths).map(async slots =>
     Promise.all([slots.currentPath, slots.nextPath, slots.backupPath].map(fileBytes))));

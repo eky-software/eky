@@ -11,6 +11,13 @@ export interface WorkspaceLegacyAdoptionMutationAuthority {
   onUncertain(error: unknown): void;
 }
 
+export interface WorkspaceLegacyAdoptionRootReceiptSelection {
+  assertCurrent(): Promise<void>;
+  acknowledgeCreatedDirectory(path: string): Promise<void>;
+  acknowledgePublishedCandidate?(): Promise<void>;
+  acknowledgeRemovedRoot?(path: string): Promise<void>;
+}
+
 export function captureAdoptionMutationAuthority(authority: WorkspaceLegacyAdoptionMutationAuthority | undefined) {
   if (authority === undefined) return undefined;
   if (authority === null || typeof authority.assertCurrent !== 'function' ||
@@ -35,9 +42,7 @@ export async function captureAdoptionRootSelection(
 ) {
   if (authority === undefined) return undefined;
   assertAdoptionMutationCurrent(authority);
-  const paths = deriveWorkspaceLegacyAdoptionPaths(input.userDataRoot, basename(input.operationRoot),
-    validateWorkspaceId(basename(input.finalRoot)));
-  if (Object.entries(paths).some(([key, value]) => !samePath(value, input[key as keyof WorkspaceLegacyAdoptionPaths]))) invalid();
+  const paths = captureAdoptionRootPaths(input);
   const names = target === 'published'
     ? [paths.userDataRoot, paths.workspacesRoot, paths.finalRoot]
     : [paths.userDataRoot, paths.operationsRoot, paths.operationRoot, paths.candidateRoot,
@@ -75,14 +80,24 @@ export function observeAdoptionMutationFailure(authority: WorkspaceLegacyAdoptio
   } catch { /* Optional notification cannot replace the original failure. */ }
 }
 
-async function directoryIdentity(path: string, privateMode: boolean) {
+export function captureAdoptionRootPaths(input: Readonly<WorkspaceLegacyAdoptionPaths>) {
+  const paths = deriveWorkspaceLegacyAdoptionPaths(input.userDataRoot, basename(input.operationRoot),
+    validateWorkspaceId(basename(input.finalRoot)));
+  if (Object.entries(paths).some(([key, value]) => !samePath(value, input[key as keyof WorkspaceLegacyAdoptionPaths]))) invalid();
+  return paths;
+}
+
+export async function directoryIdentity(path: string, privateMode: boolean,
+  authority?: WorkspaceLegacyAdoptionMutationAuthority) {
   let observed = false;
   try {
     const metadata = await lstat(path, { bigint: true });
     observed = true;
+    assertAdoptionMutationCurrent(authority);
     if (!metadata.isDirectory() || metadata.isSymbolicLink() || metadata.ino === 0n ||
         (privateMode && process.platform !== 'win32' && (metadata.mode & 0o077n) !== 0n) ||
         !samePath(await realpath(path), path)) invalid();
+    assertAdoptionMutationCurrent(authority);
     return Object.freeze({ dev: metadata.dev, ino: metadata.ino });
   } catch (error) {
     if (!observed && error instanceof Error && 'code' in error && error.code === 'ENOENT') return undefined;
@@ -90,7 +105,7 @@ async function directoryIdentity(path: string, privateMode: boolean) {
   }
 }
 
-function samePath(left: string, right: string) {
+export function samePath(left: string, right: string) {
   return process.platform === 'win32' ? resolve(left).toLowerCase() === resolve(right).toLowerCase()
     : resolve(left) === resolve(right);
 }

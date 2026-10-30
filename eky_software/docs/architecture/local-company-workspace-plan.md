@@ -5245,6 +5245,10 @@ siivous ei koskaan kohdistu tähän elävään juureen tai legacy-lähteeseen.
    `assertRunning()`- ja `assertGrantedCurrent()`-havaintoja. `finally` sulkee
    näkymän; uusi kutsu ei elvytä vanhaa. Ei ylimääräistä stop/startia tai
    fyysisen main-varauksen vaatimusta backendin ollessa käynnissä.
+   Elävän hyväksynnän payload-portti on todellinen nimetty loppusiivousolio,
+   joka tarjoaa vain `discardCandidate`-toiminnon. Koko bound-root-storea
+   tai pelkkää sen TypeScript-tyypin kavennusta ei välitetä hyväksyntään;
+   final-juuren recovery-poisto ei saa olla tämän valtuuden kautta kutsuttavissa.
 3. Virhepolku sulkee hyväksynnän, odottaa alkuperäiset adoption-tehtävät sekä
    nykyiset broker-/inspection-sulut ja todellisen backend-exitin/takaisinoton.
    Vasta sitten main antaa samalle valinnalle recovery-näkymän. Ilman
@@ -5315,6 +5319,35 @@ desktopin tyypitys läpäisivät. Ajot ovat päällekkäisiä, eivät yhteenlask
 hyväksyntämäärä. Root-kuittien ja mainin vaihevaltuuden kytkentä sekä niiden
 prosessi-/pakettinäyttö ovat edelleen erillisiä avoimia portteja. Nykyiset
 tuotannon startup-/recovery-kutsujat eivät vielä käytä näitä uusia näkymiä.
+
+**Säilyvien root-kuittien checkpoint 30.10.2026:** tiedosto-omistajan
+readonly-alkuvalinta ja vaihekohtaiset näkymät säilyttävät samat yhdeksän
+juuren identiteetit tai poissaolon valmistelusta hyväksyntään ja palautukseen.
+Vain kuitattu oma mkdir, saman candidate/runtime-identiteetin rename ja
+omistetun alipuun rm päivittävät valintaa. Vaihtunut tai samannimisenä
+uudelleen ilmestynyt juuri ei muutu omaksi valtuudeksi. Final-runtimen
+sallittu tiedostosisällön muutos ei vaihda juuri-identiteettiä.
+RootStore tarjoaa rajatun sidotun tilan, joka ei hyväksy sen päälle uutta
+kutsukohtaista valtuutta. Vanha tavallinen rajapinta ja kolme tiukkaa
+unpublished-recovery-haaraa säilyvät.
+
+Katselmuksessa todetut talteen jääneen callbackin ennenaikainen I/O ja
+loppuvartijan peittämä readonly-ensivirhe toistettiin yhdeksällä regressiolla
+ennen korjausta. Callbackit päättyvät nyt alkuperäisen kutsun mukana,
+eivätkä vanhat ilmoitukset mitätöi seuraavaa vaihetta. Sisältövirhe ja
+myöhempi valtuus-/sulkuvirhe säilyvät; yksinään valmistunut sisältövirhe ei
+muutu epävarmaksi tiedostovaikutukseksi. Rajattu riippumaton jälkikatselmus
+valmistui ilman uusia löydöksiä.
+
+Root-valinnan 58 testiä ja yksi kaikkien kolmen omistajan yhteinen
+prepare/publish/accept-tiedostoketju sisältyvät yhtenäisen 32 tiedoston
+779 läpäisseeseen testiin. Kolme nykyistä POSIX-tapausta jäi alustaehtonsa
+vuoksi ajamatta; desktopin tyypitys läpäisi. Yhteiskokeen backend-kirjoitus
+on mallinnettu, ei todellinen backend- tai prosessitodiste. Seuraavana on
+näiden porttien tuotannon startup-/recovery-/main-kytkentä yllä olevan
+kolmen roolin ja todellisen acceptance-cleanup-fasadin mukaan. Saman
+operaation sidottu jatko, todellinen exit/takaisinotto, native-/pakettinäyttö
+sekä koko W7.4:n PR/main-portit ovat edelleen auki.
 
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 

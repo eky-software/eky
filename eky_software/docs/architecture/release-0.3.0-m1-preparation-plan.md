@@ -203,18 +203,20 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   säilyttävät alkuvalinnan ja omat kirjoituskuitit, estävät epävarman
   suoritusyrityksen jatkon ja odottavat aloitetun I/O:n loppuun. Lopullinen
   valtuustarkistus ja ensivirheen rinnalla säilyvä sulkuvirhe on todennettu.
-  Yhteisen 30 tiedoston 701 testiä, tyypitys
-  ja rajattu katselmus läpäisivät; kolme POSIX-tapausta jäi alustaehtonsa
-  vuoksi ajamatta. Edeltävien porttien tarkka näyttö säilyy omistavassa
-  suunnitelmassa, eikä päällekkäisiä ajoja lasketa yhteen.
+  Edeltävien porttien tarkka näyttö säilyy omistavassa suunnitelmassa,
+  eikä päällekkäisiä ajoja lasketa yhteen.
   Katselmoitu [yhteiskytkennän tarkennus](local-company-workspace-plan.md#adoption-vartijoiden-yhteiskytkentä)
   erottaa saman valinnan vaihekohtaisista käyttöluvista: ulkoiset vartijat
   lukevat toistensa readonly-havainnot ilman rekursiota, root-kuitit säilyvät
   startupin yli ja main sitoo hyväksynnän täsmälliseen elävään backend-kahvaan.
-  Metadata- ja binding-valintojen vaihenäkymät ja readonly-vertaisvartijat
-  on toteutettu: 19 uutta regressiota, yhdeksän tiedoston 168 kontrollia ja
-  tyypitys läpäisivät. Seuraavana ovat säilyvät root-kuitit ja sitten
-  startup-/recovery-/main-kytkentä. Palautumisen rinnakkaiset metadata-
+  Metadata-, binding- ja root-valintojen vaihenäkymät, readonly-vertaisvartijat
+  ja säilyvät root-kuitit on toteutettu. Yhteisen 32 tiedoston 779 testiä,
+  tyypitys ja rajattu riippumaton katselmus läpäisivät; kolme POSIX-tapausta
+  jäi ajamatta. Yhteinen tiedostoketju kattaa valmistelun, julkaisun ja
+  mallinnetun live-hyväksynnän, ei oikeaa backendia. Seuraavana on
+  startup-/recovery-/main-kytkentä todellisine valtuuksineen. Elävä hyväksyntä
+  saa vain nimetyn operation-siivoamisen, ei final-juuren poistokanavaa.
+  Palautumisen rinnakkaiset metadata-
   luvut korvataan sarjallisilla ja lopullisella valinnan tarkistuksella.
   Adapterikoe ei vielä todista mainin pakollista valtuutta,
   prosessirajaa tai puhtaan paketin hyväksyntää. Laajan

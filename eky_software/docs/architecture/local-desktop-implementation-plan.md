@@ -666,16 +666,18 @@ ja omien kirjoitusten kuitit samoilla tallentimilla. Saman ajon epävarmuus ei
 poistu myöhemmällä luvulla tai uuden valinnan onnistumisella. Myös viimeisen
 paluun valtuus tarkistetaan; ensivirhe ja erillinen sulkuvirhe säilyvät.
 Ulkoinen kirjoitusvartija ei lue keskeneräistä kirjoittajaa uudelleen.
-Adapterien tiedostotestit eivät vielä todista niiden kirjoittajakohtaista
-yhteiskytkentää, mainin vaihevaltuutta tai koko startupin root-kuitteja.
+Adapterien tiedostotestit eivät vielä todista mainin todellista vaihevaltuutta
+tai koko startupin tuotantokytkentää.
 [Yhteiskytkennän tarkennus](local-company-workspace-plan.md#adoption-vartijoiden-yhteiskytkentä)
 nimeää readonly-tarkistusten syklittömän kutsugraafin, saman valinnan
 vaihekohtaiset näkymät ja alkuperäisten tehtävien sulun ennen vaiheen vaihtoa.
 Sopimus vaatii myös ennen runtimeen siirtymistä alkaneen adoption-työn
-ulomman varauksen sulkuehtoon. Metadata-/binding-vaihenäkymät ja readonly-
-vertaisvartijat on nyt toteutettu; sama valinta ja kuitit säilyvät eikä
-vanha näkymä uudistu vaiheen vaihtuessa. Niiden 19 uutta tiedostotestiä ja
-nykyiset kontrollit eivät vielä ole root-kuittien tai main-kytkennän näyttö.
+ulomman varauksen sulkuehtoon. Metadata-/binding-/root-vaihenäkymät, readonly-
+vertaisvartijat ja säilyvät root-kuitit on nyt toteutettu. Sama valinta ja
+kuitit säilyvät eikä vanha näkymä uudistu vaiheen vaihtuessa. Yhteinen
+tiedostokoe käyttää kaikkia kolmea omistajaa nykyisten kontrollien rinnalla;
+se ei ole main-, backend- tai native-kytkennän näyttö. Elävän hyväksynnän
+nimetty cleanup-fasadi on vielä tämän kytkennän pakollinen toteutusportti.
 
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:
