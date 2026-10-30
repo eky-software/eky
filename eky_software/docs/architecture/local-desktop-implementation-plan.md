@@ -667,8 +667,12 @@ poistu myöhemmällä luvulla tai uuden valinnan onnistumisella. Myös viimeisen
 paluun valtuus tarkistetaan; ensivirhe ja erillinen sulkuvirhe säilyvät.
 Ulkoinen kirjoitusvartija ei lue keskeneräistä kirjoittajaa uudelleen.
 Adapterien tiedostotestit eivät vielä todista niiden kirjoittajakohtaista
-yhteiskytkentää, mainin vaihevaltuutta tai koko startupin root-kuitteja;
-ne ovat edelleen yllä olevan sopimuksen työtä.
+yhteiskytkentää, mainin vaihevaltuutta tai koko startupin root-kuitteja.
+[Yhteiskytkennän tarkennus](local-company-workspace-plan.md#adoption-vartijoiden-yhteiskytkentä)
+nimeää readonly-tarkistusten syklittömän kutsugraafin, saman valinnan
+vaihekohtaiset näkymät ja alkuperäisten tehtävien sulun ennen vaiheen vaihtoa.
+Myös ennen runtimeen siirtymistä alkanut adoption-työ on mukana ulomman
+varauksen sulkuehdossa. Tämä on toteutussopimus, ei main-kytkennän näyttö.
 
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:

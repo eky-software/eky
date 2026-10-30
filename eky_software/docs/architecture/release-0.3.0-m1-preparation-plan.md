@@ -206,9 +206,14 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Yhteisen 30 tiedoston 701 testiä, tyypitys
   ja rajattu katselmus läpäisivät; kolme POSIX-tapausta jäi alustaehtonsa
   vuoksi ajamatta. Edeltävien porttien tarkka näyttö säilyy omistavassa
-  suunnitelmassa, eikä päällekkäisiä ajoja lasketa yhteen. Seuraavana ovat
-  kirjoittajakohtainen metadata-/sidontavartijoiden yhdistäminen, koko
-  startupin root-kuitit ja varsinainen startup-/recovery-/main-kytkentä.
+  suunnitelmassa, eikä päällekkäisiä ajoja lasketa yhteen.
+  Katselmoitu [yhteiskytkennän tarkennus](local-company-workspace-plan.md#adoption-vartijoiden-yhteiskytkentä)
+  erottaa saman valinnan vaihekohtaisista käyttöluvista: ulkoiset vartijat
+  lukevat toistensa readonly-havainnot ilman rekursiota, root-kuitit säilyvät
+  startupin yli ja main sitoo hyväksynnän täsmälliseen elävään backend-kahvaan.
+  Seuraava toteutus on näiden valintanäkymien ja root-kuittien yhteinen pala,
+  sitten startup-/recovery-/main-kytkentä. Palautumisen rinnakkaiset metadata-
+  luvut korvataan sarjallisilla ja lopullisella valinnan tarkistuksella.
   Adapterikoe ei vielä todista mainin pakollista valtuutta,
   prosessirajaa tai puhtaan paketin hyväksyntää. Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät

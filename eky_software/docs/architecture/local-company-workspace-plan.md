@@ -5144,15 +5144,160 @@ vaikutusalueajo läpäisi 701 testiä; kolme nykyistä POSIX-tapausta jäi
 alustaehtonsa vuoksi ajamatta. Tyypitys ja rajattu riippumaton jälkikatselmus
 läpäisivät. Päällekkäisten ajojen tuloksia ei lasketa yhteen.
 
-Seuraava liitos yhdistää metadatan, sidonnan ja koko käynnistyksen yli
-säilyvät root-kuitit nykyisiin startup-/recovery-/main-omistajiin.
-Kirjoittajakohtainen ulkoinen tarkistus ei saa palata samaan keskeneräiseen
-kirjoittajaan tai muodostaa adapterien välistä rekursiota. Nykyiset
-root-portit valitsevat juuren yhden kutsun ajaksi; se ei vielä säilytä
-prepare/publish/accept-ketjun alkuperäistä identiteettiä. Vaihekohtainen
-main-/backend-valtuus, sidotun palautuksen sama-operaatio-jatko ja oikea
-prosessi-/pakettinäyttö ovat edelleen auki. Nykyinen tuotannon käynnistys-
-ja palautuskytkentä ei tämän checkpointin vuoksi muutu.
+Seuraavan yhteiskytkennän tarkennus on alla. Adapterien toteutus ei vielä
+todista niiden main-kytkentää tai oikeaa prosessi-/pakettirajaa.
+
+###### Adoption vartijoiden yhteiskytkentä
+
+**30.10.2026: toteutussopimuksen tarkennus, ei tuotantokytkennän todiste.**
+Yllä olevat kolme valtuusroolia ja hyväksymisjärjestys säilyvät. Ratkaisu
+erottaa saman suoritusyrityksen pysyvän valinnan yksittäisen vaiheen
+käyttöluvasta. Se ei lisää yleistä manageria, prosessia tai pysyvää formaattia.
+
+**Yksi valinta, vaihekohtaiset näkymät:** metadata-, binding- ja root-
+omistajat säilyttävät alkuhavainnon, omat kuitit ja sticky-epävarmuuden.
+Niiden rajattu `forPhase(authority)`-näkymä käyttää samoja valintoja,
+ei kaappaa tiedostoja uudelleen. Näkymän authority on muuttumaton, juuri
+kyseiselle kutsuvaiheelle annettu olio. Tallentimen callback kaappaa sen
+ennen ensimmäistä odotusta; se ei lue myöhemmin vaihdettavaa current-phase-
+callbackia. Alkuperäiset tehtävät odotetaan loppuun ennen seuraavaa vaihetta.
+Vanhan näkymän myöhäinen käyttö hylätään ennen I/O:ta eikä se mitätöi uuden
+vaiheen valtuutta. Keskeneräisen työn valtuuskatko sen sijaan sulkee saman
+suoritusyrityksen jatkon. Epävarmuutta tai journalin clearin jälkeistä retired-tilaa
+ei nollata näkymän vaihdolla. Nämä ovat nykyisten adapterien sisäisiä portteja,
+eivät rendererin capabilityja tai uutta elinkaaripalvelua.
+
+**Tarkistusten kutsugraafi ei ole syklinen:** adaptereihin lisättävä
+`assertObservedCurrent()` lukee vain oman alkuperäisen valintansa ja omat
+kuitatut muutoksensa nykyisillä readonly-slot-/hakemistoporteilla. Se tarkistaa
+saman vaihevaltuuden odotusten jälkeen, mutta ei korjaa slotteja, julkaise,
+päivitä kuittia tai kutsu ulkoista vartijaa. Oman adapterin keskeneräistä
+operaatiota ei saa lukea tämän portin kautta. Ylimmän tason adoption-ketju
+on sarjallinen; päällekkäistä työtä ei jonoteta uudeksi oikeudeksi.
+
+| Vaikutuksen omistaja | Sen ulkoinen vartija | Omistajan oma viimeinen tarkistus |
+| --- | --- | --- |
+| Journalin kirjoitus, korjaava luku tai clear | Bindingin ja rootin readonly-valinta sekä toinen metadata-tallennin | Journalin valitut slotit, nykyinen byte-slot-kirjoittaja ja synkroninen vaihevaltuus |
+| Registryn kirjoitus tai korjaava luku | Bindingin ja rootin readonly-valinta sekä toinen metadata-tallennin | Registryn valitut slotit, nykyinen byte-slot-kirjoittaja ja synkroninen vaihevaltuus |
+| Bindingin julkaisu | Molempien metadata-tallentimien ja rootin readonly-valinta | Bindingin valitut slotit, nykyinen kirjoittaja ja synkroninen vaihevaltuus |
+| Rootin luonti, siirto tai poisto | Metadatan ja bindingin readonly-valinta | Alkuperäiset root-identiteetit, kyseisen vaikutuksen nykyinen rakenne-/sisältötarkistus ja synkroninen vaihevaltuus |
+
+Metadata-omistaja tarkistaa edelleen itse kirjoittajan vastakkaisen tallentimen.
+Toisen adapterin täyttä `assertCurrent()`-ketjua ei kutsuta ulkoisena vartijana.
+Kirjoittajan omat slotit/juuret tarkistetaan viimeisten ulkoisten odotusten
+jälkeen nykyisen omistajan sisällä; writer-tunniste ei salli muiden valintojen
+ohitusta. Kaikki aloitetut luvut ja sulut päättyvät myös virheessä.
+
+**Alkuvalinta ennen korjaavaa lukua:** `resolveActiveWorkspaceStartup`
+valitsee journalin ja registryn readonly-portilla. Valituista tavuista
+luetaan journalin arvo ilman korjaavaa `read()`-kutsua. Olemassa oleva journal
+nimeää kohteen; journalittoman aidon ensikäytön tunnisteet luodaan kerran
+nykyisillä säännöillä. Root-valinta ja nykyinen lähteen tunnistus tehdään
+ennen prepared-julkaisua, ja binding valitaan samalle kohteelle. Kaappauksen
+aikana vain readonly-työ on sallittu; kaikki valitut omistajat tarkistetaan
+yhdessä ennen ensimmäistä korjausta tai kirjoitusta. Keskeneräistä kytkentää
+ei toteuteta puuttuvan vartijan hyväksyvänä oletuksena. Aiempi
+`registry.inspect()` tai `hasAnyJournalSlot()` on haaran havainto, ei tämä
+valtuus. Ristiriita alkuhavainnon ja lopullisen valinnan välillä hylätään.
+Normaali registry-/switch-/selector-haara ei saa adoption mutaatioportteja.
+
+Nykyiset metadata- ja binding-`capture()` kutsuvat ulkoista vartijaa jo ennen
+oman valintansa alustamista. Yhteiskytkentä erottaa niissä readonly-
+alkuhavainnon ja valmiin valinnan käyttöönoton: alkuhavainnot kerätään saman
+valmisteluvaltuuden alla ilman keskeneräisiä vertaisvartijoita. Vasta kaikkien
+alkuperäisten havaintojen yhteisvarmennus avaa vaihekohtaiset mutaationäkymät
+ja niiden keskinäiset vartijat. Epäonnistunut alustus ei palauta kirjoitus-
+porttia. Puuttuvan vertaisen ohittavaa callbackia ei jätetä valmiiseen
+adapteriin; valinnat eivät päivity yhteisvarmennuksen sivuvaikutuksena.
+
+**Root-kuitti ulottuu koko suoritusyrityksen yli:** nykyinen
+`workspaceLegacyAdoptionMutationAuthority` ja `NodeWorkspaceLegacyAdoptionRootStore`
+säilyttävät saman valinnan prepare -> publish -> accept/recovery -ketjussa.
+Valinta kattaa johdetut userData-, operations-, workspaces-, operation-,
+candidate/runtime-, final/runtime- ja legacy-runtime-juuret, myös alkuperäisen
+poissaolon. Olemassa olevan juuren identiteettiä ei korvata myöhemmällä
+havainnolla. Oman onnistuneen mkdirin readback päivittää vain odotetun
+puuttuvan merkinnän. Rename-kuitti vaatii alkuperäisen candidate/runtime-
+identiteetin final/runtime-polussa, lähteen poissaolon ja muuttumattomat
+vanhemmat. Oma rm-kuitti päivittää vain omistetun poistetun alipuun
+poissaolon. Epäonnistunut tai kuittaamaton vaikutus ei muutu onnistuneeksi
+myöhemmän havainnon perusteella. Nykyiset layout-, linkki-, hardlink-,
+lähdevertailu- ja sisältöehdot säilyvät vaikutuskohtaisina tarkistuksina.
+Live-backend saa edelleen muuttaa oman final-runtime-tietokantansa sisältöä;
+sen sisältöhashia tai mtimea ei jäädytetä käynnistyksen yli. Hyväksynnän
+siivous ei koskaan kohdistu tähän elävään juureen tai legacy-lähteeseen.
+
+**Mainin täsmälliset liitoskohdat:**
+
+1. `desktopComposition` antaa ennen `resolveDesktopWorkspaceStartup`-kutsua
+   nimetyn adoption-portin. Se sitoo kerran valitun operaation, työtilan,
+   lähdelajin ja johdetut juuret samaan startupiin, installation-valtuuteen
+   ja main-varaukseen. Portti välitetään `resolveActiveWorkspaceStartup`iin
+   ennen ensimmäistä korjaavaa journal-lukua. Valinnan kohde ei voi vaihtua
+   myöhemmässä terminal-pyynnössä. Myös suorat tuotanto-/proof-kutsujat saavat
+   oikean varausportin; alemman tason testikaksoinen ei ole fallback.
+2. Nykyisen runtimen liitos palauttaa adoption-portille nimetyt hyväksyntä-
+   ja virhepalautusvaltuudet, ei selectorin tai importin oikeuksia.
+   Main muodostaa hyväksyntänäkymän vain `activeWorkspace.accept(profileId)`-
+   kutsun ajaksi nykyisten health-/profiilitarkistusten jälkeen. Näkymä sitoo
+   täsmälleen tämän `backendHandle`-olion, `backendReservation`-siirron,
+   profileId:n ja alkuvalinnan. Se käyttää jo toteutettuja
+   `assertRunning()`- ja `assertGrantedCurrent()`-havaintoja. `finally` sulkee
+   näkymän; uusi kutsu ei elvytä vanhaa. Ei ylimääräistä stop/startia tai
+   fyysisen main-varauksen vaatimusta backendin ollessa käynnissä.
+3. Virhepolku sulkee hyväksynnän, odottaa alkuperäiset adoption-tehtävät sekä
+   nykyiset broker-/inspection-sulut ja todellisen backend-exitin/takaisinoton.
+   Vasta sitten main antaa samalle valinnalle recovery-näkymän. Ilman
+   palautunutta backend-kahvaa vaaditaan nykyinen startup-errorin poissaolo-
+   ja valmistelun päättymistodiste. Vanha päättynyt lupa ei yksin pilaa
+   turvallista uutta vaihetta; valinnan/kuittauksen epävarmuus estää sen.
+4. Adoption alkuperäiset tehtävät kytketään nykyiseen startupin
+   settlement-/varauksen mitätöintiin myös ennen `runtimeEntered`-kohtaa.
+   Ulompi composition-catch ei saa sulkea varausta eikä aloittaa recoverya
+   keskeneräisen tiedostotyön rinnalla. Uutta timeoutia tai Promise.race-
+   pohjaista valmistumistodistetta ei lisätä. Ensivirhe ja myöhempi sulkuvirhe
+   säilyvät nykyisessä syyketjussa ennen turvallista virhemuunnosta.
+
+**Palautumisen yhteensopivuus:** nykyisen `recoverWorkspaceLegacyAdoption`in
+viimeinen `Promise.all([journal.read(), registry.read()])` ei sovi saman
+metadata-valinnan sarjalliseen käyttöön. Valitussa polussa nämä luetaan
+peräkkäin ja molemmat alkuperäiset valinnat varmennetaan vielä ennen clearia
+tai sidotun haaran prepared-siirtymää. Päällekkäisyyssuojaa ei poisteta.
+Tavallinen valmistunut sisältövalidoinnin virhe ja epävarma tiedostovaikutus
+pidetään erillään: ensimmäinen saa nykyisen `recoveryRequired`-merkinnän
+vain edelleen kelvollisella valinnalla; jälkimmäinen ei saa korjaavaa lukua,
+merkintää tai siivousta uuden vaihevaltuuden avulla. Root-mutaation nykyistä
+epävarmuushavaintoa ei muuteta no-effect-todisteeksi pelkän virhekoodin
+perusteella. Sidotun haaran same-ID-jatko ja sidonnattoman kolme vanhaa
+palautushaaraa toteutetaan yllä olevan sopimuksen mukaan, ei yhteisellä
+uusia tunnisteita luovalla fallbackilla.
+
+**Toiminnallinen toteutusjärjestys ja näyttö:**
+
+1. Nykyisten valinta-adapterien vaihekohtaiset näkymät ja readonly-vartijat
+   sekä koko suoritusyrityksen root-kuitit. Testaa todellisilla tavuilla jokainen
+   taulukon kirjoittaja, alkukaappauksen katko, viimeisen awaitin valinnanvaihto,
+   oma mkdir/rename/rm, kadonnut kuitti, vaihdettu juuri, vanhan näkymän kutsu,
+   päällekkäisyys ja aloitetun luvun/sulun päättyminen. Ei vielä main-kytkentää.
+2. Yksi startup/recovery/main-kytkentä näihin portteihin, ei uusi irrallinen
+   vartijaketju. Säilytä fresh, legacy, jo julkaistu registry, kaikki vanhat
+   journal-slotit, sidonnaton recovery ja W6/FirstStart-järjestys. Todista myös
+   binding-katkon same-ID-jatko, backendin sallittu kirjoitus valmistelun
+   jälkeen, stop/exit ennen tai kesken hyväksynnän, vanha callback seuraavan
+   vaiheen aikana ja epävarmuuden vaikutus ulompaan varauksen sulkuun.
+3. Rajattu riippumaton katselmus, nykyisten todellisten käynnistys- ja
+   palautuskontrollien sekä uuden prosessi-/pakettikytkennän näyttö. Vertaa
+   säilyneitä tiedostoja ja alkuperäistä syytä, ei vain virhekoodia. Aiempi
+   main-sarjan aikakatkaisu säilyy erillisenä avoimena havaintona; tämä
+   sopimustarkennus ei anna lisäuusintaa tai muuta nykyisiä aikarajoja.
+
+**Sopimuksen tarkistus 30.10.2026:** rajattu riippumaton lähdekatselmus ei
+löytänyt estävää sopimuspuutetta. Sen alustusjärjestystä koskeva täsmennys
+sisältyy yllä olevaan readonly-alkuhavaintoon ja erilliseen käyttöönottoon.
+Nykyisen käyttöönoton, palautumisen ja valinta-adapterien viiden tiedoston
+104 kontrollitestiä läpäisivät. Ne todentavat nykyisen lähtötilan, eivät
+vaihenäkymien, yhteisvartijoiden tai main-kytkennän tulevaa toteutusta.
+Tuotantokoodia tai aikarajoja ei tässä sopimustarkennuksessa muutettu.
 
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
