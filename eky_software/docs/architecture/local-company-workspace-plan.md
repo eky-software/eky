@@ -5101,6 +5101,28 @@ metadata- ja root-valinta omien kuittien yli. Sidotun palautumisen samat
 tunnisteet, sticky-epävarmuus, prosessiraja ja pakettinäyttö ovat edelleen
 tämän liitoksen omia avoimia portteja, eivät root-porttitestien todisteita.
 
+**Metadata-valinnan checkpoint 30.10.2026:** adoption rajattu
+`WorkspaceLegacyAdoptionMetadataSelection` kaappaa journalin ja rekisterin
+valinnan ennen korjaavaa lukua. Se käyttää samoja tallentimia ja tarjoaa
+nykyiset read/write/clear-portit alkuperäisen valinnan ja omien kuittien
+varassa. Kirjoittajan ulkoinen vartija tarkistaa toisen tallentimen, ei lue
+saman kirjoituksen keskeneräisiä slotteja. Valinta tarkistetaan uudelleen
+viimeisen ulkoisen odotuksen jälkeen. Kuittauskatko, valintamuutos tai menetetty
+valtuus sulkee saman suoritusyrityksen jatkon pysyvästi; uuden itsenäisen valinnan
+onnistuminen ei avaa vanhaa. Aloitetut rinnakkaiset havainnot ja kirjoittajan
+sulku odotetaan loppuun myös virheessä. Rekisterin valittu kirjoitus tarjoaa
+valinnaisen epävarmuushavainnon ennen nykyistä turvallista virhemuunnosta;
+tavallinen write ja muut valitut kutsujat säilyvät ennallaan.
+
+34 uutta testiä todentaa oikeat slot-tavut, kuittauskatkot, valtuuden menetyksen,
+päällekkäisyyden, sulun ja nykyisen fresh-/legacy-startupin näillä adaptereilla.
+Yhteinen 26 tiedoston vaikutusalueajo läpäisi 591 testiä; kolme nykyistä
+POSIX-kohtaista tapausta jäi alustaehtonsa vuoksi ajamatta. Tyypitys ja
+rajattu riippumaton katselmus läpäisivät. Näyttö ei ole mainin omistajuuden,
+binding-valinnan, koko käynnistyksen root-kuittien tai prosessi-/pakettirajan
+todiste. Niiden todellinen startup-/recovery-/main-kytkentä on edelleen
+seuraava työ; tuotannossa ei sallita vartioimatonta fallbackia.
+
 ##### W7.4 B: tuonnin vaihekohtainen valtuus
 
 **29.10.2026: sopimus ja vaiheittainen kytkentä.** Live-kytkennän nykytila on

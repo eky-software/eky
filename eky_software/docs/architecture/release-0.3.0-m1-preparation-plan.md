@@ -198,26 +198,22 @@ koko ketjun integraatio ovat kesken. Omistavat sopimukset:
   Adoption [omistajuussopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
   erottaa backendia edeltävän main-varauksen, elävän backendin rajatun
   metadatahyväksynnän ja exitin jälkeisen palautumisen. Nykyistä käynnistystä
-  ei pysäytetä vain sidonnan vuoksi. Nykyisen varausomistajan toistettava
-  granted-havainto, backendin pysyvä tilahavainto ja adoption journalin valitut
-  portit on toteutettu. Yhtenäisen 12 tiedoston 334 testiä, desktopin tyypitys
-  sekä rajatut riippumattomat katselmukset läpäisivät. Root-porttien
-  valmistelu-, julkaisu- ja siivousvartijat sekä aloitetun luku-I/O:n loppuun
-  odottaminen on toteutettu. Niiden 138 kohdetestiä, tyypitys ja rajattu
-  jälkikatselmus läpäisivät. Seuraavana ovat alkuperäisen valinnan omat
-  metadata-/root-kuitit ja adoption startup-/recovery-/main-kytkentä;
-  valinnaisen alemman portin oma näyttö ei vielä todista tuotannon pakollista
-  valtuuskytkentää tai pakettirajaa.
-  Electron-testikahvojen 19 regressiota ja tyypitys läpäisivät. Laajan
+  ei pysäytetä vain sidonnan vuoksi. Varaus-/käyntihavainnot, valitut journal-
+  portit ja root-vartijat on toteutettu. Adoption metadata-adapteri säilyttää
+  alkuvalinnan ja omat kirjoituskuitit, estää epävarman suoritusyrityksen jatkon ja
+  odottaa aloitetun I/O:n loppuun. Yhteisen 26 tiedoston 591 testiä, tyypitys
+  ja rajattu katselmus läpäisivät; kolme POSIX-tapausta jäi alustaehtonsa
+  vuoksi ajamatta. Edeltävien porttien tarkka näyttö säilyy omistavassa
+  suunnitelmassa, eikä päällekkäisiä ajoja lasketa yhteen. Seuraavana ovat
+  binding-valinta, koko startupin root-kuitit ja varsinainen startup-/recovery-/
+  main-kytkentä. Adapterikoe ei vielä todista mainin pakollista valtuutta,
+  prosessirajaa tai puhtaan paketin hyväksyntää. Laajan
   main-sarjan cold-forward-aikakatkaisu ja keskeneräisen työn suoja säilyvät
   avoimena havaintona yhden onnistuneen kohdeuusinnan jälkeen; koko sarjan
   läpäisyä ei väitetä. Aikarajoja tai nykyisiä palautusvaatimuksia ei muutettu.
   Sidottu keskeytysjatko säilyttää saman operaation tunnisteet; vanha
-  sidonnaton palautus ei muutu. Nykyisten kuuden tiedoston 151 kontrollia ja
-  kahden startup-/W6-tiedoston 41 kontrollia läpäisivät. Nämä ovat nykytilan
-  näyttöä, eivät uusien vartijoiden tai keskeytysjatkon toteutustodisteita.
-  Rajattu sopimuskatselmus ja sidotun keskeytyksen täsmennyksen jälkikatselmus
-  valmistuivat ilman avoimia estäviä sopimuslöydöksiä.
+  sidonnaton palautus ei muutu. Aiempi sopimuskatselmus ei korvaa näiden
+  liitosten toteutusnäyttöä.
   [Ensimmäisen journalin ja loppusiivouksen sopimus](local-company-workspace-plan.md#tuonnin-ensimmäinen-julkaisu-ja-loppusiivous)
   erottaa alkuvaltuuden, oman julkaisukuitin, sidotut muutokset ja turvallisen
   paluun. Sen porttien ja tiedostokokeiden aiemmat checkpointit säilyvät

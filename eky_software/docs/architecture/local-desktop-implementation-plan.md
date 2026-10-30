@@ -661,6 +661,12 @@ odotetaan sulkeutuneeksi, ja rinnakkaiset inventaariot päättyvät ennen virhee
 palautusta. Nämä alemmat portit eivät vielä sido saman startupin valintaa,
 elävää backendia ja metadatajulkaisuja yhdeksi hyväksyntäketjuksi; se tehdään
 edellä viitatun vaihekohtaisen sopimuksen mukaisessa main-kytkennässä.
+Adoption metadata-adapteri säilyttää alkuperäisen journal-/registry-valinnan
+ja omien kirjoitusten kuitit samoilla tallentimilla. Saman ajon epävarmuus ei
+poistu myöhemmällä luvulla tai uuden metadata-valinnan onnistumisella. Ulkoinen
+kirjoitusvartija ei lue keskeneräistä kirjoittajaa uudelleen. Adapterin
+tiedostotestit eivät vielä todista mainin vaihevaltuuden tai binding-/root-
+kuittien varsinaista kytkentää; se on edelleen yllä olevan sopimuksen työ.
 
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:

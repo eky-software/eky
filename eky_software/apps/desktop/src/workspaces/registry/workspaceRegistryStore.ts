@@ -128,7 +128,8 @@ export class WorkspaceRegistryStore {
     });
   }
 
-  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection & Partial<Pick<ObservedRecoveryAuthority, 'onUncertain'>>): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    const onUncertain = selection.onUncertain?.bind(selection);
     return this.runExclusive(async () => {
       const registry = validateWorkspaceRegistry(value);
       try {
@@ -138,7 +139,13 @@ export class WorkspaceRegistryStore {
           }
         }
         return await this.byteStore.replaceSelected(serializeWorkspaceRegistry(registry), selection);
-      } catch (error) { throw this.mapStoreError(error); }
+      } catch (error) {
+        try {
+          const result: unknown = onUncertain?.(error);
+          if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+        } catch { /* Preserve the original failure before safe mapping. */ }
+        throw this.mapStoreError(error);
+      }
     });
   }
 
