@@ -5,6 +5,50 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## ASARin tietoturvakorjaus 31.10.2026
+
+Ensimmäinen glob 14.0.2 / minimatch 11.0.1 -ehdokas läpäisi erillisen
+kirjaston kontrollit ja auditoinnin, mutta jälkikatselmus löysi globin
+oletusvienneistä vanhan sisäänrakennetun minimatch-kopion. Rajattu pysyvä
+sarja läpäisi kahdeksan testiä ja hylkäsi nämä kaksi vientipolkua.
+Ehdokasta ei yhdistetty mainiin. Omistaja hyväksyi julkaisijan
+glob 14.0.3 / minimatch 11.0.2 -parin samoilla tarkistuksilla.
+Uuden ehdokkaan hyväksyntä ei perustu vanhan ehdokkaan vihreisiin tuloksiin.
+MSI-ikkunahavainnot ja niiden siivouksen näyttöraja säilyvät erillisinä.
+
+### HTTP-adapterin mergeä edeltävä checkpoint
+
+Alla oleva teksti on aiempi valmistelutilanne. PR #324 on sittemmin
+yhdistetty ja loppuhyväksytty M1:n nykyisen jatkamiskohdan mukaisesti.
+
+**29.10.2026: rajattu HTTP-adapterin tietoturvakorjaus ennen W7.4:n jatkoa.**
+Hyväksytty lähtö on `main 11e0eadfee002806db01a1b7152532e04dec5ca4`,
+[PR #323:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/323#issuecomment-6468900620).
+Alla oleva W7.3:n mergeä edeltävä teksti on historiaa, ei uusi toteutusjono.
+
+Saman main-revision uusi
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/40844462629)
+hylkäsi `@hono/node-server@2.1.0`:n
+[GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
+vuoksi. Omistaja hyväksyi täsmäpäivityksen 2.1.3:een ja tarkistukset.
+EKY ei käytä paketin haavoittuvaa `serveStatic`-toimintoa tuotannossa;
+synteettinen oikean HTTP-rajapinnan regressio todistaa vanhan poikkeaman
+ja korjatun hylkäyksen sekä säilyvän julkisen ja suojatun normaalipolun.
+Väliversioiden otsakemuutosten vuoksi myös session, vastaustavujen ja sulun
+regressiot kuuluvat tarkistukseen. Muut riippuvuudet ja hyväksyntäehdot säilyvät.
+
+Korjauksen paikalliset auditoinnit ja rekisteriallekirjoitukset läpäisivät.
+HTTP:n 61 kohdetestiä, katselmuksen täsmennyksen 25 testiä ja 15 system-tapausta
+läpäisivät. Backendin yksi hallittu uusinta läpäisi 4 156 testiä, viisi jäi
+suorittamatta. Ensimmäisen diagnostiikan sulkutestin aikakatkaisu säilyy
+avoimena havaintona, ei korjattuna vikana. Tyypitys ja build läpäisivät;
+sarjat ovat päällekkäistä näyttöä. Tämä on erillinen riippuvuuskorjaus,
+ei keskeneräisen W7.4-toteutuksen hyväksyntä.
+
+**Seuraavaksi:** tämän täsmällisen korjaushaaran normaalit PR-portit ja
+riippuvuustarkistus, suojattu merge ja uuden main-revision omat portit.
+Sen jälkeen W7.4 jatkuu omistavan työtilasuunnitelman mukaan.
+
 ## W7.2:n mainin ensimmäinen hylkäys 27.10.2026
 
 [PR #321](https://github.com/eky-software/eky/pull/321) yhdistettiin

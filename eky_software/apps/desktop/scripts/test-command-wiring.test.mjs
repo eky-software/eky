@@ -55,6 +55,7 @@ const REQUIRED_FILES = [
   ['e2e/w6b2PackagedWorkspaceMigrationHistory.test.ts', 'vitest'],
   ['e2e/workspaceProofReservation.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
+  ['scripts/asarToolchain.test.mjs', 'node'],
   ['scripts/profileInspection/linuxProfileInspection.test.mjs', 'node'],
   ['scripts/profileInspection/linuxSandboxProbe.test.mjs', 'node'],
   ['scripts/backendBuildMetadata.test.mjs', 'node'],
