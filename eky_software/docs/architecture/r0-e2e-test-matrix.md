@@ -772,6 +772,20 @@ siksi suunniteltuna [B3-B5:n omistavassa rajauksessa](release-0.3.0-m1-preparati
 
 ## Desktop
 
+`SYS-ELECTRON-PRIVATE-FAILURE-001`: alkuperäisen development-startup-
+poikkeuksen yhteinen toimitus, ensimmäisen syyn säilyminen, hylätty
+toimitus, väärä sukupolvi/siivouskuitti, linkit, muuttuvat ja liian suuret
+tiedostot sekä ennen owner-stop-kutsua jäädytetty sulkuhavainto.
+Nykyinen system-sarja ajaa nämä sopimukset. Erillinen
+`DESK-STARTUP-ORIGINAL-001`-Windows-/OpenPGP-koe käyttää todellista
+development-entrypointia ja vaatii alkuperäisen viestin/pinon/syyketjun
+puretusta nykyisestä salatusta paketista. System-sopimusregressiot ja nimetty
+oikean Windows-prosessiketjun salaus-/purkukoe läpäisivät; sama koe varmisti
+salaisuuden peittymisen, turvallisen julkisen raportin ja siivoustodisteet.
+Normaalit nykyisen revision PR/main-portit ovat vielä avoimia, ks. M1.
+Sopimus ei lisää julkisia raakavirhekenttiä eikä korvaa historiallisten
+sulku-/käynnistysvikojen syytä tai nykyisen revision PR/main-portteja.
+
 `DESK-INSPECTION-LINUX-001`: K:n tarkistusprosessiin rajattu hosti käyttää
 nykyistä Linux-prosessinomistajaa ja oikeaa main/utility-tarkistusporttia.
 Ehjän kopion hyväksyntä, muutetun rakenteen ja puuttuvan tarkistusajurin

@@ -206,6 +206,7 @@ pnpm --filter @eky/e2e exec playwright install chromium
 | Kaikki kolme tavallista projektia, vain `@fault` | `pnpm test:e2e:fault` |
 | Electron development | `pnpm test:e2e:electron` |
 | Electronin kriittiset polut | `pnpm test:e2e:electron:critical` |
+| Development-Electronin alkuperäisen virheen prosessi-/OpenPGP-todennus Windowsissa | `pnpm --filter @eky/e2e e2e:electron:evidence` |
 | Kolme tavallista projektia ilman tagirajausta | `pnpm test:e2e:all` |
 
 Nämä ajokomennot tekevät oman valmistelunsa. `e2e:prepare` rakentaa permissions-,
@@ -307,6 +308,15 @@ Jos Electronin käyttäjäpolku valmistuu mutta teardown hylätään, tarkista
 jäljelle jäänyttä prosessipuuta. Vastaavasti `processTreeAbsent` ei muuta
 epäonnistunutta julkista sulkua hyväksytyksi. Vanhan liitteen puuttuva kenttä
 on näyttöaukko, ei jälkikäteen arvattava syy.
+
+Nykyinen fixture säilyttää lisäksi ennen owner-stop-kutsua muistissa olevan
+työkuorma-/bridge-tilan nykyiseen yksityiseen runner-aineistoon. Julkinen
+lifecycle ei sisällä tätä lisäotetta. `electronPublicCloseObservation`
+erottaa havainnon sovelluksen poikkeuksesta: timeout ei itsessään anna
+sovelluksen pinoa. Startupin alkuperäinen poikkeus kulkee vaiheella
+`electronStartup-runtimeStartup`, `electronStartup-compositionStartup` tai
+`electronStartup-earlyStartup`. Tarkista myös `electron-startup-exception`-
+saatavuusmerkintä; keräyksen puuttuminen ei ole onnistuminen.
 
 Jos testi epäonnistuu käynnistymisen jälkeen, sama lifecycle-liitteen
 `backendStartupLogs` säilyttää nykyisen runtime-sukupolven rajatut

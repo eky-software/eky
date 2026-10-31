@@ -275,6 +275,14 @@ ja onnistuneen polun säilyminen. Prosessin pakkokatkaisu, levyn virhe tai
 runnerin katoaminen voi estää tallennuksen tai toimituksen; puuttuvaa
 alkuperäistä syytä ei päätellä yleisestä koodista eikä väitetä tallennetuksi.
 
+Electron development -muunnosrajan nimetty Windows-koe on
+`pnpm --filter @eky/e2e e2e:electron:evidence`. Se käyttää nykyistä fixtureä,
+oikean entrypointin hallittua exit 1:tä ja nykyistä OpenPGP-testitoimitusta.
+Sisäinen testihylkäys on kokeen odotettu syöte, ei tavallisen CI:n ohitus.
+Kokeen onnistuminen vaatii alkuperäisen viestin, pinon ja syyketjun puretuista
+tavuista sekä erillisen puun/portin siivoustodisteen. Tavallisen onnistuvan
+startupin ja restartin regressiot säilyvät; tämä ei korjaa vanhaa timeoutia.
+
 Hiljainen odotus ei välttämättä tuota poikkeusta. Käytä ensin omistavan
 testiruntimen olemassa olevia vaihe-, prosessi- ja toimitushavaintoja;
 pelkkä timeout ei nimeä syytä. Workspace-asentimen hyväksytty
