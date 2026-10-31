@@ -7,33 +7,40 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**29.10.2026: rajattu HTTP-adapterin tietoturvakorjaus ennen W7.4:n jatkoa.**
-Hyväksytty lähtö on `main 11e0eadfee002806db01a1b7152532e04dec5ca4`,
-[PR #323:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/323#issuecomment-6468900620).
-Alla oleva W7.3:n mergeä edeltävä teksti on historiaa, ei uusi toteutusjono.
+**31.10.2026: rajattu ASAR-työkaluketjun tietoturvakorjaus ennen W7.4:n jatkoa.**
+W7.3 ja HTTP-adapterin korjaus on hyväksytty:
+`main 877049505c6262ef82fc40243082109939757052`,
+[PR #324:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/324#issuecomment-6497430060).
+Aiemmat hyväksynnät eivät sulje keskeneräistä W7.4:ää.
 
-Saman main-revision uusi
-[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/40844462629)
-hylkäsi `@hono/node-server@2.1.0`:n
-[GHSA-rmxm-3fg6-px4f](https://github.com/advisories/GHSA-rmxm-3fg6-px4f)-löydöksen
-vuoksi. Omistaja hyväksyi täsmäpäivityksen 2.1.3:een ja tarkistukset.
-EKY ei käytä paketin haavoittuvaa `serveStatic`-toimintoa tuotannossa;
-synteettinen oikean HTTP-rajapinnan regressio todistaa vanhan poikkeaman
-ja korjatun hylkäyksen sekä säilyvän julkisen ja suojatun normaalipolun.
-Väliversioiden otsakemuutosten vuoksi myös session, vastaustavujen ja sulun
-regressiot kuuluvat tarkistukseen. Muut riippuvuudet ja hyväksyntäehdot säilyvät.
+Saman revision uusi [V2](https://github.com/eky-software/eky/actions/runs/41185070506)
+hylkäsi MSI-ikkunahavaitsijan sopimustestin kahdessa työssä.
+Erillinen [auditointi](https://github.com/eky-software/eky/actions/runs/41185605296)
+löysi glob-/minimatch-ketjun haavoittuvuudet. Molempien ikkunatestien
+ensivirheet säilytettiin salattuina; rajattu katselmus ei osoittanut
+sovellusvikaa. Alkuperäinen syy ja erillisen siivoustodisteen puute pysyvät
+avoimina, eikä riippuvuuspäivitys ratkaise niitä.
 
-Korjauksen paikalliset auditoinnit ja rekisteriallekirjoitukset läpäisivät.
-HTTP:n 61 kohdetestiä, katselmuksen täsmennyksen 25 testiä ja 15 system-tapausta
-läpäisivät. Backendin yksi hallittu uusinta läpäisi 4 156 testiä, viisi jäi
-suorittamatta. Ensimmäisen diagnostiikan sulkutestin aikakatkaisu säilyy
-avoimena havaintona, ei korjattuna vikana. Tyypitys ja build läpäisivät;
-sarjat ovat päällekkäistä näyttöä. Tämä on erillinen riippuvuuskorjaus,
-ei keskeneräisen W7.4-toteutuksen hyväksyntä.
-
-**Seuraavaksi:** tämän täsmällisen korjaushaaran normaalit PR-portit ja
-riippuvuustarkistus, suojattu merge ja uuden main-revision omat portit.
-Sen jälkeen W7.4 jatkuu omistavan työtilasuunnitelman mukaan.
+Omistaja hyväksyi tarkistetun glob 14.0.3 / minimatch 11.0.2 -ehdokkaan
+ja [täsmälliset hyväksyntäportit](local-desktop-dependency-review.md#asarin-rajattu-hakukirjastokorjaus).
+Aiempi ehdokas hylättiin sisäänrakennetun vanhan kirjastokopion vuoksi;
+auditoinnin vihreys ei korvannut puuttuvaa toimintanäyttöä.
+Uuden ehdokkaan kymmenen kohdetestiä läpäisivät, myös molemmat aiemmin
+hylänneet sisäänrakennetun matcher-kopion kontrollit. Laajemmat 344
+kohderegressiota ja normaali desktopin työkalutestiryhmä läpäisivät;
+jälkimmäisessä 438 testiä läpäisi ja 12 alustakohtaista testiä ohitettiin.
+Sarjat ovat päällekkäistä näyttöä, eivät yhteenlaskettava testimäärä.
+Frozen-asennus, tyyppitarkistukset, production-/full-auditointi ja 161
+rekisteriallekirjoituksen varmennus läpäisivät. Rajattu riippumaton
+jälkikatselmus sulki sisäänrakennetun kopion löydöksen tässä ehdokkaassa
+eikä löytänyt uusia puutteita. Linux-todennus jää revision CI-porttiin.
+Puhdas Windows-paketti,
+sen nykyiset käynnistys-/sisältöportit ja revision PR/main-portit ovat vielä
+todentamatta.
+Integraatio ei ole vielä hyväksytty. Electron, SQLite, tietomalli ja
+CI-ehdot säilyvät. W7.4 jatkuu vasta lähtötilan esteiden käsittelyn jälkeen.
+[Aiemmat checkpointit](release-0.3.0-integration-history.md#asarin-tietoturvakorjaus-31102026)
+ovat historiaa, eivät uusi toteutusjono.
 
 ### W7.3:n aiempi integraatiotilanne
 

@@ -85,6 +85,57 @@ legacy-ajon. Staattinen luku tai alemmat testit eivät korvaa asennuksen,
 migraation, toisen käynnistyksen ja siivouksen hyväksyntää. Tämän työn
 ajantasainen näyttö on [M1:n checkpointissa](release-0.3.0-m1-preparation-plan.md#legacy-testin-038039-migraatiotodisteen-korjausehdotus).
 
+### ASARin rajattu hakukirjastokorjaus
+
+Ensimmäinen glob 14.0.2 / minimatch 11.0.1 -ehdokas hylättiin, koska globin
+oletusviennit sisälsivät vanhan minimatch-kopion, jota override ei vaihda.
+Sekä ESM- että CommonJS-vienti ylittivät synteettisen laajennusrajan.
+Erillisen minimatchin ja auditoinnin läpäisy ei siksi riittänyt.
+Pysyvä regressio tarkistaa myös nämä todelliset vientipolut.
+
+Omistaja hyväksyi 31.10.2026 seuraavan korjausehdokkaan ja tarkistukset:
+nykyinen `@electron/asar 4.2.1` käyttää `glob 14.0.3`:a ja
+`minimatch 11.0.2`:ta. Globin sama minimatch ja `path-scurry 3.0.0` sekä
+minimatchin uusi `@isaacs/nonrecursive-glob-match 1.0.3` lukitaan
+täsmällisiin, vain näitä riippuvuussuhteita koskeviin workspace-overrideihin.
+Muut lockfilen paketit, Electron, SQLite ja tietomalli säilyvät.
+
+Korjaus koskee advisoreja
+[GHSA-3g3m-2fjr-6pw4](https://github.com/isaacs/node-glob/security/advisories/GHSA-3g3m-2fjr-6pw4)
+ja [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249).
+Globin keskeytys saattoi jatkaa hakemistoluentaa; minimatchin optimoitu
+kuvio saattoi kasvattaa tarkistustyötä hallitsemattomasti. Nykyinen EKYn
+pakkaaja muodostaa hakukuvion omasta valmisteluhakemistosta eikä anna
+ASAR-luennalle keskeytyssignaalia. Katselmus ei osoittanut sovelluksen
+käyttäjäsyötteestä johtavaa hyväksikäyttöpolkua. Haavoittuva riippuvuus ja
+auditointihylkäys käsitellään silti; tätä ei kuvata EKYn runtime-viaksi.
+
+Globin ja minimatchin pääversiot vaihdetaan yhdessä: glob 13:n
+kuvio-oliot eivät vastaa minimatch 11:n uutta toteutusta. Pelkkä ASARin
+päivitys versioon 4.3.1 säilyttäisi glob 13 / minimatch 10 -ketjun eikä
+korjaisi löydöksiä. Oma hakukirjasto tai uuden paketointikehyksen lisääminen
+ei kuulu ratkaisuun. Neljä hyväksyttyä pakettia ovat BlueOak-1.0.0-
+lisensoituja ja sopivat nykyiseen Node 24 -työkaluruntimeen; uusi aliriippuvuus
+ei tuo omia riippuvuuksia. Julkaisuvaroaika täyttyy ilman poikkeusta.
+
+`scripts/asarToolchain.test.mjs` kuuluu desktopin normaaliin testikomentoon.
+Se tarkistaa pakkaajan ja suoran ASAR-lukijan yhteisen riippuvuusketjun,
+aidon arkiston täydellisen jäsenlistan ja tavut, piilotetut hakemistot,
+välilyönnit ja Unicode-nimet sekä pakkaajan todellisen `.node`-unpack-kuvion.
+Legacy-fixturen tavallinen arkistonluonti säilyy erillisenä kontrollina.
+Pienet riippuvuuskokeet tarkistavat sekä tavallisen että suoratoistavan
+glob-haun peruutuksen ja minimatchin kuvion laajennusrajan. Nämä eivät
+väitä synteettistä haitallista kuviota EKYn käyttäjäsyötteeksi.
+
+Hyväksyntä vaatii rajatun lockfile-diffin, frozen-asennuksen, production-
+ja full auditin, rekisteriallekirjoitukset, nykyiset pakettisisällön ja
+ASAR-lukijan regressiot sekä puhtaan Windows-paketin ja sen nykyiset
+käynnistys-/sisältöportit. Major-yhteensopivuutta ei hyväksytä auditoinnin
+vihreyden perusteella. Riippumaton katselmus ja revision omat PR/main-portit
+säilyvät. Override poistetaan vasta hyväksytyn upstream-ketjun korvatessa
+sen samalla näytöllä. Ajantasainen eteneminen on
+[M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
 ### Electron 43.8.1 ja Undici 7.30.1
 
 Omistaja hyväksyi 24.10.2026 PR #318:n auditointiesteen rajatun korjauksen:
