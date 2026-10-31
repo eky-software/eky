@@ -313,6 +313,16 @@ Rajattu riippuvuuslupa, direct-EXE-valinta, childless-bridgen
 [hyväksytyssä patch-sopimuksessa](../../apps/e2e/experiments/processOwnership/README.md#approved-t3b-e-dependency-correction).
 Sen päivätyt kokeet eivät ole uuden revision automaattinen hyväksyntä.
 
+Lapsiton Electron-välittäjä odottaa root-exitin lisäksi molempien
+tulostevirtojen todellista valmistumista. Poistumisehto ja seuraavan
+odotuksen valinta käyttävät samaa valmistumistilan otosta: niiden välissä
+valmistuva siirto säilyy herätteenä, eikä onnistuva poistuminen tarvitse
+owner-stop-viestiä. Valmis siirto ei ohita siirtovirhettä, kontrolliviestin
+validointia tai alkuperäistä määräaikaa. Nykyisen native-valmistelun
+[hallittu regressio](../../apps/e2e/experiments/processOwnership/adapterNative/ElectronBridgeClientSelfTest.cs)
+todentaa tämän erikseen stdoutille, stderrille ja molemmille yhdessä.
+Välittäjän poistuminen ei edelleenkään ole koko prosessipuun siivoustodiste.
+
 ### Linux-CI
 
 Omistaja käyttää kertakäyttöistä transient-unitia ja kiinteää

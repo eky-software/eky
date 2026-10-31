@@ -38,10 +38,37 @@ Samassa kokeessa salaisuuden peittyminen, julkisen raportin turvallisuus ja
 siivoustodisteet varmennettiin. Normaali työtilasarja keskeytyi runnerin
 sisäiseen viestintävirheeseen. Epäonnistuneen tiedoston yksi rajattu
 33 testin uusinta läpäisi, mutta se ei korvaa koko sarjaa tai ratkaise
-alkuperäistä katkeamissyytä. Puhtaan revision pakettiportit sekä
-PR/main-integraatio ovat vielä avoimia. Keräyskorjaus
+alkuperäistä katkeamissyytä. Alla erotetaan tämän jälkeen valmistunut
+puhtaan revision pakettinäyttö ja vielä avoin PR/main-integraatio. Keräyskorjaus
 ei itsessään ratkaise historiallisten hylkäysten syytä. Main ei ole
 loppuhyväksytty.
+
+Keräyskorjauksen [PR #326](https://github.com/eky-software/eky/pull/326),
+head `b5eddf35`, läpäisi paikallisen puhtaan paketin palautus-/restart-portin.
+Sen [V2-kierros](https://github.com/eky-software/eky/actions/runs/41237739219)
+hylättiin: 36 työtä läpäisi, Electron-työ ja koonti hylättiin, kuusi
+diagnostiikkatyötä jäi tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/41237739214)
+läpäisi. `DESK-LEGACY-RESEND-001`:n restart-sulku hylättiin ensimmäisellä
+yrityksellä ja automaattinen uusinta läpäisi; se ei hyväksy flaky-tulosta.
+Uusi sulkuhavainto säilyi puretussa salatussa paketissa. Tarkka syy on
+edelleen avoin, merge estetty eikä muuttumatonta ajoa uusita tämän nojalla.
+
+Rajattu jatkokatselmus löysi testin lapsittomasta Electron-välittäjästä
+odotuskilpailun: tulostesiirron valmistuminen saattoi jäädä pois odotuksesta
+poistumisehdon tarkistuksen jälkeen. Hallittu regressio hylkäsi vanhan
+logiikan. Korjaus käyttää samaa tilahavaintoa molemmissa kohdissa;
+kuusi onnistumis-/virheajoituksen regressiota, nykyinen native-valmistelu,
+85 fixture-/omistajuussopimusta, 40 erillistä ympäristö-/virhekeräyssopimusta
+ja kuusi oikean Electronin kohdepolkua läpäisivät. Alkuperäinen startup-syy
+löytyi myös korjatun välittäjän oikean Electron-/OpenPGP-kokeen puretusta
+paketista; kaksi tarkistusta läpäisi. Rajattu riippumaton katselmus ei
+löytänyt estettä. Sovelluskoodi, siivoustodisteet ja aikarajat säilyvät.
+Tämä todistaa välittäjän vian ja
+sen rajatun korjauksen, ei vielä alkuperäisen CI-aikakatkaisun syytä.
+Seuraava portti on korjausrevision loppuvarmennus ja normaalit PR/main-ajot;
+aiemmat hylkäykset säilyvät.
+
 Viimeinen hyväksytty lähtö on edelleen PR #324:n `87704950`;
 W7.4:n keskeneräisiä toteutuksia ei avata tämän punaisen baselinen varassa.
 [Aiemmat checkpointit](release-0.3.0-integration-history.md#asarin-tietoturvakorjaus-31102026)

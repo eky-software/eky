@@ -318,6 +318,10 @@ sovelluksen pinoa. Startupin alkuperäinen poikkeus kulkee vaiheella
 `electronStartup-earlyStartup`. Tarkista myös `electron-startup-exception`-
 saatavuusmerkintä; keräyksen puuttuminen ei ole onnistuminen.
 
+Tämän otteen `bridge=pending` on vielä vahvistamaton siivoustila, ei
+välitysprosessin elossaolotodiste. `workload=exited` on ennen siivousta
+havaittu pääprosessin poistuminen, ei jälkeläisten poissaolotodiste.
+
 Jos testi epäonnistuu käynnistymisen jälkeen, sama lifecycle-liitteen
 `backendStartupLogs` säilyttää nykyisen runtime-sukupolven rajatut
 käynnistys- ja sulkutapahtumat ennen fixturen siivousta. Tarkista myös lukutila
