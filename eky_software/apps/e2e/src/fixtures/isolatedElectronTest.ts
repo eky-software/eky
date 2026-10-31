@@ -70,6 +70,8 @@ import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecover
 import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 import { isWorkspaceDeletionProofScenario } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
 import { captureWorkspaceDeletionFailure, shouldCaptureWorkspaceDeletionFailure } from './captureWorkspaceDeletionFailure.js';
+import { captureElectronPrivateCloseFailure, reportElectronCloseFailure, reportElectronStartupException,
+  type ElectronPrivateCloseFailure } from './reportElectronPrivateFailure.js';
 
 export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEvidence.js';
 
@@ -101,6 +103,7 @@ interface IsolatedElectronFixtures {
 }
 
 interface IsolatedElectronOptions {
+  e2eElectronStartupMode: 'normal' | 'backendStartFailure';
   e2eBackendStartupFault: 'none' | 'missingIncidentsDirectory';
   e2eContainmentTimeoutMilliseconds: number | undefined;
   e2eDialogMode: 'accept' | 'cancel';
@@ -123,6 +126,7 @@ interface ElectronOutputGeneration {
 export const test = base.extend<
   IsolatedElectronFixtures & IsolatedElectronOptions
 >({
+  e2eElectronStartupMode: ['normal', { option: true }],
   e2eBackendStartupFault: ['none', { option: true }],
   e2eContainmentTimeoutMilliseconds: [undefined, { option: true }],
   e2eDialogMode: ['accept', { option: true }],
@@ -133,6 +137,7 @@ export const test = base.extend<
   e2eSelectorProfile: ['none', { option: true }],
   e2eElectron: async (
     {
+      e2eElectronStartupMode,
       e2eBackendStartupFault,
       e2eContainmentTimeoutMilliseconds,
       e2eDialogMode,
@@ -212,6 +217,7 @@ export const test = base.extend<
     });
     let backendPort = await reserveLoopbackPort();
     let runtime = createElectronE2eRuntime({
+      startupMode: e2eElectronStartupMode,
       backendPort,
       backendStartupFault: e2eBackendStartupFault,
       dialogMode: e2eDialogMode,
@@ -250,10 +256,12 @@ export const test = base.extend<
     let electronApp: ElectronApplication | undefined;
     let windowsBridge: OwnedWindowsElectronBridge | undefined;
     let ownership: Readonly<ElectronBridgeCleanupEvidence> | undefined;
+    let absentRuntimeInstanceId: string | undefined;
     let applicationClosed = false;
     let connectionPending = false;
     let runtimeCleanupUnverified = false;
     let publicCloseFailure: Parameters<typeof reportElectronLifecycleEvidence>[1]['publicCloseFailure'];
+    let privateCloseFailure: ElectronPrivateCloseFailure | undefined;
     let portReleaseUnverified = false;
     let selectorBackendPort: number | undefined;
     let selectorBackendPortUnobserved = false;
@@ -277,6 +285,7 @@ export const test = base.extend<
       electronApp = undefined;
       applicationClosed = false;
       ownership = undefined;
+      absentRuntimeInstanceId = undefined;
       selectorBackendPortUnobserved = usesSelectorTestBackend(scenarioId);
       const launched = await launchElectronRuntime({
         async launch() {
@@ -334,6 +343,7 @@ export const test = base.extend<
     }
 
     async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
+      const closingRuntimeInstanceId = runtime.runtimeInstanceId;
       try {
         if (windowsBridge !== undefined) {
           try {
@@ -342,12 +352,20 @@ export const test = base.extend<
               alreadyClosed: alreadyClosed || applicationClosed,
               owner: windowsBridge,
               lifetime,
-              observePublicCloseFailure(reason) {
+              observePublicCloseFailure(reason, error) {
                 publicCloseFailure ??= Object.freeze({ startupGeneration, reason });
+                privateCloseFailure ??= captureElectronPrivateCloseFailure({
+                  runtimeInstanceId: runtime.runtimeInstanceId, startupGeneration, reason, error,
+                  workload: windowsBridge!.readObservedWorkloadState(),
+                  bridge: windowsBridge!.readCleanupEvidence().bridge, applicationClosed,
+                  secrets: [runtime.sessionSecret],
+                });
               },
             });
           } finally {
             ownership = windowsBridge.readCleanupEvidence();
+            absentRuntimeInstanceId = ownership.owner.status === 'processTreeAbsent'
+              ? closingRuntimeInstanceId : undefined;
           }
           windowsBridge = undefined;
           electronApp = undefined;
@@ -393,6 +411,7 @@ export const test = base.extend<
       async function prepareNextRuntime(): Promise<void> {
         backendPort = await reserveLoopbackPort();
         runtime = createElectronE2eRuntime({
+          startupMode: e2eElectronStartupMode,
           backendPort,
           backendStartupFault: e2eBackendStartupFault,
           dialogMode: e2eDialogMode,
@@ -404,6 +423,8 @@ export const test = base.extend<
             ? {}
             : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
         });
+        ownership = undefined;
+        absentRuntimeInstanceId = undefined;
       }
 
       async function launchNextRuntime(): Promise<void> {
@@ -477,7 +498,11 @@ export const test = base.extend<
                 readRelaunchCount: () => countWorkspaceRelaunchRequests(runtime.observationsPath),
                 captureOutput(output) { currentOutput.bridge = output; },
               });
+              absentRuntimeInstanceId = runtime.runtimeInstanceId;
             } catch (error) {
+              if (error instanceof DirectElectronRunFailure && error.processTree === 'stopped') {
+                absentRuntimeInstanceId = runtime.runtimeInstanceId;
+              }
               firstFailedLaunch ??= { ...currentOutput };
               if (!(error instanceof DirectElectronRunFailure) || error.processTree !== 'stopped') {
                 runtimeCleanupUnverified = true;
@@ -543,8 +568,17 @@ export const test = base.extend<
         reportEvidenceFailure: (kind) => recordElectronEvidenceFailure(testInfo, kind),
         removeRoot: () => removeE2eRunRoot(runRoot),
         async report(cleanup) {
+          const failed = failure !== undefined || testInfo.errors.length > 0 || cleanup.runRoot !== 'removed';
+          if (shouldCaptureWorkspaceDeletionFailure(testInfo.status, testInfo.expectedStatus, failed)) {
+            await reportElectronStartupException({ runRoot, artifactsRoot: paths.artifactsRoot,
+              runtimeInstanceId: runtime.runtimeInstanceId, testInfo, secrets: [runtime.sessionSecret],
+              absentRuntimeInstanceId });
+            if (privateCloseFailure !== undefined) {
+              await reportElectronCloseFailure({ failure: privateCloseFailure, testInfo, secrets: [runtime.sessionSecret] });
+            }
+          }
           await reportElectronFixtureCompletion(testInfo, {
-            failed: failure !== undefined || testInfo.errors.length > 0 || cleanup.runRoot !== 'removed',
+            failed,
             currentOutput, firstFailedLaunch,
             evidence: {
               launch: launchObservations, observationsTruncated, cleanup,

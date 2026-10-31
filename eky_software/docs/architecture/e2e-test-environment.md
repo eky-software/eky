@@ -313,6 +313,16 @@ Rajattu riippuvuuslupa, direct-EXE-valinta, childless-bridgen
 [hyväksytyssä patch-sopimuksessa](../../apps/e2e/experiments/processOwnership/README.md#approved-t3b-e-dependency-correction).
 Sen päivätyt kokeet eivät ole uuden revision automaattinen hyväksyntä.
 
+Lapsiton Electron-välittäjä odottaa root-exitin lisäksi molempien
+tulostevirtojen todellista valmistumista. Poistumisehto ja seuraavan
+odotuksen valinta käyttävät samaa valmistumistilan otosta: niiden välissä
+valmistuva siirto säilyy herätteenä, eikä onnistuva poistuminen tarvitse
+owner-stop-viestiä. Valmis siirto ei ohita siirtovirhettä, kontrolliviestin
+validointia tai alkuperäistä määräaikaa. Nykyisen native-valmistelun
+[hallittu regressio](../../apps/e2e/experiments/processOwnership/adapterNative/ElectronBridgeClientSelfTest.cs)
+todentaa tämän erikseen stdoutille, stderrille ja molemmille yhdessä.
+Välittäjän poistuminen ei edelleenkään ole koko prosessipuun siivoustodiste.
+
 ### Linux-CI
 
 Omistaja käyttää kertakäyttöistä transient-unitia ja kiinteää
@@ -650,6 +660,15 @@ havainnosta ei päätellä onnistunutta sulkua. Turvallinen CI-projektio
 hyväksyy vain samasta katalogista nimetyt luokat ja positiivisen sukupolven;
 raakaa poikkeusta, polkua tai prosessitietoa ei lisätä julkaistavaan raporttiin.
 
+Sama callback säilyttää vain muistissa ensimmäisen sulkutilanteen:
+työkuorman ja bridgen välimuistitilan, sovelluskanavan sulkeutumisen sekä
+testin sisäisen käynnistyskerran. Todellinen sulkukutsun poikkeus säilyy,
+jos sellainen saatiin; pelkkä timeout tuottaa nimetyn testihavainnon,
+ei keksittyä sovelluksen poikkeusta tai juurisyytä. Callback ei lue lokia,
+kirjoita tiedostoa tai odota. Nykyinen yksityinen runner-liitäntä toimittaa
+rajatun projektion vasta omistajan stop-kutsun jälkeen. Julkinen
+`publicCloseFailure`-skeema ja sulun hylkäys säilyvät ennallaan.
+
 Electron-fixture erottaa `playwrightConnect`-, `firstWindow`- ja
 `domContentLoaded`-vaiheet. Virheen luokka perustuu Playwrightin timeout-tyyppiin
 tai havaittuun prosessin poistumiseen / sivun sulkeutumiseen; tuntematon syy
@@ -713,6 +732,27 @@ vaiheluettelon täyttymisestä. Puuttuva sukupolvi on `null`, ei arvattu numero.
 Playwrightin `attempt` erottaa testin suoritusyritykset; mikään näistä ei ole
 asiakasyrityksen tai runtime-sessionin tunniste. Onnistuva käynnistys ei
 käynnistä virheen lisähavaintoa.
+
+Development-entrypoint kytkee olemassa olevan alkuperäisen poikkeuksen
+havaitsijan compositionin ja ulomman startupin muunnosrajaan. Yksi havaitsija
+per runtime säilyttää ensimmäisen rajatun viestin, pinon ja syyketjun;
+myöhempi turvallinen wrapper ei korvaa sitä. E2E-konfiguraation nykyiset
+merkki-, juuri- ja polkuportit vaaditaan. Sukupolvikohtainen exclusive-tiedosto
+kuuluu testin artifacts-juureen, ei käyttäjäprofiiliin, backuppiin tai
+julkiseen lifecycle-liitteeseen. Paketoidun käynnistyksen nonce-/build-/
+profiiliportteja ei lievennetä development-muodon vuoksi. Molemmat käyttävät
+samaa asynkronista toimitusta ja enintään 500 ms:n kertaluonteista
+valmistumisodotusta vain virheessä ennen `app.exit()`-kutsua. Onnistuva
+käynnistys ei kirjoita eikä odota. Odotuksen timeout ei peruuta kirjoitusta.
+
+Fixture lukee vain kyseisen sukupolven nimetyn tiedoston sen oman
+prosessipuun poissaolotodisteen jälkeen. Edellisen sukupolven kuitti ei kelpaa.
+Identiteetti, linkit, muuttuneet tavut, kokoraja ja suljettu muoto tarkistetaan;
+puuttuva tai osittainen havainto säilyy puuttuvana. Nykyinen runner-sink lisää
+testin, suoritusyrityksen ja CI-ajon sidonnan omasta kontekstistaan, ei lapsen
+antamista kentistä. Tunnetut salaisuudet peitetään molemmilla rajoilla.
+Vain odottamaton hylkäys toimitetaan; odotettu kielteinen koe ei itsessään
+ole uusi raportoitu testivirhe. Epäonnistuneen juuren säilytyssäännöt pysyvät.
 
 Jos käynnistys onnistuu mutta setup tai testirunko epäonnistuu myöhemmin,
 fixture lukee saman rajatun backend-lokiotteen ennen API:n tai runtimen

@@ -6,7 +6,8 @@ namespace Eky.ProcessOwnershipAdapter;
 internal static class ElectronBridgeClientRelay
 {
     internal static async Task<int> RunAsync(Stream control, ByteRelay output, ByteRelay error,
-        string generation, string nonce, Action requireTime, Action<long> shortenDeadline, CancellationToken work)
+        string generation, string nonce, Action requireTime, Action<long> shortenDeadline, CancellationToken work,
+        Func<Task, Task, Task>? beforeWaitForTesting = null)
     {
         using var observation = CancellationTokenSource.CreateLinkedTokenSource(work);
         var settledOutput = output.SettleAsync(work);
@@ -31,7 +32,11 @@ internal static class ElectronBridgeClientRelay
                 // already contain a duplicate, malformed message or stop deadline.
                 if (!eof) read ??= ReadFrame();
                 if (read?.IsCompleted == true) continue;
-                if (state.RootExited && settledOutput.IsCompleted && settledError.IsCompleted)
+                // Use one snapshot for the exit check and wait set: completion
+                // between them must wake the loop, not disappear from its waits.
+                var outputPending = !settledOutput.IsCompleted;
+                var errorPending = !settledError.IsCompleted;
+                if (state.RootExited && !outputPending && !errorPending)
                 {
                     var outputResult = await settledOutput;
                     var errorResult = await settledError;
@@ -40,10 +45,11 @@ internal static class ElectronBridgeClientRelay
                     requireTime();
                     break;
                 }
+                if (beforeWaitForTesting is not null) await beforeWaitForTesting(settledOutput, settledError);
                 var pending = new List<Task> { output.Failed, error.Failed };
                 if (read is not null) pending.Add(read);
-                if (!settledOutput.IsCompleted) pending.Add(settledOutput);
-                if (!settledError.IsCompleted) pending.Add(settledError);
+                if (outputPending) pending.Add(settledOutput);
+                if (errorPending) pending.Add(settledError);
                 await Task.WhenAny(pending).WaitAsync(work);
             }
             observation.Cancel();

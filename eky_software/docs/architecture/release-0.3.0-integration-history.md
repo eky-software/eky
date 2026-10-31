@@ -16,6 +16,44 @@ glob 14.0.3 / minimatch 11.0.2 -parin samoilla tarkistuksilla.
 Uuden ehdokkaan hyväksyntä ei perustu vanhan ehdokkaan vihreisiin tuloksiin.
 MSI-ikkunahavainnot ja niiden siivouksen näyttöraja säilyvät erillisinä.
 
+### ASARin mergeä edeltävä valmistelu
+
+Alla oleva teksti on PR #325:n yhdistämistä edeltävä valmistelutilanne.
+Nykyinen mainin hyväksyntäeste ja jatko löytyvät M1:n alusta.
+
+**31.10.2026: rajattu ASAR-työkaluketjun tietoturvakorjaus ennen W7.4:n jatkoa.**
+W7.3 ja HTTP-adapterin korjaus on hyväksytty:
+`main 877049505c6262ef82fc40243082109939757052`,
+[PR #324:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/324#issuecomment-6497430060).
+Aiemmat hyväksynnät eivät sulje keskeneräistä W7.4:ää.
+
+Saman revision uusi [V2](https://github.com/eky-software/eky/actions/runs/41185070506)
+hylkäsi MSI-ikkunahavaitsijan sopimustestin kahdessa työssä.
+Erillinen [auditointi](https://github.com/eky-software/eky/actions/runs/41185605296)
+löysi glob-/minimatch-ketjun haavoittuvuudet. Molempien ikkunatestien
+ensivirheet säilytettiin salattuina; rajattu katselmus ei osoittanut
+sovellusvikaa. Alkuperäinen syy ja erillisen siivoustodisteen puute pysyvät
+avoimina, eikä riippuvuuspäivitys ratkaise niitä.
+
+Omistaja hyväksyi tarkistetun glob 14.0.3 / minimatch 11.0.2 -ehdokkaan
+ja [täsmälliset hyväksyntäportit](local-desktop-dependency-review.md#asarin-rajattu-hakukirjastokorjaus).
+Aiempi ehdokas hylättiin sisäänrakennetun vanhan kirjastokopion vuoksi;
+auditoinnin vihreys ei korvannut puuttuvaa toimintanäyttöä.
+Uuden ehdokkaan kymmenen kohdetestiä läpäisivät, myös molemmat aiemmin
+hylänneet sisäänrakennetun matcher-kopion kontrollit. Laajemmat 344
+kohderegressiota ja normaali desktopin työkalutestiryhmä läpäisivät;
+jälkimmäisessä 438 testiä läpäisi ja 12 alustakohtaista testiä ohitettiin.
+Sarjat ovat päällekkäistä näyttöä, eivät yhteenlaskettava testimäärä.
+Frozen-asennus, tyyppitarkistukset, production-/full-auditointi ja 161
+rekisteriallekirjoituksen varmennus läpäisivät. Rajattu riippumaton
+jälkikatselmus sulki sisäänrakennetun kopion löydöksen tässä ehdokkaassa
+eikä löytänyt uusia puutteita. Linux-todennus jää revision CI-porttiin.
+Puhdas Windows-paketti,
+sen nykyiset käynnistys-/sisältöportit ja revision PR/main-portit ovat vielä
+todentamatta.
+Integraatio ei ole vielä hyväksytty. Electron, SQLite, tietomalli ja
+CI-ehdot säilyvät. W7.4 jatkuu vasta lähtötilan esteiden käsittelyn jälkeen.
+
 ### HTTP-adapterin mergeä edeltävä checkpoint
 
 Alla oleva teksti on aiempi valmistelutilanne. PR #324 on sittemmin

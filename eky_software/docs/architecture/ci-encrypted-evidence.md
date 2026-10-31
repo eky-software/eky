@@ -312,6 +312,31 @@ poikkeusta ei voi palauttaa reporterissa: kyseisen rajan omistaja säilyttää
 alkuperäisen syyn ennen muunnosta. Rajattu sovelluskytkentä toimii vain
 nykyisellä synteettisen käynnistyksen opt-in-valtuudella.
 
+Development-Electron käyttää samaa toimitusmekanismia erillisellä,
+E2E-konfiguraation validoimalla sukupolvikohtaisella projektioformaatilla.
+Paketoidun käynnistyksen nonce-, profiili- tai build-portteja ei muuteta.
+Compositionin ensimmäinen alkuperäinen poikkeus säilyy ennen turvallista
+muunnosta ja cleanupia; ulompi startup ei korvaa sitä wrapperilla.
+Vanhemman fixture lukee vain nimetyn tiedoston saman sukupolven todistetun
+prosessipoistumisen jälkeen ja toimittaa `projectedException`-sisällön
+nykyiseen runner-sinkiin. Testin, suoritusyrityksen (`attempt`) ja CI-ajon
+sidonta tulee vanhemmalta. Puuttuvat, muuttuneet, liian suuret tai väärän
+sukupolven tavut eivät kelpaa otteeksi. Vain odottamaton hylkäys toimitetaan.
+Nimetty Windows-todennus on `pnpm --filter @eky/e2e e2e:electron:evidence`:
+nykyisen runtime-valmistelun jälkeen se vaatii oikean development-entrypointin
+exit 1:n, alkuperäisen viestin/pinon/syyketjun puretusta OpenPGP-paketista,
+salaisuuden peiton sekä erillisen prosessipuun/portin siivoustodisteen.
+Koe käyttää kertakäyttöistä TEST-avainta; se ei käytä omistajan purkuavainta
+eikä kuulu tavallisen Electron-testijoukon valintaan.
+
+Julkisen sulun callback säilyttää vain muistissa olevan työkuorma-/bridge-
+tilan ja mahdollisen todellisen poikkeuksen ennen owner-stop-kutsua.
+Nykyinen runner-sink toimittaa havainnon vasta jälkivaiheessa. Timeoutin
+havaintopino on testikutsujan pino, ei sovelluksen poikkeuspino tai todistettu
+juurisyy. Nykyinen julkinen lifecycle-muoto ei saa uusia kenttiä eikä
+callback käynnistä tiedostolukua tai odotusta. Tämä keräys ei itsessään
+korjaa käynnistyksen tai sulun historiallista vikaa.
+
 D2:n brokerin synteettinen fixture käyttää samaa liitäntää todellisen
 viestinkäsittelijän `captureOriginalException`-kohdasta ennen koodimuunnosta.
 Fixture säilyttää ensimmäisen syyn muistissa ja toimittaa sen vain

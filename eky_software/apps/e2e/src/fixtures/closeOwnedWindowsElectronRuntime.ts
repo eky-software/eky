@@ -10,7 +10,7 @@ interface CloseInput {
   alreadyClosed?: boolean;
   owner: Pick<OwnedWindowsElectronBridge, 'stop'>;
   lifetime: E2eFixtureLifetime;
-  observePublicCloseFailure?(reason: ElectronPublicCloseFailureReason): void;
+  observePublicCloseFailure?(reason: ElectronPublicCloseFailureReason, error?: unknown): void;
 }
 
 interface CloseDependencies {
@@ -70,20 +70,20 @@ export async function closeOwnedWindowsElectronRuntime(
               } else {
                 resolveClose();
               }
-            } catch {
-              rejectClose();
+            } catch (error) {
+              rejectClose(error);
             }
-          }, () => rejectClose());
+          }, error => rejectClose(error));
         });
       } finally {
         cancel?.();
       }
     }
-  } catch {
+  } catch (error) {
     const reason = timedOut ? 'timedOut' : 'failed';
     closeFailure = new Error(failureCodes[reason]);
     // Record before owner-stop can replace the public-close error. No I/O or wait.
-    try { input.observePublicCloseFailure?.(reason); } catch {
+    try { input.observePublicCloseFailure?.(reason, error); } catch {
       // An optional observation cannot interrupt the existing cleanup chain.
     }
   }
