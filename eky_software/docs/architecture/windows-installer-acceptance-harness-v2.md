@@ -62,6 +62,35 @@ omistavat myös skeeman 3 lukutuen, osittaisuuden ja salatun toimituksen.
 Pysyvät valinta-, keskeytys- ja oikean OpenPGP-ketjun regressiot ovat nykyisissä
 workspace-runtime-, inventaario-, keräin- ja supervisor-sopimussarjoissa.
 
+### MSI-ikkunatestin ensimmäinen valmisteluhavainto
+
+Supervisorin synteettinen MSI-ikkunatesti säilyttää yhden ensimmäisen
+valmisteluhavainnon ennen varsinaista luettelolukua. Valmistelu vaatii
+todistetusti elävän omistetun prosessin. Täydellisen virheettömän havainnon
+lisäksi vain seuraavat osittaisen havainnon syyt sallitaan:
+
+- `listProcessId` / `budgetExpired` ilman HRESULT-arvoa, kun nykyinen
+  näytekohtainen aikaraja on täyttynyt.
+- `elementFromHandle` tai `firstChild` / `providerException` täsmälleen
+  koodilla `0x80131505` (UI Automation -aikakatkaisu) tai `0x800705B4`
+  (Windowsin `ERROR_TIMEOUT`).
+
+Osittainen valmistelu vaatii edelleen odotetun otsikon, ilmoituksen ja
+painikkeen eikä saa sisältää yhtään sovellusluettelon riviä. Epävarma
+omistajuus tai poistumistieto, muu koodi, lukuvaihe tai puuttuva perustieto
+hylkää valmistelun. Seuraava varsinainen havainto vaatii täydellisen
+onnistumisen kaikkine neljine tietorooleineen ilman luettelolukuvirhettä;
+valmistelun poikkeukset eivät kelpaa mittauksen onnistumiseksi.
+
+[Native-fixture](../../apps/desktop/installer/windows-process-supervisor/tests/programFailureFixture/MsiWindowObservationContract.cs)
+ja [sen Node-lukija](../../apps/desktop/installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs)
+kattavat molempien koodien myönteiset ja kielteiset rajat. Ensimmäinen havainto
+säilyy nykyisessä virhetiedossa ja salatussa toimituksessa myös myöhemmän
+mittauksen epäonnistuessa. Testiin ei lisätä uusintasilmukkaa, odotusta tai
+stderr-suodatusta. Tuotannon havainnonkeruu, asennuksen hyväksyntä ja kaikki
+aikarajat säilyvät. Tämä on alemman tason sopimustesti, ei itsenäinen
+asennus- tai sovellushyväksyntä.
+
 ### Clean/upgrade-sopimustestien valmistelu
 
 Legacy-matriisin `clean-upgrade-entry` ajaa nykyiset kaksi Node-testitiedostoa

@@ -7,38 +7,100 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**31.10.2026: rajattu ASAR-työkaluketjun tietoturvakorjaus ennen W7.4:n jatkoa.**
-W7.3 ja HTTP-adapterin korjaus on hyväksytty:
-`main 877049505c6262ef82fc40243082109939757052`,
-[PR #324:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/324#issuecomment-6497430060).
-Aiemmat hyväksynnät eivät sulje keskeneräistä W7.4:ää.
+**1.11.2026: PR #326:n valmistelutestin rajattu täsmennys on hyväksytty toteutukseen.**
+Head `5ee0f45c` sisältää katselmoidun Electron-välittäjän odotuskorjauksen.
+Sen oma [V2-kierros](https://github.com/eky-software/eky/actions/runs/41245087412)
+on päättynyt: 36 työtä läpäisi, yksi supervisor-sopimustyö ja siitä riippuva
+koonti hylättiin, kuusi diagnostiikkatyötä jätettiin tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/41245087225)
+läpäisi. Electron critical, koko työtilan testi-/tyyppi-/build-portti sekä
+kaikki valitut packaged-, päivitys-, legacy- ja palautusajot läpäisivät.
 
-Saman revision uusi [V2](https://github.com/eky-software/eky/actions/runs/41185070506)
-hylkäsi MSI-ikkunahavaitsijan sopimustestin kahdessa työssä.
-Erillinen [auditointi](https://github.com/eky-software/eky/actions/runs/41185605296)
-löysi glob-/minimatch-ketjun haavoittuvuudet. Molempien ikkunatestien
-ensivirheet säilytettiin salattuina; rajattu katselmus ei osoittanut
-sovellusvikaa. Alkuperäinen syy ja erillisen siivoustodisteen puute pysyvät
-avoimina, eikä riippuvuuspäivitys ratkaise niitä.
+Este on MSI-ikkunahavainnon sopimustestin ensimmäinen valmisteluluku.
+Alkuperäinen virhe löytyi varmennetusta salatusta paketista; sitä ei tulkita
+harmittomaksi stderr-tulosteeksi tai EKYn sovellusvirheeksi. Sama toinen
+ennalta valittu toisto läpäisi, mutta se ei hyväksy ensimmäistä hylkäystä.
+Omistaja hyväksyi vain täsmällisen Windowsin `ERROR_TIMEOUT`-koodin nykyisen
+UI Automation -aikakatkaisun rinnalle ensimmäisen valmisteluhavainnon kahdessa
+nimetyssä lukuvaiheessa. Omistajuus ja ikkunan perustiedot vaaditaan edelleen,
+ja seuraavan varsinaisen havainnon on onnistuttava kokonaan samoissa rajoissa.
+[Omistava sopimus](windows-installer-acceptance-harness-v2.md#msi-ikkunatestin-ensimmäinen-valmisteluhavainto)
+rajaa myös kielteiset regressiot. Lukijan vastakoe hylkäsi vanhan koodilistan;
+korjatun lukijan ja native-fixturen kohdetodennus läpäisi. Varsinaisen
+mittauksen kielteiset tapaukset ja oikea OpenPGP-ketju säilyvät mukana.
+Rajattu riippumaton katselmus ei löytänyt koodiestettä; päällekkäinen vanha
+ohjekuvaus korvattiin viitteellä omistavaan sopimukseen. Seuraavaksi tehdään
+yksi hyväksytty normaali korjausrevision PR/CI-kierros. Tuotantosovellusta,
+lopullista onnistumisehtoa tai aikarajoja ei muuteta.
+PR on avoin, merge estetty eikä mainin uusia portteja ole käynnistetty.
+Historialliset syyt ja puuttuva siivousnäyttö säilyvät avoimina.
 
-Omistaja hyväksyi tarkistetun glob 14.0.3 / minimatch 11.0.2 -ehdokkaan
-ja [täsmälliset hyväksyntäportit](local-desktop-dependency-review.md#asarin-rajattu-hakukirjastokorjaus).
-Aiempi ehdokas hylättiin sisäänrakennetun vanhan kirjastokopion vuoksi;
-auditoinnin vihreys ei korvannut puuttuvaa toimintanäyttöä.
-Uuden ehdokkaan kymmenen kohdetestiä läpäisivät, myös molemmat aiemmin
-hylänneet sisäänrakennetun matcher-kopion kontrollit. Laajemmat 344
-kohderegressiota ja normaali desktopin työkalutestiryhmä läpäisivät;
-jälkimmäisessä 438 testiä läpäisi ja 12 alustakohtaista testiä ohitettiin.
-Sarjat ovat päällekkäistä näyttöä, eivät yhteenlaskettava testimäärä.
-Frozen-asennus, tyyppitarkistukset, production-/full-auditointi ja 161
-rekisteriallekirjoituksen varmennus läpäisivät. Rajattu riippumaton
-jälkikatselmus sulki sisäänrakennetun kopion löydöksen tässä ehdokkaassa
-eikä löytänyt uusia puutteita. Linux-todennus jää revision CI-porttiin.
-Puhdas Windows-paketti,
-sen nykyiset käynnistys-/sisältöportit ja revision PR/main-portit ovat vielä
-todentamatta.
-Integraatio ei ole vielä hyväksytty. Electron, SQLite, tietomalli ja
-CI-ehdot säilyvät. W7.4 jatkuu vasta lähtötilan esteiden käsittelyn jälkeen.
+### Keräyskorjauksen ja odotusvian aiempi näyttö
+
+**31.10.2026: mainin Electron-virhekeräyksen rajattu korjaus ennen W7.4:n jatkoa.**
+[PR #325](https://github.com/eky-software/eky/pull/325) on yhdistetty mainiin
+`9721f62ea4670c3cc84ce487b2ae1d550f17c855`. Sen tarkka PR-head läpäisi
+[V2-portin](https://github.com/eky-software/eky/actions/runs/41214426701)
+ja [riippuvuustarkistuksen](https://github.com/eky-software/eky/actions/runs/41214426697).
+Puhdas Windows-paketti ja sen nykyiset paikalliset käynnistys-/palautusportit
+läpäisivät. Mainin oma [V2](https://github.com/eky-software/eky/actions/runs/41219593535)
+on kuitenkin hylätty: 36 työtä läpäisi, Electron-työ ja sen riippuvainen
+koonti hylättiin ja kuusi diagnostiikkatyötä jätettiin tarkoituksella
+valitsematta. Mainin [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/41219593477)
+läpäisi; se ei korvaa toimintatestien hyväksyntää.
+
+Electronin kaksi ensimmäisen yrityksen hylkäystä säilytettiin salattuina.
+`DESK-SECRET-DRAIN-002`:n runko läpäisi, mutta toisen käynnistyksen
+loppusulku aikakatkaisi. Myöhempi prosessipuun poissaolo ei hyväksy julkista
+sulkua. `DESK-LOG-FAILURE-001`:n uusi käynnistys poistui ennen ensimmäistä
+ikkunaa yleisellä koodilla. Molemmat läpäisivät automaattisen uusintansa,
+mutta ovat edelleen flaky-hylkäyksiä. Juurisyytä tai yhteyttä ASAR-korjaukseen
+ei ole osoitettu. Sama muuttumaton työ ei saa uutta uusintaa tämän nojalla.
+
+Nykyinen rajattu korjaus kytkee alkuperäisen startup-poikkeuksen
+development-entrypointiin ja säilyttää sulun välimuistihavainnon ennen
+owner-stop-kutsua. Käytetään nykyistä asynkronista toimitusta ja yksityistä
+runner-sinkiä; ei uusia julkisia raakakenttiä tai aikarajamuutoksia.
+Kohderegressiot, tyyppitarkistus ja rajattu riippumaton katselmus läpäisivät.
+Nimetty oikean Electron-/OpenPGP-ketjun koe löysi alkuperäisen viestin,
+kutsupinon ja syyketjun puretusta paketista omistetun prosessin poistuttua.
+Samassa kokeessa salaisuuden peittyminen, julkisen raportin turvallisuus ja
+siivoustodisteet varmennettiin. Normaali työtilasarja keskeytyi runnerin
+sisäiseen viestintävirheeseen. Epäonnistuneen tiedoston yksi rajattu
+33 testin uusinta läpäisi, mutta se ei korvaa koko sarjaa tai ratkaise
+alkuperäistä katkeamissyytä. Alla erotetaan tämän jälkeen valmistunut
+puhtaan revision pakettinäyttö ja vielä avoin PR/main-integraatio. Keräyskorjaus
+ei itsessään ratkaise historiallisten hylkäysten syytä. Main ei ole
+loppuhyväksytty.
+
+Keräyskorjauksen [PR #326](https://github.com/eky-software/eky/pull/326),
+head `b5eddf35`, läpäisi paikallisen puhtaan paketin palautus-/restart-portin.
+Sen [V2-kierros](https://github.com/eky-software/eky/actions/runs/41237739219)
+hylättiin: 36 työtä läpäisi, Electron-työ ja koonti hylättiin, kuusi
+diagnostiikkatyötä jäi tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/41237739214)
+läpäisi. `DESK-LEGACY-RESEND-001`:n restart-sulku hylättiin ensimmäisellä
+yrityksellä ja automaattinen uusinta läpäisi; se ei hyväksy flaky-tulosta.
+Uusi sulkuhavainto säilyi puretussa salatussa paketissa. Tarkka syy on
+edelleen avoin, merge estetty eikä muuttumatonta ajoa uusita tämän nojalla.
+
+Rajattu jatkokatselmus löysi testin lapsittomasta Electron-välittäjästä
+odotuskilpailun: tulostesiirron valmistuminen saattoi jäädä pois odotuksesta
+poistumisehdon tarkistuksen jälkeen. Hallittu regressio hylkäsi vanhan
+logiikan. Korjaus käyttää samaa tilahavaintoa molemmissa kohdissa;
+kuusi onnistumis-/virheajoituksen regressiota, nykyinen native-valmistelu,
+85 fixture-/omistajuussopimusta, 40 erillistä ympäristö-/virhekeräyssopimusta
+ja kuusi oikean Electronin kohdepolkua läpäisivät. Alkuperäinen startup-syy
+löytyi myös korjatun välittäjän oikean Electron-/OpenPGP-kokeen puretusta
+paketista; kaksi tarkistusta läpäisi. Rajattu riippumaton katselmus ei
+löytänyt estettä. Sovelluskoodi, siivoustodisteet ja aikarajat säilyvät.
+Tämä todistaa välittäjän vian ja
+sen rajatun korjauksen, ei vielä alkuperäisen CI-aikakatkaisun syytä.
+Seuraava portti on korjausrevision loppuvarmennus ja normaalit PR/main-ajot;
+aiemmat hylkäykset säilyvät.
+
+Viimeinen hyväksytty lähtö on edelleen PR #324:n `87704950`;
+W7.4:n keskeneräisiä toteutuksia ei avata tämän punaisen baselinen varassa.
 [Aiemmat checkpointit](release-0.3.0-integration-history.md#asarin-tietoturvakorjaus-31102026)
 ovat historiaa, eivät uusi toteutusjono.
 

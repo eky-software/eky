@@ -216,17 +216,13 @@ poissulkemisen, listan kokorajat sekä keskeytyneen julkaisun. Sama sarja
 todentaa ilmoituksen sovellusnimen keräimestä oikean OpenPGP-salauksen
 ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
-Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen.
-Täydellisen näytteen lisäksi valmistelussa hyväksytään vain tarkasti
-`listProcessId/budgetExpired` ilman HRESULT-arvoa, kun nykyinen työbudjetti
-on täyttynyt, tai `providerException` ja täsmällinen `0x80131505`-aikakatkaisu
-`elementFromHandle`- tai `firstChild`-vaiheessa. Molemmissa otsikko,
-ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja omistettu prosessi on
-edelleen todistetusti elossa. Muut osittaiset tulokset ja virheet
-hylätään. Sen jälkeen otetaan täsmälleen yksi täydellisen luettelon vaativa
-näyte samoilla rajoilla. Kolmatta näytettä, uusintasilmukkaa tai pidempää
-budjettia ei ole. Tämä todentaa valmistellun providerin täydellisen luvun,
-ei takaa ensimmäisen kylmän luvun täydellisyyttä. Kylmä näyte säilyy omalla
+Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen ja
+sen jälkeen täsmälleen yhden täydellisen luettelon vaativan näytteen.
+Valmistelun täsmälliset syykoodit, lukuvaiheet ja omistajuus-/tekstirooliehdot
+omistaa [harnessin nykyinen valmistelusopimus](windows-installer-acceptance-harness-v2.md#msi-ikkunatestin-ensimmäinen-valmisteluhavainto).
+Kolmatta näytettä, uusintasilmukkaa tai pidempää budjettia ei ole.
+Tämä todentaa valmistellun providerin täydellisen luvun, ei takaa ensimmäisen
+kylmän luvun täydellisyyttä. Kylmä näyte säilyy omalla
 tilallaan salatun koetiedoston ensimmäisenä asiakkaana, mitattu näyte toisena.
 Valmistelun suljettu syy säilyy fixturen yksityisessä tarkistusraportissa;
 mitatun näytteen hylkäys liittää sen myös nykyiseen yksityiseen virhekuittiin.
@@ -311,6 +307,31 @@ Sisäisen palvelun aiemmin korvaamaa
 poikkeusta ei voi palauttaa reporterissa: kyseisen rajan omistaja säilyttää
 alkuperäisen syyn ennen muunnosta. Rajattu sovelluskytkentä toimii vain
 nykyisellä synteettisen käynnistyksen opt-in-valtuudella.
+
+Development-Electron käyttää samaa toimitusmekanismia erillisellä,
+E2E-konfiguraation validoimalla sukupolvikohtaisella projektioformaatilla.
+Paketoidun käynnistyksen nonce-, profiili- tai build-portteja ei muuteta.
+Compositionin ensimmäinen alkuperäinen poikkeus säilyy ennen turvallista
+muunnosta ja cleanupia; ulompi startup ei korvaa sitä wrapperilla.
+Vanhemman fixture lukee vain nimetyn tiedoston saman sukupolven todistetun
+prosessipoistumisen jälkeen ja toimittaa `projectedException`-sisällön
+nykyiseen runner-sinkiin. Testin, suoritusyrityksen (`attempt`) ja CI-ajon
+sidonta tulee vanhemmalta. Puuttuvat, muuttuneet, liian suuret tai väärän
+sukupolven tavut eivät kelpaa otteeksi. Vain odottamaton hylkäys toimitetaan.
+Nimetty Windows-todennus on `pnpm --filter @eky/e2e e2e:electron:evidence`:
+nykyisen runtime-valmistelun jälkeen se vaatii oikean development-entrypointin
+exit 1:n, alkuperäisen viestin/pinon/syyketjun puretusta OpenPGP-paketista,
+salaisuuden peiton sekä erillisen prosessipuun/portin siivoustodisteen.
+Koe käyttää kertakäyttöistä TEST-avainta; se ei käytä omistajan purkuavainta
+eikä kuulu tavallisen Electron-testijoukon valintaan.
+
+Julkisen sulun callback säilyttää vain muistissa olevan työkuorma-/bridge-
+tilan ja mahdollisen todellisen poikkeuksen ennen owner-stop-kutsua.
+Nykyinen runner-sink toimittaa havainnon vasta jälkivaiheessa. Timeoutin
+havaintopino on testikutsujan pino, ei sovelluksen poikkeuspino tai todistettu
+juurisyy. Nykyinen julkinen lifecycle-muoto ei saa uusia kenttiä eikä
+callback käynnistä tiedostolukua tai odotusta. Tämä keräys ei itsessään
+korjaa käynnistyksen tai sulun historiallista vikaa.
 
 D2:n brokerin synteettinen fixture käyttää samaa liitäntää todellisen
 viestinkäsittelijän `captureOriginalException`-kohdasta ennen koodimuunnosta.

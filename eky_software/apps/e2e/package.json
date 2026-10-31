@@ -20,6 +20,7 @@
     "e2e:fault": "pnpm e2e:electron:prepare && playwright test --project=system-api --project=web-chromium --project=electron-development --grep @fault",
     "e2e:electron": "pnpm e2e:electron:prepare && playwright test --project=electron-development",
     "e2e:electron:critical": "pnpm e2e:electron:prepare && playwright test --project=electron-development --grep @critical --workers=1",
+    "e2e:electron:evidence": "pnpm e2e:electron:prepare && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs ../../test-reporters/tests/electronDevelopmentFailureEvidenceOpenPgp.test.mjs",
     "e2e:desktop-stress": "pnpm e2e:electron:prepare && playwright test --project=electron-endurance --grep @desktop-stress --workers=1",
     "e2e:desktop-soak": "pnpm e2e:electron:prepare && playwright test --project=electron-endurance --grep @soak --workers=1",
     "e2e:critical": "pnpm e2e:prepare && playwright test --project=system-api --project=web-chromium --grep @critical",
