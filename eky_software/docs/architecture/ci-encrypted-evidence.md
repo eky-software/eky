@@ -216,17 +216,13 @@ poissulkemisen, listan kokorajat sekä keskeytyneen julkaisun. Sama sarja
 todentaa ilmoituksen sovellusnimen keräimestä oikean OpenPGP-salauksen
 ja testiavainpurun läpi prosessien poistuttua. Se ei asenna MSI:tä tai
 korvaa varsinaista Windows-asennuskokeen näyttöä.
-Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen.
-Täydellisen näytteen lisäksi valmistelussa hyväksytään vain tarkasti
-`listProcessId/budgetExpired` ilman HRESULT-arvoa, kun nykyinen työbudjetti
-on täyttynyt, tai `providerException` ja täsmällinen `0x80131505`-aikakatkaisu
-`elementFromHandle`- tai `firstChild`-vaiheessa. Molemmissa otsikko,
-ilmoitus ja painike löytyvät, sovellusnimiä ei ole ja omistettu prosessi on
-edelleen todistetusti elossa. Muut osittaiset tulokset ja virheet
-hylätään. Sen jälkeen otetaan täsmälleen yksi täydellisen luettelon vaativa
-näyte samoilla rajoilla. Kolmatta näytettä, uusintasilmukkaa tai pidempää
-budjettia ei ole. Tämä todentaa valmistellun providerin täydellisen luvun,
-ei takaa ensimmäisen kylmän luvun täydellisyyttä. Kylmä näyte säilyy omalla
+Positiivinen luettelokoe ottaa ensin yhden kylmän valmistelunäytteen ja
+sen jälkeen täsmälleen yhden täydellisen luettelon vaativan näytteen.
+Valmistelun täsmälliset syykoodit, lukuvaiheet ja omistajuus-/tekstirooliehdot
+omistaa [harnessin nykyinen valmistelusopimus](windows-installer-acceptance-harness-v2.md#msi-ikkunatestin-ensimmäinen-valmisteluhavainto).
+Kolmatta näytettä, uusintasilmukkaa tai pidempää budjettia ei ole.
+Tämä todentaa valmistellun providerin täydellisen luvun, ei takaa ensimmäisen
+kylmän luvun täydellisyyttä. Kylmä näyte säilyy omalla
 tilallaan salatun koetiedoston ensimmäisenä asiakkaana, mitattu näyte toisena.
 Valmistelun suljettu syy säilyy fixturen yksityisessä tarkistusraportissa;
 mitatun näytteen hylkäys liittää sen myös nykyiseen yksityiseen virhekuittiin.

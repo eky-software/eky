@@ -7,6 +7,36 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
+**1.11.2026: PR #326:n valmistelutestin rajattu täsmennys on hyväksytty toteutukseen.**
+Head `5ee0f45c` sisältää katselmoidun Electron-välittäjän odotuskorjauksen.
+Sen oma [V2-kierros](https://github.com/eky-software/eky/actions/runs/41245087412)
+on päättynyt: 36 työtä läpäisi, yksi supervisor-sopimustyö ja siitä riippuva
+koonti hylättiin, kuusi diagnostiikkatyötä jätettiin tarkoituksella valitsematta.
+[Riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/41245087225)
+läpäisi. Electron critical, koko työtilan testi-/tyyppi-/build-portti sekä
+kaikki valitut packaged-, päivitys-, legacy- ja palautusajot läpäisivät.
+
+Este on MSI-ikkunahavainnon sopimustestin ensimmäinen valmisteluluku.
+Alkuperäinen virhe löytyi varmennetusta salatusta paketista; sitä ei tulkita
+harmittomaksi stderr-tulosteeksi tai EKYn sovellusvirheeksi. Sama toinen
+ennalta valittu toisto läpäisi, mutta se ei hyväksy ensimmäistä hylkäystä.
+Omistaja hyväksyi vain täsmällisen Windowsin `ERROR_TIMEOUT`-koodin nykyisen
+UI Automation -aikakatkaisun rinnalle ensimmäisen valmisteluhavainnon kahdessa
+nimetyssä lukuvaiheessa. Omistajuus ja ikkunan perustiedot vaaditaan edelleen,
+ja seuraavan varsinaisen havainnon on onnistuttava kokonaan samoissa rajoissa.
+[Omistava sopimus](windows-installer-acceptance-harness-v2.md#msi-ikkunatestin-ensimmäinen-valmisteluhavainto)
+rajaa myös kielteiset regressiot. Lukijan vastakoe hylkäsi vanhan koodilistan;
+korjatun lukijan ja native-fixturen kohdetodennus läpäisi. Varsinaisen
+mittauksen kielteiset tapaukset ja oikea OpenPGP-ketju säilyvät mukana.
+Rajattu riippumaton katselmus ei löytänyt koodiestettä; päällekkäinen vanha
+ohjekuvaus korvattiin viitteellä omistavaan sopimukseen. Seuraavaksi tehdään
+yksi hyväksytty normaali korjausrevision PR/CI-kierros. Tuotantosovellusta,
+lopullista onnistumisehtoa tai aikarajoja ei muuteta.
+PR on avoin, merge estetty eikä mainin uusia portteja ole käynnistetty.
+Historialliset syyt ja puuttuva siivousnäyttö säilyvät avoimina.
+
+### Keräyskorjauksen ja odotusvian aiempi näyttö
+
 **31.10.2026: mainin Electron-virhekeräyksen rajattu korjaus ennen W7.4:n jatkoa.**
 [PR #325](https://github.com/eky-software/eky/pull/325) on yhdistetty mainiin
 `9721f62ea4670c3cc84ce487b2ae1d550f17c855`. Sen tarkka PR-head läpäisi
