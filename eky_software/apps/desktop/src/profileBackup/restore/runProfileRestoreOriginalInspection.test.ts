@@ -202,7 +202,7 @@ function fixture() {
         prepare: signal => prepare(signal, authority, assertMainOwned),
         assertGrant: async () => {}, assertCurrent: () => {}, reclaimAfterExit: async () => {}, invalidate };
     } };
-  const start = () => runProfileRestoreOriginalInspection({ operationId, reservation, assertAuthority, readSources, assertLineage,
+  const start = () => runProfileRestoreOriginalInspection({ operationId, target: { kind: 'unbound' }, reservation, assertAuthority, readSources, assertLineage,
     signal: cancellation.signal, runnerPath: resolve('synthetic-runner.js'), deployment: { backendRoot: resolve('backend'),
       migrationsDirectory: resolve('backend/migrations'), nativeResourceRoot: resolve('native') } });
   return { start, cancellation, assertAuthority, assertMainOwned, invalidate, readSources, assertLineage };

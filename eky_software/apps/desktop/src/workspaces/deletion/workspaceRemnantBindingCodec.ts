@@ -9,8 +9,9 @@ import { deletionDataRecord, deletionDigest, invalidDeletionData, parseDeletionJ
 export const maximumWorkspaceRemnantBindingBytes = 4_096;
 export const workspaceRemnantBindingInvalidCode = 'WORKSPACE_REMNANT_BINDING_INVALID';
 const invalidCode = workspaceRemnantBindingInvalidCode;
-const owners = ['workspaceReplacement', 'workspaceActivationMigration', 'workspaceImport',
-  'workspaceLegacyAdoption', 'profileInspection'] as const;
+export const workspaceRemnantBindingOwners = Object.freeze(['workspaceReplacement', 'workspaceActivationMigration', 'workspaceImport',
+  'workspaceLegacyAdoption', 'profileInspection'] as const);
+const owners = workspaceRemnantBindingOwners;
 const baseKeys = ['formatVersion', 'owner', 'operationId', 'workspaceId', 'lineageIdentity'];
 
 export function captureWorkspaceRemnantBinding(value: unknown) {

@@ -21,30 +21,40 @@ export interface WorkspaceBackupImportPaths {
   readonly publishedArtifactRoot: string;
 }
 
+export function deriveWorkspaceBackupImportOperationsPaths(userDataRoot: string) {
+  try {
+    if (typeof userDataRoot !== 'string' || userDataRoot.includes('\0') || !isAbsolute(userDataRoot)) throw new Error('invalid');
+    const root = resolve(userDataRoot);
+    const operationsRoot = join(root, 'workspace-operations');
+    return Object.freeze({ userDataRoot: root, operationsRoot });
+  } catch {
+    throw new WorkspaceBackupImportError('WORKSPACE_IMPORT_INVALID', 'identityGeneration');
+  }
+}
+
+export function deriveWorkspaceBackupImportOperationPaths(userDataRoot: string, operationId: unknown) {
+  try {
+    const { userDataRoot: root, operationsRoot } = deriveWorkspaceBackupImportOperationsPaths(userDataRoot);
+    const operationRoot = join(operationsRoot, validateWorkspaceBackupImportOperationId(operationId));
+    if (!isContained(operationsRoot, operationRoot)) throw new Error('invalid');
+    return Object.freeze({ userDataRoot: root, operationsRoot, operationRoot });
+  } catch {
+    throw new WorkspaceBackupImportError('WORKSPACE_IMPORT_INVALID', 'identityGeneration');
+  }
+}
+
 export function deriveWorkspaceBackupImportPaths(
   userDataRoot: string,
   operationId: WorkspaceBackupImportOperationId,
   workspaceId: WorkspaceId,
 ): Readonly<WorkspaceBackupImportPaths> {
   try {
-    if (
-      typeof userDataRoot !== 'string' ||
-      userDataRoot.includes('\0') ||
-      !isAbsolute(userDataRoot)
-    ) {
-      throw new Error('invalid');
-    }
-    const root = resolve(userDataRoot);
-    const validatedOperationId =
-      validateWorkspaceBackupImportOperationId(operationId);
+    const { userDataRoot: root, operationsRoot, operationRoot } = deriveWorkspaceBackupImportOperationPaths(userDataRoot, operationId);
     const validatedWorkspaceId = validateWorkspaceId(workspaceId);
-    const operationsRoot = join(root, 'workspace-operations');
-    const operationRoot = join(operationsRoot, validatedOperationId);
     const candidateRoot = join(operationRoot, validatedWorkspaceId);
     const workspacesRoot = join(root, 'workspaces');
     const finalRoot = join(workspacesRoot, validatedWorkspaceId);
     if (
-      !isContained(operationsRoot, operationRoot) ||
       !isContained(operationRoot, candidateRoot) ||
       !isContained(workspacesRoot, finalRoot) ||
       parse(candidateRoot).root.toLowerCase() !==

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
 import type { RecoveryPointService } from '../../profileBackup/recoveryPoint/recoveryPointService.js';
@@ -63,7 +62,7 @@ import {
   MainOwnedWorkspaceManagementOperationGuard,
 } from './mainOwnedWorkspaceManagementOperationGuard.js';
 import { WorkspaceLabelRename } from './workspaceLabelRename.js';
-import { WorkspaceManagementService } from './workspaceManagementService.js';
+import { WorkspaceManagementService, type WorkspaceManagementServiceOptions } from './workspaceManagementService.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
 import { prepareWorkspaceDeletion, type WorkspaceDeletionPreparationOptions } from './workspaceDeletionPreparation.js';
@@ -99,6 +98,7 @@ export interface WorkspaceManagementCompositionOptions {
   readonly appVersion: string;
   readonly buildRevision: string;
   readonly deletionPreparation?: Readonly<WorkspaceDeletionPreparationCompositionOptions>;
+  readonly deletionContinuation?: WorkspaceManagementServiceOptions['deletionContinuation'];
   readonly localUpdateRuntimePaths: Pick<
     LocalUpdateRuntimePaths,
     'directSetupMigrationRecoveryPath' | 'journalPath'
@@ -453,8 +453,8 @@ export async function createWorkspaceManagementComposition(
     ...(replaceActive === undefined ? {} : { replaceActive }),
     ...(deletion === undefined ? {} : { deletionPreparation: {
       maintenanceLease: options.maintenanceLease,
-      prepare: (request, lifetime, assertLease) => prepareWorkspaceDeletion({
-        operationId: randomUUID(), installationRoot: options.userDataRoot,
+      prepare: (request, lifetime, assertLease, operationId) => prepareWorkspaceDeletion({
+        operationId, installationRoot: options.userDataRoot,
         runtimeGeneration: deletion.runtimeGeneration, registry, request, lifetime, assertLease,
         runtime: deletion.createRuntime(),
         assertMainReservation: () => deletion.assertMainReservation(),
@@ -467,9 +467,11 @@ export async function createWorkspaceManagementComposition(
           if (assertDeletionReturn !== undefined) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
           assertDeletionReturn = guard;
         },
-        publish: (assertAuthority, assertSelection, target) => deletion.publish(assertAuthority, assertSelection, target),
+        publish: (assertAuthority, assertSelection, target, context, assertPreparationCurrent) =>
+          deletion.publish(assertAuthority, assertSelection, target, context, assertPreparationCurrent),
       }),
     } }),
+    ...(options.deletionContinuation === undefined ? {} : { deletionContinuation: options.deletionContinuation }),
     runtimeRelaunchCompletion: {
       complete(assertCurrent) {
         // Only deletion's return borrows a live lease; replacement has released it.

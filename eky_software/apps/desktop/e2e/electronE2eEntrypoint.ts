@@ -27,6 +27,7 @@ import { assertProofSingleInstanceOwnership } from './workspaceManagementComposi
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
 import { projectExceptionChain } from '../src/main/startupExceptionEvidence.js';
 import type { WorkspaceAdoptionAcceptanceProofReply } from './workspaceAdoptionAcceptanceProof.js';
+import type { WorkspaceOriginalInspectionProofReply } from './workspaceOriginalInspectionProof.js';
 import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSelectorTestRelease.js';
 import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
@@ -95,6 +96,7 @@ let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefine
 let secretShutdownProof: Promise<void> | undefined;
 let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
 let adoptionProofRequested = false;
+let originalInspectionProofRequested = false;
 
 function requireSecretReplyHold() {
   if (secretReplyHold === undefined) throw new Error('ELECTRON_SECRET_REPLY_PROOF_UNAVAILABLE');
@@ -430,6 +432,34 @@ Object.assign(globalThis, {
         if (backendController.isRunning()) throw new Error('WORKSPACE_ADOPTION_PROOF_BACKEND_RUNNING');
         const { runWorkspaceAdoptionAcceptanceProof } = await import('./workspaceAdoptionAcceptanceProof.js');
         const result = await runWorkspaceAdoptionAcceptanceProof({
+          applicationPath: config.paths.applicationPath, appVersion: e2eAppVersion,
+          resourcesPath: config.paths.resourcesPath, runtimeSessionSecret: config.backend.sessionSecret,
+          userDataRoot: config.paths.userDataPath, startBackend: startDesktopBackend, observeFailure,
+        });
+        return { status: 'completed', result };
+      } catch (error) {
+        observeFailure(error);
+        return { status: 'failed', runtimeInstanceId: failedRuntimeInstanceId, exception: first! };
+      }
+    },
+    async runWorkspaceOriginalInspectionProof(): Promise<WorkspaceOriginalInspectionProofReply> {
+      if (config.scenarioId !== 'DESK-WORKSPACE-ORIGINAL-001' || originalInspectionProofRequested) {
+        throw new Error('WORKSPACE_ORIGINAL_PROOF_NOT_ADMITTED');
+      }
+      originalInspectionProofRequested = true;
+      let first: ReturnType<typeof projectExceptionChain> | undefined;
+      let failedRuntimeInstanceId = config.runtimeInstanceId;
+      const observeFailure = (error: unknown, secrets: readonly string[] = [], runtimeInstanceId = config.runtimeInstanceId) => {
+        if (first !== undefined) return;
+        first = projectExceptionChain(error, [config.backend.sessionSecret, ...secrets]);
+        failedRuntimeInstanceId = runtimeInstanceId;
+      };
+      try {
+        if (lifecycle === undefined) throw new Error('WORKSPACE_ORIGINAL_PROOF_LIFECYCLE_MISSING');
+        await shutdownBeforeWorkspaceProof(lifecycle);
+        if (backendController.isRunning()) throw new Error('WORKSPACE_ORIGINAL_PROOF_BACKEND_RUNNING');
+        const { runWorkspaceOriginalInspectionProof } = await import('./workspaceOriginalInspectionProof.js');
+        const result = await runWorkspaceOriginalInspectionProof({
           applicationPath: config.paths.applicationPath, appVersion: e2eAppVersion,
           resourcesPath: config.paths.resourcesPath, runtimeSessionSecret: config.backend.sessionSecret,
           userDataRoot: config.paths.userDataPath, startBackend: startDesktopBackend, observeFailure,

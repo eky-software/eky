@@ -11,10 +11,12 @@ import type { ProfileRestoreActivationJournalStore } from './profileRestoreActiv
 import type { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
 import type { ProfileRestoreColdContentContext } from './prepareProfileRestoreColdForwardRecovery.js';
 import { runProfileRestoreColdInspection, type ProfileRestoreColdInspectionResult } from './runProfileRestoreColdInspection.js';
+import { captureOwnedProfileInspectionTarget, type OwnedProfileInspectionTarget } from '../runOwnedProfileInspection.js';
 
 /** One forward operation's immutable content; fresh census and bytes still gate every mutation. */
 export function createProfileRestoreColdContentAdmission(input: {
   readonly operationId: string;
+  readonly target: OwnedProfileInspectionTarget;
   readonly workspaceRoot: string;
   readonly stagingRoot: string;
   readonly runnerPath: string;
@@ -23,7 +25,9 @@ export function createProfileRestoreColdContentAdmission(input: {
   readonly transaction: Pick<ProfileRestoreActivationTransaction, 'readForwardRecoverySources'>;
   readonly assertLineage: (profileId: string) => void;
   readonly inspect?: typeof runProfileRestoreColdInspection;
+  readonly observeException?: (error: unknown) => void;
 }) {
+  const target = captureOwnedProfileInspectionTarget(input.target);
   let initial: ProfileRestoreColdInspectionResult | undefined;
   let selected: ProfileRestoreColdInspectionResult | undefined;
   return async (context: ProfileRestoreColdContentContext): Promise<void> => {
@@ -65,6 +69,8 @@ export function createProfileRestoreColdContentAdmission(input: {
     if (selected === undefined || selected.receipt.databaseSlot !== sources.databaseSlot ||
         selected.receipt.documentsSlot !== sources.documentsSlot) {
       const result = await (input.inspect ?? runProfileRestoreColdInspection)({
+        target,
+        ...(input.observeException === undefined ? {} : { observeException: input.observeException }),
         operationId: input.operationId, runnerPath: input.runnerPath, deployment: input.deployment,
         reservation: context.reservation, assertAuthority: context.assertAuthority,
         assertLineage: input.assertLineage, readSources: readInspectionSources, signal: context.signal, deadline: context.deadline,

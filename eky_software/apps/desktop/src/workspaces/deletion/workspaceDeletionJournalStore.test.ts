@@ -67,6 +67,77 @@ it('refuses phase skips, changed bindings, duplicate publication and early clear
   expect(await f.snapshot()).toEqual(before);
 });
 
+it('checks the complete publication once after closing next and before publishing current', async context => {
+  const f = await fixture(context);
+  let comparisons = 0, externalChecks = 0;
+  const selected = await f.select();
+  await f.store.publish(journal(), { ...selected, async assertExternalSelection() {
+    externalChecks++; await selected.assertExternalSelection();
+  } }, async () => {
+    comparisons++;
+    expect(await readFile(f.paths.nextPath)).toEqual(serializeWorkspaceDeletionJournal(journal()));
+    expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  });
+  expect(comparisons).toBe(1);
+  expect(externalChecks).toBeGreaterThan(1);
+  expect((await f.store.inspect(f.assertAuthority)).plan.mode).toBe('published');
+});
+
+it('preserves the original final comparison failure and does not promote initial next', async context => {
+  const f = await fixture(context), first = new Error('SYNTHETIC_FINAL_CONTENT_CHANGED');
+  await expect(f.store.publish(journal(), await f.select(), async () => { throw first; })).rejects.toBe(first);
+  expect(await readFile(f.paths.nextPath)).toEqual(serializeWorkspaceDeletionJournal(journal()));
+  expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  expect((await new WorkspaceDeletionJournalStore(f.root).inspect(() => {})).plan.mode).not.toBe('published');
+});
+
+it.for(['lease', 'target', 'current', 'backup', 'next'] as const)(
+  'rechecks %s after the final long comparison before publication', async (changed, context) => {
+    const f = await fixture(context);
+    let afterChange!: Record<string, string>;
+    await expect(f.store.publish(journal(), await f.select(), async () => {
+      if (changed === 'lease') f.expire();
+      else if (changed === 'target') f.changeTarget();
+      else {
+        const path = changed === 'current' ? f.paths.currentPath : changed === 'backup' ? f.paths.backupPath : f.paths.nextPath;
+        if (changed === 'next') await rm(path);
+        await writeFile(path, serializeWorkspaceDeletionJournal(journal()), { flag: 'wx', mode: 0o600 });
+      }
+      afterChange = await f.snapshot();
+    })).rejects.toThrow();
+    expect(await f.snapshot()).toEqual(afterChange);
+    expect(await readFile(f.paths.nextPath)).toEqual(serializeWorkspaceDeletionJournal(journal()));
+  },
+);
+
+it('joins a pending final comparison after authority loss without promoting next', async context => {
+  const f = await fixture(context);
+  let release!: () => void, entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  let settled = false;
+  const work = f.store.publish(journal(), await f.select(), async () => { entered(); await held; })
+    .then(() => { settled = true; return undefined; }, error => { settled = true; return error as unknown; });
+  context.onTestFinished(async () => { release(); await work; });
+  await started;
+  f.expire();
+  expect(settled).toBe(false);
+  expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  release();
+  expect(await work).toBeInstanceOf(Error);
+  expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+});
+
+it('does not run the expensive callback for an inadmissible or already published journal', async context => {
+  const f = await fixture(context);
+  let called = false;
+  const compare = async () => { called = true; };
+  await expect(f.store.publish(journal('quarantined'), await f.select(), compare)).rejects.toThrow();
+  await f.store.publish(journal(), await f.select());
+  await expect(f.store.publish(journal(), await f.select(), compare)).rejects.toThrow();
+  expect(called).toBe(false);
+});
+
 it('does not promote initial-next and preserves it for explicit resolution', async context => {
   const f = await fixture(context);
   await mkdir(f.paths.directoryPath, { mode: 0o700 });

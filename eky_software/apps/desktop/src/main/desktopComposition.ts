@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto';
+import { bindWorkspaceDeletionContinuation, type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
+import { createWorkspaceDeletionMarkerBoundary } from './workspaceDeletionMarkerBoundary.js';
 import { writePackagedDiagnosticFixture } from './packagedDiagnosticFixture.js';
 import type { StartupExceptionStage } from './startupExceptionEvidence.js';
 import { mkdir } from 'node:fs/promises';
@@ -132,6 +134,10 @@ import type { ProfileBackupCapability } from '../profileBackup/profileBackupCapa
 import { createProfileBackupComposition } from '../profileBackup/profileBackupComposition.js';
 import { createProfileInspectionDeployment } from '../profileBackup/createProfileInspectionDeployment.js';
 import { ProfileSnapshotInspectionClient } from '../profileBackup/profileSnapshotInspectionClient.js';
+import { captureOwnedProfileInspectionTarget, type OwnedProfileInspectionTarget } from '../profileBackup/runOwnedProfileInspection.js';
+import { sameCrashSafeFileSlotIdentity } from '../workspaces/persistence/crashSafeFileSlot.js';
+import type { ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
+import type { LocalWorkspaceRegistry } from '../workspaces/registry/workspaceRegistryTypes.js';
 import { withProfileRestoreTerminalAuthority } from '../profileBackup/restore/withProfileRestoreTerminalAuthority.js';
 import type { ProfileRestoreTerminalAcceptance, ProfileRestoreRollbackAcceptance,
   ProfileRestoreRolledBackCleanup, ProfileRestoreValidatedRollback } from '../profileBackup/restore/profileRestoreStartupRecovery.js';
@@ -303,6 +309,7 @@ export interface StartDesktopCompositionOptions {
   observeStartupException?(error: unknown, stage: StartupExceptionStage, secrets?: readonly string[]): void;
   // W7.4 supplies the journal consumer before any delete IPC is registered.
   workspaceDeletionPublisher?: WorkspaceDeletionPreparationOptions['publish'];
+  workspaceDeletionCommand?: WorkspaceDeletionMainCommand;
   w6b2PackagedProof?: Readonly<{
     configuration: Readonly<W6b2PackagedProofConfiguration>;
     interruptProcess(
@@ -1521,12 +1528,67 @@ async function startDesktopCompositionRuntime({
   );
   const profileInspectionRunnerPath = join(options.applicationPath, 'dist', 'runtime', 'profileInspectionRunner.js');
   const profileInspectionDeployment = await createProfileInspectionDeployment({ backendRoot, resourcesRoot: options.resourcesPath });
+  const inspectionExceptionObservation = options.observeStartupException === undefined ? {} : {
+    observeException(error: unknown) {
+      if (!workspaceStartupAccepted) options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]);
+    },
+  };
+  function captureInspectionTarget(): OwnedProfileInspectionTarget {
+    options.assertSingleInstanceOwnership();
+    const lineage = activeWorkspace.registeredLineageIdentity ??
+      (workspaceStartupAccepted && activeProfileValidation !== undefined
+        ? { formatVersion: 1 as const, profileId: activeProfileValidation.profileId } : undefined);
+    if (lineage === undefined) return Object.freeze({ kind: 'unbound' });
+    const workspaceId = activeWorkspace.workspaceId;
+    const profileId = lineage.profileId;
+    const registry = new WorkspaceRegistryStore({ installationRoot: options.userDataPath,
+      filePath: join(options.userDataPath, WORKSPACE_REGISTRY_FILE_NAME) });
+    const startupSelection = !workspaceStartupAccepted && workspaceRestoreSelectionRequired
+      ? workspaceRestoreSelection : undefined;
+    const startupSelectionRequired = !workspaceStartupAccepted && workspaceRestoreSelectionRequired;
+    let pinned: ReadOnlyJournalSlots<LocalWorkspaceRegistry> | undefined;
+    return captureOwnedProfileInspectionTarget({ kind: 'bound', installationRoot: options.userDataPath,
+      workspaceId, lineageIdentity: lineage,
+      async assertSelectionCurrent(assertPhaseCurrent) {
+        const assertCurrent = () => { assertPhaseCurrent(); options.assertSingleInstanceOwnership(); };
+        assertCurrent();
+        if (startupSelectionRequired) {
+          if (startupSelection === undefined || workspaceRestoreSelection !== startupSelection) {
+            throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
+          }
+          try { await startupSelection.assertCurrent(assertCurrent); }
+          catch (error) { restoreRuntimeRecoveryBlocked = true; throw error; }
+        }
+        assertCurrent();
+        const slots = await registry.inspectSlots(assertCurrent);
+        assertCurrent();
+        const selected = (slots.current ?? slots.backup ?? slots.next)?.value;
+        const entry = selected?.workspaces.find(value => value.workspaceId === workspaceId);
+        if (selected?.activeWorkspaceId !== workspaceId || entry?.lineageIdentity.profileId !== profileId) {
+          throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+        }
+        if (pinned !== undefined) for (const slot of ['current', 'next', 'backup'] as const) {
+          const before = pinned[slot], after = slots[slot];
+          if (before === undefined ? after !== undefined : after === undefined ||
+              before.identity === undefined || after.identity === undefined ||
+              !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
+              !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) {
+            throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+          }
+        }
+        pinned ??= slots;
+        assertCurrent();
+      },
+    });
+  }
   const profileSnapshotInspectionClient = new ProfileSnapshotInspectionClient({
+    ...inspectionExceptionObservation,
     broker: profileSnapshotBrokerClient,
     stagingRoot: profileSnapshotPaths.stagingRoot,
     runnerPath: profileInspectionRunnerPath,
     deployment: profileInspectionDeployment,
     assertMainInstance: options.assertSingleInstanceOwnership,
+    captureSourceTarget: captureInspectionTarget,
     acquireReservation: ({ operationRoot, signal }) => acquireDesktopWorkspaceReservation({
       userDataRoot: operationRoot, signal,
       assertSingleInstanceOwnership: options.assertSingleInstanceOwnership,
@@ -1649,6 +1711,8 @@ async function startDesktopCompositionRuntime({
           additionalAuthority?.assertCurrent();
         },
         assertContent: createProfileRestoreOriginalContentAdmission({
+          ...inspectionExceptionObservation,
+          target: captureInspectionTarget(),
           operationId: journal.operationId, workspaceRoot: activeWorkspace.workspaceRoot, failedRoot, layout,
           journalStore, transaction, runnerPath: profileInspectionRunnerPath, deployment: profileInspectionDeployment,
           assertLineage: profileId => activeWorkspace.assertCanAccept(profileId),
@@ -2082,6 +2146,8 @@ async function startDesktopCompositionRuntime({
         ...(coldWorkspaceRestoreSelection === undefined ? {} : { operationSelection: coldWorkspaceRestoreSelection }),
         assertAuthority: assertStartupAuthority,
         assertContent: createProfileRestoreColdContentAdmission({
+          ...inspectionExceptionObservation,
+          target: captureInspectionTarget(),
           operationId: selectedRestoreJournal.operationId,
           workspaceRoot: activeWorkspace.workspaceRoot,
           stagingRoot: startupRecoveryAuthority === 'workspaceReplacement'
@@ -2119,6 +2185,8 @@ async function startDesktopCompositionRuntime({
           ...(coldWorkspaceRestoreSelection === undefined ? {} : { operationSelection: coldWorkspaceRestoreSelection }),
           assertAuthority: assertStartupAuthority,
           assertContent: createProfileRestoreOriginalContentAdmission({
+            ...inspectionExceptionObservation,
+            target: captureInspectionTarget(),
             operationId: selectedRestoreJournal.operationId,
             workspaceRoot: activeWorkspace.workspaceRoot,
             failedRoot: startupRecoveryAuthority === 'workspaceReplacement'
@@ -3508,12 +3576,8 @@ async function startDesktopCompositionRuntime({
     return secretFailureAcknowledgement;
   };
   let cleanShutdownBoundaryReached = false;
-  let cleanShutdownTask: Promise<void> | undefined;
-  const persistCleanShutdown = (): Promise<void> => {
-    cleanShutdownTask ??= Promise.resolve().then(() => recoveryPointScheduler.markCleanShutdown())
-      .catch(() => { throw new WorkspaceRuntimeStopError({ phase: 'cleanMarker', reason: 'operationFailed' }); });
-    return cleanShutdownTask;
-  };
+  const deletionMarker = createWorkspaceDeletionMarkerBoundary(recoveryPointScheduler);
+  const persistCleanShutdown = deletionMarker.persistCleanShutdown;
   const activeWorkspaceLifecycle = new MainOwnedActiveWorkspaceLifecycle(
     activeWorkspace.workspaceId,
     backendRequestQuiescence,
@@ -3559,9 +3623,26 @@ async function startDesktopCompositionRuntime({
     },
     workspaceRuntimeRelaunch,
   );
+  const deletionBinding = options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({
+    command: options.workspaceDeletionCommand, activeWorkspaceId: activeWorkspace.workspaceId,
+    assertCurrent() {
+      if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      options.assertSingleInstanceOwnership();
+      workspaceReservation.assertMainCurrent();
+      if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    },
+    async assertOwned() {
+      await activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();
+      await workspaceReservation.assertMainOwned();
+    },
+    sealActiveMarker: deletionMarker.sealActiveMarker,
+    recordActiveRemoved: deletionMarker.recordActiveRemoved,
+  });
+  const deletionPublisher = deletionBinding?.publish ?? options.workspaceDeletionPublisher;
   const workspaceManagementComposition =
     await createWorkspaceManagementComposition({
-      ...(options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {
+      ...(deletionBinding === undefined ? {} : { deletionContinuation: deletionBinding.continuation }),
+      ...(deletionPublisher === undefined ? {} : { deletionPreparation: {
         runtimeGeneration: options.runtimeInstanceId,
         createRuntime: () => ({ kind: 'active' as const, workspaceId: activeWorkspace.workspaceId,
           lifecycle: activeWorkspaceLifecycle, broker: profileSnapshotBrokerClient,
@@ -3570,7 +3651,7 @@ async function startDesktopCompositionRuntime({
         assertMainReservationCurrent: () => workspaceReservation.assertMainCurrent(),
         ...createWorkspaceDeletionConfirmations({ getWindow: () => mainWindow,
           showMessageBox: dependencies.showMessageBox }),
-        publish: options.workspaceDeletionPublisher,
+        publish: deletionPublisher,
       } }),
       operationalIdentity: desktopOperationalIdentity,
       operationalLogger: desktopOperationalLogger,

@@ -16,6 +16,11 @@ import { captureDeletionTarget } from './workspaceDeletionTarget.js';
 import type { WorkspaceDeletionPreparationLifetime, WorkspaceDeletionPreparationOutcome } from './workspaceManagementTypes.js';
 
 type DeletionTarget = Awaited<ReturnType<typeof captureDeletionTarget>>['target'];
+export interface WorkspaceDeletionPublicationContext {
+  readonly operationId: string;
+  readonly target: DeletionTarget;
+  readonly backupDisposition: 'verifiedBackup' | 'explicitDataLoss';
+}
 type ActiveDeletionRuntime = Readonly<{
   kind: 'active';
   workspaceId: WorkspaceId;
@@ -49,7 +54,8 @@ export interface WorkspaceDeletionPreparationOptions {
   setReturnGuard(guard: () => void): void;
   // W7.4 supplies the real journal consumer. W7.3 exposes no delete IPC.
   // Recheck after publication awaits; the backup branch also rereads its bytes.
-  publish(assertAuthority: () => void, assertPublicationCurrent: () => Promise<void>, target: DeletionTarget): Promise<void>;
+  publish(assertAuthority: () => void, assertPublicationCurrent: () => Promise<void>, target: DeletionTarget,
+    context: Readonly<WorkspaceDeletionPublicationContext>, assertPreparationCurrent: () => Promise<void>): Promise<void>;
 }
 
 export class WorkspaceDeletionPreparationFailure extends Error {
@@ -230,10 +236,16 @@ export async function prepareWorkspaceDeletion(
         else await assertSelection();
         assertPublication();
       };
+      const assertPreparationCurrent = async () => {
+        assertPublication(); await assertSelection(); assertPublication();
+      };
       // Wrapping selection checks stay light. The receipt owns entry/settlement
       // content checks; only the final consumer requests intermediate rereads.
       await assertSelection(); assertPublication();
-      await input.publish(assertPublication, assertPublicationSelection, selection.target);
+      await input.publish(assertPublication, assertPublicationSelection, selection.target, Object.freeze({
+        operationId, target: selection.target,
+        backupDisposition: receipt === undefined ? 'explicitDataLoss' : 'verifiedBackup',
+      }), assertPreparationCurrent);
       await assertSelection(); assertPublication();
     };
     if (receipt !== undefined) await receipt.consume(publish);

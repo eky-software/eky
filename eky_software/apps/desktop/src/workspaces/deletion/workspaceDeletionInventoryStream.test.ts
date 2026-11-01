@@ -20,7 +20,7 @@ it('validates more inventory bytes than fit in a journal without keeping all rec
 
 it.each([0, 2])('validates exact bytes/count/hash across single-byte splits for %s records', async count => {
   const bytes = await encoded(count);
-  const expected = { formatVersion: 1 as const, byteLength: bytes.byteLength, recordCount: count,
+  const expected = { formatVersion: 2 as const, byteLength: bytes.byteLength, recordCount: count,
     sha256: createHash('sha256').update(bytes).digest('hex') };
   expect(await inspectDeletionInventory(chunks(bytes, 1), header, expected)).toEqual(expected);
 });
@@ -35,7 +35,7 @@ it.each(['missingLf', 'extraLine', 'changedRoot', 'duplicate', 'reversed', 'dupl
     : mutation === 'changedRoot' ? Buffer.from(bytes.toString().replace(hash('root-1'), hash('other')))
     : mutation === 'duplicate' ? Buffer.from(`${lines[0]}\n${lines[1]}\n${lines[1]}\n`)
     : mutation === 'reversed' ? Buffer.from(`${lines[0]}\n${lines[2]}\n${lines[1]}\n`)
-    : mutation === 'duplicateKey' ? Buffer.from(bytes.toString().replace('"formatVersion":1', '"formatVersion":1,"formatVersion":1'))
+    : mutation === 'duplicateKey' ? Buffer.from(bytes.toString().replace('"formatVersion":2', '"formatVersion":2,"formatVersion":2'))
     : mutation === 'invalidUtf8' ? Buffer.concat([Buffer.from([255]), bytes])
     : mutation === 'oversizedLine' ? Buffer.from(' '.repeat(maximumDeletionInventoryLineBytes))
     : mutation === 'bom' ? Buffer.concat([Buffer.from([239, 187, 191]), bytes])

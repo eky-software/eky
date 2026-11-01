@@ -32,29 +32,31 @@ const migrationChainIdentity = 'c'.repeat(64);
 type Fault = 'lostAcknowledgement' | 'snapshotSelectionChanged' | 'candidateSelectionChanged' | 'cleanupUnverified';
 
 describe('activation migration coordinator binding integration', () => {
-  it.for([false, true])('publishes before snapshot and uses guarded real activation (selector: %s)', async (selector, context) => {
-    await runFixture(context, selector, undefined, async (f, lifetime) => {
-      await lifetime.step('startup', async () => {
-        await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+  for (const selector of [false, true]) {
+    it(`publishes before snapshot and uses guarded real activation (selector: ${selector})`, async context => {
+      await runFixture(context, selector, undefined, async (f, lifetime) => {
+        await lifetime.step('startup', async () => {
+          await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
+        });
+        await lifetime.step('restoredContentCheck', async () => {
+          expect(f.events.indexOf('binding.published')).toBeLessThan(f.events.indexOf('snapshot.create'));
+          expect(f.events.indexOf('runtime.stop')).toBeLessThan(f.events.indexOf('candidate.migrate'));
+          expect(f.maintenance.readState()).toBe('idle');
+          expect(f.blockContinuation).not.toHaveBeenCalled();
+          expect(f.requestRelaunch).toHaveBeenCalledOnce();
+          expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+          expect(f.legacyRegistryRead).not.toHaveBeenCalled();
+          expect(f.legacySwitchRead).not.toHaveBeenCalled();
+          expect(await f.activation.journalStore.peek()).toMatchObject({ operationId, phase: 'validationStarting' });
+          expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('migrated candidate');
+          expect(await readFile(join(f.paths.activeArtifactRoot, 'document.pdf'), 'utf8')).toBe('%PDF migrated');
+          await expect(readFile(f.snapshotPath)).rejects.toMatchObject({ code: 'ENOENT' });
+          expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+          expect(await readFile(f.journalPath)).toEqual(f.journalBytes);
+        });
       });
-      await lifetime.step('restoredContentCheck', async () => {
-        expect(f.events.indexOf('binding.published')).toBeLessThan(f.events.indexOf('snapshot.create'));
-        expect(f.events.indexOf('runtime.stop')).toBeLessThan(f.events.indexOf('candidate.migrate'));
-        expect(f.maintenance.readState()).toBe('idle');
-        expect(f.blockContinuation).not.toHaveBeenCalled();
-        expect(f.requestRelaunch).toHaveBeenCalledOnce();
-        expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
-        expect(f.legacyRegistryRead).not.toHaveBeenCalled();
-        expect(f.legacySwitchRead).not.toHaveBeenCalled();
-        expect(await f.activation.journalStore.peek()).toMatchObject({ operationId, phase: 'validationStarting' });
-        expect(await readFile(f.paths.activeDatabasePath, 'utf8')).toBe('migrated candidate');
-        expect(await readFile(join(f.paths.activeArtifactRoot, 'document.pdf'), 'utf8')).toBe('%PDF migrated');
-        await expect(readFile(f.snapshotPath)).rejects.toMatchObject({ code: 'ENOENT' });
-        expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
-        expect(await readFile(f.journalPath)).toEqual(f.journalBytes);
-      });
-    });
-  });
+    }, selector ? 10_000 : undefined);
+  }
 
   it.for(['lostAcknowledgement', 'snapshotSelectionChanged', 'candidateSelectionChanged', 'cleanupUnverified'] as const)(
     'retains real evidence and the original failure without recovery after %s', async (fault, context) => {

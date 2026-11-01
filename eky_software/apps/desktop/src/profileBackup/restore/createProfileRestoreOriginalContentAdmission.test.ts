@@ -274,7 +274,7 @@ async function fixture(layout: ProfileInspectionOriginalSources['layout'] = 'pro
     assertCurrent: async () => {}, assertAuthority() { if (cancellation.signal.aborted) throw new Error('PROFILE_INSPECTION_TIMEOUT'); },
     reservation: { assertMainOwned: async () => {}, assertMainCurrent() {}, close: async () => {}, invalidate: vi.fn(() => {}),
       bind() { throw new Error('not used by the injected inspection fixture'); } } };
-  const admit = createProfileRestoreOriginalContentAdmission({ operationId, workspaceRoot, failedRoot, layout, runnerPath: join(root, 'runner.js'),
+  const admit = createProfileRestoreOriginalContentAdmission({ operationId, target: { kind: 'unbound' }, workspaceRoot, failedRoot, layout, runnerPath: join(root, 'runner.js'),
     deployment: { backendRoot: root, migrationsDirectory: root, nativeResourceRoot: root }, journalStore: { peek },
     transaction: { readRollbackRecoverySources: async () => ({ databaseSlot, documentsSlot }) }, assertLineage, inspect });
   return { root, workspaceRoot, databasePath, documentsRoot, activeDatabase, activeDocuments, database, sources, result, journal, cancellation,

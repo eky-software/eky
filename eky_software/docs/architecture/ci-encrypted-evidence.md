@@ -118,6 +118,24 @@ tiedostolajia, kirjoitinta tai keräysrajaa ei lisätä. Erillinen
 [OpenPGP-regressio](../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs)
 vertaa puretun paketin alkuperäiset tavut ja molempien syiden testisidonnan;
 kontrolloitu main-lukuraja ei yksin todista oikeaa Electron- tai hosted-ajoa.
+Sama salauskoe käyttää tarkistimen oikeaa main-puolen virhemuunnosrajaa
+synteettisessä Vitest-kuluttajassa. Valinnainen `observeException` tarjoaa
+ensimmäisen poikkeuksen ennen turvallista `ProfileInspectionProcessError`-
+muunnosta. Nykyinen Main-kytkentä lainaa käynnistyksen opt-in-havaitsijaa
+vain ennen yritysruntimen hyväksyntää; hyväksytty runtime tai tavallinen
+tuotantoprofiili ei saa tällä käynnistyskeräystä. Havaitsijan poikkeus ei
+muuta sulkua, eikä siivousvirhe korvaa ensisyytä. Lapsen jo turvalliseksi
+koodiksi muuttamaa poikkeusta ei palauteta tai päätellä jälkikäteen.
+Koe todistaa erikseen aidon assertion-hylkäyksen, alkuperäisen virheketjun
+puretut tavut ja julkisen tulosteen rajauksen. Se ei ole native-lapsen
+alkuperäisen poikkeuksen tai hosted-artifactin toimituksen todiste.
+Nykyinen koe kattaa myös `DESK-WORKSPACE-ORIGINAL-001`-testin main-lukurajan:
+lukija toimittaa saman rajatun projektion nykyiselle
+runner-sinkille; sen oma virhe ei korvaa testihylkäystä, ja osittainen
+lähde säilyy osittaisena myös onnistuneen toimituksen jälkeen.
+Testiapuri säilyttää viimeisimmän runtime-sukupolven myös mahdolliselle
+shutdown- tai jälkitarkistusvirheelle. Tämä sidonta on katselmoitu lähteestä;
+onnistuva native-koe ei yksin todista näiden virhehaarojen käyttäytymistä.
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 

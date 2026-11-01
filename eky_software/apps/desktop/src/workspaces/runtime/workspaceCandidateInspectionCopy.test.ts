@@ -8,8 +8,9 @@ import { WorkspaceCandidateInspectionCopy } from './workspaceCandidateInspection
 import { profileInspectionDocumentBindingsFileName, profileInspectionMaximumCatalogBytes } from '../../runtime/profileInspectionDocumentBindings.js';
 
 const roots: string[] = [];
-afterEach(async () => {
+afterEach(async ({ task }) => {
   vi.restoreAllMocks();
+  if (task.result?.state !== 'pass') { roots.splice(0); return; }
   for (const root of roots.splice(0)) await rm(root, { force: true, recursive: true });
 });
 
@@ -72,7 +73,7 @@ describe('workspace candidate main-owned inspection copy', () => {
     const f = await fixture();
     await f.copy.discardAfterExit(f.assertMainOwned, f.signal.signal);
     await expect(lstat(f.root)).rejects.toMatchObject({ code: 'ENOENT' });
-    expect(f.assertMainOwned).toHaveBeenCalledTimes(2);
+    expect(f.assertMainOwned).toHaveBeenCalledTimes(3);
   });
 
   it('does not weaken the candidate terminal that requires a database copy', async () => {
@@ -132,7 +133,34 @@ describe('workspace candidate main-owned inspection copy', () => {
     await f.copy.discard(f.assertMainOwned, f.signal.signal);
     await expect(lstat(f.root)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readFile(join(f.parent, 'original.sqlite'), 'utf8')).toBe('source');
-    expect(f.assertMainOwned).toHaveBeenCalledTimes(2);
+    expect(f.assertMainOwned).toHaveBeenCalledTimes(6);
+  });
+
+  it.each(['revoked', 'replaced'] as const)('retains payload after %s authority at the final per-file boundary', async variant => {
+    const f = await fixture();
+    const path = join(f.root, 'profile.sqlite');
+    await writeFile(path, 'copy');
+    f.assertMainOwned.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => {
+        if (variant === 'revoked') throw new Error('SYNTHETIC_SELECTION_REVOKED');
+        await rename(path, join(f.parent, 'retained.sqlite'));
+        await writeFile(path, 'foreign');
+      });
+    const unlink = vi.spyOn(fileSystem, 'unlink');
+    await expect(f.copy.discard(f.assertMainOwned, f.signal.signal)).rejects.toThrow();
+    expect(unlink).not.toHaveBeenCalled();
+    expect(await readFile(path, 'utf8')).toBe(variant === 'revoked' ? 'copy' : 'foreign');
+  });
+
+  it('retains a replacement empty root introduced during the last removal authority read', async () => {
+    const f = await fixture();
+    f.assertMainOwned.mockResolvedValueOnce(undefined).mockResolvedValueOnce(undefined)
+      .mockImplementationOnce(async () => { await rename(f.root, f.root + '-retained'); await mkdir(f.root, { mode: 0o700 }); });
+    const rmdir = vi.spyOn(fileSystem, 'rmdir');
+    await expect(f.copy.discardAfterExit(f.assertMainOwned, f.signal.signal)).rejects.toThrow();
+    expect(rmdir).not.toHaveBeenCalled();
+    expect((await lstat(f.root)).isDirectory()).toBe(true);
+    expect((await lstat(f.root + '-retained')).isDirectory()).toBe(true);
   });
 
   it.each(['foreign.txt', 'profile.sqlite-journal', 'subdirectory'])(

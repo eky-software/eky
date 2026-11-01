@@ -83,6 +83,14 @@ poistovaltuutta tai delete-kanavaa ennen W7.4:ää.
 ja [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 erottavat lähdepalat hyväksytystä kokonaisuudesta.
 
+W7.4:n sisäinen palveluluovutus välittää saman operaation ja täsmällisen
+delete-leasen valmistelusta jatkolukijalle. Oikeiden journal-/inventaario-
+tavujen yhteiskoe ei yksin hyväksy fyysistä poistoa. Mainin rajattu
+lopputietosovitus ja markerin sulkuraja on kytketty; mallinnettu jatkaja
+niiden kokeissa ei korvaa D:n todellista etenemis- ja pakettitodistusta. Renderer-kanava pysyy
+suljettuna; [W7.4:n luovutussopimus](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä)
+omistaa tämän rajauksen ja jäljellä olevan näytön.
+
 W7.2:n keskeneräinen backenditon hallinta käyttää nykyistä workspace-
 hallintapalvelua ja IPC-kyvykkyyttä. Niiden pääsyn sulku ja aloitetun työn
 odotus ovat erillisiä; journalilukijan virhe ei jätä rinnakkaisia lukuja

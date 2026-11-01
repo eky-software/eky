@@ -17,6 +17,7 @@ const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}
 const sha256Pattern = /^[0-9a-f]{64}$/;
 const sessionPattern = /^[A-Za-z0-9_-]{43}$/;
 const bindingKeys = ['generationId', 'operationId', 'protocolVersion', 'runtimeSession', 'type'];
+const inspectionCopyPrefix = 'profile-inspection-';
 
 export interface ProfileInspectionRequestIdentity {
   readonly protocolVersion: typeof profileInspectionProtocolVersion;
@@ -41,7 +42,18 @@ export function isProfileInspectionMigrationPolicy(value: unknown): value is Pro
 export function resolveProfileInspectionCopyRoot(descriptor: WorkspaceProcessReservationDescriptor): string {
   const reservation = parseWorkspaceProcessReservationDescriptor(descriptor);
   if (reservation === undefined) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
-  return join(dirname(reservation.userDataRoot), `profile-inspection-${reservation.generationId}`);
+  return join(dirname(reservation.userDataRoot), profileInspectionCopyDirectoryName(reservation.generationId));
+}
+
+export function profileInspectionCopyDirectoryName(generationId: unknown): string {
+  if (!isProfileInspectionOperationId(generationId)) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+  return `${inspectionCopyPrefix}${generationId}`;
+}
+
+export function parseProfileInspectionCopyDirectoryName(name: string): string | undefined {
+  if (!name.startsWith(inspectionCopyPrefix)) return undefined;
+  const generationId = name.slice(inspectionCopyPrefix.length);
+  return isProfileInspectionOperationId(generationId) ? generationId : undefined;
 }
 
 interface ProfileInspectionContentFields {

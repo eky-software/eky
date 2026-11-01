@@ -16,7 +16,7 @@ import type { WorkspaceImportMutationAuthority } from './workspaceBackupImportRo
 import { assertSynchronousProfileRestoreMutationAuthority } from '../../profileBackup/restore/profileRestoreMutationAuthority.js';
 import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 
-const quarantineDirectoryName = 'workspace-import-plaintext-quarantine';
+export const workspaceBackupPlaintextQuarantineDirectoryName = 'workspace-import-plaintext-quarantine';
 const quarantineFileNamePattern =
   /^workspace-import-[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}\.payload$/;
 
@@ -55,7 +55,7 @@ export class WorkspaceBackupPlaintextQuarantine
     this.operationsRoot = join(this.userDataRoot, 'workspace-operations');
     this.quarantineRoot = join(
       this.operationsRoot,
-      quarantineDirectoryName,
+      workspaceBackupPlaintextQuarantineDirectoryName,
     );
     if (
       !isDirectChild(this.userDataRoot, this.operationsRoot) ||

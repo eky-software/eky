@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { bindWorkspaceDeletionContinuation } from './workspaceDeletionContinuation.js';
 import { BrowserWindow, ipcMain, session } from 'electron';
 
 import { createOperationalLogFailureCapability } from '../diagnostics/operationalLogFailureCapability.js';
@@ -110,8 +111,22 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
     const lifecycle = new MainOwnedSelectorWorkspaceLifecycle({
       assertSelectorCurrent: assertCurrent, reservation, maintenanceLease, runtimeRelaunch,
     });
+    const deletionBinding = options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({
+      command: options.workspaceDeletionCommand, activeWorkspaceId: null,
+      assertCurrent() {
+        assertCurrent();
+        if (shutdownTask !== undefined) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+        reservation.assertMainCurrent();
+        if (shutdownTask !== undefined) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      },
+      async assertOwned() { await lifecycle.assertNoActiveWorkspaceRuntime(); await reservation.assertMainOwned(); },
+      async sealActiveMarker() { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); },
+      recordActiveRemoved() { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); },
+    });
+    const deletionPublisher = deletionBinding?.publish ?? options.workspaceDeletionPublisher;
     management = await createWorkspaceManagementComposition({
-      ...(options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {
+      ...(deletionBinding === undefined ? {} : { deletionContinuation: deletionBinding.continuation }),
+      ...(deletionPublisher === undefined ? {} : { deletionPreparation: {
         runtimeGeneration: options.runtimeInstanceId,
         createRuntime: () => ({ kind: 'selector' as const, lifecycle }),
         assertMainReservation: () => reservation.assertMainOwned(),
@@ -120,7 +135,7 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
           if (mainWindow === undefined) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
           return mainWindow;
         }, showMessageBox: input.dependencies.showMessageBox }),
-        publish: options.workspaceDeletionPublisher,
+        publish: deletionPublisher,
       } }),
       mode: 'selector', assertCurrent,
       importOwner: {

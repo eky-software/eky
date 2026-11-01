@@ -268,7 +268,7 @@ function fixture() {
       };
     },
   };
-  const start = () => runProfileRestoreColdInspection({ operationId, reservation, assertAuthority, readSources, assertLineage,
+  const start = () => runProfileRestoreColdInspection({ operationId, target: { kind: 'unbound' }, reservation, assertAuthority, readSources, assertLineage,
     signal: cancellation.signal, runnerPath: resolve('synthetic-runner.js'),
     deployment: { backendRoot: resolve('synthetic-backend'), migrationsDirectory: resolve('synthetic-backend', 'migrations'),
       nativeResourceRoot: resolve('synthetic-native') },

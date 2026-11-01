@@ -44,6 +44,7 @@ export interface WorkspaceProcessReservationTransfer {
   readonly descriptor: WorkspaceProcessReservationDescriptor;
   prepare(signal: AbortSignal): Promise<void>;
   assertGrant(signal: AbortSignal): Promise<void>;
+  /** Consumes the authorized child grant once at send; not a repeatable read guard. */
   assertCurrent(): void;
   reclaimAfterExit(signal: AbortSignal): Promise<void>;
   invalidate(): void;

@@ -14,7 +14,7 @@ describe('deletion inventory values', () => {
   });
 
   it.each([{ workspaceId: '../outside' }, { operationId: id(1).toUpperCase().replace('00000000', 'AAAAAAAA') },
-    { formatVersion: 2 }, { path: 'outside' }, { registryEntrySha256: 'A'.repeat(64) },
+    { formatVersion: 1 }, { formatVersion: 3 }, { path: 'outside' }, { registryEntrySha256: 'A'.repeat(64) },
     { lineageIdentity: { ...header.lineageIdentity, password: 'synthetic-only' } },
   ])('rejects invalid target %#', change => {
     expect(() => captureDeletionInventoryHeader({ ...header, ...change })).toThrow('WORKSPACE_DELETE_INVENTORY_INVALID');
@@ -54,7 +54,7 @@ describe('deletion inventory values', () => {
   it.each([{ byteLength: 0 }, { byteLength: NaN }, { byteLength: Infinity }, { recordCount: -1 },
     { recordCount: Number.MAX_SAFE_INTEGER + 1 }, { recordCount: '1' }, { sha256: '' }, { extra: true },
   ])('rejects invalid commitment %#', change => {
-    expect(() => captureDeletionInventoryCommitment({ formatVersion: 1, byteLength: 5, recordCount: 0,
+    expect(() => captureDeletionInventoryCommitment({ formatVersion: 2, byteLength: 5, recordCount: 0,
       sha256: hash('value'), ...change })).toThrow('WORKSPACE_DELETE_INVENTORY_INVALID');
   });
 });

@@ -96,6 +96,7 @@ export async function inspectOwnedEncryptedProfileBackup(input: {
           mayClean = true;
           try {
             const inspected = await runProfileSnapshotInspection({
+              target: { kind: 'unbound' },
               migrationPolicy: 'restoreCompatible',
               operationId, kind: 'inspect', deadline, reservation: owner,
               runnerPath: input.runnerPath, deployment: input.deployment,

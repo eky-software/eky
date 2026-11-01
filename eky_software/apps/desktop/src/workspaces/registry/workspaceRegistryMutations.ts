@@ -7,6 +7,7 @@ import type {
 import { WORKSPACE_REGISTRY_MAX_ENTRIES } from './workspaceRegistryValidation.js';
 import { hasWorkspaceLabelConflict } from './workspaceLabelComparison.js';
 import { validateWorkspaceLabel } from './workspaceLabelValidation.js';
+import { workspaceRegistryInvalid } from './workspaceRegistryError.js';
 
 export type WorkspaceRegistryMutationFailure =
   | 'activeWorkspaceChanged'
@@ -143,6 +144,25 @@ export function assertActiveWorkspaceUnchanged(
   if (registry.activeWorkspaceId !== expectedActiveWorkspaceId) {
     throw new WorkspaceRegistryMutationError('activeWorkspaceChanged');
   }
+}
+
+// Deletion is admitted only after the selector-capable v2 transition.
+export function removeWorkspaceEntry(input: {
+  readonly registry: Readonly<LocalWorkspaceRegistry>;
+  readonly expectedActiveWorkspaceId: WorkspaceId | null;
+  readonly targetWorkspaceId: WorkspaceId;
+}): Readonly<LocalWorkspaceRegistry> {
+  if (input.registry.formatVersion !== 2) return workspaceRegistryInvalid();
+  assertActiveWorkspaceUnchanged(input.registry, input.expectedActiveWorkspaceId);
+  if (findWorkspaceEntry(input.registry, input.targetWorkspaceId) === undefined) {
+    throw new WorkspaceRegistryMutationError('workspaceNotFound');
+  }
+  return Object.freeze({
+    formatVersion: input.registry.formatVersion,
+    activeWorkspaceId: input.registry.activeWorkspaceId === input.targetWorkspaceId
+      ? null : input.registry.activeWorkspaceId,
+    workspaces: Object.freeze(input.registry.workspaces.filter(entry => entry.workspaceId !== input.targetWorkspaceId)),
+  });
 }
 
 export function selectActiveWorkspace(

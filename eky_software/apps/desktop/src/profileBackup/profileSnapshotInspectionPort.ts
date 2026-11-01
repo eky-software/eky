@@ -52,7 +52,8 @@ export interface ProfileSnapshotEvidencePort {
 }
 
 export interface ProfileDeletionSnapshotEvidencePort extends ProfileSnapshotEvidencePort {
-  validateDeletionProfileSnapshot(operationId: string, deleteMaintenanceOperationId: string): Promise<ProfileSnapshotInspectionValidation>;
+  validateDeletionProfileSnapshot(operationId: string, deleteMaintenanceOperationId: string,
+    sourceOperationId?: string): Promise<ProfileSnapshotInspectionValidation>;
 }
 
 /** Main-owned staging remains reserved through its consumer and cleanup. */
@@ -71,7 +72,7 @@ export interface ProfileSnapshotInspectionPort extends ProfileSnapshotOwnershipP
   createProfileSnapshot(operationId: string, policy: Parameters<ProfileSnapshotBrokerClient['createProfileSnapshot']>[1],
     cleanupAuthority?: ProfileSnapshotCleanupAuthority): ReturnType<ProfileSnapshotBrokerClient['createProfileSnapshot']>;
   validateProfileSnapshot(operationId: string, updateMaintenanceOperationId?: string,
-    cleanupAuthority?: ProfileSnapshotCleanupAuthority): Promise<ProfileSnapshotInspectionValidation>;
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority, sourceOperationId?: string): Promise<ProfileSnapshotInspectionValidation>;
 }
 
 export type OwnedProfileSnapshotValidator = ProfileSnapshotOwnershipPort & Pick<

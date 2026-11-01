@@ -1,6 +1,7 @@
 import type { ElectronApplication, TestInfo } from '@playwright/test';
 import type { FirstStartLoadSnapshot } from '../../../desktop/e2e/workspaceFirstStartLoadObservation.js';
 import type { WorkspaceAdoptionAcceptanceProofReply, WorkspaceAdoptionAcceptanceProofResult } from '../../../desktop/e2e/workspaceAdoptionAcceptanceProof.js';
+import type { WorkspaceOriginalInspectionProofReply, WorkspaceOriginalInspectionProofResult } from '../../../desktop/e2e/workspaceOriginalInspectionProof.js';
 import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 export interface ElectronNativeAdapterSnapshot {
@@ -315,6 +316,33 @@ export async function runElectronWorkspaceAdoptionAcceptanceProof(
   throw new Error('WORKSPACE_ADOPTION_ACCEPTANCE_PROOF_FAILED');
 }
 
+export async function runElectronWorkspaceOriginalInspectionProof(
+  electronApp: Pick<ElectronApplication, 'evaluate'>,
+  testInfo: Pick<TestInfo, 'title' | 'testId' | 'file' | 'line' | 'column' | 'retry' | 'repeatEachIndex' | 'annotations'>,
+  sink = createRunnerFailureSink(),
+): Promise<Readonly<WorkspaceOriginalInspectionProofResult>> {
+  const reply = await electronApp.evaluate(async () => {
+    const controller = (globalThis as typeof globalThis & {
+      __EKY_ELECTRON_E2E__?: ElectronE2eController;
+    }).__EKY_ELECTRON_E2E__;
+    if (controller === undefined) throw new Error('Electron E2E controller is unavailable.');
+    return controller.runWorkspaceOriginalInspectionProof();
+  });
+  if (reply.status === 'completed') return reply.result;
+  let delivery = 'captureFailed';
+  try {
+    sink.record({ runner: 'playwright', phase: 'workspaceOriginalInspection', error: undefined,
+      projectedException: reply.exception, testName: testInfo.title, testId: `${testInfo.testId}:${reply.runtimeInstanceId}`,
+      file: testInfo.file, line: testInfo.line, column: testInfo.column,
+      attempt: testInfo.retry, repeatCount: testInfo.repeatEachIndex });
+    delivery = (await sink.flush() as { status: string }).status;
+    if (delivery === 'recorded' && (reply.exception.incomplete || reply.exception.chain.some(part => part.truncated))) delivery = 'partial';
+  } catch { /* Optional reporting must preserve the original test failure. */ }
+  try { testInfo.annotations.push({ type: 'workspace-original-evidence', description: delivery }); }
+  catch { /* Optional reporting. */ }
+  throw new Error('WORKSPACE_ORIGINAL_INSPECTION_PROOF_FAILED');
+}
+
 interface ElectronE2eController {
   closePdfPreviewWindows(): void;
   killBackendUnexpectedly(): void;
@@ -331,4 +359,5 @@ interface ElectronE2eController {
   runWorkspaceMigrationInventoryProof(): Promise<WorkspaceMigrationInventoryProofSnapshot>;
   runWorkspaceStartupRecoveryProof(): Promise<WorkspaceStartupRecoveryProofSnapshot>;
   runWorkspaceAdoptionAcceptanceProof(): Promise<WorkspaceAdoptionAcceptanceProofReply>;
+  runWorkspaceOriginalInspectionProof(): Promise<WorkspaceOriginalInspectionProofReply>;
 }

@@ -210,7 +210,7 @@ async function fixture() {
     assertCurrent: async () => {}, assertAuthority() { if (cancellation.signal.aborted || performance.now() >= context.deadline) throw new Error('PROFILE_INSPECTION_TIMEOUT'); },
     reservation: { assertMainOwned: async () => {}, assertMainCurrent() {}, close: async () => {}, invalidate: vi.fn(() => {}),
       bind() { throw new Error('not used by the injected inspection fixture'); } } };
-  const admit = createProfileRestoreColdContentAdmission({ operationId, workspaceRoot, stagingRoot, runnerPath: join(root, 'runner.js'),
+  const admit = createProfileRestoreColdContentAdmission({ operationId, target: { kind: 'unbound' }, workspaceRoot, stagingRoot, runnerPath: join(root, 'runner.js'),
     deployment: { backendRoot: root, migrationsDirectory: root, nativeResourceRoot: root }, journalStore: { peek },
     transaction: { readForwardRecoverySources: async () => ({ databaseSlot, documentsSlot }) }, assertLineage, inspect });
   return { root, workspaceRoot, stagingRoot, databasePath, documentsRoot, database, sources, result, journal, cancellation, peek,

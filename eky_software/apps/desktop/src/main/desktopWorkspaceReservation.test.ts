@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as waitForReservationRelease } from 'node:timers/promises';
@@ -16,6 +16,8 @@ import {
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedSelectorWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.js';
+import { runOwnedProfileInspection } from '../profileBackup/runOwnedProfileInspection.js';
+import { resolveProfileInspectionCopyRoot } from '../runtime/profileInspectionMessages.js';
 import { acquireDesktopWorkspaceReservation } from './desktopComposition.js';
 
 vi.mock('electron', () => ({
@@ -150,6 +152,78 @@ describe('selector lifecycle with the desktop reservation owner', () => {
 });
 
 describe('desktop composition workspace reservation owner', () => {
+  it.for(['bound', 'unbound'] as const)(
+    'consumes the real inspection grant once after repeatable %s selection checks', async (kind, context) => {
+      const actual = await vi.importActual<typeof import('../runtime/workspaceProcessReservation.js')>(
+        '../runtime/workspaceProcessReservation.js',
+      );
+      acquire.mockImplementation(actual.acquireWorkspaceProcessReservation);
+      readIdentity.mockImplementation(actual.readWorkspaceProcessReservationIdentity);
+      const root = await mkdtemp(join(tmpdir(), 'eky-inspection-grant-'));
+      const reservationRoot = join(root, 'reservation');
+      await mkdir(reservationRoot);
+      const signal = new AbortController().signal;
+      const owner = await acquireDesktopWorkspaceReservation({
+        userDataRoot: reservationRoot, signal, assertSingleInstanceOwnership() {},
+      });
+      let child: WorkspaceProcessReservation | undefined;
+      const selection = vi.fn(async (assertCurrent: () => void) => {
+        assertCurrent(); await Promise.resolve(); assertCurrent();
+      });
+      let grants = 0;
+      let cleanupVerified = false;
+      let firstFailure: { error: unknown } | undefined;
+      context.onTestFinished(async () => {
+        if (context.task.result?.state === 'pass' && cleanupVerified) {
+          await rm(root, { recursive: true, force: true });
+        }
+      });
+      try {
+        await expect(runOwnedProfileInspection({
+          operationId: randomUUID(), signal, reservation: owner, assertAuthority() {},
+          target: kind === 'unbound' ? { kind } : {
+            kind, installationRoot: root, workspaceId: randomUUID(),
+            lineageIdentity: { formatVersion: 1, profileId: 'c'.repeat(64) },
+            assertSelectionCurrent: selection,
+          },
+          prepare: control => control.assertMainOwned(),
+          // Real Main and IPC ownership; only the child protocol and exit are modeled.
+          async inspect(_preparation, input) {
+            const transfer = input.reservationTransfer;
+            try {
+              await transfer.prepare(input.signal);
+              child = await actual.acquireWorkspaceProcessReservation({
+                userDataRoot: reservationRoot, expectedIdentity: transfer.descriptor.identity, signal,
+              });
+              await transfer.assertGrant(input.signal);
+              transfer.assertCurrent();
+              grants += 1;
+              await writeFile(join(resolveProfileInspectionCopyRoot(transfer.descriptor), 'profile.sqlite'),
+                'synthetic protocol payload', { flag: 'wx' });
+              return 'receipt';
+            } finally {
+              await child?.release(); child = undefined;
+              await transfer.reclaimAfterExit(signal);
+            }
+          },
+          accept: async () => 'accepted',
+        })).resolves.toBe('accepted');
+        expect(grants).toBe(1);
+        expect(selection.mock.calls.length > 0).toBe(kind === 'bound');
+        expect(await readdir(reservationRoot)).toEqual([]);
+        await owner.assertMainOwned();
+      } catch (error) {
+        firstFailure = { error };
+      } finally {
+        try { await child?.release(); }
+        catch (error) { firstFailure ??= { error }; }
+        try { await owner.close(); cleanupVerified = true; }
+        catch (error) { firstFailure ??= { error }; }
+      }
+      if (firstFailure !== undefined) throw firstFailure.error;
+    },
+  );
+
   it('observes only the granted phase repeatedly without consuming or reclaiming it', async () => {
     const f = await fixture();
     expect(() => f.transfer.assertGrantedCurrent()).toThrow();

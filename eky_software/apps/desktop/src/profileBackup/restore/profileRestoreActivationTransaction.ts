@@ -9,7 +9,6 @@ import {
 } from 'node:fs/promises';
 import {
   dirname,
-  isAbsolute,
   join,
   resolve,
 } from 'node:path';
@@ -28,6 +27,12 @@ import type {
   ProfileRestoreJournalWriteAuthority,
 } from './profileRestoreActivationJournalStore.js';
 import { renameProfilePathWithRetry } from './profileRestoreFileMove.js';
+import {
+  assertProfileRestoreActivationPaths as validatePaths,
+  assertProfileRestoreOperationId as validateOperationId,
+  deriveProfileRestoreActivationOperationPaths,
+  type ProfileRestoreActivationPaths,
+} from './profileRestoreActivationPaths.js';
 import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 import { readProfileRestoreForwardRecoverySlot } from './profileRestoreForwardRecoverySlot.js';
 import {
@@ -46,17 +51,7 @@ import { assertSynchronousProfileRestoreMutationAuthority as assertSynchronousRo
 
 export { assertSynchronousProfileRestoreMutationAuthority as assertSynchronousRollbackRootAuthority } from './profileRestoreMutationAuthority.js';
 
-const operationIdPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const terminalCleanupReadBatchSize = 4;
-
-interface ProfileRestoreActivationPaths {
-  activeDatabasePath: string;
-  activeDocumentsRoot: string;
-  failedRoot: string;
-  rollbackRoot: string;
-  stagingRoot: string;
-}
 
 interface ProfileRestoreActivationTransactionDependencies {
   afterPhasePersisted?(
@@ -1112,59 +1107,7 @@ export class ProfileRestoreActivationTransaction {
   }
 
   private operationPaths(operationId: string) {
-    validateOperationId(operationId);
-    const stagingOperationRoot = join(
-      this.paths.stagingRoot,
-      operationId,
-    );
-    const rollbackOperationRoot = join(
-      this.paths.rollbackRoot,
-      operationId,
-    );
-    const failedOperationRoot = join(
-      this.paths.failedRoot,
-      operationId,
-    );
-    return {
-      failedActiveDatabasePath: join(
-        failedOperationRoot,
-        'active',
-        'data',
-        'eky.sqlite',
-      ),
-      failedActiveDocumentsRoot: join(
-        failedOperationRoot,
-        'active',
-        'storage',
-        'invoices',
-      ),
-      failedOperationRoot,
-      failedStagingRoot: join(failedOperationRoot, 'staging'),
-      failedStagedDatabasePath: join(failedOperationRoot, 'staging', 'profile.sqlite'),
-      failedStagedDocumentsRoot: join(failedOperationRoot, 'staging', 'activation', 'storage', 'invoices'),
-      rollbackDatabasePath: join(
-        rollbackOperationRoot,
-        'data',
-        'eky.sqlite',
-      ),
-      rollbackDocumentsRoot: join(
-        rollbackOperationRoot,
-        'storage',
-        'invoices',
-      ),
-      rollbackOperationRoot,
-      stagedDatabasePath: join(
-        stagingOperationRoot,
-        'profile.sqlite',
-      ),
-      stagedDocumentsRoot: join(
-        stagingOperationRoot,
-        'activation',
-        'storage',
-        'invoices',
-      ),
-      stagingOperationRoot,
-    };
+    return deriveProfileRestoreActivationOperationPaths(this.paths, operationId);
   }
 }
 
@@ -1462,28 +1405,6 @@ async function syncDirectories(paths: readonly string[]): Promise<void> {
     } finally {
       await directory.close();
     }
-  }
-}
-
-function validatePaths(paths: ProfileRestoreActivationPaths): void {
-  const values = Object.values(paths);
-  if (
-    values.some(
-      (path) =>
-        !isAbsolute(path) ||
-        path.includes('\0') ||
-        path.length > 4_096,
-    ) ||
-    new Set(values.map((path) => normalizedPath(path))).size !==
-      values.length
-  ) {
-    throw new Error('PROFILE_RESTORE_ACTIVATION_PATHS_INVALID');
-  }
-}
-
-function validateOperationId(operationId: string): void {
-  if (!operationIdPattern.test(operationId)) {
-    throw new Error('PROFILE_RESTORE_OPERATION_INVALID');
   }
 }
 

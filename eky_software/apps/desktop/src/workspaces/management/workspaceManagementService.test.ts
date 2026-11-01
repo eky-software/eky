@@ -76,7 +76,7 @@ describe('workspace management service', () => {
     });
     await expect(service.replaceActiveFromBackup(input)).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_INVALID' });
     expect(f.registry.value).toBe(before);
-    expect(f.events).toEqual(['guard.assert', 'registry.read', 'activationFactory.create', 'activationJournal.read', 'backup.inspect']);
+    expect(f.events).toEqual(['guard.assert', 'registry.read', 'activationFactory.create', 'activationJournal.peek', 'backup.inspect']);
     expect(f.preRestore.calls).toBe(0);
     expect(f.rootStore.prepared).toBe(false);
     const files = await readdir(join(logsRoot, 'desktop'));

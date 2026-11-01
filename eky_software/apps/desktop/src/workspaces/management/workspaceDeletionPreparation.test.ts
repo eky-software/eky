@@ -29,6 +29,9 @@ import { prepareWorkspaceDeletion, WorkspaceDeletionPreparationFailure } from '.
 import * as backupProof from '../../profileBackup/deletionBackupReceipt.js';
 import { readDeletionBackupExportIdentity } from '../../profileBackup/readDeletionBackupExportIdentity.js';
 import { fixture as backupFixture, deferred, sourceId, profileId, processBoundary } from '../../profileBackup/portableDeletionBackupTestSupport.js';
+import { createWorkspaceDeletionPublisher } from '../deletion/workspaceDeletionPublication.js';
+import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from '../deletion/workspaceDeletionJournalStore.js';
+import { deriveWorkspaceReplacementRemnantParents } from '../deletion/workspaceReplacementRemnantPaths.js';
 
 const workspaceId = validateWorkspaceId(sourceId);
 const label = 'Synthetic company';
@@ -37,7 +40,41 @@ type Options = { holdSecret?: boolean; holdArchive?: boolean; holdInspectionClos
   holdReturn?: boolean; holdPublication?: boolean; failStop?: boolean; failArchive?: boolean;
   failConfirmation?: boolean; failBackup?: boolean; backupChoice?: 'createBackup' | 'explicitDataLoss';
   otherTarget?: boolean; selector?: boolean; recoveryRequired?: boolean; rejectLoss?: boolean;
-  holdLoss?: boolean; cancelBackup?: boolean; holdFence?: boolean; failFence?: boolean; };
+  holdLoss?: boolean; cancelBackup?: boolean; holdFence?: boolean; failFence?: boolean; checkPreparation?: boolean;
+  realPublication?: boolean; publicationMutation?: 'backup' | 'source'; };
+
+it('joins authenticated export rereading with the real inventory and authorized journal publication', async () => {
+  await exercise({ realPublication: true }, async f => {
+    const registryBefore = await fs.readFile(join(f.base.root, WORKSPACE_REGISTRY_FILE_NAME));
+    expect(await f.start()).toBe('prepared');
+    const journal = await new WorkspaceDeletionJournalStore(f.base.root).inspect(() => {});
+    expect(journal.plan.mode).toBe('published');
+    expect(journal.slots.current?.value).toMatchObject({ phase: 'authorized', backupDisposition: 'verifiedBackup',
+      target: { operationId: sourceId, workspaceId } });
+    expect(journal.slots.next).toBeUndefined(); expect(journal.slots.backup).toBeUndefined();
+    // Receipt admission, the one intermediate backup read, and receipt settlement.
+    expect(f.events.filter(event => event === 'export.recheck')).toHaveLength(3);
+    expect(f.events.indexOf('reclaim')).toBeLessThan(f.events.indexOf('publish'));
+    expect((await fs.readFile(join(f.base.root, WORKSPACE_REGISTRY_FILE_NAME))).equals(registryBefore)).toBe(true);
+    expect(await fs.readFile(f.sentinel, 'utf8')).toBe('company retained');
+    expect(await fs.readFile(f.base.destinationPath)).not.toHaveLength(0);
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+});
+
+it.for(['backup', 'source'] as const)('preserves actual files and initial-next when %s changes at the real publication boundary', async mutation => {
+  await exercise({ realPublication: true, publicationMutation: mutation }, async f => {
+    const registryBefore = await fs.readFile(join(f.base.root, WORKSPACE_REGISTRY_FILE_NAME));
+    await expect(f.start()).rejects.toThrow();
+    const paths = createWorkspaceDeletionJournalPaths(f.base.root);
+    await expect(fs.readFile(paths.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await fs.readFile(paths.nextPath)).not.toHaveLength(0);
+    expect((await fs.readFile(join(f.base.root, WORKSPACE_REGISTRY_FILE_NAME))).equals(registryBefore)).toBe(true);
+    expect(await fs.readFile(f.sentinel, 'utf8')).toBe('company retained');
+    expect(await fs.readFile(f.base.destinationPath)).not.toHaveLength(0);
+    expect(f.events).not.toContain('publish'); expect(f.relaunch).not.toHaveBeenCalled();
+  });
+});
 
 it('joins the admitted request, real target/export and named stop before one-shot publication', async () => {
   await exercise({}, async f => {
@@ -70,6 +107,38 @@ it.each(['secret', 'archive'] as const)('does not snapshot before the actual %s 
     expect(await operation).toBe('prepared');
   });
 });
+
+it('keeps repeated original selection checks separate from backup content reads', async () => {
+  await exercise({ checkPreparation: true }, async f => {
+    expect(await f.start()).toBe('prepared');
+    expect(f.events.filter(event => event === 'export.recheck')).toHaveLength(4);
+    await expect(f.savedPreparation()()).rejects.toThrow();
+    await expect(fs.readFile(f.sentinel)).resolves.toEqual(Buffer.from('company retained'));
+  });
+});
+
+it.each(['registry', 'reservation', 'request'] as const)(
+  'preserves the original %s proof in the lightweight publication selection', async changed => {
+    await exercise({ holdPublication: true }, async f => {
+      const work = f.start().catch(error => error);
+      await f.entered.publish.promise;
+      try {
+        if (changed === 'request') f.navigate();
+        else if (changed === 'reservation') f.loseReservation();
+        else {
+          const path = join(f.base.root, WORKSPACE_REGISTRY_FILE_NAME);
+          const bytes = await fs.readFile(path);
+          await fs.rename(path, `${path}.retained-original`);
+          await fs.writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+        }
+        await expect(f.savedPreparation()()).rejects.toThrow();
+      } finally { f.gates.publish.resolve(); await work; }
+      expect(await work).toBeInstanceOf(Error);
+      expect(f.events).not.toContain('publish');
+      await expect(fs.readFile(f.sentinel)).resolves.toEqual(Buffer.from('company retained'));
+    });
+  },
+);
 
 it('starts both main I/O drains without waiting for the backend fence acknowledgement', async () => {
   await exercise({ holdFence: true }, async f => {
@@ -551,13 +620,22 @@ async function fixture(options: Options) {
     }, maintenanceLease: base.lease, runtimeRelaunch: deferredReturn,
   }) : undefined;
   const publications: string[] = [];
+  const publishJournal = createWorkspaceDeletionPublisher({ userDataRoot: base.root, registry,
+    async assertWritersAbsent() {
+      assertReservation(); await (selectorLifecycle ?? lifecycle).assertNoActiveWorkspaceRuntime(); assertReservation();
+    } });
   const observer = { record: vi.fn<WorkspaceManagementObserver['record']>() };
   let savedGuard: (() => void) | undefined;
+  let savedPreparation: (() => Promise<void>) | undefined;
   const unexpected = async (): Promise<never> => { throw new Error('UNEXPECTED_COMMAND'); };
+  const expectedCompletionFailures: unknown[] = [];
   service = new WorkspaceManagementService({
     createEmpty: { create: unexpected }, importBackup: { import: unexpected }, renameWorkspace: { rename: unexpected },
     switchWorkspace: { switchTo: unexpected }, operationGuard: guard, registry, maintenanceState: base.lease, observer,
-    runtimeRelaunchCompletion: { complete(assertCurrent) { beforeCompletion(); deferredReturn.complete(assertCurrent); } },
+    runtimeRelaunchCompletion: { complete(assertCurrent) {
+      try { beforeCompletion(); deferredReturn.complete(assertCurrent); }
+      catch (error) { expectedCompletionFailures.push(error); throw error; }
+    } },
     deletionPreparation: {
       maintenanceLease: { acquire: base.acquireLease,
         captureCurrentOwner: purposes => base.lease.captureCurrentOwner(purposes) },
@@ -588,11 +666,35 @@ async function fixture(options: Options) {
         async confirmDeletion() { events.push('confirm.delete'); if (options.failConfirmation) throw firstFailure; return !options.cancel; },
         async confirmReturn() { entered.return.resolve(); if (options.holdReturn) await gates.return.promise; return options.returnChoice ?? false; },
         setReturnGuard(value) { returnGuard = value; },
-        async publish(check, selection, target) {
+        async publish(check, selection, target, context, assertPreparationCurrent) {
           expect(target.workspaceId).toBe(targetWorkspaceId);
           expect(target.previousActiveWorkspaceId).toBe(initial.activeWorkspaceId);
           expect(Object.isFrozen(target)).toBe(true);
-          savedGuard = check; await selection(); check(); publications.push('attempt');
+          expect(Object.isFrozen(context)).toBe(true);
+          expect(context).toEqual({ operationId: sourceId, target,
+            backupDisposition: (options.backupChoice ?? 'createBackup') === 'createBackup'
+              ? 'verifiedBackup' : 'explicitDataLoss' });
+          savedGuard = check; savedPreparation = assertPreparationCurrent;
+          if (options.checkPreparation) {
+            const reads = events.filter(event => event === 'export.recheck').length;
+            for (let count = 0; count < 3; count++) await assertPreparationCurrent();
+            expect(events.filter(event => event === 'export.recheck')).toHaveLength(reads);
+          }
+          if (options.realPublication) {
+            publications.push('attempt');
+            await publishJournal(check, async () => {
+              if (options.publicationMutation === 'backup') await fs.appendFile(base.destinationPath, 'changed export');
+              await selection(); check();
+              if (options.publicationMutation === 'source') {
+                const unexpectedRoot = join(deriveWorkspaceReplacementRemnantParents(base.root)[1]!.parentPath, '99999999-9999-4999-8999-999999999999');
+                await fs.mkdir(unexpectedRoot, { recursive: true, mode: 0o700 });
+                await fs.writeFile(join(unexpectedRoot, 'retained'), 'unowned synthetic payload', { flag: 'wx' });
+              }
+            }, target, context, assertPreparationCurrent);
+            events.push('publish');
+            return;
+          }
+          await selection(); check(); publications.push('attempt');
           entered.publish.resolve(); if (options.holdPublication) await gates.publish.promise;
           await selection(); check(); events.push('publish');
         },
@@ -613,6 +715,7 @@ async function fixture(options: Options) {
     start: () => track(capability.prepareDeletion(event, { formatVersion: 1, workspaceId: targetWorkspaceId, typedLabel: label,
       backupChoice: options.backupChoice ?? 'createBackup' })),
     savedGuard: () => savedGuard!,
+    savedPreparation: () => savedPreparation!,
     navigate: () => webContents.emit('did-start-navigation', { isMainFrame: true }),
     loseReservation() { reservationCurrent = false; },
     externalShutdown() {
@@ -625,8 +728,14 @@ async function fixture(options: Options) {
       await Promise.allSettled(tasks);
       const cleanup = await Promise.allSettled([base.client.shutdown(), capability.shutdown(), service.shutdown(), secretMain.close()]);
       secretClient.close(); guard.dispose(); requestQuiescence.stop();
+      if (expectedCompletionFailures.length !== 0) {
+        expect(cleanup[2]).toMatchObject({ status: 'rejected', reason: {
+          message: 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', errors: expectedCompletionFailures,
+        } });
+      }
       // All synthetic files and the first failure remain outside build outputs.
-      const failures = cleanup.filter(result => result.status === 'rejected').map(result => result.reason);
+      const failures = cleanup.filter((result, index) => result.status === 'rejected' &&
+        !(index === 2 && expectedCompletionFailures.length !== 0)).map(result => result.status === 'rejected' ? result.reason : undefined);
       if (failures.length !== 0) throw new AggregateError(failures, 'SYNTHETIC_HANDOFF_CLEANUP_FAILED');
     },
   };

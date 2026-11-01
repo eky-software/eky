@@ -123,9 +123,12 @@ describe('workspace management composition boundaries', () => {
   it('keeps both production preparation hooks dormant without the real journal consumer', async () => {
     for (const file of ['desktopComposition.ts', 'desktopSelectorComposition.ts']) {
       const source = await readFile(join(desktopSourceRoot, 'main', file), 'utf8');
-      expect(source).toContain('options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {');
+      expect(source).toContain('options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({');
+      expect(source).toContain('const deletionPublisher = deletionBinding?.publish ?? options.workspaceDeletionPublisher;');
+      expect(source).toContain('deletionBinding === undefined ? {} : { deletionContinuation: deletionBinding.continuation }');
+      expect(source).toContain('deletionPublisher === undefined ? {} : { deletionPreparation: {');
       expect(source).toContain('runtimeGeneration: options.runtimeInstanceId,');
-      expect(source).toContain('publish: options.workspaceDeletionPublisher,');
+      expect(source).toContain('publish: deletionPublisher,');
       expect(source).toContain('...createWorkspaceDeletionConfirmations(');
       expect(source).not.toMatch(/ipcMain\.handle\([^\n]*[Dd]elet/u);
     }

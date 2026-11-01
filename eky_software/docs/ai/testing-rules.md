@@ -180,10 +180,76 @@ Mittauskoe ei yksin selitä aiempia aikakatkaisuja tai sulje W7.2:ta.
 Omistajan 28.10.2026 hyväksymä sama kymmenen sekunnin raja koskee lisäksi
 `settles the selected source-null replacement through real rollback before
 selector return` -yhdistelmätestin `releaseFailure`-varianttia.
-Valmistelu, palautus ja lopputarkistukset sisältyvät samaan rajaan;
-`contentFailure`-variantin oletusraja säilyy. Sovelluksen ja CI:n aikarajat
+Valmistelu, palautus ja lopputarkistukset sisältyvät samaan rajaan.
+Sovelluksen ja CI:n aikarajat
 sekä kaikki tarkistukset säilyvät. Rajattu mittaus läpäisi, mutta aiemman
 aikakatkaisun syy jää avoimeksi eikä mittaus yksin hyväksy laajaa sarjaa.
+
+Omistajan 30.10.2026 hyväksymä sama kymmenen sekunnin testiraja koskee
+myös vain tämän yhdistelmätestin `contentFailure`-varianttia. Näin ryhmän
+kolme nimettyä varianttia käyttävät samaa nykyistä testibudjettia.
+Valmistelu ja kaikki sisältö-, omistajuus- ja sulkutarkistukset sisältyvät
+rajaan. Sovelluksen, muiden testien ja CI:n aikarajat säilyvät.
+Aiemmat aikakatkaisut eivät muutu tällä korjatuiksi tai hyväksytyiksi;
+kohdetodennus ja yksi normaali Main-sarja vaaditaan erikseen.
+
+Omistajan 30.10.2026 hyväksymä sama kymmenen sekunnin testiraja koskee
+lisäksi vain `restarts selector return after the selected writer loses its
+acknowledgement` -yhdistelmätestin `publishReturn`- ja `clearReturn`-variantteja.
+Kummankin kaksi käynnistystä, valmistelu sekä kaikki tiedosto-, palautus- ja
+sulkutarkistukset sisältyvät tähän rajaan. Sovelluksen, muiden testien ja
+CI:n aikarajat säilyvät. Alkuperäinen aikakatkaisu jää avoimeksi; kahden
+variantin kohdetodennus ja yksi normaali Main-sarja vaaditaan erikseen.
+
+Omistajan 31.10.2026 antaman rajattujen testibudjettikorjausten valtuuden
+perusteella kymmenen sekunnin raja koskee myös vain
+`workspaceRemnantBindingEnumeration.test.ts`:n
+`reads more than one page without dropping other companies or side slots`
+-yhdistelmätestiä. Sen 65 sidontaa, muiden yritysten tiedot ja kaikki
+sivuslotit luetaan oikeilta tiedostoilta. Valmistelu ja jälkitarkistukset
+sisältyvät samaan rajaan. Muut testit, sovelluksen määräajat ja CI:n
+kokonaisrajat säilyvät. Mittaus osoitti työn valmistuvan, mutta viiden
+sekunnin hylkäyksiä ei merkitä korjatuiksi; vaikutusalueen sarja vaaditaan
+erikseen. Testin keskeytys peruuttaa valtuuden, alkuperäinen lukutyö
+odotetaan loppuun ja epäonnistumisen aineisto säilytetään.
+
+Saman rajatun valtuuden perusteella kymmenen sekunnin budjetti koskee vain
+`workspaceActivationMigrationBindingIntegration.test.ts`:n `publishes before
+snapshot and uses guarded real activation (selector: true)` -tapausta.
+Valmistelu, todellinen sidonta-/aktivointiketju ja jälkitarkistukset kuuluvat
+samaan budjettiin. `selector: false` ja neljä virhetapausta säilyttävät
+aiemman rajansa. Sovelluksen ja CI:n aikarajoja ei muuteta. Ensimmäinen
+laajan sarjan viiden sekunnin aikakatkaisu säilyy avoimena; erillinen
+valmistuva mittaus ei todista sen syytä tai laajan sarjan hyväksyntää.
+
+Saman rajattujen testibudjettikorjausten valtuuden perusteella W7.4:n uusien
+inventaarioyhdistelmätestien budjetit ovat seuraavat. Ne eivät muuta
+sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
+
+- `workspaceDeletionInventorySources.test.ts`:n `projects all ten roles
+  once, excludes foreign sources, and preserves every source byte` saa
+  20 sekuntia. Mukana ovat kaikki kymmenen roolia, vieraat lähteet, oikeat
+  tiedostotavut ja luennan jälkeinen tuore lähdevertailu.
+- Saman tiedoston `orders more than one page from real owners without
+  dropping or repeating a root` saa 30 sekuntia. Valmistelu, 17 operaation
+  68 juurta, workspace-rivi, kaksi avainsivua ja täydellinen EOF-vertailu
+  kuuluvat samaan testiin. Yksityinen mittaus on erillinen todiste;
+  nimetty testi on läpäistävä myös tavallisessa vaikutusalueen sarjassa.
+- `workspaceReplacementRemnantEnumeration.test.ts`:n `merges real
+  64/65-name directory pages with a controlled selection reader` saa
+  10 sekuntia. Se todentaa oikeiden nimisivujen yhdistämisen ohjatulla
+  omistajavalinnalla, eikä korvaa edellisen testin oikeaa omistajaketjua.
+- Omistajan 31.10.2026 erikseen hyväksymä
+  `workspaceDeletionPublication.test.ts`:n `cleans only proven target
+  metadata before capturing sources and preserves foreign metadata` saa
+  10 sekuntia. Valmistelu, metadatan omistajakohtainen siivous, täydellisen
+  inventaarion ja poiston aloituskirjauksen julkaisu sekä jälkivertailut
+  kuuluvat samaan budjettiin. Muut julkaisijatapaukset säilyttävät rajansa.
+
+Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
+mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei
+yksin osoita niitä korjatuiksi. Myös näissä testeissä keskeytys peruuttaa
+valtuuden, alkanut työ odotetaan loppuun ja epäonnistunut aineisto säilyy.
 
 Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
 valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai

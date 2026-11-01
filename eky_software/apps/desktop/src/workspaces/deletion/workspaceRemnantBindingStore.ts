@@ -175,6 +175,21 @@ export class WorkspaceRemnantBindingStore {
   }
 }
 
+export type WorkspaceRemnantBindingSelection = Awaited<ReturnType<WorkspaceRemnantBindingStore['inspect']>>;
+
+export function assertSameWorkspaceRemnantBindingSelection(
+  expected: WorkspaceRemnantBindingSelection, actual: WorkspaceRemnantBindingSelection,
+): void {
+  if (actual.mode !== expected.mode || (expected.mode === 'published' &&
+      (actual.mode !== 'published' || actual.bindingSha256 !== expected.bindingSha256))) return invalidDeletionData(invalidCode);
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const before = expected.slots[slot], after = actual.slots[slot];
+    if (before === undefined ? after !== undefined : after === undefined || before.identity === undefined ||
+        after.identity === undefined || !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
+        !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) return invalidDeletionData(invalidCode);
+  }
+}
+
 function captureOwnerSlots(slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>, mode: WorkspaceRemnantBindingCleanup['mode']) {
   if (mode !== 'owner' || slots === null || typeof slots !== 'object' || slots.current === undefined) return invalidDeletionData(invalidCode);
   const result: Record<CrashSafeFileSlot, Readonly<{ bytes: Uint8Array; identity: Readonly<CrashSafeFileSlotIdentity> }> | undefined> = {

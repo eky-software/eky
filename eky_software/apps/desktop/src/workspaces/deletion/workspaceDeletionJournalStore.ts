@@ -43,12 +43,14 @@ export class WorkspaceDeletionJournalStore {
     return this.exclusive(() => inspectWorkspaceDeletionJournal(this.fileSystem, checkedDeletionAuthority(assertCurrent, invalidCode)));
   }
 
-  publish(value: unknown, selection: WorkspaceDeletionJournalSelection) {
+  publish(value: unknown, selection: WorkspaceDeletionJournalSelection, assertPublicationCurrent?: () => Promise<void>) {
     return this.exclusive(async () => {
       const next = captureWorkspaceDeletionJournal(value);
       const selected = captureSelection(selection);
       if (selected.plan.mode !== 'absent' || next.phase !== 'authorized') return invalidDeletionData(invalidCode);
-      return this.byteStore.replaceSelected(serializeWorkspaceDeletionJournal(next), selected.guard);
+      const store = assertPublicationCurrent === undefined ? this.byteStore :
+        new CrashSafeByteSlotStore(publicationFileSystem(this.fileSystem, assertPublicationCurrent));
+      return store.replaceSelected(serializeWorkspaceDeletionJournal(next), selected.guard);
     });
   }
 
@@ -97,6 +99,28 @@ export class WorkspaceDeletionJournalStore {
     this.activeOperation = true;
     try { return await work(); } finally { this.activeOperation = false; }
   }
+}
+
+// The complete source/backup comparison belongs to initial publication, not every slot I/O.
+function publicationFileSystem(
+  fileSystem: CrashSafeFileSlotFileSystem, assertPublicationCurrent: () => Promise<void>,
+): CrashSafeFileSlotFileSystem {
+  return {
+    prepareDirectory: fileSystem.prepareDirectory.bind(fileSystem),
+    readSlot: fileSystem.readSlot.bind(fileSystem),
+    createNextWriter: fileSystem.createNextWriter.bind(fileSystem),
+    removeSlot: fileSystem.removeSlot.bind(fileSystem),
+    syncDirectory: fileSystem.syncDirectory.bind(fileSystem),
+    async moveSlot(source, destination, guard) {
+      if (source !== 'next' || destination !== 'current' || guard === undefined) return invalidDeletionData(invalidCode);
+      await guard.beforeMutation();
+      await assertPublicationCurrent();
+      // The long comparison can outlive the selection of any of the three slots.
+      await guard.beforeMutation();
+      guard.assertAuthority();
+      await fileSystem.moveSlot(source, destination, guard);
+    },
+  };
 }
 
 function captureSelection(selection: WorkspaceDeletionJournalSelection) {

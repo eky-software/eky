@@ -262,6 +262,7 @@ export class RecoveryPointService {
     );
     assertProfileBackupSourceReceipt(entries, snapshot.receipt);
     const point = await this.dependencies.store.create({
+      sourceOperationId: snapshot.operationId,
       entries,
       kind,
       manifest: {
@@ -362,6 +363,7 @@ export class RecoveryPointService {
               await client.assertUpdateMaintenance(updateOperationId);
             }
             return useSnapshot({
+              operationId,
               operationRoot: join(this.dependencies.stagingRoot, operationId),
               validation,
               receipt,
@@ -489,6 +491,7 @@ export class RecoveryPointService {
 }
 
 interface HealthySnapshot {
+  operationId: string;
   operationRoot: string;
   receipt: ProfileInspectionReceipt;
   validation: Awaited<

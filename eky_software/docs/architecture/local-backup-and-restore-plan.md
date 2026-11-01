@@ -809,6 +809,14 @@ keskeneräistä sulkua ei käsitellä jo valmistuneena. Sopimus todennetaan
 backend-kahvan regressioilla sekä todellisen desktop-compositionin ja
 marker-tiedoston yhteisellä testillä, ei pelkällä markerin yksikkötestillä.
 
+W7.4:n [viimeisen kirjoittajan raja](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä)
+estää aktiivisen yrityksen markerin kirjoittamisen sen lopullisen poiston
+jälkeen. Varmennettu poisto ja epävarma sulku ovat eri tuloksia; kummassakaan
+marker ei saa luoda poistettua juurta uudelleen. Rajattu main-kytkentä ja
+marker-kokeet on toteutettu; D:n todellisen etenemisomistajan ja paketin
+oma näyttö jäävät erillisiksi porteiksi. Marker-formaatti, muiden yritysten
+sulku ja tavallisen palautuspisteajastimen toiminta säilyvät.
+
 ## Päivitysten yhteensopivuus
 
 Normaali versiopäivitys säilyttää aiemmin tallennetun business-datan ja
@@ -1103,6 +1111,12 @@ busy tai epäselvä juuri säilyy. Vanha staging tarkistetaan uudelleen:
 journal, ikä tai muistista puuttuva receipt ei hyväksy sitä. Tämä ei
 anna W3:n journalittomalle plaintextille tai v1:lle cold-recovery-lupaa.
 
+W7.4:n erillinen [metadata-only-poissaoloportti](local-company-workspace-plan.md#w74n-täydellisen-inventaarion-omistajuusraja)
+saa todeta sidotun inspection-kopion puuttumisen neljästä nimetystä
+sijainnista kirjoittajien päätyttyä. Se siivoaa vain täsmälliset pysyvät
+sidontamerkinnät; se ei anna vanhan kopion payload-poistolupaa, korvaa
+luontikuittia tai muuta normaalia snapshot-/restore-cleanupia.
+
 Private snapshot-brokerin nykyinen versio on 13. Komennot
 `validateProfileSnapshot`, `validateActiveProfile` ja
 `prepareProfileRestoreActivation` sekä niiden vastaukset on poistettu
@@ -1249,6 +1263,13 @@ Saman tilin valtuussopimuksen ulkopuoliseen kirjoittajaan ei luvata
 käyttöjärjestelmätason atomisuutta.
 
 ## Aktivointi ja rollback
+
+Palautuksen `profileRestoreActivationPaths` omistaa nykyiset operaation
+staging-, rollback- ja failed-sijainnit. Transaktio sekä W7.4:n rajattu
+jäännöslukija käyttävät samaa johdettua layoutia ja nykyisiä tunniste-/juurirajoja.
+Polun johtaminen ei todista kansiota omistetuksi eikä anna siirto-, poisto-
+tai rollback-valtuutta. Fyysinen identiteetti, journal ja kutsujan elävä
+omistajuus varmennetaan edelleen niiden nykyisissä omistajissa.
 
 Kun staging-profiili on täysin validoitu:
 

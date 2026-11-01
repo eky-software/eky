@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import type { WorkspaceMaintenancePurpose } from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import {
   mapWorkspaceBackupImportError,
   WorkspaceBackupImportError,
@@ -96,18 +96,7 @@ describe('workspace backup first failure preservation', () => {
     const release = new Error('synthetic release failure');
     vi.spyOn(fixture.candidate, 'migrate').mockRejectedValueOnce(first);
     fixture.failRecovery(recovery);
-    const acquire = fixture.lease.acquire.bind(fixture.lease);
-    vi.spyOn(fixture.lease, 'acquire').mockImplementationOnce(
-      async (purpose: WorkspaceMaintenancePurpose) => {
-        const lease = await acquire(purpose);
-        return {
-          release: async () => {
-            await lease.release();
-            throw release;
-          },
-        };
-      },
-    );
+    failLeaseRelease(fixture.lease, release);
 
     const error = await captureFailure(() => fixture.run());
     expect(error.stage).toBe('lease');
@@ -119,22 +108,41 @@ describe('workspace backup first failure preservation', () => {
     expect(fixture.lease.held).toBe(false);
   });
 
-  it('retains both import recovery failures instead of replacing the first with restart failure', async () => {
+  it('retains the import and cleanup failures without restarting an uncertain operation', async () => {
     const fixture = createWorkspaceBackupImportCoordinatorFixture();
     const first = new Error('PROFILE_SCHEMA_UNSUPPORTED');
     const cleanup = new Error('synthetic cleanup failure');
-    const restart = new Error('synthetic restart failure');
     vi.spyOn(fixture.candidate, 'migrate').mockRejectedValueOnce(first);
     vi.spyOn(fixture.root, 'discardCandidate').mockRejectedValueOnce(cleanup);
-    vi.spyOn(fixture.lifecycle, 'ensurePreviousWorkspaceRunning')
-      .mockRejectedValueOnce(restart);
+    const restart = vi.spyOn(fixture.lifecycle, 'ensurePreviousWorkspaceRunning');
 
     const error = await captureFailure(
       () => fixture.coordinator.import(importInput),
     );
     expect(error.cause).toBeInstanceOf(AggregateError);
-    expect(failureLeaves(error)).toEqual([first, cleanup, restart]);
+    expect(failureLeaves(error)).toEqual([first, cleanup]);
+    expect(restart).not.toHaveBeenCalled();
     expect(fixture.journal.current).toBeDefined();
+    expect(fixture.registry.writes).toHaveLength(0);
+    expect(fixture.lease.held).toBe(false);
+  });
+
+  it('retains the import and restart failures after verified cleanup', async () => {
+    const fixture = createWorkspaceBackupImportCoordinatorFixture();
+    const first = new Error('PROFILE_SCHEMA_UNSUPPORTED');
+    const restart = new Error('synthetic restart failure');
+    vi.spyOn(fixture.candidate, 'migrate').mockRejectedValueOnce(first);
+    const cleanup = vi.spyOn(fixture.root, 'discardCandidate');
+    const ensureRunning = vi.spyOn(fixture.lifecycle, 'ensurePreviousWorkspaceRunning')
+      .mockRejectedValueOnce(restart);
+
+    const error = await captureFailure(() => fixture.coordinator.import(importInput));
+    expect(error.cause).toBeInstanceOf(AggregateError);
+    expect(failureLeaves(error)).toEqual([first, restart]);
+    expect(cleanup).toHaveBeenCalledOnce();
+    expect(ensureRunning).toHaveBeenCalledOnce();
+    expect(cleanup.mock.invocationCallOrder[0]).toBeLessThan(ensureRunning.mock.invocationCallOrder[0]!);
+    expect(fixture.journal.current).toBeUndefined();
     expect(fixture.registry.writes).toHaveLength(0);
     expect(fixture.lease.held).toBe(false);
   });
@@ -142,17 +150,28 @@ describe('workspace backup first failure preservation', () => {
   it.each(['import', 'replace'] as const)('keeps an isolated %s release failure a failure, not an aggregate success', async operation => {
     const fixture = fixtureFor(operation);
     const release = new Error('synthetic release failure');
-    vi.spyOn(fixture.lease, 'acquire').mockResolvedValueOnce({
-      release: async () => {
-        throw release;
-      },
-    });
+    failLeaseRelease(fixture.lease, release);
     const error = await captureFailure(() => fixture.run());
     expect(error.stage).toBe('lease');
     expect(error.cause).toBe(release);
     expect(error.cause).not.toBeInstanceOf(AggregateError);
+    expect(fixture.lease.held).toBe(false);
   });
 });
+
+function failLeaseRelease(lease: WorkspaceMaintenanceLease, failure: Error): void {
+  const acquire = lease.acquire.bind(lease);
+  vi.spyOn(lease, 'acquire').mockImplementationOnce(async purpose => {
+    const handle = await acquire(purpose);
+    const release = handle.release.bind(handle);
+    // Inject a lost acknowledgement without replacing the selected owner's identity.
+    vi.spyOn(handle, 'release').mockImplementationOnce(async () => {
+      await release();
+      throw failure;
+    });
+    return handle;
+  });
+}
 
 const importInput = {
   containerPath: TEST_IMPORT_CONTAINER_PATH,

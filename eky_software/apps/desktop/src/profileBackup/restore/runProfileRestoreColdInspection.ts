@@ -5,7 +5,7 @@ import {
 import { runColdProfileInspectionProcess } from '../../runtime/profileInspectionProcess.js';
 import type { ProfileInspectionDocumentBinding } from '../../runtime/profileInspectionDocumentBindings.js';
 import { readProfileInspectionDocumentBindings } from '../../runtime/profileInspectionDocumentBindingsFile.js';
-import { runOwnedProfileInspection, type OwnedProfileInspectionControl } from '../runOwnedProfileInspection.js';
+import { runOwnedProfileInspection, type OwnedProfileInspectionControl, type OwnedProfileInspectionTarget } from '../runOwnedProfileInspection.js';
 import type { ProfileSnapshotInspectionReservation } from '../runProfileSnapshotInspection.js';
 
 export interface ProfileRestoreColdInspectionResult {
@@ -16,6 +16,7 @@ export interface ProfileRestoreColdInspectionResult {
 /** A content receipt, not forward/rollback permission; the caller owns fresh journal and byte admission. */
 export async function runProfileRestoreColdInspection(input: {
   readonly operationId: string;
+  readonly target: OwnedProfileInspectionTarget;
   readonly runnerPath: string;
   readonly deployment: ProfileInspectionDeployment;
   readonly reservation: ProfileSnapshotInspectionReservation;
@@ -24,6 +25,7 @@ export async function runProfileRestoreColdInspection(input: {
   readonly readSources: (input: { readonly deadline: number; readonly signal: AbortSignal }) => Promise<ProfileInspectionColdSources>;
   readonly signal: AbortSignal;
   readonly deadline?: number;
+  readonly observeException?: (error: unknown) => void;
 }): Promise<ProfileRestoreColdInspectionResult> {
   let documents: readonly ProfileInspectionDocumentBinding[] | undefined;
   const readSources = async (control: OwnedProfileInspectionControl) => {

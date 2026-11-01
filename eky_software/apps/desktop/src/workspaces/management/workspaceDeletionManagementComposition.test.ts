@@ -24,6 +24,10 @@ import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_I
 import { createWorkspaceManagementComposition, type WorkspaceDeletionPreparationCompositionOptions,
   type WorkspaceManagementComposition } from './workspaceManagementComposition.js';
 import { MainOwnedWorkspaceManagementOperationGuard } from './mainOwnedWorkspaceManagementOperationGuard.js';
+import { WorkspaceDeletionInventoryStore } from '../deletion/workspaceDeletionInventoryStore.js';
+import { WorkspaceDeletionJournalStore } from '../deletion/workspaceDeletionJournalStore.js';
+import { createWorkspaceDeletionPublisher } from '../deletion/workspaceDeletionPublication.js';
+import type { WorkspaceManagementServiceOptions } from './workspaceManagementService.js';
 
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 const generation = '99999999-9999-4999-8999-999999999999';
@@ -115,6 +119,72 @@ it('preserves the original preparation error through the real factory', async te
   expect(f.lease.readState()).toBe('idle');
   expect(JSON.stringify(f.log.mock.calls)).not.toContain('SYNTHETIC_NATIVE_FAILURE');
 });
+
+it.for(['active', 'selector'] as const)('hands %s publication to a fresh reader of the real journal and inventory', async (mode, test) => {
+  const stopped = new Error('SYNTHETIC_DURABLE_PROOF_STOP');
+  const resume = vi.fn<NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume']>(async (operationId, authority) => {
+    f.revokeRequest();
+    const observed = await new WorkspaceDeletionJournalStore(f.root).inspect(authority.assertCurrent);
+    expect(observed.plan.mode).toBe('published');
+    if (observed.plan.mode !== 'published') throw new Error('MISSING_DURABLE_PUBLICATION');
+    const selected = observed.plan.selected;
+    expect(selected.target.operationId).toBe(operationId);
+    expect(selected.backupDisposition).toBe('explicitDataLoss');
+    expect(selected.previousActiveWorkspaceId).toBe(mode === 'active' ? TEST_SOURCE_WORKSPACE_ID : null);
+    expect(f.lease.readState()).toBe('busy');
+    await new WorkspaceDeletionInventoryStore(f.root, operationId).inspect({ target: selected.target,
+      inventory: selected.inventory, inventoryFileIdentity: selected.inventoryFileIdentity,
+      operationRootIdentity: selected.operationRootIdentity, operationParentIdentity: selected.operationParentIdentity }, {
+      assertAuthority: authority.assertCurrent, assertExternalSelection: authority.assertOwned,
+    });
+    // This checkpoint proves handoff, never fabricates a completed physical deletion.
+    throw stopped;
+  });
+  const f = await fixture(test, mode, { continuation: { captureAuthority: () => ({
+    assertCurrent() { f.assertCurrent(); }, async assertOwned() { await f.assertOwned(); },
+    recordRemoved(): never { throw new Error('UNEXPECTED_PHYSICAL_COMPLETION'); },
+  }), resume } });
+  await publishRealDeletion(f);
+  await expect(f.startDurable()).rejects.toMatchObject({ cause: stopped });
+  expect(resume).toHaveBeenCalledOnce();
+  expect(f.lease.readState()).toBe('idle');
+  expect(f.launch).not.toHaveBeenCalled();
+  expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+  for (const sentinel of f.sentinels) expect(await readFile(sentinel, 'utf8')).toBe('retained');
+  const [guard] = f.publish.mock.calls[0]!;
+  expect(guard).toThrow();
+  expect((await new WorkspaceDeletionJournalStore(f.root).inspect(() => {})).plan.mode).toBe('published');
+});
+
+it.for(['active', 'selector'] as const)('preserves %s published slots without live handoff when final preparation loses its requester', async (mode, test) => {
+  const resume = vi.fn(async (): Promise<never> => { throw new Error('UNEXPECTED_DURABLE_WORK'); });
+  const f = await fixture(test, mode, { continuation: { captureAuthority: () => ({
+    assertCurrent() { f.assertCurrent(); }, async assertOwned() { await f.assertOwned(); },
+    recordRemoved(): never { throw new Error('UNEXPECTED_PHYSICAL_COMPLETION'); },
+  }), resume } });
+  await publishRealDeletion(f, () => f.revokeRequest());
+  await expect(f.startDurable()).rejects.toThrow();
+  expect(resume).not.toHaveBeenCalled();
+  const observed = await new WorkspaceDeletionJournalStore(f.root).inspect(() => {});
+  expect(observed.plan.mode).toBe('published');
+  expect(observed.slots.next).toBeUndefined();
+  expect(f.lease.readState()).toBe('idle');
+  expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+  for (const sentinel of f.sentinels) expect(await readFile(sentinel, 'utf8')).toBe('retained');
+});
+
+async function publishRealDeletion(f: Awaited<ReturnType<typeof fixture>>, afterPublish?: () => void) {
+  const publish = createWorkspaceDeletionPublisher({ userDataRoot: f.root, registry: f.registry,
+    assertWritersAbsent: f.assertWritersAbsent });
+  f.publish.mockImplementation(async (...args) => {
+    const [, , target, context] = args;
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(context.target).toBe(target);
+    expect(context.backupDisposition).toBe('explicitDataLoss');
+    await publish(...args);
+    afterPublish?.();
+  });
+}
 
 it('publishes replacement binding after its own capability disposal and returns without a released-lease guard', async test => {
   const f = await replacementFixture(test);
@@ -280,13 +350,18 @@ async function replacementFixture(test: TestContext, options: {
 async function fixture(test: TestContext, mode: 'active' | 'selector', options: {
   cancel?: boolean; returnChoice?: boolean; loseAtCompletion?: boolean; revokeAtCompletion?: boolean; disabled?: boolean;
   replacement?: boolean; deferCompletion?: boolean; replaceOwnerCallbacks?: boolean;
+  continuation?: WorkspaceManagementServiceOptions['deletionContinuation'];
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-composition-'));
   let composition: Omit<WorkspaceManagementComposition, 'readActiveWorkspaceLabel'> | undefined;
   const pending: Promise<unknown>[] = [];
+  const expectedCompletionFailures: unknown[] = [];
   test.onTestFinished(async () => {
     await Promise.allSettled(pending);
-    await composition?.shutdown();
+    if (expectedCompletionFailures.length === 0) await composition?.shutdown();
+    else await expect(composition!.shutdown()).rejects.toMatchObject({
+      message: 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', errors: expectedCompletionFailures,
+    });
     vi.restoreAllMocks();
     vi.mocked(utilityProcess.fork).mockClear();
     if (test.task.result?.state === 'pass') await rm(root, { force: true, recursive: true });
@@ -313,7 +388,7 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
   const lease = new InMemoryWorkspaceMaintenanceLease();
   let current = true;
   let requestCurrent = true;
-  const assertCurrent = () => { if (!current) throw new Error('SYNTHETIC_RESERVATION_LOST'); };
+  const assertCurrent = () => { test.signal.throwIfAborted(); if (!current) throw new Error('SYNTHETIC_RESERVATION_LOST'); };
   const assertRequest = () => { if (!requestCurrent) throw new Error('SYNTHETIC_REQUEST_REVOKED'); };
   const assertOwned = vi.fn(async () => { assertCurrent(); });
   const invalidate = vi.fn(() => { current = false; });
@@ -366,7 +441,8 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
       if (options.deferCompletion) return;
       if (options.loseAtCompletion) current = false;
       if (options.revokeAtCompletion) requestCurrent = false;
-      runtimeRelaunch.complete(guard);
+      try { runtimeRelaunch.complete(guard); }
+      catch (error) { expectedCompletionFailures.push(error); throw error; }
     } },
     ...(options.disabled ? {} : { deletionPreparation: {
       runtimeGeneration: generation, createRuntime,
@@ -374,6 +450,7 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
       confirmDataLoss: confirmLoss, confirmDeletion,
       async confirmReturn() { return options.returnChoice ?? false; }, publish,
     } }),
+    ...(options.continuation === undefined ? {} : { deletionContinuation: options.continuation }),
   };
   const compositionTask = mode === 'selector'
     ? createWorkspaceManagementComposition({ ...shared, mode, activeWorkspaceLifecycle: selector, assertCurrent })
@@ -390,17 +467,25 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
   }
   composition = await compositionTask;
   const service = composition.service;
-  return { start(backupChoice: 'explicitDataLoss' | 'createBackup' = 'explicitDataLoss') {
-    const work = service.prepareDeletion({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+  const start = (durable: boolean, backupChoice: 'explicitDataLoss' | 'createBackup' = 'explicitDataLoss') => {
+    const work = service[durable ? 'deleteWorkspace' : 'prepareDeletion']({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
       typedLabel: initial.workspaces.find(entry => entry.workspaceId === TEST_TARGET_WORKSPACE_ID)!.workspaceLabel, backupChoice },
     { assertCurrent: assertRequest, closeAdmissionForOwnStop: () => service.closeAdmission() });
     pending.push(work); void work.catch(() => undefined); return work;
-  }, replace() {
+  };
+  return { start: (backupChoice?: 'explicitDataLoss' | 'createBackup') => start(false, backupChoice),
+    startDurable: () => start(true), replace() {
     const work = service.replaceActiveFromBackup({ targetWorkspaceId: TEST_SOURCE_WORKSPACE_ID,
       containerPath: join(root, 'synthetic.ekybackup'), password: 'synthetic-only' });
     pending.push(work); void work.catch(() => undefined); return work;
   }, completeDeferred() { runtimeRelaunch.complete(deferredGuard); }, revokeOwner() { current = false; },
-    service, root, runtimePaths, replacementOwner, assertOwned, invalidate, foreignOwner,
+    revokeRequest() { requestCurrent = false; },
+    async assertWritersAbsent() {
+      await assertOwned();
+      await (mode === 'active' ? active : selector).assertNoActiveWorkspaceRuntime();
+      assertCurrent();
+    },
+    service, root, runtimePaths, replacementOwner, assertCurrent, assertOwned, invalidate, foreignOwner,
     lease, launch, stopBackend, backup, createRuntime, confirmLoss, confirmDeletion, publish, runtimeRelaunch,
-    log, registryPath, registryBytes, sentinels };
+    log, registry, registryPath, registryBytes, sentinels };
 }

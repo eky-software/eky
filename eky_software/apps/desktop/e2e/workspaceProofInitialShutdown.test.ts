@@ -59,6 +59,7 @@ describe('workspace proof initial shutdown evidence', () => {
   it.each([
     ['async function runFirstStartProof(', 'const { runWorkspaceFirstStartMigrationProof }'],
     ['async runWorkspaceActivationMigrationProof(', 'return runWorkspaceActivationMigrationProof('],
+    ['async runWorkspaceOriginalInspectionProof(', 'const { runWorkspaceOriginalInspectionProof }'],
   ])('is wired before the backend-absence check in %s', async (entry, proofCall) => {
     const source = await readFile(new URL('./electronE2eEntrypoint.ts', import.meta.url), 'utf8');
     const start = source.indexOf(entry);
@@ -72,5 +73,18 @@ describe('workspace proof initial shutdown evidence', () => {
       .toBeLessThan(body.indexOf('backendController.isRunning()'));
     expect(body.indexOf('backendController.isRunning()'))
       .toBeLessThan(body.indexOf(proofCall));
+  });
+
+  it('admits original-inspection proof once and only for its isolated scenario', async () => {
+    const source = await readFile(new URL('./electronE2eEntrypoint.ts', import.meta.url), 'utf8');
+    const start = source.indexOf('async runWorkspaceOriginalInspectionProof(');
+    const end = source.indexOf('scenarioId: config.scenarioId,', start);
+    const body = source.slice(start, end);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(body).toContain("config.scenarioId !== 'DESK-WORKSPACE-ORIGINAL-001' || originalInspectionProofRequested");
+    expect(body.indexOf('originalInspectionProofRequested = true'))
+      .toBeLessThan(body.indexOf('await shutdownBeforeWorkspaceProof(lifecycle)'));
+    expect(body).toContain('exception: first!');
+    expect(body).toContain('projectExceptionChain(error, [config.backend.sessionSecret, ...secrets])');
   });
 });

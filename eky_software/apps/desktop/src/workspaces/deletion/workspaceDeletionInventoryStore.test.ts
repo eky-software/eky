@@ -21,7 +21,7 @@ it('publishes a real large inventory with progressive writes and bounded readbac
   const selected = await store.publish(header, records(300), f.authority);
   const bytes = await readFile(f.paths.currentPath);
   expect(bytes.byteLength).toBeGreaterThan(16 * 1024);
-  expect(selected.inventory).toEqual({ formatVersion: 1, byteLength: bytes.byteLength, recordCount: 300,
+  expect(selected.inventory).toEqual({ formatVersion: 2, byteLength: bytes.byteLength, recordCount: 300,
     sha256: createHash('sha256').update(bytes).digest('hex') });
   expect(positions).toHaveLength(301);
   expect(positions[0]).toBe(0);

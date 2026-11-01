@@ -567,6 +567,7 @@ describe('caller-owned pre-update recovery point', () => {
     try {
       const acquireReservation = vi.fn(async () => { throw new Error('UNEXPECTED_RESERVATION'); });
       fixture.dependencies.profileSnapshotClient = new ProfileSnapshotInspectionClient({
+        captureSourceTarget: () => ({ kind: 'unbound' }),
         broker: client, stagingRoot: fixture.stagingRoot,
         runnerPath: join(fixture.stagingRoot, 'runner.js'),
         deployment: { backendRoot: fixture.stagingRoot, migrationsDirectory: fixture.stagingRoot, nativeResourceRoot: fixture.stagingRoot },

@@ -9,6 +9,7 @@ import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
 import { parseWorkspaceRegistryBytes } from '../registry/workspaceRegistryBytes.js';
+import { workspaceRegistryEntrySha256 } from '../registry/workspaceRegistrySerializer.js';
 import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 
@@ -56,7 +57,7 @@ export async function captureDeletionTarget(input: {
     lifecycleState: entry.lifecycleState,
     previousActiveWorkspaceId: registry.activeWorkspaceId,
     registrySha256: hash(slots.current.bytes),
-    registryEntrySha256: hash(Buffer.from(JSON.stringify(entry))),
+    registryEntrySha256: workspaceRegistryEntrySha256(entry),
     rootIdentity,
   });
   const assertCurrent = async () => {

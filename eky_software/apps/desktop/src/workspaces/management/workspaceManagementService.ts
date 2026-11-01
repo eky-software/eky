@@ -71,6 +71,25 @@ export interface WorkspaceLabelRenameCommand {
   ): Promise<Readonly<WorkspaceLabelRenameResult>>;
 }
 
+export interface WorkspaceDeletionContinuationAuthority {
+  assertCurrent(): void;
+  assertOwned(): Promise<void>;
+}
+
+export interface WorkspaceDeletionContinuationOwner extends WorkspaceDeletionContinuationAuthority {
+  recordRemoved(receipt: unknown): WorkspaceDeletionCompletion;
+}
+
+export interface WorkspaceDeletionWorkAuthority extends WorkspaceDeletionContinuationAuthority {
+  recordRemoved(receipt: unknown): void;
+}
+
+export interface WorkspaceDeletionCompletion {
+  readonly formatVersion: 1;
+  readonly status: 'completed';
+  readonly navigation: 'selector' | 'reopenPrevious';
+}
+
 export interface WorkspaceManagementServiceOptions {
   readonly createEmpty: EmptyWorkspaceCreationCommand;
   readonly importBackup: WorkspaceBackupImportCommand;
@@ -89,7 +108,12 @@ export interface WorkspaceManagementServiceOptions {
       request: Readonly<WorkspaceDeletionRequest>,
       lifetime: WorkspaceDeletionPreparationLifetime,
       assertLease: () => void,
+      operationId: string,
     ): Promise<WorkspaceDeletionPreparationOutcome>;
+  };
+  readonly deletionContinuation?: {
+    captureAuthority(operationId: string, assertLease: () => void): WorkspaceDeletionContinuationOwner;
+    resume(operationId: string, authority: WorkspaceDeletionWorkAuthority): Promise<WorkspaceDeletionCompletion>;
   };
 }
 
@@ -103,6 +127,8 @@ export class WorkspaceManagementService {
   private admissionClosed = false;
   private readonly pendingWork = new Set<Promise<void>>();
   private shutdownTask: Promise<void> | undefined;
+  private shutdownRequested = false;
+  private readonly deletionCompletionFailures: unknown[] = [];
   private readonly now: () => number;
 
   constructor(
@@ -120,9 +146,15 @@ export class WorkspaceManagementService {
   }
 
   shutdown(): Promise<void> {
+    this.shutdownRequested = true;
     this.closeAdmission();
     // Settlement is not successful mutation, native exit or cleanup authority.
-    this.shutdownTask ??= Promise.all([...this.pendingWork]).then(() => undefined);
+    this.shutdownTask ??= Promise.all([...this.pendingWork]).then(() => {
+      if (this.deletionCompletionFailures.length !== 0) {
+        throw new AggregateError([...this.deletionCompletionFailures],
+          'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', { cause: this.deletionCompletionFailures[0] });
+      }
+    });
     return this.shutdownTask;
   }
 
@@ -209,6 +241,26 @@ export class WorkspaceManagementService {
     requestInput: unknown,
     lifetime: WorkspaceDeletionPreparationLifetime,
   ): Promise<WorkspaceDeletionPreparationOutcome> {
+    return this.runDeletion(requestInput, lifetime, false);
+  }
+
+  // Main-only. No IPC or production composition enables the final command yet.
+  deleteWorkspace(
+    requestInput: unknown,
+    lifetime: WorkspaceDeletionPreparationLifetime,
+  ): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>> {
+    return this.runDeletion(requestInput, lifetime, true);
+  }
+
+  private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
+    durable: false): Promise<WorkspaceDeletionPreparationOutcome>;
+  private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
+    durable: true): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>;
+  private runDeletion(
+    requestInput: unknown,
+    lifetime: WorkspaceDeletionPreparationLifetime,
+    durable: boolean,
+  ) {
     let request: Readonly<WorkspaceDeletionRequest>;
     try {
       request = parseWorkspaceDeletionRequest(requestInput);
@@ -220,24 +272,77 @@ export class WorkspaceManagementService {
     let lease: WorkspaceMaintenanceLeaseHandle | undefined;
     let assertLease: (() => void) | undefined;
     let returnRequested = false;
+    let continuationCurrent = false;
     return this.run('delete', async () => {
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       const preparation = this.options.deletionPreparation;
-      if (preparation === undefined) {
+      const continuation = this.options.deletionContinuation;
+      if (preparation === undefined || (durable && continuation === undefined)) {
         throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
       }
+      const captureAuthority = durable ? continuation!.captureAuthority.bind(continuation) : undefined;
+      const resume = durable ? continuation!.resume.bind(continuation) : undefined;
+      const operationId = randomUUID();
       lease = await preparation.maintenanceLease.acquire('delete');
       this.assertAdmissionOpen('delete');
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
-      assertLease = preparation.maintenanceLease.captureCurrentOwner(['delete']);
-      const outcome = await preparation.prepare(request, lifetime, assertLease);
+      assertLease = preparation.maintenanceLease.captureCurrentOwner(['delete'], lease);
+      const capturedLease = assertLease;
+      const outcome = await preparation.prepare(request, lifetime, capturedLease, operationId);
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       assertUpdateJournalAuthority(assertLease);
       if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
         throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
       }
       returnRequested = outcome === 'returnRequested';
-      return outcome;
+      if (!durable) return outcome;
+      if (outcome !== 'prepared') return Object.freeze({ formatVersion: 1 as const, status: 'cancelled' as const });
+      const captured = captureAuthority!(operationId, capturedLease);
+      const assertMain = captured.assertCurrent.bind(captured);
+      const assertOwned = captured.assertOwned.bind(captured);
+      const recordRemoved = captured.recordRemoved.bind(captured);
+      let removed: WorkspaceDeletionCompletion | undefined;
+      assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      assertUpdateJournalAuthority(capturedLease);
+      continuationCurrent = true;
+      const assertCurrent = () => {
+        try {
+          if (!continuationCurrent || this.shutdownRequested) {
+            throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
+          }
+          assertUpdateJournalAuthority(capturedLease);
+          assertUpdateJournalAuthority(assertMain);
+          if (!continuationCurrent || this.shutdownRequested) {
+            throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
+          }
+          assertUpdateJournalAuthority(capturedLease);
+        } catch (error) { continuationCurrent = false; throw error; }
+      };
+      const assertMutationCurrent = () => {
+        assertCurrent();
+        if (removed !== undefined) throw new Error('WORKSPACE_DELETION_ALREADY_REMOVED');
+      };
+      const authority = Object.freeze({ assertCurrent: assertMutationCurrent, async assertOwned() {
+        assertMutationCurrent();
+        try { await assertOwned(); }
+        catch (error) { continuationCurrent = false; throw error; }
+        assertMutationCurrent();
+      }, recordRemoved(receipt: unknown) {
+        assertMutationCurrent();
+        removed = Object.freeze({ ...recordRemoved(receipt) });
+      } });
+      try {
+        await authority.assertOwned();
+        assertCurrent();
+        const result = await resume!(operationId, authority);
+        assertCurrent();
+        if (removed === undefined || result.formatVersion !== 1 || result.status !== 'completed' ||
+            (result.navigation !== 'selector' && result.navigation !== 'reopenPrevious') ||
+            result.navigation !== removed.navigation) {
+          throw new Error('WORKSPACE_DELETION_RESULT_INVALID');
+        }
+        return Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: result.navigation });
+      } finally { continuationCurrent = false; }
     }, {
       assertRelaunch: () => {
         if (!returnRequested || assertLease === undefined) {
@@ -303,12 +408,14 @@ export class WorkspaceManagementService {
         this.options.runtimeRelaunchCompletion?.complete(deletionCompletion?.assertRelaunch);
       } catch (cause) {
         failures.push(cause);
+        if (deletionCompletion !== undefined) this.deletionCompletionFailures.push(cause);
         this.closeAdmission();
       }
       try {
         if (deletionCompletion !== undefined) await deletionCompletion.release();
       } catch (cause) {
         failures.push(cause);
+        this.deletionCompletionFailures.push(cause);
         this.closeAdmission();
       }
       if (failures.length !== 0) throw failures[0];

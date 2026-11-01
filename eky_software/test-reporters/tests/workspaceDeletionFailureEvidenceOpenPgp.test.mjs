@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, readdir } from 'node:fs/promises';
+import { spawnSync } from 'node:child_process';
+import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -8,7 +9,7 @@ import { gunzipSync } from 'node:zlib';
 
 import { projectExceptionChain, STARTUP_EXCEPTION_LIMITS } from '../../apps/desktop/src/main/startupExceptionEvidence.ts';
 import { captureWorkspaceDeletionFailure } from '../../apps/e2e/src/fixtures/captureWorkspaceDeletionFailure.ts';
-import { runElectronWorkspaceAdoptionAcceptanceProof } from '../../apps/e2e/src/electron/electronMainCapabilities.ts';
+import { runElectronWorkspaceAdoptionAcceptanceProof, runElectronWorkspaceOriginalInspectionProof } from '../../apps/e2e/src/electron/electronMainCapabilities.ts';
 import { createRunnerFailureSink, validateRunnerFailureEvidence } from '../runnerFailureEvidence.mjs';
 import { collectJobFailureEvidence } from '../../apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../apps/desktop/installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
@@ -56,13 +57,24 @@ test('workspace main projections retain original causes and coverage through Ope
     }) }, adoptionInfo, createRunnerFailureSink({ env: binding, tempRoot: temp })),
     /^Error: WORKSPACE_ADOPTION_ACCEPTANCE_PROOF_FAILED$/);
     assert.equal(adoptionInfo.annotations[0].description, 'recorded');
+    const originalInfo = { ...testInfo, title: 'W7.4 synthetic original-inspection boundary failure',
+      testId: 'w74-original-proof', annotations: [] };
+    await assert.rejects(runElectronWorkspaceOriginalInspectionProof({ evaluate: async () => ({
+      status: 'failed', runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+      exception: projectExceptionChain(new Error('SYNTHETIC_W74_ROLLBACK_ORIGINAL', {
+        cause: new Error('SYNTHETIC_W74_ROLLBACK_CAUSE'),
+      })),
+    }) }, originalInfo, createRunnerFailureSink({ env: binding, tempRoot: temp })),
+    /^Error: WORKSPACE_ORIGINAL_INSPECTION_PROOF_FAILED$/);
+    assert.equal(originalInfo.annotations[0].description, 'recorded');
+    await runInspectionFailureWorker(fixture.root, temp, binding);
     const originals = new Map();
     for (const directory of await readdir(temp)) {
       for (const file of await readdir(join(temp, directory))) {
         originals.set(`temporary/${directory}/${file}`, await readFile(join(temp, directory, file)));
       }
     }
-    assert.equal(originals.size, 5);
+    assert.equal(originals.size, 11);
     // Synthetic collector identity, not hosted admission or an artifact upload.
     const collected = await collectJobFailureEvidence({ ...binding,
       RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
@@ -96,10 +108,83 @@ test('workspace main projections retain original causes and coverage through Ope
     assert.equal(adoption.exception.chain[0].message === 'SYNTHETIC_W74_ADOPTION_ORIGINAL', true);
     assert.equal(adoption.exception.chain[1].message === 'SYNTHETIC_W74_ADOPTION_CAUSE', true);
     assert.equal(adoption.exception.chain[0].stack.includes('workspaceDeletionFailureEvidenceOpenPgp'), true);
+    const original = records.find(record => record.phase === 'workspaceOriginalInspection');
+    assert.equal(original.exception.chain[0].message === 'SYNTHETIC_W74_ROLLBACK_ORIGINAL', true);
+    assert.equal(original.exception.chain[1].message === 'SYNTHETIC_W74_ROLLBACK_CAUSE', true);
+    assert.equal(original.exception.chain[0].stack.includes('workspaceDeletionFailureEvidenceOpenPgp'), true);
+    const inspection = records.find(record => record.phase === 'profileInspectionCatch');
+    assert.equal(inspection.exception.chain[0].message === 'SYNTHETIC_W74_INSPECTION_ORIGINAL', true);
+    assert.equal(inspection.exception.chain[1].message === 'SYNTHETIC_W74_INSPECTION_CAUSE', true);
+    assert.equal(inspection.exception.chain[0].stack.includes('inspection.test.mjs'), true);
+    const assertion = records.find(record => record.phase === 'testFailure');
+    assert.equal(assertion.exception.chain[0].message.includes('W74_INSPECTION_EXPECTED_SUCCESS'), true);
+    assert.equal(JSON.stringify(assertion.exception).includes('SYNTHETIC_W74_INSPECTION_ORIGINAL'), false);
     for (const record of records) {
       assert.equal(record.test.attempt, 0);
-      assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);
+      if (record.phase !== 'testFailure') {
+        assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);
+      }
     }
     completed = true;
   } finally { await fixture.finish({ completed, failed: !completed }); }
 });
+
+async function runInspectionFailureWorker(parent, temp, binding) {
+  const directory = join(parent, 'inspection-worker');
+  await mkdir(directory);
+  const moduleUrl = path => new URL(path, import.meta.url).href;
+  const file = join(directory, 'inspection.test.mjs');
+  const config = join(directory, 'vitest.config.mjs');
+  await writeFile(config, `export default { resolve: { alias: {
+    vitest: ${JSON.stringify(fileURLToPath(new URL('../../node_modules/vitest/dist/index.js', import.meta.url)))}
+  } }, test: { include: ['inspection.test.mjs'],
+    maxWorkers: 1, fileParallelism: false, retry: 0, testTimeout: 5000,
+    hookTimeout: 2000, includeTaskLocation: true } };`, { flag: 'wx', mode: 0o600 });
+  await writeFile(file, `import { resolve } from 'node:path';
+import { test, expect, vi } from 'vitest';
+import { runProfileSnapshotInspection } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/profileBackup/runProfileSnapshotInspection.ts'))};
+import { createRunnerFailureSink } from ${JSON.stringify(moduleUrl('../runnerFailureEvidence.mjs'))};
+vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn(() => { throw new Error('UNEXPECTED_INSPECTION_FORK'); }) } }));
+test('inspection original exception before safe conversion', async context => {
+  const original = new Error('SYNTHETIC_W74_INSPECTION_ORIGINAL', { cause: new Error('SYNTHETIC_W74_INSPECTION_CAUSE') });
+  let first;
+  const sink = createRunnerFailureSink();
+  context.onTestFailed(async () => {
+    if (first === undefined) return;
+    const task = context.task;
+    sink.record({ runner: 'vitest', phase: 'profileInspectionCatch', error: first,
+      testName: task.fullTestName, testId: task.id + ':11111111-1111-4111-8111-111111111111',
+      file: task.file.filepath, line: task.location?.line, column: task.location?.column,
+      attempt: 0, retryCount: 0, repeatCount: 0 });
+    await sink.flush();
+  });
+  const result = await runProfileSnapshotInspection({
+    operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa', target: { kind: 'unbound' },
+    kind: 'inspect', migrationPolicy: 'restoreCompatible', runnerPath: resolve('unused-runner'),
+    deployment: { backendRoot: resolve('unused-backend'), migrationsDirectory: resolve('unused-migrations'),
+      nativeResourceRoot: resolve('unused-native') },
+    reservation: { assertMainOwned: async () => {}, invalidate() {}, bind() { throw new Error('UNEXPECTED_BIND'); } },
+    readActiveContext: async () => { throw original; }, assertAuthority() {}, signal: new AbortController().signal,
+    observeException(error) { first ??= error; },
+  }).catch(error => error);
+  expect(first === original).toBe(true);
+  expect(result.message === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' && result.causeCode === 'unknown' && result.cause === undefined).toBe(true);
+  expect(false, 'W74_INSPECTION_EXPECTED_SUCCESS').toBe(true);
+});`, { flag: 'wx', mode: 0o600 });
+  const env = { ...process.env, ...binding, CI: '1', NO_COLOR: '1', TEMP: temp, TMP: temp, TMPDIR: temp };
+  delete env.NODE_TEST_CONTEXT; delete env.FORCE_COLOR;
+  const child = spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'),
+    'run', '--config', config, '--reporter=default',
+    '--reporter=' + fileURLToPath(new URL('../vitestFailureReporter.mjs', import.meta.url))], {
+    cwd: directory, env, encoding: 'utf8', timeout: 30_000, maxBuffer: 512 * 1024, windowsHide: true,
+  });
+  await writeFile(join(directory, 'output.private.json'), JSON.stringify({ status: child.status,
+    signal: child.signal, stdout: child.stdout, stderr: child.stderr, processError: child.error?.code ?? null }),
+  { flag: 'wx', mode: 0o600 });
+  assert.equal(child.error === undefined && child.signal === null, true, 'INSPECTION_WORKER_INTERRUPTED');
+  assert.equal(child.status, 1, 'INSPECTION_EXPECTED_ASSERTION_DID_NOT_FAIL');
+  const output = (child.stdout ?? '') + (child.stderr ?? '');
+  for (const marker of ['SYNTHETIC_W74_INSPECTION_ORIGINAL', 'SYNTHETIC_W74_INSPECTION_CAUSE']) {
+    assert.equal(output.includes(marker), false, 'INSPECTION_ORIGINAL_LEAKED_TO_PUBLIC_OUTPUT');
+  }
+}

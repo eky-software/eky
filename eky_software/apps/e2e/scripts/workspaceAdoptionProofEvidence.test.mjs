@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
-import { runElectronWorkspaceAdoptionAcceptanceProof } from '../src/electron/electronMainCapabilities.ts';
+import { runElectronWorkspaceAdoptionAcceptanceProof, runElectronWorkspaceOriginalInspectionProof } from '../src/electron/electronMainCapabilities.ts';
 import { createRunnerFailureSink, validateRunnerFailureEvidence } from '../../../test-reporters/runnerFailureEvidence.mjs';
 import { projectExceptionChain } from '../../desktop/src/main/startupExceptionEvidence.ts';
 
@@ -51,6 +51,51 @@ for (const failure of ['record', 'flush', 'annotations']) {
       record() { if (failure === 'record') throw new Error('SYNTHETIC_REPORTING'); },
       async flush() { if (failure === 'flush') throw new Error('SYNTHETIC_REPORTING'); return { status: 'recorded' }; },
     }), /^Error: WORKSPACE_ADOPTION_ACCEPTANCE_PROOF_FAILED$/);
+  });
+}
+
+test('original-inspection main reader preserves the first chain and runtime identity in the existing sink', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'eky-original-evidence-'));
+  let completed = false;
+  t.after(() => completed ? rm(root, { recursive: true, force: true }) : undefined);
+  const testInfo = context();
+  await assert.rejects(runElectronWorkspaceOriginalInspectionProof({ evaluate: async () => reply() },
+    testInfo, createRunnerFailureSink({ env: {}, tempRoot: root })), /^Error: WORKSPACE_ORIGINAL_INSPECTION_PROOF_FAILED$/);
+  const [directory] = await readdir(root);
+  const file = (await readdir(join(root, directory))).find(name => !name.includes('summary'));
+  const record = validateRunnerFailureEvidence(JSON.parse(await readFile(join(root, directory, file), 'utf8')));
+  assert.equal(record.phase, 'workspaceOriginalInspection');
+  assert.equal(record.test.id, `${testInfo.testId}:${runtimeInstanceId}`);
+  assert.equal(record.exception.chain[0].message, 'SYNTHETIC_ADOPTION_ORIGINAL');
+  assert.equal(record.exception.chain[1].message, 'SYNTHETIC_ADOPTION_CAUSE');
+  assert.equal(testInfo.annotations[0].description, 'recorded');
+  completed = true;
+});
+
+test('successful original-inspection proof creates no failure record', async () => {
+  const result = { backendStarts: 2 };
+  assert.equal(await runElectronWorkspaceOriginalInspectionProof({ evaluate: async () => ({ status: 'completed', result }) },
+    context(), { record() { assert.fail(); }, flush() { assert.fail(); } }), result);
+});
+
+test('original-inspection reader keeps partial source coverage after successful delivery', async () => {
+  const value = reply();
+  value.exception.incomplete = true;
+  const testInfo = context();
+  await assert.rejects(runElectronWorkspaceOriginalInspectionProof({ evaluate: async () => value }, testInfo, {
+    record() {}, async flush() { return { status: 'recorded' }; },
+  }));
+  assert.equal(testInfo.annotations[0].description, 'partial');
+});
+
+for (const failure of ['record', 'flush', 'annotations']) {
+  test(`original-inspection ${failure} failure cannot replace the native failure`, async () => {
+    const testInfo = context();
+    if (failure === 'annotations') testInfo.annotations = { push() { throw new Error('SYNTHETIC_REPORTING'); } };
+    await assert.rejects(runElectronWorkspaceOriginalInspectionProof({ evaluate: async () => reply() }, testInfo, {
+      record() { if (failure === 'record') throw new Error('SYNTHETIC_REPORTING'); },
+      async flush() { if (failure === 'flush') throw new Error('SYNTHETIC_REPORTING'); return { status: 'recorded' }; },
+    }), /^Error: WORKSPACE_ORIGINAL_INSPECTION_PROOF_FAILED$/);
   });
 }
 

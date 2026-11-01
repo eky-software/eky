@@ -269,6 +269,48 @@ for (const mode of ['forward', 'rollback'] as const) {
       await f.held()?.release();
     });
 
+    it.each([false, true])('keeps a content failure while an original selection read settles late (reject: %s)', async rejectLate => {
+      const f = fixture(mode);
+      const first = new Error('synthetic content failure');
+      const late = new Error('synthetic late selection failure');
+      const entered = deferred(); const finish = deferred(); const settled = deferred();
+      let resumed = false;
+      f.content.mockImplementationOnce(async context => {
+        f.selection.assertOperationSelection.mockImplementationOnce(async assertAuthority => {
+          entered.resolve();
+          try {
+            await finish.promise;
+            if (rejectLate) throw late;
+            assertAuthority(); resumed = true;
+          } finally { settled.resolve(); }
+        });
+        void context.assertCurrent().catch(() => {});
+        await entered.promise;
+        throw first;
+      });
+      const outcome = f.run().catch(error => error);
+      try {
+        await entered.promise;
+        const failure = await outcome;
+        expect(failure).toMatchObject({ cause: first });
+        expect(f.selection.onUnsettledWork).toHaveBeenCalledExactlyOnceWith(first);
+        expect(f.reservation.invalidate).toHaveBeenCalled();
+        expect(f.reservation.close).not.toHaveBeenCalled();
+        expect(f.prepare).not.toHaveBeenCalled();
+        expect(f.lease.readState()).toBe('busy');
+        const selections = f.selection.assertOperationSelection.mock.calls.length;
+        finish.resolve(); await settled.promise; await vi.advanceTimersByTimeAsync(0);
+        expect(resumed).toBe(false);
+        expect(await outcome).toBe(failure);
+        expect(f.selection.onUnsettledWork).toHaveBeenCalledExactlyOnceWith(first);
+        expect(f.selection.assertOperationSelection).toHaveBeenCalledTimes(selections);
+        expect(f.reservation.close).not.toHaveBeenCalled();
+        expect(f.lease.readState()).toBe('busy');
+        await expect(f.lease.acquire('switch')).rejects.toThrow('WORKSPACE_MAINTENANCE_BUSY');
+        expect(vi.getTimerCount()).toBe(0);
+      } finally { finish.resolve(); await settled.promise; await outcome; await f.held()?.release(); }
+    });
+
     it('pins the selection callbacks and deadline before awaiting external work', async () => {
       const f = fixture(mode); const assertion = f.selection.assertOperationSelection;
       const invalidation = f.selection.onUnsettledWork; const deadline = f.selection.deadline;

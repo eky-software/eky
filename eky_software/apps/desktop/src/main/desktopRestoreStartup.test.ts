@@ -92,6 +92,8 @@ import { WorkspaceFirstStartMigrationJournalStore } from '../workspaces/update/w
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { WorkspaceManagementService } from '../workspaces/management/workspaceManagementService.js';
+import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from '../workspaces/deletion/workspaceDeletionJournalCodec.js';
+import { deletionInventoryFormatVersion } from '../workspaces/deletion/workspaceDeletionInventoryCodec.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { createWorkspaceManagementCapability, type WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
@@ -753,7 +755,8 @@ describe('backendless selector main composition', () => {
   );
 
   it.for(['publishReturn', 'clearReturn'] as const)(
-    'restarts selector return after the selected writer loses its acknowledgement: $0', async (scenario, context) => {
+    'restarts selector return after the selected writer loses its acknowledgement: $0',
+    { timeout: restoreStartupCompositionTimeoutMs }, async (scenario, context) => {
       const lifetime = beginTrackedStartupTest(context);
       await lifetime.run(async () => {
         const f = await lifetime.step('fixturePreparation', () => createDeferredStartupFixture(lifetime.roots, true));
@@ -1344,7 +1347,7 @@ describe('selector installation-state startup wiring', () => {
           if (scenario === 'releaseFailure') expect(releaseFailed).toBe(true);
         }
       });
-    }, scenario === 'completed' || scenario === 'releaseFailure' ? restoreStartupCompositionTimeoutMs : undefined);
+    }, restoreStartupCompositionTimeoutMs);
   }
 
   it('does not publish business acceptance when fresh content changes lineage after source-null switch acceptance', async context => {
@@ -2802,6 +2805,75 @@ describe('desktop restore startup composition', () => {
       });
     },
   );
+
+  it('offers the original inspection startup error before its safe process error reaches main', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget: true, acceptedRestore: true, completeStartup: true, ownedRoots: lifetime.roots,
+      }));
+      const original = new Error('SYNTHETIC_INSPECTION_STARTUP_ORIGINAL', { cause: new Error('SYNTHETIC_INSPECTION_STARTUP_CAUSE') });
+      const observe = vi.fn();
+      vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockImplementationOnce(async input => {
+        input.observeException?.(original);
+        throw new ProfileInspectionProcessError('unknown', { processAbsent: true, reservationReclaimed: true, forced: false });
+      });
+      await lifetime.step('startup', async () => { await expect(f.start(observe)).rejects.toThrow(); });
+      expect(observe.mock.calls[0]?.[0] === original).toBe(true);
+      expect(observe.mock.calls[0]?.[1]).toBe('runtimeStartup');
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+    });
+  });
+
+  it('uses fresh runtime inspection selection after replacement startup selection closes', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget: true, acceptedRestore: true, completeStartup: true, ownedRoots: lifetime.roots,
+      }));
+      let client: ProfileSnapshotInspectionClient | undefined;
+      const validate = ProfileSnapshotInspectionClient.prototype.validateProfileSnapshot;
+      vi.spyOn(ProfileSnapshotInspectionClient.prototype, 'validateProfileSnapshot')
+        .mockImplementation(function (this: ProfileSnapshotInspectionClient, ...args) {
+          client = this;
+          return validate.apply(this, args);
+        });
+      let runtimeInspection = false;
+      const observe = vi.fn();
+      const inspect = vi.mocked(snapshotInspection.runProfileSnapshotInspection).getMockImplementation()!;
+      vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockImplementation(async input => {
+        if (runtimeInspection) {
+          input.observeException?.(new Error('SYNTHETIC_POST_STARTUP_INSPECTION'));
+          expect(input.target).toMatchObject({ kind: 'bound', workspaceId,
+            lineageIdentity: { formatVersion: 1, profileId: originalProfileId } });
+          if (input.target.kind !== 'bound') throw new Error('SYNTHETIC_RUNTIME_TARGET_MISSING');
+          await input.target.assertSelectionCurrent(input.assertAuthority);
+        }
+        return inspect(input);
+      });
+      const lifecycle = await lifetime.step('startup', () => f.start(observe));
+      expect(lifecycle).toBeDefined();
+      let firstFailure: { error: unknown } | undefined;
+      try {
+        expect(await f.journal.peek()).toBeUndefined();
+        expect(client).toBeDefined();
+        runtimeInspection = true;
+        const snapshotId = '33333333-3333-4333-8333-333333333333';
+        await client!.createProfileSnapshot(snapshotId, 'exactCurrentManifest');
+        await client!.validateProfileSnapshot(snapshotId);
+        await client!.removeProfileSnapshot(snapshotId);
+        expect(observe).not.toHaveBeenCalled();
+        expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+      } catch (error) { firstFailure = { error }; }
+      try { await lifecycle?.shutdown(); }
+      catch (error) {
+        if (firstFailure === undefined) throw error;
+        throw new AggregateError([firstFailure.error, error], 'SYNTHETIC_RUNTIME_INSPECTION_AND_SHUTDOWN_FAILED',
+          { cause: firstFailure.error });
+      }
+      if (firstFailure !== undefined) throw firstFailure.error;
+    });
+  });
 
   it('retains reclaimed main ownership while a live terminal mutation remains pending', async context => {
     const lifetime = beginTrackedStartupTest(context);
@@ -4773,6 +4845,7 @@ async function createFixture(
     ownedRoots?: string[];
     resolveActiveWorkspace?: NonNullable<StartDesktopCompositionOptions['dependencies']>['resolveActiveWorkspace'];
     workspaceDeletionPublisher?: StartDesktopCompositionOptions['workspaceDeletionPublisher'];
+    workspaceDeletionCommand?: StartDesktopCompositionOptions['workspaceDeletionCommand'];
     createWorkspaceManagementCapability?: typeof createWorkspaceManagementCapability;
     stopForDelete?(operationId: string): Promise<void>;
   } = {},
@@ -5069,6 +5142,7 @@ async function createFixture(
       reportSmokeStage: StartDesktopCompositionOptions['reportSmokeStage'] = async () => undefined) => startDesktopComposition({
       ...(observeStartupException === undefined ? {} : { observeStartupException }),
       ...(options.workspaceDeletionPublisher === undefined ? {} : { workspaceDeletionPublisher: options.workspaceDeletionPublisher }),
+      ...(options.workspaceDeletionCommand === undefined ? {} : { workspaceDeletionCommand: options.workspaceDeletionCommand }),
       assertSingleInstanceOwnership,
       appVersion: '0.2.8',
       applicationPath: join(root, 'app'),
@@ -5272,6 +5346,155 @@ describe('W7.4 main replacement binding', () => {
                 'SYNTHETIC_REPLACEMENT_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
               throw cleanupFailure;
             }
+          }
+        }
+      });
+    });
+});
+
+describe('W7.4 main deletion completion wiring', () => {
+  it.for(['removed', 'responseLost', 'beforeReceipt', 'releaseFailure', 'selectorRemoved', 'otherCompanyRemoved',
+    'completedBeforeShutdown', 'releaseFailureBeforeShutdown'] as const)(
+    'preserves the actual marker boundary across %s', async (scenario, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const entered = createCompletionGate();
+        const finish = createCompletionGate();
+        const releaseFails = scenario === 'releaseFailure' || scenario === 'releaseFailureBeforeShutdown';
+        const closeFails = scenario === 'beforeReceipt' || releaseFails;
+        let service: WorkspaceManagementService | undefined;
+        let binding: WorkspaceDeletionJournalV1 | undefined;
+        const targetWorkspaceId = scenario === 'otherCompanyRemoved'
+          ? validateWorkspaceId('77777777-7777-4777-8777-777777777777') : workspaceId;
+        const command: NonNullable<StartDesktopCompositionOptions['workspaceDeletionCommand']> = {
+          async publish(assertCurrent, assertSelected, target, publication) {
+            assertCurrent(); await assertSelected(); assertCurrent();
+            // Modeled durable owner: this proves C's delivery ordering, not D's purge.
+            binding = captureWorkspaceDeletionJournal({ formatVersion: 1, phase: 'authorized',
+              target: { formatVersion: deletionInventoryFormatVersion, operationId: publication.operationId, workspaceId: target.workspaceId,
+                lineageIdentity: { formatVersion: 1, profileId: target.profileId }, registryEntrySha256: target.registryEntrySha256 },
+              registryBeforeSha256: target.registrySha256, registryAfterSha256: 'b'.repeat(64),
+              previousActiveWorkspaceId: target.previousActiveWorkspaceId, backupDisposition: publication.backupDisposition,
+              inventory: { formatVersion: deletionInventoryFormatVersion, byteLength: 1, recordCount: 1, sha256: 'c'.repeat(64) },
+              inventoryFileIdentity: 'd'.repeat(64), operationRootIdentity: 'e'.repeat(64), operationParentIdentity: 'f'.repeat(64) });
+            return { journal: binding, workspaceRootIdentity: target.rootIdentity };
+          },
+          async resume(_id, authority) {
+            await authority.assertOwned();
+            const targetRoot = deriveWorkspaceRoot(f.root, targetWorkspaceId, 1).workspaceRoot;
+            await rm(targetRoot, { recursive: true });
+            if (scenario !== 'beforeReceipt') authority.recordRemoved({ status: 'removed',
+              journal: { ...binding!, phase: 'registryPublished' } });
+            entered.resolve();
+            await finish.promise;
+            if (scenario === 'beforeReceipt') authority.recordRemoved({ status: 'removed',
+              journal: { ...binding!, phase: 'registryPublished' } });
+            if (scenario === 'responseLost') throw new Error('SYNTHETIC_DELETION_RESPONSE_LOST');
+            return { formatVersion: 1, status: 'completed',
+              navigation: scenario === 'otherCompanyRemoved' ? 'reopenPrevious' : 'selector' };
+          },
+        };
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+          workspaceDeletionCommand: command,
+          async stopForDelete() {},
+          createWorkspaceManagementCapability(options) {
+            service = options.service as WorkspaceManagementService;
+            return createWorkspaceManagementCapability(options);
+          },
+        }));
+        electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+          ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+        vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'beginDeleteMaintenance').mockResolvedValue('busy');
+        vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'assertDeleteMaintenance').mockResolvedValue('busy');
+        const marker = vi.spyOn(RecoveryPointCleanShutdownMarker.prototype, 'markClean');
+        const originalRegistry = (await f.registry.read())!;
+        const registry = { ...originalRegistry, formatVersion: 2 as const,
+          activeWorkspaceId: scenario === 'selectorRemoved' ? null : workspaceId,
+          workspaces: scenario === 'otherCompanyRemoved' ? [...originalRegistry.workspaces, {
+            ...originalRegistry.workspaces[0]!, workspaceId: targetWorkspaceId,
+            workspaceLabel: 'Synthetic other company', lineageIdentity: { formatVersion: 1 as const, profileId: foreignProfileId },
+          }] : originalRegistry.workspaces,
+        };
+        if (scenario === 'otherCompanyRemoved') await mkdir(deriveWorkspaceRoot(f.root, targetWorkspaceId, 1).workspaceRoot, { recursive: true });
+        await f.registry.write(registry);
+        const releaseFailure = new Error('SYNTHETIC_DELETE_LEASE_RELEASE_FAILED');
+        if (releaseFails) {
+          const acquire = InMemoryWorkspaceMaintenanceLease.prototype.acquire;
+          const capture = InMemoryWorkspaceMaintenanceLease.prototype.captureCurrentOwner;
+          const handles = new WeakMap<Awaited<ReturnType<typeof acquire>>, Awaited<ReturnType<typeof acquire>>>();
+          vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire').mockImplementation(async function (this: InMemoryWorkspaceMaintenanceLease, purpose) {
+            const original = await acquire.call(this, purpose);
+            if (purpose !== 'delete') return original;
+            const wrapped = { async release() { await original.release(); throw releaseFailure; } };
+            handles.set(wrapped, original);
+            return wrapped;
+          });
+          vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'captureCurrentOwner').mockImplementation(function (this: InMemoryWorkspaceMaintenanceLease, purposes, expected) {
+            return capture.call(this, purposes, expected === undefined ? undefined : handles.get(expected) ?? expected);
+          });
+        }
+        const lifecycle = await lifetime.step('startup', () => f.start());
+        if (lifecycle === undefined || service === undefined) throw new Error('MISSING_MAIN_DELETION_OWNER');
+        f.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false });
+        const work = service.deleteWorkspace({ formatVersion: 1, workspaceId: targetWorkspaceId,
+          typedLabel: registry.workspaces.find(entry => entry.workspaceId === targetWorkspaceId)!.workspaceLabel, backupChoice: 'explicitDataLoss' },
+        { assertCurrent() {}, closeAdmissionForOwnStop() { service!.closeAdmission(); } })
+          .then(value => ({ value }), error => ({ error }));
+        let closing: Promise<void> | undefined;
+        let checked = false;
+        let firstFailure: { error: unknown } | undefined;
+        try {
+          const reached = await Promise.race([entered.promise.then(() => 'held' as const), work]);
+          if (reached !== 'held') throw 'error' in reached ? reached.error : new Error('DURABLE_OWNER_NOT_ENTERED');
+          const commandSettlesFirst = scenario === 'completedBeforeShutdown' || scenario === 'releaseFailureBeforeShutdown';
+          if (commandSettlesFirst) {
+            finish.resolve();
+            if (releaseFails) expect(await work).toHaveProperty('error');
+            else expect(await work).toEqual({ value: { formatVersion: 1, status: 'completed', navigation: 'selector' } });
+          }
+          closing = lifecycle.shutdown();
+          let settled = false;
+          void closing.then(() => { settled = true; }, () => { settled = true; });
+          await nextEventLoopTurn();
+          if (!commandSettlesFirst) expect(settled).toBe(false);
+          expect(marker).not.toHaveBeenCalled();
+          finish.resolve();
+          if (!commandSettlesFirst) expect(await work).toHaveProperty('error'); // The response was revoked, not an accepted terminal.
+          if (closeFails) {
+            await expect(closing).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+            await expect(lifecycle.shutdown()).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+            if (releaseFails) await expect(closing.catch(error => hasErrorCause(error.cause.managementFailure, releaseFailure))).resolves.toBe(true);
+          } else await closing;
+          checked = true;
+          expect(marker).toHaveBeenCalledTimes(scenario === 'otherCompanyRemoved' ? 1 : 0);
+          const root = deriveWorkspaceRoot(f.root, targetWorkspaceId, 1).workspaceRoot;
+          if (scenario === 'otherCompanyRemoved') await expect(readFile(f.databasePath, 'utf8')).resolves.toBe(f.originalBytes);
+          else await expect(readFile(f.databasePath)).rejects.toMatchObject({ code: 'ENOENT' });
+          await expect(readdir(root)).rejects.toMatchObject({ code: 'ENOENT' });
+          const markerPath = createProfileSnapshotRuntimePaths(createDesktopProfilePaths(root).runtimeRoot).recoveryPointCleanShutdownMarkerPath;
+          for (const slot of [markerPath, `${markerPath}.next`, `${markerPath}.backup`]) {
+            await expect(readFile(slot)).rejects.toMatchObject({ code: 'ENOENT' });
+          }
+          if (scenario === 'otherCompanyRemoved') await expect(f.marker.consume()).resolves.toBe('clean');
+          const events = await readRestoreDiagnosticEvents(f.root);
+          expect(events.some(event => event.eventName === 'desktop.shutdownCompleted'))
+            .toBe(!closeFails);
+          expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+        } catch (error) {
+          firstFailure = { error };
+          throw error;
+        } finally {
+          finish.resolve(); await work;
+          try {
+            if (closing !== undefined) {
+              if (checked && closeFails) await closing.catch(() => undefined);
+              else await closing;
+            } else await lifecycle.shutdown();
+          } catch (cleanupFailure) {
+            if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+              'SYNTHETIC_DELETION_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+            throw cleanupFailure;
           }
         }
       });

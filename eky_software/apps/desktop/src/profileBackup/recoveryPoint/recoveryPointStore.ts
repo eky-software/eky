@@ -74,6 +74,7 @@ export class RecoveryPointStore {
   }
 
   async create(input: {
+    sourceOperationId?: string;
     entries: readonly BackupPayloadSourceEntry[];
     kind: RecoveryPointKind;
     manifest: Omit<BackupManifest, 'entries'>;
@@ -174,7 +175,13 @@ export class RecoveryPointStore {
         operationId: inspectionOperationId,
         quarantineRoot: this.dependencies.quarantineRoot,
         stagingRoot: this.dependencies.stagingRoot,
-        validator: this.dependencies.validator,
+        validator: input.sourceOperationId === undefined ? this.dependencies.validator : {
+          withInspectionOperation: this.dependencies.validator.withInspectionOperation.bind(this.dependencies.validator),
+          withProfileSnapshot: this.dependencies.validator.withProfileSnapshot.bind(this.dependencies.validator),
+          removeProfileSnapshot: this.dependencies.validator.removeProfileSnapshot.bind(this.dependencies.validator),
+          validateProfileSnapshot: (id, maintenanceId, cleanup) => this.dependencies.validator.validateProfileSnapshot(
+            id, maintenanceId, cleanup, input.sourceOperationId),
+        },
         ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
       });
       if (

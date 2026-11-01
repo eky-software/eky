@@ -126,6 +126,7 @@ async function fixture(options: Options = {}) {
     return receipt;
   });
   const client = new ProfileSnapshotInspectionClient({
+    captureSourceTarget: () => ({ kind: 'unbound' }),
     stagingRoot, runnerPath: join(root, 'synthetic-runner.js'),
     deployment: { backendRoot: join(root, 'backend'), migrationsDirectory: join(root, 'migrations'), nativeResourceRoot: join(root, 'native') },
     assertMainInstance() {},

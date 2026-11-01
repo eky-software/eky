@@ -16,6 +16,7 @@ import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferred
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import type { OwnedProfileBackupInspectionReservation } from './inspectOwnedEncryptedProfileBackup.js';
 import { ProfileSnapshotInspectionClient } from './profileSnapshotInspectionClient.js';
+import type { OwnedProfileInspectionTarget } from './runOwnedProfileInspection.js';
 import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority } from './profileSnapshotInspectionPort.js';
 import { ProfileRestoreActivationService } from './restore/profileRestoreActivationService.js';
 import { PreparedProfileRestoreOwner } from './restore/preparedProfileRestoreOwner.js';
@@ -45,6 +46,81 @@ afterEach(async ({ task }) => {
 });
 
 describe('main-owned snapshot inspection client', () => {
+  it('captures an own-source target before the broker request and retains it for later validation', async () => {
+    const f = await fixture();
+    const target = { kind: 'bound' as const, installationRoot: f.stagingRoot, workspaceId: operationId,
+      lineageIdentity: { formatVersion: 1 as const, profileId: 'a'.repeat(64) },
+      async assertSelectionCurrent(assertCurrent: () => void) { assertCurrent(); } };
+    f.captureSourceTarget.mockReturnValue(target);
+    f.createSnapshot.mockImplementationOnce(async () => {
+      expect(f.captureSourceTarget).toHaveBeenCalledOnce();
+      return { type: 'profileSnapshot', database: { databaseByteSize: 10, logicalPath: 'profile.sqlite', sha256: 'd'.repeat(64), totalPages: 1 },
+        artifactCatalog: { artifactCount: 0, artifactTotalByteSize: 0, catalogByteSize: 2,
+          logicalPath: 'snapshot-catalog-v1.json', sha256: 'e'.repeat(64) } };
+    });
+    await f.client.createRestoredProfileSnapshot(operationId);
+    target.workspaceId = otherOperationId;
+    target.lineageIdentity.profileId = 'f'.repeat(64);
+    f.captureSourceTarget.mockReturnValue({ kind: 'unbound' });
+    await f.client.validateProfileSnapshot(operationId);
+    expect(boundary.run.mock.calls[0]![0].target).toMatchObject({ kind: 'bound', workspaceId: operationId,
+      lineageIdentity: { profileId: 'a'.repeat(64) } });
+    expect(f.captureSourceTarget).toHaveBeenCalledOnce();
+    await f.client.shutdown();
+  });
+
+  it('does not infer a target for incoming material from the current source-target provider', async () => {
+    const f = await fixture();
+    f.captureSourceTarget.mockImplementation(() => { throw new Error('must not read active company for incoming backup'); });
+    await f.client.validateProfileSnapshot(operationId);
+    expect(boundary.run.mock.calls[0]![0].target).toEqual({ kind: 'unbound' });
+    expect(f.captureSourceTarget).not.toHaveBeenCalled();
+    await f.client.shutdown();
+  });
+
+  it('borrows an own export target only for the retained source consumer lifetime', async () => {
+    const f = await fixture();
+    f.captureSourceTarget.mockReturnValue({ kind: 'bound', installationRoot: f.stagingRoot, workspaceId: operationId,
+      lineageIdentity: { formatVersion: 1, profileId: 'a'.repeat(64) },
+      async assertSelectionCurrent(assertCurrent) { assertCurrent(); } });
+    await f.client.createRestoredProfileSnapshot(operationId);
+    await f.client.validateProfileSnapshot(operationId);
+    expect(() => f.client.validateProfileSnapshot(otherOperationId, undefined, undefined, operationId))
+      .toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    let selected: OwnedProfileInspectionTarget | undefined;
+    await f.client.withProfileSnapshot(operationId, async () => {
+      await f.client.validateProfileSnapshot(otherOperationId, undefined, undefined, operationId);
+      selected = boundary.run.mock.calls[1]![0].target;
+      expect(selected).toMatchObject({ kind: 'bound', workspaceId: operationId });
+      if (selected?.kind !== 'bound') throw new Error('expected bound export target');
+      await selected.assertSelectionCurrent(() => {});
+    });
+    if (selected?.kind !== 'bound') throw new Error('expected captured export target');
+    await expect(selected.assertSelectionCurrent(() => {})).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    const previous = selected;
+    await f.client.withProfileSnapshot(operationId, async () => {
+      await expect(previous.assertSelectionCurrent(() => {})).rejects.toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+      expect(() => f.client.validateProfileSnapshot(otherOperationId, undefined, undefined, operationId))
+        .toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+      expect(() => f.client.validateProfileSnapshot(otherOperationId)).toThrow('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    });
+    await f.client.shutdown();
+  });
+
+  it('uses a fresh chosen target for activation without retroactively binding the incoming inspection', async () => {
+    const f = await fixture();
+    await f.client.validateProfileSnapshot(operationId);
+    f.captureSourceTarget.mockReturnValue({ kind: 'bound', installationRoot: f.stagingRoot, workspaceId: operationId,
+      lineageIdentity: { formatVersion: 1, profileId: 'a'.repeat(64) },
+      async assertSelectionCurrent(assertCurrent) { assertCurrent(); } });
+    await f.client.prepareProfileRestoreSnapshot(operationId);
+    expect(boundary.run.mock.calls[0]![0].target).toEqual({ kind: 'unbound' });
+    expect(boundary.run.mock.calls[1]![0].target).toMatchObject({ kind: 'bound', workspaceId: operationId });
+    await f.client.validateProfileSnapshot(operationId);
+    expect(boundary.run.mock.calls[2]![0].target).toEqual({ kind: 'unbound' });
+    await f.client.shutdown();
+  });
+
   it('captures optional cleanup callbacks with their original receiver', async () => {
     expect(captureProfileSnapshotCleanupAuthority()).toBeUndefined();
     const source = {
@@ -1073,7 +1149,9 @@ async function fixture() {
     endRestoreMaintenance: vi.fn(async () => 'normal' as const),
     invalidateRestoreMaintenance: vi.fn(async () => 'busy' as const),
   };
+  const captureSourceTarget = vi.fn<() => OwnedProfileInspectionTarget>(() => ({ kind: 'unbound' }));
   const client = new ProfileSnapshotInspectionClient({
+    captureSourceTarget,
     stagingRoot, runnerPath: join(root, 'runner.js'),
     deployment: { backendRoot: join(root, 'backend'), migrationsDirectory: join(root, 'migrations'),
       nativeResourceRoot: join(root, 'native') },
@@ -1082,7 +1160,7 @@ async function fixture() {
       readProfileInspectionContext: vi.fn(), beginMaintenance: vi.fn(),
       endMaintenance: vi.fn(), assertUpdateMaintenance: vi.fn() },
   });
-  return { client, owner, otherOwner, acquisition, authority, captureAuthority, createSnapshot, restoreFence,
+  return { client, owner, otherOwner, acquisition, authority, captureAuthority, captureSourceTarget, createSnapshot, restoreFence,
     stagingRoot, operationRoot: join(stagingRoot, operationId), source: join(stagingRoot, operationId, 'profile.sqlite') };
 }
 

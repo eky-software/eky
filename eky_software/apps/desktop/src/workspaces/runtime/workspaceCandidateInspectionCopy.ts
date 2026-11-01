@@ -121,7 +121,7 @@ export class WorkspaceCandidateInspectionCopy {
     if (signal.aborted) throw new Error(failureCode);
     const currentNames = await fileSystem.readdir(this.root);
     if (currentNames.length !== names.length || currentNames.some(name => !identities.has(name))) throw new Error(failureCode);
-    for (const name of names) {
+    const assertFileCurrent = async (name: string) => {
       const current = await fileSystem.lstat(join(this.root, name), { bigint: true });
       const expected = identities.get(name)!;
       if (!current.isFile() || current.isSymbolicLink() || current.nlink !== 1n ||
@@ -129,13 +129,19 @@ export class WorkspaceCandidateInspectionCopy {
         throw new Error(failureCode);
       }
       assertIdentity(expected, current);
-    }
+    };
+    for (const name of names) await assertFileCurrent(name);
     if (signal.aborted) throw new Error(failureCode);
     // Never recursively remove an entry which appeared after validation.
     for (const name of names) {
+      await assertMainOwned();
+      await this.assertOwnedDirectory();
+      await assertFileCurrent(name);
       if (signal.aborted) throw new Error(failureCode);
       await fileSystem.unlink(join(this.root, name));
     }
+    await assertMainOwned();
+    await this.assertOwnedDirectory();
     if (signal.aborted) throw new Error(failureCode);
     await fileSystem.rmdir(this.root);
     this.removedCreationIdentity = this.creationIdentity;
@@ -162,6 +168,9 @@ export class WorkspaceCandidateInspectionCopy {
     const finalNames = await fileSystem.readdir(this.root);
     if (signal.aborted || finalNames.length !== 0) throw new Error(failureCode);
     // rmdir rejects an entry arriving after the final empty-directory check.
+    await assertMainOwned();
+    await this.assertOwnedDirectory();
+    if (signal.aborted) throw new Error(failureCode);
     await fileSystem.rmdir(this.root);
     this.removedCreationIdentity = this.creationIdentity;
     this.creationIdentity = undefined;

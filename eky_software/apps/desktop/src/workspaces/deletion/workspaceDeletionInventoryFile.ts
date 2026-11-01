@@ -67,6 +67,14 @@ export function assertDeletionInventoryFile(metadata: BigIntStats): void {
 
 export function deletionInventoryFileIdentity(metadata: BigIntStats): string {
   assertDeletionInventoryFile(metadata);
+  return deletionPayloadFileIdentity(metadata);
+}
+
+// Stable regular-file encoding only. The caller separately enforces its owner's mode/content rules.
+export function deletionPayloadFileIdentity(metadata: BigIntStats): string {
+  if (!metadata.isFile() || metadata.isSymbolicLink() || metadata.nlink !== 1n || metadata.dev < 0n || metadata.ino <= 0n) {
+    return invalidDeletionData(invalidCode);
+  }
   return createHash('sha256').update(`${fileIdentityNamespace}:${metadata.dev}:${metadata.ino}`).digest('hex');
 }
 

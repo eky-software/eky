@@ -3478,6 +3478,112 @@ sekä viimeisen lukuvälin täsmennyksen jälkitarkistus läpäisivät.
 Tämä on sidonnan loppusiivouksen tukiosa,
 ei vielä `runOwnedProfileInspection`-julkaisun tai prosessikytkennän näyttö.
 
+**Kutsujakytkennän toteutustila 30.10.2026:** kesken oleva toteutus vaatii
+runnerilta nimenomaisen bound/unbound-valinnan ja julkaisee nykyisen
+sidonnan valmistelun alkuperäisessä tehtävässä ennen grantia. Tunnettu
+julkaisutulos, oman kopion poistokuittaus ja tuore poissaolo suojaavat
+metadatan loppusiivousta. Epävarma kuittaus estää ulomman siivouksen.
+Lähdesnapshotin alkuperä säilyy clientissä; oman viennin ja palautuspisteen
+uudelleentarkistus lainaa vain kyseisen lähteen voimassa olevaa valintaa.
+Ulkoisen backupin alkutarkistus pysyy kohteettomana.
+
+Main erottaa käynnistyksen aikana kaapatun palautusvalinnan ja hyväksynnän
+jälkeen luodun uuden runtime-valinnan. Suljettua startup-valintaa ei
+lainata uudelle snapshotille. Rajattu katselmus löysi tämän liitosvirheen;
+korjaukselle on saman compositionin palautus-hyväksyntä-snapshot-regressio.
+Kutsujien 11 tiedoston sarja läpäisi 350 testiä; kolme POSIX-kohtaista
+tapausta jäi Windows-ajon ulkopuolelle. Lopullinen kohde-/Main-kontrolli
+läpäisi 12 valittua tapausta, joista 11 kuuluu samaan sidontasarjaan.
+Tuloksia ei lasketa yhteen erilliseksi kattavuusmääräksi. Desktopin ja
+sen E2E-kutsujien tyypitys läpäisi.
+
+Tämän välivaiheen Mainin erillinen palautusvirhehaara aikakatkaisi myös
+kohdeajossa. Myöhempi rajattu vaihekoe
+valmistui muuttumattomalla rajalla; se ei selitä aiempia aikakatkaisuja.
+Sulun kuuden tiedoston kohdesarja läpäisi 184 testiä; kolme entistä
+alustakohtaista tapausta jäi ajamatta. Uudet forward-/rollback-regressiot
+todistavat, että sisältövirheen rinnalle jäävä alkuperäinen valintaluku
+estää varauksen ja leasen vapautuksen. Myöhäinen onnistuminen tai hylkäys
+ei korvaa ensivirhettä eikä elvytä jatkovaltuutta. Aiemmat tiedostokahvan
+sulkukontrollit ja nykyinen testiaineiston säilytys sisältyvät sarjaan.
+Tämä on kohdenäyttö, ei native-keskeytyksen tai koko Main-sarjan hyväksyntä.
+Tarkistimen main-puolen ensivirheen valinnainen havaitsija on kytketty
+ennen turvallista virhemuunnosta. Olemassa olevan salatun toimituksen
+purkukoe säilyttää alkuperäisen viestin, pinon ja syyketjun erillään
+tarkoituksellisen testihylkäyksen virheestä. Mainin kaksi kohdekontrollia
+todistavat käynnistyskytkennän ja sen päättymisen runtimen hyväksyntään.
+Tarkistimen kahdeksan tiedoston sarja läpäisi 311 testiä; kolme entistä
+alustakohtaista tapausta jäi ajamatta. Tyypitys ja rajattu havaitsijadiffin
+riippumaton katselmus läpäisivät. Jo lapsessa pelkistynyttä syytä ei väitetä
+talteen otetuksi.
+
+Nykyiset `DESK-DELETE-BACKUP-001` ja `DESK-WORKSPACE-ADOPTION-001`
+läpäisivät samalla development-valmistelulla ilman uusintaa. Ne käyttävät
+oikeita Main-/backend-/SQLite-omistajia, tarkistusutilitya ja nykyistä
+prosessipuun siivousta; backup-kontrolli vertaa salatun viennin aineistoa
+ja uudelleenkäynnistyksen jälkeistä yritystä. Tämä ei todista kaikkien
+cold-/original-haarojen sidontaa, native-lapsen alkuperäistä poikkeusta tai
+paketoidun sovelluksen palautusta. Alkuperäinen aikakatkaisusyy säilyy
+avoimena; koko Main-sarjan myöhempi näyttö on alla erikseen.
+
+Nykyiset `DESK-WORKSPACE-ACTIVATION-001` ja `DESK-WORKSPACE-REPLACE-001`
+läpäisivät lisäksi samalla development-valmistelulla ilman uusintaa.
+Aktivointimigraatio ja backup-korvaus käyvät tuotannon Mainin cold-forward-
+haaran, oikean SQLite-sisällön sekä uudelleenkäynnistyksen kautta; nykyinen
+fixture vaatii prosessisiivouksen. Tämä ei vielä todista
+cold-original-/rollback-original-kutsujan sidontaa tai keskeneräisen
+inspection-lapsen keskeytystä. Nykyisen alemman korvausproofin suora
+transaktion rollback ei ole tämän puuttuvan Main-/inspection-haaran todiste.
+
+**Cold-original-kutsujan prosessikontrolli:** nykyisen Electron-fixturen
+`DESK-WORKSPACE-ORIGINAL-001` jättää suljetun synteettisen palautuksen
+`rollbackStarting`-vaiheeseen. Ehdokkaan tietokanta ja PDF eroavat
+alkuperäisistä. Tuotannon Main ja original-inspection-utility palauttavat
+alkuperäiset tavut ennen backendin avausta; toinen composition-käynnistys
+säilyttää rekisterin ja business-/PDF-snapshotin. Tarkistusmetadatan
+aluksi puuttunut hakemisto on tämän jälkeen olemassa tyhjänä, journalin
+kaikki slotit ovat poissa, backendin exit ja fyysisen varauksen
+uudelleenhankinta vaaditaan. Ehdokastavujen erottelun ja virheen
+runtime-sidonnan katselmuslöydökset korjattiin. Korjatun tapauksen ajo
+läpäisi ilman uusintaa. Nykyinen salaus-/purkukoe todistaa myös tämän
+testin main-lukurajan alkuperäisen virheketjun tavut. Tämä ei ole erillisen
+Electron-prosessin restart-, live-virhehaaran tai puhtaan paketin todiste.
+Main-sarjan aiempi hylkäys säilyy avoimena havaintona.
+
+**Main-sarjan rajattu jälkitodennus 30.10.2026:** omistajan hyväksymä
+kymmenen sekunnin testibudjetti koskee vain valitsinpalautuksen
+`publishReturn`- ja `clearReturn`-kuittauskatkoja. Molemmat sisältävät kaksi
+kokonaista käynnistystä, ja kaikki alkuperäiset tarkistukset säilyvät.
+Kohdepari ja yksi uusi koko Main-sarjan ajo läpäisivät; koko sarjassa oli
+351 testiä. Aiempi aikakatkaisu ja sitä seurannut keskeneräisen testityön
+esto eivät muutu korjatuksi juurisyyksi. Sovelluksen ja CI:n rajat säilyvät.
+B:n yhteiskatselmus, C-F:n jatkotyö sekä puhtaan paketin ja PR/main-porttien
+hyväksyntä erotetaan tästä testibudjetin todennuksesta.
+
+**Inspection-yhteiskatselmuksen korjaukset 30.10.2026:** sidotun kopion
+siivous tarkistaa kohdevalinnan myös jokaisen tiedostomuutoksen yhteydessä.
+Valtuusodotuksen jälkeen tarkistetaan kopion ja tiedoston alkuperäinen
+identiteetti. Grantin kohdevalinta varmennetaan lapsen valmiusodotuksen
+jälkeen; kertakäyttöinen varauksen luovutus kulutetaan vain prosessiviestin
+lähetysrajalla. Lainattu snapshot-valtuus sidotaan saman lähteen yksittäiseen
+kulutuskertaan, eikä seuraava käyttökerta elvytä vanhaa callbackia tai
+vientitarkistusta. Reclaim-poikkeuksen alkuperäinen syy havaitaan ennen
+turvallista virhemuunnosta; aiempi ensivirhe säilyy ensisijaisena.
+
+Ensimmäiset neljä puutetta toistettiin kohdetesteillä ennen korjausta.
+Korjausten 403 testiä läpäisi; kolme entistä POSIX-tapausta jäi Windows-ajon
+ulkopuolelle. Seuraava Electron-koe hylättiin ennen ensimmäistä ikkunaa:
+uusi valintakääre kulutti kertakäyttöisen grantin toistuvasti. Korjattu
+testikaksoinen sekä oikean Main-omistajan ja IPC-varauksen yhteiskoe
+toistivat puutteen. Lähetysrajalle palautettu kertakulutus läpäisi 145
+kohdetestiä sekä nimetyn `DESK-WORKSPACE-ORIGINAL-001`-prosessikokeen.
+Sarjat ovat päällekkäisiä. Korjausten jälkeinen Main-palautuksen ja varausomistajan
+417 testin sarja sekä desktopin ja molempien E2E-kutsujien tyypitys läpäisivät.
+Aiempi 351 testin läpäisy edeltää näitä korjauksia. Rajattu riippumaton
+delta-katselmus läpäisi; ensimmäisen virheen nykyinen salaus-/purkukoe
+läpäisi myös korjatulla lähteellä. Aiemmat aikakatkaisusyyt eivät tämän
+perusteella muutu ratkaistuiksi. C:n sopimus alla ei ole tuotantokytkentä.
+
 ##### Poiston backup-todisteen vastaavuus
 
 **25.10.2026, lähteeseen perustuva suunnitelma, pieni sopimuskoe ja rajattu katselmus valmis.**
@@ -3596,6 +3702,12 @@ kokeiltu alla. Tämä on W7.0:n sopimusnäyttö, ei tuotantokytkentä.
 Puuttuvaa kohdeomistajuutta tiedostomuoto ei korjaa.
 
 ##### W7.0:n kohdeluettelon täsmäsopimus
+
+Alla on W7.0-kokeen v1-esitys. W7.4:n omistajan hyväksymä
+[v2-täsmennys](#w74n-täydellisen-inventaarion-omistajuusraja) korvaa sen
+inventory-version ja lisää sisäisen inspectionin siivoustodisteen.
+Muut kenttä-, rivi-, omistajuus-, julkaisu- ja loppusiivousrajat säilyvät.
+V1 ei kelpaa W7.4:n automaattisen poiston tai retirementin valtuudeksi.
 
 | Osa | Täsmällinen sopimus |
 | --- | --- |
@@ -7254,9 +7366,12 @@ aloituksen ja siihen sidotun valmiin inventaarion.
    Luettelointi ei avaa vikatilaisen yrityksen SQLitea tai pura SMTP-arvoa.
 2. Alkuperäisen kohde-/requester-valtuuden alla muodostetaan ja varmennetaan
    täydellinen kohdeluettelo. Luettelo yksin ei anna jatkolupaa.
-   Viimeisen valmisteluodotuksen jälkeen kutsutaan W7.3:n asynkronista
-   `assertPublicationCurrent`-tarkistusta, backup-haarassa oikeilla
-   container-tavuilla. Vartijat tarkistetaan myös journalin I/O-rajoilla.
+   Julkaisurajalla verrataan täydellinen luettelo, kutsutaan W7.3:n
+   asynkronista `assertPublicationCurrent`-tarkistusta backup-haarassa
+   oikeilla container-tavuilla ja tehdään yksi täydellinen luettelon
+   loppuvertailu. Tämä loppuvertailu ei käynnistä backup-lukua uudelleen.
+   Kevyet omistajuus- ja journal-vartijat tarkistetaan vielä tämän jälkeen
+   sekä journalin I/O-rajoilla.
 3. `authorized` julkaistaan nykyisen journal-sopimuksen mukaan.
    Valmistelucallback palautuu muuttamatta payloadia tai registryä.
    W7.3:n loppuvalidointi ja kuitin kulutuksen päättäminen odotetaan.
@@ -7285,6 +7400,833 @@ Luovutus todistetaan ensin pienellä nykyisen valmistelun, todellisen
 slot-tallentimen ja management-palvelun yhteiskokeella. Sen hylkäys
 pysäyttää kyseisen kytkennän; tarkistuksia ei poisteta valmistelun läpäisyksi.
 Tämä on ensimmäinen vastuurajat ylittävä W7.4-katselmuskohta.
+
+**C:n lähteeseen sidottu toteutusraja 30.10.2026:** ennen C:n palvelupalaa
+`prepareDeletion` päättyi valmisteluun ja vapautti delete-leasen.
+Composition muodosti operationId:n valmistelun sisällä, eikä julkaisijan
+callback saanut sitä tai vahvistetun backup-valinnan tulosta.
+Niitä ei saa myöhemmin arvata journalista tai korvata uusilla tunnisteilla.
+Seuraava toteutuspala erottaa nämä vastuut nykyisten omistajien sisällä:
+
+| Omistaja | Täsmällinen jatkosopimus |
+| --- | --- |
+| `WorkspaceManagementService` | Luo yhden operationId:n hyväksytyn komennon sisällä. Hanki yksi delete-lease ja kaappaa vartija `captureCurrentOwner(['delete'], lease)`-kutsulla täsmälleen sen kahvaan. Sama `run`/`pendingWork` kattaa valmistelun, journalilta jatkamisen, lopputuloksen ja leasen vapautuksen. Jatkaminen ei hanki uutta leasea. |
+| `prepareWorkspaceDeletion` | Säilytä vahvistukset, backup-kuitti ja strict-sulku. Anna julkaisijalle muuttumaton mainin muodostama konteksti: sama operationId, kaapattu kohde ja toteutunut `verifiedBackup` tai `explicitDataLoss`. Pelkkä requestin `createBackup`-arvo ei ole vientitodiste. `prepared` palautuu vasta kaikkien nykyisten päättämistarkistusten jälkeen; se ei ole lopullinen poistotulos. |
+| Nykyisen deletion-hakemiston julkaisu | Käytä nykyisiä inventory- ja journal-storeja. Johda ennen-/jälkeen-rekisteri samoista validoiduista sloteista; luetteloi omistajien rajatut juuret ja tarkista niiden täydellisyys ennen `authorized`-julkaisua. Noudata alla hyväksyttyä luettelovertailu -> `assertPublicationCurrent` -> luettelon loppuvertailu -> kevyet vartijat -järjestystä. Ei payloadin siirtoa, poistoa tai rekisterimuutosta callbackissa. |
+| Nykyisen palvelun pysyvä jatko | Kutsu etenemisomistajaa vain onnistuneen `prepared`-palautumisen ja viimeisen requester-/lease-tarkistuksen jälkeen. Välitä sama operationId ja uusi operaatioon rajattu main-/lease-valtuus, ei valmistelun callbackia tai backup-kuittia. Jatko lukee journalin kaikki slotit ja siihen sidotun inventaarion itse; se ei hyväksy muistissa olevaa julkaisukuittia poistovaltuudeksi. |
+| Active-/selector-main | Pysyvä valtuus vaatii saman main-sukupolven, täsmällisen delete-leasen, todellisen backendin ja mainin kirjoittajien päättymisen sekä fyysisen varauksen. Sitä ei sidota poistettavan yrityksen muuttumattomana pysymiseen oman sallitun siirron jälkeen. Journalin vaihekohtainen tiedosto-/rekisterivalinta kuuluu etenemisomistajalle. |
+| Capability ja ulkoinen sulku | Requester vartioi valmistelua ja vastaustoimitusta, ei jo luovutetun operaation pysyvää valtuutta. Dokumentin/ikkunan katoaminen luovutuksen jälkeen ei peru poistoa. Koko mainin sulku estää seuraavan muutoksen, odottaa jo aloitetun työn ja säilyttää keskeneräisen journalin. Oma delete-sulku ei odota omaa palvelukutsuaan. |
+
+Luovutuksella ei ole uutta levytilaa: pysyvä `authorized` ja nykyinen
+slottisopimus ovat edelleen cold-jatkon totuus. Live-luovutuksen onnistuminen
+on erillinen, vain tämän suorituksen tieto. Jos kuittaus tai W7.3:n loppuluku
+epäonnistuu, palvelu ei jatka saman ajon purgeen eikä raportoi peruutusta.
+Vahvistettu journal säilyy seuraavan omistajan tarkistettavaksi; initial-next
+ei muutu vahvistetuksi. Valmisteluvirhe säilyy ennen mahdollista sulku- tai
+vapautusvirhettä. Jo päättyneen operaation vartija ei kelpaa uudelleen,
+vaikka uusi lease saisi saman tarkoituksen tai main olisi edelleen elossa.
+
+`closeAdmission` estää uudet pyynnöt. Se ei yksin todista ulkoista sulkua:
+nykyinen valmistelu kutsuu sitä myös omassa hallitussa sulussaan. Ulkoinen
+shutdown ja fyysisen varauksen menetys välitetään operaation main-vartijaan
+erikseen. Aloitettu tiedostotyö odotetaan loppuun myös valtuuden menetettyä;
+vapautusta tai paluukäynnistystä ei tehdä keskeneräisen työn rinnalla.
+
+**Aktiivisen yrityksen viimeinen kirjoittaja:** nykyinen main lykkää puhtaan
+sammutuksen markerin management-työn jälkeiseen ulkoiseen sulkuun. Marker
+voi luoda puuttuvan runtime-hakemiston, joten pelkkä backendin pysähtyminen
+ei vielä sulje tätä kirjoittajaa. C:n kytkentä täsmentää nykyistä
+`persistCleanShutdown`-omistajaa, ei rakenna uutta kirjoitinta:
+
+- Kun poistokohde on aktiivinen yritys, saman operaation julkaisuvalmistelu
+  sulkee sen lykätyn marker-kirjoituksen ennen pysyvän aloituksen yritystä.
+  Jo alkanut marker-työ odotetaan päättyneeksi ennen inventaarion viimeistä
+  tarkistusta tai tiedostomuutoksia. Epävarma päättyminen estää luovutuksen.
+- Varmennettu lopullinen poisto ei kirjoita yritykselle clean-markeria.
+  Muiden sulkuehtojen täyttyessä itse sovelluksen sulku voi silti onnistua;
+  poistettua yritystä tai sen hakemistoa ei luoda tämän takia uudelleen.
+- Katkennut tai epävarma julkaisu/poisto säilyttää marker-eston eikä anna
+  puhtaan sammutuksen tulosta. Hakemiston hetkellinen olemassaolo tai
+  palvelupyynnön päättyminen ei todista kohteen säilyneen muuttumattomana.
+  Myöhäinen callback ei saa poistaa estoa tai kirjoittaa vanhaan juureen.
+- Ennen julkaisua varmasti vaikutukseton peruutus säilyttää W7.3:n nykyisen
+  marker- ja käyttäjän valitseman paluun säännön. Toisen yrityksen poisto ei
+  käytä kohteen poistotulosta avoimen yrityksen markerin ohittamiseen.
+  Backendittomalle valitsimelle ei keksitä yritysmarkeria.
+
+Tulos tulee nykyisen pysyvän etenemisomistajan saman operationId:n ja
+kaapatun kohteen todennetusta lopputilasta, ei rendererin kuittauksesta tai
+yleisestä `completed`-arvosta. Tämä mainin muistissa oleva kirjoitusraja ei
+ole uusi journal tai cold-jatkon totuus. Toteutus päivittää samalla desktop-
+ja backup-ohjeiden marker-kohdat: tavallisten, update- ja muiden yritysten
+sulkujen nykyiset ehdot säilyvät. Tämä on vielä C:n toteutettava sopimus,
+ei väite nykyisestä fyysisestä poistosta.
+
+**Lopputiedon ja vastauskuittauksen erottaminen:** C:n main-kytkentä käyttää
+alla olevaa sisäistä sopimusta. Uutta levyformaattia, havaintoväylää tai
+sammutuksen jälkeistä muutosvaltuutta ei lisätä.
+
+1. Mainin julkaisijasovitus sitoo saman operaation kaapattuun kohteeseen ja
+   validoituun journal-sidontaan: nykyinen `target`, rekisterin ennen-/jälkeen-
+   tiivisteet ja inventaariositoumus. Työtilajuuren identiteetti vastaa
+   vahvistettua kohdetta ja inventaariota. Nimi, rendererin vastaus tai
+   myöhempi hakemiston olemassaolo ei korvaa sidontaa. Kytkennän callbackit
+   kiinnitetään ennen odotuksia; ulkopuolelta vaihdettavaa jatkajaa ei lueta
+   uudelleen valmistelun jälkeen.
+2. Vain aktiivisen kohteen julkaisuvalmistelu sulkee mainin nykyisen
+   `persistCleanShutdown`-kirjoittajan. Esto asetetaan synkronisesti ennen
+   odotusta. Myös jo jonotetun marker-kutsun on tarkistettava esto ennen
+   varsinaisen kirjoituksen käynnistämistä. Jo alkanut kirjoitus liittyy
+   samaan odotettavaan työhön; sitä ei jätetä taustalle. Odotuksen jälkeen
+   vaaditaan tuoreet valmistelu-, valinta- ja varausvartijat ennen julkaisua.
+   Epäonnistunut odotus ei avaa kirjoittajaa uudelleen.
+3. Pysyvä jatkaja saa saman jatkokutsun muutosvaltuuden rinnalle yhden synkronisen,
+   main-only-`recordRemoved`-toimituksen. Se ei ole best effort -observer
+   eikä anna oikeutta tiedostotyöhön. Sen suljettu syöte on `removed` ja
+   nykyisellä codecilla validoitu saman operaation journal-sidonta
+   `registryPublished`-vaiheessa. Vaihe yksin ei ole valmistumistodiste:
+   etenemisomistaja kutsuu toimitusta vasta payloadin, sidontojen, inventaarion,
+   operaatiokansion ja journal-slotien loppusiivouksen sekä rekisterin
+   täsmällisen jälkeen-tilan todentamisen jälkeen. Kaikki aloitettu I/O on
+   päättynyt. Tätä toimitusta ei kutsuta valmistelun `publish`-callbackista.
+4. Main hyväksyy tiedon kerran, saman elävän jatkokutsun, sukupolven,
+   täsmällisen leasen ja kaapatun sidonnan alla. Viimeinen synkroninen
+   muutosvaltuuden tarkistus ja tiedon talletus tapahtuvat ilman niiden
+   välistä odotusta tai ulkoista callbackia. Väärä kohde, vaihtunut sidonta,
+   toisto ja myöhäinen kutsu hylätään. Jos ulkoinen sulku tai varauksen
+   menetys ehti ensin, toimitus hylätään: aloitettu työ odotetaan loppuun,
+   mutta onnistumista ei päätellä jälkikäteen. Uutta sulun ohittavaa
+   luku-/muutosvaltuutta ei luoda tämän vuoksi.
+5. Hyväksytty lopputieto säilyy mainin muistissa vastauksen toimituksesta
+   riippumatta. Etenemisomistaja ei aloita sen jälkeen uusia tiedostotöitä.
+   Myöhempi shutdown, vastauskatko tai palvelun viimeisen vartijan hylkäys
+   ei peru todettua poistoa eikä avaa marker-kirjoittajaa. Palvelu ei saa
+   palauttaa `completed`-arvoa ilman hyväksyttyä lopputietoa; yleinen
+   `resume`-paluu ei korvaa toimitusta. Navigaatio johdetaan varmennetusta
+   rekisterisiirtymästä. Release-, paluu- ja vastausvirheet säilyvät erillisinä.
+6. Ulkoinen shutdown odottaa edelleen managementin, capabilityn ja kaikki
+   omistetut työt sekä leasen päättymisen. Aktiivisen kohteen `removed`
+   ohittaa vain poistuneen yrityksen marker-kirjoituksen, ei yhtään muuta
+   sulkutarkistusta. Nykyinen management-palvelu säilyttää poiston
+   päättämistyön ja leasen vapautuksen virheet erillään pyynnön tai
+   vastauksen hylkäyksestä. Sen `shutdown()` odottaa kaikki aloitetut työt
+   loppuun ja hylkää sulun säilyneellä virheellä myös silloin, kun virhe
+   syntyi ennen shutdown-kutsua. Toistuva shutdown säilyttää saman
+   hylkäyksen; pelkkä `trackWork`-työn päättyminen ei ole onnistumistodiste.
+   Hyväksytty `removed` ja marker-esto säilyvät virheestä huolimatta;
+   vapautusta ei uusita eikä uutta valtuutta hankita. Tavallinen peruutus,
+   valtuuden päättyminen tai vastauskatko ei yksin muuta sulkua virheeksi,
+   jos päättämistyöt ja vapautus varmasti onnistuivat. Suljettu kirjoittaja
+   ilman hyväksyttyä lopputietoa
+   säilyttää epävarman sulkutuloksen. Ennen julkaisua peruttu valmistelu,
+   toisen yrityksen poisto, ordinary/update-sulku ja backenditon valitsin
+   säilyttävät yllä kuvatut omat sääntönsä.
+
+Muistitieto ei selvitä prosessikatkosta: cold-jatko käyttää aina nykyisiä
+pysyviä slotteja ja rekisteriä. Erityisesti levyllä valmistunut mutta ennen
+toimitusta katkennut viimeinen työ jää tämän ajon kannalta epävarmaksi.
+Puuttuvaa journalia ei luoda uudelleen eikä sen puuttuminen yksin todista
+onnistumista. Ensivirhe säilyy erillään myöhemmästä sulkutuloksesta.
+
+Toteutus kuuluu nykyiseen management-palveluun, sen compositioniin ja
+active-/selector-mainiin. Marker-tiedoston yleistä kirjoitusalgoritmia tai
+schedulerin muiden käyttäjien sopimusta ei muuteta. Ensimmäinen rajattu
+kytkentä todistaa kirjoittajan eston, tarkan toimituksen ja sulkujärjestyksen
+nykyisellä fixturellä. Mallinnetun jatkajan `removed` ei hyväksy D:n
+fyysistä poistoa: sama Main-testi vaaditaan oikean etenemisomistajan kanssa
+D:n valmistuttua. W7.5-kanavaa ei avata välivaiheessa.
+
+Sisäinen lopullinen komento palauttaa nykyisen poistopyyntösopimuksen tuloksen,
+ei `prepared`-arvoa. W7.3:n valmistelu säilyy sen aliohjelmana. Nykyinen
+mainin testikäyttöinen pelkkä publisher-kytkentä korvataan vasta yhteistestin
+ja saman vahvistus-/peruutus-/backup-kattavuuden jälkeen; puuttuva pysyvä
+kuluttaja hylätään ennen vahvistuksia tai sulkua, ei no-op-onnistumisena.
+Yhtä pysyvää etenemisomistajaa käytetään live- ja myöhemmin cold-jatkossa.
+Uutta manageria, yleistä elinkaarikerrosta tai julkista delete-IPC:tä ei lisätä.
+
+**Ensimmäisen yhteistestin hyväksyntä:** laajenna nykyistä
+`workspaceDeletionManagementComposition.test.ts`-fixtuurea käyttäen todellisia
+inventory-/journal-tavuja. Fyysinen prosessiomistaja saa tässä pienessä
+kokeessa olla nimetty testikaksoinen; se ei korvaa myöhempää native-porttia.
+Vaatimukset todistetaan molemmista active-/selector-lähtötiloista:
+
+- Julkaisun jälkeen mutta ennen valmistelun loppuvalidointia jatkokuluttajaa
+  ei kutsuta. Registry ja kaikki payload-tavut säilyvät. Vanhaksi jäänyt
+  julkaisuvartija hylkää käytön valmistelun palattua.
+- Viivästetty loppuvalidointi tai backup-kuitin päättäminen pitää saman leasen
+  hallussa. Epäonnistuminen estää live-jatkon ja säilyttää julkaistut tavut;
+  erikseen varmennettu cold-valinta erottaa ne initial-nextistä.
+- Luovutuksen jälkeen kadonnut requester ei pysäytä operaatiota. Sama main-
+  varaus tai lease menetettynä estää seuraavan muutoksen. Vapautettu ja uudelleen
+  hankittu saman tarkoituksen lease ei kelpaa vanhalle vartijalle.
+- Ulkoinen shutdown odottaa pysyvän jatkon aloitettua I/O:ta ja releaseä;
+  oma sulku ei odota itseään. Ensivirhe, shutdownin tulos ja vapautusvirhe
+  pysyvät erillisinä, eikä epävarma jatko pyydä paluukäynnistystä.
+- Todellisen main-compositionin ja marker-tiedostojen koe poistaa juuri
+  aktiivisen yrityksen ja kutsuu ulkoista shutdownia sekä ennen loppukuittausta
+  että sen jälkeen. Poistettu juuri ja markerin kaikki slotit pysyvät poissa;
+  epävarma lopputila ei kirjoita merkkiä eikä ilmoita puhdasta sulkua.
+  Viivästetty jo alkanut marker-työ estää luovutuksen. Peruutuksen, toisen
+  yrityksen poiston ja tavallisen sulun kontrollit säilyttävät oman markerinsa.
+  Pelkkä no-op-marker tai eri yrityksen kohdefixture ei ole tämä näyttö.
+- Lopputoimituksen rajat: sulku ennen toimitusta hylkää sen myös silloin,
+  kun viimeinen I/O myöhemmin valmistuu; sulku hyväksytyn toimituksen jälkeen
+  mutta ennen palveluvastausta säilyttää poiston tiedon ilman markeria.
+  Väärä operaatiotunniste/kohde, vaihtunut lease, reentry, kaksoistoimitus ja
+  vasta jatkokutsun päätyttyä saapuva toimitus torjutaan. Pelkkä `completed`
+  ilman toimitusta ei läpäise. Hyväksytyn toimituksen jälkeinen release-virhe
+  ei peity poistotuloksen alle eikä luo vanhaa yritysjuurta uudelleen.
+  Todellinen release-virhe välittyy palvelusta mainin sulkutulokseen sekä
+  jo odottavassa että vasta myöhemmin aloitetussa shutdownissa; toistuva
+  shutdown ei muuta sitä onnistumiseksi. Suoraan injektoitu shutdown-virhe
+  ei korvaa tätä ketjua. Peruutuksen ja valtuuden päättymisen kontrollit
+  säilyttävät onnistuneen sulun, kun päättämistyö ja vapautus onnistuvat
+  eikä markerin lopputila jää epävarmaksi.
+- Peruutus ennen julkaisua ja käyttäjän erikseen valitsema paluu säilyvät.
+  Valmistelun tai pysyvän kuluttajan puuttuminen ei avaa poistokanavaa.
+
+**C:n sopimuskatselmus 30.10.2026:** rajattu riippumaton lähdekatselmus
+löysi lykätyn marker-kirjoittajan puuttuvan lopputilasäännön. Yllä oleva
+täsmentävä sääntö ja oikean Main-/marker-ketjun näyttövaatimus sulkivat
+löydöksen sopimustasolla; jälkikatselmus läpäisi. Markerin tuotantototeutus
+ja Main-yhteistesti ovat vielä avoimia. Lopputiedon ja vastauskuittauksen
+jatkokatselmus täsmensi lisäksi päättämis-/vapautusvirheen säilyttämisen
+nykyisessä palvelussa ja välittymisen mainin sulkuun. Sen jälkikatselmus
+läpäisi sopimustasolla; uusi toteutus ja runtime-näyttö ovat tekemättä.
+Palveluluovutuksen erillinen
+toteutusnäyttö on alla; se ei korvaa marker-rajaa.
+Tämä ei yksin hyväksy D:n fyysistä poistoa, E:n kylmäkäynnistystä tai F:n
+paketti-/integraatioportteja. Sovelluksen ja CI:n aikarajat säilyvät.
+
+**C:n ensimmäinen palvelukytkentä 30.10.2026:** palvelu muodostaa yhden
+operationId:n ja kaappaa täsmällisen hankkimansa delete-leasen. Julkaisijan
+muuttumaton konteksti välittää saman tunnisteen, kohteen ja toteutuneen
+backup-valinnan. Main-only-komento odottaa valmistelun päättämistarkistukset
+ennen saman varauksen luovutusta tuoreelle jatkovaltuudelle. Callbackit
+kiinnitetään ennen odotuksia, eikä synkroninen reentry saa ohittaa
+sulku-/varausvartijaa. Requesterin ja mainin eliniät erotetaan.
+
+Nykyisen management-compositionin yhteistesti julkaisee ja lukee todelliset
+journal-/inventaario-tavut molemmista lähtötiloista. Se säilyttää payloadin
+ja rekisterin ja päättää jatkon tarkoituksella ennen fyysistä poistoa.
+Valmistelun lopun requester-katko säilyttää slotit ilman live-jatkoa.
+Callback-/reentry-puutteiden regressiot ja rajattu jälkikatselmus läpäisivät.
+Puuttuva kuluttaja estää lopullisen komennon ennen vahvistuksia tai sulkua.
+W7.3:n pelkkä valmistelu säilyy, kunnes korvaavalla main-kytkennällä on sama
+kattavuus. Tämä ensimmäinen palvelunäyttö ei yksin hyväksy mainin marker-rajaa,
+fyysistä poistoa tai W7.5-kanavaa.
+
+**C:n main-/lopputietokytkentä 30.10.2026:** active- ja selector-composition
+tarjoavat main-only-`workspaceDeletionCommand`-portin. Sen julkaisija palauttaa
+omistamansa valmiin inventaarion ja journalin todistaman työtilajuuren
+identiteetin sekä validoidun journal-sidonnan. Main vertaa ne saman
+operaation kaapattuun kohteeseen; muistipaluu ei korvaa julkaisijan oikeiden
+tavujen, luettelon täydellisyyden tai D:n myöhempää etenemisnäyttöä.
+Pysyvä kuluttaja toimittaa `recordRemoved`-tiedon kerran saman elävän
+palvelukutsun alla. Sisäkkäinen toimitus torjutaan myös viimeisen
+varausvartijan sisältä. Vastauksen hylkäys ei tyhjennä mainin hyväksymää
+lopputietoa; sen jälkeen ei aloiteta uusia mutaatioita.
+
+Nykyinen mainin lykätty marker-tehtävä on rajattu pieneen
+`workspaceDeletionMarkerBoundary`-funktioon. Se käyttää edelleen samaa
+scheduleria ja tiedostokirjoittajaa: jonotettu kirjoitus tarkistaa eston,
+aloitettu työ odotetaan loppuun, ja epäonnistunut odotus estää lopputiedon
+sekä uuden kirjoituksen. Palvelu säilyttää päättämis-/vapautusvirheen ja
+välittää sen myös myöhemmän tai toistuvan sulun tulokseen ilman uutta
+vapautusyritystä. Tavallinen pyyntövirhe ilman päättämisvirhettä ei tee
+sulusta epäonnistunutta.
+
+Oikean Main-compositionin marker-tiedostokokeissa pysyvä etenijä on
+mallinnettu. Ne todistavat toimituksen ja sulun järjestyksen, eivät D:n
+fyysistä poistokattavuutta. Erilliset scheduler-/tiedostokokeet todistavat
+jonotetun ja alkanutta työtä odottavan marker-rajan. Jälkikatselmuksen ja
+lopullisen kohdesarjan ajantasainen tila on M1:n jatkamiskohdassa. Täydellinen
+tuotantoinventaarion julkaisija, D:n etenemistoteutus, E:n cold-jatko ja F:n
+paketti-/integraatioportit säilyvät avoimina; W7.5-kanavaa ei ole avattu.
+
+**Rekisterisiirtymän toteutusraja 30.10.2026:** nykyisen registry-omistajan
+`removeWorkspaceEntry` laskee v2-rekisterin jälkeen-tilan muuttamatta lähdettä.
+Poiston valmistelun `captureWorkspaceDeletionRegistryTransition` lukee
+todelliset current-tavut ilman slot-korjausta ja sitoo ne vahvistettuun
+kohteeseen. Ennen-tiiviste kuvaa alkuperäisiä tavuja, jälkeen-tiiviste
+nykyisen serializerin kanonista tulosta. Yhteinen entry-tiiviste säilyttää
+aiemman merkityksensä. Oikean journal-/inventaario-yhteistestin laskenta
+käyttää tätä samaa siirtymää. Tämä on vasta havainto ja puhdas laskenta:
+se ei julkaise rekisteriä, todista payloadin poissaoloa tai anna poistovaltuutta.
+Muiden yritysten arvojen ja järjestyksen, aktiivisen/viimeisen kohteen,
+vanhojen samannimisten entryjen sekä väärien tavujen/valintojen regressiot
+läpäisivät. Täydellinen omistajaluettelointi ja D:n tarkasti valittu
+rekisterijulkaisu ovat edelleen avoimia.
+
+##### W7.4:n täydellisen inventaarion omistajuusraja
+
+**31.10.2026: omistaja hyväksyi rajatun formaattitäsmennyksen ja testit;
+toteutus ja kohdetodennus ovat käynnissä, koko W7.4 ei ole hyväksytty.** Nykyinen C:n palvelu-/main-
+luovutus ja puhdas rekisterisiirtymä säilyvät. Luettelon täydellinen
+julkaisija tarvitsee seuraavan rajauksen ennen kytkentää. Muutokset eivät
+koske yritystietokannan, portable backupin tai palautuspisteen formaatteja.
+
+**Vahvistettu aukko:** `resolveProfileInspectionCopyRoot` käyttää
+`dirname(reservation.userDataRoot)`-parentia. Main antaa varaukseen kutsujan
+operaatiojuuren, ei yleisesti installation-juurta. Siksi kopio voi sijaita
+rekisteröidyn workspacen sisällä. `workspace`-tietue kattaa sen payloadin,
+mutta sen `bindingSha256` on null. Erillinen `inspection`-payload-tietue
+rikkoisi fyysisten juurten erillisyyttä; tietueen pois jättäminen ei puolestaan
+sido inspection-metadatan hashia nykyisen loppusiivoussopimuksen vaatimalla
+tavalla. Kumpaakaan ehtoa ei ohiteta toteutustulkinnalla.
+
+**Todellisten lähteiden suljettu kartta:** polut johdetaan nykyisistä
+omistajista, eivät luettelon merkkijonoista. `W` on täsmällinen kohdeworkspace,
+`A` nykyinen replacementin activation-juuri.
+
+| Aineisto | Nykyinen omistaja ja tarkka kattavuus |
+| --- | --- |
+| Rekisteröity yritys | `deriveWorkspaceRoot` ja nykyinen rekisterivalinta. Koko `W` kerran; sisäiset DB/PDF/secret/restore-juuret eivät ole erillisiä payload-kohteita. |
+| Legacy-lähde | Adoption sama 13 merkinnän sallintalista ja sen workspace-avaiminen sidonta. Ei koko runtimea tai installation-päivitystilaa. |
+| Replacement ja activation-migraatio | Nykyiset import- sekä activation staging/rollback/failed -operaatiojuuret. Jaetun activation-operaation pitää vastata täsmälleen yhtä näistä kahdesta sidontaomistajasta. Nykyinen private `operationPaths` jaetaan oman polkuomistajansa kautta, ei kopioida poistajan algoritmiksi. |
+| Import/adoption-candidate | Nykyinen `workspace-operations/<operationId>/<workspaceId>`. Täsmälleen yksi vastaava omistaja; yhteinen operation-parent tai toisen yrityksen candidate ei ole poistokohde. |
+| Sidottu snapshot-/cold-inspection | `W/runtime/private-backup-staging`, `W/runtime/failed-profile-restores`, `A/staging` tai `A/failed`; lehti on nykyisen resolverin generationiin sidottu nimi. Ensimmäiset kaksi kuuluvat `workspace`-payloadiin. Jaetuissa activation-parenteissa inspection on operaatiokansion sisarus, ei sen lapsi. |
+| Candidate-factoryn tarkistuskopio | Nykyinen `inspection-<requestId>` import-/activation-candidaten sisällä. Eri mekanismi kuin `runOwnedProfileInspection`; se ei julkaise erillistä inspection-sidontaa eikä saa tekaistua generation-roolia. Candidate kattaa sen kerran. |
+
+Adoption kopioimat vanhat staging-/failed-alipuut kuuluvat omistavaan
+payloadiin, mutta kopioitu hakemisto ei peri alkuperäisen inspectionin
+tiedostoidentiteettiä. Kohteeton käyttäjän backup-inspect ei saa kohdetta
+aktiivisen yrityksen perusteella. Installation-scoped plaintext-quarantine,
+creation-jäännökset ja yhteiset recovery-/update-journalit käsitellään
+nykyisissä admission-omistajissaan; tuntematonta hakemistoa ei luokitella
+uuden poistoroolin avulla. Ulkoiset käyttäjän PDF:t ja backupit säilyvät.
+
+**Hyväksytty pieni tarkennus samaan luetteloon:**
+
+- Lisää vain sisäisen, pysyvästi sidotun inspectionin `inspectionEvidence`-
+  todisterivi. Se käyttää inspectionin nykyisiä seitsemää kenttää, samaa
+  operation/generation-paria, alkuperäisiä juuri-/parent-identiteettejä ja
+  kanonista sidontatiivistettä. Se ei ole siirrettävä tai purgettava juuri.
+- Todisterivi vaatii saman otsakkeen kohteen täsmälleen yhden `workspace`-
+  payload-tietueen. Julkaisussa kopion sekä parentin identiteetit vastaavat
+  luontisidontaa ja parent on kohdeworkspacen jompikumpi yllä nimetty sisäinen
+  inspection-parent. Pelkkä polkuprefix tai samat tavut eivät riitä.
+- Ulkoinen `inspection`-payload ja sisäinen `inspectionEvidence` eivät saa
+  esiintyä samalla operation/generation-parilla. Todisteen lisääminen ei
+  salli päällekkäisiä fyysisiä payload-juuria. Puuttuva kattava workspace,
+  väärä kohde, vaihtunut parent tai useampi identiteettiosuma hylätään.
+- Inventory-otsake ja sen sitoumus saavat täsmällisen version 2, jotta uuden
+  rivin merkitystä ei piiloteta vanhaan v1-sopimukseen. Journalin nykyiset
+  kentät, vaiheet ja slot-säännöt säilyvät. Inventory-tiedoston otsakkeen,
+  journalin targetin ja inventory-sitoumuksen on oltava kaikki täsmälleen v2;
+  pelkkä keskinäinen yhtäsuuruus ei riitä. V1:n automaattinen jatko tai
+  retirement ei kuulu tähän rajaukseen: se vaatisi erillisen omistajapäätöksen.
+  Tuntematon tai sekoitettu versio estää jatkon ja säilyttää aineiston.
+- Fyysinen poisto käsittelee vain payload-tietueita. Sidontametadatan
+  loppusiivous käyttää myös todisterivin hashia vasta nykyisen `purged`-
+  säännön, kaikkien payloadien poissaolon ja täsmällisen jälkeen-rekisterin
+  alla. Inventaario säilyy loppusiivoukseen asti. Työtilan puuttuminen yksin
+  ei anna lupaa omaksua myöhemmin ilmestynyttä metadataa.
+
+**Todisterivin cold-vaiheet:** alkuvalinnassa vaaditaan alkuperäinen kopio
+ja parent. Journalin valtuuttaman workspace-siirron jälkeen todisterivi
+seuraa vain tämän kattavan juuren todistettua quarantine-siirtoa: sitä ei
+siirretä erikseen eikä alkuperäisen polun puuttumista tulkita ristiriidaksi
+ilman vaihetarkistusta. Ennen purge-valtuutta säilyneen kopion ja parentin
+identiteetit tarkistetaan kattavan juuren todistetussa sijainnissa.
+`purgeAuthorized`-vaiheen sallimassa osittaisessa poistossa ei vaadita jo
+poistettua alipuuta uudelleen eikä keksitä uutta luontikuittia. Lopullinen
+metadata-cleanup käyttää muuttumattoman inventaarion todistetta, täsmällistä
+sidontahashia ja kaikkien valtuutettujen payloadien poissaoloa. Nykyisen
+keskeytystaulukon fyysiset siirto-/purge-/poissaolosäännöt koskevat tässä
+v2-sopimuksessa payload-rooleja, eivät itsenäistä todisterivin tiedostopoistoa.
+
+Tämä on yksi inventaarion tarkennus, ei toinen tiedostoindeksi, uusi
+recovery-järjestelmä tai metadata-cleanupin poikkeus. Nykyiset 2 048 tavun
+rivi-, 4 096 tavun lukupala- ja 16 KiB:n journal-rajat sekä aikarajat säilyvät.
+Tuotantokytkentä odottaa seuraavien regressioiden ja vaikutusalueen porttien näyttöä.
+
+**Täydellisyyden toteutustapa nykyisillä omistajilla:**
+
+1. Saman elävän delete-leasen ja todetun kirjoittajien sulun alla tarkistetaan
+   sekä kaikki viisi sidontahakemistoa kaikkine slotteineen että niiden
+   omistajien nimeämät todelliset payload-parentit. Sidontaluettelo yksin
+   ei löydä indeksoimatonta jäännöstä. Payload-luettelo yksin ei todista kohdetta.
+2. Jokainen havainto on todistetusti kohteen, todistetusti vieras, todistetusti
+   poissa tai epäselvä. Vieraan yrityksen tavut ja metadata säilyvät.
+   Ristiriita, puuttuva sidonta tai tuntematon omistaja estää julkaisun;
+   niitä ei lasketa tyhjäksi tulokseksi. Tunnettu tyhjä yhteisparent ei
+   muutu poistettavaksi yritysjuureksi.
+3. Inspectionin olemassa oleva juuri valitaan vain yllä olevista neljästä
+   parentista luontisidonnan ja tuoreiden identiteettien täsmällisellä
+   vertailulla. Kadonnut tai korvattu parent ei muutu varmaksi alkuperäksi
+   nimeä päättelemällä. Inspectionin cold metadata-only-ennakkosiivous tarvitsee
+   nykyiseen omistajaan rajatun uuden poissaolotodistuksen: täsmällisen
+   generation-lehden on oltava poissa kaikista neljästä sallitusta sijainnista,
+   nykyiset säilyneet ancestorit ja puuttuvat välit varmennetaan sekä kaikki
+   binding-slotit tarkistetaan samaan kohteeseen. Lukukelvoton, ristiriitainen
+   tai vaihtuva tila estää siivouksen. Rajattu cold-portti on toteutettu alla
+   kuvatulla kohderajalla; nykyinen tavallinen omistaja käyttää edelleen
+   muistissa olevaa poistokuittausta. Cold-portti ei anna payload-poistolupaa
+   tai ohita kirjoittajien sulkua. C:n todellinen kutsujakytkentä on vielä auki.
+4. Payloaditon metadata siivotaan nykyisen omistajan kautta ennen lopullista
+   luettelointia. Payloadia ei poisteta tässä valmistelussa. Jokainen tämän
+   siivouksen oma kuitti erotetaan ulkoisesta muutoksesta; epävarma kuittaus
+   estää jatkon. Poistettavaan luetteloon ei lisätä tekaistua puuttuvaa juurta.
+5. Luettelon järjestys tuotetaan rajatulla avainsivulla ja hakemistokahvan
+   peräkkäisellä luvulla, ei koko historian `readdir`-/Set-taulukolla. Sivu
+   valitsee pienimmät cursorin jälkeiset avaimet; seuraava sivu lukee saman
+   sallitun lähteen uudelleen. Sivukoko on muistibudjetti, ei aineistomäärän
+   hyväksymisraja. Ei uutta pysyvää lajitteluindeksiä tai väliaikaistietokantaa.
+   Toistuvan luvun kustannus ja hallittu keskeytys todennetaan ennen kytkentää;
+   nopeutta tai rajattoman aineiston valmistumista ei luvata ilman mittausta.
+6. Lopuksi tuore kanoninen metadata-/payload-luettelo verrataan rivi riviltä
+   koko takaisinluettuun inventory-tiedostoon EOF:ään asti. Puuttuva tai
+   ylimääräinen payload/todiste, muuttunut identiteetti tai binding-hash
+   estää julkaisun. Lähdevalinnan tarkistus kattaa myös cursorin taakse
+   ilmestyneet nimet, sivuslotit, parent-identiteetit, vieraat merkinnät ja
+   todistetut poissaolot. Pelkkä tietuemäärä, hakemiston mtime tai valmiin
+   tiedoston hash ei todista tätä. Muuttunut valinta estää `authorized`-
+   julkaisun ilman automaattista uudelleenvalintaa. W7.3:n päättämistarkistukset
+   ja D:n tuore kohdevaltuus säilyvät; publication ei tee siirtoa tai purgea.
+
+Streamin edellisen avaimen tarkistus ei yksin löydä inspectionin kahden
+roolin ristiriitaa. V2:n semanttinen tarkistus vertaa `inspection`- ja
+`inspectionEvidence`-alivirrat operation/generation-järjestyksessä rajatuilla
+kahdella läpikäynnillä ja kahdella nykyisellä rivillä, ei kasvavalla joukolla.
+Samalla vaaditaan todisterivien kattava workspace-tietue. Nykyinen rajattu
+lukija saa tähän nimettyjen tietueiden luentaportin; mitään vaikutusta ei
+sallita ennen koko sitoumuksen, EOF:n ja ristikkäisehtojen tarkistusta.
+Näiden läpikäyntien tiedostoidentiteetti ja valtuus pysyvät samoina.
+
+Alkuperäistä I/O:ta seurataan ja kaikki avatut kahvat suljetaan myös
+peruutuksessa. Odotusrajan täyttyminen ei tarkoita luvun päättyneen eikä
+vapauta varausta. Ensivirhe ja sulkuvirhe pysyvät erillään. Lähteen luku,
+valinta ja payload-toimenpiteet käyttävät samoja nykyisiä omistajia; main
+ei avaa yritystietokantaa tätä varten.
+
+**Ennen kytkentää todennettavat tapaukset:** sisäinen inspection-todiste ja
+ulkoinen inspection-juuri; candidate-factoryn erillinen mekanismi; kaksi
+yritystä samoissa jaetuissa parenteissa; replacement/migration- sekä
+import/adoption-kaksoissidonta; next-/backup-only ja payload ilman sidontaa;
+kopioitu legacy-alipuu; muuttunut parent/juuri; puuttuva kattava tietue ja
+inspectionin kaksoisrooli; uusi nimi aiemman cursorin takana; useampi kuin
+yksi avainsivu; keskeytynyt luku/sulku sekä kadonnut valtuus. Oikeilla
+tiedostotavuilla verrataan myös kaikkia säilyviä yritys- ja installation-
+aineistoja. Journalin eri katkokohdat, vain todisterivin sallima metadata-
+cleanup ja sen cold-jatko todennetaan ennen D/E-liitosta. Suunnitelmakatselmus
+ei ole näiden testien läpäisy eikä koko W7.4:n hyväksyntä.
+
+**Rajattu sopimuskatselmus 31.10.2026:** neljä täsmennystä kirjattiin ennen
+päätöstä: cold-vaiheiden ero, inspectionin uusi metadata-only-poissaolotodiste,
+todellisen inventaarion rivivertailu/ristikkäistarkistus ja v1-jatkon sulku.
+Jälkikatselmuksessa ei jäänyt estävää sopimusristiriitaa. Tämä katselmus ei
+muuttanut sovelluskoodia. Omistaja hyväksyi sen jälkeen rajatun täsmennyksen
+ja testit; toteutuksen näyttö kirjataan erikseen M1:n jatkamiskohtaan.
+
+**V2-tavurajan kohdetoteutus 31.10.2026:** nykyinen inventory-codec,
+stream-lukija ja tiedostotallennin käyttävät v2-otsaketta/sitoumusta.
+Journalin ulkoinen v1, vaiheet ja sidontatiedostojen v1 säilyvät.
+`inspectionEvidence` vaatii kattavan workspace-tietueen ja kahden roolin
+operation/generation-ristiriita tarkistetaan rajatulla luennalla samasta
+avatusta tiedostosta. Molemmat alivirrat luetaan EOF:ään ja tarkistetaan
+samaan sitoumukseen, myös viimeisen todisterivin jälkeinen häntä.
+`captureDeletionInventoryPayloadRecord` hylkää todisterivin fyysisenä
+kohteena. `readDeletionInventoryRecords` välittää vain havaintoja;
+lopullinen sitoumus saadaan vasta EOF:n jälkeen. Tavujen tarkistus ei
+todista alkuperäistä juuriomistajuutta tai anna poistovaltuutta.
+
+Tämä tavupala ei yksin todista cold-poissaolokytkentää,
+todisterivin fyysistä kohdesidontaa, täydellistä omistajacensusta tai D/E:n
+tiedostopoistoa/keskeytysjatkoa. Nykyiset turvalliset virheluokat säilyvät;
+ei uutta tapahtumaa, renderer-pintaa tai kerättävän aineiston lajia.
+Oikean poistokuluttajan diagnostiikka-/salatun virhepaketin ja paketoidun
+ketjun näyttö säilyy F:n porttina. Ajantasaiset kohdetulokset ja katselmuksen
+tila löytyvät [M1:n jatkamiskohdasta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+**Inspectionin metadata-only-omistajaportti 31.10.2026:**
+`workspaceInspectionRemnantPaths` johtaa samat neljä sijaintia nykyisistä
+workspace-/snapshot-/replacement-omistajista ja runnerin yhteisestä
+generation-nimestä. `captureWorkspaceInspectionRemnantAbsence` sitoo
+säilyneet ancestor-identiteetit sekä puuttuvat välit ja tarkistaa ne myös
+jokaisen leaf-poissaolo-odotuksen jälkeen. Virhe mitätöi tämän havaitun
+valinnan pysyvästi; vanhan polun palauttaminen ei uudista sitä.
+`clearAbsentWorkspaceInspectionBinding` vaatii erikseen kirjoittajien
+todetun päättymisen, täsmällisen kohteen/lineagen ja kaikkien havaittujen
+binding-slottien tavut/identiteetit. Se käyttää nykyistä `owner`-siivousta,
+ei poiston `purged`-poikkeusta, ja säilyttää oman vartijansa ensisyyn ennen
+alemman tiedostokerroksen yleistä virhekoodia. Payloadia tai jaettuja
+parentteja ei poisteta, kopioida tai siirretä. Tavallinen elävän inspectionin
+luontikuittiin perustuva cleanup ei muutu. Tämä portti on vielä C:n
+koostumuskytkennän ulkopuolella; mallinnettu sulkuvartija tai uusi lukijaolio
+ei todista pääprosessin todellista sulkua tai prosessin uudelleenkäynnistystä.
+
+**Olemassa olevan inspectionin valintaportti 31.10.2026:**
+`captureWorkspaceInspectionRemnantSelection` sitoo julkaistun sidonnan
+kaikkien slottien alkuperäiset tavut ja identiteetit sekä yhden täsmällisen
+luontisidotun kopion neljästä sallitusta sijainnista. Sisäinen kopio vaatii
+nykyisen workspace-payload-tietueen todelliset juuri- ja parent-identiteetit;
+se tuottaa vain `inspectionEvidence`-rivin. Ulkoinen kopio tuottaa
+`inspection`-rivin. Useampi saman generationin juuri, vaihtunut identiteetti,
+vieras kohde tai epävarma kirjoittajien sulku estää valinnan. Poissaolo ja
+olemassa olevan juuren valinta käyttävät samaa rajattua ancestor-havaintoa;
+normaalin inspectionin luonti tai cleanup ei muutu. Uusi kuitti on havainto,
+ei siirto-, purge- tai metadatapoistolupa.
+
+`observeWorkspaceDeletionDirectoryEntries` tuottaa järjestetyt raakanimet
+64 nimen muistibudjetilla ja peräkkäisellä hakemistoluennalla. Jokainen sivu
+lukee lähteen uudelleen, eikä sivukoko ole jäännösten kokonaismääräraja.
+Avattu kahva suljetaan ja aloitettu luku odotetaan myös valtuuden
+menetyksessä; luku- ja sulkuvirhe erotetaan. Tämä nimilukija ei luokittele
+omistajaa eikä todista luettelon täydellisyyttä. Cursorin taakse lisätty
+nimi havaitaan vasta uudessa kokonaisluetteloinnissa. Edellä vaadittu tuoreen
+metadata-/payload-luettelon ja inventoryn EOF-vertailu sekä C:n todellinen
+kutsujakytkentä ovat edelleen avoimia portteja ennen julkaisua.
+
+**Sidontapuolen alustava luettelointi 31.10.2026:**
+`observeWorkspaceRemnantBindings` käyttää nykyistä strict-tallenninta
+kaikille viidelle omistajalle. Se tuottaa currentin ja samansisältöisten
+sivuslottien havainnon kerran, säilyttää alkuperäiset tavut/identiteetit
+kuluttajan muuttuvista tavukopioista erillään ja hylkää tuntemattoman nimen,
+next-/backup-onlyn tai muuttuneen valinnan. Omistavien polkujen parseri
+käyttää nykyisiä tunnistevalidaattoreita; levyformaatti ei muutu.
+Yksittäisen sidonnan lukija säilyttää vanhan hakemistoportin rajapinnan;
+uusi luetteloija sitoo myös kaikki säilyneet ja puuttuvat ancestorit.
+Lukija ei suodata vieraita yrityksiä, korjaa metadataa, avaa tietokantaa
+tai anna payload-poistolupaa. Pelkkä metadata-EOF ei todista täydellisyyttä.
+
+**Peräkkäisten tarkistusten yhdistäminen:** onnistunut täysi post-open- tai
+post-read-tarkistus toimii myös seuraavan luvun ennakkotarkistuksena vain,
+kun välissä tehdään rajattua synkronista nimen käsittelyä. Välissä ei saa
+olla odotusta, muuta tiedosto-operaatiota tai kuluttajalle luovutusta.
+Elävä valtuus tarkistetaan lisäksi synkronisesti välittömästi ennen lukua.
+Täysi tarkistus säilyy ennen avausta, jokaisen avauksen ja luvun jälkeen
+(myös null/EOF), sulkemisen jälkeen ja ennen jokaisen nimen luovutusta.
+Ancestor-sidonta, strict-tallentimen kaikki slotit sekä sidonnan vertailu
+ennen ja jälkeen kuluttajan säilyvät. Tämä ei lupaa atomista hakemistotilaa
+tai kaikkien ohimenevien muutosten jatkuvaa havainnointia. Tarkistusta ei
+siirretä sivun loppuun eikä valtuutta muisteta tiedostotyön yli.
+
+Suurempi luettelointikoe aikakatkaisi viiden sekunnin testirajaan myös
+rajatun korjauksen jälkeen. Omistajan hyväksymä
+[nimetyn yhdistelmätestin kymmenen sekunnin budjetti](../ai/testing-rules.md)
+ei muuta sovelluksen tai muiden testien aikarajoja. Ensihylkäykset säilyvät;
+budjettimuutos ei yksin todista viiveen juurisyytä korjatuksi. Testin oma
+keskeytys välittyy nykyiseen valtuusvartijaan, alkuperäinen lukutyö odotetaan
+loppuun ja varmentamaton aineisto säilyy. Havaintorajan regressiot ja
+todellinen monisivuinen sidontaluenta on erotettu rakenteellisesta
+kutsumääräkokeesta. Ajantasainen kohdenäyttö on
+[M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Täydellinen metadata-/payload-census ja C:n tuotantokytkentä ovat vielä auki.
+
+**Replacementin ja activation-migraation juurivalinta:** nykyinen
+palautustransaktio ja luetteloinnin lukija johtavat operaation staging-,
+rollback- ja failed-polut samasta palautuksen polkuomistajasta. Layout,
+operaatiotunnisteen tarkistus ja tavallinen palautus säilyvät.
+`captureWorkspaceReplacementRemnantSelection` lukee molemmat mahdolliset
+sidontaomistajat kaikkine slotteineen. Täsmälleen yksi julkaistu omistaja
+vaaditaan; puuttuva tai kaksinkertainen sidonta ei anna juurivalintaa.
+Migration-sidonta ei omista backup-import-kansiota samalla tunnisteella.
+Lukija sitoo neljän nimetyn juuren olemassaolon tai poissaolon ja säilyneet
+ancestorit, säilyttää vieraan yrityksen kohdetiedon sekä tarkistaa aiemmat
+juuret uudelleen metadatan vertailun jälkeen ja sidonnan vielä tämän
+juuriluennan jälkeen. Valtuus ja kirjoittajien
+päättyminen tarkistetaan ennen tulosta. Virhe mitätöi havaitun valinnan.
+Peräkkäiset havainnot eivät ole atominen tiedostojärjestelmän snapshot.
+Tämä on yhden operaation readonly-havainto: kaikkien parenttien luettelointi,
+indeksoimattomien juurten hylkäys, tuore EOF-vertailu ja C:n julkaisija ovat
+erillisiä vielä avoimia portteja. Kuitti ei valtuuta payloadin eikä metadatan
+poistoa. Kohdetodennuksen ja katselmuksen ajantasainen tila on M1:ssä.
+
+**Import-/adoption-candidaten valinta ja operaatiokansion luenta:**
+`captureWorkspaceCandidateRemnantSelection` johtaa täsmällisen yrityskansion
+nykyisistä omistajista ja vaatii yhden vastaavan julkaistun sidonnan.
+Workspace-avaiminen adoption-sidonta toiselle operaatiolle ei omista tätä
+candidatea; saman operaation ristiriitainen import-kohde estää valinnan.
+Kaikki sidontaslotit, ancestorit ja juuren olemassaolo tai poissaolo sidotaan
+havaintoon. `observeWorkspaceCandidateRemnants` lukee yhden nimetyn
+operaation todelliset yrityskansiot nykyisellä rajatulla nimilukijalla.
+Tuntematon nimi, puuttuva sidonta tai luennan aikana kadonnut juuri estää
+jatkon; vieras todistettu candidate säilyy luettelossa. Jaettua
+operation-parentia ei valita payloadiksi. Tuonnin normaali polunmuodostus
+käyttää samaa operaatiopolkuapuria entisillä kohteilla ja validoinnilla.
+`observeWorkspaceCandidateOperations` lukee myös yhteisen operations-parentin
+ja jokaisen sen operaation, ei vain metadatasta löytyviä kansioita. Se säilyttää
+tyhjien parenttien, vieraan yrityksen ja puuttuvan yhteisparentin havainnot.
+Installation-scoped plaintext-quarantine tunnistetaan nykyisen omistajan
+nimestä ja hyväksytään vain tyhjänä; sen aineisto kuuluu edelleen nykyiselle
+admission-omistajalle. Jaettua kansiota ei poisteta. Yhden operaation ja sen
+candidaten luenta käyttävät samaa ancestor-valintaa: yhteisparentin
+identiteettiä ei valita uudelleen eikä ulompaa koko tarkistusta pinota
+rekursiivisesti sisemmän vartijan sisään. Valtuus, kirjoittajien päättyminen,
+todelliset identiteetit ja aloitettujen lukujen loppuun odottaminen säilyvät.
+Nämä readonly-havainnot eivät vielä korvaa kaikkien palautusparenttien ja
+metadatan yhteisluettelointia, tuoretta EOF-vertailua tai C:n julkaisijaa.
+
+**Jaettujen palautusparenttien luenta:**
+`observeWorkspaceReplacementRemnants` lukee nykyisen polkuomistajan neljä
+yhteistä import-/activation-parentia ilman tekaistua yritystunnistetta.
+Alkuperäiset ancestor-identiteetit ja poissaolot sidotaan ennen luentaa ja
+tarkistetaan myös koko kierroksen lopussa. Operaatiokansio yhdistetään
+nykyiseen replacement-/migration-valintaan. Staging-/failed-parentin
+inspection-sisarus tunnistetaan nykyisen runnerin generation-nimestä ja
+sen sidonta haetaan kaikkien inspection-slottien rajatulla luennalla;
+ensimmäistä osumaa ei hyväksytä, jos toisella operaatiolla on sama generation.
+Raaka inspection-havainto käyttää samaa juuri-/slot-valintaa kuin kohteen
+tietueen muodostaja, mutta ei anna inventory-tietuetta tai poistovaltuutta.
+Kohdetietueen muodostaja vaatii edelleen oikean yrityksen, lineagen ja
+sisäiselle kopiolle kattavan workspace-tietueen. Vieraat juuret säilyvät
+luettelossa; puuttuva sidonta, tuntematon nimi, väärä parent tai muuttunut
+identiteetti estää valmistelun. Alkuperäiset luvut ja sulut odotetaan loppuun.
+Normaalin palautuksen polut, runnerin nimet ja aikarajat säilyvät.
+Tämä kattaa jaetut payload-parentit, ei vielä koko metadata-/payload-luettelon
+tuoretta EOF-vertailua tai C:n julkaisua.
+
+**Vanhan runtime-lähteen luenta:** `captureWorkspaceLegacyRemnantSelection`
+käyttää adoption samaa polkuomistajaa ja 13 merkinnän sallintalistaa. Se ei
+avaa tietokantaa eikä edellytä ehjää business-sisältöä. Installation-parentia
+tai listan ulkopuolisia tiedostoja ei valita payloadiksi. Sallittu yksittäinen
+tiedosto säilyttää adoption nykyisen käyttöoikeusmallin; linkit, hardlinkit ja
+erikoistiedostot hylätään, ja yrityssisällön kansioilta vaaditaan edelleen
+yksityinen hakemisto. Inventaarion oman metadata-tiedoston tiukkaa
+käyttöoikeustarkistusta ei lievennetä.
+
+Lähteellä voi olla vain yksi julkaistu adoption-omistaja, kun jokin sallittu
+merkintä on olemassa. Luenta käy kaikki workspace-avaimiset sidonnat läpi;
+kahta yritystä ei ratkaista valitsemalla ensimmäinen. Vieras todistettu omistaja
+säilyy havainnossa, kunnes kohteen muodostaja vertaa sitä tarkkaan poiston
+kohteeseen. Kaikkien sallittujen merkintöjen poissaolo ei valitse metadataa
+siivottavaksi: adoption candidate ja täydellinen metadata-luenta tarkistetaan
+erikseen. Havainnon juuri-, parent- ja slottivalinta tarkistetaan uudelleen,
+muutos mitätöi alkuperäisen valinnan ja aloitettu luku odotetaan loppuun
+valtuuden menetyksessäkin. Tämä readonly-luenta ei julkaise inventaariota,
+muuta normaalia adoptiota tai anna siirto-, purge- tai metadatapoistolupaa.
+Kohdetodennus ei korvaa C:n täydellistä luettelovertailua tai F:n pakettinäyttöä.
+
+**Omistajien yhteinen readonly-luenta:** `observeWorkspaceDeletionRemnants`
+yhdistää viisi metadataomistajaa niiden nykyisiin juuri-/candidate-/inspection-
+valintoihin sekä todellisten jaettujen payload-parenttien luentaan. Myös
+tyhjä tai puuttuva metadataparent ja payloaditon sidonta jäävät havaintoon.
+Vieraita yrityksiä ei suodateta pois. Sisäisenkin inspectionin generation
+vaatii yksiselitteisen operaatiomerkinnän; jaetun parentin puuttuminen ei
+korvaa tätä tarkistusta. Alkuperäiset viisi metadataparenttia tarkistetaan
+vielä koko luennan lopussa. Payloadittoman sidonnan havainto ei itsessään
+anna metadata-cleanup-valtuutta.
+
+`captureWorkspaceDeletionRemnantCensus` vertaa nimetyn valmistelu-/julkaisurajan
+kohdalla tuoretta täydellistä jäännösluentaa alkuperäiseen kanoniseen
+lähdehavaintoon. Vertailu sisältää raw-slottien tavut ja identiteetit,
+vieraat kohteet, parentit ja poissaolot, ei vain luettelon määrää tai mtimea.
+Tämä yksityinen muistissa pidettävä vertailu ei ole uusi pysyvä indeksi,
+atominen tiedostojärjestelmän snapshot tai tiedostopoistolupa. Kokonaista
+luentaa ei sijoiteta yksittäisen I/O:n vartijaan. Kohteen/rekisterin valinta,
+todellisten inventory-rivien tuore EOF-vertailu ja C:n julkaisijakytkentä
+ovat edelleen erillisiä pakollisia portteja. Virhe mitätöi vertailukuitin;
+myöhemmin palautettu vanha sisältö ei uudista sitä.
+
+**Inventaarion todellisten rivien vertailu:** nykyisen
+`WorkspaceDeletionInventoryStore.assertRecords`-portin yksi avoin tiedosto
+säilyttää samat juuri-, parent-, tiedostoidentiteetti- ja valtuusvartijat
+kuin tavallinen takaisinluku. Ensin tarkistetaan koko sitoumus ja
+inspection-roolien ristikkäisehdot. Sen jälkeen samasta avatusta tiedostosta
+luetut kanoniset rivit verrataan odotettuun lähteeseen yksi kerrallaan.
+Molempien on päädyttävä EOF:ään; myös vertailuluennan sitoumus sekä
+tiedoston tila ennen ja jälkeen sulun tarkistetaan. Puuttuva, ylimääräinen
+tai muuttunut rivi hylätään ilman korjaavaa kirjoitusta. Alkanut luku ja
+molempien lukijoiden sulku odotetaan loppuun; parseri-, lähde- ja
+sulkuvirheet säilyvät erillisinä alkuperäisessä järjestyksessä.
+Tämä portti ei itse valitse yritystä, siivoa metadataa tai anna
+poistovaltuutta. C:n kutsujan on edelleen tuotettava tuore omistajakohtainen
+lähde ja varmennettava koko lähdevalinta erikseen. Täydellistä census-luentaa
+ei kutsuta jokaisen rivin tai tiedostoluvun vartijasta.
+
+**Kohteen rivien muodostaminen ja kertautuvan työn rajaus:**
+`captureWorkspaceDeletionInventorySources` sitoo oikean workspace-juuren
+ja sen parentin, muodostaa kohteen rivit nykyisten omistajien havainnoista
+ja säilyttää vieraat, puuttuvat sekä payloadittomat lähteet täydellisessä
+vertailussa. Kohteen payloaditon metadata hylätään ennen kuin sen oma
+ennakkosiivous on todennettu. Sisäinen inspection muodostaa vain nykyisen
+workspace-rivin kattaman todisterivin, ei toista fyysistä poistolupaa.
+
+Ensimmäinen 64 avaimen sivu muodostetaan samassa täydellisessä
+alkuluennassa kuin lähdesitoumus. Callback on synkroninen projektio;
+kaikki havainnot hashataan ensin, eikä callback suodata vertailua.
+Sivu käytetään kerran. Myöhemmät sivut ja uusi `records()`-kierros lukevat
+lähteet uudelleen. Vajaa sivu on jo lukenut koko lähteen, joten sen jälkeen
+ei tehdä ylimääräistä tyhjää sivukierrosta. Kulutuksen lopun tuore
+kokonaisvertailu säilyy aina, myös cursorin taakse ilmestyneille muutoksille.
+Luettelotallentimen omat kansiot valmistellaan ennen lähtötilan kaappausta
+sen nykyisen laiskan rivikulutuksen kautta. Ulkopuolisia muutoksia ei
+hyväksytä omaksi valmisteluksi eikä lähtötilaa valita uudelleen virheessä.
+
+Jaettujen replacement-parenttien neljä olemassa olevaa järjestettyä
+nimilukijaa yhdistetään yksi nimi kustakin kerrallaan. Samannimisen
+operaation kaikki neljä mahdollista juurta tarkistetaan yhdessä sen
+nykyisellä omistajalla, ei uudelleen jokaisen fyysisen juuren kohdalla.
+Lueteltujen sijaintien ja juurivalinnan läsnäolojen on täsmättävä
+täydellisesti, myös poissaolojen osalta. Alkuperäiset parent-kuitit sekä
+kuluttajan jälkeinen tuore koko operaation tarkistus säilyvät. Inspection
+vaatii edelleen yhden sallitun sijainnin ja yksiselitteisen sidonnan.
+Muistiin ei rakenneta kasvavaa operaatiojoukkoa. Kunkin neljän lukijan
+oma nykyinen nimisivu on rajattu; alkuperäiset luvut sekä kaikkien
+lukijoiden sulut odotetaan loppuun, myös yhden sulun epäonnistuessa.
+
+Tämä on readonly-luentakytkentä. C:n julkaisijan on yhä käytettävä samaa
+leasea, todellista writer-sulkua, täsmällistä registry-/kohdevalintaa ja
+valmiin inventaarion EOF-vertailua ennen journalin `authorized`-julkaisua.
+Payloadittoman metadatan ennakkosiivous ja D/E:n eteneminen eivät synny
+tästä kuitista. Uusien yhdistelmätestien nimetyt budjetit on erotettu
+sovelluksen rajoista [testausohjeessa](../ai/testing-rules.md).
+
+**Yhden payloadittoman sidonnan ennakkosiivous:**
+`clearAbsentWorkspaceDeletionBinding` validoi kohteen ja lineagen ennen
+luentoja ja käyttää nykyistä sidontatallenninta `owner`-tilassa. Inspection
+käyttää omaa aiempaa poissaoloporttiaan. Replacement/migration vaativat
+kaikkien neljän juuren poissaolon, import oman candidatensa poissaolon ja
+adoption lisäksi alkuperäisen legacy-parentin sekä kaikkien 13 nimetyn
+merkinnän poissaolon. Poissaolo ei ole uuden payloadin omistajuustodiste.
+
+Omistajan alkuperäiset slotit, tavut ja identiteetit sidotaan clear-kutsuun.
+Oman poiston aikana ne tarkistaa nykyinen slot-tallennin; erillinen
+poissaoloportti säilyttää oman metadatahakemiston ancestorit sekä kilpailevan
+omistajan kaikki alkuperäiset slotit ja parentit. Viimeinen juuriluku
+ei jätä kilpailijaa tarkistamatta. Adoptionin legacy-luennan jälkeen
+candidate ja sen kilpailija tarkistetaan vielä uudelleen ennen paluuta.
+Ensivirhe säilyy, alkuperäinen I/O odotetaan ja epäonnistunut poisto-, sync-
+tai loppukuittaus ei muutu onnistumiseksi myöhemmän poissaolon perusteella.
+
+Tämä portti käsittelee yhden valitun metadataomistajan, ei koko poiston
+valmistelua. C:n täydellinen luettelointi ja sen tuntemattomien lähteiden
+hylkäys säilyvät pakollisina. Luentageneraattorin vartioimia slotteja ei
+muuteta sen yield-välissä; lukija päätetään ensin. Lopullinen inventaarion
+lähtötila kaapataan vasta omien siivousten onnistuneiden kuittausten jälkeen.
+Vieraan kohteen merkintöjä ei siivota, eikä tämä avaa D/E:n tiedostopoistoa.
+
+**Täydellisen luennan ja siivouskuittausten yhdistäminen:**
+`prepareWorkspaceDeletionRemnantBindings` valitsee täydellisen paired-luennan
+aikana enintään nykyisen 64 merkinnän muistierän payloadittomia kohdesidontoja.
+Alkuperäiset slotit välitetään nykyiselle omistajasiivoukselle; samoina
+takaisin ilmestyneet tavut eivät korvaa alkuperäistä tiedostoidentiteettiä.
+Luentageneraattori suljetaan ja koko lähtövalinta tarkistetaan ennen siivousta.
+
+Samasta alkuluennasta muodostetaan odotettu jälkitila, josta puuttuvat vain
+valitun erän täsmälliset metadatarivit. Kaikki muut havainnot, vieraat
+yritykset, parentit ja poissaolot säilyvät vertailussa. Jokaisen siivouksen
+pitää palauttaa onnistunut kuittaus. Seuraava kokonainen, suodattamaton
+luenta verrataan odotettuun jälkitilaan ennen uuden erän käsittelyä.
+Muutos tai puuttuva kuittaus hylkää valmistelun; sitä ei korjata valitsemalla
+muuttunutta tilaa uudeksi lähtökohdaksi. Erä ei ole aineistomäärän raja.
+Kohteen kaksi sisäistä inspection-parentia ja niiden generation-lehdet
+luetaan myös metadatasta riippumattomina lähteinä. Niiden alkuperäinen
+identiteetti tai poissaolo ei katoa siivotun metadatarivin mukana.
+Myöhemmin ilmestyvä generation-lehti tarvitsee oman täsmällisen sidonnan;
+puuttuva tai vieras sidonta hylkää myös myöhemmän erän ja loppuvertailun.
+Tavallinen workspacen sisäinen sisältö säilyy yhden workspace-payloadin
+alla eikä saa uutta erillistä poistoroolia.
+Tämä valmistelu ei vielä julkaise inventaariota tai poistojournalia eikä
+siirrä yrityksen tiedostoja. Julkaisijan on edelleen sidottava lopullinen
+lähdevalinta samaan rekisteriin, leaseen ja W7.3:n päättämistarkistuksiin.
+Kytkennän kohdetodennus, tyypitys ja rajattu riippumaton katselmus
+läpäisivät. Katselmuksen sisäisen tarkistuskopion poissaolotodisteen aukko
+toistettiin ja korjattiin. Windowsissa myös ei-kanoninen kirjainkokovariantti
+hylätään omistajuutta arvaamatta. Lopullisen sarjan näyttö on M1:n
+jatkamiskohdassa; varsinainen journalin julkaisijakytkentä on vielä auki.
+
+**Julkaisurajan valmistelu ja hyväksytty järjestys:** nykyinen journal-store
+tukee vain alkujulkaisun `next -> current` -rajalla tehtävää erillistä
+sisältövertailua. Sen molemmin puolin tarkistetaan alkuperäinen valinta ja
+kaikki kolme slottia. W7.3 välittää lisäksi alkuperäisen kevyen
+valintatarkistuksensa erikseen; uusi rekisterikaappaus ei korvaa alkuperäisiä
+tiedostoidentiteettejä eikä kevyt portti lue backupin sisältöä uudelleen.
+Mainin kirjoittajien poissaolotodiste säilyy erillisenä vaatimuksena.
+
+Omistajan 31.10.2026 hyväksymä järjestys ja rajattu tuotantokytkentä ovat
+täysi lähde-/inventory-vertailu, W7.3:n nykyinen backup-uusintaluku, nimetty
+lähde-/inventory-loppuvertailu ja kevyet omistajuus-/slottitarkistukset ennen
+julkaisua. Loppuvertailu ei käynnistä backup-lukua uudelleen. Muuten
+"viimeisen valmisteluodotuksen jälkeen" -sanamuoto voi muodostaa kehän.
+Synteettinen tiedostokoe todensi muuttuneen lähteen hylkäyksen ennen
+current-journalia sekä muuttumattoman lähteen onnistumisen. Koe jäljittelee
+backup-odotusta; se ei ole oikean containerin tai tuotantojulkaisijan näyttö.
+Varsinainen C-julkaisija ja tämän järjestyksen tuotantokytkentä vaativat
+vielä vastaavat todellisen ketjun regressiot ja katselmuksen; päätös ei
+itsessään todista niitä eikä koko W7.4:n valmistumista.
+
+**Readonly-valinnan rajattu koe, hyväksytty 31.10.2026:** kytkentäkoe toi
+esiin alkuperäisen rekisterivalinnan kertautumisen sisäkkäisissä
+luenta-/parent-vartijoissa. Ylimääräinen factoryn `valinta -> kirjoittajat ->
+valinta` -kääre erotettiin source- ja mutation-vartijoiksi, koska
+source-omistajat muodostavat saman kääreen jo itse. Tämä ei muuttanut
+yhtäkään omistavan lukijan tarkistuskohtaa eikä vielä ratkaissut viivettä.
+
+Omistaja hyväksyi tarkistusvastuun täsmennyksen ja rajatun kokeen, ei vielä
+sen tuotantokytkentää. Kokeessa readonly-kierroksen
+alkuperäinen yritys-/rekisterivalinta tarkistettaisiin koko kierroksen
+alussa ja onnistuneen EOF:n sekä sulun jälkeen. Synkroninen requester-/
+lease-/main-valtuus, todellinen kirjoittajien poissaolo sekä omistajien
+juuri-, parent- ja slotti-identiteetit säilyisivät jokaisessa nykyisessä
+kohdassaan. Metadata-cleanup, inventory-/journal-kirjoitus ja aloituksen
+julkaisu käyttäisivät edelleen nykyisiä täydellisiä muutosvartijoita.
+Readonly-valtuutta ei saa välittää tiedostopoistoon tai julkaisuun.
+Luku- ja cleanup-valtuudet erotetaan: kevennetty valtuus saa kulkea vain
+kokonaisen readonly-kierroksen sisällä. Valmistelun nykyiset cleanup-kutsut
+saavat edelleen alkuperäisen täyden valtuuden. Muille kutsujille ei muuteta
+oletuksia tuotannossa tämän kokeen perusteella.
+Koe todentaa kesken luvun muuttuneen rekisterin, kadonneen valtuuden,
+kirjoittajan ilmaantumisen, metadatan poiston viimeisen tarkistuksen ja
+aloitettujen lukujen sulun. Epäonnistunut kierros ei saa luoda uutta
+baselinea. Kokeen läpäisy ei hyväksy tuotantokytkentää tai aikarajamuutosta.
+
+Rajattu koe toteutettiin erillään toimitettavasta lähteestä nykyisen
+luentaomistajan ympärille. Kierroksen valtuus mitätöityy keskeytyksessä jo
+ennen sulun odottamista ja onnistumisessa viimeistään loppuvalinnan jälkeen.
+Vanha havaintokohtainen tarkistus ei saa käynnistää uutta lukua sulun aikana
+tai elpyä seuraavassa kierroksessa. Alkuperäinen lukuvirhe ja sulkuvirhe
+säilyvät erillisinä; testin omat pidätykset vapautetaan ennen loppuodotuksia.
+Katselmuksen sulkuvaltuuspuute toistettiin ja korjattiin koeversioon.
+Lopulliset 17 kontrollia, tyypitys ja rajattu jälkikatselmus läpäisivät.
+Kirjoittajan poissaolo on näissä kontrolleissa injektoitu, ei uuden
+prosessiketjun todiste. Metadatan siivouksen sisältävä julkaisuketju ylitti
+edelleen nykyisen testirajan; koko kytkentää ei ole hyväksytty.
+Tämän kokeen perusteella ei poisteta täydellisiä muutosvartijoita eikä
+muuteta aikarajoja. Tarkempi eritelty näyttö on
+[integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-inventaarion-omistajapalat-31102026).
+
+Jatkokokeessa siivouskutsujan lähdevaltuus erotettiin sen täydestä
+muutosvaltuudesta: alempi selektori muodostaa jo saman valinta-/kirjoittaja-
+kääreen. Selektorin tarkistuskohdat, yhteinen ensivirheen lukitus ja
+slot-tallentimen muutosvartijat säilyivät. Rajatut kontrollit läpäisivät,
+mutta koko julkaisuketju aikakatkaisi edelleen viiden sekunnin testirajalla.
+Omistajan erikseen hyväksymä yksi 10 sekunnin mittauskoe läpäisi saman
+yhdistelmätestin molemmilla koeehdokkailla. Mittaus oli erillinen koe,
+ei itsessään tuotantokytkennän tai pysyvän testirajamuutoksen hyväksyntä.
+Sitä seurannut omistajan päätös on alla; muiden testien, sovelluksen ja
+CI:n aikarajat säilyvät.
+
+**Tuotantokytkentä hyväksytty 31.10.2026:** omistaja hyväksyi molemmat
+kokeillut tarkistusvastuut ja niiden pysyvät regressiot. Nykyinen
+`observeWorkspaceDeletionRemnants` rajaa yhden kokonaisen readonly-kierroksen:
+alkuperäinen valinta tarkistetaan kirjoittajien poissaolon molemmin puolin
+kierroksen alussa ja vasta alkuperäisen iteraattorin sekä kahvojen sulun
+jälkeen. Jokaisen sisäisen luvun nykyiset synkroniset valtuus-, kirjoittaja-
+ja paikalliset tiedostoidentiteettisuojat säilyvät. Keskeytys mitätöi tämän
+kierroksen valtuuden ennen sulun odottamista; siitä palautettu tarkistus
+ei saa elpyä uuden kierroksen mukana. Tämä valtuus ei kelpaa siivoukseen.
+
+Metadatan siivouksessa alkuperäinen valinta välitetään ilman päällekkäistä
+kirjoittajakäärettä vain selektoreille, jotka tekevät saman täydellisen
+valinta-/kirjoittaja-/valintatarkistuksen itse. Ensivirheen lukitus on
+yhteinen. Slot-tallentimen muutosvartijat, poissaolotodisteet, kilpailijoiden
+tarkistukset ja siivouksen jälkivertailut eivät muutu. Vain nimetyn
+metadatan siivous-/julkaisuyhdistelmätestin budjetti muuttuu 10 sekuntiin
+[testausohjeen](../ai/testing-rules.md#palautustestin-erillinen-valmistelu)
+mukaisesti; muut rajat säilyvät. Kytkennän kohdetodennus ja katselmus
+vaaditaan ennen seuraavaa integraatiota, eikä päätös avaa fyysistä poistoa
+tai W7.5:n julkista kanavaa.
+
+Toimitettavan lähteen rajattu vaikutusalueen sarja läpäisi 1 015 testiä;
+neljä alustakohtaista tapausta jäi suorittamatta. Alkuperäinen vanha
+kahvamääräodotus päivitettiin vain yritysvalinnan kierrosrajalle:
+työluvan tai kirjoittajasulun menetys pysäyttää edelleen heti. Jokaisen
+avatun kahvan täsmälleen yksi sulku, keskeneräisen luvun odotus, oikea
+hylkäyssyy ja alkuperäiset tavut tarkistetaan. Katselmuksessa tarkennettu
+odotus läpäisi erilliset kohderegressiot. Tämä ei vielä todista fyysistä
+poistoa, kylmäkäynnistyksen jatkoa tai paketoitua prosessiketjua.
 
 ##### W7.4:n inventaario, tiedostot ja rekisteri
 

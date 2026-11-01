@@ -5,7 +5,7 @@ import {
 } from '../runtime/profileInspectionMessages.js';
 import { runProfileInspectionProcess } from '../runtime/profileInspectionProcess.js';
 import type { WorkspaceProcessReservationPreparation, WorkspaceProcessReservationTransfer } from '../runtime/workspaceProcessReservation.js';
-import { runOwnedProfileInspection, type OwnedProfileInspectionControl } from './runOwnedProfileInspection.js';
+import { runOwnedProfileInspection, type OwnedProfileInspectionControl, type OwnedProfileInspectionTarget } from './runOwnedProfileInspection.js';
 
 export interface ProfileSnapshotInspectionReservation {
   assertMainOwned(): Promise<void>;
@@ -37,6 +37,7 @@ export interface ReadProfileInspectionContextInput {
 /** The main-owned operation reservation remains held for the caller's use/cleanup. */
 export async function runProfileSnapshotInspection(input: {
   readonly operationId: string;
+  readonly target: OwnedProfileInspectionTarget;
   readonly kind: ReadProfileInspectionContextInput['kind'];
   readonly migrationPolicy: ProfileInspectionMigrationPolicy;
   readonly updateMaintenanceOperationId?: string;
@@ -49,6 +50,7 @@ export async function runProfileSnapshotInspection(input: {
   readonly signal: AbortSignal;
   /** A caller may include root acquisition in the same work budget, never extend it. */
   readonly deadline?: number;
+  readonly observeException?: (error: unknown) => void;
 }): Promise<Readonly<{ validation: ProfileSnapshotInspectionValidation; receipt: ProfileInspectionReceipt;
   identity: ProfileInspectionRequestIdentity }>> {
   const readContext = async (control: OwnedProfileInspectionControl) => {

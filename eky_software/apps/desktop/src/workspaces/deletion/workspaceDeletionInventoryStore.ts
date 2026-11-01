@@ -5,14 +5,14 @@ import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotFileSystem
   type CrashSafeFileSlotMutationGuard } from '../persistence/crashSafeFileSlot.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { checkedDeletionAuthority, deletionDataRecord, deletionDigest, invalidDeletionData } from './workspaceDeletionDataValidation.js';
-import { captureDeletionInventoryCommitment, captureDeletionInventoryHeader, deletionInventoryReadChunkBytes,
+import { captureDeletionInventoryCommitment, captureDeletionInventoryHeader, deletionInventoryReadChunkBytes, deletionInventoryFormatVersion,
   type WorkspaceDeletionInventoryHeader, type WorkspaceDeletionInventoryRecord } from './workspaceDeletionInventoryCodec.js';
 import { assertDeletionInventoryFile, deletionInventoryFileIdentity, deletionInventoryPathsEqual,
   inspectDeletionInventoryFile, openWorkspaceDeletionInventoryFile, workspaceDeletionInventoryDirectoryReads,
   sameDeletionInventoryFile, withDeletionInventoryFile, type OpenWorkspaceDeletionInventoryFile,
   type WorkspaceDeletionInventoryDirectoryReads,
   type WorkspaceDeletionInventoryFile } from './workspaceDeletionInventoryFile.js';
-import { encodeDeletionInventory, inspectDeletionInventory } from './workspaceDeletionInventoryStream.js';
+import { assertDeletionInventoryRecords, encodeDeletionInventory, inspectDeletionInventory } from './workspaceDeletionInventoryStream.js';
 import { createWorkspaceDeletionJournalPaths } from './workspaceDeletionJournalStore.js';
 
 export const workspaceDeletionInventoriesDirectoryName = 'workspace-deletion-inventories';
@@ -123,7 +123,8 @@ export class WorkspaceDeletionInventoryStore {
         await selectedGuard.beforeMutation();
         await file.sync();
         selectedGuard.assertAuthority();
-        const inventory = captureDeletionInventoryCommitment({ formatVersion: 1, byteLength, recordCount, sha256: hash.digest('hex') });
+        const inventory = captureDeletionInventoryCommitment({ formatVersion: deletionInventoryFormatVersion,
+          byteLength, recordCount, sha256: hash.digest('hex') });
         return captureInventorySelection({ target, inventory, inventoryFileIdentity, operationRootIdentity, operationParentIdentity });
       });
       await this.readAt('next', written, selectedGuard);
@@ -151,6 +152,15 @@ export class WorkspaceDeletionInventoryStore {
     });
   }
 
+  assertRecords(value: unknown, records: AsyncIterable<WorkspaceDeletionInventoryRecord>,
+    authority: WorkspaceDeletionInventoryAuthority) {
+    return this.exclusive(async () => {
+      const selected = captureInventorySelection(value);
+      if (selected.target.operationId !== this.operationId) return invalidDeletionData(invalidCode);
+      await this.readAt('current', selected, this.guard(authority, selected), records);
+    });
+  }
+
   private guard(authority: WorkspaceDeletionInventoryAuthority,
     identities?: Pick<WorkspaceDeletionInventorySelection, 'operationRootIdentity' | 'operationParentIdentity'>): InventoryGuard {
     const assertAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
@@ -171,7 +181,8 @@ export class WorkspaceDeletionInventoryStore {
     } };
   }
 
-  private async readAt(slot: 'current' | 'next', selected: WorkspaceDeletionInventorySelection, guard: InventoryGuard) {
+  private async readAt(slot: 'current' | 'next', selected: WorkspaceDeletionInventorySelection, guard: InventoryGuard,
+    expectedRecords?: AsyncIterable<WorkspaceDeletionInventoryRecord>) {
     await guard.beforeMutation();
     const path = slot === 'current' ? this.paths.currentPath : this.paths.nextPath;
     const names = [slot === 'current' ? workspaceDeletionInventoryFileName : `${workspaceDeletionInventoryFileName}.next`];
@@ -188,7 +199,12 @@ export class WorkspaceDeletionInventoryStore {
       guard.assertAuthority();
       assertDeletionInventoryFile(opened);
       if (!sameDeletionInventoryFile(before, opened)) return invalidDeletionData(invalidCode);
-      const result = await inspectDeletionInventory(this.chunks(file, guard), selected.target, selected.inventory);
+      const result = await inspectDeletionInventory(this.chunks(file, guard), selected.target, selected.inventory,
+        () => this.chunks(file, guard));
+      if (expectedRecords !== undefined) {
+        await assertDeletionInventoryRecords(this.chunks(file, guard), selected.target, selected.inventory,
+          expectedRecords, guard.assertAuthority);
+      }
       guard.assertAuthority();
       const after = await file.stat();
       guard.assertAuthority();

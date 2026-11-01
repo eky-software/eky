@@ -961,6 +961,18 @@ ja W7.5:n käyttäjäpolkua ei hyväksytä tämän sulkutodisteen perusteella.
 [W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
 omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
 
+W7.4:n hyväksyttyyn poistoon liittyvän viimeisen marker-kirjoittajan
+poikkeus ja vastauskuittauksesta erillinen lopputieto omistetaan
+[valtuuden luovutuksessa](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä).
+Vain täsmällisen aktiivisen kohteen varmennettu lopullinen poisto saa jättää
+sen markerin kirjoittamatta onnistuneessa sulussa; epävarmuus ei ole tämä
+todiste. Rajattu kytkentä käyttää mainin `workspaceDeletionContinuation`-
+sovitusta ja sen nykyistä lykättyä kirjoitusta rajaavaa
+`workspaceDeletionMarkerBoundary`-funktiota. Varsinainen marker-kirjoittaja
+ja scheduler säilyvät. Main-/marker-kohdekokeet eivät vielä hyväksy
+D:n todellista etenemisomistajaa tai paketoitua poistoa; ajantasainen näyttö
+on M1:n jatkamiskohdassa. Tavallisen sulun ja W7.3:n peruutuspaluun säännöt säilyvät.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit

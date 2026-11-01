@@ -7,16 +7,17 @@ import { deletionDataRecord, deletionDigest, invalidDeletionData } from './works
 
 export const maximumDeletionInventoryLineBytes = 2_048;
 export const deletionInventoryReadChunkBytes = 4_096;
+export const deletionInventoryFormatVersion = 2;
 const invalidCode = 'WORKSPACE_DELETE_INVENTORY_INVALID';
 const roles = ['workspace', 'legacyEntry', 'replacementImport', 'activationStaging',
-  'activationRollback', 'activationFailed', 'importCandidate', 'adoptionCandidate', 'inspection'] as const;
+  'activationRollback', 'activationFailed', 'importCandidate', 'adoptionCandidate', 'inspection', 'inspectionEvidence'] as const;
 
 export function captureDeletionInventoryHeader(value: unknown) {
   try {
     deletionDataRecord(value, ['formatVersion', 'operationId', 'workspaceId', 'lineageIdentity', 'registryEntrySha256'], invalidCode);
-    if (value.formatVersion !== 1) return invalidDeletionData(invalidCode);
+    if (value.formatVersion !== deletionInventoryFormatVersion) return invalidDeletionData(invalidCode);
     return Object.freeze({
-      formatVersion: 1 as const,
+      formatVersion: deletionInventoryFormatVersion,
       operationId: validateWorkspaceBackupReplacementOperationId(value.operationId),
       workspaceId: validateWorkspaceId(value.workspaceId),
       lineageIdentity: validateWorkspaceLineage(value.lineageIdentity),
@@ -37,7 +38,7 @@ export function captureDeletionInventoryRecord(value: unknown) {
     let member: string | null = null;
     if (role === 'workspace' || role === 'legacyEntry') {
       if (value.ownerOperationId !== null || value.generationId !== null) return invalidDeletionData(invalidCode);
-    } else if (role === 'inspection') {
+    } else if (role === 'inspection' || role === 'inspectionEvidence') {
       if (!isProfileInspectionOperationId(value.ownerOperationId) || !isProfileInspectionOperationId(value.generationId)) {
         return invalidDeletionData(invalidCode);
       }
@@ -66,18 +67,26 @@ export function captureDeletionInventoryRecord(value: unknown) {
 }
 export type WorkspaceDeletionInventoryRecord = ReturnType<typeof captureDeletionInventoryRecord>;
 
+// Metadata evidence never becomes an independent physical deletion target.
+export function captureDeletionInventoryPayloadRecord(value: unknown) {
+  const record = captureDeletionInventoryRecord(value);
+  if (record.role === 'inspectionEvidence') return invalidDeletionData(invalidCode);
+  return Object.freeze({ ...record, role: record.role });
+}
+export type WorkspaceDeletionInventoryPayloadRecord = ReturnType<typeof captureDeletionInventoryPayloadRecord>;
+
 export function deletionInventoryRecordKey(value: WorkspaceDeletionInventoryRecord): string {
   return [value.role, value.ownerOperationId ?? '', value.generationId ?? '', value.member ?? ''].join('/');
 }
 
 export function captureDeletionInventoryCommitment(value: unknown) {
   deletionDataRecord(value, ['formatVersion', 'byteLength', 'recordCount', 'sha256'], invalidCode);
-  if (value.formatVersion !== 1 || typeof value.byteLength !== 'number' ||
+  if (value.formatVersion !== deletionInventoryFormatVersion || typeof value.byteLength !== 'number' ||
       !Number.isSafeInteger(value.byteLength) || value.byteLength < 1 ||
       typeof value.recordCount !== 'number' || !Number.isSafeInteger(value.recordCount) || value.recordCount < 0) {
     return invalidDeletionData(invalidCode);
   }
-  return Object.freeze({ formatVersion: 1 as const, byteLength: value.byteLength,
+  return Object.freeze({ formatVersion: deletionInventoryFormatVersion, byteLength: value.byteLength,
     recordCount: value.recordCount, sha256: deletionDigest(value.sha256, invalidCode) });
 }
 export type WorkspaceDeletionInventoryCommitment = ReturnType<typeof captureDeletionInventoryCommitment>;

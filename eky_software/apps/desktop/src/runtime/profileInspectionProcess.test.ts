@@ -399,6 +399,24 @@ describe('main-owned fixed profile inspection process', () => {
     expect(fixture.outcome).toHaveBeenCalledOnce();
   });
 
+  it.each([false, true])('observes reclaim failure before safe conversion without replacing an earlier failure (%s)', async earlier => {
+    const original = new Error('SYNTHETIC_RECLAIM_ORIGINAL', { cause: new Error('SYNTHETIC_RECLAIM_CAUSE') });
+    const first = new Error('SYNTHETIC_FIRST_PROCESS_FAILURE');
+    const observeException = vi.fn((_error: unknown) => { throw new Error('SYNTHETIC_OBSERVER_FAILURE'); });
+    const fixture = createFixture({ reclaim: async () => { throw original; }, observeException });
+    await grant(fixture);
+    if (earlier) fixture.child.emit('error', first);
+    else fixture.child.emit('message', completed());
+    fixture.child.emit('exit', 0);
+    const error = await failure(fixture);
+    expect(observeException).toHaveBeenCalledExactlyOnceWith(earlier ? first : original);
+    expect(error.cleanup).toMatchObject({ processAbsent: true, reservationReclaimed: false });
+    expect(String(error)).not.toContain('SYNTHETIC');
+    expect(String(error.cause)).not.toContain('SYNTHETIC');
+    expect(fixture.invalidate).toHaveBeenCalledOnce();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it.each(['cancelled', 'expired'] as const)('never launches after %s admission and reclaims the untouched root', async admission => {
     const fixture = createFixture({ aborted: admission === 'cancelled', ...(admission === 'expired' ? { remaining: 0 } : {}) });
     expect(await failure(fixture)).toMatchObject({ causeCode: 'PROFILE_INSPECTION_TIMEOUT',
@@ -413,9 +431,35 @@ describe('main-owned fixed profile inspection process', () => {
     expect(fixture.reclaim).not.toHaveBeenCalled();
     expect(fixture.invalidate).toHaveBeenCalledOnce();
   });
+
+  it.each(['prepare', 'grant', 'nativeError'] as const)('observes the first original %s error before safe conversion and cleanup', async stage => {
+    const original = new Error('SYNTHETIC_INSPECTION_ORIGINAL', { cause: new Error('SYNTHETIC_INSPECTION_CAUSE') });
+    const observeException = vi.fn((_error: unknown) => { throw new Error('synthetic observer failure'); });
+    const fixture = createFixture({ observeException });
+    if (stage === 'prepare') fixture.prepare.mockRejectedValueOnce(original);
+    if (stage === 'grant') fixture.authorize.mockRejectedValueOnce(original);
+    fixture.child.emit('message', { type: 'ready', protocolVersion: profileInspectionProtocolVersion });
+    await flushTasks();
+    if (stage === 'grant') {
+      fixture.child.emit('message', reservationReady());
+      await flushTasks();
+    }
+    if (stage === 'nativeError') fixture.child.emit('error', original);
+    if (stage !== 'nativeError') fixture.child.emit('error', new Error('SYNTHETIC_INSPECTION_CLEANUP'));
+    fixture.child.emit('exit', 0);
+    const error = await failure(fixture);
+    expect(observeException.mock.calls.length).toBe(1);
+    expect(observeException.mock.calls[0]?.[0] === original).toBe(true);
+    expect(error).toMatchObject({ causeCode: stage === 'nativeError' ? 'PROFILE_INSPECTION_PROTOCOL_INVALID' : 'unknown',
+      cleanup: { processAbsent: true, reservationReclaimed: true } });
+    expect(String(error).includes('SYNTHETIC')).toBe(false);
+    expect(String(error.cause).includes('SYNTHETIC')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
 });
 
 function createFixture(input: { reclaim?: (signal: AbortSignal) => Promise<void>; remaining?: number; aborted?: boolean;
+  observeException?: (error: unknown) => void;
   migrationPolicy?: ProfileInspectionMigrationPolicy; coldSources?: ProfileInspectionColdSources;
   originalSources?: ProfileInspectionOriginalSources } = {}) {
   const child = new EventEmitter();
@@ -434,6 +478,7 @@ function createFixture(input: { reclaim?: (signal: AbortSignal) => Promise<void>
   const assertAuthority = vi.fn(() => {});
   const outcome = vi.fn();
   const common = { runnerPath: resolve('private-desktop', 'profileInspectionRunner.js'), identity,
+    ...(input.observeException === undefined ? {} : { observeException: input.observeException }),
     deployment: { backendRoot: resolve('private-backend'), migrationsDirectory: resolve('private-backend', 'migrations'),
       nativeResourceRoot: resolve('private-native') }, reservationTransfer: transfer,
     deadline: performance.now() + (input.remaining ?? profileInspectionWorkMilliseconds), assertAuthority, signal: cancellation.signal };
