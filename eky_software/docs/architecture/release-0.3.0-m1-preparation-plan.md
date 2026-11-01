@@ -17,7 +17,8 @@ läpäisyjä. Aiemmat hylkäykset ja tuntemattomat syyt säilyvät avoimina.
 
 Tilatarkistus vahvisti alla kuvatun W7.4-rajan: C:n tiedosto-/fixture-näyttö
 ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
-`resume` on liitettävä portti; D:n yhteinen fyysisen poiston etenijä puuttuu.
+`resume` on liitettävä portti. D:n yhteinen fyysinen vaihe etenee nyt
+`purged`-tilaan; rekisterijulkaisu ja omistajien loppusiivous puuttuvat.
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
@@ -36,15 +37,20 @@ paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuo
 kuluttaja, yhden luettelorivin keskeytyksen kestävä siirto ja lopullinen poisto
 on toteutettu rajattuine regressioineen samalle valintapohjalle.
 Riippumattoman katselmuksen journal-valinta- ja tarkistusjärjestysaukot
-korjattiin ennen jatkoa. Poistoalueen uusin kohdeajo läpäisi 1 054 testiä;
+korjattiin ennen jatkoa. Poistoalueen uusin kohdeajo läpäisi 1 319 testiä;
 neljä alustakohtaista testiä jäi suorittamatta. Mukana olevat kuusi todellisten
 luettelo-/journal-tiedostojen ketjutestiä ja desktopin tyypitys läpäisivät.
 Niiden main-/kirjoittajavaltuus on testivartija, ei vielä tuotantokytkennän
 tai prosessikatkon näyttö. Kahden ketjutestin valmisteluvirhe korjattiin muuttamatta
 journal-tallentimen yksinomaisuutta; alkuperäinen hylkäys säilyy aineistossa.
-Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä. Seuraavaksi sidotaan
-siirto ja poisto oikeaan journal-/rekisterivaltuuteen ja yhteiseen vaiheketjuun,
-sitten E:n kylmäjatkoon. F:n prosessi-, paketti- ja PR/main-portit säilyvät
+Yhteinen fyysinen vaihe on sidottu todelliseen journal-/rekisterivalintaan,
+muuttumattomaan luetteloon sekä nykyisiin sidontaomistajiin. Sen seitsemän
+kuittaus-/keskeytystestiä läpäisivät, mutta mainin valtuus on niissä edelleen
+testivartija. Eri roolien yhteinen fyysinen ketju on vielä todennettava;
+nykyiset rooliregressiot todistavat sen erillisiä rajoja.
+Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä.
+Seuraavaksi tehdään tarkka rekisterijulkaisu ja omistajien loppusiivous,
+sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
 avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
 
 ### Aiemmat lähtötilan checkpointit

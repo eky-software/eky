@@ -245,6 +245,16 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   10 sekuntia. Valmistelu, metadatan omistajakohtainen siivous, täydellisen
   inventaarion ja poiston aloituskirjauksen julkaisu sekä jälkivertailut
   kuuluvat samaan budjettiin. Muut julkaisijatapaukset säilyttävät rajansa.
+- `workspaceDeletionPayloadExecutor.test.ts`:n koko fyysisen vaiheketjun
+  onnistumistesti, kolme `moveAck`-/`unlinkAck`-/`phaseAck`-kuittauskatkoa
+  sekä kaksi `before`-/`after`-journaljulkaisukatkoa saavat kukin enintään
+  30 sekuntia saman rajattujen testibudjettikorjausten valtuuden nojalla.
+  Valmistelu, alkuperäinen julkaisu, kolme journal-vaihesiirtoa, mahdollinen
+  katkenneen suorituksen jatko ja pysyvän lopputilan sekä säilyvien tavujen
+  tarkistukset kuuluvat samaan yhdistelmätestiin. Rinnakkaisen aloituksen
+  ja keskeneräisen siirron sulkutesti säilyttää viiden sekunnin rajansa.
+  Ensimmäinen viiden sekunnin hylkäys säilytetään; mittaus tai budjettimuutos
+  ei yksin todista aikaisempaa viivettä korjatuksi tai koko W7.4:ää hyväksytyksi.
 
 Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
 mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei

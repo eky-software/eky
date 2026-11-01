@@ -8308,6 +8308,31 @@ Rajatut ketjutestit käyttävät todellisia journal-/luettelotavuja ja
 tiedostopoistoja. Niiden vaihesiirrot ja main-/kirjoittajavaltuus ovat
 testivalmistelua, eivät vielä yhteisen etenijän tai prosessikatkon näyttöä.
 
+**D:n yhteinen fyysinen vaihe:** `createWorkspaceDeletionPayloadExecutor`
+käyttää samaa julkaistua journalia ja muuttumatonta luetteloa vaiheissa
+`authorized -> quarantined -> purgeAuthorized -> purged`. Se ei vielä
+julkaise rekisteriä, siivoa omistajien metadataa tai kuittaa koko poistoa.
+Vaihevalinta kiinnittää journalin ja rekisterin kaikki alkuperäiset tavut
+sekä tiedostoidentiteetit mainin valtuuden ja kirjoittajien poissaolon alle.
+Rekisterin ennen-/jälkeen-havaintojen luokittelu ei itsessään korjaa slotteja.
+
+Jokainen kulutettu rivi saa vain oman callbackinsa ajan kelpaavan valtuuden.
+Sidonnan nykyinen omistaja tarkistaa myös kilpailevat metadata-slotit;
+workspace-rivin omistaa rekisteri eikä sille keksitä erillistä sidontaa.
+Sisäinen inspection-todiste käyttää samaa neljän sijainnin tarkistinta
+kuin alkuperäinen omistaja. Vain todistetun workspace-siirron sisäiset
+lukupolut seuraavat quarantinea; todiste ei muutu poistettavaksi juureksi.
+
+Journalin omaa vaihesiirtoa tai slottisovitusta suojaa täydellisen luettelon
+ja vaaditun payload-tilan tuore tarkistus sekä alkuperäinen ulkoinen
+rekisteri-/kirjoittajavaltuus. Tallennin tarkistaa itse muuttuvat journal-
+slotit; ulkoinen vartija ei lue samaa tallenninta kesken sen muutoksen.
+Valmistunut siirto varmennetaan palautuneella tiedostoidentiteetillä ja
+täsmällisellä julkaistulla vaiheella ennen seuraavaa työtä. Kadonnut kuittaus
+pysäyttää suorituksen; uusi jatko lukee pysyvät slotit uudelleen.
+Rajatut tiedostokokeet eivät vielä todista palvelun/mainin todellista
+kytkentää, prosessikatkosta tai rekisterin ja metadatan loppusiivousta.
+
 ##### W7.4:n cold-admission ja havaittava tulos
 
 Nykyinen startup tunnistaa vain creation/import-admissionin. Lisää siihen
