@@ -5,6 +5,29 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n hyväksytyn lähtötilan yhdistäminen 1.11.2026
+
+Aiempi W7.4:n valmistelu- ja inventaariotyö tallennettiin paikallisesti
+revisioon `0c4b3518`. Hyväksytty main `dd587740` yhdistettiin siihen
+normaalisti revisiossa `40e491eb`, kirjoittamatta aiempaa historiaa uudelleen.
+Riippuvuuslukitukset ja niiden omistava arvio vastaavat täsmälleen hyväksyttyä
+mainia. Molempien haarojen tilahistoria säilytettiin; vanhat hylkäykset eivät
+muuttuneet korjatuiksi. W7.5:n tuotannon poistokanava pysyy suljettuna.
+
+Ennen yhdistämistä hyväksytyillä lukituksilla läpäisivät frozen-asennus ilman
+asennusskriptejä, production- ja full audit, 161 rekisteriallekirjoitusta,
+154 ASAR-/ajokytkentätestiä sekä koko työtilan tyypitys. W7.4:n nykyinen
+vaikutusalueen sarja läpäisi 44 tiedostossa 1 015 testiä; neljä olemassa olevaa
+alustakohtaista tapausta jäi suorittamatta. Ajo ei ollut D:n fyysisen poiston
+tai E:n kylmäjatkon todennus. Päällekkäisiä testimääriä ei summata.
+
+Yhdistetty lähde läpäisi erikseen koko työtilan tyypityksen,
+74 ajokytkentätestiä ja ohjeiston linkkitarkistuksen. Ajokytkentäsarja ei
+suorittanut native-välittäjän regressioita eikä todista niitä uudelleen.
+Uutta puhdasta pakettia, prosessikatkokoetta tai PR/main-kierrosta ei ajettu.
+Seuraava puuttuva toteutus on edelleen D:n yhteinen fyysinen etenijä ja sen
+jälkeen E/F:n kytkentä sekä hyväksyntä. PR #326:n oma hyväksyntä ei sulje W7.4:ää.
+
 ## PR #326:n valmistelu ja ensihavainnot 1.11.2026
 
 Seuraava teksti on mergeä edeltävä tilanne. Nykyisen hyväksynnän omistaa

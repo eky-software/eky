@@ -21,12 +21,16 @@ ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
-Hyväksytyt main-korjaukset yhdistetään nykyiseen W7.4-haaraan säilyttäen
-sen toteutus ja hyväksytyt riippuvuuslukitukset. D:n
-vaihe-/omistajuussopimus täsmennetään nykyisiin tiedosto-, journal- ja
+Hyväksytyt main-korjaukset on yhdistetty W7.4-haaraan revisiossa `40e491eb`.
+Sen valmistelutyö ja hyväksytyt riippuvuuslukitukset säilyivät. Yhdistetyn
+lähteen tyypitys, 74 ajokytkentätestiä ja ohjeiston linkit läpäisivät;
+[todennuksen rajaus](release-0.3.0-integration-history.md#w74n-hyväksytyn-lähtötilan-yhdistäminen-1112026)
+erottaa yhdistämistä edeltävät kohdetulokset uuden lähteen näytöstä.
+D:n vaihe-/omistajuussopimus täsmennetään nykyisiin tiedosto-, journal- ja
 rekisteriportteihin ennen tuhoavia operaatioita. Jatko käyttää samaa etenijää
 live-poistossa ja kylmäpalautuksessa; C:tä ei toteuteta uudelleen eikä W7.5:n
-poistokanavia avata. Tämä tilatarkistus ei ole uusi testien hyväksyntä.
+poistokanavia avata. Fyysistä poistoa tai kylmäjatkoa ei ole vielä kytketty;
+paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuoksi.
 
 ### Aiemmat lähtötilan checkpointit
 
