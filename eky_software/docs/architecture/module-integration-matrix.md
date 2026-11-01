@@ -86,8 +86,12 @@ erottavat lähdepalat hyväksytystä kokonaisuudesta.
 W7.4:n sisäinen palveluluovutus välittää saman operaation ja täsmällisen
 delete-leasen valmistelusta jatkolukijalle. Oikeiden journal-/inventaario-
 tavujen yhteiskoe ei yksin hyväksy fyysistä poistoa. Mainin rajattu
-lopputietosovitus ja markerin sulkuraja on kytketty; mallinnettu jatkaja
-niiden kokeissa ei korvaa D:n todellista etenemis- ja pakettitodistusta. Renderer-kanava pysyy
+lopputietosovitus ja markerin sulkuraja on kytketty. Mallinnettujen
+kuittaus-/sulkuvirhetapausten lisäksi mainin ja palvelun ketju on liitetty
+yhteiseen publish/resume-komentoon kohdetesteissä, jotka käyttävät
+todellisia tiedostotavuja ja identiteettejä. Niiden ohjattu natiiviprosessi
+ja käyttöjärjestelmälukko eivät korvaa prosessi- tai pakettitodistusta;
+oletuskytkentä vaatii edelleen cold-admissionin ja avausguardit. Renderer-kanava pysyy
 suljettuna; [W7.4:n luovutussopimus](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä)
 omistaa tämän rajauksen ja jäljellä olevan näytön.
 

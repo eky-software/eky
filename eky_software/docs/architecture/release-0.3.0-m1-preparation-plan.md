@@ -20,7 +20,8 @@ ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 `resume` on liitettävä portti. D:n yhteinen fyysinen vaihe etenee nyt
 `purged`-tilaan ja erillinen rekisterivaihe julkaisee täsmällisen jälkeen-tilan;
 omistajien yhteinen loppusiivous ja terminalin julkaisu on lisätty.
-Sama publish/resume-kuluttaja on lisätty, mutta sen main-kytkentä puuttuu.
+Sama publish/resume-kuluttaja on liitetty mainin ja palvelun kohdetesteihin;
+tuotannon oletuskytkentä odottaa vielä cold-admissionia ja avausguardeja.
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
@@ -52,8 +53,9 @@ workspace-roolin julkaisu-/purge-/rekisteri-/metadata-/loppusiivousketju.
 Näyttöä ei lasketa yhteen aiempien sarjojen kanssa. Lopullinen tyypitys,
 lähdejälkikatselmus ja ohjeiden linkit läpäisivät.
 [Aiempien D-palojen tulokset ja rajat](release-0.3.0-integration-history.md#w74n-d-vaiheen-tiedostoketjut-1112026)
-säilyvät historiassa. Nykyisten ketjutestien main-/kirjoittajavaltuus on
-edelleen testivartija, ei oikean pääprosessin tai prosessikatkon näyttö.
+säilyvät historiassa. Näiden alemman tason ketjutestien
+main-/kirjoittajavaltuus on testivartija, ei oikean pääprosessin tai
+prosessikatkon näyttö.
 
 Yhteinen komento säilyttää julkaisussa kaapatun muuttumattoman sidonnan
 kaikille vaiheille ja toimittaa lopputiedon vasta tiedostoketjun päätyttyä.
@@ -64,8 +66,23 @@ jäi suorittamatta. Tuonnin, adoption ja palautuksen muuttumattomien
 omistajaporttien aiempi laaja näyttö on yllä eroteltu tästä uudesta komennosta;
 sitä ei väitetä uudella revisiolla suoritetuksi eikä päällekkäisiä määriä summata.
 
-Seuraavaksi kytketään yhteinen etenijä mainiin ja palveluun, sitten E:n
-kylmäjatko. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,
+**Main-/service-ketjun kohdetodistus:** yhteistä komentoa käytetään nyt
+kolmessa varsinaisen main-compositionin testissä: aktiivinen kohde,
+valitsintila ja passiivinen kohde. Sama delete-lease ja mainin nykyinen
+lopputiedon vastaanottaja säilyvät requesteristä irrotetun jatkon ajan.
+Todelliset tiedostot, rekisteri ja journal-viimeisenä-siivoaminen sekä
+säilyvät tavut tarkistetaan. Uudet tapaukset käyttävät oikeita
+tiedostoidentiteettejä; natiiviprosessi ja käyttöjärjestelmälukko ovat
+edelleen ohjattuja rajoja. Testin käynnistyskahvan keskeytyvä talteenotto
+korjattiin katselmuksessa nykyisen sulkumallin mukaiseksi.
+Koko muuttunut main-testitiedosto ja kolme sen sulku-/kytkentäsarjaa
+läpäisivät: 399 testiä neljässä tiedostossa ilman ohituksia. Tyypitys,
+rajattu jälkikatselmus ja ohjeiden linkit läpäisivät. Päällekkäistä
+kohdenäyttöä ei summata aiempiin sarjoihin. Tämä ei vielä todista
+tuotannon oletuskytkentää, kylmäjatkoa tai native-/pakettitoimintaa.
+
+Seuraavaksi toteutetaan E:n cold-admission ja avausguardit ennen
+mainin oletuskytkentää. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,
 paketti- ja PR/main-portit säilyvät avoimina. Käyttäjälle näkyvää
 W7.5-poistokanavaa ei ole avattu.
 

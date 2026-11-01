@@ -94,6 +94,9 @@ import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/wor
 import { WorkspaceManagementService } from '../workspaces/management/workspaceManagementService.js';
 import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from '../workspaces/deletion/workspaceDeletionJournalCodec.js';
 import { deletionInventoryFormatVersion } from '../workspaces/deletion/workspaceDeletionInventoryCodec.js';
+import { createWorkspaceDeletionCommand } from '../workspaces/deletion/workspaceDeletionCommand.js';
+import { createWorkspaceDeletionInventoryPaths } from '../workspaces/deletion/workspaceDeletionInventoryStore.js';
+import { createWorkspaceDeletionJournalPaths } from '../workspaces/deletion/workspaceDeletionJournalStore.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { createWorkspaceManagementCapability, type WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
 import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
@@ -114,6 +117,7 @@ const electronBoundary = vi.hoisted(() => ({
   reservationReleased: vi.fn(),
   reservationAcquired: vi.fn(),
   reservationIdentityRead: vi.fn(),
+  useActualReservationIdentity: false,
   loseReservation: undefined as (() => void) | undefined,
 }));
 
@@ -170,25 +174,30 @@ vi.mock('./applicationWindow.js', () => ({
 vi.mock('../update/windowsInstallerHandoff.js', () => ({
   launchWindowsInstallerForUpdate: vi.fn(async () => undefined),
 }));
-vi.mock('../runtime/workspaceProcessReservation.js', async (importOriginal) => ({
-  ...await importOriginal<typeof import('../runtime/workspaceProcessReservation.js')>(),
-  readWorkspaceProcessReservationIdentity: async (root: string) => {
-    await electronBoundary.reservationIdentityRead(root);
-    return 'a'.repeat(64);
-  },
-  async acquireWorkspaceProcessReservation(
-    options: Parameters<typeof import('../runtime/workspaceProcessReservation.js').acquireWorkspaceProcessReservation>[0],
-  ) {
-    await electronBoundary.reservationAcquired(options);
-    const released = new AbortController();
-    electronBoundary.loseReservation = () => released.abort();
-    return {
-      identity: 'a'.repeat(64), invalidated: released.signal,
-      async assertOwned() { if (released.signal.aborted) throw new Error('synthetic reservation released'); },
-      async release() { await electronBoundary.reservationReleased(options.userDataRoot); released.abort(); },
-    };
-  },
-}));
+vi.mock('../runtime/workspaceProcessReservation.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../runtime/workspaceProcessReservation.js')>();
+  return {
+    ...actual,
+    readWorkspaceProcessReservationIdentity: async (root: string) => {
+      await electronBoundary.reservationIdentityRead(root);
+      return electronBoundary.useActualReservationIdentity ? actual.readWorkspaceProcessReservationIdentity(root) : 'a'.repeat(64);
+    },
+    async acquireWorkspaceProcessReservation(
+      options: Parameters<typeof import('../runtime/workspaceProcessReservation.js').acquireWorkspaceProcessReservation>[0],
+    ) {
+      await electronBoundary.reservationAcquired(options);
+      const released = new AbortController();
+      electronBoundary.loseReservation = () => released.abort();
+      return {
+        identity: electronBoundary.useActualReservationIdentity
+          ? await actual.readWorkspaceProcessReservationIdentity(options.userDataRoot) : 'a'.repeat(64),
+        invalidated: released.signal,
+        async assertOwned() { if (released.signal.aborted) throw new Error('synthetic reservation released'); },
+        async release() { await electronBoundary.reservationReleased(options.userDataRoot); released.abort(); },
+      };
+    },
+  };
+});
 
 const roots: string[] = [];
 let clients: ProfileSnapshotBrokerClient[] = [];
@@ -213,6 +222,7 @@ beforeEach(() => {
   electronBoundary.reservationAcquired.mockReset();
   vi.mocked(registerApplicationProtocol).mockReset();
   electronBoundary.reservationIdentityRead.mockReset();
+  electronBoundary.useActualReservationIdentity = false;
   electronBoundary.loseReservation = undefined;
   electronBoundary.reservationReleased.mockReset();
   electronBoundary.removeHandler.mockReset();
@@ -5348,6 +5358,112 @@ describe('W7.4 main replacement binding', () => {
             }
           }
         }
+      });
+    });
+});
+
+describe('W7.4 actual main deletion chain', () => {
+  it.for(['active', 'selector', 'passive'] as const)(
+    'completes the actual published file chain under the %s main owner', { timeout: 60_000 }, async (mode, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        electronBoundary.useActualReservationIdentity = true;
+        let service: WorkspaceManagementService | undefined;
+        let publishedOperationId: string | undefined;
+        let requesterCurrent = true;
+        const stopForDelete = vi.fn(async () => undefined);
+        const fixtureOptions: Parameters<typeof createFixture>[1] = {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, stopForDelete,
+          createWorkspaceManagementCapability(options) {
+            service = options.service as WorkspaceManagementService;
+            return createWorkspaceManagementCapability(options);
+          },
+        };
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, fixtureOptions));
+        f.assertSingleInstanceOwnership.mockImplementation(() => context.signal.throwIfAborted());
+        const originalRegistry = (await f.registry.read())!;
+        const targetWorkspaceId = mode === 'passive' ? validateWorkspaceId('77777777-7777-4777-8777-777777777777') : workspaceId;
+        const registry = { ...originalRegistry, formatVersion: 2 as const,
+          activeWorkspaceId: mode === 'selector' ? null : workspaceId,
+          workspaces: mode === 'passive' ? [...originalRegistry.workspaces, {
+            ...originalRegistry.workspaces[0]!, workspaceId: targetWorkspaceId,
+            workspaceLabel: 'Synthetic other company', lineageIdentity: { formatVersion: 1 as const, profileId: foreignProfileId },
+          }] : originalRegistry.workspaces,
+        };
+        const targetRoot = deriveWorkspaceRoot(f.root, targetWorkspaceId, 1).workspaceRoot;
+        await mkdir(targetRoot, { recursive: true, mode: 0o700 });
+        await writeFile(join(targetRoot, 'synthetic-owned-payload'), 'owned target bytes', { mode: 0o600 });
+        const externalBackup = join(f.root, 'synthetic-user-export.ekybackup');
+        await writeFile(externalBackup, 'retained external bytes', { mode: 0o600 });
+        await f.registry.write(registry);
+        const command = createWorkspaceDeletionCommand({ userDataRoot: f.root, registry: f.registry,
+          async assertWritersAbsent() {
+            context.signal.throwIfAborted();
+            // Native execution/lock ownership are controlled; main's lifecycle and file identities stay real.
+            expect(stopForDelete).toHaveBeenCalledTimes(mode === 'selector' ? 0 : 1);
+          },
+        });
+        fixtureOptions.workspaceDeletionCommand = {
+          async publish(...args) {
+            publishedOperationId = args[3].operationId;
+            return command.publish(...args);
+          },
+          resume(id, authority) {
+            requesterCurrent = false;
+            return command.resume(id, authority);
+          },
+        };
+        electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+          ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+        vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'beginDeleteMaintenance').mockResolvedValue('busy');
+        vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'assertDeleteMaintenance').mockResolvedValue('busy');
+        const marker = vi.spyOn(RecoveryPointCleanShutdownMarker.prototype, 'markClean');
+        let lifecycle: Awaited<ReturnType<typeof f.start>>;
+        let firstFailure: { error: unknown } | undefined;
+        try {
+          await lifetime.step('startup', async () => { lifecycle = await f.start(); });
+          if (lifecycle === undefined || service === undefined) throw new Error('MISSING_MAIN_DELETION_OWNER');
+          f.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false });
+          const result = await lifetime.step('restoredContentCheck', () => service!.deleteWorkspace({
+            formatVersion: 1, workspaceId: targetWorkspaceId,
+            typedLabel: registry.workspaces.find(entry => entry.workspaceId === targetWorkspaceId)!.workspaceLabel,
+            backupChoice: 'explicitDataLoss',
+          }, {
+            assertCurrent() { context.signal.throwIfAborted(); if (!requesterCurrent) throw new Error('SYNTHETIC_REQUESTER_GONE'); },
+            closeAdmissionForOwnStop() { service!.closeAdmission(); },
+          }));
+          expect(result).toEqual({ formatVersion: 1, status: 'completed', navigation: mode === 'passive' ? 'reopenPrevious' : 'selector' });
+          expect(requesterCurrent).toBe(false);
+          expect(publishedOperationId).toBeDefined();
+          const selectedRegistry = await f.registry.inspectSlots();
+          expect(selectedRegistry.current!.value).toEqual({ ...registry,
+            activeWorkspaceId: mode === 'passive' ? workspaceId : null,
+            workspaces: mode === 'passive' ? originalRegistry.workspaces : [],
+          });
+          expect(selectedRegistry.backup).toBeUndefined(); expect(selectedRegistry.next).toBeUndefined();
+          await expect(readdir(targetRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+          const journalPaths = createWorkspaceDeletionJournalPaths(f.root);
+          for (const path of [journalPaths.currentPath, journalPaths.backupPath, journalPaths.nextPath,
+            createWorkspaceDeletionInventoryPaths(f.root, publishedOperationId!).directoryPath]) {
+            await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+          }
+          expect(await readFile(externalBackup, 'utf8')).toBe('retained external bytes');
+          if (mode === 'passive') {
+            expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+            expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+          }
+          expect(marker).not.toHaveBeenCalled();
+          expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+        } catch (error) { firstFailure = { error }; throw error; }
+        finally {
+          try { await lifecycle?.shutdown(); }
+          catch (cleanupFailure) {
+            if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+              'SYNTHETIC_DELETION_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+            throw cleanupFailure;
+          }
+        }
+        expect(marker).toHaveBeenCalledTimes(mode === 'passive' ? 1 : 0);
       });
     });
 });

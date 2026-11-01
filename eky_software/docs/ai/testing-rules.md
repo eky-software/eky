@@ -285,6 +285,14 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   vastaus ja säilyvien tavujen vertailu sisältyvät rajaan.
   Muiden testien, sovelluksen ja CI:n aikarajat eivät muutu. Uusi
   omistajaolio ei yksin todista prosessikatkoa tai cold-admissionia.
+- `desktopRestoreStartup.test.ts`:n kolme `W7.4 actual main deletion chain`
+  -tapausta saavat kukin 60 sekuntia saman rajatun valtuuden nojalla.
+  Valmistelu, mainin ja palvelun sama huoltovaraus, yhteisen komennon
+  todelliset tiedostovaiheet, requesteristä irrotettu jatko, loppusiivous
+  ja normaali sammutus sisältyvät rajaan. Vanhojen testien budjetit eivät
+  muutu. Fixture käyttää näissä tapauksissa oikeita tiedostoidentiteettejä;
+  Electron-prosessi ja käyttöjärjestelmälukko ovat edelleen ohjattuja
+  testirajoja, eivät native- tai prosessikatkon näyttöä.
 
 Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
 mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei
