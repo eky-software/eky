@@ -18,7 +18,7 @@ export async function captureWorkspaceDeletionPayloadBinding(
 ): Promise<Readonly<{ binding: WorkspaceRemnantBindingV1 | undefined; assertSelected(): Promise<void> }>> {
   createWorkspaceDeletionJournalPaths(root);
   const target = captureDeletionInventoryHeader(targetValue), record = captureDeletionInventoryRecord(recordValue);
-  const keys = bindingKeys(target, record);
+  const keys = workspaceDeletionPayloadBindingKeys(target, record);
   const check = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
   const external = authority.assertExternalSelection.bind(authority), writers = authority.assertWritersAbsent.bind(authority);
   let failed = false;
@@ -69,7 +69,7 @@ export async function captureWorkspaceDeletionPayloadBinding(
   } catch (error) { throw retain(error); }
 }
 
-function bindingKeys(target: WorkspaceDeletionInventoryHeader, record: WorkspaceDeletionInventoryRecord): readonly WorkspaceRemnantBindingKey[] {
+export function workspaceDeletionPayloadBindingKeys(target: WorkspaceDeletionInventoryHeader, record: WorkspaceDeletionInventoryRecord): readonly WorkspaceRemnantBindingKey[] {
   switch (record.role) {
     case 'workspace': return [];
     case 'legacyEntry': return [captureWorkspaceRemnantBindingKey({ owner: 'workspaceLegacyAdoption', workspaceId: target.workspaceId })];

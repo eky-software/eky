@@ -8579,6 +8579,33 @@ jälkeen. Porttiregressioiden vartijat eivät vielä todista mainin tätä
 kytkentää, koko D:tä tai kylmäjatkoa. Luonnin journal säilyy nykyisenä
 admission-estona eikä saa uutta poistoroolia workspaceId:n perusteella.
 
+**Yhteinen metadatan loppusiivous:**
+`workspaceDeletionMetadataCleanup.ts` käyttää näitä omistajaportteja
+valitun `purged`-journalin ja täsmällisen jälkeen-rekisterin alla. Koko
+sitoutunut luettelo ja kaikkien payload-/quarantine-juurten poissaolo
+todistetaan muutoksissa. Kolmen kiinteän journalinomistajan sidonnat
+varmennetaan ennen ensimmäistä journalimuutosta; vieras tai luetteloon
+sitomaton journal estää jatkon. Journalit siivotaan ja niiden poissaolo
+varmennetaan ennen ensimmäistä sidontapoistoa. Sidonnan valitut tavut ja
+identiteetit säilyvät omistajan muutoksen yli. Lukutodiste käyttää samaa
+sitoutuneen siivouksen validointia kuin kirjoitusportti, ei tavallisen
+lukijan ehtojen lievennystä.
+
+Jo puuttuva journal synkronoidaan sen nykyisen omistajan kautta, kun
+siihen sidottu metadata on vielä tallella; näin viimeisen poistokutsun
+tai syncin kadonnut kuittaus ei ohita omistajaa. Osittain siivottu sidonta
+ei tarvitse keksittyä operationId:tä. Lopussa nykyinen rajattu
+sidontahakemistojen lukija hylkää jäljelle jääneen kohdemetadatan; uutta
+aineistoa ei oteta siivoukseen luettelon ulkopuolelta. Muiden yritysten
+tavut ja jaetut emohakemistot säilyvät. Luettelo kulutetaan sarjallisesti,
+eikä jäännösmäärä kasvata muistissa olevaa journalivalintaa.
+
+Vaihe jättää poistojournalin ja inventaarion `purged`-tilaan. Se ei vielä
+julkaise terminalia, poista inventaariota tai anna `recordRemoved`-kuittia.
+Neljän omistajan ja katkosten tiedostoketjut ovat rajattua näyttöä;
+mainin todellinen valtuus, cold-admission ja prosessikatko jäävät E/F:n
+ja varsinaisen kytkennän porteiksi.
+
 ## Checkpointien yhteinen Definition of Done
 
 Jokaisessa vaiheessa:

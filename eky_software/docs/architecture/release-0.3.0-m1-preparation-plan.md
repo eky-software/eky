@@ -19,7 +19,8 @@ Tilatarkistus vahvisti alla kuvatun W7.4-rajan: C:n tiedosto-/fixture-näyttö
 ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 `resume` on liitettävä portti. D:n yhteinen fyysinen vaihe etenee nyt
 `purged`-tilaan ja erillinen rekisterivaihe julkaisee täsmällisen jälkeen-tilan;
-omistajien loppusiivous ja yhteisen etenijän loppukytkentä puuttuvat.
+omistajien yhteinen loppusiivous on lisätty. Terminalin julkaisu ja
+yhteisen etenijän main-kytkentä puuttuvat.
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
@@ -28,17 +29,17 @@ Sen valmistelutyö ja hyväksytyt riippuvuuslukitukset säilyivät. Yhdistetyn
 lähteen tyypitys, 74 ajokytkentätestiä ja ohjeiston linkit läpäisivät;
 [todennuksen rajaus](release-0.3.0-integration-history.md#w74n-hyväksytyn-lähtötilan-yhdistäminen-1112026)
 erottaa yhdistämistä edeltävät kohdetulokset uuden lähteen näytöstä.
-D:n vaihe-/omistajuussopimus täsmennetään nykyisiin tiedosto-, journal- ja
-rekisteriportteihin ennen tuhoavia operaatioita. Jatko käyttää samaa etenijää
+D:n jatko noudattaa nykyisiin tiedosto-, journal- ja rekisteriportteihin
+täsmennettyä vaihe-/omistajuussopimusta. Jatko käyttää samaa etenijää
 live-poistossa ja kylmäpalautuksessa; C:tä ei toteuteta uudelleen eikä W7.5:n
-poistokanavia avata. Fyysistä poistoa tai kylmäjatkoa ei ole vielä kytketty;
+poistokanavia avata. Fyysistä poistoa tai kylmäjatkoa ei ole vielä kytketty mainiin;
 paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuoksi.
 
 **D:n ensimmäiset toteutuspalat 1.11.2026:** inventaariotallentimen sarjallinen
 kuluttaja, yhden luettelorivin keskeytyksen kestävä siirto ja lopullinen poisto
 on toteutettu rajattuine regressioineen samalle valintapohjalle.
 Riippumattoman katselmuksen journal-valinta- ja tarkistusjärjestysaukot
-korjattiin ennen jatkoa. Poistoalueen uusin kohdeajo läpäisi 1 335 testiä;
+korjattiin ennen jatkoa. Poistoalueen aiempi kohdeajo läpäisi 1 335 testiä;
 neljä alustakohtaista testiä jäi suorittamatta. Mukana olevat kuusi todellisten
 luettelo-/journal-tiedostojen ketjutestiä ja desktopin tyypitys läpäisivät.
 Niiden main-/kirjoittajavaltuus on testivartija, ei vielä tuotantokytkennän
@@ -66,8 +67,14 @@ Niiden kohderegressiot, tyypitys ja riippumaton jälkikatselmus läpäisivät.
 Yhteinen poisto-/adoption-/tuonti-/palautusajo läpäisi 3 356 testiä;
 kahdeksan alustakohtaista testiä jäi suorittamatta. Porttien
 purged-/kirjoittajatodiste on näissä testivartija.
-Seuraavaksi tehdään alkuperäisten journalien ja sidontojen yhteinen
-loppusiivous sekä etenijän main-kytkentä,
+Yhteinen metadatan loppusiivous on lisätty. Sen 15 oikeiden tiedostojen
+ketjutestiä läpäisivät neljälle omistajalle sekä kuittaus-, native-poisto-
+ja sync-katkoille; katselmuksen pyytämät valinta- ja säilytysregressiot
+läpäisivät. Uusin koko vaikutusalueen ajo läpäisi 3 378 testiä;
+kahdeksan alustakohtaista testiä jäi suorittamatta. Tyypitys ja riippumaton
+katselmus läpäisivät. Näissä main-/kirjoittajavaltuus on edelleen testivartija.
+Seuraavaksi tehdään terminalin julkaisu, inventaarion ja journalin
+loppujärjestys sekä etenijän main-kytkentä,
 sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
 avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
 

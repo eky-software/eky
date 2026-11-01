@@ -11,7 +11,7 @@ const targetFor = (f: Awaited<ReturnType<typeof remnantBindingFixture>>) => capt
   ...deletionTestHeader, workspaceId: f.binding.workspaceId, lineageIdentity: f.binding.lineageIdentity,
 });
 
-it.for(remnantBindingTestOwners)('clears committed $0 metadata after all payloads are gone', async (owner, test) => {
+it.for(remnantBindingTestOwners)('clears committed %s metadata after all payloads are gone', async (owner, test) => {
   const f = await remnantBindingFixture(test, owner);
   await f.store().publish(f.binding, f.authority);
   const target = targetFor(f);
@@ -33,6 +33,50 @@ it('confirms fully absent legacy metadata without inventing its original operati
   const f = await remnantBindingFixture(test, 'workspaceLegacyAdoption');
   await f.store().clearCommittedAfterPayloadsAbsent(targetFor(f), f.cleanup('deletionPurged'));
   expect(await readdir(f.root)).toEqual([]);
+});
+
+it.for(['next', 'backup', 'current', 'absent'] as const)('observes committed %s cleanup metadata without repairing or removing it', async (slot, test) => {
+  const f = await remnantBindingFixture(test, 'workspaceLegacyAdoption');
+  if (slot !== 'absent') { await f.prepare(); await writeFile(f.paths[`${slot}Path`], serializeWorkspaceRemnantBinding(f.binding),
+    { mode: 0o600, flag: 'wx' }); }
+  const before = slot === 'absent' ? {} : await f.snapshot();
+  const selected = await f.store().inspectCommittedAfterPayloadsAbsent(targetFor(f), f.cleanup('deletionPurged'));
+  expect(Object.values(selected).filter(Boolean)).toHaveLength(slot === 'absent' ? 0 : 1);
+  if (slot !== 'absent') { expect(selected[slot]?.value).toEqual(f.binding); expect(await f.snapshot()).toEqual(before); }
+  else expect(await readdir(f.root)).toEqual([]);
+  await f.store().clearCommittedAfterPayloadsAbsent(targetFor(f), { ...f.cleanup('deletionPurged'), expectedDeletionSlots: selected });
+  if (slot !== 'absent') expect(await readdir(f.paths.directoryPath)).toEqual([]);
+});
+
+it.for(['identity', 'newSide'] as const)('does not adopt %s after the cleanup caller selected all metadata slots', async (change, test) => {
+  const f = await remnantBindingFixture(test); await f.store().publish(f.binding, f.authority);
+  const selected = await f.store().inspectCommittedAfterPayloadsAbsent(targetFor(f), f.cleanup('deletionPurged'));
+  const bytes = await readFile(f.paths.currentPath);
+  if (change === 'identity') { await rename(f.paths.currentPath, join(f.root, 'retained-original'));
+    await writeFile(f.paths.currentPath, bytes, { mode: 0o600, flag: 'wx' }); }
+  else await writeFile(f.paths.nextPath, bytes, { mode: 0o600, flag: 'wx' });
+  const before = await f.snapshot();
+  await expect(f.store().clearCommittedAfterPayloadsAbsent(targetFor(f), { ...f.cleanup('deletionPurged'),
+    expectedDeletionSlots: selected })).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+  if (change === 'identity') expect(await readFile(join(f.root, 'retained-original'))).toEqual(bytes);
+});
+
+it('pins caller-owned selected bytes, identities and proof callbacks before asynchronous validation', async test => {
+  const f = await remnantBindingFixture(test); await f.store().publish(f.binding, f.authority);
+  const slots = await f.store().inspectCommittedAfterPayloadsAbsent(targetFor(f), f.cleanup('deletionPurged'));
+  const current = slots.current;
+  if (current?.identity === undefined) throw new Error('SYNTHETIC_CURRENT_NOT_SELECTED');
+  const supplied = { ...slots, current: { ...current, bytes: Uint8Array.from(current.bytes), identity: { ...current.identity } } };
+  const proof = { ...f.cleanup('deletionPurged'), expectedDeletionSlots: supplied };
+  proof.assertExternalSelection = async () => {
+    supplied.current.bytes.fill(0); supplied.current.identity.ino = 0;
+    proof.mode = 'owner'; proof.bindingSha256 = hash('changed');
+    proof.assertAuthority = () => { throw new Error('SYNTHETIC_REPLACED_PROOF'); };
+    proof.assertPayloadsAbsent = async () => { throw new Error('SYNTHETIC_REPLACED_PROOF'); };
+  };
+  await f.store().clearCommittedAfterPayloadsAbsent(targetFor(f), proof);
+  expect(await readdir(f.paths.directoryPath)).toEqual([]);
 });
 
 it.for(['mode', 'target', 'lineage', 'digest', 'foreign', 'malformed'] as const)(
