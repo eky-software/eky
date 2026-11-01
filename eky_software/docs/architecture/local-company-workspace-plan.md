@@ -8352,6 +8352,31 @@ Poistojournalin täsmällinen valinta tarkistetaan uudelleen delete-leasen
 ja mainin fyysisen varauksen alla; cold-resume kutsuu samaa etenemistä
 kuin live-poisto. Tuntematon tila säilyy näkyvänä selvitystarpeena.
 
+**E:n normaalien sisääntulojen esivaihe:** tavallinen management-guard,
+creation/import-admission, valitsimen avaus-/paluucensus ja suora
+startup-resolveri tunnistavat poistojournalin kaikki kolme slottia ennen
+tavallista avaus-/korjaustyötä. Presence-luennat päätetään myös yhden
+epäonnistuessa. Lukematon tai ristiriitainen aineisto ei muutu poissaoloksi;
+vartija ei tulkitse, sovita tai poista poistojournalia. Poikkeuksena
+palautettavan cold-/selector-lukuvirheen sisäinen alkuperäinen syy säilyy,
+mutta sitä ei julkaista IPC:ssä tai operational-tapahtuman kentissä.
+Managementin suljettu tilakysely säilyy erillisenä status-sopimuksena.
+Tämä esivaihe ei vielä toteuta
+deletion-omistajan valintaa tai anna sen käynnistysjatkolle valtuutta.
+
+**Lähteestä vahvistettu avoin metadata-reuna:** import voi keskeytyä
+rekisterijulkaisun jälkeen ennen oman `registryPublished`-kuittauksensa
+tallennusta. Candidate on silloin jo siirretty yrityskansioksi. Jäljellä
+oleva kohdesidonta on erillisen juuren kannalta payloaditon, vaikka sen
+alkuperäinen journal on vielä kesken. Nykyinen ennakkosiivous ei voi
+poistaa tätä todistetta ja myöhempi loppusiivous ei voi keksiä puuttuvaa
+inventaario-sidontaa. Myös activationin loppusiivouksen vastaava raja on
+arvioitava. Nykyinen tavallinen admission estää näiden tilojen yli
+aloittamisen; kyse ei ole nykyisen mainin toistetusta poistoviasta.
+Tälle nimetylle poikkeuspolulle on ratkaistava pysyvä metadata-todiste
+ennen tuotantokytkentää. Uutta luetteloroolia, journal-kenttää tai
+alkuperäisen journalin ennakkopoistoa ei hyväksytä tämän kirjauksen perusteella.
+
 Sisäiset tulokset ja turvalliset tapahtumat noudattavat
 [poistopyyntösopimusta](#w70n-poistopyyntö--ja-vahvistussopimus).
 `prepared` ei ole `completed`, eikä työtilan poistuminen yksin todista

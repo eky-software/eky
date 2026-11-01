@@ -3,8 +3,8 @@ export type WorkspaceManagementRecoveryState =
   | 'recoveryRequired';
 
 export class WorkspaceManagementRecoveryRequiredError extends Error {
-  constructor() {
-    super('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  constructor(options?: ErrorOptions) {
+    super('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', options);
     this.name = 'WorkspaceManagementRecoveryRequiredError';
   }
 }

@@ -5362,6 +5362,52 @@ describe('W7.4 main replacement binding', () => {
     });
 });
 
+describe('W7.4 normal startup deletion guard', () => {
+  it.for((['active', 'selector'] as const).flatMap(mode =>
+    (['currentPath', 'backupPath', 'nextPath'] as const).map(slot => ({ mode, slot }))))(
+    'blocks $mode startup at deletion $slot before backend or ordinary recovery', async ({ mode, slot }, context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+        }));
+        await f.registry.write({ ...(await f.registry.read())!, formatVersion: 2,
+          activeWorkspaceId: mode === 'selector' ? null : workspaceId });
+        const before = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+        const deletion = createWorkspaceDeletionJournalPaths(f.root);
+        await mkdir(deletion.directoryPath, { recursive: true, mode: 0o700 });
+        await writeFile(deletion[slot], 'unparsed deletion evidence', { flag: 'wx', mode: 0o600 });
+        const observed = vi.fn();
+        let lifecycle: Awaited<ReturnType<typeof f.start>>;
+        let firstFailure: { error: unknown } | undefined;
+        try {
+          await lifetime.step('startup', async () => {
+            await expect((async () => { lifecycle = await f.start(observed); })())
+              .rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+          });
+          expect(observed).toHaveBeenCalledExactlyOnceWith(
+            expect.objectContaining({ message: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' }), 'compositionStartup', []);
+          expect(f.events).toEqual([]); expect(f.createRuntimeSession).not.toHaveBeenCalled();
+          expect(electronBoundary.fork).not.toHaveBeenCalled(); expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+          expect(electronBoundary.reservationReleased).toHaveBeenCalledExactlyOnceWith(f.root);
+          expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(before);
+          expect(await readFile(deletion[slot], 'utf8')).toBe('unparsed deletion evidence');
+          if (slot !== 'currentPath') await expect(readFile(deletion.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+          expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+          expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        } catch (error) { firstFailure = { error }; throw error; }
+        finally {
+          try { await lifecycle?.shutdown(); }
+          catch (cleanupFailure) {
+            if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+              'SYNTHETIC_DELETION_ADMISSION_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+            throw cleanupFailure;
+          }
+        }
+      });
+    });
+});
+
 describe('W7.4 actual main deletion chain', () => {
   it.for(['active', 'selector', 'passive'] as const)(
     'completes the actual published file chain under the %s main owner', { timeout: 60_000 }, async (mode, context) => {

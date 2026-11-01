@@ -13,6 +13,7 @@ import {
 export interface WorkspaceColdRecoveryAdmissionOptions {
   readonly adoptionJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly creationJournal: Readonly<ReadOnlyJournalSlotPaths>;
+  readonly deletionJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly directSetupRecovery: Readonly<ReadOnlyJournalSlotPaths>;
   readonly firstStartMigrationJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly importJournal: Readonly<ReadOnlyJournalSlotPaths>;
@@ -27,16 +28,17 @@ export type WorkspaceColdRecoveryAdmission = 'none' | 'creation' | 'import';
 
 export async function readWorkspaceColdRecoveryOwnerPresence(
   creation: Readonly<ReadOnlyJournalSlotPaths>, importBackup: Readonly<ReadOnlyJournalSlotPaths>,
-): Promise<readonly [boolean, boolean]> {
+  deletion: Readonly<ReadOnlyJournalSlotPaths>,
+): Promise<readonly [boolean, boolean, boolean]> {
   let firstFailure: { error: unknown } | undefined;
-  const observations = await Promise.allSettled([hasAnyJournalSlot(creation), hasAnyJournalSlot(importBackup)]
+  const observations = await Promise.allSettled([hasAnyJournalSlot(creation), hasAnyJournalSlot(importBackup), hasAnyJournalSlot(deletion)]
     .map(read => read.catch((error: unknown) => { firstFailure ??= { error }; throw error; })));
   if (firstFailure !== undefined) throw firstFailure.error;
   const values = observations.map(observation => {
     if (observation.status === 'rejected') throw observation.reason;
     return observation.value;
   });
-  return [values[0]!, values[1]!];
+  return [values[0]!, values[1]!, values[2]!];
 }
 
 // This selects an owner, not permission to mutate. The owner still proves its
@@ -45,15 +47,18 @@ export async function readWorkspaceColdRecoveryAdmission(
   options: Readonly<WorkspaceColdRecoveryAdmissionOptions>,
 ): Promise<WorkspaceColdRecoveryAdmission> {
   try {
-    const [creation, importBackup] = await readWorkspaceColdRecoveryOwnerPresence(options.creationJournal, options.importJournal);
+    const [creation, importBackup, deletion] = await readWorkspaceColdRecoveryOwnerPresence(
+      options.creationJournal, options.importJournal, options.deletionJournal);
+    if (deletion) throw new WorkspaceManagementRecoveryRequiredError();
     if (!creation && !importBackup) return 'none';
     if (creation && importBackup) {
       throw new WorkspaceManagementRecoveryRequiredError();
     }
     await assertWorkspaceColdRecoveryConflictsAbsent(options);
     return creation ? 'creation' : 'import';
-  } catch {
-    throw new WorkspaceManagementRecoveryRequiredError();
+  } catch (cause) {
+    if (cause instanceof WorkspaceManagementRecoveryRequiredError) throw cause;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause });
   }
 }
 
@@ -66,6 +71,7 @@ export async function assertWorkspaceColdRecoveryConflictsAbsent(
     let firstFailure: { error: unknown } | undefined;
     const observations = await Promise.allSettled([
       hasAnyJournalSlot(options.adoptionJournal),
+      hasAnyJournalSlot(options.deletionJournal),
       hasAnyJournalSlot(options.firstStartMigrationJournal),
       hasAnyJournalSlot(options.replacementJournal),
       hasAnyJournalSlot(options.switchJournal),
@@ -89,7 +95,8 @@ export async function assertWorkspaceColdRecoveryConflictsAbsent(
     if (observations.some(value => value.status === 'fulfilled' && value.value)) {
       throw new WorkspaceManagementRecoveryRequiredError();
     }
-  } catch {
-    throw new WorkspaceManagementRecoveryRequiredError();
+  } catch (cause) {
+    if (cause instanceof WorkspaceManagementRecoveryRequiredError) throw cause;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause });
   }
 }

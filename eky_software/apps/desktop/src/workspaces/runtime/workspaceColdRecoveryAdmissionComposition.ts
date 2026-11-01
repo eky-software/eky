@@ -6,6 +6,7 @@ import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePa
 import { parseDirectSetupMigrationRecovery } from '../../update/directSetupMigrationRecovery.js';
 import { maximumDirectSetupMigrationRecoveryBytes } from '../../update/directSetupMigrationRecoveryStore.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
 import {
   parseWorkspaceCreationJournalBytes,
   WORKSPACE_CREATION_JOURNAL_MAX_BYTES,
@@ -94,6 +95,7 @@ async function assertSelectorWorkspaceRecoveryFromRoot(
     const updatePaths = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot, legacyRuntimeRoot });
     const pending = [
       createWorkspaceLegacyAdoptionJournalPaths(userDataRoot),
+      createWorkspaceDeletionJournalPaths(userDataRoot),
       createWorkspaceCreationJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME)),
       createWorkspaceBackupImportJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME)),
       createWorkspaceFirstStartMigrationJournalPaths(userDataRoot),
@@ -123,7 +125,7 @@ async function assertSelectorWorkspaceRecoveryFromRoot(
     await assertSwitchSelection?.();
   } catch (error) {
     if (error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
-    throw new WorkspaceManagementRecoveryRequiredError();
+    throw new WorkspaceManagementRecoveryRequiredError({ cause: error });
   }
 }
 
@@ -139,7 +141,9 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
     const importPaths = createWorkspaceBackupImportJournalPaths(
       userDataRoot, join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME),
     );
-    const [creation, importBackup] = await readWorkspaceColdRecoveryOwnerPresence(creationPaths, importPaths);
+    const [creation, importBackup, deletion] = await readWorkspaceColdRecoveryOwnerPresence(
+      creationPaths, importPaths, createWorkspaceDeletionJournalPaths(userDataRoot));
+    if (deletion) throw new WorkspaceManagementRecoveryRequiredError();
     if (!creation && !importBackup) return 'none';
     if (creation && importBackup) throw new WorkspaceManagementRecoveryRequiredError();
 
@@ -173,8 +177,9 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
       throw new WorkspaceManagementRecoveryRequiredError();
     }
     return admission;
-  } catch {
-    throw new WorkspaceManagementRecoveryRequiredError();
+  } catch (cause) {
+    if (cause instanceof WorkspaceManagementRecoveryRequiredError) throw cause;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause });
   }
 }
 
@@ -187,7 +192,10 @@ export async function assertColdImportRecoveryConflictsFromRoot(
     if (journal.formatVersion !== 2 || await hasAnyJournalSlot(createWorkspaceCreationJournalPaths(
       root, join(root, WORKSPACE_CREATION_JOURNAL_FILE_NAME)))) throw new WorkspaceManagementRecoveryRequiredError();
     await assertWorkspaceColdRecoveryConflictsAbsent(coldRecoveryConflictPaths(root, journal, registry));
-  } catch { throw new WorkspaceManagementRecoveryRequiredError(); }
+  } catch (cause) {
+    if (cause instanceof WorkspaceManagementRecoveryRequiredError) throw cause;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause });
+  }
 }
 
 function coldRecoveryConflictPaths(root: string, journal: Readonly<{ workspaceId: WorkspaceId; previousActiveWorkspaceId: WorkspaceId | null }>,
@@ -201,6 +209,7 @@ function coldRecoveryConflictPaths(root: string, journal: Readonly<{ workspaceId
   const replacement = deriveWorkspaceBackupReplacementRuntimePaths(root, journal.workspaceId);
   return {
     adoptionJournal: createWorkspaceLegacyAdoptionJournalPaths(root),
+    deletionJournal: createWorkspaceDeletionJournalPaths(root),
     directSetupRecovery: createReadOnlyJournalSlotPaths(update.directSetupMigrationRecoveryPath),
     firstStartMigrationJournal: createWorkspaceFirstStartMigrationJournalPaths(root),
     legacyUpdateJournal: createReadOnlyJournalSlotPaths(update.legacyJournalPath),

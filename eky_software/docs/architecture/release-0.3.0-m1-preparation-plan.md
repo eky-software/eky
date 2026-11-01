@@ -21,8 +21,10 @@ ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 `purged`-tilaan ja erillinen rekisterivaihe julkaisee täsmällisen jälkeen-tilan;
 omistajien yhteinen loppusiivous ja terminalin julkaisu on lisätty.
 Sama publish/resume-kuluttaja on liitetty mainin ja palvelun kohdetesteihin;
-tuotannon oletuskytkentä odottaa vielä cold-admissionia ja avausguardeja.
-E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
+tuotannon oletuskytkentä odottaa vielä poiston omaa cold-admissionia.
+E:n normaalit avaus-/hallintavartijat tunnistavat poistojournalin ja
+estävät tavallisen palautuksen sen yli. Oma käynnistysjatko on vielä kesken.
+F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
 Hyväksytyt main-korjaukset on yhdistetty W7.4-haaraan revisiossa `40e491eb`.
@@ -75,14 +77,31 @@ säilyvät tavut tarkistetaan. Uudet tapaukset käyttävät oikeita
 tiedostoidentiteettejä; natiiviprosessi ja käyttöjärjestelmälukko ovat
 edelleen ohjattuja rajoja. Testin käynnistyskahvan keskeytyvä talteenotto
 korjattiin katselmuksessa nykyisen sulkumallin mukaiseksi.
-Koko muuttunut main-testitiedosto ja kolme sen sulku-/kytkentäsarjaa
-läpäisivät: 399 testiä neljässä tiedostossa ilman ohituksia. Tyypitys,
+Tarkistuspisteen `fb49903d` koko muuttunut main-testitiedosto ja kolme
+sen sulku-/kytkentäsarjaa läpäisivät: 399 testiä neljässä tiedostossa ilman ohituksia. Tyypitys,
 rajattu jälkikatselmus ja ohjeiden linkit läpäisivät. Päällekkäistä
 kohdenäyttöä ei summata aiempiin sarjoihin. Tämä ei vielä todista
 tuotannon oletuskytkentää, kylmäjatkoa tai native-/pakettitoimintaa.
 
-Seuraavaksi toteutetaan E:n cold-admission ja avausguardit ennen
-mainin oletuskytkentää. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,
+**E:n vartijat:** mainin varhainen käynnistys, suora startup-resolveri,
+aktiivinen management, creation/import-konfliktit sekä valitsimen avaus
+ja paluu tarkistavat poistojournalin kaikki slotit ilman korjaavaa lukua.
+Cold-/selector-poikkeuspolun alkuperäinen sisäinen lukuvirhe säilyy
+turvallisen virheen syyketjussa;
+IPC ja tapahtumien julkaistavat kentät eivät laajene. Lopullinen
+runtime-/management-/main-vaikutusajo läpäisi 1 439 testiä 36 tiedostossa
+ilman ohituksia. Mukana ovat kuusi mainin käynnistysestoa, aiempi
+todellinen poistoketju ja alkuperäisen virheen tarkka oliosidonta sekä
+turvallinen IPC-muunnos. Tyypitys, rajattu katselmus ja ohjeiden linkit
+läpäisivät. Kohdeajoja ei lasketa yhteen tämän vaikutusajon kanssa;
+oma deletion-admission, prosessi- ja pakettinäyttö jäävät avoimiksi.
+
+Seuraavaksi toteutetaan E:n oma deletion-admission ennen mainin
+oletuskytkentää. Lähdekatselmus vahvisti samalla payloadittomaksi muuttuneen
+keskeytyneen tuonnin metadata-rajan, jonka pysyvä kohdetodiste on vielä
+[ratkaistava omistavassa sopimuksessa](local-company-workspace-plan.md#w74n-cold-admission-ja-havaittava-tulos).
+Sitä ei nimetä nykyisen mainin toistetuksi viaksi eikä ohiteta guardin
+lievennyksellä. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,
 paketti- ja PR/main-portit säilyvät avoimina. Käyttäjälle näkyvää
 W7.5-poistokanavaa ei ole avattu.
 

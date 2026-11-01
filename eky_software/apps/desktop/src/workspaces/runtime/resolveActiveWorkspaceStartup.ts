@@ -19,6 +19,8 @@ import type { WorkspaceSwitchFailureRecoveryOutcome } from '../switch/workspaceS
 import type { WorkspaceSwitchStartupContext } from '../switch/workspaceSwitchStartup.js';
 import type { WorkspaceSelectorActivationAuthority } from '../update/workspaceActivationMigrationGuard.js';
 import { hasAnyJournalSlot } from '../persistence/readOnlyJournalSlots.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
+import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import {
   resolveWorkspaceSelectorSwitchStartup,
   type WorkspaceSelectorStartupSelection,
@@ -97,6 +99,9 @@ export async function resolveActiveWorkspaceStartup(
   userDataRoot: string,
   options: Readonly<ActiveWorkspaceStartupOptions> = {},
 ): Promise<Readonly<ActiveWorkspaceStartupSelection> | WorkspaceSelectorStartupSelection> {
+  if (await hasAnyJournalSlot(createWorkspaceDeletionJournalPaths(userDataRoot))) {
+    throw new WorkspaceManagementRecoveryRequiredError();
+  }
   reportProgress(options, 'registryStateRead', 'started');
   const registry = new WorkspaceRegistryStore({
     installationRoot: userDataRoot,

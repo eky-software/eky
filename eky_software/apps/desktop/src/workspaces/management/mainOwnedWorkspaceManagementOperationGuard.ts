@@ -20,6 +20,7 @@ export interface MainOwnedWorkspaceManagementOperationGuardOptions {
   readonly mode?: 'active';
   readonly adoptionJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly creationJournal: Readonly<ReadOnlyJournalSlotPaths>;
+  readonly deletionJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly directSetupRecovery: Readonly<ReadOnlyJournalSlotPaths>;
   readonly importJournal: Readonly<ReadOnlyJournalSlotPaths>;
   readonly profileRestoreJournal: Readonly<ReadOnlyJournalSlotPaths>;
@@ -75,6 +76,7 @@ export class MainOwnedWorkspaceManagementOperationGuard
       const unresolved = await Promise.allSettled([
         hasAnyJournalSlot(this.options.adoptionJournal),
         hasAnyJournalSlot(this.options.creationJournal),
+        hasAnyJournalSlot(this.options.deletionJournal),
         hasTerminalJournalConflict(
           this.options.directSetupRecovery,
           maximumDirectSetupMigrationRecoveryBytes,

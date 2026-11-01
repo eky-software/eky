@@ -52,6 +52,7 @@ import { assertNoSelectorWorkspaceRecoveryFromRoot } from '../runtime/workspaceC
 import { hasAnyJournalSlot, hasTerminalJournalConflict } from '../persistence/readOnlyJournalSlots.js';
 import { captureWorkspaceSelectorSwitchSelection } from '../switch/workspaceSelectorSwitchSelection.js';
 import type { WorkspaceColdRecoveryAdmission } from '../runtime/workspaceColdRecoveryAdmission.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
 import { WorkspaceSwitchCoordinator } from '../switch/workspaceSwitchCoordinator.js';
 import {
   createWorkspaceSwitchJournalPaths,
@@ -253,6 +254,7 @@ export async function createWorkspaceManagementComposition(
       options.userDataRoot,
       creationJournalPath,
     ),
+    deletionJournal: createWorkspaceDeletionJournalPaths(options.userDataRoot),
     directSetupRecovery: createReadOnlyJournalSlotPaths(
       options.localUpdateRuntimePaths.directSetupMigrationRecoveryPath,
     ),

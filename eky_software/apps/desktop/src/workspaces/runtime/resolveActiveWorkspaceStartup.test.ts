@@ -17,6 +17,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { NodeWorkspaceLegacyAdoptionRootStore } from '../adoption/workspaceLegacyAdoptionRootStore.js';
 import { resolveWorkspaceLegacyAdoptionStartup } from '../adoption/workspaceLegacyAdoptionStartup.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import {
   WORKSPACE_REGISTRY_BACKUP_FILE_NAME,
@@ -47,6 +48,40 @@ afterEach(async context => {
 });
 
 describe('active workspace startup resolution', () => {
+  it.each((['normal', 'targetSelected', 'rollbackSelected'] as const).flatMap(state =>
+    (['currentPath', 'backupPath', 'nextPath'] as const).map(slot => ({ state, slot }))))(
+    'blocks deletion $slot before registry or switch recovery in $state startup', async ({ state, slot }) => {
+      const fixture = await createSwitchStartupFixture(state);
+      const path = createWorkspaceDeletionJournalPaths(fixture.userDataRoot)[slot];
+      await createPrivateDirectory(join(fixture.userDataRoot, 'workspace-state'));
+      await writePrivateFile(path, 'unparsed deletion evidence');
+      const registryPath = join(fixture.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME);
+      const before = await readFile(registryPath);
+      const journalBefore = await fixture.journal.inspectSlots();
+      const inspect = vi.spyOn(WorkspaceRegistryStore.prototype, 'inspect');
+      const progress = vi.fn();
+      try {
+        await expect(resolveActiveWorkspaceStartup(fixture.userDataRoot, { reportProgress: progress }))
+          .rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+        expect(inspect).not.toHaveBeenCalled(); expect(progress).not.toHaveBeenCalled();
+        expect(await readFile(registryPath)).toEqual(before);
+        expect(await fixture.journal.inspectSlots()).toEqual(journalBefore);
+        expect(await readFile(path, 'utf8')).toBe('unparsed deletion evidence');
+      } finally { inspect.mockRestore(); }
+    },
+  );
+
+  it('does not initialize a new company while deletion evidence is present', async () => {
+    const root = await createPrivateTemporaryRoot();
+    const paths = createWorkspaceDeletionJournalPaths(root);
+    await createPrivateDirectory(paths.directoryPath);
+    await writePrivateFile(paths.nextPath, 'unpublished deletion evidence');
+    const before = await readdir(root);
+    await expect(resolveTestWorkspaceStartup(root)).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(await readdir(root)).toEqual(before);
+    expect(await readdir(paths.directoryPath)).toEqual([paths.nextPath.slice(paths.directoryPath.length + 1)]);
+  });
+
   it('requires preparation authority before creating or repairing adoption files', async () => {
     const root = await createPrivateTemporaryRoot();
     const before = await readdir(root);

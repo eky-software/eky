@@ -578,6 +578,7 @@ async function fixture(options: Options) {
   }
   const slot = (name: string) => createReadOnlyJournalSlotPaths(join(base.root, name));
   const guard = new MainOwnedWorkspaceManagementOperationGuard({ adoptionJournal: slot('adoption'), creationJournal: slot('creation'),
+    deletionJournal: slot('deletion'),
     directSetupRecovery: slot('setup'), importJournal: slot('import'), profileRestoreJournal: slot('restore'),
     replacementJournal: slot('replacement'), switchJournal: slot('switch'), updateJournal: slot('update') });
   const requestQuiescence = new BackendRequestQuiescence();
