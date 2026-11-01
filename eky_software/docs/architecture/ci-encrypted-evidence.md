@@ -136,6 +136,17 @@ lähde säilyy osittaisena myös onnistuneen toimituksen jälkeen.
 Testiapuri säilyttää viimeisimmän runtime-sukupolven myös mahdolliselle
 shutdown- tai jälkitarkistusvirheelle. Tämä sidonta on katselmoitu lähteestä;
 onnistuva native-koe ei yksin todista näiden virhehaarojen käyttäytymistä.
+
+Sama OpenPGP-koe ajaa W7.4:n yhteisen poistokomennon oikeassa Node-lapsessa
+ja pakottaa ensimmäisen virheen ennen `purged`-vaiheen julkaisua.
+Lapsi tarjoaa alkuperäisen viestin, pinon ja syyketjun nykyiselle
+runner-liitännälle ennen suljettua IPC-virhetulosta. Purussa verrataan
+alkuperäiset raporttitavut, testisidonta ja syyketju; julkinen tuloste ei
+saa sisältää niitä. Keräys käsittelee vain nykyiset runner-raportit,
+ei epäonnistumisen vuoksi säilytettyä profiilia tai tietokantaa. Tämä
+on tiedostokomennon ja raportoinnin näyttö, ei Electronin, tuotannon
+cold-admissionin tai GitHub-artifactin toimituksen hyväksyntä.
+
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 

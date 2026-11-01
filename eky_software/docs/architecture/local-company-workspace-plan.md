@@ -8404,6 +8404,18 @@ tai raakavirheitä julkiseen lokiin.
 | Kokonainen sisäinen poisto | Aktiivinen, passiivinen, viimeinen ja vikatilainen kohde, jokainen jäännösrooli, SMTP:n kaikki slotit sekä omat palautuspisteet. Ei DB:n avausta vikakohteen poistoluvaksi. Toisen yrityksen ja ulkoisten kopioiden tavut säilyvät; lineage vapautuu vasta terminalissa. |
 | Paketti ja integraatio | Sama puhdas hardened Windows-paketti: backup -> inspect -> restore -> restart -> compare sekä sisäinen poisto -> restart -> selector/aiempi yritys ja tietojen vertailu. Nykyiset vaikutusalueen stress-/soak-/installer-portit, riippuvuusauditointi, riippumaton katselmus, PR:n täsmähead ja uuden mainin omat portit. |
 
+F:n nimetty prosessiregressio käyttää yhteistä publish/resume-komentoa,
+oikeaa käyttöjärjestelmävarausta ja delete-leasea erillisessä Node-lapsessa.
+Katko tehdään julkaistun aloituksen, payloadin poissaolon tai terminalin
+julkaisun kohdalla. Vanhan lapsen `close` edeltää uuden prosessin
+käynnistystä ja saman varauksen uudelleenottoa. Viimeisen vikatilaisen
+yrityksen tapaus tarkistaa lisäksi tyhjän valitsimen lopputuloksen.
+Fixture ei avaa SQLitea, Electronia tai backendia; näiden ja mainin
+cold-admissionin erilliset portit eivät täyty tämän prosessikokeen perusteella.
+Saman komennon pakotetun virheen viesti, pino ja syyketju tarkistetaan
+nykyisestä puretusta OpenPGP-paketista. Vain nykyiset runner-virhetietueet
+kerätään; säilytetty testiprofiili ei kuulu salattuunkaan pakettiin.
+
 Ennen jokaista uutta vastuurajaa luetaan kohde-AGENTS ja sen nykyiset
 omistavat ohjeet kokonaan. Yksi katselmoitava pala kerrallaan; dokumentit,
 audit/diagnostiikka ja regressiot päivittyvät sen mukana. Korvattu

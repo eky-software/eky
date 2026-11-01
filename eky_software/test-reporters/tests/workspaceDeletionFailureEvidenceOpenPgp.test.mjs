@@ -10,7 +10,7 @@ import { gunzipSync } from 'node:zlib';
 import { projectExceptionChain, STARTUP_EXCEPTION_LIMITS } from '../../apps/desktop/src/main/startupExceptionEvidence.ts';
 import { captureWorkspaceDeletionFailure } from '../../apps/e2e/src/fixtures/captureWorkspaceDeletionFailure.ts';
 import { runElectronWorkspaceAdoptionAcceptanceProof, runElectronWorkspaceOriginalInspectionProof } from '../../apps/e2e/src/electron/electronMainCapabilities.ts';
-import { createRunnerFailureSink, validateRunnerFailureEvidence } from '../runnerFailureEvidence.mjs';
+import { createRunnerFailureSink, RUNNER_FAILURE_ROOT_PREFIX, validateRunnerFailureEvidence } from '../runnerFailureEvidence.mjs';
 import { collectJobFailureEvidence } from '../../apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../apps/desktop/installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
 import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-acceptance-harness/openPgpTestFixture.mjs';
@@ -70,11 +70,12 @@ test('workspace main projections retain original causes and coverage through Ope
     await runInspectionFailureWorker(fixture.root, temp, binding);
     const originals = new Map();
     for (const directory of await readdir(temp)) {
+      if (!directory.startsWith(RUNNER_FAILURE_ROOT_PREFIX)) continue;
       for (const file of await readdir(join(temp, directory))) {
         originals.set(`temporary/${directory}/${file}`, await readFile(join(temp, directory, file)));
       }
     }
-    assert.equal(originals.size, 11);
+    assert.equal(originals.size, 14);
     // Synthetic collector identity, not hosted admission or an artifact upload.
     const collected = await collectJobFailureEvidence({ ...binding,
       RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
@@ -116,12 +117,17 @@ test('workspace main projections retain original causes and coverage through Ope
     assert.equal(inspection.exception.chain[0].message === 'SYNTHETIC_W74_INSPECTION_ORIGINAL', true);
     assert.equal(inspection.exception.chain[1].message === 'SYNTHETIC_W74_INSPECTION_CAUSE', true);
     assert.equal(inspection.exception.chain[0].stack.includes('inspection.test.mjs'), true);
+    const deletion = records.find(record => record.phase === 'workspaceDeletionProcess');
+    assert.equal(deletion.exception.chain[0].message === 'SYNTHETIC_W74_DELETION_ORIGINAL', true);
+    assert.equal(deletion.exception.chain[1].message === 'SYNTHETIC_W74_DELETION_CAUSE', true);
+    assert.equal(deletion.exception.chain[0].stack.includes('workspaceDeletionProcess.fixture.mjs'), true);
+    assert.equal(deletion.test.id.endsWith(':publish'), true);
     const assertion = records.find(record => record.phase === 'testFailure');
     assert.equal(assertion.exception.chain[0].message.includes('W74_INSPECTION_EXPECTED_SUCCESS'), true);
     assert.equal(JSON.stringify(assertion.exception).includes('SYNTHETIC_W74_INSPECTION_ORIGINAL'), false);
     for (const record of records) {
       assert.equal(record.test.attempt, 0);
-      if (record.phase !== 'testFailure') {
+      if (!['testFailure', 'workspaceDeletionProcess'].includes(record.phase)) {
         assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);
       }
     }
@@ -144,6 +150,7 @@ async function runInspectionFailureWorker(parent, temp, binding) {
 import { test, expect, vi } from 'vitest';
 import { runProfileSnapshotInspection } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/profileBackup/runProfileSnapshotInspection.ts'))};
 import { createRunnerFailureSink } from ${JSON.stringify(moduleUrl('../runnerFailureEvidence.mjs'))};
+import { deletionProcessFixture } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionProcessTestSupport.ts'))};
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn(() => { throw new Error('UNEXPECTED_INSPECTION_FORK'); }) } }));
 test('inspection original exception before safe conversion', async context => {
   const original = new Error('SYNTHETIC_W74_INSPECTION_ORIGINAL', { cause: new Error('SYNTHETIC_W74_INSPECTION_CAUSE') });
@@ -170,13 +177,19 @@ test('inspection original exception before safe conversion', async context => {
   expect(first === original).toBe(true);
   expect(result.message === 'PROFILE_SNAPSHOT_VALIDATION_FAILED' && result.causeCode === 'unknown' && result.cause === undefined).toBe(true);
   expect(false, 'W74_INSPECTION_EXPECTED_SUCCESS').toBe(true);
+});
+test('deletion command original exception before safe child result', { timeout: 60000 }, async context => {
+  const fixture = await deletionProcessFixture(context);
+  const child = fixture.start('publish', 'originalFailure');
+  await expect(child.message('completed')).rejects.toThrow('DELETION_PROCESS_PHASE_NOT_REACHED');
+  expect(false, 'W74_DELETION_EXPECTED_SUCCESS').toBe(true);
 });`, { flag: 'wx', mode: 0o600 });
   const env = { ...process.env, ...binding, CI: '1', NO_COLOR: '1', TEMP: temp, TMP: temp, TMPDIR: temp };
   delete env.NODE_TEST_CONTEXT; delete env.FORCE_COLOR;
   const child = spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'),
     'run', '--config', config, '--reporter=default',
     '--reporter=' + fileURLToPath(new URL('../vitestFailureReporter.mjs', import.meta.url))], {
-    cwd: directory, env, encoding: 'utf8', timeout: 30_000, maxBuffer: 512 * 1024, windowsHide: true,
+    cwd: directory, env, encoding: 'utf8', timeout: 90_000, maxBuffer: 512 * 1024, windowsHide: true,
   });
   await writeFile(join(directory, 'output.private.json'), JSON.stringify({ status: child.status,
     signal: child.signal, stdout: child.stdout, stderr: child.stderr, processError: child.error?.code ?? null }),
@@ -184,7 +197,8 @@ test('inspection original exception before safe conversion', async context => {
   assert.equal(child.error === undefined && child.signal === null, true, 'INSPECTION_WORKER_INTERRUPTED');
   assert.equal(child.status, 1, 'INSPECTION_EXPECTED_ASSERTION_DID_NOT_FAIL');
   const output = (child.stdout ?? '') + (child.stderr ?? '');
-  for (const marker of ['SYNTHETIC_W74_INSPECTION_ORIGINAL', 'SYNTHETIC_W74_INSPECTION_CAUSE']) {
+  for (const marker of ['SYNTHETIC_W74_INSPECTION_ORIGINAL', 'SYNTHETIC_W74_INSPECTION_CAUSE',
+    'SYNTHETIC_W74_DELETION_ORIGINAL', 'SYNTHETIC_W74_DELETION_CAUSE']) {
     assert.equal(output.includes(marker), false, 'INSPECTION_ORIGINAL_LEAKED_TO_PUBLIC_OUTPUT');
   }
 }

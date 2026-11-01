@@ -24,8 +24,8 @@ Sama publish/resume-kuluttaja on liitetty mainin ja palvelun kohdetesteihin;
 tuotannon oletuskytkentä odottaa vielä poiston omaa cold-admissionia.
 E:n normaalit avaus-/hallintavartijat tunnistavat poistojournalin ja
 estävät tavallisen palautuksen sen yli. Oma käynnistysjatko on vielä kesken.
-F:n oikea keskeytys-,
-poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
+F:n yhteisen tiedostokomennon prosessikatkot on lisätty erillisenä
+rajattuna näyttönä. Poiston oma käynnistysjatko ja pakettinäyttö ovat kesken.
 
 Hyväksytyt main-korjaukset on yhdistetty W7.4-haaraan revisiossa `40e491eb`.
 Sen valmistelutyö ja hyväksytyt riippuvuuslukitukset säilyivät. Yhdistetyn
@@ -94,15 +94,33 @@ ilman ohituksia. Mukana ovat kuusi mainin käynnistysestoa, aiempi
 todellinen poistoketju ja alkuperäisen virheen tarkka oliosidonta sekä
 turvallinen IPC-muunnos. Tyypitys, rajattu katselmus ja ohjeiden linkit
 läpäisivät. Kohdeajoja ei lasketa yhteen tämän vaikutusajon kanssa;
-oma deletion-admission, prosessi- ja pakettinäyttö jäävät avoimiksi.
+oma deletion-admission ja pakettinäyttö jäävät avoimiksi.
+
+**F:n prosessiraja:** neljä oikean Node-lapsen katko-/jatkotapausta
+läpäisi. Katkot koskevat aloitusjulkaisua, payloadin poissaoloa ja
+terminal-julkaisua; viimeinen vikatilainen yritys palautuu tyhjään
+valitsimeen. Vanhan lapsen todettu poistuminen edeltää uuden omistajan
+käynnistystä. Nykyinen käyttöjärjestelmävaraus ja delete-lease ovat
+oikeita, mutta SQLitea, backendia tai Electronia ei avata. Testi tarkistaa
+myös karanteenin poissaolon ennen katkaisua sekä säilyvät yritys- ja
+ulkoiset tiedostotavut. Viides regressio todentaa odottamatta saadun
+varauskahvan vapautuksen. Molemmat katselmuksen testiaukot korjattiin,
+viisi kohdetestiä ja rajattu jälkikatselmus läpäisivät. Yhteisen komennon
+pakotetun alkuperäisen virheen viesti, pino ja syyketju löytyivät nykyisestä
+puretusta OpenPGP-paketista ilman profiilin keräämistä tai julkista vuotoa.
+Lopullisen lähteen koko rajattu poisto-/huoltovaraus-/prosessivaraus-/
+main-jatkovaikutusajo läpäisi 1 449 testiä 57 tiedostossa; neljä
+ennestään alustakohtaista tapausta jäi suorittamatta. Tyypitys,
+salaus/purku-varmennus ja ohjeiden linkit läpäisivät. Kohdeajoja ei summata
+tähän vaikutusajoon. Tämä ei ole koko W7.4:n integraatio- tai pakettihyväksyntä.
 
 Seuraavaksi toteutetaan E:n oma deletion-admission ennen mainin
 oletuskytkentää. Lähdekatselmus vahvisti samalla payloadittomaksi muuttuneen
 keskeytyneen tuonnin metadata-rajan, jonka pysyvä kohdetodiste on vielä
 [ratkaistava omistavassa sopimuksessa](local-company-workspace-plan.md#w74n-cold-admission-ja-havaittava-tulos).
 Sitä ei nimetä nykyisen mainin toistetuksi viaksi eikä ohiteta guardin
-lievennyksellä. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,
-paketti- ja PR/main-portit säilyvät avoimina. Käyttäjälle näkyvää
+lievennyksellä. Eri roolien yhteinen fyysinen ketju, mainin/native-prosessien
+sekä F:n paketti- ja PR/main-portit säilyvät avoimina. Käyttäjälle näkyvää
 W7.5-poistokanavaa ei ole avattu.
 
 ### Aiemmat lähtötilan checkpointit

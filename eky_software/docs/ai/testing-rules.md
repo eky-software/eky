@@ -293,6 +293,22 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   muutu. Fixture käyttää näissä tapauksissa oikeita tiedostoidentiteettejä;
   Electron-prosessi ja käyttöjärjestelmälukko ovat edelleen ohjattuja
   testirajoja, eivät native- tai prosessikatkon näyttöä.
+- `workspaceDeletionProcess.test.ts`:n neljä nimettyä prosessikatkotapausta
+  saavat kukin 60 sekuntia saman rajatun testibudjettivaltuuden nojalla.
+  Valmistelu, nykyisen komennon oikea lapsiprosessi ja käyttöjärjestelmävaraus,
+  nimetty katkaisuvaihe, todettu poistuminen, uuden prosessin jatko sekä
+  säilyvien tiedostotavujen vertailu sisältyvät samaan rajaan. Tietokantaa
+  tai Electronia ei avata. Tämä ei korvaa cold-admissionin, mainin I/O:n,
+  tarkistusprosessin tai paketoidun sovelluksen erillistä todennusta.
+  Muiden testien, sovelluksen ja CI:n aikarajat säilyvät. Epäonnistuneen
+  tai kesken jääneen testin aineistoa ei poisteta, ja jokaisen käynnistetyn
+  lapsen sulku odotetaan ennen testijuuren siivousta.
+- `workspaceDeletionFailureEvidenceOpenPgp.test.mjs`:n sisäinen
+  Vitest-ajuri saa 90 sekuntia aiemman 30 sekunnin sijaan, koska se ajaa
+  nyt vanhan tarkistinvirheen lisäksi uuden, enintään 60 sekunnin
+  poistoprosessitapauksen ja niiden sulun. Vanha tarkistinvirhetesti
+  säilyttää viiden sekunnin rajansa ja ulompi OpenPGP-koe 240 sekuntia.
+  Lisäys ei muuta tuotannon tai CI:n aikarajoja eikä oikeuta uusintaan.
 
 Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
 mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei
