@@ -8,7 +8,8 @@ import { captureWorkspaceRemnantBinding } from '../../workspaces/deletion/worksp
 import { deletionTestId as id, deletionTestDigest as hash } from '../../workspaces/deletion/workspaceDeletionDataTestSupport.js';
 import { profileRestoreActivationPhases, profileRestoreForwardActivationPhases,
   type ProfileRestoreActivationJournal } from './profileRestoreActivationJournal.js';
-import { ProfileRestoreActivationJournalStore, profileRestoreActivationJournalFileName } from './profileRestoreActivationJournalStore.js';
+import { captureProfileRestoreActivationDeletionSlots, ProfileRestoreActivationJournalStore,
+  profileRestoreActivationJournalFileName } from './profileRestoreActivationJournalStore.js';
 
 async function fixture(test: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-activation-deletion-cleanup-')); await chmod(root, 0o700);
@@ -45,6 +46,25 @@ async function fixture(test: TestContext) {
       for (const name of await readdir(root)) result[name] = (await readFile(join(root, name))).toString('hex'); return result; },
   };
 }
+
+it('validates real activation slots without repair, file mutation or purged authority', async test => {
+  const f = await fixture(test);
+  await f.write('backup'); await f.write('current', { ...f.base, phase: 'movingCurrentDatabase', revision: 1 });
+  f.notPurged();
+  const writes = (['createNextWriter', 'moveSlot', 'removeSlot', 'syncDirectory'] as const).map(name => vi.spyOn(f.fs, name));
+  try {
+    const input = await f.select(), before = await f.snapshot();
+    const purged = vi.fn(input.assertDeletionPurged);
+    const probe = { ...input, assertDeletionPurged: purged };
+    expect(captureProfileRestoreActivationDeletionSlots(f.binding, probe)).toEqual({
+      expectedSlots: input.expectedSlots, expectedIdentities: input.expectedIdentities,
+    });
+    expect(await f.snapshot()).toEqual(before);
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    expect(purged).not.toHaveBeenCalled();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  } finally { for (const write of writes) write.mockRestore(); }
+});
 
 it.for(profileRestoreActivationPhases)('retires the selected %s phase only with explicit purged authority', async (phase, test) => {
   const f = await fixture(test); await f.write('current', { ...f.base, phase });

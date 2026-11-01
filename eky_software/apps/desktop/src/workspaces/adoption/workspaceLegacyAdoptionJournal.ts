@@ -113,32 +113,7 @@ export class WorkspaceLegacyAdoptionJournalStore
     assertDeletionPurged(): Promise<void>;
   }): Promise<void> {
     return this.runExclusive(async () => {
-      const binding = captureWorkspaceRemnantBinding(bindingValue);
-      if (binding.owner !== 'workspaceLegacyAdoption') invalid();
-      const slots: Record<'current' | 'backup' | 'next', Uint8Array | undefined> = { current: undefined, backup: undefined, next: undefined };
-      const identities: Record<'current' | 'backup' | 'next', Readonly<CrashSafeFileSlotIdentity> | undefined> = {
-        current: undefined, backup: undefined, next: undefined,
-      };
-      let previous: Readonly<WorkspaceLegacyAdoptionJournalV1> | undefined;
-      let count = 0;
-      for (const slot of ['backup', 'current', 'next'] as const) {
-        const supplied = selection.expectedSlots[slot];
-        if (supplied === undefined) { if (selection.expectedIdentities[slot] !== undefined) invalid(); continue; }
-        if (!(supplied instanceof Uint8Array)) invalid();
-        const bytes = Uint8Array.from(supplied), journal = parseWorkspaceLegacyAdoptionJournalBytes(bytes);
-        const identity = selection.expectedIdentities?.[slot];
-        if (identity === undefined || journal.operationId !== binding.operationId || journal.workspaceId !== binding.workspaceId ||
-            journal.sourceKind !== 'legacy') invalid();
-        if (previous !== undefined) {
-          if (previous.state === 'recoveryRequired' && previous.sourceKind === 'legacy' && journal.state === 'prepared') {
-            assertWorkspaceLegacyAdoptionTransition({ ...previous, state: 'prepared' }, journal);
-          } else assertWorkspaceLegacyAdoptionTransition(previous, journal);
-        }
-        previous = journal;
-        slots[slot] = bytes; identities[slot] = Object.freeze({ ...identity });
-        count++;
-      }
-      if (count > 2) invalid();
+      const { expectedSlots: slots, expectedIdentities: identities } = captureWorkspaceLegacyAdoptionDeletionSlots(bindingValue, selection);
       const check = checkedAdoptionAuthority(selection.assertAuthority.bind(selection));
       const external = selection.assertExternalSelection.bind(selection), purged = selection.assertDeletionPurged.bind(selection);
       const uncertain = selection.onUncertain.bind(selection);
@@ -297,6 +272,39 @@ export class WorkspaceLegacyAdoptionJournalStore
       this.activeOperation = false;
     }
   }
+}
+
+// Pure journal-state capture; callers still own current file, target and lifecycle proof.
+export function captureWorkspaceLegacyAdoptionDeletionSlots(
+  bindingValue: unknown, selection: Pick<CrashSafeByteSlotSelection, 'expectedSlots' | 'expectedIdentities'>,
+) {
+  const binding = captureWorkspaceRemnantBinding(bindingValue);
+  if (binding.owner !== 'workspaceLegacyAdoption') invalid();
+  const slots: Record<'current' | 'backup' | 'next', Uint8Array | undefined> = { current: undefined, backup: undefined, next: undefined };
+  const identities: Record<'current' | 'backup' | 'next', Readonly<CrashSafeFileSlotIdentity> | undefined> = {
+    current: undefined, backup: undefined, next: undefined,
+  };
+  let previous: Readonly<WorkspaceLegacyAdoptionJournalV1> | undefined;
+  let count = 0;
+  for (const slot of ['backup', 'current', 'next'] as const) {
+    const supplied = selection.expectedSlots[slot];
+    if (supplied === undefined) { if (selection.expectedIdentities[slot] !== undefined) invalid(); continue; }
+    if (!(supplied instanceof Uint8Array)) invalid();
+    const bytes = Uint8Array.from(supplied), journal = parseWorkspaceLegacyAdoptionJournalBytes(bytes);
+    const identity = selection.expectedIdentities?.[slot];
+    if (identity === undefined || journal.operationId !== binding.operationId || journal.workspaceId !== binding.workspaceId ||
+        journal.sourceKind !== 'legacy') invalid();
+    if (previous !== undefined) {
+      if (previous.state === 'recoveryRequired' && previous.sourceKind === 'legacy' && journal.state === 'prepared') {
+        assertWorkspaceLegacyAdoptionTransition({ ...previous, state: 'prepared' }, journal);
+      } else assertWorkspaceLegacyAdoptionTransition(previous, journal);
+    }
+    previous = journal;
+    slots[slot] = bytes; identities[slot] = Object.freeze({ ...identity });
+    count++;
+  }
+  if (count > 2) invalid();
+  return { expectedSlots: slots, expectedIdentities: identities };
 }
 
 export function validateWorkspaceLegacyAdoptionJournal(

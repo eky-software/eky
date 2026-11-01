@@ -8,7 +8,7 @@ import type { CrashSafeFileSlot, CrashSafeFileSlotIdentity } from '../persistenc
 import { createNodeWorkspaceBackupImportJournalFileSystem } from './workspaceBackupImportJournalFileSystem.js';
 import { createWorkspaceBackupImportJournalPaths, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from './workspaceBackupImportJournalPaths.js';
 import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
-import { WorkspaceBackupImportJournalStore } from './workspaceBackupImportJournalStore.js';
+import { captureWorkspaceBackupImportDeletionSlots, WorkspaceBackupImportJournalStore } from './workspaceBackupImportJournalStore.js';
 import { validateWorkspaceBackupImportJournal, WORKSPACE_BACKUP_IMPORT_JOURNAL_STATES as states } from './workspaceBackupImportJournalValidation.js';
 import type { WorkspaceBackupImportJournalState } from './workspaceBackupImportTypes.js';
 
@@ -83,6 +83,24 @@ async function fixture(test: TestContext) {
       expect(await readFile(keptPath, 'utf8')).toBe('synthetic-preserved-bytes');
     } };
 }
+
+it('validates real import slots through the non-repairing reader without borrowing purged authority', async test => {
+  const f = await fixture(test);
+  await f.put('backup', journal('prepared')); await f.put('current', journal('candidateRootCreated'));
+  f.state.purged = false;
+  const writes = (['createNextWriter', 'moveSlot', 'removeSlot', 'syncDirectory'] as const).map(name => vi.spyOn(f.fs, name));
+  try {
+    const authority = await f.select(), observed = await f.store.inspectSlots(authority.assertAuthority);
+    const input = { expectedSlots: { current: observed.current?.bytes, backup: observed.backup?.bytes, next: observed.next?.bytes },
+      expectedIdentities: { current: observed.current?.identity, backup: observed.backup?.identity, next: observed.next?.identity } };
+    const before = await f.snapshot();
+    expect(captureWorkspaceBackupImportDeletionSlots(f.binding, input)).toEqual(input);
+    expect(await f.snapshot()).toEqual(before);
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    expect(f.purged).not.toHaveBeenCalled();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  } finally { for (const write of writes) write.mockRestore(); }
+});
 
 it.for(states)('clears %s only with the explicit deletion proof, preserving required null lineage', async (state, test) => {
   const f = await fixture(test), value = journal(state);

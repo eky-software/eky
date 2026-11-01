@@ -139,38 +139,7 @@ export class WorkspaceBackupImportJournalStore
             await purged(); assertAuthority(); await external(); assertAuthority();
           } catch (error) { throw retain(error); }
         };
-        const binding = (() => {
-          try { return captureWorkspaceRemnantBinding(bindingValue); }
-          catch { throw new WorkspaceBackupImportJournalValidationError(); }
-        })();
-        if (binding.owner !== 'workspaceImport') throw new WorkspaceBackupImportJournalValidationError();
-        const expectedSlots: Record<CrashSafeFileSlot, Uint8Array | undefined> = { current: undefined, next: undefined, backup: undefined };
-        const expectedIdentities: Record<CrashSafeFileSlot, Readonly<CrashSafeFileSlotIdentity> | undefined> = {
-          current: undefined, next: undefined, backup: undefined,
-        };
-        let previous: Readonly<WorkspaceBackupImportJournal> | undefined;
-        let count = 0;
-        // Pin before the first await; physical slot order is also the only admitted transition order.
-        for (const slot of ['backup', 'current', 'next'] as const) {
-          const bytes = selection.expectedSlots[slot], identity = selection.expectedIdentities[slot];
-          if (bytes === undefined) {
-            if (identity !== undefined) throw new WorkspaceBackupImportJournalValidationError();
-            continue;
-          }
-          if (!(bytes instanceof Uint8Array) || identity === undefined) throw new WorkspaceBackupImportJournalValidationError();
-          expectedSlots[slot] = Uint8Array.from(bytes);
-          expectedIdentities[slot] = Object.freeze({ ...identity });
-          const journal = parseWorkspaceBackupImportJournalBytes(expectedSlots[slot]);
-          if (journal.operationId !== binding.operationId || journal.workspaceId !== binding.workspaceId ||
-              (journal.lineageIdentity !== null && journal.lineageIdentity.profileId !== binding.lineageIdentity.profileId)) {
-            throw new WorkspaceBackupImportJournalValidationError();
-          }
-          if (previous !== undefined) assertWorkspaceBackupImportJournalTransition(previous, journal);
-          previous = journal;
-          count++;
-        }
-        // One interrupted replaceSelected cannot leave three slots. Equal states remain legal idempotent writes.
-        if (count > 2) throw new WorkspaceBackupImportJournalValidationError();
+        const { expectedSlots, expectedIdentities } = captureWorkspaceBackupImportDeletionSlots(bindingValue, selection);
         await this.byteStore.clearSelected({ expectedSlots, expectedIdentities, assertAuthority, assertExternalSelection });
         assertAuthority();
       } catch (error) {
@@ -321,6 +290,45 @@ export class WorkspaceBackupImportJournalStore
       WORKSPACE_BACKUP_IMPORT_JOURNAL_UNAVAILABLE,
     );
   }
+}
+
+// Journal relationships only. Copied identities are not a live admission or cleanup grant.
+export function captureWorkspaceBackupImportDeletionSlots(
+  bindingValue: unknown, selection: Pick<CrashSafeByteSlotSelection, 'expectedSlots' | 'expectedIdentities'>,
+) {
+  const binding = (() => {
+    try { return captureWorkspaceRemnantBinding(bindingValue); }
+    catch { throw new WorkspaceBackupImportJournalValidationError(); }
+  })();
+  if (binding.owner !== 'workspaceImport') throw new WorkspaceBackupImportJournalValidationError();
+  const expectedSlots: Record<CrashSafeFileSlot, Uint8Array | undefined> = { current: undefined, next: undefined, backup: undefined };
+  const expectedIdentities: Record<CrashSafeFileSlot, Readonly<CrashSafeFileSlotIdentity> | undefined> = {
+    current: undefined, next: undefined, backup: undefined,
+  };
+  let previous: Readonly<WorkspaceBackupImportJournal> | undefined;
+  let count = 0;
+  // Pin before the first await; physical slot order is also the only admitted transition order.
+  for (const slot of ['backup', 'current', 'next'] as const) {
+    const bytes = selection.expectedSlots[slot], identity = selection.expectedIdentities[slot];
+    if (bytes === undefined) {
+      if (identity !== undefined) throw new WorkspaceBackupImportJournalValidationError();
+      continue;
+    }
+    if (!(bytes instanceof Uint8Array) || identity === undefined) throw new WorkspaceBackupImportJournalValidationError();
+    expectedSlots[slot] = Uint8Array.from(bytes);
+    expectedIdentities[slot] = Object.freeze({ ...identity });
+    const journal = parseWorkspaceBackupImportJournalBytes(expectedSlots[slot]);
+    if (journal.operationId !== binding.operationId || journal.workspaceId !== binding.workspaceId ||
+        (journal.lineageIdentity !== null && journal.lineageIdentity.profileId !== binding.lineageIdentity.profileId)) {
+      throw new WorkspaceBackupImportJournalValidationError();
+    }
+    if (previous !== undefined) assertWorkspaceBackupImportJournalTransition(previous, journal);
+    previous = journal;
+    count++;
+  }
+  // One interrupted replaceSelected cannot leave three slots. Equal states remain legal idempotent writes.
+  if (count > 2) throw new WorkspaceBackupImportJournalValidationError();
+  return { expectedSlots, expectedIdentities };
 }
 
 function assertSynchronousAuthority(assertAuthority: (() => void) | undefined): void {

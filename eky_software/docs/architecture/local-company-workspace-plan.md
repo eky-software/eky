@@ -8364,6 +8364,21 @@ Managementin suljettu tilakysely säilyy erillisenä status-sopimuksena.
 Tämä esivaihe ei vielä toteuta
 deletion-omistajan valintaa tai anna sen käynnistysjatkolle valtuutta.
 
+**E:n alkuperäisjournalien lukusäännöt:** tuonnin
+`captureWorkspaceBackupImportDeletionSlots`, adoption
+`captureWorkspaceLegacyAdoptionDeletionSlots` ja aktivoinnin
+`captureProfileRestoreActivationDeletionSlots` käyttävät samoja sallittujen
+slottisuhteiden sääntöjä kuin omistajiensa `clearAfterDeletionPurged`.
+Ne kopioivat toimitetut tavut ja identiteettikentät synkronisesti, eivät
+lue tai muuta tiedostoja eivätkä kutsu työ- tai purged-valtuuksia.
+Nykyiset siivousportit käyttävät samaa tarkistinta alkuperäisessä kohdassa;
+niiden tuoreet valinnat, muutosvartijat ja virherajat säilyvät.
+Tämä ei todista toimitetun tiedostoidentiteetin nykyisyyttä, poissaoloa,
+sisällön luottamusta tai avaus-/siivouslupaa. Tyhjä tai sivuslottiin jäänyt
+aineisto tarvitsee edelleen nimetyn omistajan valtuuden. Aktivointijournal
+ei sisällä yritystä tai lineagea, joten sen oikea kohdesidonta on edelleen
+todistettava erikseen. E:n varsinainen admission-kytkentä on vielä kesken.
+
 **Lähteestä vahvistettu avoin metadata-reuna:** import voi keskeytyä
 rekisterijulkaisun jälkeen ennen oman `registryPublished`-kuittauksensa
 tallennusta. Candidate on silloin jo siirretty yrityskansioksi. Jäljellä

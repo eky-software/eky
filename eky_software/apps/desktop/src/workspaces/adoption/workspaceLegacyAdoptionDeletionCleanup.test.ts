@@ -8,7 +8,7 @@ import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { captureWorkspaceRemnantBinding } from '../deletion/workspaceRemnantBindingCodec.js';
 import { deletionTestDigest as hash, deletionTestId as id } from '../deletion/workspaceDeletionDataTestSupport.js';
 import { createWorkspaceLegacyAdoptionJournalPaths, maximumWorkspaceLegacyAdoptionJournalBytes,
-  serializeWorkspaceLegacyAdoptionJournal, WorkspaceLegacyAdoptionJournalStore } from './workspaceLegacyAdoptionJournal.js';
+  captureWorkspaceLegacyAdoptionDeletionSlots, serializeWorkspaceLegacyAdoptionJournal, WorkspaceLegacyAdoptionJournalStore } from './workspaceLegacyAdoptionJournal.js';
 import { createAdoptionJournal } from './workspaceLegacyAdoptionTestSupport.js';
 
 async function fixture(test: TestContext) {
@@ -48,6 +48,25 @@ async function fixture(test: TestContext) {
       return result; },
   };
 }
+
+it('validates real legacy slots without changing them or invoking the purged callback', async test => {
+  const f = await fixture(test);
+  await f.write('backup', createAdoptionJournal('recoveryRequired')); await f.write('current');
+  f.notPurged();
+  const writes = (['createNextWriter', 'moveSlot', 'removeSlot', 'syncDirectory'] as const).map(name => vi.spyOn(f.fs, name));
+  try {
+    const input = await f.select(), before = await f.snapshot();
+    const purged = vi.fn(input.assertDeletionPurged);
+    const probe = { ...input, assertDeletionPurged: purged };
+    expect(captureWorkspaceLegacyAdoptionDeletionSlots(f.binding, probe)).toEqual({
+      expectedSlots: input.expectedSlots, expectedIdentities: input.expectedIdentities,
+    });
+    expect(await f.snapshot()).toEqual(before);
+    for (const write of writes) expect(write).not.toHaveBeenCalled();
+    expect(purged).not.toHaveBeenCalled();
+    expect(f.onUncertain).not.toHaveBeenCalled();
+  } finally { for (const write of writes) write.mockRestore(); }
+});
 
 it.for(['prepared', 'candidatePrepared', 'rootPublished', 'registryPublished', 'recoveryRequired'] as const)(
   'retires only the bound legacy journal in %s after deletion proof', async (state, test) => {

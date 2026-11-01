@@ -101,30 +101,7 @@ export class ProfileRestoreActivationJournalStore {
     assertDeletionPurged(): Promise<void>;
   }): Promise<void> {
     return this.withDeletionSlotAccess(async () => {
-      const binding = captureWorkspaceRemnantBinding(bindingValue);
-      if (binding.owner !== 'workspaceReplacement' && binding.owner !== 'workspaceActivationMigration') {
-        throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
-      }
-      const slots: Record<'current' | 'backup' | 'next', Uint8Array | undefined> = { current: undefined, backup: undefined, next: undefined };
-      const identities: Record<'current' | 'backup' | 'next', Readonly<CrashSafeFileSlotIdentity> | undefined> = {
-        current: undefined, backup: undefined, next: undefined,
-      };
-      let previous: Readonly<ProfileRestoreActivationJournal> | undefined;
-      let count = 0;
-      for (const slot of ['backup', 'current', 'next'] as const) {
-        const supplied = selection.expectedSlots[slot];
-        if (supplied === undefined) {
-          if (selection.expectedIdentities[slot] !== undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
-          continue;
-        }
-        if (!(supplied instanceof Uint8Array)) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
-        const bytes = Uint8Array.from(supplied), value = parseDeletionJournalBytes(bytes), identity = selection.expectedIdentities[slot];
-        if (identity === undefined || value.operationId !== binding.operationId) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
-        if (previous !== undefined) assertProfileRestoreActivationJournalStep(previous, value);
-        previous = value; slots[slot] = bytes; identities[slot] = Object.freeze({ ...identity });
-        count++;
-      }
-      if (count > 2) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+      const { expectedSlots: slots, expectedIdentities: identities } = captureProfileRestoreActivationDeletionSlots(bindingValue, selection);
       const check = selection.assertAuthority.bind(selection), external = selection.assertExternalSelection.bind(selection);
       const purged = selection.assertDeletionPurged.bind(selection), uncertain = selection.onUncertain.bind(selection);
       let failed = false;
@@ -533,6 +510,37 @@ export class ProfileRestoreActivationJournalStore {
     }
     return undefined;
   }
+}
+
+// Operation/phase relationships only; this journal does not encode company or lineage.
+export function captureProfileRestoreActivationDeletionSlots(
+  bindingValue: unknown, selection: Pick<CrashSafeByteSlotSelection, 'expectedSlots' | 'expectedIdentities'>,
+) {
+  const binding = captureWorkspaceRemnantBinding(bindingValue);
+  if (binding.owner !== 'workspaceReplacement' && binding.owner !== 'workspaceActivationMigration') {
+    throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+  }
+  const slots: Record<'current' | 'backup' | 'next', Uint8Array | undefined> = { current: undefined, backup: undefined, next: undefined };
+  const identities: Record<'current' | 'backup' | 'next', Readonly<CrashSafeFileSlotIdentity> | undefined> = {
+    current: undefined, backup: undefined, next: undefined,
+  };
+  let previous: Readonly<ProfileRestoreActivationJournal> | undefined;
+  let count = 0;
+  for (const slot of ['backup', 'current', 'next'] as const) {
+    const supplied = selection.expectedSlots[slot];
+    if (supplied === undefined) {
+      if (selection.expectedIdentities[slot] !== undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+      continue;
+    }
+    if (!(supplied instanceof Uint8Array)) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+    const bytes = Uint8Array.from(supplied), value = parseDeletionJournalBytes(bytes), identity = selection.expectedIdentities[slot];
+    if (identity === undefined || value.operationId !== binding.operationId) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+    if (previous !== undefined) assertProfileRestoreActivationJournalStep(previous, value);
+    previous = value; slots[slot] = bytes; identities[slot] = Object.freeze({ ...identity });
+    count++;
+  }
+  if (count > 2) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+  return { expectedSlots: slots, expectedIdentities: identities };
 }
 
 function parseDeletionJournalBytes(bytes: Uint8Array): Readonly<ProfileRestoreActivationJournal> {
