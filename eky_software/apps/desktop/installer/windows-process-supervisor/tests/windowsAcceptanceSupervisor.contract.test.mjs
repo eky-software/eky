@@ -128,16 +128,28 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
 function assertColdPreparationReason(failure) {
   const accepted = [
     { Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null },
-    ...['elementFromHandle', 'firstChild'].map(Stage => ({
-      Stage, Reason: 'providerException', HResult: -2146233083,
-    })),
+    ...[-2146233083, -2147023436].flatMap(HResult =>
+      ['elementFromHandle', 'firstChild'].map(Stage => ({ Stage, Reason: 'providerException', HResult }))),
   ];
   assert.ok(accepted.some(value => isDeepStrictEqual(failure, value)), 'MSI_COLD_PREPARATION_REASON_INVALID');
 }
 
 test('MSI windows: preparation reader accepts only exact approved cold failures', () => {
-  for (const Stage of ['elementFromHandle', 'firstChild']) {
-    assert.doesNotThrow(() => assertColdPreparationReason({ Stage, Reason: 'providerException', HResult: -2146233083 }));
+  for (const HResult of [-2146233083, -2147023436]) {
+    for (const Stage of ['elementFromHandle', 'firstChild']) {
+      assert.doesNotThrow(() => assertColdPreparationReason({ Stage, Reason: 'providerException', HResult }));
+      for (const failure of [
+        { Stage, Reason: 'providerException', HResult: HResult - 1 },
+        { Stage, Reason: 'providerException', HResult: HResult + 1 },
+        { Stage, Reason: 'providerException', HResult: String(HResult) },
+        { Stage, Reason: 'admissionLost', HResult },
+        { Stage, Reason: 'providerException', HResult, unexpected: true },
+      ]) assert.throws(() => assertColdPreparationReason(failure), /MSI_COLD_PREPARATION_REASON_INVALID/);
+    }
+    for (const Stage of ['createAutomation', 'listProcessId', 'itemProcessId', 'itemName', 'nextSibling']) {
+      assert.throws(() => assertColdPreparationReason({ Stage, Reason: 'providerException', HResult }),
+        /MSI_COLD_PREPARATION_REASON_INVALID/);
+    }
   }
   assert.doesNotThrow(() => assertColdPreparationReason({ Stage: 'listProcessId', Reason: 'budgetExpired', HResult: null }));
   for (const failure of [
@@ -166,6 +178,19 @@ test('MSI windows: owned visible captions, bounded reads and interrupted immutab
   assert.equal(proof.preparationAllowsExactBudgetExpiry, true);
   assert.equal(proof.preparationAllowsExactProviderTimeoutelementFromHandle, true);
   assert.equal(proof.preparationAllowsExactProviderTimeoutfirstChild, true);
+  for (const suffix of ['', 'Win32']) {
+    for (const stage of ['elementFromHandle', 'firstChild']) {
+      for (const check of ['preparationAllowsExactProviderTimeout', 'providerTimeoutRejectsExitedOwner',
+        'providerTimeoutRejectsUnknownOwner', 'providerTimeoutRejectsUnknownExit',
+        'providerTimeoutRejectsPartialApplications', 'providerTimeoutRejectsMissingRoles',
+        'providerTimeoutRejectsNegativeElapsed', 'providerTimeoutRejectsNearbyCodes', 'measuredRejectsProviderTimeout']) {
+        assert.equal(proof[check + stage + suffix], true);
+      }
+    }
+    assert.equal(proof['preparationRejectsTimeoutOutsideReadStages' + suffix], true);
+  }
+  assert.equal(proof.measuredRejectsPartialSample, true);
+  assert.equal(proof.measuredRejectsMissingRoles, true);
   assert.equal(proof.preparationRejectsOtherFailures, true);
   assert.equal(proof.preparationRejectsUnknownExit, true);
   assert.equal(proof.coldExitQueryFailureRetainsSample, true);

@@ -33,6 +33,7 @@ export interface StartupExceptionEvidence extends StartupExceptionBinding {
   chain: ExceptionPart[];
   incomplete: boolean;
 }
+export type ExceptionProjection = Pick<StartupExceptionEvidence, 'chain' | 'incomplete'>;
 export type StartupExceptionDelivery = 'recorded' | 'failed' | 'timedOut' | 'notObserved';
 export interface StartupExceptionCapture {
   (error: unknown, stage: StartupExceptionStage, secrets?: readonly string[]): void;
@@ -52,7 +53,14 @@ export function validateStartupExceptionEvidence(value: unknown): StartupExcepti
     typeof value.appVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(value.appVersion) ||
     typeof value.buildRevision !== 'string' || !/^[a-f0-9]{7,40}$/.test(value.buildRevision) ||
     typeof value.runtimeInstanceId !== 'string' || !runtimePattern.test(value.runtimeInstanceId) ||
-    !stages.includes(value.stage as StartupExceptionStage) || typeof value.incomplete !== 'boolean' ||
+    !stages.includes(value.stage as StartupExceptionStage)) invalid();
+  validateExceptionProjection({ chain: value.chain, incomplete: value.incomplete });
+  if (Buffer.byteLength(JSON.stringify(value)) > STARTUP_EXCEPTION_LIMITS.fileBytes) invalid();
+  return value as unknown as StartupExceptionEvidence;
+}
+
+export function validateExceptionProjection(value: unknown): ExceptionProjection {
+  if (!exact(value, ['chain', 'incomplete']) || typeof value.incomplete !== 'boolean' ||
     !Array.isArray(value.chain) || value.chain.length < 1 || value.chain.length > STARTUP_EXCEPTION_LIMITS.depth) invalid();
   for (const part of value.chain) {
     if (!exact(part, ['name', 'message', 'stack', 'truncated']) || typeof part.truncated !== 'boolean') invalid();
@@ -62,7 +70,7 @@ export function validateStartupExceptionEvidence(value: unknown): StartupExcepti
     }
   }
   if (Buffer.byteLength(JSON.stringify(value)) > STARTUP_EXCEPTION_LIMITS.fileBytes) invalid();
-  return value as unknown as StartupExceptionEvidence;
+  return value as unknown as ExceptionProjection;
 }
 
 // Read data properties only: exceptions must not execute getters or toJSON.
@@ -167,34 +175,46 @@ export function createStartupExceptionCapture(input: {
     const binding: StartupExceptionBinding = { scenarioRunNonce: input.token,
       appVersion: input.appVersion, buildRevision: input.buildRevision, runtimeInstanceId: input.runtimeInstanceId };
     const output = join(root, 'result', `${input.runtimeInstanceId}${STARTUP_EXCEPTION_SUFFIX}`);
-    const environmentSecrets = Object.entries(process.env)
-      .filter(([key, value]) => /(?:TOKEN|PASSWORD|SECRET|API_KEY|AUTHORIZATION)/i.test(key) &&
-        value !== undefined && value.length > 0)
-      .map(([, value]) => value as string);
-    let observed = false;
-    let delivery: Promise<StartupExceptionDelivery> | undefined;
-    let deliveryWait: Promise<StartupExceptionDelivery> | undefined;
-    const capture = (error: unknown, stage: StartupExceptionStage, secrets: readonly string[] = []) => {
-      if (observed) return;
-      observed = true;
-      try {
-        const record = projectStartupException(error, binding, stage, [...environmentSecrets, ...secrets]);
-        delivery = writeFile(output, `${JSON.stringify(record)}\n`, { flag: 'wx', mode: 0o600 })
-          .then(() => 'recorded' as const, () => 'failed' as const);
-      } catch { delivery = Promise.resolve('failed'); }
-    };
-    return Object.assign(capture, {
-      waitForDelivery(): Promise<StartupExceptionDelivery> {
-        if (delivery === undefined) return Promise.resolve('notObserved');
-        if (deliveryWait !== undefined) return deliveryWait;
-        // Only the opt-in synthetic failure path may wait; never a fixed sleep.
-        let timer: ReturnType<typeof setTimeout>;
-        const deadline = new Promise<StartupExceptionDelivery>(resolve => {
-          timer = setTimeout(() => resolve('timedOut'), STARTUP_EXCEPTION_DELIVERY_TIMEOUT_MS);
-        });
-        deliveryWait = Promise.race([delivery, deadline]).finally(() => clearTimeout(timer));
-        return deliveryWait;
-      },
-    });
+    return createStartupExceptionDelivery({ output,
+      project: (error, stage, secrets) => projectStartupException(error, binding, stage, secrets) });
   } catch { return undefined; }
+}
+
+// Callers own admission and the fixed output path; delivery mechanics are shared
+// by the guarded packaged capture and the separate development-only E2E adapter.
+export function createStartupExceptionDelivery(input: {
+  output: string;
+  project(error: unknown, stage: StartupExceptionStage, secrets: readonly string[]): object;
+}): StartupExceptionCapture {
+  const environmentSecrets = Object.entries(process.env)
+    .filter(([key, value]) => /(?:TOKEN|PASSWORD|SECRET|API_KEY|AUTHORIZATION)/i.test(key) &&
+      value !== undefined && value.length > 0)
+    .map(([, value]) => value as string);
+  let observed = false;
+  let delivery: Promise<StartupExceptionDelivery> | undefined;
+  let deliveryWait: Promise<StartupExceptionDelivery> | undefined;
+  const capture = (error: unknown, stage: StartupExceptionStage, secrets: readonly string[] = []) => {
+    if (observed) return;
+    observed = true;
+    try {
+      const record = input.project(error, stage, [...environmentSecrets, ...secrets]);
+      const bytes = `${JSON.stringify(record)}\n`;
+      if (Buffer.byteLength(bytes) > STARTUP_EXCEPTION_LIMITS.fileBytes) invalid();
+      delivery = writeFile(input.output, bytes, { flag: 'wx', mode: 0o600 })
+        .then(() => 'recorded' as const, () => 'failed' as const);
+    } catch { delivery = Promise.resolve('failed'); }
+  };
+  return Object.assign(capture, {
+    waitForDelivery(): Promise<StartupExceptionDelivery> {
+      if (delivery === undefined) return Promise.resolve('notObserved');
+      if (deliveryWait !== undefined) return deliveryWait;
+      // Only the opt-in synthetic failure path may wait; never a fixed sleep.
+      let timer: ReturnType<typeof setTimeout>;
+      const deadline = new Promise<StartupExceptionDelivery>(resolve => {
+        timer = setTimeout(() => resolve('timedOut'), STARTUP_EXCEPTION_DELIVERY_TIMEOUT_MS);
+      });
+      deliveryWait = Promise.race([delivery, deadline]).finally(() => clearTimeout(timer));
+      return deliveryWait;
+    },
+  });
 }

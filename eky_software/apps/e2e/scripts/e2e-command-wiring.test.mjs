@@ -37,6 +37,8 @@ function assertWiring(rootManifest, e2eManifest) {
   assert.deepEqual(e2eManifest.scripts['e2e:prepare'].split(' && '), preparations.slice(1, 5));
   assert.equal(e2eManifest.scripts['e2e:packaged:legacy'],
     'pnpm e2e:prepare && pnpm --filter @eky/desktop package:windows && playwright test --config playwright.packaged-legacy.config.ts');
+  assert.equal(e2eManifest.scripts['e2e:electron:evidence'],
+    'pnpm e2e:electron:prepare && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs ../../test-reporters/tests/electronDevelopmentFailureEvidenceOpenPgp.test.mjs');
   for (const tag of ['security', 'fault']) {
     assert.equal(rootManifest.scripts[`test:e2e:${tag}`], `pnpm --filter @eky/e2e e2e:${tag}`);
     assert.equal(
@@ -61,6 +63,16 @@ const consumerContracts = ['linuxConsumerLossContract', 'linuxConsumerLossRecord
   'linuxConsumerLossBuildCli', 'runLinuxConsumerLossCase', 'runLinuxConsumerLoss'];
 const consumerContractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs ' + consumerContracts
   .map(name => `experiments/processOwnership/${name}.test.mjs`).join(' ');
+
+test('original Electron failure proof cannot omit preparation or join normal application selection', () => {
+  const changed = structuredClone(e2e);
+  changed.scripts['e2e:electron:evidence'] = changed.scripts['e2e:electron:evidence'].replace('pnpm e2e:electron:prepare && ', '');
+  assert.throws(() => assertWiring(root, changed), assert.AssertionError);
+  assert.ok(readFileSync(new URL('../../../test-reporters/tests/electronDevelopmentFailureEvidenceOpenPgp.test.mjs', import.meta.url)).length > 0);
+  for (const name of ['e2e:all', 'e2e:electron', 'e2e:electron:critical', 'e2e:desktop-stress', 'e2e:desktop-soak']) {
+    assert.doesNotMatch(e2e.scripts[name], /electron:evidence|electronDevelopmentFailureEvidenceOpenPgp/u);
+  }
+});
 
 for (const name of consumerContracts) {
   test(`the recursive contract gate cannot omit ${name}`, () => {

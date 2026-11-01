@@ -7,6 +7,7 @@ using Eky.WindowsProcessSupervisor;
 internal static class MsiWindowObservationContract
 {
     private const int ColdProviderTimeoutHResult = unchecked((int)0x80131505);
+    private const int ColdWindowsTimeoutHResult = unchecked((int)0x800705B4);
     internal static int RunFailureReceipt(string requestPath)
     {
         if (!OperatingSystem.IsWindows()) return 63;
@@ -94,34 +95,52 @@ internal static class MsiWindowObservationContract
             MsiApplicationListFailure? measuredFailure = null;
             var observed = Observe(own, normal.Process, listFailure: failure => measuredFailure ??= failure);
             measuredTimer.Stop();
-            if (!CompleteSample(observed) || measuredFailure is not null)
+            if (!MeasuredAllowed(observed, measuredFailure))
                 throw FirstSampleFailure(observed, measuredTimer.ElapsedMilliseconds,
                     () => normal.Process.Wait(0),
                     () => WorkspaceMsiActivityObservation.ObserveHandle(own, normal.Process.Process), measuredFailure, preparation);
             Check("coldSampleRetained", cold.Status is "observed" or "partial");
-            Check("preparedSampleComplete", CompleteSample(observed) && measuredFailure is null);
+            Check("preparedSampleComplete", MeasuredAllowed(observed, measuredFailure));
             var budgetFailure = new MsiApplicationListFailure("listProcessId", "budgetExpired");
             var partial = cold with { Status = "partial", Windows = observed.Windows.Where(row => row.Role != "application").ToArray() };
             var budget = MsiWindowObservation.Contract.SampleTimeoutMilliseconds;
             Check("preparationAllowsExactBudgetExpiry", PreparationAllowed(partial, budget, false, WorkspaceMsiMembership.Owned, budgetFailure));
             Check("preparationAllowsCompleteSample", PreparationAllowed(observed, 0, false, WorkspaceMsiMembership.Owned, null));
-            foreach (var stage in new[] { "elementFromHandle", "firstChild" })
+            foreach (var (suffix, hresult) in new[] { ("", ColdProviderTimeoutHResult), ("Win32", ColdWindowsTimeoutHResult) })
             {
-                var timeout = new MsiApplicationListFailure(stage, "providerException", ColdProviderTimeoutHResult);
-                Check("preparationAllowsExactProviderTimeout" + stage,
-                    PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Owned, timeout));
-                Check("providerTimeoutRejectsExitedOwner" + stage,
-                    !PreparationAllowed(partial, 400, true, WorkspaceMsiMembership.Owned, timeout));
-                Check("providerTimeoutRejectsUnknownOwner" + stage,
-                    !PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Unknown, timeout));
-                Check("providerTimeoutRejectsUnknownExit" + stage,
-                    !PreparationAllowed(partial, 400, null, WorkspaceMsiMembership.Owned, timeout));
-                Check("providerTimeoutRejectsPartialApplications" + stage,
-                    !PreparationAllowed(observed with { Status = "partial" }, 400, false, WorkspaceMsiMembership.Owned, timeout));
-                Check("providerTimeoutRejectsMissingRoles" + stage, new[] { "title", "message", "button" }.All(role =>
-                    !PreparationAllowed(partial with { Windows = partial.Windows.Where(row => row.Role != role).ToArray() },
-                        400, false, WorkspaceMsiMembership.Owned, timeout)));
+                foreach (var stage in new[] { "elementFromHandle", "firstChild" })
+                {
+                    var key = stage + suffix;
+                    var timeout = new MsiApplicationListFailure(stage, "providerException", hresult);
+                    Check("preparationAllowsExactProviderTimeout" + key,
+                        PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Owned, timeout));
+                    Check("providerTimeoutRejectsExitedOwner" + key,
+                        !PreparationAllowed(partial, 400, true, WorkspaceMsiMembership.Owned, timeout));
+                    Check("providerTimeoutRejectsUnknownOwner" + key,
+                        !PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Unknown, timeout));
+                    Check("providerTimeoutRejectsUnknownExit" + key,
+                        !PreparationAllowed(partial, 400, null, WorkspaceMsiMembership.Owned, timeout));
+                    Check("providerTimeoutRejectsPartialApplications" + key,
+                        !PreparationAllowed(observed with { Status = "partial" }, 400, false, WorkspaceMsiMembership.Owned, timeout));
+                    Check("providerTimeoutRejectsMissingRoles" + key, new[] { "title", "message", "button" }.All(role =>
+                        !PreparationAllowed(partial with { Windows = partial.Windows.Where(row => row.Role != role).ToArray() },
+                            400, false, WorkspaceMsiMembership.Owned, timeout)));
+                    Check("providerTimeoutRejectsNegativeElapsed" + key,
+                        !PreparationAllowed(partial, -1, false, WorkspaceMsiMembership.Owned, timeout));
+                    Check("providerTimeoutRejectsNearbyCodes" + key, new[] { hresult - 1, hresult + 1 }.All(code =>
+                        !PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Owned,
+                            new(stage, "providerException", code))));
+                    Check("measuredRejectsProviderTimeout" + key,
+                        !MeasuredAllowed(partial, timeout) && !MeasuredAllowed(observed, timeout));
+                }
+                Check("preparationRejectsTimeoutOutsideReadStages" + suffix,
+                    new[] { "createAutomation", "listProcessId", "itemProcessId", "itemName", "nextSibling" }.All(stage =>
+                        !PreparationAllowed(partial, 400, false, WorkspaceMsiMembership.Owned,
+                            new(stage, "providerException", hresult))));
             }
+            Check("measuredRejectsPartialSample", !MeasuredAllowed(partial, null));
+            Check("measuredRejectsMissingRoles", new[] { "title", "message", "button", "application" }.All(role =>
+                !MeasuredAllowed(observed with { Windows = observed.Windows.Where(row => row.Role != role).ToArray() }, null)));
             Check("preparationRejectsOtherFailures", new[] {
                 new MsiApplicationListFailure("listProcessId", "providerException", unchecked((int)0x80004005)),
                 new MsiApplicationListFailure("elementFromHandle", "providerException", unchecked((int)0x80004005)),
@@ -344,13 +363,17 @@ internal static class MsiWindowObservationContract
     private static bool CompleteSample(MsiWindowSample sample) => sample.Status == "observed" &&
         new[] { "title", "message", "button", "application" }.All(role => ExpectedRole(sample, role));
 
+    private static bool MeasuredAllowed(MsiWindowSample sample, MsiApplicationListFailure? failure) =>
+        CompleteSample(sample) && failure is null;
+
     private static bool PreparationAllowed(MsiWindowSample sample, long elapsedMilliseconds, bool? exited,
         WorkspaceMsiMembership membership, MsiApplicationListFailure? failure) =>
         exited is false && membership == WorkspaceMsiMembership.Owned &&
         (CompleteSample(sample) && failure is null || sample.Status == "partial" &&
             (failure == new MsiApplicationListFailure("listProcessId", "budgetExpired") &&
                 elapsedMilliseconds >= MsiWindowObservation.Contract.SampleTimeoutMilliseconds ||
-             failure is { Stage: "elementFromHandle" or "firstChild", Reason: "providerException", HResult: ColdProviderTimeoutHResult } &&
+             failure is { Stage: "elementFromHandle" or "firstChild", Reason: "providerException",
+                 HResult: ColdProviderTimeoutHResult or ColdWindowsTimeoutHResult } &&
                 elapsedMilliseconds >= 0) &&
             new[] { "title", "message", "button" }.All(role => ExpectedRole(sample, role)) &&
             sample.Windows.All(row => row.Role != "application"));

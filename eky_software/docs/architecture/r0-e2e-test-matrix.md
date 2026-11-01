@@ -339,6 +339,12 @@ oikeaprosessitodiste tai aikaisemman LS-ajon uusi tulkinta.
 | TEST-ELECTRON-PREREGISTRATION-001 | [Varhainen prosessihavainto](e2e-test-environment-history.md#electronin-varhaisen-prosessihavainnon-päätösehdotus): oikean ChildProcess-olion talteenotto ennen launchin tulosta sekä rekisteröinti/GO nykyisessä omistajassa. | Lapsiton bridge-asiakas, Node-kutsuja ja [rajattu lopetuspatch](e2e-test-environment-history.md#electron-bridgen-lopetuspolun-jatkoehdotus) toteutettu ja katselmoitu. Normaali Page/API/sulku, bootstrapin varhainen poistuminen, rekisteröidyn bridgen kato GO pidätettynä ja aito pendingFirstWindow-timeout läpäisty ensimmäisellä yrityksellä; lähde-, alkuperäinen virhe- ja erillinen siivousnäyttö takaisinluettu. Varhaisvirheissä ei GO:ta eikä työkuormaa; ikkunakokeessa sama julkinen promise, snapshot ennen aitoa timeoutia ja julkinen close ennen owner-stopia. Myöhemmät restart/relaunch- ja toinen instanssi -kokeiden toiset yritykset, owner-lossin ensimmäinen ja caller-lossin toinen hyväksytty erillisine puu-/sentinel-/porttitodisteineen. Ensimmäiset hylkäykset ja aiemmat rekisteröinti-/inertit tutkimukset säilyvät erillisinä. Tavallisen fixturen kytkentänäyttö alla; muu peer-/virhe-/katkeamismatriisi ja uusi CI avoinna. |
 | TEST-BACKEND-BUILD-METADATA-001 | Täsmällinen normalisointi, lähdesidonta, linkkien torjunta, vendor-tavujen säilyminen, sisältöportit ja paketointijärjestyksen rakenteellinen suoja. | Kohdesarja 200/200, normaali testisarja ja tyypitys läpäisivät; katselmoitu. Tuore eristetty build, sisältöportit ja samoihin itsenäisiin tavuihin sidottu kaksivaiheinen packaged smoke läpäisivät molempien prosessipuiden terminal-kuitein. Ensimmäinen build-hylkäys säilyy. CI:ssä havaittu erillinen komentoharnessin hylkäys säilyy avoimena; havaintokorjauksen revision a1df082c normaali CI ja riippuvuustarkistus läpäisivät. Ei julkaisu- tai koko T3-hyväksyntä. |
 
+#### Electron-välittäjän valmistumisen regressio
+
+| ID | Taso | Koe ja hyväksyntä | Tila |
+| --- | --- | --- | --- |
+| TEST-ELECTRON-BRIDGE-SETTLEMENT-001 | Nykyisen native-valmistelun hallittu sopimustesti | Root-exit on luettu ja kontrolliyhteys jää auki. Stdout, stderr tai molemmat valmistuvat poistumisehdon ja odotusjoukon muodostamisen välissä. Alkuperäinen exit-koodi palautuu ilman stop-viestiä tai kontrollin EOF:ää; vastaavat siirtovirheet hylätään. Nykyinen aikaraja säilyy. | implemented-contract; [kuusi ajoitusregressiota](../../apps/e2e/experiments/processOwnership/adapterNative/ElectronBridgeClientSelfTest.cs), ei yksin oikean prosessin tai historiallisen CI-virheen juurisyytodiste. |
+
 #### T3c:n rajatut kokeet
 
 Windowsin kaikkien neljän tapauksen takaisinluettu näyttö vahvistaa
@@ -771,6 +777,20 @@ siksi suunniteltuna [B3-B5:n omistavassa rajauksessa](release-0.3.0-m1-preparati
 | SEC-XSS-001 | P0; web-e2e, security | Turvalliseen tekstikenttään markup-korpus; renderöi ja tee PDF | Teksti näkyy tekstinä, ei popupia/egressiä | Tallennus vain validoituna; PDF ei suorita sisältöä | DOM-execution tai external request | implemented-e2e |
 
 ## Desktop
+
+`SYS-ELECTRON-PRIVATE-FAILURE-001`: alkuperäisen development-startup-
+poikkeuksen yhteinen toimitus, ensimmäisen syyn säilyminen, hylätty
+toimitus, väärä sukupolvi/siivouskuitti, linkit, muuttuvat ja liian suuret
+tiedostot sekä ennen owner-stop-kutsua jäädytetty sulkuhavainto.
+Nykyinen system-sarja ajaa nämä sopimukset. Erillinen
+`DESK-STARTUP-ORIGINAL-001`-Windows-/OpenPGP-koe käyttää todellista
+development-entrypointia ja vaatii alkuperäisen viestin/pinon/syyketjun
+puretusta nykyisestä salatusta paketista. System-sopimusregressiot ja nimetty
+oikean Windows-prosessiketjun salaus-/purkukoe läpäisivät; sama koe varmisti
+salaisuuden peittymisen, turvallisen julkisen raportin ja siivoustodisteet.
+Normaalit nykyisen revision PR/main-portit ovat vielä avoimia, ks. M1.
+Sopimus ei lisää julkisia raakavirhekenttiä eikä korvaa historiallisten
+sulku-/käynnistysvikojen syytä tai nykyisen revision PR/main-portteja.
 
 `DESK-INSPECTION-LINUX-001`: K:n tarkistusprosessiin rajattu hosti käyttää
 nykyistä Linux-prosessinomistajaa ja oikeaa main/utility-tarkistusporttia.

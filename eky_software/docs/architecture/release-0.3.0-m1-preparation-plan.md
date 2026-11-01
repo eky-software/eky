@@ -21,14 +21,22 @@ ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
-Seuraavaksi hyväksytyt main-korjaukset sovitetaan keskeneräiseen toteutukseen
-säilyttäen sen nykyiset muutokset ja hyväksytyt riippuvuuslukitukset. D:n
+Hyväksytyt main-korjaukset yhdistetään nykyiseen W7.4-haaraan säilyttäen
+sen toteutus ja hyväksytyt riippuvuuslukitukset. D:n
 vaihe-/omistajuussopimus täsmennetään nykyisiin tiedosto-, journal- ja
 rekisteriportteihin ennen tuhoavia operaatioita. Jatko käyttää samaa etenijää
 live-poistossa ja kylmäpalautuksessa; C:tä ei toteuteta uudelleen eikä W7.5:n
 poistokanavia avata. Tämä tilatarkistus ei ole uusi testien hyväksyntä.
 
 ### Aiemmat lähtötilan checkpointit
+
+[Keräyskorjauksen ja odotusvian aiempi näyttö](release-0.3.0-integration-history.md#pr-326n-valmistelu-ja-ensihavainnot-1112026)
+on siirretty historiaan. Siellä kuvatut vanhat esteet eivät muuta yllä olevaa
+hyväksyttyä lähtötilaa; avoimia syitä ei merkitä korjatuiksi.
+
+### Keräyskorjauksen ja odotusvian aiempi näyttö
+
+Tämän vanhan otsikkolinkin näyttö on edellä linkitetyssä integraatiohistoriassa.
 
 **29.10.2026: W7.3 ja rajattu HTTP-adapterin tietoturvahuolto on hyväksytty.
 Seuraava työ on W7.4:n lopullinen yrityspoisto ja keskeytysjatko.**

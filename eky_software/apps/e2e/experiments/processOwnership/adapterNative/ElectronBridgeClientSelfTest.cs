@@ -124,7 +124,8 @@ internal static class ElectronBridgeClientSelfTest
             ElectronBridgeClientProtocol.Message(generation, nonce, kind, code, deadline), AdapterProtocol.Json) + "\n";
         var start = Frame("started");
         var exit = Frame("rootExit", 29);
-        async Task<int> Run(string frames, Action<long>? shorten = null, Stream? source = null, Stream? controlSource = null)
+        async Task<int> Run(string frames, Action<long>? shorten = null, Stream? source = null, Stream? controlSource = null,
+            Stream? errorSource = null, Func<Task, Task, Task>? beforeWait = null)
         {
             using var control = new MemoryStream(Encoding.UTF8.GetBytes(frames));
             using var empty = new MemoryStream();
@@ -133,9 +134,9 @@ internal static class ElectronBridgeClientSelfTest
             using var errorSink = new MemoryStream();
             using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(3));
             var output = new ByteRelay(source ?? empty, sink, bound.Token);
-            var error = new ByteRelay(errors, errorSink, bound.Token);
+            var error = new ByteRelay(errorSource ?? errors, errorSink, bound.Token);
             return await ElectronBridgeClientRelay.RunAsync(controlSource ?? control, output, error, generation, nonce,
-                () => bound.Token.ThrowIfCancellationRequested(), shorten ?? (_ => { }), bound.Token);
+                () => bound.Token.ThrowIfCancellationRequested(), shorten ?? (_ => { }), bound.Token, beforeWait);
         }
         foreach (var frames in new[] { start + exit, start + Frame("stopping", deadline: 5000) + exit,
             start + exit + Frame("stopping", deadline: 5000) })
@@ -155,6 +156,33 @@ internal static class ElectronBridgeClientSelfTest
         using (var control = new PendingTailStream(start + exit))
         {
             if (await Run("", controlSource: control) != 29) throw new AdapterFailure("electronBridgeClientSelfTestFailed");
+            checks++;
+        }
+        // Force EOF after the terminal check, before the next wait is registered.
+        // No stopping frame or control EOF may rescue a lost relay completion.
+        foreach (var pending in new[] { "output", "error", "both" })
+        foreach (var fail in new[] { false, true })
+        {
+            using var outputSource = new HeldReadStream();
+            using var errorSource = new HeldReadStream();
+            using var control = new PendingTailStream(start + exit);
+            var observed = false;
+            try
+            {
+                var code = await Run("", source: pending == "error" ? null : outputSource, controlSource: control,
+                    errorSource: pending == "output" ? null : errorSource, beforeWait: async (output, error) =>
+                    {
+                        if (observed || output.IsCompleted != (pending == "error") ||
+                            error.IsCompleted != (pending == "output"))
+                            throw new AdapterFailure("electronBridgeClientSelfTestFailed");
+                        observed = true;
+                        outputSource.Release(fail && pending != "error");
+                        errorSource.Release(fail && pending != "output");
+                        await Task.WhenAll(output, error);
+                    });
+                if (!observed || fail || code != 29) throw new AdapterFailure("electronBridgeClientSelfTestFailed");
+            }
+            catch (AdapterFailure failure) when (fail && observed && failure.Code == "stdioRelayFailed") { }
             checks++;
         }
         foreach (var partial in new[] { "{", Frame("stopping")[..^1] })
@@ -206,7 +234,11 @@ internal static class ElectronBridgeClientSelfTest
     private sealed class HeldReadStream : Stream
     {
         private readonly TaskCompletionSource completed = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        internal void Release() => completed.TrySetResult();
+        internal void Release(bool fail = false)
+        {
+            if (fail) completed.TrySetException(new IOException());
+            else completed.TrySetResult();
+        }
         public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
         { await completed.Task.WaitAsync(cancellationToken); return 0; }
         public override bool CanRead => true;

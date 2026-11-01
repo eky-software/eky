@@ -16,6 +16,7 @@ import {
 } from './electronE2eWorkspaceStartup.js';
 import { createElectronE2eBackendController } from './electronE2eBackendProcess.js';
 import { readElectronE2eConfig } from './electronE2eConfig.js';
+import { createElectronE2eStartupExceptionCapture } from './electronE2eStartupException.js';
 import { createElectronE2eNativeAdapters } from './electronE2eNativeAdapters.js';
 import { createElectronE2eStartupHold } from './electronE2eStartupHold.js';
 import { createElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
@@ -53,6 +54,7 @@ if (configPath === undefined) {
   throw new Error('ELECTRON_E2E_CONFIG_MISSING');
 }
 const config = readElectronE2eConfig(configPath);
+const startupException = createElectronE2eStartupExceptionCapture(configPath);
 app.setPath('userData', config.paths.userDataPath);
 const selectorTestRelease = readSelectorTestRelease(config.scenarioId);
 const e2eAppVersion = selectorTestRelease?.appVersion ?? app.getVersion();
@@ -160,9 +162,11 @@ function getPdfPreviewWindows(): BrowserWindow[] {
 
 if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
+    observeStartupException: (error) => startupException?.(error, 'earlyStartup'),
     exitApplication: (code) => app.exit(code),
     loadRuntime: async () => ({ startDesktopComposition }),
     async onFailure(errorCode) {
+      await startupException?.waitForDelivery();
       deletionProof?.closeChannel();
       startupObservation.record('startupFailed');
       nativeAdapters.recordStartupFailure(errorCode, backendController.getStartupFailure());
@@ -174,6 +178,7 @@ if (hasSingleInstanceLock) {
     async startRuntime() {
       startupObservation.record('compositionStarted');
       lifecycle = await startDesktopComposition({
+        observeStartupException: (error, stage, secrets) => startupException?.(error, stage, secrets),
         assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
         appVersion: e2eAppVersion,
         applicationPath: config.paths.applicationPath,
@@ -207,7 +212,9 @@ if (hasSingleInstanceLock) {
             startupObservation.record('backendStartRequested');
             if (selectorBackend !== undefined) return selectorBackend.startBackend(options);
             if (config.startupMode === 'backendStartFailure') {
-              throw new Error('BACKEND_READINESS_TIMEOUT');
+              throw new Error('BACKEND_READINESS_TIMEOUT', { cause:
+                new Error(`SYNTHETIC-E2E-STARTUP-ORIGINAL ${config.backend.sessionSecret}`,
+                  { cause: new Error('SYNTHETIC-E2E-STARTUP-CAUSE') }) });
             }
             const delayedSecretProof = config.scenarioId === 'DESK-SECRET-DRAIN-001' ||
               config.scenarioId === 'DESK-SECRET-DRAIN-002';
