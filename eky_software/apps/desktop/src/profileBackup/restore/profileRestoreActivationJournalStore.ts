@@ -12,11 +12,17 @@ import { basename, dirname, isAbsolute, resolve } from 'node:path';
 
 import {
   assertProfileRestoreActivationJournalMatches,
+  assertProfileRestoreActivationJournalStep,
   captureProfileRestoreActivationJournal,
   parseProfileRestoreActivationJournal,
   type ProfileRestoreActivationJournal,
 } from './profileRestoreActivationJournal.js';
 import { assertSynchronousProfileRestoreMutationAuthority } from './profileRestoreMutationAuthority.js';
+import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection, type ObservedRecoveryAuthority } from '../../workspaces/persistence/crashSafeByteSlotStore.js';
+import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotFileSystem,
+  type CrashSafeFileSlotIdentity } from '../../workspaces/persistence/crashSafeFileSlot.js';
+import type { ReadOnlyJournalSlots } from '../../workspaces/persistence/readOnlyJournalSlots.js';
+import { captureWorkspaceRemnantBinding } from '../../workspaces/deletion/workspaceRemnantBindingCodec.js';
 
 export const profileRestoreActivationJournalFileName =
   'profile-restore-activation-journal-v1.json';
@@ -51,8 +57,10 @@ export interface ProfileRestoreJournalCreateAuthority {
 export class ProfileRestoreActivationJournalStore {
   private readonly backupPath: string;
   private readonly nextPath: string;
+  private readonly deletionFileSystem: CrashSafeFileSlotFileSystem;
+  private deletionSlotAccess = false;
 
-  constructor(private readonly filePath: string) {
+  constructor(private readonly filePath: string, deletionFileSystem?: CrashSafeFileSlotFileSystem) {
     if (
       !isAbsolute(filePath) ||
       filePath.includes('\0') ||
@@ -63,6 +71,89 @@ export class ProfileRestoreActivationJournalStore {
     }
     this.backupPath = `${filePath}.backup`;
     this.nextPath = `${filePath}.next`;
+    this.deletionFileSystem = deletionFileSystem ?? createNodeCrashSafeFileSlotFileSystem({
+      directoryPath: dirname(filePath), currentPath: filePath, backupPath: this.backupPath, nextPath: this.nextPath,
+    }, maximumJournalBytes);
+  }
+
+  // Non-repairing evidence for the bound deletion owner; normal recovery remains unchanged.
+  inspectDeletionSlots(assertAuthority: () => void): Promise<ReadOnlyJournalSlots<ProfileRestoreActivationJournal>> {
+    return this.withDeletionSlotAccess(async () => {
+      const slots: Record<'current' | 'backup' | 'next', ReadOnlyJournalSlots<ProfileRestoreActivationJournal>['current']> = {
+        current: undefined, backup: undefined, next: undefined,
+      };
+      const check = () => assertSynchronousProfileRestoreMutationAuthority(assertAuthority);
+      for (const slot of ['current', 'backup', 'next'] as const) {
+        check(); let identity: CrashSafeFileSlotIdentity | undefined;
+        const bytes = await this.deletionFileSystem.readSlot(slot, value => { identity = value; });
+        check();
+        if (bytes !== undefined) {
+          if (identity === undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+          slots[slot] = Object.freeze({ bytes: Uint8Array.from(bytes), identity: Object.freeze({ ...identity }),
+            value: parseDeletionJournalBytes(bytes) });
+        }
+      }
+      return Object.freeze(slots);
+    });
+  }
+
+  clearAfterDeletionPurged(bindingValue: unknown, selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority & {
+    assertDeletionPurged(): Promise<void>;
+  }): Promise<void> {
+    return this.withDeletionSlotAccess(async () => {
+      const binding = captureWorkspaceRemnantBinding(bindingValue);
+      if (binding.owner !== 'workspaceReplacement' && binding.owner !== 'workspaceActivationMigration') {
+        throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+      }
+      const slots: Record<'current' | 'backup' | 'next', Uint8Array | undefined> = { current: undefined, backup: undefined, next: undefined };
+      const identities: Record<'current' | 'backup' | 'next', Readonly<CrashSafeFileSlotIdentity> | undefined> = {
+        current: undefined, backup: undefined, next: undefined,
+      };
+      let previous: Readonly<ProfileRestoreActivationJournal> | undefined;
+      let count = 0;
+      for (const slot of ['backup', 'current', 'next'] as const) {
+        const supplied = selection.expectedSlots[slot];
+        if (supplied === undefined) {
+          if (selection.expectedIdentities[slot] !== undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+          continue;
+        }
+        if (!(supplied instanceof Uint8Array)) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+        const bytes = Uint8Array.from(supplied), value = parseDeletionJournalBytes(bytes), identity = selection.expectedIdentities[slot];
+        if (identity === undefined || value.operationId !== binding.operationId) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+        if (previous !== undefined) assertProfileRestoreActivationJournalStep(previous, value);
+        previous = value; slots[slot] = bytes; identities[slot] = Object.freeze({ ...identity });
+        count++;
+      }
+      if (count > 2) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+      const check = selection.assertAuthority.bind(selection), external = selection.assertExternalSelection.bind(selection);
+      const purged = selection.assertDeletionPurged.bind(selection), uncertain = selection.onUncertain.bind(selection);
+      let failed = false;
+      let firstFailure: unknown;
+      const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+      const assertAuthority = () => {
+        if (failed) throw firstFailure;
+        try { assertSynchronousProfileRestoreMutationAuthority(check); } catch (error) { throw retain(error); }
+      };
+      const assertExternalSelection = async () => {
+        try { assertAuthority(); await external(); assertAuthority(); await purged(); assertAuthority(); await external(); assertAuthority(); }
+        catch (error) { throw retain(error); }
+      };
+      try { await new CrashSafeByteSlotStore(this.deletionFileSystem).clearSelected({
+        expectedSlots: slots, expectedIdentities: identities, assertAuthority, assertExternalSelection,
+      }); assertAuthority(); }
+      catch (error) {
+        const original = failed ? firstFailure : error;
+        try { const result: unknown = uncertain(original); if (result !== undefined) void Promise.resolve(result).catch(() => undefined); }
+        catch { /* Keep the first cleanup failure. */ }
+        throw original;
+      }
+    });
+  }
+
+  private async withDeletionSlotAccess<Result>(work: () => Promise<Result>): Promise<Result> {
+    if (this.deletionSlotAccess) throw new Error('PROFILE_RESTORE_JOURNAL_UNAVAILABLE');
+    this.deletionSlotAccess = true;
+    try { return await work(); } finally { this.deletionSlotAccess = false; }
   }
 
   async clear(
@@ -442,6 +533,11 @@ export class ProfileRestoreActivationJournalStore {
     }
     return undefined;
   }
+}
+
+function parseDeletionJournalBytes(bytes: Uint8Array): Readonly<ProfileRestoreActivationJournal> {
+  const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+  return captureProfileRestoreActivationJournal(JSON.parse(source));
 }
 
 async function assertSlotsAbsent(paths: readonly string[]): Promise<void> {

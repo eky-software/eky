@@ -8550,6 +8550,35 @@ Tavallinen lukija vaatii yhä currentin. Palautusjournalien omistajakohtainen
 siivous tehdään ennen sidonnan poistoa, eikä tämän portin kohdetesti todista
 sitä tai yhteisen etenijän kytkentää.
 
+**Alkuperäisten journalien omistajaportit:** importin
+`WorkspaceBackupImportJournalStore`, adoption
+`WorkspaceLegacyAdoptionJournalStore` ja yhteinen
+`ProfileRestoreActivationJournalStore` omistavat rajatun
+`clearAfterDeletionPurged`-portin. Se ei ole tavallisen palautuksen
+remove/discard/clear-oikeus. Kutsuja todistaa inventaarioon sitoutuneen
+sidonnan, valitun poistojournalin, jälkeen-rekisterin, kaikkien kohdejuurten
+poissaolon ja main-/kirjoittajavaltuuden jokaisessa muutoksessa.
+
+Jokainen jäljellä oleva slotti sidotaan täsmälliseen operaatioon ja
+omistajan kenttiin sekä alkuperäisiin tavuihin ja tiedostoidentiteetteihin.
+Vain nykyisten kirjoittajien sallitut kahden slotin välitilat tai
+loppusiivouksen jo sallima osittainen/täysi poissaolo kelpaavat; nextiä ei
+nosteta currentiksi. Importin varhaisvaiheen pakollinen null-lineage
+säilyy nullina, ja sidonta todistaa kohteen; jokaisen ei-null-lineagen on
+täsmättävä. Adoption legacy-recovery-reset on nykyisen nimetyn portin
+poikkeus, ei tavallisen siirtymäsäännön muutos. Activation tarkistaa
+revisioiden lisäksi todellisen vaiheparin: terminalista ei palata
+valmisteluun. Sivut poistetaan ennen currentia, hakemiston sync ja
+aloitetun työn päättyminen vaaditaan. Alkuperäinen virhe välitetään
+nykyiseen `onUncertain`-havaintoon ennen omistajan mahdollista yleistä
+virhekoodia; ilmoituksen odottaminen ei estä komentoa.
+
+Portit eivät poista sidontaa tai payloadia. Yhteinen etenijä siivoaa
+journalin ensin ja sen sidonnan vasta todistetun journalipoissaolon
+jälkeen. Porttiregressioiden vartijat eivät vielä todista mainin tätä
+kytkentää, koko D:tä tai kylmäjatkoa. Luonnin journal säilyy nykyisenä
+admission-estona eikä saa uutta poistoroolia workspaceId:n perusteella.
+
 ## Checkpointien yhteinen Definition of Done
 
 Jokaisessa vaiheessa:

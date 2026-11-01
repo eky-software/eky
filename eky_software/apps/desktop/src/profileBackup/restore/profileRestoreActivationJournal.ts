@@ -114,6 +114,25 @@ export function captureProfileRestoreForwardProgress(
   return advanced;
 }
 
+// Adjacent on-disk versions from one transaction write, not an arbitrary later observation.
+export function assertProfileRestoreActivationJournalStep(
+  previous: Readonly<ProfileRestoreActivationJournal>, next: Readonly<ProfileRestoreActivationJournal>,
+): void {
+  if (next.revision === previous.revision) {
+    assertProfileRestoreActivationJournalMatches(previous, next);
+    return;
+  }
+  const phases: readonly ProfileRestoreActivationPhase[] = profileRestoreForwardActivationPhases;
+  const index = phases.indexOf(previous.phase);
+  const forward = index >= 0 && (phases[index + 1] === next.phase || next.phase === 'rollbackStarting' ||
+    (previous.phase === 'validationStarting' && next.phase === 'accepted'));
+  const rollback = previous.phase === 'rollbackStarting' && (next.phase === 'rolledBack' || next.phase === 'failedSafe');
+  if (next.revision !== previous.revision + 1 || (!forward && !rollback)) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+  assertProfileRestoreActivationJournalMatches({ ...previous, phase: next.phase, revision: next.revision }, next);
+}
+
 function hasExactKeys(
   value: Record<string, unknown>,
   expectedKeys: readonly string[],

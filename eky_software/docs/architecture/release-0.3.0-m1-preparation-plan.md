@@ -59,8 +59,15 @@ Sidontatallentimen keskeytyvä metadata-only-siivoaminen on täydennetty
 sitoutuneen tiivisteen perusteella ilman puuttuvan operaatiotunnisteen
 arvaamista. Portin ja nykyisten siivouspolkujen 92 kohdetestiä läpäisivät;
 yksi alustakohtainen testi jäi suorittamatta, ja tyypitys läpäisi.
-Tämä ei vielä todista alkuperäisten palautusjournalien siivousta.
-Seuraavaksi tehdään niiden omistajaportit ja yhteisen etenijän kytkentä,
+Importin, adoption ja activationin journalien omistajaportit on lisätty
+rajaamatta tavallisen palautuksen tarkistuksia pois. Katselmuksen
+activation-vaihesiirtymäpuute toistettiin ja korjattiin ennen jatkoa.
+Niiden kohderegressiot, tyypitys ja riippumaton jälkikatselmus läpäisivät.
+Yhteinen poisto-/adoption-/tuonti-/palautusajo läpäisi 3 356 testiä;
+kahdeksan alustakohtaista testiä jäi suorittamatta. Porttien
+purged-/kirjoittajatodiste on näissä testivartija.
+Seuraavaksi tehdään alkuperäisten journalien ja sidontojen yhteinen
+loppusiivous sekä etenijän main-kytkentä,
 sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
 avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
 
