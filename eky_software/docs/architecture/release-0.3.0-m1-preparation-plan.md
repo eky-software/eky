@@ -32,6 +32,19 @@ live-poistossa ja kylmäpalautuksessa; C:tä ei toteuteta uudelleen eikä W7.5:n
 poistokanavia avata. Fyysistä poistoa tai kylmäjatkoa ei ole vielä kytketty;
 paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuoksi.
 
+**D:n ensimmäinen toteutuspala 1.11.2026:** inventaariotallentimen sarjallinen
+kuluttaja ja yhden luettelorivin keskeytyksen kestävä siirtopala on toteutettu
+rajattuine regressioineen. Riippumattomassa katselmuksessa löytynyt tuoreen
+journal-valinnan tarkistusaukko korjattiin ennen jatkoa. Poistoalueen
+kohdeajo läpäisi 1 009 testiä; neljä alustakohtaista testiä jäi suorittamatta.
+Erilliset neljä todellisten luettelo-/journal-tiedostojen ketjutestiä ja
+desktopin tyypitys läpäisivät. Niiden main-/kirjoittajavaltuus on testivartija,
+ei vielä tuotantokytkennän tai prosessikatkon näyttö.
+Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä. Seuraavaksi sidotaan
+nämä palat oikeaan journal-/rekisterivaltuuteen ja toteutetaan lopullinen
+poisto sekä E:n kylmäjatko; F:n prosessi-, paketti- ja PR/main-portit säilyvät
+avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
+
 ### Aiemmat lähtötilan checkpointit
 
 [Keräyskorjauksen ja odotusvian aiempi näyttö](release-0.3.0-integration-history.md#pr-326n-valmistelu-ja-ensihavainnot-1112026)

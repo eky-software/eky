@@ -8265,6 +8265,27 @@ indeksin tai journalin puuttuminen ei todista tyhjyyttä.
   luettelon ollessa vielä käytössä. Luettelo ja oma tyhjä operaatiokansio
   poistetaan vasta terminal-currentissa; poistojournal viimeisenä.
 
+**D:n luettelo- ja siirtoraja:** nykyisen inventaariotallentimen
+`consumeSelectedRecords` tarkistaa koko valitun tiedoston EOF:n, tiivisteen,
+rivimäärän ja roolien keskinäiset ehdot ennen ensimmäistä kuluttajakutsua.
+Sarjallinen luenta käyttää samaa avointa kahvaa ja alkuperäistä
+muuttumatonta metadataa; myös puskuroidun rivin jälkeen tarkistetaan valinta.
+Kuluttaja ja kaikki sulut odotetaan loppuun, ja ensivirhe säilyy.
+Rivin toimitus ei itsessään anna tiedostomuutoksen valtuutta.
+
+Fyysinen siirtopala johtaa vain roolin nykyisten omistajien sallimat polut.
+Poistopaikka on alkuperäisen juuren sisar, jonka nimi sidotaan poisto-operaatioon
+ja kanonisen luetteloavaimen tiivisteeseen. `inspectionEvidence` ei ole
+itsenäinen siirtokohde. Julkaistun `authorized`-vaiheen tuore valtuus sitoo
+journalin, luettelon, rekisterin ja kirjoittajien poissaolon. Alkuperäinen
+juuri tai jo siirretty juuri hyväksytään vain täsmällisellä juuri- ja
+vanhempi-identiteetillä; molemmat tai tuntematon poissaolo estävät jatkon.
+Myös keskeytyksen jälkeinen jo siirretty kohde tarvitsee nykyisen
+hakemistosynkronoinnin. Varmistus ei väitä Windowsin sähkökatkokestävyyttä.
+Tämä pala ei julkaise seuraavaa journal-vaihetta, poista sisältöä tai muuta
+rekisteriä. Koko etenijän liitos ja keskeytyksen prosessitodistus ovat erilliset
+pakolliset portit; W7.5:n kanavat pysyvät suljettuina.
+
 ##### W7.4:n cold-admission ja havaittava tulos
 
 Nykyinen startup tunnistaa vain creation/import-admissionin. Lisää siihen

@@ -12,7 +12,8 @@ import { assertDeletionInventoryFile, deletionInventoryFileIdentity, deletionInv
   sameDeletionInventoryFile, withDeletionInventoryFile, type OpenWorkspaceDeletionInventoryFile,
   type WorkspaceDeletionInventoryDirectoryReads,
   type WorkspaceDeletionInventoryFile } from './workspaceDeletionInventoryFile.js';
-import { assertDeletionInventoryRecords, encodeDeletionInventory, inspectDeletionInventory } from './workspaceDeletionInventoryStream.js';
+import { assertDeletionInventoryRecords, encodeDeletionInventory, inspectDeletionInventory,
+  readDeletionInventoryRecords } from './workspaceDeletionInventoryStream.js';
 import { createWorkspaceDeletionJournalPaths } from './workspaceDeletionJournalStore.js';
 
 export const workspaceDeletionInventoriesDirectoryName = 'workspace-deletion-inventories';
@@ -161,6 +162,16 @@ export class WorkspaceDeletionInventoryStore {
     });
   }
 
+  // The caller supplies phase-aware authority; delivery of an evidence row is not permission to delete it.
+  consumeSelectedRecords(value: unknown, authority: WorkspaceDeletionInventoryAuthority,
+    consume: (record: WorkspaceDeletionInventoryRecord) => Promise<void>): Promise<void> {
+    return this.exclusive(async () => {
+      const selected = captureInventorySelection(value);
+      if (selected.target.operationId !== this.operationId || typeof consume !== 'function') return invalidDeletionData(invalidCode);
+      await this.readAt('current', selected, this.guard(authority, selected), undefined, consume);
+    });
+  }
+
   private guard(authority: WorkspaceDeletionInventoryAuthority,
     identities?: Pick<WorkspaceDeletionInventorySelection, 'operationRootIdentity' | 'operationParentIdentity'>): InventoryGuard {
     const assertAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
@@ -182,12 +193,13 @@ export class WorkspaceDeletionInventoryStore {
   }
 
   private async readAt(slot: 'current' | 'next', selected: WorkspaceDeletionInventorySelection, guard: InventoryGuard,
-    expectedRecords?: AsyncIterable<WorkspaceDeletionInventoryRecord>) {
+    expectedRecords?: AsyncIterable<WorkspaceDeletionInventoryRecord>,
+    consume?: (record: WorkspaceDeletionInventoryRecord) => Promise<void>) {
     await guard.beforeMutation();
     const path = slot === 'current' ? this.paths.currentPath : this.paths.nextPath;
     const names = [slot === 'current' ? workspaceDeletionInventoryFileName : `${workspaceDeletionInventoryFileName}.next`];
     await this.assertNames(names, guard);
-    const before = await inspectDeletionInventoryFile(path, guard.assertAuthority);
+    const before = Object.freeze(await inspectDeletionInventoryFile(path, guard.assertAuthority));
     if (deletionInventoryFileIdentity(before) !== selected.inventoryFileIdentity || before.size !== BigInt(selected.inventory.byteLength)) {
       return invalidDeletionData(invalidCode);
     }
@@ -205,12 +217,29 @@ export class WorkspaceDeletionInventoryStore {
         await assertDeletionInventoryRecords(this.chunks(file, guard), selected.target, selected.inventory,
           expectedRecords, guard.assertAuthority);
       }
+      if (consume !== undefined) {
+        const assertCurrent = async () => {
+          await guard.beforeMutation();
+          await this.assertNames(names, guard);
+          const currentHandle = await file.stat();
+          guard.assertAuthority();
+          assertDeletionInventoryFile(currentHandle);
+          const currentPath = await inspectDeletionInventoryFile(path, guard.assertAuthority);
+          // Never adopt a post-validation baseline, including a same-size rewrite of this inode.
+          if (!sameDeletionInventoryFile(before, currentHandle) || !sameDeletionInventoryFile(before, currentPath)) {
+            return invalidDeletionData(invalidCode);
+          }
+          await guard.assertExternalSelection();
+        };
+        await assertCurrent();
+        await this.consumeRecords(file, selected, guard, assertCurrent, consume);
+      }
       guard.assertAuthority();
       const after = await file.stat();
       guard.assertAuthority();
       assertDeletionInventoryFile(after);
       const current = await inspectDeletionInventoryFile(path, guard.assertAuthority);
-      if (!sameDeletionInventoryFile(opened, after) || !sameDeletionInventoryFile(after, current)) return invalidDeletionData(invalidCode);
+      if (!sameDeletionInventoryFile(before, after) || !sameDeletionInventoryFile(before, current)) return invalidDeletionData(invalidCode);
       return result;
     });
     await guard.beforeMutation();
@@ -219,6 +248,31 @@ export class WorkspaceDeletionInventoryStore {
     if (!sameDeletionInventoryFile(before, afterClose)) return invalidDeletionData(invalidCode);
     await guard.assertExternalSelection();
     return commitment;
+  }
+
+  private async consumeRecords(file: WorkspaceDeletionInventoryFile, selected: WorkspaceDeletionInventorySelection,
+    guard: InventoryGuard, assertCurrent: () => Promise<void>,
+    consume: (record: WorkspaceDeletionInventoryRecord) => Promise<void>) {
+    const reader: AsyncIterator<WorkspaceDeletionInventoryRecord> =
+      readDeletionInventoryRecords(this.chunks(file, guard), selected.target, selected.inventory);
+    let failed = false;
+    let failure: unknown;
+    try {
+      while (true) {
+        const next = await reader.next();
+        // A next() can yield from the same buffered chunk without another file read.
+        await assertCurrent();
+        if (next.done) break;
+        guard.assertAuthority();
+        await consume(next.value);
+        await assertCurrent();
+      }
+    } catch (error) { failed = true; failure = error; }
+    try { await reader.return?.(); } catch (error) {
+      if (failed) throw new AggregateError([failure, error], invalidCode);
+      throw error;
+    }
+    if (failed) throw failure;
   }
 
   private async *chunks(file: WorkspaceDeletionInventoryFile, guard: CrashSafeFileSlotMutationGuard) {
