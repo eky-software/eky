@@ -29,8 +29,10 @@ export function createWorkspaceDeletionPayloadExecutor(input: {
   const writers = input.assertWritersAbsent.bind(input);
   const quarantine = fileSystems.quarantine, purge = fileSystems.purge;
   let running = false;
-  return async (operationId: string, authority: WorkspaceDeletionContinuationAuthority): Promise<WorkspaceDeletionJournalV1> => {
+  return async (operationId: string, authority: WorkspaceDeletionContinuationAuthority,
+    expectedBinding?: WorkspaceDeletionJournalV1): Promise<WorkspaceDeletionJournalV1> => {
     if (running) return invalidDeletionData(invalidCode);
+    const binding = expectedBinding === undefined ? undefined : captureWorkspaceDeletionJournal(expectedBinding);
     running = true;
     try {
       const owner = { assertCurrent: authority.assertCurrent.bind(authority), assertOwned: authority.assertOwned.bind(authority) };
@@ -38,7 +40,7 @@ export function createWorkspaceDeletionPayloadExecutor(input: {
       let expected: Readonly<{ journal: WorkspaceDeletionJournalV1; identity: Readonly<CrashSafeFileSlotIdentity> }> | undefined;
       while (true) {
         const phase = await captureWorkspaceDeletionPhaseSelection({ operationId, authority: owner, registry,
-          journal: journalStore, assertWritersAbsent: writers });
+          journal: journalStore, assertWritersAbsent: writers, ...(binding === undefined ? {} : { expectedBinding: binding }) });
         try {
           const journal = phase.journal;
           if (journal.phase === 'registryPublished') return invalidDeletionData(invalidCode);

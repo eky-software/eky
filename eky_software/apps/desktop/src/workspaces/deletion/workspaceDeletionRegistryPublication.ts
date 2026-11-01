@@ -6,6 +6,7 @@ import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.
 import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { captureDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
 import { WorkspaceDeletionInventoryStore } from './workspaceDeletionInventoryStore.js';
+import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
 import { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { selectWorkspaceDeletionPayload } from './workspaceDeletionPayloadSelection.js';
 import { captureWorkspaceDeletionPhaseSelection } from './workspaceDeletionPhaseSelection.js';
@@ -26,12 +27,14 @@ export function createWorkspaceDeletionRegistryPublisher(input: {
   const recoverRegistry = input.registry.recoverSelected.bind(input.registry);
   const writers = input.assertWritersAbsent.bind(input);
   let running = false;
-  return async (operationId: string, authority: WorkspaceDeletionContinuationAuthority) => {
+  return async (operationId: string, authority: WorkspaceDeletionContinuationAuthority, expectedBinding?: WorkspaceDeletionJournalV1) => {
     if (running) return invalidDeletionData(invalidCode);
+    const binding = expectedBinding === undefined ? undefined : captureWorkspaceDeletionJournal(expectedBinding);
     running = true;
     try {
       const phase = await captureWorkspaceDeletionPhaseSelection({ operationId, authority,
-        journal: new WorkspaceDeletionJournalStore(root), registry: { inspectSlots: readRegistry }, assertWritersAbsent: writers });
+        journal: new WorkspaceDeletionJournalStore(root), registry: { inspectSlots: readRegistry }, assertWritersAbsent: writers,
+        ...(binding === undefined ? {} : { expectedBinding: binding }) });
       let failed = false;
       let firstFailure: unknown;
       const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };

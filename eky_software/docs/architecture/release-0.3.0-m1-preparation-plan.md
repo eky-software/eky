@@ -20,7 +20,7 @@ ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 `resume` on liitettävä portti. D:n yhteinen fyysinen vaihe etenee nyt
 `purged`-tilaan ja erillinen rekisterivaihe julkaisee täsmällisen jälkeen-tilan;
 omistajien yhteinen loppusiivous ja terminalin julkaisu on lisätty.
-Yhteisen etenijän main-kytkentä puuttuu.
+Sama publish/resume-kuluttaja on lisätty, mutta sen main-kytkentä puuttuu.
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
@@ -44,8 +44,9 @@ terminal-identiteetin ja alkuperäisen async-valtuusvirheen puutteet
 toistettiin kolmella hylkäävällä regressiolla ja korjattiin. Samat
 regressiot ja lähdejälkikatselmus läpäisivät.
 
-Uuden loppuvaiheen koko poisto-/adoption-/tuonti-/palautusvaikutusalueen ajo
-läpäisi 3 406 testiä 119 tiedostossa; kahdeksan alustakohtaista tapausta jäi
+Loppuvaiheen tarkistuspisteen `d0d529d8` koko poisto-/adoption-/tuonti-/
+palautusvaikutusalueen ajo läpäisi 3 406 testiä 119 tiedostossa;
+kahdeksan alustakohtaista tapausta jäi
 suorittamatta. Mukana ovat loppuvaiheen 27 regressiota ja yksi todellinen
 workspace-roolin julkaisu-/purge-/rekisteri-/metadata-/loppusiivousketju.
 Näyttöä ei lasketa yhteen aiempien sarjojen kanssa. Lopullinen tyypitys,
@@ -53,6 +54,15 @@ lähdejälkikatselmus ja ohjeiden linkit läpäisivät.
 [Aiempien D-palojen tulokset ja rajat](release-0.3.0-integration-history.md#w74n-d-vaiheen-tiedostoketjut-1112026)
 säilyvät historiassa. Nykyisten ketjutestien main-/kirjoittajavaltuus on
 edelleen testivartija, ei oikean pääprosessin tai prosessikatkon näyttö.
+
+Yhteinen komento säilyttää julkaisussa kaapatun muuttumattoman sidonnan
+kaikille vaiheille ja toimittaa lopputiedon vasta tiedostoketjun päätyttyä.
+Vaiheiden yhteiset 51 valinta-/kuittaus-/sulkutestiä, lopullinen tyypitys
+ja rajattu lähdekatselmus läpäisivät. Uuden komennon koko poistoalueen
+vaikutusajo läpäisi 1 420 testiä 53 tiedostossa; neljä alustakohtaista tapausta
+jäi suorittamatta. Tuonnin, adoption ja palautuksen muuttumattomien
+omistajaporttien aiempi laaja näyttö on yllä eroteltu tästä uudesta komennosta;
+sitä ei väitetä uudella revisiolla suoritetuksi eikä päällekkäisiä määriä summata.
 
 Seuraavaksi kytketään yhteinen etenijä mainiin ja palveluun, sitten E:n
 kylmäjatko. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,

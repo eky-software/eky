@@ -275,6 +275,16 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   valitun tiedostoidentiteetin ja keskeneräisen työn regressiot eivät
   muuta sovelluksen tai CI:n aikarajoja. Tiedostokutsuissa aiheutettu katko
   ei korvaa prosessikatkoa, main-kytkentää tai paketoitua todennusta.
+- `workspaceDeletionPayloadExecutor.test.ts`:n kuusi `shared command`
+  -ketjutestiä saavat kukin 60 sekuntia saman rajatun valtuuden nojalla.
+  Sama nykyinen fixture valmistaa tiedostot ja käyttää yhteistä
+  publish/resume-komentoa: koko poisto ja lopputiedon toimitus, muuttunut
+  aloitussidonta, terminal-kuittauskatkon jatko sekä keskeneräisen vaiheen
+  sulku ja päällekkäisen komennon esto. Valmistelu, kaikki vaiheet,
+  mahdollinen jatko, lopputiedon vastaanottajan virheellinen tai asynkroninen
+  vastaus ja säilyvien tavujen vertailu sisältyvät rajaan.
+  Muiden testien, sovelluksen ja CI:n aikarajat eivät muutu. Uusi
+  omistajaolio ei yksin todista prosessikatkoa tai cold-admissionia.
 
 Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
 mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei

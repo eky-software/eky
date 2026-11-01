@@ -8636,6 +8636,26 @@ Vaiheen palauttama terminal-arvo on sisäinen vaihekuitti, ei vielä mainin
 M1:n nykytilaan; main-/service-kytkentä, cold-admission sekä F:n prosessi-,
 paketti- ja PR/main-portit vaaditaan edelleen erikseen.
 
+**Sama pysyvä publish/resume-komento:** `workspaceDeletionCommand.ts`
+liittää yllä olevat nykyiset vaiheet yhdeksi sisäiseksi kuluttajaksi.
+Live-polku kaappaa julkaisun muuttumattoman journal-sidonnan ennen sen
+palauttamista mainille. Jokainen vaihe valitsee todelliset slotit ja vertaa
+niitä samaan sidontaan ennen rekisterilukua tai omaa tiedostotyötään;
+vaiheen muuttuminen ei muuta kohdetta, inventaariota tai ennen-/jälkeen-
+rekisteriä. Odotusten yli säilyvä sidonta kopioidaan ennen ensimmäistä
+odotusta, ei lueta myöhemmin kutsujan muokattavasta oliosta.
+
+Kylmäjatkon sisääntulo käyttää samaa komentoa mutta aloittaa nykyisestä
+julkaistusta journal-valinnasta ja tarvitsee E:n tuoreen admissionin ja
+omistajuuden. Puuttuva journal ei anna valmistumiskuittia. Komento estää
+oman rinnakkaisen julkaisun ja jatkon, odottaa alkaneen työn loppuun ja
+toimittaa `recordRemoved`-tiedon vasta terminalin ja kaikkien teknisten
+poistojen jälkeen. Vastaanottajan on valmistuttava synkronisesti: hylkäys
+tai asynkroninen tulos ei ole onnistunut kuittaus. Tämän jälkeen ei tehdä
+uusia tiedostotöitä. Pysyvien tavujen ja uuden omistajaolion ketjutestit
+eivät vielä todista main-/service-kytkentää, oikeaa prosessikatkoa,
+cold-admissionia tai paketoitua toimintaa; ne säilyvät erillisinä portteina.
+
 ## Checkpointien yhteinen Definition of Done
 
 Jokaisessa vaiheessa:

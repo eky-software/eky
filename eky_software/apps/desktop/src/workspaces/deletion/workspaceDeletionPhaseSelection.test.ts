@@ -11,10 +11,14 @@ import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { deletionTestId, deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
+import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
 import { captureWorkspaceDeletionJournal, serializeWorkspaceDeletionJournal,
   workspaceDeletionPhases, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
+import { createWorkspaceDeletionMetadataCleaner } from './workspaceDeletionMetadataCleanup.js';
+import { createWorkspaceDeletionPayloadExecutor } from './workspaceDeletionPayloadExecutor.js';
 import { captureWorkspaceDeletionPhaseSelection } from './workspaceDeletionPhaseSelection.js';
+import { createWorkspaceDeletionRegistryPublisher } from './workspaceDeletionRegistryPublication.js';
 
 async function fixture(test: TestContext, phase: WorkspaceDeletionJournalV1['phase'] = 'authorized') {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-phase-'));
@@ -257,4 +261,53 @@ it('never treats inverse registry-write authority as permission to ignore change
   await expect(selected.assertJournalSelected()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
   expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
   expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+});
+
+it('keeps the original binding while allowing its published phase to advance', async test => {
+  const f = await fixture(test, 'purged');
+  const selected = await captureWorkspaceDeletionPhaseSelection({ ...f.input, expectedBinding: f.journalValue });
+  expect(selected.journal.phase).toBe('purged'); await selected.assertSelected(); selected.revoke();
+});
+
+it.for(['inventory', 'registry', 'root', 'backup'] as const)('rejects changed expected %s before reading the registry', async (change, test) => {
+  const f = await fixture(test);
+  const expected = captureWorkspaceDeletionJournal({ ...f.journalValue,
+    ...(change === 'inventory' ? { inventory: { ...f.journalValue.inventory, sha256: 'b'.repeat(64) } } : {}),
+    ...(change === 'registry' ? { registryAfterSha256: 'c'.repeat(64) } : {}),
+    ...(change === 'root' ? { operationRootIdentity: 'd'.repeat(64) } : {}),
+    ...(change === 'backup' ? { backupDisposition: f.journalValue.backupDisposition === 'verifiedBackup' ? 'explicitDataLoss' : 'verifiedBackup' } : {}),
+  });
+  const read = vi.fn(f.registry.inspectSlots.bind(f.registry));
+  await expect(captureWorkspaceDeletionPhaseSelection({ ...f.input, registry: { inspectSlots: read }, expectedBinding: expected }))
+    .rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+  expect(read).not.toHaveBeenCalled(); expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+});
+
+it('captures the expected binding before a pending owner check', async test => {
+  const f = await fixture(test), expected = { ...f.journalValue, inventory: { ...f.journalValue.inventory } };
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+  f.authority.assertOwned.mockImplementationOnce(async () => { entered(); await held; });
+  const result = captureWorkspaceDeletionPhaseSelection({ ...f.input, expectedBinding: expected });
+  try {
+    await Promise.race([started, result.then(() => { throw new Error('SYNTHETIC_BINDING_CHECK_NOT_PENDING'); })]);
+    expected.inventory.sha256 = 'b'.repeat(64);
+  }
+  finally { release(); }
+  const selected = await result; expect(selected.journal).toEqual(f.journalValue); await selected.assertSelected(); selected.revoke();
+});
+
+it.for(['payload', 'registry', 'metadata', 'terminal'] as const)('enforces the shared binding at the actual %s stage entry', async (stage, test) => {
+  const f = await fixture(test, stage === 'payload' ? 'authorized' : stage === 'terminal' ? 'registryPublished' : 'purged');
+  if (stage === 'metadata') await f.registry.write(f.after);
+  const registryBytes = await readFile(f.registryPath), read = vi.fn(f.registry.inspectSlots.bind(f.registry));
+  const expected = captureWorkspaceDeletionJournal({ ...f.journalValue, inventory: { ...f.journalValue.inventory, sha256: 'b'.repeat(64) } });
+  const input = { userDataRoot: f.root, registry: { inspectSlots: read, writeSelected: f.registry.writeSelected.bind(f.registry),
+    recoverSelected: f.registry.recoverSelected.bind(f.registry) }, assertWritersAbsent: f.input.assertWritersAbsent };
+  const create = { payload: createWorkspaceDeletionPayloadExecutor, registry: createWorkspaceDeletionRegistryPublisher,
+    metadata: createWorkspaceDeletionMetadataCleaner, terminal: createWorkspaceDeletionFinalizer }[stage];
+  await expect(create(input)(f.input.operationId, f.authority, expected)).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+  expect(read).not.toHaveBeenCalled(); expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  expect(await readFile(f.registryPath)).toEqual(registryBytes);
 });

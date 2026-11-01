@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -9,9 +10,10 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { deletionTestId } from './workspaceDeletionDataTestSupport.js';
+import { createWorkspaceDeletionCommand } from './workspaceDeletionCommand.js';
 import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
 import { createWorkspaceDeletionInventoryPaths } from './workspaceDeletionInventoryStore.js';
-import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes } from './workspaceDeletionJournalCodec.js';
+import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, serializeWorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { createWorkspaceDeletionMetadataCleaner } from './workspaceDeletionMetadataCleanup.js';
 import { createWorkspaceDeletionPayloadExecutor } from './workspaceDeletionPayloadExecutor.js';
@@ -22,12 +24,14 @@ import { workspaceDeletionQuarantineFileSystem } from './workspaceDeletionQuaran
 import { createWorkspaceDeletionRegistryPublisher } from './workspaceDeletionRegistryPublication.js';
 
 const physicalPhaseTimeoutMs = 30_000;
+const sharedCommandTimeoutMs = 60_000;
 
-async function fixture(test: TestContext) {
+async function fixture(test: TestContext, sharedCommand = false) {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-executor-'));
   await chmod(root, 0o700);
   let current = true, writerAbsent = true;
   const pending: Promise<unknown>[] = [];
+  const releases: (() => void)[] = [];
   const started = performance.now();
   const measurements: { phase: string; durationMs: number }[] = [];
   const advance = WorkspaceDeletionJournalStore.prototype.advance;
@@ -43,6 +47,7 @@ async function fixture(test: TestContext) {
   const assertWritersAbsent = async () => { assertCurrent(); if (!writerAbsent) throw new Error('SYNTHETIC_WRITER_PRESENT'); };
   test.onTestFinished(async () => {
     current = false;
+    for (const release of releases) release();
     await Promise.allSettled(pending);
     vi.restoreAllMocks();
     await writeFile(join(root, 'test-phases.json'), JSON.stringify({ schemaVersion: 1, measurements,
@@ -71,7 +76,9 @@ async function fixture(test: TestContext) {
   const selected = await captureDeletionTarget({ installationRoot: root, workspaceId: TEST_TARGET_WORKSPACE_ID,
     typedLabel: initial.workspaces[1]!.workspaceLabel, registry, assertAuthority: assertCurrent });
   const operationId = deletionTestId(100);
-  const published = await createWorkspaceDeletionPublisher({ userDataRoot: root, registry, assertWritersAbsent })(
+  const shared = sharedCommand ? createWorkspaceDeletionCommand({ userDataRoot: root, registry, assertWritersAbsent }) : undefined;
+  const publish = shared?.publish ?? createWorkspaceDeletionPublisher({ userDataRoot: root, registry, assertWritersAbsent });
+  const published = await publish(
     assertCurrent, async () => { await selected.assertCurrent(); }, selected.target,
     { operationId, target: selected.target, backupDisposition: 'explicitDataLoss' }, () => selected.assertCurrent());
   measurements.push({ phase: 'prepared', durationMs: Math.round(performance.now() - started) });
@@ -90,6 +97,7 @@ async function fixture(test: TestContext) {
   const run = () => { const result = command(operationId, authority); pending.push(result); return result; };
   return { root, registry, registryPath, registryBytes, workspace, other, external, published, inventoryPaths, inventoryBytes,
     journalPaths: createWorkspaceDeletionJournalPaths(root), quarantine, purge, payload, command, run, authority, assertWritersAbsent, operationId, advance, advanceSpy,
+    shared, selected, releases, track<T>(job: Promise<T>) { pending.push(job); return job; },
     revoke() { current = false; }, renew() { current = true; }, writerAppears() { writerAbsent = false; },
     async preserved() {
       expect(await readFile(join(other.workspaceRoot, 'retained'), 'utf8')).toBe('other-company-bytes');
@@ -119,6 +127,76 @@ it('advances the actual published inventory through physical purge while preserv
   expect(repeated).toEqual(result);
   expect(f.quarantine.move).toHaveBeenCalledTimes(1);
   expect(f.purge.unlink).toHaveBeenCalledTimes(5);
+});
+
+it.for(['completed', 'throws', 'async'] as const)('shared command records removal only after all actual stages and technical retirement finish (%s)', {
+  timeout: sharedCommandTimeoutMs,
+}, async (outcome, test) => {
+  const f = await fixture(test, true), first = new Error('SYNTHETIC_MAIN_RECEIPT_REJECTED');
+  const recordRemoved = vi.fn((receipt: unknown) => {
+    expect(receipt).toMatchObject({ status: 'removed', journal: { ...f.published.journal, phase: 'registryPublished' } });
+    expect(existsSync(f.workspace.workspaceRoot)).toBe(false); expect(existsSync(f.payload.quarantinePath)).toBe(false);
+    expect(existsSync(f.inventoryPaths.directoryPath)).toBe(false);
+    for (const path of [f.journalPaths.currentPath, f.journalPaths.backupPath, f.journalPaths.nextPath]) expect(existsSync(path)).toBe(false);
+    if (outcome === 'throws') throw first;
+    if (outcome === 'async') return Promise.resolve();
+  });
+  const result = f.track(f.shared!.resume(f.operationId, { ...f.authority, recordRemoved }));
+  if (outcome === 'throws') await expect(result).rejects.toBe(first);
+  else if (outcome === 'async') await expect(result).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+  else expect(await result).toEqual({ formatVersion: 1, status: 'completed', navigation: 'reopenPrevious' });
+  expect(recordRemoved).toHaveBeenCalledTimes(1);
+  expect((await f.registry.inspectSlots()).current!.value.workspaces.map(row => row.workspaceId)).toEqual([TEST_SOURCE_WORKSPACE_ID]);
+  expect(await readFile(join(f.other.workspaceRoot, 'retained'), 'utf8')).toBe('other-company-bytes');
+  expect(await readFile(f.external, 'utf8')).toBe('external-backup-bytes');
+});
+
+it('shared command refuses a changed published binding before any physical stage', { timeout: sharedCommandTimeoutMs }, async test => {
+  const f = await fixture(test, true), recordRemoved = vi.fn();
+  const changed = serializeWorkspaceDeletionJournal(captureWorkspaceDeletionJournal({ ...f.published.journal, registryAfterSha256: 'c'.repeat(64) }));
+  await writeFile(f.journalPaths.currentPath, changed, { mode: 0o600 });
+  await expect(f.track(f.shared!.resume(f.operationId, { ...f.authority, recordRemoved }))).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+  expect(recordRemoved).not.toHaveBeenCalled(); expect(await readFile(f.journalPaths.currentPath)).toEqual(changed);
+  expect(await readFile(join(f.workspace.workspaceRoot, 'corrupt.db'), 'utf8')).toBe('owned-but-not-a-database');
+  expect(await workspaceDeletionQuarantineFileSystem.entry(f.payload.quarantinePath, false, f.authority.assertCurrent)).toBeNull(); await f.preserved();
+});
+
+it('shared command resumes durable terminal state after a real publication acknowledgement is lost', { timeout: sharedCommandTimeoutMs }, async test => {
+  const f = await fixture(test, true), first = new Error('SYNTHETIC_SHARED_TERMINAL_ACK_LOST'), recordRemoved = vi.fn();
+  let cut = true;
+  f.advanceSpy.mockImplementation(async function (this: WorkspaceDeletionJournalStore, ...args) {
+    const result = await f.advance.apply(this, args);
+    if (cut && captureWorkspaceDeletionJournal(args[0]).phase === 'registryPublished') { cut = false; throw first; }
+    return result;
+  });
+  await expect(f.track(f.shared!.resume(f.operationId, { ...f.authority, recordRemoved }))).rejects.toBe(first);
+  expect(recordRemoved).not.toHaveBeenCalled(); expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes);
+  expect((await new WorkspaceDeletionJournalStore(f.root).inspect(f.authority.assertCurrent)).plan).toMatchObject({ mode: 'published', terminalOnly: true });
+  // A new owner object is not a real process-crash proof; both enter the same resume implementation.
+  const fresh = createWorkspaceDeletionCommand({ userDataRoot: f.root, registry: f.registry, assertWritersAbsent: f.assertWritersAbsent });
+  expect(await f.track(fresh.resume(f.operationId, { ...f.authority, recordRemoved }))).toEqual({ formatVersion: 1, status: 'completed', navigation: 'reopenPrevious' });
+  expect(recordRemoved).toHaveBeenCalledTimes(1);
+  expect((await new WorkspaceDeletionJournalStore(f.root).inspect(f.authority.assertCurrent)).plan.mode).toBe('absent');
+  expect(await readFile(join(f.other.workspaceRoot, 'retained'), 'utf8')).toBe('other-company-bytes');
+  expect(await readFile(f.external, 'utf8')).toBe('external-backup-bytes');
+});
+
+it('shared command joins pending phase work and rejects overlapping publish and resume', { timeout: sharedCommandTimeoutMs }, async test => {
+  const f = await fixture(test, true), recordRemoved = vi.fn();
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; }), held = new Promise<void>(resolve => { release = resolve; }); f.releases.push(release);
+  f.advanceSpy.mockImplementationOnce(async function (this: WorkspaceDeletionJournalStore, ...args) { entered(); await held; return f.advance.apply(this, args); });
+  let settled = false;
+  const result = f.track(f.shared!.resume(f.operationId, { ...f.authority, recordRemoved })).then(() => { settled = true; return undefined; }, error => { settled = true; return error; });
+  try {
+    await Promise.race([started, result.then(() => { throw new Error('SYNTHETIC_SHARED_PHASE_NOT_PENDING'); })]);
+    await expect(f.shared!.resume(f.operationId, { ...f.authority, recordRemoved })).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    await expect(f.shared!.publish(f.authority.assertCurrent, f.authority.assertOwned, f.selected.target,
+      { operationId: f.operationId, target: f.selected.target, backupDisposition: 'explicitDataLoss' }, f.selected.assertCurrent))
+      .rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    f.revoke(); await new Promise<void>(resolve => setImmediate(resolve)); expect(settled).toBe(false);
+  } finally { release(); await result; }
+  expect(await result).toMatchObject({ message: 'SYNTHETIC_OWNER_LOST' }); expect(recordRemoved).not.toHaveBeenCalled(); await f.preserved();
 });
 
 it('composes physical purge, registry publication, metadata cleanup and journal-last retirement under one authority', {

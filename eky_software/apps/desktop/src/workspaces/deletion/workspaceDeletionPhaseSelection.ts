@@ -5,7 +5,8 @@ import { parseWorkspaceRegistryBytes } from '../registry/workspaceRegistryBytes.
 import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
-import { parseWorkspaceDeletionJournalBytes } from './workspaceDeletionJournalCodec.js';
+import { captureWorkspaceDeletionJournal, parseWorkspaceDeletionJournalBytes, sameWorkspaceDeletionJournalBinding,
+  type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
 import { planWorkspaceDeletionJournalSlots } from './workspaceDeletionJournalSlots.js';
 import type { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { captureWorkspaceDeletionRegistryState } from './workspaceDeletionRegistryState.js';
@@ -19,8 +20,10 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
   journal: Pick<WorkspaceDeletionJournalStore, 'inspect'>;
   registry: Pick<WorkspaceRegistryStore, 'inspectSlots'>;
   assertWritersAbsent(): Promise<void>;
+  readonly expectedBinding?: WorkspaceDeletionJournalV1;
 }) {
   const operationId = validateWorkspaceBackupReplacementOperationId(input.operationId);
+  const expectedBinding = input.expectedBinding === undefined ? undefined : captureWorkspaceDeletionJournal(input.expectedBinding);
   const check = checkedDeletionAuthority(input.authority.assertCurrent.bind(input.authority), invalidCode);
   const owned = input.authority.assertOwned.bind(input.authority);
   const writers = input.assertWritersAbsent.bind(input);
@@ -48,7 +51,8 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
     const journalSlots = copySlots((await readJournal(assertCurrent)).slots, parseWorkspaceDeletionJournalBytes);
     assertCurrent();
     const plan = planWorkspaceDeletionJournalSlots(journalSlots);
-    if (plan.mode !== 'published' || plan.selected.target.operationId !== operationId) return invalidDeletionData(invalidCode);
+    if (plan.mode !== 'published' || plan.selected.target.operationId !== operationId ||
+        (expectedBinding !== undefined && !sameWorkspaceDeletionJournalBinding(plan.selected, expectedBinding))) return invalidDeletionData(invalidCode);
     const registrySlots = copySlots(await readRegistry(assertCurrent), parseWorkspaceRegistryBytes);
     assertCurrent();
     const registryState = captureWorkspaceDeletionRegistryState(plan.selected, registrySlots);
