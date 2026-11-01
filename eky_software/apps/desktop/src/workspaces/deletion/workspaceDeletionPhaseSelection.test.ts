@@ -231,3 +231,30 @@ it.for(['owner', 'writer', 'registry'] as const)('joins pending %s work when the
   expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
   expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
 });
+
+it('uses inverse journal selection while the real registry store owns its changing slots', async test => {
+  const f = await fixture(test, 'purged'), selected = await f.capture();
+  const slots = selected.registrySlots;
+  // The registry publisher must additionally prove inventory/payload absence before using this inverse guard.
+  const identity = await f.registry.writeSelected(f.after, {
+    expectedSlots: { current: slots.current?.bytes, backup: slots.backup?.bytes, next: slots.next?.bytes },
+    expectedIdentities: { current: slots.current?.identity, backup: slots.backup?.identity, next: slots.next?.identity },
+    assertAuthority: selected.assertCurrent, assertExternalSelection: selected.assertJournalSelected,
+  });
+  const published = await f.registry.inspectSlots(f.authority.assertCurrent);
+  expect(sameCrashSafeFileSlotIdentity(published.current!.identity!, identity)).toBe(true);
+  expect(published.next).toBeUndefined(); expect(published.backup).toBeUndefined();
+  expect(await readFile(f.registryPath)).toEqual(Buffer.from(serializeWorkspaceRegistry(f.after)));
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  await expect(selected.assertJournalSelected()).resolves.toBeUndefined();
+  await expect(selected.assertSelected()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+});
+
+it('never treats inverse registry-write authority as permission to ignore changed journal slots', async test => {
+  const f = await fixture(test, 'purged'), selected = await f.capture();
+  await writeFile(f.journalPaths.nextPath, serializeWorkspaceDeletionJournal(
+    captureWorkspaceDeletionJournal({ ...f.journalValue, phase: 'registryPublished' })), { mode: 0o600 });
+  await expect(selected.assertJournalSelected()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+  expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+});

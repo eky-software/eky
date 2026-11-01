@@ -58,6 +58,12 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
       assertCurrent();
       await assertOwner();
     });
+    const assertJournalSelected = () => checked(async () => {
+      await assertOwner();
+      assertSameSlots(journalSlots, (await readJournal(assertCurrent)).slots);
+      assertCurrent();
+      await assertOwner();
+    });
     const assertSelected = () => checked(async () => {
       await assertExternalSelection();
       assertSameSlots(journalSlots, (await readJournal(assertCurrent)).slots);
@@ -73,7 +79,7 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
       // Separate copies: mutating the values passed to a byte store cannot change the pinned observations.
       journalSlots: copySlots(journalSlots, parseWorkspaceDeletionJournalBytes),
       registrySlots: copySlots(registrySlots, parseWorkspaceRegistryBytes),
-      assertCurrent, assertSelected, assertExternalSelection,
+      assertCurrent, assertSelected, assertExternalSelection, assertJournalSelected,
       revoke() { active = false; },
     });
   } catch (error) { active = false; throw retain(error); }

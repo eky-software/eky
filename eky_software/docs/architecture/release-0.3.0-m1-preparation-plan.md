@@ -18,7 +18,8 @@ läpäisyjä. Aiemmat hylkäykset ja tuntemattomat syyt säilyvät avoimina.
 Tilatarkistus vahvisti alla kuvatun W7.4-rajan: C:n tiedosto-/fixture-näyttö
 ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 `resume` on liitettävä portti. D:n yhteinen fyysinen vaihe etenee nyt
-`purged`-tilaan; rekisterijulkaisu ja omistajien loppusiivous puuttuvat.
+`purged`-tilaan ja erillinen rekisterivaihe julkaisee täsmällisen jälkeen-tilan;
+omistajien loppusiivous ja yhteisen etenijän loppukytkentä puuttuvat.
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
@@ -37,7 +38,7 @@ paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuo
 kuluttaja, yhden luettelorivin keskeytyksen kestävä siirto ja lopullinen poisto
 on toteutettu rajattuine regressioineen samalle valintapohjalle.
 Riippumattoman katselmuksen journal-valinta- ja tarkistusjärjestysaukot
-korjattiin ennen jatkoa. Poistoalueen uusin kohdeajo läpäisi 1 319 testiä;
+korjattiin ennen jatkoa. Poistoalueen uusin kohdeajo läpäisi 1 335 testiä;
 neljä alustakohtaista testiä jäi suorittamatta. Mukana olevat kuusi todellisten
 luettelo-/journal-tiedostojen ketjutestiä ja desktopin tyypitys läpäisivät.
 Niiden main-/kirjoittajavaltuus on testivartija, ei vielä tuotantokytkennän
@@ -49,7 +50,12 @@ kuittaus-/keskeytystestiä läpäisivät, mutta mainin valtuus on niissä edelle
 testivartija. Eri roolien yhteinen fyysinen ketju on vielä todennettava;
 nykyiset rooliregressiot todistavat sen erillisiä rajoja.
 Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä.
-Seuraavaksi tehdään tarkka rekisterijulkaisu ja omistajien loppusiivous,
+Rekisterivaiheen 41 kohdetestiä ja tyypitys läpäisivät. Mukana ovat
+valitun kirjoituksen keskeytykset, saman operaation jatko, aktiivisen ja
+viimeisen yrityksen valinnan tyhjennys sekä keskeneräisen työn päättymisen
+odotus valtuuden menetyksessä. Testit käyttävät todellisia tiedostotavuja,
+mutta niiden `purged`-lähtötila on fixture, ei koko fyysisen ketjun näyttö.
+Seuraavaksi tehdään omistajien loppusiivous ja yhteisen etenijän kytkentä,
 sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
 avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
 

@@ -8516,6 +8516,27 @@ tuonnin peruutus-/virhepolut sekä viimeisen yrityksen poistamisen jälkeisen
 tilan nykyisten lifecycle- ja turvallisuussopimusten puitteissa. Tämä kirjaus
 on jatkotyön tavoite, ei valmiin toteutuksen tai uuden poistorajan hyväksyntä.
 
+### W7.4 D: valittu rekisterijulkaisu
+
+`workspaceDeletionRegistryPublication.ts` jatkaa vain valitusta, julkaistusta
+`purged`-journalista. Nykyinen rekisteritallennin omistaa kirjoituksen ja
+sen sallittujen keskeytystilojen palautumisen. Poisto todistaa sen
+ulkopuolelta saman journalin, muuttumattoman inventaarion, kaikkien
+payload-/quarantine-juurten poissaolon ja tuoreen main-/kirjoittajavaltuuden.
+Muuttuvan rekisterin omia slotteja ei tarkisteta vanhaan tilaan sen oman
+kirjoituksen sisältä; niiden täsmälliset tavut ja identiteetit kuuluvat
+valitun kirjoituksen portille. Kirjoituskuittauksen jälkeen tarkistetaan
+todelliset jälkeen-tavut ja palautetun current-identiteetin täsmääminen.
+
+Jo julkaistu jälkeen-tila ei aiheuta uutta kirjoitusta. Julkaisematon next
+ei yksin kelpaa hyväksytyksi rekisteriksi. Aktiivisen tai viimeisen yrityksen
+poistuminen tyhjentää valinnan eikä luo oletusyritystä. Ensimmäinen syy
+säilyy myös alemman tiedostokerroksen yleistäessä virheen; aloitettu työ
+odotetaan loppuun ja samanaikainen julkaisu estetään. Journal ja inventaario
+jäävät tässä vaiheessa paikalleen omistajien loppusiivousta varten.
+Tämä rajattu tiedosto-/keskeytysnäyttö ei vielä ole main-kytkennän,
+prosessikatkon, koko D:n tai W7.4:n hyväksyntä.
+
 ## Checkpointien yhteinen Definition of Done
 
 Jokaisessa vaiheessa:
