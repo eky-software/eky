@@ -8537,6 +8537,19 @@ jäävät tässä vaiheessa paikalleen omistajien loppusiivousta varten.
 Tämä rajattu tiedosto-/keskeytysnäyttö ei vielä ole main-kytkennän,
 prosessikatkon, koko D:n tai W7.4:n hyväksyntä.
 
+**Sidonnan keskeytyvä loppusiivous:** nykyisen
+`WorkspaceRemnantBindingStore`n `clearCommittedAfterPayloadsAbsent` käyttää
+vain `deletionPurged`-sopimusta. Kutsuja todistaa edelleen valitun
+`purged`-journalin, täyden inventaarion, täsmällisen jälkeen-rekisterin ja
+kaikkien payloadien poissaolon. Jokaisen jäljellä olevan slotin kohde,
+lineage ja kanoninen tiiviste tarkistetaan sitoutuneeseen tietueeseen;
+tavut ja identiteetit valitaan ennen muutoksia. Kaikkien slottien jo
+puuttuessa ei keksitä menetettyä operationId:tä eikä luoda hakemistoa.
+Nykyinen sivuslotit-ennen-currentia-poisto ja hakemiston sync säilyvät.
+Tavallinen lukija vaatii yhä currentin. Palautusjournalien omistajakohtainen
+siivous tehdään ennen sidonnan poistoa, eikä tämän portin kohdetesti todista
+sitä tai yhteisen etenijän kytkentää.
+
 ## Checkpointien yhteinen Definition of Done
 
 Jokaisessa vaiheessa:

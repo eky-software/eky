@@ -55,7 +55,12 @@ valitun kirjoituksen keskeytykset, saman operaation jatko, aktiivisen ja
 viimeisen yrityksen valinnan tyhjennys sekä keskeneräisen työn päättymisen
 odotus valtuuden menetyksessä. Testit käyttävät todellisia tiedostotavuja,
 mutta niiden `purged`-lähtötila on fixture, ei koko fyysisen ketjun näyttö.
-Seuraavaksi tehdään omistajien loppusiivous ja yhteisen etenijän kytkentä,
+Sidontatallentimen keskeytyvä metadata-only-siivoaminen on täydennetty
+sitoutuneen tiivisteen perusteella ilman puuttuvan operaatiotunnisteen
+arvaamista. Portin ja nykyisten siivouspolkujen 92 kohdetestiä läpäisivät;
+yksi alustakohtainen testi jäi suorittamatta, ja tyypitys läpäisi.
+Tämä ei vielä todista alkuperäisten palautusjournalien siivousta.
+Seuraavaksi tehdään niiden omistajaportit ja yhteisen etenijän kytkentä,
 sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
 avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
 

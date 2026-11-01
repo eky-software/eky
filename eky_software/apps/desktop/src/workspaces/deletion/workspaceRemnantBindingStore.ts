@@ -3,6 +3,7 @@ import { createNodeCrashSafeFileSlotFileSystem, sameCrashSafeFileSlotIdentity, t
   type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { checkedDeletionAuthority, deletionDigest, invalidDeletionData } from './workspaceDeletionDataValidation.js';
+import { captureDeletionInventoryHeader } from './workspaceDeletionInventoryCodec.js';
 import { readDeletionInventoryDirectoryIdentity } from './workspaceDeletionInventoryFile.js';
 import { createWorkspaceDeletionJournalPaths } from './workspaceDeletionJournalStore.js';
 import { captureWorkspaceRemnantBinding, captureWorkspaceRemnantBindingKey, maximumWorkspaceRemnantBindingBytes,
@@ -113,21 +114,62 @@ export class WorkspaceRemnantBindingStore {
       this.assertSameValues(selected.slots, expected);
       if (mode === 'owner' && selected.slots.current === undefined &&
           (selected.slots.next !== undefined || selected.slots.backup !== undefined)) return invalidDeletionData(invalidCode);
-      if (Object.values(selected.slots).every(record => record === undefined)) {
-        const before = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, assertAuthority, this.readDirectoryIdentity);
-        if (!before.present) {
-          const fresh = await this.observe(authority);
-          const after = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, assertAuthority, this.readDirectoryIdentity);
-          if (Object.values(fresh.slots).some(record => record !== undefined) || after.present ||
-              after.ancestorPath !== before.ancestorPath || after.ancestorIdentity !== before.ancestorIdentity) {
-            return invalidDeletionData(invalidCode);
-          }
-          await selected.guard.assertExternalSelection();
-          return;
-        }
-      }
-      await this.byteStore.clearSelected(selected.guard);
+      await this.clearObservedSlots(selected);
     });
+  }
+
+  // Deletion-only resume: a committed digest identifies surviving slots without inventing a lost operation ID.
+  clearCommittedAfterPayloadsAbsent(targetValue: unknown, proof: WorkspaceRemnantBindingCleanup) {
+    return this.exclusive(async () => {
+      const target = captureDeletionInventoryHeader(targetValue);
+      const digest = deletionDigest(proof.bindingSha256, invalidCode);
+      if (proof.mode !== 'deletionPurged' || proof.expectedCurrentIdentity !== undefined || proof.expectedOwnerSlots !== undefined) {
+        return invalidDeletionData(invalidCode);
+      }
+      const check = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
+      const external = proof.assertExternalSelection.bind(proof), absent = proof.assertPayloadsAbsent.bind(proof);
+      let failed = false;
+      let firstFailure: unknown;
+      const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+      const assertAuthority = () => {
+        if (failed) throw firstFailure;
+        try { check(); } catch (error) { throw retain(error); }
+      };
+      const assertExternalSelection = async () => {
+        try {
+          assertAuthority(); await external(); assertAuthority();
+          await absent(); assertAuthority(); await external(); assertAuthority();
+        } catch (error) { throw retain(error); }
+      };
+      try {
+        const selected = await this.observe({ assertAuthority, assertExternalSelection });
+        for (const record of Object.values(selected.slots)) {
+          if (record !== undefined && (record.value.workspaceId !== target.workspaceId ||
+              record.value.lineageIdentity.profileId !== target.lineageIdentity.profileId ||
+              workspaceRemnantBindingSha256(record.value) !== digest)) return invalidDeletionData(invalidCode);
+        }
+        await this.clearObservedSlots(selected);
+        assertAuthority();
+      } catch (error) { if (failed) throw firstFailure; throw error; }
+    });
+  }
+
+  private async clearObservedSlots(selected: {
+    slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>; guard: CrashSafeByteSlotSelection;
+  }): Promise<void> {
+    const authority = { assertAuthority: selected.guard.assertAuthority, assertExternalSelection: selected.guard.assertExternalSelection };
+    if (Object.values(selected.slots).every(record => record === undefined)) {
+      const before = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, authority.assertAuthority, this.readDirectoryIdentity);
+      if (!before.present) {
+        const fresh = await this.observe(authority);
+        const after = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, authority.assertAuthority, this.readDirectoryIdentity);
+        if (Object.values(fresh.slots).some(record => record !== undefined) || after.present ||
+            after.ancestorPath !== before.ancestorPath || after.ancestorIdentity !== before.ancestorIdentity) return invalidDeletionData(invalidCode);
+        await authority.assertExternalSelection();
+        return;
+      }
+    }
+    await this.byteStore.clearSelected(selected.guard);
   }
 
   private captureBinding(value: unknown) {
