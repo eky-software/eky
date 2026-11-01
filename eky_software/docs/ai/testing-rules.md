@@ -246,7 +246,8 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   inventaarion ja poiston aloituskirjauksen julkaisu sekä jälkivertailut
   kuuluvat samaan budjettiin. Muut julkaisijatapaukset säilyttävät rajansa.
 - `workspaceDeletionPayloadExecutor.test.ts`:n koko fyysisen vaiheketjun
-  onnistumistesti, kolme `moveAck`-/`unlinkAck`-/`phaseAck`-kuittauskatkoa
+  onnistumistesti, fyysisen poiston ja rekisteri-/metadata-/terminal-vaiheen
+  yhteinen ketjutesti, kolme `moveAck`-/`unlinkAck`-/`phaseAck`-kuittauskatkoa
   sekä kaksi `before`-/`after`-journaljulkaisukatkoa saavat kukin enintään
   30 sekuntia saman rajattujen testibudjettikorjausten valtuuden nojalla.
   Valmistelu, alkuperäinen julkaisu, kolme journal-vaihesiirtoa, mahdollinen
@@ -266,6 +267,14 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   omistajaportin sulku. Tavallisen käytön, muiden testien, sovelluksen ja
   CI:n aikarajat säilyvät. Nämä tiedostokatkot eivät korvaa oikean
   prosessikatkon tai mainin valtuusketjun näyttöä.
+- `workspaceDeletionFinalization.test.ts`:n nimetyt loppuvaiheen
+  yhdistelmätestit saavat kukin 30 sekuntia saman rajatun valtuuden nojalla.
+  Valmistelu, oikeat journalin julkaisukatkot, uuden valinnan tekeminen,
+  inventaarion tekninen loppusiivous ja viimeisen journalin poisto sekä
+  säilyvien tavujen vertailu sisältyvät samaan rajaan. Alkuperäisen syyn,
+  valitun tiedostoidentiteetin ja keskeneräisen työn regressiot eivät
+  muuta sovelluksen tai CI:n aikarajoja. Tiedostokutsuissa aiheutettu katko
+  ei korvaa prosessikatkoa, main-kytkentää tai paketoitua todennusta.
 
 Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
 mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei

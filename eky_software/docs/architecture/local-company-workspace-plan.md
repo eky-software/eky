@@ -8606,6 +8606,36 @@ Neljän omistajan ja katkosten tiedostoketjut ovat rajattua näyttöä;
 mainin todellinen valtuus, cold-admission ja prosessikatko jäävät E/F:n
 ja varsinaisen kytkennän porteiksi.
 
+**Terminalin julkaisu ja journal viimeisenä:**
+`workspaceDeletionFinalization.ts` käyttää nykyistä journalin valitun
+kirjoituksen porttia, inventaarion retirement-porttia ja journalin
+`clearTerminal`-porttia. Se ei poista payloadia tai siivoa puuttuvaa
+omistajasidontaa arvaamalla. `registryPublished` julkaistaan vain
+sitoutuneen inventaarion täydellisen takaisinluvun, kaikkien payload- ja
+quarantine-juurten poissaolon, omistajajournalien ja kohdesidontojen
+poissaolon sekä täsmällisen jälkeen-rekisterin todistamisen jälkeen.
+Nykyinen metadatasiivous ja terminal käyttävät samaa rajattua
+read-only-poissaolotarkistusta.
+
+Keskeytyneet journal-slotit sovitetaan ennen inventaarion poistamista.
+Niiden sovitus tarvitsee yhä alkuperäisen inventaarion ja täyden
+poissaolotodisteen. Vain yksin oleva terminal-current sallii jo aloitetun
+inventaarion teknisen siivouksen. Valittu terminal-identiteetti pidetään
+sidottuna inventaarion poistoon asti; sen jälkeen journal-tallennin
+omistaa omien muuttuvien slottiensa tarkistukset. Rekisteri-, varaus-,
+kirjoittaja- ja metadataehdot tarkistetaan myös jokaisessa muutoksessa.
+Inventaario ja sen oma tyhjä operaatiokansio synkronoidaan pois ennen
+journalin viimeistä poistoa. Vieras lisätiedosto estää siivouksen.
+
+Kadonnut kuittaus tai sync-virhe ei muutu onnistumiseksi. Tyhjä journaltila
+ei anna uutta siivousvaltaa tai mahdollista valmistumiskuitin keksimistä.
+Ensimmäinen syy säilytetään ennen alemman tiedostokerroksen turvallista
+muunnosta, ja aloitettu työ odotetaan loppuun ennen valtuuden vapautusta.
+Vaiheen palauttama terminal-arvo on sisäinen vaihekuitti, ei vielä mainin
+`recordRemoved`-hyväksyntä. Tiedostoketjujen todennus ja sen rajat kuuluvat
+M1:n nykytilaan; main-/service-kytkentä, cold-admission sekä F:n prosessi-,
+paketti- ja PR/main-portit vaaditaan edelleen erikseen.
+
 ## Checkpointien yhteinen Definition of Done
 
 Jokaisessa vaiheessa:

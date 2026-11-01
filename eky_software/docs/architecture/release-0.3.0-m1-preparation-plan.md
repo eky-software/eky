@@ -19,8 +19,8 @@ Tilatarkistus vahvisti alla kuvatun W7.4-rajan: C:n tiedosto-/fixture-näyttö
 ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
 `resume` on liitettävä portti. D:n yhteinen fyysinen vaihe etenee nyt
 `purged`-tilaan ja erillinen rekisterivaihe julkaisee täsmällisen jälkeen-tilan;
-omistajien yhteinen loppusiivous on lisätty. Terminalin julkaisu ja
-yhteisen etenijän main-kytkentä puuttuvat.
+omistajien yhteinen loppusiivous ja terminalin julkaisu on lisätty.
+Yhteisen etenijän main-kytkentä puuttuu.
 E:n cold-admission tunnistaa vasta luonnin ja tuonnin. F:n oikea keskeytys-,
 poisto- ja pakettinäyttö tehdään näiden liitosten jälkeen.
 
@@ -35,48 +35,29 @@ live-poistossa ja kylmäpalautuksessa; C:tä ei toteuteta uudelleen eikä W7.5:n
 poistokanavia avata. Fyysistä poistoa tai kylmäjatkoa ei ole vielä kytketty mainiin;
 paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuoksi.
 
-**D:n ensimmäiset toteutuspalat 1.11.2026:** inventaariotallentimen sarjallinen
-kuluttaja, yhden luettelorivin keskeytyksen kestävä siirto ja lopullinen poisto
-on toteutettu rajattuine regressioineen samalle valintapohjalle.
-Riippumattoman katselmuksen journal-valinta- ja tarkistusjärjestysaukot
-korjattiin ennen jatkoa. Poistoalueen aiempi kohdeajo läpäisi 1 335 testiä;
-neljä alustakohtaista testiä jäi suorittamatta. Mukana olevat kuusi todellisten
-luettelo-/journal-tiedostojen ketjutestiä ja desktopin tyypitys läpäisivät.
-Niiden main-/kirjoittajavaltuus on testivartija, ei vielä tuotantokytkennän
-tai prosessikatkon näyttö. Kahden ketjutestin valmisteluvirhe korjattiin muuttamatta
-journal-tallentimen yksinomaisuutta; alkuperäinen hylkäys säilyy aineistossa.
-Yhteinen fyysinen vaihe on sidottu todelliseen journal-/rekisterivalintaan,
-muuttumattomaan luetteloon sekä nykyisiin sidontaomistajiin. Sen seitsemän
-kuittaus-/keskeytystestiä läpäisivät, mutta mainin valtuus on niissä edelleen
-testivartija. Eri roolien yhteinen fyysinen ketju on vielä todennettava;
-nykyiset rooliregressiot todistavat sen erillisiä rajoja.
-Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä.
-Rekisterivaiheen 41 kohdetestiä ja tyypitys läpäisivät. Mukana ovat
-valitun kirjoituksen keskeytykset, saman operaation jatko, aktiivisen ja
-viimeisen yrityksen valinnan tyhjennys sekä keskeneräisen työn päättymisen
-odotus valtuuden menetyksessä. Testit käyttävät todellisia tiedostotavuja,
-mutta niiden `purged`-lähtötila on fixture, ei koko fyysisen ketjun näyttö.
-Sidontatallentimen keskeytyvä metadata-only-siivoaminen on täydennetty
-sitoutuneen tiivisteen perusteella ilman puuttuvan operaatiotunnisteen
-arvaamista. Portin ja nykyisten siivouspolkujen 92 kohdetestiä läpäisivät;
-yksi alustakohtainen testi jäi suorittamatta, ja tyypitys läpäisi.
-Importin, adoption ja activationin journalien omistajaportit on lisätty
-rajaamatta tavallisen palautuksen tarkistuksia pois. Katselmuksen
-activation-vaihesiirtymäpuute toistettiin ja korjattiin ennen jatkoa.
-Niiden kohderegressiot, tyypitys ja riippumaton jälkikatselmus läpäisivät.
-Yhteinen poisto-/adoption-/tuonti-/palautusajo läpäisi 3 356 testiä;
-kahdeksan alustakohtaista testiä jäi suorittamatta. Porttien
-purged-/kirjoittajatodiste on näissä testivartija.
-Yhteinen metadatan loppusiivous on lisätty. Sen 15 oikeiden tiedostojen
-ketjutestiä läpäisivät neljälle omistajalle sekä kuittaus-, native-poisto-
-ja sync-katkoille; katselmuksen pyytämät valinta- ja säilytysregressiot
-läpäisivät. Uusin koko vaikutusalueen ajo läpäisi 3 378 testiä;
-kahdeksan alustakohtaista testiä jäi suorittamatta. Tyypitys ja riippumaton
-katselmus läpäisivät. Näissä main-/kirjoittajavaltuus on edelleen testivartija.
-Seuraavaksi tehdään terminalin julkaisu, inventaarion ja journalin
-loppujärjestys sekä etenijän main-kytkentä,
-sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
-avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
+**D:n nykyinen toteutus 1.11.2026:** sarjallinen inventaarion kulutus,
+fyysinen siirto/purge, täsmällinen jälkeen-rekisteri ja omistajien
+journalit-ennen-sidontoja-siivoaminen käyttävät nykyisiä omistajaportteja.
+Terminalin julkaisu, journal-slottien turvallinen sovitus sekä inventaario
+ensin ja journal viimeisenä -loppujärjestys on toteutettu. Katselmuksen
+terminal-identiteetin ja alkuperäisen async-valtuusvirheen puutteet
+toistettiin kolmella hylkäävällä regressiolla ja korjattiin. Samat
+regressiot ja lähdejälkikatselmus läpäisivät.
+
+Uuden loppuvaiheen koko poisto-/adoption-/tuonti-/palautusvaikutusalueen ajo
+läpäisi 3 406 testiä 119 tiedostossa; kahdeksan alustakohtaista tapausta jäi
+suorittamatta. Mukana ovat loppuvaiheen 27 regressiota ja yksi todellinen
+workspace-roolin julkaisu-/purge-/rekisteri-/metadata-/loppusiivousketju.
+Näyttöä ei lasketa yhteen aiempien sarjojen kanssa. Lopullinen tyypitys,
+lähdejälkikatselmus ja ohjeiden linkit läpäisivät.
+[Aiempien D-palojen tulokset ja rajat](release-0.3.0-integration-history.md#w74n-d-vaiheen-tiedostoketjut-1112026)
+säilyvät historiassa. Nykyisten ketjutestien main-/kirjoittajavaltuus on
+edelleen testivartija, ei oikean pääprosessin tai prosessikatkon näyttö.
+
+Seuraavaksi kytketään yhteinen etenijä mainiin ja palveluun, sitten E:n
+kylmäjatko. Eri roolien yhteinen fyysinen ketju sekä F:n prosessi-,
+paketti- ja PR/main-portit säilyvät avoimina. Käyttäjälle näkyvää
+W7.5-poistokanavaa ei ole avattu.
 
 ### Aiemmat lähtötilan checkpointit
 

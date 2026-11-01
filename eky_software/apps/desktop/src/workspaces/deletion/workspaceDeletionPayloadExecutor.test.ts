@@ -9,14 +9,17 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { deletionTestId } from './workspaceDeletionDataTestSupport.js';
+import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
 import { createWorkspaceDeletionInventoryPaths } from './workspaceDeletionInventoryStore.js';
 import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes } from './workspaceDeletionJournalCodec.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
+import { createWorkspaceDeletionMetadataCleaner } from './workspaceDeletionMetadataCleanup.js';
 import { createWorkspaceDeletionPayloadExecutor } from './workspaceDeletionPayloadExecutor.js';
 import { deriveWorkspaceDeletionPayloadPaths } from './workspaceDeletionPayloadPaths.js';
 import { createWorkspaceDeletionPublisher } from './workspaceDeletionPublication.js';
 import { workspaceDeletionPurgeFileSystem } from './workspaceDeletionPurge.js';
 import { workspaceDeletionQuarantineFileSystem } from './workspaceDeletionQuarantine.js';
+import { createWorkspaceDeletionRegistryPublisher } from './workspaceDeletionRegistryPublication.js';
 
 const physicalPhaseTimeoutMs = 30_000;
 
@@ -86,7 +89,7 @@ async function fixture(test: TestContext) {
   })[0]!;
   const run = () => { const result = command(operationId, authority); pending.push(result); return result; };
   return { root, registry, registryPath, registryBytes, workspace, other, external, published, inventoryPaths, inventoryBytes,
-    journalPaths: createWorkspaceDeletionJournalPaths(root), quarantine, purge, payload, command, run, authority, operationId, advance, advanceSpy,
+    journalPaths: createWorkspaceDeletionJournalPaths(root), quarantine, purge, payload, command, run, authority, assertWritersAbsent, operationId, advance, advanceSpy,
     revoke() { current = false; }, renew() { current = true; }, writerAppears() { writerAbsent = false; },
     async preserved() {
       expect(await readFile(join(other.workspaceRoot, 'retained'), 'utf8')).toBe('other-company-bytes');
@@ -116,6 +119,27 @@ it('advances the actual published inventory through physical purge while preserv
   expect(repeated).toEqual(result);
   expect(f.quarantine.move).toHaveBeenCalledTimes(1);
   expect(f.purge.unlink).toHaveBeenCalledTimes(5);
+});
+
+it('composes physical purge, registry publication, metadata cleanup and journal-last retirement under one authority', {
+  timeout: physicalPhaseTimeoutMs,
+}, async test => {
+  const f = await fixture(test);
+  const input = { userDataRoot: f.root, registry: f.registry, assertWritersAbsent: f.assertWritersAbsent };
+  expect((await f.run()).phase).toBe('purged');
+  expect((await createWorkspaceDeletionRegistryPublisher(input)(f.operationId, f.authority)).registryState).toBe('after');
+  expect((await createWorkspaceDeletionMetadataCleaner(input)(f.operationId, f.authority)).phase).toBe('purged');
+  expect((await createWorkspaceDeletionFinalizer(input)(f.operationId, f.authority)).phase).toBe('registryPublished');
+  expect((await new WorkspaceDeletionJournalStore(f.root).inspect(f.authority.assertCurrent)).plan.mode).toBe('absent');
+  await expect(readFile(f.inventoryPaths.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await workspaceDeletionQuarantineFileSystem.entry(f.workspace.workspaceRoot, false, f.authority.assertCurrent)).toBeNull();
+  expect(await workspaceDeletionQuarantineFileSystem.entry(f.payload.quarantinePath, false, f.authority.assertCurrent)).toBeNull();
+  const registry = (await f.registry.inspectSlots()).current!.value;
+  expect(registry.workspaces.map(row => row.workspaceId)).toEqual([TEST_SOURCE_WORKSPACE_ID]);
+  expect(registry.activeWorkspaceId).toBe(TEST_SOURCE_WORKSPACE_ID);
+  expect(f.quarantine.move).toHaveBeenCalledTimes(1); expect(f.purge.unlink).toHaveBeenCalledTimes(5);
+  expect(await readFile(join(f.other.workspaceRoot, 'retained'), 'utf8')).toBe('other-company-bytes');
+  expect(await readFile(f.external, 'utf8')).toBe('external-backup-bytes');
 });
 
 it.for(['moveAck', 'unlinkAck', 'phaseAck'] as const)('resumes from actual durable state after %s is lost', {

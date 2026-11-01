@@ -9,9 +9,9 @@ import { sameCrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { deriveWorkspaceBackupReplacementOperationsPaths } from '../replacement/workspaceBackupReplacementPaths.js';
-import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
-import { captureDeletionInventoryPayloadRecord, type WorkspaceDeletionInventoryRecord } from './workspaceDeletionInventoryCodec.js';
-import { WorkspaceDeletionInventoryStore } from './workspaceDeletionInventoryStore.js';
+import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
+import { captureDeletionInventoryHeader, captureDeletionInventoryPayloadRecord, type WorkspaceDeletionInventoryRecord } from './workspaceDeletionInventoryCodec.js';
+import { WorkspaceDeletionInventoryStore, type WorkspaceDeletionInventoryAuthority } from './workspaceDeletionInventoryStore.js';
 import { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { workspaceDeletionPayloadBindingKeys } from './workspaceDeletionPayloadBinding.js';
 import { selectWorkspaceDeletionPayload } from './workspaceDeletionPayloadSelection.js';
@@ -149,18 +149,45 @@ export function createWorkspaceDeletionMetadataCleaner(input: {
             await assertJournalsAbsent();
           });
         });
-        for (const owner of workspaceRemnantBindingOwners) {
-          for await (const row of observeWorkspaceRemnantBindingDirectory(root, owner, phaseAuthority)) {
-            if (row.kind === 'binding' && row.binding.value.workspaceId === journal.target.workspaceId) return invalidDeletionData(invalidCode);
-          }
-          await assertJournalsAbsent();
-        }
+        await assertWorkspaceDeletionMetadataAbsent(root, journal.target, {
+          assertAuthority: assertCurrent, assertExternalSelection: assertJournalsAbsent,
+        });
         await assertPurged(); await assertJournalsAbsent(); assertCurrent();
         return journal;
       } catch (error) { assertCurrent(); throw error; }
       finally { phase.revoke(); }
     } finally { running = false; }
   };
+}
+
+// A read-only terminal precondition, not authority to retire an unselected journal or binding.
+export async function assertWorkspaceDeletionMetadataAbsent(
+  root: string, targetValue: unknown, authority: WorkspaceDeletionInventoryAuthority,
+): Promise<void> {
+  const target = captureDeletionInventoryHeader(targetValue);
+  const check = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
+  const external = authority.assertExternalSelection.bind(authority);
+  const assertSelected = async () => { check(); await external(); check(); };
+  const journals = [
+    () => new WorkspaceBackupImportJournalStore({ installationRoot: root,
+      filePath: join(root, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME) }).inspectSlots(check),
+    () => new WorkspaceLegacyAdoptionJournalStore(root).inspectSlots(check),
+    () => new ProfileRestoreActivationJournalStore(deriveWorkspaceBackupReplacementOperationsPaths(root).activationJournalPath).inspectDeletionSlots(check),
+  ];
+  for (const read of journals) {
+    await assertSelected();
+    const slots = await read(); check();
+    if (Object.values(slots).some(record => record !== undefined)) return invalidDeletionData(invalidCode);
+    await assertSelected();
+  }
+  for (const owner of workspaceRemnantBindingOwners) {
+    for await (const row of observeWorkspaceRemnantBindingDirectory(root, owner, {
+      assertAuthority: check, assertExternalSelection: assertSelected,
+    })) {
+      if (row.kind === 'binding' && row.binding.value.workspaceId === target.workspaceId) return invalidDeletionData(invalidCode);
+    }
+    await assertSelected();
+  }
 }
 
 // Fixed-size owner selection; the inventory remains streamed.

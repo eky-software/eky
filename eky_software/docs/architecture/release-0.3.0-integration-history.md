@@ -5,6 +5,54 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n D-vaiheen tiedostoketjut 1.11.2026
+
+Seuraava teksti säilyttää terminal-vaihetta edeltävien toteutuspalojen
+näytön ja rajaukset. Nykyisen työn omistaa M1:n jatkamiskohta.
+
+**D:n ensimmäiset toteutuspalat 1.11.2026:** inventaariotallentimen sarjallinen
+kuluttaja, yhden luettelorivin keskeytyksen kestävä siirto ja lopullinen poisto
+on toteutettu rajattuine regressioineen samalle valintapohjalle.
+Riippumattoman katselmuksen journal-valinta- ja tarkistusjärjestysaukot
+korjattiin ennen jatkoa. Poistoalueen aiempi kohdeajo läpäisi 1 335 testiä;
+neljä alustakohtaista testiä jäi suorittamatta. Mukana olevat kuusi todellisten
+luettelo-/journal-tiedostojen ketjutestiä ja desktopin tyypitys läpäisivät.
+Niiden main-/kirjoittajavaltuus on testivartija, ei vielä tuotantokytkennän
+tai prosessikatkon näyttö. Kahden ketjutestin valmisteluvirhe korjattiin muuttamatta
+journal-tallentimen yksinomaisuutta; alkuperäinen hylkäys säilyy aineistossa.
+Yhteinen fyysinen vaihe on sidottu todelliseen journal-/rekisterivalintaan,
+muuttumattomaan luetteloon sekä nykyisiin sidontaomistajiin. Sen seitsemän
+kuittaus-/keskeytystestiä läpäisivät, mutta mainin valtuus on niissä edelleen
+testivartija. Eri roolien yhteinen fyysinen ketju on vielä todennettava;
+nykyiset rooliregressiot todistavat sen erillisiä rajoja.
+Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä.
+Rekisterivaiheen 41 kohdetestiä ja tyypitys läpäisivät. Mukana ovat
+valitun kirjoituksen keskeytykset, saman operaation jatko, aktiivisen ja
+viimeisen yrityksen valinnan tyhjennys sekä keskeneräisen työn päättymisen
+odotus valtuuden menetyksessä. Testit käyttävät todellisia tiedostotavuja,
+mutta niiden `purged`-lähtötila on fixture, ei koko fyysisen ketjun näyttö.
+Sidontatallentimen keskeytyvä metadata-only-siivoaminen on täydennetty
+sitoutuneen tiivisteen perusteella ilman puuttuvan operaatiotunnisteen
+arvaamista. Portin ja nykyisten siivouspolkujen 92 kohdetestiä läpäisivät;
+yksi alustakohtainen testi jäi suorittamatta, ja tyypitys läpäisi.
+Importin, adoption ja activationin journalien omistajaportit on lisätty
+rajaamatta tavallisen palautuksen tarkistuksia pois. Katselmuksen
+activation-vaihesiirtymäpuute toistettiin ja korjattiin ennen jatkoa.
+Niiden kohderegressiot, tyypitys ja riippumaton jälkikatselmus läpäisivät.
+Yhteinen poisto-/adoption-/tuonti-/palautusajo läpäisi 3 356 testiä;
+kahdeksan alustakohtaista testiä jäi suorittamatta. Porttien
+purged-/kirjoittajatodiste on näissä testivartija.
+Yhteinen metadatan loppusiivous on lisätty. Sen 15 oikeiden tiedostojen
+ketjutestiä läpäisivät neljälle omistajalle sekä kuittaus-, native-poisto-
+ja sync-katkoille; katselmuksen pyytämät valinta- ja säilytysregressiot
+läpäisivät. Uusin koko vaikutusalueen ajo läpäisi 3 378 testiä;
+kahdeksan alustakohtaista testiä jäi suorittamatta. Tyypitys ja riippumaton
+katselmus läpäisivät. Näissä main-/kirjoittajavaltuus on edelleen testivartija.
+Seuraavaksi tehdään terminalin julkaisu, inventaarion ja journalin
+loppujärjestys sekä etenijän main-kytkentä,
+sitten E:n kylmäjatko. F:n prosessi-, paketti- ja PR/main-portit säilyvät
+avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
+
 ## W7.4:n hyväksytyn lähtötilan yhdistäminen 1.11.2026
 
 Aiempi W7.4:n valmistelu- ja inventaariotyö tallennettiin paikallisesti
