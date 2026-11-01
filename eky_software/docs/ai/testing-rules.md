@@ -257,13 +257,14 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   Ensimmäinen viiden sekunnin hylkäys säilytetään; mittaus tai budjettimuutos
   ei yksin todista aikaisempaa viivettä korjatuksi tai koko W7.4:ää hyväksytyksi.
 
-- `workspaceDeletionMetadataCleanup.test.ts`:n 15 nimettyä yhdistelmätestiä
+- `workspaceDeletionMetadataCleanup.test.ts`:n 17 nimettyä yhdistelmätestiä
   saavat kukin 30 sekuntia saman rajatun testibudjettivaltuuden perusteella.
   Budjettiin kuuluvat todellisten journalien, rekisterin ja sitoutuneen
   inventaarion valmistelu, journal-ennen-sidontaa-ketju, katkenneen siivouksen
   uusi valinta ja säilyvien tavujen vertailu. Mukana ovat neljä omistajaa,
   kuittaus-/native-poisto-/sync-katkot, muuttunut sidonta, vieras tai
-  inventaarioon sitomaton metadata, palannut payload sekä keskeneräisen
+  inventaarioon sitomaton metadata, myöhemmän journalin ristiriidan
+  hylkäys ennen ensimmäistä siivousta, palannut payload sekä keskeneräisen
   omistajaportin sulku. Tavallisen käytön, muiden testien, sovelluksen ja
   CI:n aikarajat säilyvät. Nämä tiedostokatkot eivät korvaa oikean
   prosessikatkon tai mainin valtuusketjun näyttöä.

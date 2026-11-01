@@ -5,7 +5,8 @@ import { dirname, join } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
 import { expect, it, vi, type TestContext } from 'vitest';
 import { ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
-import { WorkspaceLegacyAdoptionJournalStore, createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { WorkspaceLegacyAdoptionJournalStore, createWorkspaceLegacyAdoptionJournalPaths,
+  serializeWorkspaceLegacyAdoptionJournal } from '../adoption/workspaceLegacyAdoptionJournal.js';
 import { createAdoptionJournal } from '../adoption/workspaceLegacyAdoptionTestSupport.js';
 import { WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImportJournalStore.js';
 import { serializeWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalSerializer.js';
@@ -35,7 +36,8 @@ import { WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js'
 
 type FixtureOwner = 'workspaceImport' | 'workspaceLegacyAdoption' | 'workspaceReplacement' | 'workspaceActivationMigration';
 
-async function fixture(test: TestContext, owner: FixtureOwner = 'workspaceImport') {
+async function fixture(test: TestContext, owner: FixtureOwner = 'workspaceImport',
+  secondOwner?: 'workspaceLegacyAdoption' | 'workspaceReplacement') {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-metadata-')); await chmod(root, 0o700);
   let active = true; const jobs: Promise<unknown>[] = [], releases: (() => void)[] = [];
   const first = new Error('SYNTHETIC_METADATA_OWNER_LOST');
@@ -70,9 +72,26 @@ async function fixture(test: TestContext, owner: FixtureOwner = 'workspaceImport
     captureDeletionInventoryPayloadRecord({ role: 'workspace', ownerOperationId: null, generationId: null, member: null,
       rootIdentity: await identity(workspace.workspaceRoot, assertCurrent), parentIdentity: await identity(workspace.workspacesRoot, assertCurrent), bindingSha256: null }),
   ];
+  const secondBinding = secondOwner === undefined ? undefined : captureWorkspaceRemnantBinding({
+    ...binding, owner: secondOwner, operationId: id(205),
+  });
+  const secondRoot = secondBinding === undefined ? undefined : secondOwner === 'workspaceReplacement'
+    ? deriveWorkspaceReplacementRemnantRoot(root, target.workspaceId, secondBinding.operationId, 'activationFailed').rootPath
+    : deriveWorkspaceBackupImportPaths(root, validateWorkspaceBackupImportOperationId(secondBinding.operationId), target.workspaceId).candidateRoot;
+  if (secondBinding !== undefined && secondRoot !== undefined) {
+    await new WorkspaceRemnantBindingStore(root, workspaceRemnantBindingKey(secondBinding)).publish(secondBinding, external);
+    await mkdir(secondRoot, { recursive: true, mode: 0o700 });
+    rows.unshift(captureDeletionInventoryPayloadRecord({
+      role: secondOwner === 'workspaceReplacement' ? 'activationFailed' : 'adoptionCandidate',
+      ownerOperationId: secondBinding.operationId, generationId: null, member: null,
+      rootIdentity: await identity(secondRoot, assertCurrent), parentIdentity: await identity(dirname(secondRoot), assertCurrent),
+      bindingSha256: workspaceRemnantBindingSha256(secondBinding),
+    }));
+  }
   const inventory = await new WorkspaceDeletionInventoryStore(root, header.operationId).publish(header, (async function* () { yield* rows; })(), external);
   // Purged-state fixture: the separate physical executor must prove the actual moves and payload removal.
   await rmdir(payloadRoot); await rmdir(workspace.workspaceRoot);
+  if (secondRoot !== undefined) await rmdir(secondRoot);
   const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
   const journal = captureWorkspaceDeletionJournal({ ...deletionTestJournal(), ...inventory,
     registryBeforeSha256: digest(await readFile(registryPath)), registryAfterSha256: digest(serializeWorkspaceRegistry(after)),
@@ -113,7 +132,7 @@ async function fixture(test: TestContext, owner: FixtureOwner = 'workspaceImport
   const inventoryPath = createWorkspaceDeletionInventoryPaths(root, header.operationId).currentPath, inventoryBytes = await readFile(inventoryPath);
   const bindingPath = createWorkspaceRemnantBindingPaths(root, workspaceRemnantBindingKey(binding)).currentPath, bindingBytes = await readFile(bindingPath);
   const cleaner = createWorkspaceDeletionMetadataCleaner({ userDataRoot: root, registry, async assertWritersAbsent() { assertCurrent(); } });
-  return { root, target, paths, binding, bindingStore, bindingPath, bindingBytes, importStore, importPath, importValue, ownerJournalPath, journalPath, inventoryPath, authority, first, releases,
+  return { root, target, paths, binding, secondBinding, bindingStore, bindingPath, bindingBytes, importStore, importPath, importValue, ownerJournalPath, journalPath, inventoryPath, authority, first, releases,
     revoke() { active = false; },
     run() { const result = cleaner(header.operationId, authority); jobs.push(result); return result; },
     async preserved() {
@@ -179,6 +198,43 @@ it('does not clear a shared journal belonging to another operation or retire the
   expect(clear).not.toHaveBeenCalled(); expect(await readFile(f.importPath)).toEqual(Buffer.from(foreign));
   expect(await readFile(f.bindingPath)).toEqual(f.bindingBytes); await f.preserved();
 });
+
+it.for(['workspaceLegacyAdoption', 'workspaceReplacement'] as const)(
+  'rejects an invalid %s slot pair before retiring any earlier journal', { timeout: 30_000 }, async (owner, test) => {
+    const f = await fixture(test, 'workspaceImport', owner), binding = f.secondBinding!;
+    const path = owner === 'workspaceLegacyAdoption' ? createWorkspaceLegacyAdoptionJournalPaths(f.root).currentPath
+      : deriveWorkspaceBackupReplacementOperationsPaths(f.root).activationJournalPath;
+    const values = owner === 'workspaceLegacyAdoption'
+      ? [serializeWorkspaceLegacyAdoptionJournal({ ...createAdoptionJournal('candidatePrepared'),
+        operationId: binding.operationId, workspaceId: binding.workspaceId }),
+      serializeWorkspaceLegacyAdoptionJournal({ ...createAdoptionJournal('prepared'),
+        operationId: binding.operationId, workspaceId: binding.workspaceId })]
+      : [Buffer.from(JSON.stringify({ formatVersion: 1, operationId: binding.operationId, phase: 'accepted', revision: 3,
+        hadActiveDatabase: true, hadActiveDocuments: true }) + '\n'),
+      Buffer.from(JSON.stringify({ formatVersion: 1, operationId: binding.operationId, phase: 'prepared', revision: 4,
+        hadActiveDatabase: true, hadActiveDocuments: true }) + '\n')];
+    await writeFile(`${path}.backup`, values[0]!, { mode: 0o600, flag: 'wx' });
+    await writeFile(path, values[1]!, { mode: 0o600, flag: 'wx' });
+    const importBytes = await readFile(f.importPath);
+    const bindingPath = createWorkspaceRemnantBindingPaths(f.root, workspaceRemnantBindingKey(binding)).currentPath;
+    const bindingBytes = await readFile(bindingPath);
+    const clear = vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'clearAfterDeletionPurged');
+    const clearAdoption = vi.spyOn(WorkspaceLegacyAdoptionJournalStore.prototype, 'clearAfterDeletionPurged');
+    const clearActivation = vi.spyOn(ProfileRestoreActivationJournalStore.prototype, 'clearAfterDeletionPurged');
+    const clearBinding = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'clearCommittedAfterPayloadsAbsent');
+    await expect(f.run()).rejects.toThrow(owner === 'workspaceLegacyAdoption'
+      ? 'WORKSPACE_ADOPTION_INVALID' : 'PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(clear).not.toHaveBeenCalled();
+    expect(clearAdoption).not.toHaveBeenCalled(); expect(clearActivation).not.toHaveBeenCalled();
+    expect(clearBinding).not.toHaveBeenCalled();
+    expect(await readFile(f.importPath)).toEqual(importBytes);
+    expect(await readFile(f.bindingPath)).toEqual(f.bindingBytes);
+    expect(await readFile(bindingPath)).toEqual(bindingBytes);
+    expect(await readFile(`${path}.backup`)).toEqual(Buffer.from(values[0]!));
+    expect(await readFile(path)).toEqual(Buffer.from(values[1]!));
+    await f.preserved();
+  },
+);
 
 it.for(['identity', 'newSide'] as const)('retains all journal bytes after a late binding %s change', { timeout: 30_000 }, async (change, test) => {
   const f = await fixture(test), original = await readFile(f.importPath), clear = WorkspaceBackupImportJournalStore.prototype.clearAfterDeletionPurged;

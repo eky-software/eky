@@ -1,7 +1,7 @@
 import { join } from 'node:path';
-import { ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
-import { WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
-import { WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImportJournalStore.js';
+import { captureProfileRestoreActivationDeletionSlots, ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
+import { captureWorkspaceLegacyAdoptionDeletionSlots, WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { captureWorkspaceBackupImportDeletionSlots, WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImportJournalStore.js';
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../import/workspaceBackupImportJournalPaths.js';
 import type { WorkspaceDeletionContinuationAuthority } from '../management/workspaceManagementService.js';
 import type { CrashSafeByteSlotSelection, ObservedRecoveryAuthority } from '../persistence/crashSafeByteSlotStore.js';
@@ -84,14 +84,17 @@ export function createWorkspaceDeletionMetadataCleaner(input: {
           journalContext(await importJournal.inspectSlots(assertCurrent), () => importJournal.inspectSlots(assertCurrent),
             binding => binding.owner === 'workspaceImport',
             (value, binding) => binding.owner === 'workspaceImport' && value.operationId === binding.operationId && value.workspaceId === binding.workspaceId,
+            captureWorkspaceBackupImportDeletionSlots,
             importJournal.clearAfterDeletionPurged.bind(importJournal)),
           journalContext(await adoptionJournal.inspectSlots(assertCurrent), () => adoptionJournal.inspectSlots(assertCurrent),
             binding => binding.owner === 'workspaceLegacyAdoption',
             (value, binding) => binding.owner === 'workspaceLegacyAdoption' && value.operationId === binding.operationId && value.workspaceId === binding.workspaceId,
+            captureWorkspaceLegacyAdoptionDeletionSlots,
             adoptionJournal.clearAfterDeletionPurged.bind(adoptionJournal)),
           journalContext(await activationJournal.inspectDeletionSlots(assertCurrent), () => activationJournal.inspectDeletionSlots(assertCurrent),
             binding => binding.owner === 'workspaceReplacement' || binding.owner === 'workspaceActivationMigration',
             (value, binding) => (binding.owner === 'workspaceReplacement' || binding.owner === 'workspaceActivationMigration') && value.operationId === binding.operationId,
+            captureProfileRestoreActivationDeletionSlots,
             activationJournal.clearAfterDeletionPurged.bind(activationJournal)),
         ];
         const assertJournalsSelected = async (changing?: (typeof contexts)[number]) => {
@@ -122,7 +125,7 @@ export function createWorkspaceDeletionMetadataCleaner(input: {
           });
           await assertJournalsSelected();
         });
-        if (contexts.some(context => !context.admitted())) return invalidDeletionData(invalidCode);
+        for (const context of contexts) context.assertAdmitted();
         for (const context of contexts) {
           let active = true;
           const assertRetirementCurrent = () => { if (!active) return invalidDeletionData(invalidCode); assertCurrent(); };
@@ -196,24 +199,31 @@ export async function assertWorkspaceDeletionMetadataAbsent(
 function journalContext<T>(initial: ReadOnlyJournalSlots<T>, read: () => Promise<ReadOnlyJournalSlots<T>>,
   accepts: (binding: WorkspaceRemnantBindingV1) => boolean,
   matches: (value: Readonly<T>, binding: WorkspaceRemnantBindingV1) => boolean,
+  validate: (binding: unknown, selection: Pick<CrashSafeByteSlotSelection, 'expectedSlots' | 'expectedIdentities'>) => unknown,
   clear: (binding: unknown, authority: RetirementAuthority) => Promise<void>) {
   let slots = initial;
   let binding: WorkspaceRemnantBindingV1 | undefined;
   let assertBinding: (() => Promise<void>) | undefined;
   const present = () => Object.values(slots).some(record => record !== undefined);
+  const selectedSlots = () => ({
+    expectedSlots: { current: slots.current?.bytes, next: slots.next?.bytes, backup: slots.backup?.bytes },
+    expectedIdentities: { current: slots.current?.identity, next: slots.next?.identity, backup: slots.backup?.identity },
+  });
   return {
     present,
     matches(value: WorkspaceRemnantBindingV1) { return accepts(value) && Object.values(slots).every(record => record === undefined || matches(record.value, value)); },
     bind(value: WorkspaceRemnantBindingV1, check: () => Promise<void>) { binding ??= value; assertBinding ??= check; },
-    admitted() { return !present() || binding !== undefined; },
+    assertAdmitted() {
+      if (!present() && binding === undefined) return;
+      if (binding === undefined) return invalidDeletionData(invalidCode);
+      validate(binding, selectedSlots());
+    },
     async assertSelected() { assertSameSlots(slots, await read()); },
     async retire(authority: Omit<RetirementAuthority, 'expectedSlots' | 'expectedIdentities'>) {
       if (!present() && binding === undefined) return;
       if (binding === undefined || assertBinding === undefined) return invalidDeletionData(invalidCode);
       const selectedBinding = assertBinding;
-      await clear(binding, { ...authority,
-        expectedSlots: { current: slots.current?.bytes, next: slots.next?.bytes, backup: slots.backup?.bytes },
-        expectedIdentities: { current: slots.current?.identity, next: slots.next?.identity, backup: slots.backup?.identity },
+      await clear(binding, { ...authority, ...selectedSlots(),
         async assertExternalSelection() { await authority.assertExternalSelection(); await selectedBinding(); authority.assertAuthority(); },
       });
       authority.assertAuthority();

@@ -8636,8 +8636,11 @@ admission-estona eikä saa uutta poistoroolia workspaceId:n perusteella.
 valitun `purged`-journalin ja täsmällisen jälkeen-rekisterin alla. Koko
 sitoutunut luettelo ja kaikkien payload-/quarantine-juurten poissaolo
 todistetaan muutoksissa. Kolmen kiinteän journalinomistajan sidonnat
-varmennetaan ennen ensimmäistä journalimuutosta; vieras tai luetteloon
-sitomaton journal estää jatkon. Journalit siivotaan ja niiden poissaolo
+ja kaikkien valittujen journalien sallitut slottisuhteet varmennetaan
+alkuperäisten omistajien yhteisillä lukusäännöillä ennen ensimmäistä
+journalimuutosta. Myöhemmän omistajan ristiriita säilyttää myös aiemmat
+journalit ja sidonnat; vieras tai luetteloon sitomaton journal estää jatkon.
+Journalit siivotaan ja niiden poissaolo
 varmennetaan ennen ensimmäistä sidontapoistoa. Sidonnan valitut tavut ja
 identiteetit säilyvät omistajan muutoksen yli. Lukutodiste käyttää samaa
 sitoutuneen siivouksen validointia kuin kirjoitusportti, ei tavallisen
