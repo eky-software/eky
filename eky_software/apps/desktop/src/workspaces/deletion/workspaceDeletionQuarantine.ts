@@ -1,25 +1,16 @@
 import { open, rename } from 'node:fs/promises';
 import { createWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
-import { captureDeletionInventoryPayloadRecord, type WorkspaceDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
+import { captureDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
 import { readDeletionInventoryDirectoryIdentity } from './workspaceDeletionInventoryFile.js';
-import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
-import { deriveWorkspaceDeletionPayloadPaths } from './workspaceDeletionPayloadPaths.js';
-import { readWorkspaceLegacyEntryIdentity, readWorkspaceLegacyRuntimeIdentity,
-  type WorkspaceLegacyEntryIdentity } from './workspaceLegacyRemnantReads.js';
+import { captureWorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
+import { selectWorkspaceDeletionPayload, type WorkspaceDeletionPayloadAuthority,
+  type WorkspaceDeletionPayloadReads } from './workspaceDeletionPayloadSelection.js';
+import { readWorkspaceLegacyEntryIdentity, readWorkspaceLegacyRuntimeIdentity } from './workspaceLegacyRemnantReads.js';
 
 const invalidCode = 'WORKSPACE_DELETE_JOURNAL_CONFLICT';
 
-export interface WorkspaceDeletionQuarantineAuthority {
-  assertAuthority(): void;
-  // The executor proves published journal selection, inventory membership, registry and writer absence.
-  // This must remain valid after a move; C's unchanged-source census is not this authority.
-  assertSelected(journal: WorkspaceDeletionJournalV1, record: WorkspaceDeletionInventoryPayloadRecord): Promise<void>;
-}
-
-export interface WorkspaceDeletionQuarantineFileSystem {
-  ancestor(path: string, legacyRuntime: boolean, assertCurrent: () => void): Promise<string | null>;
-  entry(path: string, legacyEntry: boolean, assertCurrent: () => void): Promise<WorkspaceLegacyEntryIdentity | null>;
+export interface WorkspaceDeletionQuarantineFileSystem extends WorkspaceDeletionPayloadReads {
   move(source: string, destination: string): Promise<void>;
   syncParent(path: string, identity: string, assertCurrent: () => void): Promise<void>;
 }
@@ -46,7 +37,7 @@ export const workspaceDeletionQuarantineFileSystem = Object.freeze<WorkspaceDele
 
 // One row only, under the executor's exclusive reservation. It never publishes a phase or removes bytes.
 export async function quarantineWorkspaceDeletionPayload(
-  root: string, journalValue: unknown, recordValue: unknown, authority: WorkspaceDeletionQuarantineAuthority,
+  root: string, journalValue: unknown, recordValue: unknown, authority: WorkspaceDeletionPayloadAuthority,
   fileSystem: WorkspaceDeletionQuarantineFileSystem = workspaceDeletionQuarantineFileSystem,
 ): Promise<'moved' | 'alreadyMoved'> {
   const journal = captureWorkspaceDeletionJournal(journalValue);
@@ -54,63 +45,11 @@ export async function quarantineWorkspaceDeletionPayload(
   if (journal.phase !== 'authorized') return invalidDeletionData(invalidCode);
   const guard = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
   const external = async () => { guard(); await authority.assertSelected(journal, record); guard(); };
-  const candidates = deriveWorkspaceDeletionPayloadPaths(root, journal.target, record);
-  const observe = async () => {
-    const observations = [];
-    for (const paths of candidates) {
-      const ancestors: (string | null)[] = [];
-      let missing = false;
-      for (const path of paths.ancestors) {
-        guard();
-        const value = await fileSystem.ancestor(path, paths.legacyEntry && path === paths.parentPath, guard);
-        guard();
-        if (value === null) { if (path === root) return invalidDeletionData(invalidCode); missing = true; }
-        else if (missing) return invalidDeletionData(invalidCode);
-        ancestors.push(value);
-      }
-      guard();
-      const source = await fileSystem.entry(paths.sourcePath, paths.legacyEntry, guard);
-      guard();
-      const quarantine = await fileSystem.entry(paths.quarantinePath, paths.legacyEntry, guard);
-      guard();
-      for (let index = paths.ancestors.length - 1; index >= 0; index--) {
-        const path = paths.ancestors[index]!;
-        const value = await fileSystem.ancestor(path, paths.legacyEntry && path === paths.parentPath, guard);
-        guard();
-        if (value !== ancestors[index]) return invalidDeletionData(invalidCode);
-      }
-      if (source !== null && quarantine !== null) return invalidDeletionData(invalidCode);
-      const entry = source ?? quarantine;
-      if (entry !== null && (missing || entry.identity !== record.rootIdentity || ancestors.at(-1) !== record.parentIdentity)) {
-        return invalidDeletionData(invalidCode);
-      }
-      observations.push({ paths, ancestors, source, quarantine });
-    }
-    if (observations.filter(row => row.source !== null || row.quarantine !== null).length !== 1) {
-      return invalidDeletionData(invalidCode);
-    }
-    return observations;
-  };
   await external();
-  const baseline = await observe();
-  const selectedIndex = baseline.findIndex(row => row.source !== null || row.quarantine !== null);
-  const selected = baseline[selectedIndex]!;
-  const original = selected.source ?? selected.quarantine!;
-  const assertState = async (moved: boolean) => {
-    const fresh = await observe();
-    for (let index = 0; index < baseline.length; index++) {
-      const before = baseline[index]!, after = fresh[index]!;
-      if (before.ancestors.some((value, position) => value !== after.ancestors[position])) return invalidDeletionData(invalidCode);
-      if (index === selectedIndex) {
-        const entry = moved ? after.quarantine : after.source;
-        const absent = moved ? after.source : after.quarantine;
-        if (absent !== null || entry?.identity !== original.identity || entry.kind !== original.kind) return invalidDeletionData(invalidCode);
-      } else if (after.source !== null || after.quarantine !== null) return invalidDeletionData(invalidCode);
-    }
-  };
-  const alreadyMoved = selected.quarantine !== null;
+  const selected = await selectWorkspaceDeletionPayload(root, journal, record, fileSystem, guard, false);
+  const alreadyMoved = selected.state === 'quarantine';
   await external();
-  await assertState(alreadyMoved);
+  await selected.assertState(selected.state);
   await external();
   guard();
   if (!alreadyMoved) {
@@ -119,13 +58,13 @@ export async function quarantineWorkspaceDeletionPayload(
     guard();
   }
   await external();
-  await assertState(true);
+  await selected.assertState('quarantine');
   await external();
   guard();
   await fileSystem.syncParent(selected.paths.parentPath, record.parentIdentity, guard);
   guard();
   await external();
-  await assertState(true);
+  await selected.assertState('quarantine');
   await external();
   guard();
   return alreadyMoved ? 'alreadyMoved' : 'moved';

@@ -32,17 +32,19 @@ live-poistossa ja kylmäpalautuksessa; C:tä ei toteuteta uudelleen eikä W7.5:n
 poistokanavia avata. Fyysistä poistoa tai kylmäjatkoa ei ole vielä kytketty;
 paketointia, pushia tai uutta PR/CI-kierrosta ei tehty tämän yhdistämisen vuoksi.
 
-**D:n ensimmäinen toteutuspala 1.11.2026:** inventaariotallentimen sarjallinen
-kuluttaja ja yhden luettelorivin keskeytyksen kestävä siirtopala on toteutettu
-rajattuine regressioineen. Riippumattomassa katselmuksessa löytynyt tuoreen
-journal-valinnan tarkistusaukko korjattiin ennen jatkoa. Poistoalueen
-kohdeajo läpäisi 1 009 testiä; neljä alustakohtaista testiä jäi suorittamatta.
-Erilliset neljä todellisten luettelo-/journal-tiedostojen ketjutestiä ja
-desktopin tyypitys läpäisivät. Niiden main-/kirjoittajavaltuus on testivartija,
-ei vielä tuotantokytkennän tai prosessikatkon näyttö.
+**D:n ensimmäiset toteutuspalat 1.11.2026:** inventaariotallentimen sarjallinen
+kuluttaja, yhden luettelorivin keskeytyksen kestävä siirto ja lopullinen poisto
+on toteutettu rajattuine regressioineen samalle valintapohjalle.
+Riippumattoman katselmuksen journal-valinta- ja tarkistusjärjestysaukot
+korjattiin ennen jatkoa. Poistoalueen uusin kohdeajo läpäisi 1 054 testiä;
+neljä alustakohtaista testiä jäi suorittamatta. Mukana olevat kuusi todellisten
+luettelo-/journal-tiedostojen ketjutestiä ja desktopin tyypitys läpäisivät.
+Niiden main-/kirjoittajavaltuus on testivartija, ei vielä tuotantokytkennän
+tai prosessikatkon näyttö. Kahden ketjutestin valmisteluvirhe korjattiin muuttamatta
+journal-tallentimen yksinomaisuutta; alkuperäinen hylkäys säilyy aineistossa.
 Tämä ei vielä ole D:n valmis etenijä tai main-kytkentä. Seuraavaksi sidotaan
-nämä palat oikeaan journal-/rekisterivaltuuteen ja toteutetaan lopullinen
-poisto sekä E:n kylmäjatko; F:n prosessi-, paketti- ja PR/main-portit säilyvät
+siirto ja poisto oikeaan journal-/rekisterivaltuuteen ja yhteiseen vaiheketjuun,
+sitten E:n kylmäjatkoon. F:n prosessi-, paketti- ja PR/main-portit säilyvät
 avoimina. Käyttäjälle näkyvää poistokanavaa ei ole avattu.
 
 ### Aiemmat lähtötilan checkpointit

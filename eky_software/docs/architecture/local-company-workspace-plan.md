@@ -8286,6 +8286,28 @@ Tämä pala ei julkaise seuraavaa journal-vaihetta, poista sisältöä tai muuta
 rekisteriä. Koko etenijän liitos ja keskeytyksen prosessitodistus ovat erilliset
 pakolliset portit; W7.5:n kanavat pysyvät suljettuina.
 
+**D:n yhden juuren lopullinen poisto:** `purgeWorkspaceDeletionPayload`
+hyväksyy vain julkaistun `purgeAuthorized`-vaiheen erikseen todistetun
+valtuuden. Se käyttää siirron kanssa samaa suljettua polku- ja
+identiteettivalintaa. Koko jäljellä olevan juuren rakenteellinen esiluku
+edeltää sen suorituskerran ensimmäistä tiedostopoistoa; tietokantaa ei avata.
+Hakemistojen nimet luetaan rajattuina sivuina, eivät koko puun muistitaulukkona.
+Yksittäinen poisto tarkistaa kohteen ja vanhemmat alhaalta ylöspäin,
+alkuperäisen juurivalinnan sekä tuoreen ulkoisen valtuuden ennen muutosta.
+Tiedoston metadata säilyy muuttumattomana; hakemiston identiteetti säilyy,
+mutta omien lapsipoistojen muuttamia aikaleimoja ei vaadita samoiksi.
+
+Poisto käyttää vain `unlink`- ja tyhjän hakemiston `rmdir`-kutsuja.
+Tuntematonta lisätiedostoa ei poisteta rekursiivisella varamenettelyllä.
+Ennakolta valtuutetun juuren poissaolo voidaan hyväksyä uudessa jatkossa,
+mutta valitun merkinnän katoaminen saman kierroksen aikana hylätään.
+Myös jo poistuneen juuren jatko tarvitsee parent-syncin ja tuoreen
+poissaolo-/valtuustarkistuksen. Aloitetut luvut, poistot ja sulut odotetaan;
+alkuperäinen virhe säilyy ennen myöhempää sulkuvirhettä.
+Rajatut ketjutestit käyttävät todellisia journal-/luettelotavuja ja
+tiedostopoistoja. Niiden vaihesiirrot ja main-/kirjoittajavaltuus ovat
+testivalmistelua, eivät vielä yhteisen etenijän tai prosessikatkon näyttöä.
+
 ##### W7.4:n cold-admission ja havaittava tulos
 
 Nykyinen startup tunnistaa vain creation/import-admissionin. Lisää siihen

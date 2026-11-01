@@ -12,6 +12,7 @@ import { captureWorkspaceDeletionJournal, serializeWorkspaceDeletionJournal } fr
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { deriveWorkspaceDeletionPayloadPaths } from './workspaceDeletionPayloadPaths.js';
 import { quarantineWorkspaceDeletionPayload, workspaceDeletionQuarantineFileSystem as nodeFileSystem } from './workspaceDeletionQuarantine.js';
+import { purgeWorkspaceDeletionPayload, workspaceDeletionPurgeFileSystem } from './workspaceDeletionPurge.js';
 import { deriveWorkspaceInspectionRemnantParents } from './workspaceInspectionRemnantPaths.js';
 
 async function fixture(context: TestContext) {
@@ -55,14 +56,16 @@ async function fixture(context: TestContext) {
   async function* records() { yield remnantRecord; yield evidenceRecord; yield workspaceRecord; }
   const inventory = await f.store().publish(header, records(), publicationAuthority);
   const journalPaths = createWorkspaceDeletionJournalPaths(f.root);
-  const journal = captureWorkspaceDeletionJournal({ ...deletionTestJournal(), ...inventory });
+  let journal = captureWorkspaceDeletionJournal({ ...deletionTestJournal(), ...inventory });
   const journalStore = new WorkspaceDeletionJournalStore(f.root);
   await journalStore.publish(journal, { ...publicationAuthority, slots: (await journalStore.inspect(assertAuthority)).slots });
-  const baseline = await journalStore.inspect(assertAuthority);
+  let baseline = await journalStore.inspect(assertAuthority);
   expect(baseline.plan).toMatchObject({ mode: 'published', selected: journal });
   const inventoryBytes = await readFile(f.paths.currentPath);
-  const journalBytes = await readFile(journalPaths.currentPath);
+  let journalBytes = await readFile(journalPaths.currentPath);
   const fileSystem = { ...nodeFileSystem, move: vi.fn(nodeFileSystem.move), syncParent: vi.fn(nodeFileSystem.syncParent) };
+  const purgeFileSystem = { ...workspaceDeletionPurgeFileSystem, unlink: vi.fn(workspaceDeletionPurgeFileSystem.unlink),
+    rmdir: vi.fn(workspaceDeletionPurgeFileSystem.rmdir), syncParent: vi.fn(workspaceDeletionPurgeFileSystem.syncParent) };
   const delivered: string[] = [];
   const outcomes: string[] = [];
   const observations = { journalChecks: 0 };
@@ -71,7 +74,7 @@ async function fixture(context: TestContext) {
     assertAuthority();
     const current = await reader.inspect(assertAuthority);
     observations.journalChecks++;
-    if (current.plan.mode !== 'published' || current.plan.selected.phase !== 'authorized' ||
+    if (current.plan.mode !== 'published' || current.plan.selected.phase !== journal.phase ||
         !serializeWorkspaceDeletionJournal(current.plan.selected).equals(journalBytes)) selectionLost();
     for (const slot of ['current', 'backup', 'next'] as const) {
       const expected = baseline.slots[slot], actual = current.slots[slot];
@@ -82,7 +85,7 @@ async function fixture(context: TestContext) {
     }
     assertAuthority();
   }
-  async function run(afterPayload?: () => Promise<void>) {
+  async function run(afterPayload?: () => Promise<void>, purge = false) {
     delivered.length = 0;
     outcomes.length = 0;
     // A new invocation opens new stores, but must not adopt changed journal selection or inventory.
@@ -94,17 +97,36 @@ async function fixture(context: TestContext) {
       if (row.role === 'inspectionEvidence') { outcomes.push('evidence'); return; }
       activeRow = row;
       try {
-        outcomes.push(await quarantineWorkspaceDeletionPayload(f.root, journal, row, {
+        const authority = {
           assertAuthority,
-          async assertSelected(selectedJournal, selectedRow) {
+          async assertSelected(selectedJournal: typeof journal, selectedRow: typeof row) {
             await assertExternalSelection();
             if (activeRow === undefined || !deletionInventoryLine(activeRow).equals(deletionInventoryLine(selectedRow)) ||
                 !serializeWorkspaceDeletionJournal(selectedJournal).equals(journalBytes)) selectionLost();
           },
-        }, fileSystem));
+        };
+        outcomes.push(purge
+          ? await purgeWorkspaceDeletionPayload(f.root, journal, row, authority, purgeFileSystem)
+          : await quarantineWorkspaceDeletionPayload(f.root, journal, row, authority, fileSystem));
         await afterPayload?.();
       } finally { activeRow = undefined; }
     });
+  }
+  async function authorizePurge() {
+    // Test-only phase orchestration: the eventual production executor must prove these phase preconditions itself.
+    await assertPreserved(true);
+    expect(await identity(remnant.quarantinePath)).toBe(remnantRecord.rootIdentity);
+    for (const phase of ['quarantined', 'purgeAuthorized'] as const) {
+      await journalStore.advance(captureWorkspaceDeletionJournal({ ...journal, phase }), {
+        ...publicationAuthority, slots: baseline.slots,
+      });
+      baseline = await journalStore.inspect(assertAuthority);
+      if (baseline.plan.mode !== 'published') selectionLost();
+      journal = captureWorkspaceDeletionJournal({ ...journal, phase });
+      expect(baseline.plan).toMatchObject({ selected: journal });
+      journalBytes = await readFile(journalPaths.currentPath);
+      await assertJournal(journalStore);
+    }
   }
   async function assertPreserved(workspaceMoved: boolean) {
     expect(await readFile(join(other.sourcePath, 'payload.txt'), 'utf8')).toBe('other-company');
@@ -115,8 +137,10 @@ async function fixture(context: TestContext) {
       .toBe('selected-payload');
     expect(f.handles.closed).toBe(f.handles.opened);
   }
-  return { ...f, runtime, assertAuthority, publicationAuthority, inventory, inventoryBytes, journal, journalPaths, journalBytes,
-    baseline, remnant, workspace, remnantRecord, workspaceRecord, fileSystem, delivered, outcomes, observations,
+  return { ...f, runtime, assertAuthority, publicationAuthority, inventory, inventoryBytes,
+    get journal() { return journal; }, journalPaths, get journalBytes() { return journalBytes; },
+    get baseline() { return baseline; }, remnant, workspace, remnantRecord, workspaceRecord, fileSystem, delivered, outcomes, observations,
+    other, purgeFileSystem, authorizePurge, runPurge: (afterPayload?: () => Promise<void>) => run(afterPayload, true),
     run, identity, assertPreserved, assertJournal: () => assertJournal(new WorkspaceDeletionJournalStore(f.root)) };
 }
 
@@ -196,4 +220,53 @@ it.for(['phase', 'same-byte replacement'] as const)('stops the next row when jou
     expect(sameCrashSafeFileSlotIdentity(f.baseline.slots.current!.identity!, current.slots.current!.identity!)).toBe(false);
   }
   await f.assertPreserved(false);
+});
+
+it('resumes a partial purge from the same actual published journal and inventory without changing unrelated bytes', async context => {
+  const f = await fixture(context);
+  await f.run();
+  await f.authorizePurge();
+  const authorizedBytes = Buffer.from(f.journalBytes);
+  const failure = new Error('SYNTHETIC_PURGE_ACK_LOST');
+  f.purgeFileSystem.unlink.mockImplementationOnce(async path => {
+    await workspaceDeletionPurgeFileSystem.unlink(path);
+    throw failure;
+  });
+  await expect(f.runPurge()).rejects.toBe(failure);
+  expect(f.delivered).toEqual(['activationFailed']);
+  expect(f.purgeFileSystem.unlink).toHaveBeenCalledTimes(1);
+  expect(f.purgeFileSystem.rmdir).not.toHaveBeenCalled();
+  await f.assertPreserved(true);
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(authorizedBytes);
+  expect(await readFile(f.paths.currentPath)).toEqual(f.inventoryBytes);
+
+  await f.runPurge();
+  expect(f.outcomes).toEqual(['purged', 'evidence', 'purged']);
+  for (const paths of [f.workspace, f.remnant]) {
+    expect(await workspaceDeletionPurgeFileSystem.entry(paths.sourcePath, false, f.assertAuthority)).toBeNull();
+    expect(await workspaceDeletionPurgeFileSystem.entry(paths.quarantinePath, false, f.assertAuthority)).toBeNull();
+  }
+  expect(await readFile(join(f.other.sourcePath, 'payload.txt'), 'utf8')).toBe('other-company');
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(authorizedBytes);
+  expect(await readFile(f.paths.currentPath)).toEqual(f.inventoryBytes);
+  expect(f.handles.closed).toBe(f.handles.opened);
+  await f.assertJournal();
+  await f.runPurge();
+  expect(f.outcomes).toEqual(['alreadyAbsent', 'evidence', 'alreadyAbsent']);
+  expect(f.purgeFileSystem.unlink).toHaveBeenCalledTimes(3);
+});
+
+it('stops purge before the next inventory row if the published journal is replaced with identical bytes', async context => {
+  const f = await fixture(context);
+  await f.run();
+  await f.authorizePurge();
+  await expect(f.runPurge(async () => {
+    await rename(f.journalPaths.currentPath, join(f.root, 'preserved-purge-authorized.json'));
+    await writeFile(f.journalPaths.currentPath, f.journalBytes, { flag: 'wx', mode: 0o600 });
+  })).rejects.toThrow('SYNTHETIC_JOURNAL_SELECTION_LOST');
+  expect(f.delivered).toEqual(['activationFailed']);
+  expect(f.purgeFileSystem.unlink).toHaveBeenCalledTimes(1);
+  await f.assertPreserved(true);
+  expect(await readFile(f.paths.currentPath)).toEqual(f.inventoryBytes);
+  expect(f.handles.closed).toBe(f.handles.opened);
 });
