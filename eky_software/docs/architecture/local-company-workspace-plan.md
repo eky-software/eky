@@ -3324,6 +3324,13 @@ Vanhentunut valtuus, keskeytys tai samanniminen korvaava juuri estää jatkon
 säilyttäen aineiston. Kuitti poistuu muistista oman onnistuneen siivouksen
 jälkeen eikä anna uudelle oliolle poistolupaa.
 
+Sama päättyminen koskee alkuperäistä oliota: onnistuneesti poistettu kopio
+ei anna sen myöhemmälle `discard`- tai `discardAfterExit`-kutsulle oikeutta
+käsitellä samaan polkuun myöhemmin syntynyttä sisältöä. Pelkkä juuri- ja
+vanhempi-identiteetin vastaavuus ei korvaa päättyneen omistajan valtuutta.
+Valmisteltu terminal-suoja kattaa myös jo odottavan kutsun; poissaolokuitti
+säilyy vain nykyistä metadata-only-jatkoa varten, ei uutena poistovaltuutena.
+
 Kahdessa erillisessä tiedostokokeessa toistetut luetteloluvun ja viimeisen
 polkutarkistuksen vaihtumisvälit suljettiin uuteen readonly-porttiin.
 Vanhan valmistelun ja siivouksen luku-/muutosjärjestys säilyy. Yhtenäinen
@@ -12776,7 +12783,7 @@ Niiden normaali hyväksyntäketju todennetaan erikseen samalla pilot-paketilla.
 
 | Omistaja | Rajattu muutos ja säilyvä vastuu |
 | --- | --- |
-| `.github/workflows/ci.yml`, `apps/e2e/package.json`, nykyinen `e2e-command-wiring.test.mjs` | Nykyisen Electron critical -työn ja paikallisen pakettisarjan yksi build käyttää `package:windows:pilot`-komentoa. Tavallinen smoke sekä kaikki viisi palautustapausta käyttävät samoja tavuja. Ei toista buildia, uutta jobia, ohitusta tai aikabudjettia. |
+| `.github/workflows/ci.yml`, `apps/e2e/package.json`, nykyinen `e2e-command-wiring.test.mjs` | Pilot-sarjan yksi build käyttää `package:windows:pilot`-komentoa. Tavallinen smoke sekä kaikki viisi palautustapausta käyttävät samoja tavuja. Ei toista buildia tai ohitusta. Alkuperäinen yhden jobin rajaus on korvattu vain alla hyväksytyllä [CI-työnjaolla](#w74n-pr-integraation-rajattu-jatkosopimus); paikallinen pakettisarja ja sen aikarajat säilyvät. |
 | `scripts/run-packaged-smoke.mjs`, `packagedSmokeJob.mjs` / `packagedSmokeJobWorker.mjs` | Yhteinen ennakkotarkistus sitoo todellisen ASARin package-mode/build/release-tiedot ja nykyisen pilot-manifestin koko sarjalle jäädytettyyn paketti-identiteettiin. Se tehdään ennen tavallista smokea ja ennen kunkin tapauksen valmistelijan `prepare`-kutsua, ei vain ennen poistotyötä. Parent/worker säilyttävät lisäksi nykyisen pyynnön sidonnan. Käytä hyväksyttyä ASAR-lukijaa ja nykyisiä parsereita; ei omaa parseria tai uuden protokollan release-tietoa. |
 | `scripts/packagedWorkspaceDeletionPreparation.mjs` | Nykyisen varauksen ja leasen alla tarkistetaan nykyisillä readonly-slot- ja build-lukijoilla täsmällinen hyväksytty business-build. Pelkkä selector-hyväksyntä, puuttuva metadata tai sivuslotit eivät kelpaa. Sidottu hyväksyntä tarkistetaan tuoreesti ennen rekisterimuunnosta ja julkaisua; valmistelija ei kirjoita sitä. |
 | Nykyiset ajuri-, valmistelija-, main- ja admission-testit | Todellinen metadata syntyy vain normaalissa sovellusketjussa. Pienet fixturet saavat valmistaa synteettisen metadatan omiin kontrollitesteihinsä, mutta eivät korvata pakettikokeen todellista FirstStart-näyttöä. |
@@ -12856,6 +12863,275 @@ sisäisen poiston ja kaksi tyhjään valitsimeen päättyvää käynnistystä.
 Sarjan loppuvarmennus ja erillinen jälkivertailu todistivat samojen paketti-
 ja lähdetavujen säilymisen. Rebuildiä tai uusintaa ei tehty. Soak ja
 nykyiset integraation PR/main-portit eivät sulkeudu tällä pakettinäytöllä.
+
+###### W7.4:n PR-integraation rajattu jatkosopimus
+
+**5.11.2026: rajattu CI-työnjako on työpuussa ja sen 138 kohdekontrollia
+läpäisi; kolmen jäljellä olevan esteen integraationäyttö on avoin.**
+Nykyinen lähde ja ensihylkäykset ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+ja [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-ensimmäisen-pr-kierroksen-hylkäykset-5112026).
+Tämä rajaus ei avaa poistoketjun turvasopimuksia tai W7.5:tä uudelleen.
+
+**Linuxin kohdetodennus on avoin.** Kopio-omistajan kolmen kohdetiedoston
+ajo pysähtyi runnerin valmistelussa puuttuvaan alustakohtaiseen riippuvuuteen
+ennen testien keräystä. Tämä ei ole testihylkäys tai korjauksen hyväksyntä.
+Lähde säilyi muuttumattomana; nykyinen puhtaan revision Linux-CI-portti
+vaaditaan edelleen. Valmisteluestettä ei ratkaista rinnakkaisella testirunnerilla.
+
+**Mainin kahden ensimmäisen aikakatkaisun mittaus.**
+`desktopRestoreStartup.test.ts`:n `registryReturnBackup`-paluu ja onnistuneen
+rollbackin `replacement: true` -tapaus sisältävät valmistelun, oikeat
+tiedostotallentimet, main-ketjun, loppuväittämät ja sulun saman viiden
+sekunnin sisällä. Säilynyt aineisto osoittaa työn päättyneen myöhemmin,
+ei alkuperäisten testien hyväksyttyä valmistumista. Seuraavien tapausten
+`PREVIOUS_WORK_UNSETTLED` on nykyinen ja säilyvä suoja, ei erillisten vikojen
+määrä. Yhtä muuttumatonta koko sarjan uusintaa ei tehdä.
+
+Käytä nykyistä `desktopRestoreStartupTestSupport.ts`-elinkaarta ja nimettyjä
+testikoukkuja erottamaan valmistelu, journalin valinta/paluu, terminal-
+valmistelu, rollback/relaunch, loppuväittämät ja sulku. Mittaa vain nämä
+kaksi tapausta nykyisessä rajassa; tallenna myös kesken oleva vaihe ja
+aloitetun työn lopullinen päättyminen. Mittaus ei aloita lisäluentoja,
+ohita vartijoita, muuta luvan elinikää tai resetoi mokkeja vanhan työn alta.
+Todista mittarin onnistuminen, virhe ja keskeytys pienillä kontrolleilla.
+Yksityiset kestot ja kutsumäärät pysyvät paikallisina.
+Valitsimen konfliktikartoituksen ja rollbackin sisältötarkistuksen
+kertautuminen on lähteestä nähtävä mahdollisuus, ei mitattu juurisyy.
+Vasta yksilöity havainto perustelee fixture- tai sovelluskorjauksen;
+tämä suunnitelma ei hyväksy tarkistusten poistoa tai aikarajan nostoa.
+
+Rajattu mittaus on tehty nykyisellä testiapurilla. Lopulliset seitsemän
+mittarikontrollia läpäisivät. Valitsinpaluu valmistui loppuväittämineen ja
+sulkuineen; sen mittauksen mahdollista muuta testikuormaa ei suljeta pois.
+Rollback oli nykyisen määräajan täyttyessä yhä käynnissä. Havainto erotti
+toistuvat rekisteri-/journal-luennat alkuperäissisällön tarkistuksesta;
+se ei nimeä turvallisesti poistettavaa vartijaa tai osoita umpikujaa.
+Rollbackin loppuväittämiä tai myöhäistä työn ja resurssisiivouksen
+päättymistä ei havaittu ennen testityöntekijän poistumista. Aineisto
+säilyy eikä uusi luenta tai poisto saa käyttää tätä siivousvaltuutena.
+Tyhjä testivalinta ja mittarin valmistelukorjaukset on erotettu varsinaisista
+nimetyistä kokeista; niitä ei lasketa läpäisseiksi sovellustesteiksi.
+Tuotantokoodia, testien elinkaariapuria tai aikarajoja ei muutettu.
+
+**Mainin rajattu jatkokatselmus ja toteutusjärjestys.**
+Lähdekatselmus vahvisti erillisen testiapurin havaintoaukon:
+`desktopRestoreStartupTestSupport.ts`:n `onTestFinished` raportoi
+keskeneräisen työn mutta palautuu odottamatta sen alkuperäistä lupausta.
+Nykyinen `releaseWhenSettled` ja `PREVIOUS_WORK_UNSETTLED` estävät resurssien
+vapautuksen ja seuraavan testin resetin kesken työn; niitä ei poisteta.
+Tämä ei todista rollbackin umpikujaa tai kaikkien uusintalukujen turhuutta.
+
+Seuraava korjauspala rajataan nykyiseen testiapuriin ja sen regressioihin:
+
+1. Seuraa aktiivisen `prepare`- tai `run`-kutsun todellista päättymistä,
+   myös sen odotettua loppusiivousta. Valmistelun valmistuminen ei kuittaa
+   myöhemmin alkanutta testirunkoa. Käynnistymätöntä työtä ei jäädä odottamaan.
+2. Lukitse epäonnistuneen yrityksen aineiston säilytys ja raportoi kesken
+   oleva vaihe ennen yhtä `onTestFinished`-vaiheen loppuodotusta. Käytä
+   runnerin nykyistä koukkurajaa, älä lisää uutta ajastinta tai odotusta
+   `afterEach`-vaiheeseen. Testin onnistumisikkuna ei pitene: myöhäinen
+   onnistuminen ei muuta alkuperäistä aikakatkaisua läpäisyksi.
+3. Päättymiskuittaus ei heitä alkuperäisen työn virhettä uudelleen tai
+   korvaa sitä sulkuvirheellä. Vanhat resurssit vapautetaan vain nykyisen
+   päättymisvartijan kautta, enintään kerran. Hookin aikakatkaisu ei
+   peruuta todellista työtä, vapauta omistajuutta tai anna poistovaltuutta.
+4. Todista onnistuminen, alkuperäinen hylkäys, pidetty valmistelu/run,
+   myöhäinen palautus/hylkäys, pidetty sulku, erillinen siivousvirhe ja
+   koukun määräajan täyttyminen. Yksi pieni oikean Vitest-aikakatkaisun
+   kontrolli erottaa runnerin hylkäyksen, todellisen työn päättymisen ja
+   prosessin sulun. Pelkkä käsin kutsuttu loppukoukku ei korvaa sitä.
+
+Runnerin aikakatkaisu säilyy ensimmäisenä hylkäyksenä. Sen jälkeen syntyvän
+alkuperäisen työvirheen talteenotto on erillinen näyttö: pelkkä saman
+rejectionin palauttaminen jo aikakatkaisseelle kutsujalle ei todista sitä.
+Nykyinen havaitsija-/sinkkiketju varmennetaan ennen mahdollista talteenoton
+väitettä; uutta raakalokia tai keräyssisältöä ei lisätä tällä sopimuksella.
+
+Testiapurin rajattu korjaus on työpuussa. Kaksi uutta regressiota osoitti
+puuttuvan loppuodotuksen vanhalla apurilla; korjattu 17 testin kohdesarja
+ja desktopin tyypitys läpäisivät. Riippumaton kahden tiedoston katselmus
+ei löytänyt uutta puutetta. Pieni oikean Vitest-runnerin kontrolli erotti
+normaalin onnistumisen, kolme myöhäisen työn aikakatkaisua sekä loppukoukun
+aikakatkaisun ja sitä seuraavan estetyn resetin. Neljä tarkoituksellista
+hylkäystä säilyivät hylkäyksinä; aloitettu työ ja sulku päättyivät ennen
+resurssien vapautusta. Tulokset varmennettiin säilyneistä tavuista ilman
+uutta ajoa sen jälkeen, kun tarkistimen väärä oletus JSON-raportin
+virheviestikentästä oli rajattu. Yksi nimetty oikean main-ketjun rollback
+läpäisi nykyisessä testirajassa. Sen jälkeen koko kahden tiedoston
+Main-vaikutussarja läpäisi kaikki 403 testiä ilman ohituksia, mukaan lukien
+aiemmin aikakatkaisseet valitsinpaluu ja rollback. Näitä päällekkäisiä
+sarjoja ei summata. Tulokset eivät sulje vanhojen aikakatkaisujen syitä tai todista
+myöhäisen alkuperäisvirheen salattua toimitusta. Palautuskoodia ei muutettu.
+
+Myöhempi normaali työtilasarja ja yksi erillinen sarjallinen vertailu
+osoittivat lisäksi seuraamattomien Main-testiryhmien siivousaukon:
+aikakatkaisseen rungon työ saattoi jatkua yhteisen tiedostopoiston ja
+mokkien palautuksen aikana. Neljä nykyistä ryhmää, yhteensä 18 cold-/
+rollback-varianttia, on kytketty samaan nykyiseen elinkaariapuriin.
+Koko runko valmisteluineen ja nykyisine `finally`-odotuksineen kuuluu
+seurantaan; jokaisen fixturen juuret kuuluvat samalle testille.
+Kaikki alkuperäiset väittämät, tapausnimet ja aikarajat säilyvät.
+Kohdesarjan 35 testiä, tyypitys, rajattu riippumaton katselmus ja sen
+jälkeinen koko 403 testin Main-sarja läpäisivät ilman ohituksia.
+Tämä ei sulje ensiaikakatkaisujen syitä tai todenna kaikkien muiden
+seuraamattomien testien sulkua. Seuraava normaali desktop-komento läpäisi
+kaikki kolme vaihettaan, myös erillisen 23 kohteen ketjun nykyisessä rajassa.
+Muiden työtilapakettien normaali sarja läpäisi backendin kahden vanhan
+testifixturen rajattujen korjausten jälkeen. Kyse on erillisistä näytöistä,
+ei aiemman koko komennon hylkäyksen muuttamisesta onnistumiseksi.
+Uuden puhtaan revision paketti-/integraatioportit vaaditaan edelleen;
+tarkka ensihylkäys ja erilliset sarjat säilyvät integraatiohistoriassa.
+
+**Palautuksen tarkistusvastuu jää erilliseksi koepäätökseksi.**
+`ProfileRestoreActivationTransaction.coldRollbackJournalAuthority` käyttää
+jo erillisiä luku-, sisältö- ja muutosvartijoita. Rajattu vertailuehdotus
+koskee vain sen `assertCurrent`-callbackia, kun nykyinen luentavartijan ja
+synkronisen muutosvartijan pari on mukana: journalin ja lähdesijaintien
+luenta nykyisellä omistajuusvartijalla, sen jälkeen yksi täysi ulkoinen
+valintatarkistus. Yhteistä tallenninta, korjaavaa `read`-polkua, varsinaisia
+sisältösiirtoja, sisältövaltuutta tai muiden kutsumuotojen tarkistuksia ei
+muuteta. Viimeinen täysi tarkistus, slottien uudelleensidonta ja synkroninen
+valtuus säilyvät ennen varsinaisia muutoksia.
+
+Tämä ei ole muuttumaton turvasopimus: vain pois jäävän johtavan tarkistuksen
+aikana näkyvä ja ennen loppuvertailua täysin palautuva ulkoinen valintatieto
+voisi jäädä havaitsematta, myös muutosvartijan sisäisessä callbackissa.
+Kilpailevien virheiden havaintojärjestys voi muuttua. Pysyvän muutoksen on
+estettävä seuraava mutaatio; luentatulos ei anna itsenäistä kirjoituslupaa.
+Ehdotusta ei ole hyväksytty kokeeseen tai tuotantoon. Ensin vaaditaan
+rajauksen katselmus ja omistajan päätös, sitten pienet lähtö-/ehdokasvertailut
+sekä todellisten poisto-, rename-, write- ja sync-rajojen kontrollit.
+Kutsumäärän väheneminen ei yksin todista koko palautuksen valmistumista.
+Nykyiset aika-, sisältö-, omistajuus- ja integraatiorajat säilyvät.
+
+**OpenPGP-kontrollin tunniste.**
+`workspaceDeletionFailureEvidenceOpenPgp.test.mjs`:n julkaisuvaiheen
+alkuperäinen virhe, syy ja kutsupino sekä salattujen/purettujen tavujen
+vertailu läpäisivät ennen `test.id`-päätteen hylkäystä. Nykyinen
+`runnerFailureEvidence.mjs` suodattaa myös tunnisteen tunnetut salaisuudet;
+suodattimen mahdollinen vaikutus on hypoteesi, ei ensimmäisen ajon todettu
+syy. Säilynyt ulompi virhe ei sisällä hylättyä sisäistä tunnistetta.
+
+Säilytä pääteväittämä ja nykyinen suodatus. Täydennä ensin saman vaiheen
+yksikäsitteisen tietueen kontrolli sekä rajattu virheviesti: osumien määrä,
+tunnisteen pituus, kokorajan täyttyminen ja suodatusmerkin esiintyminen.
+Ei raakaa tunnistetta, ympäristöarvoja tai uutta keräysformaattia.
+Todista nykyisellä sinkillä ja vain synteettisellä salaisuudella, voiko
+suodatus tuottaa vastaavan eron, sekä että muuttunut tai monistunut tietue
+hylätään. Virheen on löydyttävä nykyisestä puretusta salatusta paketista.
+Paikallinen onnistuminen tai uusi havaintoviesti ei sulje alkuperäistä
+syytä eikä nollaa käytettyä uusintaa. Hyväksymisväittämää ei löysennetä
+arvatun suodatussyyn perusteella.
+
+Rajattu testikytkentä on työpuussa. Pienet kontrollit todistavat muuttuneen,
+puuttuvan ja monistetun tunnisteen hylkäyksen sekä neljän havaintokentän
+täsmälliset arvot. Synteettinen tunnettu salaisuus osoitti suodattimen
+voivan muuttaa tunnistepäätettä; tämä ei nimeä aiemman CI-hylkäyksen syytä.
+Oikea epäonnistuva Node-testi, nykyinen raportointi, salaus ja purku
+säilyttivät ulomman testivirheen sekä alkuperäisen assertion-syyketjun.
+Kaikkien raporttitavujen, tiivisteiden ja ajo-/yrityssidonnan vertailu
+läpäisi. Täysi nykyinen OpenPGP-kohdesarja ja deltakatselmus ovat erillisiä
+portteja; alkuperäistä hylkäystä ei ole suljettu.
+
+Muuttuneen koko kohdetiedoston seuraava normaali ajo hylättiin eri esteeseen:
+vanhan `rejected absence read keeps its original chain through actual projection and delivery`
+-tapauksen sisäinen yhdistelmä ylitti nykyisen viiden sekunnin rajan.
+Molemmat uudet tunnistekontrollit läpäisivät. Kokonaiskokeen alkuperäisten
+tavujen OpenPGP-vertailua ei saavutettu; pienen uuden kontrollin purku ei
+korvaa sitä. Sisäinen tapaus yhdistää useiden nykyisten omistajien aidot
+valmistelu- ja virherajapolut. Tarkka viivekohta ja keskeneräisen työn sulku
+ovat avoimia; muuttumatonta uusintaa tai aikarajan nostoa ei tehdä.
+Tämä ei muuta aiempaa CI:n tunniste-eroa korjatuksi.
+
+Jatka tämän erillisen fixturen rajauksesta: säilytä jokaisen nykyisen
+virherajan alkuperäisen poikkeuksen identiteetti, säilyvien tavujen väittämät
+ja todellinen projektori-/toimitusketju. Mahdollinen vaihehavainto käyttää
+nykyistä testiapuria, ei uutta loggeria. Ennen uutta koko koetta pienen
+kontrollin pitää todistaa, että aloitetut kutsut ja niiden sulut päättyvät
+ennen jaettujen mokkien palauttamista. Useaksi testiksi jakaminen ei ole
+automaattisesti hyväksytty korjaus: se muuttaisi yhteistä aikavaraa ja
+raportin tietuemäärää. Valmistelua, väittämiä tai salaus-/purkuvertailua ei
+siirretä näkymättömästi nykyisten rajojen ulkopuolelle. Palautuksen
+suorituskykyehdotus ei korjaa tätä erillistä yhdistelmätestiä.
+
+**Sisäisen salauskontrollin vaihemittaus.**
+Nykyisen mittausapurin neljä pientä kontrollia läpäisi: alkuperäisen virheen
+identiteetti, onnistuminen, pidetty työ ja havaitsijan oma virhe erotettiin.
+Mittarin valmisteluvaiheen päättämisen ja kontrollin järjestysväittämän
+ensiehdokkaat hylättiin ja säilytettiin erillään lopullisesta näytöstä.
+Yksi nimetty muistissa instrumentoidun nykyisen yhdistelmätestin mittaus
+valmistui viiden sekunnin rajassa. Kaikki 18 nimettyä vaihetta, alkuperäiset
+väittämät ja kutsurekisteröinnit säilyivät; testirungon loppu havaittiin.
+Suurin vaihe oli metadatan jälkiluvun virhefixture, ei lopullinen projektio
+ja toimitus. Lähteet ja ensihylkäyksen aineisto säilyivät muuttumattomina.
+Mittauksen testivalinnan tarkistimen väärä `pending`/`skipped`-oletus
+korjattiin saman säilyneen raportin erillisessä varmennuksessa, ei uusinnalla.
+Muita viittä sisäistä tapausta tai koko salaus-/purkuvertailua ei ajettu;
+mittaus ei hyväksy niitä tai sulje ensimmäistä aikakatkaisua.
+
+**Omistaja hyväksyi jaon 5.11.2026:** vain nykyinen sisäinen yhdistelmä jaetaan
+kolmeen itsenäiseen vastuutestiin: virheiden välitys ja valmistelu,
+metadatan jälkiluku sekä terminal-/inventaarion loppusiivous. Jokainen
+nykyinen virheraja, alkuperäisen poikkeuksen identiteetti, säilyvien tavujen
+ja sulun väittämät sekä todellinen projektori ja salattu toimitus säilyvät.
+Jokainen ryhmä saa oman virheolionsa ja yksikäsitteisen testisidontansa;
+eri testien välillä ei pidetä jaettua muuttuvaa fixtureä tai salaisuustilaa.
+Yksittäiset rajat pysyvät viidessä sekunnissa, mutta tämän osan sallittu
+yhteisvara kasvaa viidestä 15 sekuntiin. Sisäisen prosessin 90 sekunnin,
+loppukoukun kahden sekunnin ja koko salauskokeen 240 sekunnin rajat säilyvät.
+Jako on toteutettu työpuuhun. Kolme lähdekontrollia osoitti kaikkien vanhojen
+väittämien ja virherajakutsujen sekä viiden muun tapauksen säilyneen.
+Oikean runnerin kontrolli todensi fixturen oman pidetyn työn ja todellisen
+tiedostosulun päättymisen ennen mokkien palauttamista onnistumisessa,
+alkuperäisessä hylkäyksessä ja testin aikakatkaisussa. Kaksi tarkoituksellista
+hylkäystä säilyi hylkäyksinä; tämä ei todista muiden fixturejen tuntematonta
+keskeneräistä työtä päättyneeksi. Rajattu riippumaton deltakatselmus ei
+löytänyt puutetta. Koko nykyisen kolmen testin OpenPGP-kohdesarja läpäisi:
+kaikkien 35 tiedoston alkuperäiset tavut, tiivisteet ja ajosidonnat sekä
+jokaisen kolmen ryhmän oma alkuperäinen virhe ja kaksi liittyvää syytä
+varmennettiin puretusta paketista. Pelkkää ensimmäisen tietueen `find`-osumaa
+ei käytetä ryhmien hyväksyntään. Vanhat hylkäykset säilyvät avoimina.
+Sovellus- tai turvakoodia ei muuteta tämän testijaon vuoksi.
+
+**Hyväksytty Electron-CI:n työnjako.**
+Omistaja hyväksyi kaksi pakollista työtä yhden yhdistelmätyön sijaan.
+Kummankin raja on 35 minuuttia. Yhteenlaskettu enimmäisajovara kasvaa
+35:stä 70 koneminuuttiin ja valmistelu tehdään kahdessa erillisessä työssä;
+tätä ei kuvata muuttumattomaksi kokonaisbudjetiksi. Yksittäisten testien,
+Playwright-sarjojen, sovelluksen ja siivouksen rajat eivät muutu.
+
+| Nykyinen omistaja | Toteutettava työnjako ja hyväksyntä |
+| --- | --- |
+| `.github/workflows/ci.yml` | `e2e-electron-windows-critical` ja sen nimi säilyvät. Se ajaa nykyisen valmistelun ja kaikki 72 development-tapausta. Uusi `e2e-packaged-windows-smoke`, nimeltään `Windows packaged smoke and recovery`, ajaa nykyisen yhden pilot-buildin, tavallisen smoken, pakettisarjan valmistelun, supervisor-buildin ja kaikki viisi pakettitapausta tässä järjestyksessä. Molemmat käyttävät samaa checkout-revisiota ja omia nykyisiä valmisteluvälineitä. |
+| `.github/scripts/ciJobCoverage.mjs` ja `ciRunAcceptance.test.mjs` | `electronCritical` vaatii development-työn, `packageSmoke` uuden työn ja kaikki viisi pakollista vaihetta. Molemmat ovat koonnin ehtoja samalla run/attemptilla. Puuttuva, epäonnistunut, peruttu tai ohitettu työ/vaihe hylätään. Riskiluokitus, toistot, `V2 acceptance` ja `Audit dependencies` säilyvät. |
+| Nykyinen `e2e-command-wiring.test.mjs` | Todista tarkat työrajat, valmistelu ja järjestys; seuraavan työn teksti ei saa kelvata edellisen kattavuudeksi. Todista samat 72 + 5 testitunnisteet ennen/jälkeen, ei vain lukumääriä. Ei uusia grep-, skip-, worker- tai retry-muutoksia. Erillinen `electron_diagnostic` valitsee molemmat työt mutta ei korvaa V2-koontia. |
+| Nykyinen salattu keräys ja `ciFailureEvidenceWiring.test.mjs` | Development säilyttää `core-electron-0`-sidonnan ja nykyisen lifecycle-toimituksen. Pakettityö saa erillisen `core-packaged-0`-avaimen ja saman ehdollisen salatun keruun; todista lähde-/ajo-/yrityssidonta, keruuehdot ja kielteiset rajat. Natiivikäännöksen raakalokipoikkeus ei laajene uuteen työhön. Upload ei todista prosessien sulkua. |
+| Testausohje, E2E-strategia, ympäristö ja hyväksyntäkartta | Päivitä toteutunut työnjako samalla muutoksella. Skenaariot, testitasot, saman paketin pin/teardown, ensivirheet ja epävarman siivouksen säilytys pysyvät. Ei uutta testaussovellusta, prosessiomistajaa tai riippuvuutta. |
+
+Tavallinen smoke ja viisi pakettitapausta pysyvät samassa uudessa työssä:
+sen alkuperäinen `EKY_PACKAGED_SERIES_MANIFEST_SHA256` ja loppuvarmennus
+eivät ylitä job-rajaa. Sarjan käynnistys ei käytä uudelleen paketoivaa
+komentoa. Koontitesteissä myös supervisor-build on pakollinen vaihe.
+Paikallinen discovery vertasi alkuperäisen CI-paketin raportteihin samat
+72 development- ja viisi packaged-tunnistetta, tiedostot, sijainnit,
+otsikot ja projektit. Tunnistejoukot vastasivat täsmälleen toisiaan.
+Tämä ei käynnistänyt sovellusta eikä ole CI- tai siivoushyväksyntä.
+Työnjako poistaa havaitun pakettityön kehitystestien edeltä, mutta ei takaa
+kaikkien 72 tapauksen, valmistelun ja virhekeruun mahtumista nykyiseen
+rajaan. Se todistetaan uuden revision kokonaisajolla, ei laskennallisella
+arviolla. Jako ei korjaa katkaistun ensimmäisen testin puuttuvaa sulkutodistetta.
+
+Ennen normaalia uutta PR-kierrosta vaaditaan nykyisten korjausten
+kohde-/vaikutustestit, tyypitys, keruuketjun todennus, rajattu riippumaton
+deltakatselmus ja lähdejäädytys. Kopio-omistajan muuttunut runtime vaatii
+nykyisen Linux-portin sekä uuden puhtaan paketin näytön. Aiemman pilot-
+paketin tai soak-revision näyttöä ei nimetä uudelle lähteelle. Vanhat
+hylkäykset säilyvät ja uuden revision kaikki PR/main-portit vaaditaan.
+
+###### Aiemmat F-vaiheen kytkentä- ja roolikokeet
+
+Alla olevat kytkentä- ja koehavainnot koskevat niiden alkuperäistä lähdettä.
+Nykytila on M1:ssä; historiallinen avoin vaihe ei ole uusi toteutusjono.
 
 Indexin ja mainin rajattu kytkentä on nyt työpuussa: sama smoke-/token-portti
 ja täsmällinen testiprofiili, vakaa tyhjä rekisteri ennen yritysratkaisua,

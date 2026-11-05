@@ -52,6 +52,23 @@ erillisinä vastuina. Required checkit ovat `V2 acceptance` ja
 asetukset varmennetaan, eikä vanhaa vihreää ajoa käytetä uuden revision
 hyväksyntänä.
 
+Core-CI:n Windows-E2E-sijoitus käyttää kahta erillistä 35 minuutin työtä.
+`electronCritical` valitsee `e2e-electron-windows-critical` / `Windows
+Electron critical E2E` -työn ja sen nykyiset 72 development-tapausta.
+`packageSmoke` valitsee `e2e-packaged-windows-smoke` / `Windows packaged
+smoke and recovery` -työn: yksi pilot-build, tavallinen smoke,
+pakettiruntimen valmistelu, nykyisen supervisorin build ja kaikki viisi
+pakettitapausta samassa työssä. Alkuperäinen manifestipin ja loppuvarmennus
+eivät ylitä työrajaa eikä sarja paketoi uudelleen. Koonti vaatii molemmat
+valitut työt ja kaikki viisi pakettivaihetta, myös supervisor-buildin.
+`electron_diagnostic` valitsee molemmat työt, mutta ei korvaa V2-koontia.
+Yhteenlaskettu enimmäisvara kasvaa 35:stä 70 runner-minuuttiin; valmistelu
+on työkohtainen. Testi-, Playwright-, cleanup- ja retry-rajat säilyvät.
+Salattu keräys käyttää erillisiä `core-electron-0`- ja `core-packaged-0`-
+sidontoja; natiivikäännöksen raakalokipoikkeus ei laajene pakettityöhön.
+Jaon täysi ajonäyttö ja cleanup-hyväksyntä ovat avoimia; aiempia hylkäyksiä
+tai puuttuvia sulkutodisteita ei suljeta tällä CI-sijoituksen muutoksella.
+
 Workspace-asentimen sulkemispyynnön tiedostokäyttäjät havaitaan nykyisen
 valinnaisen MSI-kyselyn kautta. Lähdeinventaarion hyväksytyt tiedostot
 rajataan samaan ajoon ennen Restart Manager -kyselyä; PID ja creation

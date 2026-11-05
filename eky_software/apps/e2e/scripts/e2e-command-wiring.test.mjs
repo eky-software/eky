@@ -183,8 +183,22 @@ test('initial and restarted Electron API contexts use the already verified real 
   }
 });
 
+function workflowJob(source, id) {
+  const blocks = source.split('\njobs:\n')[1]?.split(/(?=^  [\w-]+:\s*$)/mu) ?? [];
+  const matches = blocks.filter(block => block.startsWith(`  ${id}:\n`));
+  assert.equal(matches.length, 1, `one exact job required: ${id}`);
+  return matches[0];
+}
+
+function workflowStep(job, name) {
+  const blocks = job.split(/(?=^      - name: )/mu).slice(1);
+  const matches = blocks.filter(block => block.startsWith(`      - name: ${name}\n`));
+  assert.equal(matches.length, 1, `one exact step required: ${name}`);
+  return matches[0].trimEnd();
+}
+
 function assertWindowsOwnerCiPreparation(source) {
-  const job = source.split('\n  e2e-electron-windows-critical:\n')[1]?.split(/\n  [\w-]+:\n/u)[0];
+  const job = workflowJob(source, 'e2e-electron-windows-critical');
   assert.ok(job, 'the actual Windows consumer must remain reachable');
   const name = '      - name: Set up existing Windows test owner SDK\n';
   const steps = job.split(name);
@@ -204,25 +218,39 @@ function assertWindowsOwnerCiPreparation(source) {
 }
 
 const ci = readFileSync(new URL('../../../../.github/workflows/ci.yml', import.meta.url), 'utf8');
+const packagedSteps = [
+  ['Package Windows desktop', 'pnpm --filter @eky/desktop package:windows:pilot'],
+  ['Run packaged Windows smoke', 'pnpm --filter @eky/desktop smoke:windows --pilot-series-start'],
+  ['Prepare packaged legacy recovery runtime', 'pnpm --filter @eky/e2e e2e:prepare'],
+  ['Build existing packaged process owner', 'pnpm --filter @eky/desktop installer:supervisor:build'],
+  ['Run packaged legacy recovery', 'pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts'],
+];
+const preparationSteps = [
+  'Check out repository', 'Set up Node.js', 'Prepare locked package manager',
+  'Set up existing Windows test owner SDK', 'Install dependencies', 'Prepare Electron development runtime',
+];
 function assertPackagedLegacyCi(source) {
-  const job = source.split('  e2e-electron-windows-critical:\n')[1]?.split('\n  windows-contracts:')[0];
-  assert.ok(job);
-  const required = [
-    ['Package Windows desktop', 'pnpm --filter @eky/desktop package:windows:pilot'],
-    ['Run packaged Windows smoke', 'pnpm --filter @eky/desktop smoke:windows --pilot-series-start'],
-    ['Prepare packaged legacy recovery runtime', 'pnpm --filter @eky/e2e e2e:prepare'],
-    ['Build existing packaged process owner', 'pnpm --filter @eky/desktop installer:supervisor:build'],
-    ['Run packaged legacy recovery', 'pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts'],
-    ['Run critical Electron E2E journeys', 'pnpm test:e2e:electron:critical'],
-  ];
-  let previous = -1;
-  for (const [name, command] of required) {
-    const step = `      - name: ${name}\n        run: ${command}\n`;
-    const index = job.indexOf(step);
-    assert.ok(index > previous, name);
-    assert.equal(job.indexOf(step, index + 1), -1);
-    previous = index;
+  const development = workflowJob(source, 'e2e-electron-windows-critical');
+  const job = workflowJob(source, 'e2e-packaged-windows-smoke');
+  assertWindowsOwnerCiPreparation(source);
+  for (const block of [development, job]) {
+    assert.match(block, /^    runs-on: windows-latest$/mu);
+    assert.match(block, /^    timeout-minutes: 35$/mu);
+    assert.match(block, /defaults:\n      run:\n        working-directory: eky_software\n/u);
+    assert.doesNotMatch(block.split('\n    steps:\n')[0], /needs:|continue-on-error:|strategy:/u);
   }
+  for (const name of preparationSteps) {
+    assert.equal(workflowStep(job, name), workflowStep(development, name), name);
+  }
+  assert.deepEqual([...job.matchAll(/^      - name: (.+)$/gmu)].map(match => match[1]),
+    [...preparationSteps, ...packagedSteps.map(([name]) => name), 'Preserve encrypted CI failure evidence']);
+  for (const [name, command] of packagedSteps) {
+    assert.equal(workflowStep(job, name), `      - name: ${name}\n        run: ${command}`);
+    assert.ok(!development.includes(`      - name: ${name}\n`));
+  }
+  assert.equal(workflowStep(development, 'Run critical Electron E2E journeys'),
+    '      - name: Run critical Electron E2E journeys\n        run: pnpm test:e2e:electron:critical');
+  assert.doesNotMatch(job, /test:e2e:electron:critical|e2e:packaged:legacy|upload-artifact|download-artifact|EKY_PACKAGED_SERIES_MANIFEST_SHA256:/u);
 }
 test('packaged deletion shares the existing aggregate budget and cannot omit its owned workflow', () => {
   const source = readFileSync(new URL('../playwright.packaged-legacy.config.ts', import.meta.url), 'utf8');
@@ -247,6 +275,37 @@ test('normal Windows CI binds legacy recovery to fresh packaging and required pr
     source => source.replace('Run packaged legacy recovery\n', 'Run packaged legacy recovery\n        if: inputs.electron_diagnostic\n'),
     source => source.replace('Run packaged legacy recovery\n', 'Skipped legacy recovery\n'),
   ]) assert.throws(() => assertPackagedLegacyCi(mutate(ci)), assert.AssertionError);
+});
+
+test('split packaged wiring rejects omitted, conditional, reordered and ignored steps at exact job boundaries', () => {
+  const id = 'e2e-packaged-windows-smoke';
+  const job = workflowJob(ci, id);
+  const development = workflowJob(ci, 'e2e-electron-windows-critical');
+  for (const name of [...preparationSteps, ...packagedSteps.map(([name]) => name)]) {
+    const step = workflowStep(job, name);
+    for (const changed of [
+      '',
+      step.replace(`name: ${name}\n`, `name: ${name}\n        if: success()\n`),
+      step.replace(`name: ${name}\n`, `name: ${name}\n        continue-on-error: true\n`),
+      `${step}\n        continue-on-error: true`,
+      `${step}\n${step}`,
+    ]) assert.throws(() => assertPackagedLegacyCi(ci.replace(job, job.replace(step, changed))), assert.AssertionError);
+    // Keeping the missing step in the next job must not satisfy this job.
+    const missing = ci.replace(job, job.replace(step, ''));
+    assert.throws(() => assertPackagedLegacyCi(missing.replace('\n  windows-contracts:\n',
+      `\n  following-decoy:\n    steps:\n${step}\n\n  windows-contracts:\n`)), assert.AssertionError);
+  }
+  for (let index = 0; index < packagedSteps.length - 1; index++) {
+    const first = workflowStep(job, packagedSteps[index][0]);
+    const second = workflowStep(job, packagedSteps[index + 1][0]);
+    const swapped = job.replace(first, 'SWAPPED_STEP').replace(second, first).replace('SWAPPED_STEP', second);
+    assert.throws(() => assertPackagedLegacyCi(ci.replace(job, swapped)), assert.AssertionError);
+  }
+  const consumer = workflowStep(development, 'Run critical Electron E2E journeys');
+  const moved = ci.replace(development, development.replace(consumer, '')).replace(job,
+    job.replace('    steps:\n', `    steps:\n${consumer}\n`));
+  assert.throws(() => assertPackagedLegacyCi(moved), assert.AssertionError);
+  assert.throws(() => workflowJob(`${ci}\n${job}`, id), assert.AssertionError);
 });
 test('the normal Windows consumer prepares the existing SDK before its actual owner build', () => {
   assertWindowsOwnerCiPreparation(ci);

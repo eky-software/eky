@@ -5,6 +5,194 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n backend-fixturekorjaukset ja regressioportit 6.11.2026
+
+Normaali desktop-komento läpäisi koko nykyisen kolmivaiheisen sopimuksen:
+469 tiedoston 10 909 testiä ja 13 vanhaa alustaohitusta, erillinen
+23 kohteen ketju nykyisessä 180 sekunnin rajassa sekä 535 Node-testiä
+ja 12 vanhaa alustaohitusta. Työtilasarja päättyi sen jälkeen backendin
+seitsemään hylkäykseen kahdessa testitiedostossa; alkuperäiset seitsemän
+virhetietuetta ja niiden tavut säilytettiin.
+
+Kuusi hylkäystä johtui vanhan päivitysfixturen puuttuvasta
+`captureSourceTarget`-portista. Fixture kuvaa vanhaa profiilia ilman
+yritysvalintaa; se palauttaa nyt eksplisiittisen `unbound`-kohteen, ja
+onnistumispolku tarkistaa molemmat tarkistimelle välittyvät kohteet.
+Tämä ei muuta tuotannon kohdesidontaa tai todista valitun yrityksen polkua.
+Diagnostiikan seitsemäs hylkäys odotti virhettä ensimmäisestä vastauksesta,
+vaikka rajattu selaus saa palauttaa ensin `scanning`-jatkon. Testi seuraa
+nykyistä jatkotokenia ja vaatii edelleen tarkan stale-virheen. Kaksi uutta
+kontrollia pakottaa keskeneräisen ensimmäisen askeleen ja varmistaa
+varsinaisen muutoskohdan saavuttamisen. Valmis, limited tai unavailable ei
+kelpaa virheodotuksen onnistumiseksi. Sovelluskoodia tai aikarajoja ei muutettu.
+
+52 testin kohdesarja, backendin tyypitys ja rajattu riippumaton
+deltakatselmus läpäisivät. Muiden työtilapakettien normaali sarja läpäisi
+korjauksen jälkeen, backendissä 4 388 testiä ja viisi vanhaa alustaohitusta.
+Jo läpäissyttä muuttumatonta desktop-osaa ei toistettu. Nämä ovat erilliset
+osat nykyisen lähteen regressiokattavuudesta; ensimmäinen koko komento
+säilyy hylättynä. Linuxin ja uuden puhtaan paketin näyttö sekä PR-/main-portit
+jäivät edelleen avoimiksi.
+
+## W7.4:n PR-esteiden rajattu jatkokatselmus 5.11.2026
+
+Myöhempi normaali työtilasarja päättyi hylättynä desktopin ensimmäiseen
+vaiheeseen: 469 tiedostosta seitsemän hylättiin. 10 922 testistä 10 555
+läpäisi, 354 hylättiin ja 13 oli vanhoja alustaohituksia. Mainin kahden
+alkuperäisen aikakatkaisun jälkeen 297 tapausta pysähtyi tarkoitukselliseen
+keskeneräisen työn vartijaan; hylkäysten määrä ei ole juurisyiden määrä.
+Erillinen rooliketju, Node-jälkivaihe ja myöhemmät työtilapaketit eivät
+käynnistyneet. Tyypitys läpäisi, mutta sen alkuvaiheen päällekkäisyyttä
+ei todistettu testien aikakatkaisun syyksi. Ensiaineisto säilyi; kaikkien
+virheiden täydellistä talteenottoa ei todistettu.
+
+Yksi samojen lähteiden kahdeksan tiedoston sarjallinen vertailu läpäisi
+1 080 testiä ja hylkäsi kahdeksan Main-tapausta ilman ohituksia. Kaikki
+muut seitsemän tiedostoa läpäisivät. Tämä ei todistanut rinnakkaisuutta
+juurisyyksi tai hyväksynyt pysyvää ajotavan muutosta. Kahdeksan alkuperäistä
+aikakatkaisuviestiä säilytettiin. Viidessä tapauksessa näkyi myös liian
+aikaisen siivouksen virhe: vanha seuraamaton testirunko saattoi vielä kirjoittaa,
+kun yhteinen loppusiivous palautti mokkeja ja poisti sen kansioita.
+Yhdeksän säilyneen prosessifixturen molempien kirjattujen lasten sulku
+varmennettiin erikseen; muiden prosessien poissaoloa tai journal-snapshotin
+perusteella koko operaation valmistumista ei päätelty.
+
+Rajattu korjaus kytki neljä nykyistä Main-testiryhmää olemassa olevaan
+loppuodotusapuriin. Kaikki 12 cold-luonnin/-tuonnin ja kuusi rollbackin
+varianttia, alkuperäiset väittämät ja aikarajat säilyivät. Käynnistyksen
+todellinen lupaus ja onnistuneen elinkaaren sammutus kuuluvat edelleen
+testirungon loppuodotukseen; epäonnistuneen tai keskeneräisen työn kansiot
+säilytetään. Rakennevertailu varmisti myös kaikkien muiden testien
+muuttumattomuuden. 35 testin kohdesarja, desktopin tyypitys ja riippumaton
+deltakatselmus läpäisivät. Sen jälkeinen koko kahden tiedoston Main-sarja
+läpäisi kaikki 403 testiä ilman ohituksia. Sarjoja ei summata; tämä ei
+ratkaissut vanhojen viiveiden syitä tai muiden seuraamattomien ryhmien
+sulkua eikä vielä hyväksynyt normaalia työtilasarjaa tai PR-/main-portteja.
+
+Omistaja hyväksyi myöhemmin sisäisen OpenPGP-yhdistelmätestin jaon kolmeen
+itsenäiseen viiden sekunnin vastuutestiin. Tämän osan yhteisvara kasvaa
+15 sekuntiin; kaikki nykyiset virherajat, tavut, sulku ja ryhmäkohtainen
+salaus-/purkuvarmennus säilyvät. Jaon lähde- ja oikean runnerin sulkukontrollit
+sekä rajattu riippumaton katselmus läpäisivät. Koko kolmen testin
+OpenPGP-kohdesarja varmisti purettujen 35 tiedoston alkuperäiset tavut,
+tiivisteet ja ajosidonnat sekä jokaisen ryhmän virheet ja syyketjut.
+Kaksi sulkukontrollin tarkoituksellista hylkäystä säilyi hylkäyksinä;
+alkuperäisten aikakatkaisujen syitä ei nimetty korjatuiksi.
+
+Kopio-omistajan Linux-kohdeajo pysähtyi valmistelussa ennen testien keräystä:
+alustakohtainen riippuvuus puuttui. Lähteet ja alkuperäinen aineisto säilyivät,
+eikä ajoa tulkittu suoritetuiksi testeiksi tai Linux-hyväksynnäksi.
+Linuxin ja koko uuden revision integraatioportit jäivät avoimiksi.
+
+Sisäisen OpenPGP-yhdistelmätestin neljä mittauskontrollia ja yksi nimetty
+vaihemittaus valmistuivat. Mittaus säilytti nykyiset viiden sekunnin
+testirajan ja kahden sekunnin koukkurajan sekä alkuperäiset väittämät.
+Suurin vaihe oli metadatan jälkiluvun virhefixture. Koko salauskoetta ei
+ajettu uudelleen eikä ensimmäisen aikakatkaisun syytä merkitty korjatuksi.
+Kolmeen vastuutestiin jako ja sen yhteisvaran muutos jäivät erilliseksi
+omistajapäätökseksi. Mittarin ensiehdokkaat ja testivalinnan tarkistimen
+virhe säilyivät historiassa; lopullinen tulos varmennettiin samoista tavuista.
+
+Testiapurin loppuodotus on sittemmin korjattu paikalliseen työpuuhun.
+Uusi regressio osoitti puutteen vanhalla apurilla. Korjatun apurin kohde-
+ja oikean runnerin keskeytyskontrollit, tyypitys ja rajattu katselmus
+läpäisivät; lopuksi kahden tiedoston koko Main-vaikutussarja läpäisi 403
+testiä ilman ohituksia. Aikarajat ja palautuksen turvavartijat säilyivät.
+Tämä ei selitä vanhojen viiveiden syytä, todista myöhäisen alkuperäisvirheen
+salattua toimitusta tai korvaa erillisen OpenPGP-yhdistelmätestin porttia.
+
+Mittauksen jälkeinen lähdekatselmus erotti testiapurin loppuodotuksen
+puutteen varsinaisesta rollbackista. Jaettujen resurssien resetin esto
+säilyi oikein; testirungon päättymistä ei kuitenkaan odotettu nykyisessä
+loppukoukussa. Rajattu korjaussopimus ja oikean runner-aikakatkaisun
+kontrolli kirjattiin omistavaan suunnitelmaan. Palautuksen yhden journal-
+callbackin johtavan valintatarkistuksen vertailuehdotus jäi erilliseksi
+avoimeksi turvarajapäätökseksi, ei toteutus- tai suorituskykynäytöksi.
+Tässä katselmuksessa ei muutettu sovellusta, testejä tai aikarajoja eikä
+käynnistetty uutta testiajoa tai CI-kierrosta. Vanhat hylkäykset säilyivät.
+
+Hyväksytty CI-työnjako on sittemmin toteutettu paikalliseen työpuuhun.
+Sen 138 kohdekontrollia läpäisi ilman ohituksia. Uudet tunnistekontrollit
+todistivat rajatun virheviestin, muuttuneen ja monistetun tietueen hylkäyksen
+sekä oikean Node-virheen syyketjun salauksen ja purun. Koko muuttuneen
+OpenPGP-tiedoston kohdeajo hylättiin vanhan sisäisen yhdistelmän viiden
+sekunnin aikakatkaisuun; koko salauskoetta ei hyväksytty eikä vanhaa
+tunniste-eron syytä suljettu. Mainin rajatun mittauksen valitsinpaluu
+valmistui, mutta rollbackin työn päättyminen ja siivous jäivät uudessa
+hylkäyksessä todistamatta. Tarkat yksityiset mittaukset ja ensivirheet
+säilyvät erillään; sovelluksen vartijoita tai aikarajoja ei muutettu.
+
+Kolmen avoimen esteen lähdekatselmus ei muuttanut sovellusta tai testien
+rajoja eikä käynnistänyt uusia testejä tai CI-uusintaa. Mainin aikakatkaisujen
+tarkka kustannus ja salauskokeen tunniste-eron alkuperäinen syy jäivät
+avoimiksi. Niille nimettiin nykyisiin apureihin rajatut vaihemittaukset ja
+turvalliset kontrollit; myöhempi paikallinen läpäisy ei sulje ensihylkäystä.
+
+Alkuperäisen Electron-ajon loki osoitti pakettiketjun kuluttaneen lähes
+kymmenen minuuttia ennen kehitystestisarjaa. Omistaja hyväksyi pakettisarjan
+ja 72 kehitystestin erottamisen kahdeksi pakolliseksi CI-työksi, kumpikin
+35 minuutin rajassa. Enimmäisajovara on näin yhteensä 70 koneminuuttia;
+kaikki nykyiset testit, saman pilot-paketin sidonta ja siivousehdot säilyvät.
+Tämä on toteutuspäätös, ei vielä työnjaon, testien tai integraation läpäisy.
+[Omistava jatkosopimus](local-company-workspace-plan.md#w74n-pr-integraation-rajattu-jatkosopimus)
+ja M1 ohjaavat jatkoa. Katkaistun ensimmäisen testin siivous jää tuntemattomaksi.
+
+## W7.4:n ensimmäisen PR-kierroksen hylkäykset 5.11.2026
+
+[PR #327](https://github.com/eky-software/eky/pull/327) avattiin puhtaasta
+revisiosta `25bb186fc5dbd67805490dfb32c79e900952360e`.
+GitHubin testattavan yhdistelmärevision `e2ccc592` lähdepuu vastasi
+täsmälleen PR-headia; main oli `dd587740`.
+[Riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42018622115)
+läpäisi. [V2-kierroksen](https://github.com/eky-software/eky/actions/runs/42018622466)
+ensimmäisellä yrityksellä Linuxin desktop-sarjassa hylättiin 139 testiä
+11 tiedostossa. Windowsin työtilasopimuksissa 359 salaus-/aineistokontrollia
+läpäisi ja yksi OpenPGP-yhdistelmäkontrollin tunnisteväittämä hylättiin.
+Näitä ei tulkita hyväksytyksi integraatioksi.
+
+Ensivirheiden alkuperäiset lokit, artifact-tiivisteet ja salatut tavut
+säilytettiin. Nykyinen yksityinen purkuketju, avainprosessin sulku,
+manifestien ajo-/yritys-/checkout-sidonta ja kaikkien purettujen
+tiedostojen koot sekä tiivisteet varmennettiin. Linux-paketti sisälsi
+nykyisen keräysrajan mukaisen osajoukon, ei kaikkia 139 virhettä;
+puuttuvaa aineistoa tai siivousta ei päätellä tallennetuksi.
+
+Rajaus erotti testifixturejen oletusoikeuksilla luodut kansiot nykyisen
+yksityisen kansion vaatimuksesta. Valmisteltu korjaus nimeää fixturejen
+oikeudet; tuotannon oikeustarkistuksia, väittämiä tai aikarajoja ei poisteta.
+Erillinen kopio-omistajan regressio osoitti, ettei onnistunut siivous
+sulkenut saman olion uutta poistoyritystä. Valmisteltu terminal-suoja estää
+sen ennen uusia tiedostohavaintoja ja varsinaisia muutoksia. Kaksi pientä
+kontrollia epäonnistui lähtölähteellä; kolmen tiedoston 115 regressiota
+läpäisi korjauksella. Tämä ei yksin hyväksy Linuxia tai uutta pakettia.
+
+Salaus-/purkukontrollin yksi paikallinen diagnoosi läpäisi muuttumattomalla
+testillä; tunnisteväittämän ensimmäisen hylkäyksen syy jäi avoimeksi.
+Korjausten yhdentoista tiedoston kohdesarjassa kymmenen tiedostoa läpäisi.
+Main-tiedoston yksi `registryReturnBackup`-tapaus ylitti viiden sekunnin
+rajan, minkä jälkeen olemassa oleva sulkusuoja esti seuraavat tapaukset.
+Alkuperäinen työ valmistui myöhemmin ja resurssisiivous sulkeutui.
+Tämä ei muuta alkuperäistä ajoa onnistuneeksi tai osoita viivettä korjatuksi.
+Main-tiedoston yksi rajattu diagnoosi hylättiin eri rollback-yhdistelmän
+viiden sekunnin rajaan. Myös se valmistui myöhemmin ja resurssisiivous
+sulkeutui; loppusarjaa ei hyväksytty. Uusia muuttumattomia uusintoja ei tehdä.
+Terminal-suojan rajattu riippumaton lähdekatselmus ja desktopin tyypitys
+läpäisivät. Korjausten muut portit ja viiveiden tarkka syy ovat kesken.
+
+Kierroksen lopputulos oli 29 hyväksyttyä työtä, kolme hylkäystä
+(core, työtilasopimukset ja koonti), yksi Electron-työn peruutus sekä
+yhdeksän ohitusta. Kuusi ohitusta oli tarkoituksella valitsemattomia
+diagnostiikkatöitä; työtilan paketointi ja molempien kuluttajien matriisit
+estyivät ennakkoporttiin, eikä niitä hyväksytty.
+Molemmat clean-, upgrade/rollback- ja legacy-pakettikierrokset läpäisivät.
+Electron-työn sama pilot-paketti, tavallinen smoke ja viisi pakettitapausta
+läpäisivät. Development-sarjasta 60/72 läpäisi ilman odottamatonta hylkäystä
+ennen työn 35 minuutin kokonaiskatkaisua. Yksi käynnissä ollut testi
+keskeytyi ja 11 jäi ajamatta; aikaa ei nostettu eikä näitä merkitä läpäisseiksi.
+Myös katkaisun salattu paketti saatiin talteen ja purettujen kolmen
+tiedoston sidonta sekä tavut varmennettiin. Katkaistun testin lopullista
+siivousta ei päätellä toisen tapauksen elinkaaritiedostosta.
+
 ## W7.4:n täysi soak ja katselmuksen kattavuus 5.11.2026
 
 Puhtaan revision `2db58f0f0c55b734aa8935863cdebf8eedf6ba5d` täysi

@@ -42,12 +42,12 @@ function evidence(plan) {
 
 test('light, lifecycle, mixed and full-event changes select exact coverage and complete', () => {
   for (const [paths, event, count] of [
-    [[fast], 'pull_request', 5], [[critical], 'pull_request', 25],
-    [[customerBrowser], 'pull_request', 5], [[customerBrowser, critical], 'pull_request', 25],
-    [[fast, critical], 'pull_request', 25], [[fast], 'push', 36],
-    [[customerBrowser], 'push', 36], [[customerBrowser], 'schedule', 36],
-    [[customerBrowser], 'workflow_dispatch', 36],
-    [[fast], 'schedule', 36], [[fast], 'workflow_dispatch', 36],
+    [[fast], 'pull_request', 5], [[critical], 'pull_request', 26],
+    [[customerBrowser], 'pull_request', 5], [[customerBrowser, critical], 'pull_request', 26],
+    [[fast, critical], 'pull_request', 26], [[fast], 'push', 37],
+    [[customerBrowser], 'push', 37], [[customerBrowser], 'schedule', 37],
+    [[customerBrowser], 'workflow_dispatch', 37],
+    [[fast], 'schedule', 37], [[fast], 'workflow_dispatch', 37],
   ]) {
     const plan = planFor(paths, event);
     const { needs, jobs } = evidence(plan);
@@ -88,18 +88,39 @@ test('legacy coverage requires every responsibility group and selected repetitio
   }
 });
 
-test('packaged recovery cannot pass without the legacy preparation and restore steps', () => {
+test('development and packaged jobs require their own exact steps including the packaged supervisor', () => {
   const plan = planFor([critical], 'push');
-  for (const name of ['Prepare packaged legacy recovery runtime', 'Run packaged legacy recovery']) {
+  const owners = {
+    'Windows Electron critical E2E': ['Run critical Electron E2E journeys'],
+    'Windows packaged smoke and recovery': ['Package Windows desktop', 'Run packaged Windows smoke',
+      'Prepare packaged legacy recovery runtime', 'Build existing packaged process owner', 'Run packaged legacy recovery'],
+  };
+  const required = requiredCiJobs(plan);
+  assert.deepEqual(required.electronCritical.map(job => [job.name, job.steps]),
+    [['Windows Electron critical E2E', owners['Windows Electron critical E2E']]]);
+  assert.deepEqual(required.packageSmoke.map(job => [job.name, job.steps]),
+    [['Windows packaged smoke and recovery', owners['Windows packaged smoke and recovery']]]);
+  for (const [owner, names] of Object.entries(owners)) for (const name of names) {
     for (const outcome of ['missing', 'skipped', 'failure', 'cancelled']) {
       const { needs, jobs } = evidence(plan);
-      const job = jobs.find(value => value.name.endsWith('Windows Electron critical E2E'));
+      const job = jobs.find(value => value.name === `caller / ${owner}`);
       const step = job.steps.find(value => value.name === name);
-      assert.ok(step, 'coverage must explicitly require the legacy step');
+      assert.ok(step, 'coverage must explicitly require the owned step');
       if (outcome === 'missing') job.steps = job.steps.filter(value => value !== step);
       else step.conclusion = outcome;
       assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE');
     }
+    const { needs, jobs } = evidence(plan);
+    const job = jobs.find(value => value.name === `caller / ${owner}`);
+    const step = job.steps.find(value => value.name === name);
+    job.steps = job.steps.filter(value => value !== step);
+    const other = jobs.find(value => value.name === `caller / ${Object.keys(owners).find(value => value !== owner)}`);
+    other.steps.push(step);
+    assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE',
+      'a successful step in the adjacent job cannot replace the owning step');
+    job.steps.push(step, structuredClone(step));
+    assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE',
+      'duplicate steps cannot satisfy coverage');
   }
 });
 
@@ -459,7 +480,7 @@ test('manual diagnostics select independent existing jobs without changing reusa
   const cadence = await readFile(new URL('../workflows/ci-cadence-contracts.yml', import.meta.url), 'utf8');
   assert.doesNotMatch(cadence, /linux_consumer_diagnostic/u);
   const conditions = [...core.matchAll(/^  ([\w-]+):\n    name: [^\n]+\n    if: ([^\n]+)/gm)];
-  assert.equal(conditions.length, 5);
+  assert.equal(conditions.length, 6);
   const selected = (inputs) => conditions.filter(([, , expression]) => runInNewContext(
     expression, { inputs, fromJSON: JSON.parse }, { timeout: 1000 },
   )).map(([, name]) => name);
@@ -472,19 +493,21 @@ test('manual diagnostics select independent existing jobs without changing reusa
           assert.deepEqual(selected({ risk_plan: JSON.stringify(plan),
             electron_diagnostic: electron, linux_consumer_diagnostic: linux }), [...base,
             ...(plan.gates.electronCritical ? ['e2e-electron-windows-critical'] : []),
+            ...(plan.gates.packageSmoke ? ['e2e-packaged-windows-smoke'] : []),
             ...(plan.gates.windowsContracts ? ['windows-contracts'] : []),
           ]);
         }
       }
     }
   }
-  assert.deepEqual(selected({ risk_plan: '', electron_diagnostic: true }), ['e2e-electron-windows-critical']);
+  assert.deepEqual(selected({ risk_plan: '', electron_diagnostic: true }),
+    ['e2e-electron-windows-critical', 'e2e-packaged-windows-smoke']);
   for (const electron of [false, true]) {
     for (const linux of [undefined, false, true]) {
       assert.deepEqual(selected({ risk_plan: '', electron_diagnostic: electron,
         linux_consumer_diagnostic: linux }), [
         ...(linux === true ? ['e2e-system-security', 'e2e-web-critical'] : []),
-        ...(electron ? ['e2e-electron-windows-critical'] : []),
+        ...(electron ? ['e2e-electron-windows-critical', 'e2e-packaged-windows-smoke'] : []),
       ]);
       assert.throws(() => selected({ risk_plan: 'invalid', electron_diagnostic: electron,
         linux_consumer_diagnostic: linux }));
@@ -492,6 +515,14 @@ test('manual diagnostics select independent existing jobs without changing reusa
   }
   const plan = planFor([fast]);
   assert.deepEqual(selected({ risk_plan: JSON.stringify(plan), electron_diagnostic: true }), base);
+  // Selection must follow each gate, not accidentally alias the two Windows jobs.
+  for (const electronCritical of [false, true]) for (const packageSmoke of [false, true]) {
+    const selection = { ...plan, gates: { ...plan.gates, electronCritical, packageSmoke } };
+    assert.deepEqual(selected({ risk_plan: JSON.stringify(selection), electron_diagnostic: true }), [
+      ...base, ...(electronCritical ? ['e2e-electron-windows-critical'] : []),
+      ...(packageSmoke ? ['e2e-packaged-windows-smoke'] : []),
+    ]);
+  }
   assert.doesNotMatch(core, /name: V2 acceptance|uses: .*windows-acceptance/);
   assert.match(core, /name: Verify Electron startup observation wiring\s+if: inputs.risk_plan == '' && inputs.electron_diagnostic\s+run: pnpm --filter @eky\/e2e exec playwright test --project=electron-development --grep @diagnostic-contract --workers=1 --retries=0/);
 });
@@ -530,6 +561,7 @@ test('core jobs preserve their exact approved preparation and execution budgets'
     'e2e-system-security': 10,
     'e2e-web-critical': 20,
     'e2e-electron-windows-critical': 35,
+    'e2e-packaged-windows-smoke': 35,
     'windows-contracts': 15,
   };
   for (const [name, minutes] of Object.entries(budgets)) {
@@ -541,6 +573,10 @@ test('core jobs preserve their exact approved preparation and execution budgets'
     '        run: pnpm test:e2e:electron:critical');
   assert.match(workflowStep(electron, 'Preserve encrypted CI failure evidence'),
     /^        timeout-minutes: 3$/mu);
+  const packaged = workflowJob(core, 'e2e-packaged-windows-smoke');
+  assert.match(workflowStep(packaged, 'Preserve encrypted CI failure evidence'),
+    /^        timeout-minutes: 3$/mu);
+  for (const job of [electron, packaged]) assert.doesNotMatch(job, /^    needs:|^    continue-on-error:/mu);
   const web = workflowJob(core, 'e2e-web-critical');
   assert.match(workflowStep(web, 'Run critical web E2E journeys'),
     /^          pnpm --filter @eky\/e2e e2e:web:critical$/mu);
@@ -590,7 +626,7 @@ test('manual Linux consumer diagnostics bind source and preserve normal steps, b
   assert.equal(core.match(/run: pnpm --filter @eky\/e2e linux:consumer:build/gu)?.length, 2);
   assert.equal(core.match(/pnpm --filter @eky\/e2e linux:consumer:loss /gu)?.length, 2);
   assert.equal(core.match(/run: pnpm test:e2e:stress/gu)?.length, 1);
-  for (const name of ['verify', 'e2e-electron-windows-critical', 'windows-contracts']) {
+  for (const name of ['verify', 'e2e-electron-windows-critical', 'e2e-packaged-windows-smoke', 'windows-contracts']) {
     assert.doesNotMatch(workflowJob(core, name), /linux:consumer|test:e2e:stress|linux_consumer_diagnostic/u);
   }
   const root = JSON.parse(await readFile(new URL('../../eky_software/package.json', import.meta.url), 'utf8'));

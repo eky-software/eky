@@ -239,6 +239,18 @@ auditia tai tuotannon tukipakettia; niiden näyttö kuuluu testiraporttiin.
 | TEST-PROJECT-SELECTION-001 | Puhdas Playwright-sopimus ja discovery | Oikea config, erilliset projekti-/hakemistorajat, ei-kriittisten security/fault-tapausten säilyminen ja endurance-poissulku. Baseline ei valitse electron-stressiä. Todellista jäsenyyttä verrataan, ei vain määrää. | accepted-contract |
 | TEST-PREPARATION-001 | Build-integraatio ja Windows E2E | Tyhjät tai vanhentuneet tuotteet rakennetaan oikein, valmisteluvirhe estää myöhemmät vaiheet ja launchin myös vanhan stagen kanssa. Molemmat oikeat aggregaatit suoritetaan; siivoustulos erillään T3:n avoimesta puutteesta. | accepted-contract |
 
+CI-sijoitus on nyt kaksi erillistä 35 minuutin työtä: `electronCritical`
+valitsee `Windows Electron critical E2E` -työn nykyisille 72 development-
+tapaukselle ja `packageSmoke` valitsee `Windows packaged smoke and recovery`
+-työn. Jälkimmäisen pilot-build, tavallinen smoke, runtime-valmistelu,
+supervisor-build ja viiden tapauksen sarja ovat kaikki pakollisia samassa
+työssä alkuperäisen manifestipinin ja loppuvarmennuksen kanssa.
+`electron_diagnostic` valitsee molemmat, ei V2-koontia. Tarkat työrajat,
+järjestys, puuttuva valmistelu ja virheen ohitus kuuluvat nykyisen
+`e2e-command-wiring.test.mjs`:n kielteisiin kontrolleihin. Skenaariot,
+testitasot, testivalinta ja testikohtaiset rajat eivät muutu. Tämä
+CI-sijoituksen muutos ei vielä ole uuden revision ajo- tai cleanup-hyväksyntä.
+
 ### T3: Prosessipuun omistajuus
 
 Alla on [nykyisen T3-sopimuksen](e2e-test-environment.md#omistajuuden-regressioportti)

@@ -3,6 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
+import { windowsNativeCompilationBinding, windowsNativePreparationBinding } from '../../eky_software/apps/desktop/scripts/profileInspection/nativeBuildFailureEvidence.mjs';
 
 const read = path => readFileSync(new URL(path, import.meta.url), 'utf8');
 const actionPath = '.github/actions/collect-ci-failure-evidence/action.yml';
@@ -20,6 +21,7 @@ const normalFamilies = {
     'e2e-system-security': 'core-system',
     'e2e-web-critical': 'core-web',
     'e2e-electron-windows-critical': 'core-electron',
+    'e2e-packaged-windows-smoke': 'core-packaged',
     'windows-contracts': 'core-installer',
   },
   'ci-cadence-contracts.yml': { cadence_contracts: 'cadence-contracts' },
@@ -337,7 +339,43 @@ test('all normal Linux and Windows families collect last, independently of which
       count++;
     }
   }
-  assert.equal(count, 18);
+  assert.equal(count, 19);
+});
+
+test('split Windows evidence keeps distinct job keys without extending native raw capture', () => {
+  const core = workflows.get('ci.yml');
+  const owners = [
+    ['e2e-electron-windows-critical', 'core-electron'],
+    ['e2e-packaged-windows-smoke', 'core-packaged'],
+  ];
+  const hooks = owners.map(([id, key]) => {
+    const job = core.get(id);
+    const hook = steps(job, 6).at(-1);
+    const jobKey = key + '-${{ strategy.job-index || 0 }}';
+    assert.ok(hook.includes(`job-key: ${jobKey}\n`));
+    assert.equal(job.match(/uses: actions\/upload-artifact@/gu)?.length ?? 0, key === 'core-electron' ? 1 : 0);
+    assert.doesNotMatch(job, /EKY_EVIDENCE_JOB_KEY:|nativeCompilation|build\.private\.log|process-output\.private/u);
+    return hook.replace(jobKey, 'same-key');
+  });
+  assert.equal(hooks[0], hooks[1], 'both jobs use identical ordinary encrypted delivery policies');
+  assert.deepEqual(windowsNativePreparationBinding,
+    { job: 'e2e-electron-windows-critical', jobKey: 'core-electron-0' });
+  const env = { GITHUB_ACTIONS: 'true', RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted',
+    GITHUB_EVENT_NAME: 'pull_request', GITHUB_JOB: 'e2e-electron-windows-critical',
+    EKY_EVIDENCE_JOB_KEY: 'core-electron-0', GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '2',
+    GITHUB_SHA: 'a'.repeat(40) };
+  assert.deepEqual(windowsNativeCompilationBinding(env, 'win32'), {
+    runId: '123', attempt: '2', job: env.GITHUB_JOB, jobKey: env.EKY_EVIDENCE_JOB_KEY,
+    sourceRevision: env.GITHUB_SHA,
+  });
+  for (const job of owners.map(([id]) => id)) for (const jobKey of ['core-electron-0', 'core-packaged-0']) {
+    if (job === env.GITHUB_JOB && jobKey === env.EKY_EVIDENCE_JOB_KEY) continue;
+    assert.equal(windowsNativeCompilationBinding({ ...env, GITHUB_JOB: job, EKY_EVIDENCE_JOB_KEY: jobKey }, 'win32'), null);
+  }
+  const packaged = { ...env, GITHUB_JOB: 'e2e-packaged-windows-smoke' };
+  delete packaged.EKY_EVIDENCE_JOB_KEY;
+  assert.equal(windowsNativeCompilationBinding(packaged, 'win32'), null,
+    'packaged preparation is excluded even before the collector supplies a key');
 });
 
 function assertCompositeTrust(source) {

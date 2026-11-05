@@ -7,14 +7,69 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**5.11.2026: W7.4 on haarassa; koko integraatiota ei ole hyväksytty.**
+**6.11.2026: W7.4 on haarassa; koko integraatiota ei ole hyväksytty.**
 Hyväksytty main on `dd5877408e3ca5b3952937b5e2aa43ea1fc58dfe`:
 [V2](https://github.com/eky-software/eky/actions/runs/42004068173) ja
 [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42004841938)
 on varmennettu hyväksytyiksi. Nykyinen haara on `codex/w7-4-deletion`;
 kaikki sen keskeneräiset muutokset säilytetään.
 
-**Nykyinen korjauspala:** koko W7.4:n riippumaton lähdekatselmus on tehty.
+**Integraation nykytila:** [PR #327](https://github.com/eky-software/eky/pull/327)
+on avoinna. Sen ensimmäinen head oli `25bb186fc5dbd67805490dfb32c79e900952360e`;
+alla kuvattu korjaus jäädytetään saman haaran uudeksi revisioksi. Ajantasainen
+head ja hyväksyntä varmennetaan PR:stä, ei tästä historiallisesta SHA:sta.
+[Riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42018622115)
+läpäisi; [ensimmäinen V2](https://github.com/eky-software/eky/actions/runs/42018622466)
+hylättiin. Se ja sen katkaisujen epävarmat siivoustilat säilyvät
+[historiassa](release-0.3.0-integration-history.md#w74n-ensimmäisen-pr-kierroksen-hylkäykset-5112026),
+eivät hyväksyttynä integraationa.
+
+Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
+
+- Kopio-omistajan yksityiset kansio-oikeudet ja vanhan omistajan
+  uudelleenkäytön esto on korjattu; kohderegressiot, tyypitys ja katselmus
+  läpäisivät. Linux-kohdeajo estyi valmisteluun ennen testien keräystä.
+  Oikea Linux-CI ja uusi puhdas paketti ovat yhä avoimia.
+- OpenPGP-kontrollin hyväksytty jako kolmeen viiden sekunnin vastuutestiin
+  on toteutettu, yhteisvara 15 sekuntia. Koko kolmen testin salaus-/purkusarja
+  läpäisi kaikkien 35 tiedoston tavu-, tiiviste-, ajosidonta- ja
+  ryhmäkohtaisten alkuperäisvirheiden vertailut. Lähdekontrollit, oikean
+  runnerin sulkukokeet ja rajattu riippumaton katselmus läpäisivät.
+- Hyväksytty Electron-työnjako on toteutettu: 72 development-testiä ja
+  viiden testin pilot-pakettisarja ovat eri pakollisissa töissä, kummallakin
+  35 minuutin raja. Yhteisvara on 70 koneminuuttia. 138 kohdekontrollia ja
+  alkuperäistä CI-valintaa vastaava 72 + 5 tunnisteen vertailu läpäisivät;
+  uuden revision todellinen CI-ajo on vielä tekemättä.
+- Normaali työtilasarja hylättiin seitsemässä desktop-tiedostossa.
+  Yksi erillinen sarjallinen kahdeksan tiedoston vertailu läpäisi 1 080
+  testiä ja hylkäsi kahdeksan Main-tapausta. Viidessä näkyi lisäksi
+  keskeneräisen työn aikainen siivousvirhe. Neljä testiryhmää on nyt
+  kytketty nykyiseen loppuodotusapuriin; kaikki 18 tapausta, väittämät ja
+  aikarajat säilyivät. Kohdesarja läpäisi 35 testiä, sen jälkeinen koko
+  Main-vaikutussarja 403 testiä ilman ohituksia. Tyypitys ja riippumaton
+  deltakatselmus läpäisivät. Sarjoja ei summata; vanhojen viiveiden syyt
+  tai muiden seuraamattomien testien turvallinen sulku eivät tästä ratkea.
+- Normaali desktop-komento läpäisi kaikki kolme vaihettaan: 469 tiedoston
+  10 909 testiä ja 13 vanhaa alustaohitusta, erillinen 23 kohteen poistoketju
+  nykyisessä 180 sekunnin rajassa sekä 535 Node-testiä ja 12 vanhaa ohitusta.
+  Työtilasarja pysähtyi myöhemmin backendin kahteen vanhaan testifixtureen.
+  Puuttuva legacy-kohdevalinta ja jatkohakuvastauksen väärä odotus on
+  korjattu vain testeihin: 52 kohdetestiä, tyypitys ja deltakatselmus
+  läpäisivät. Sen jälkeinen muiden työtilapakettien normaali sarja läpäisi;
+  backendissä 4 388 testiä ja viisi vanhaa alustaohitusta. Desktopin
+  muuttumatonta osaa ei ajettu turhaan uudelleen. Näyttö on kahdesta
+  erillisestä osasta, ei alkuperäisen hylätyn komennon muuttaminen vihreäksi.
+
+**Seuraava portti:** lähdejäädytys,
+uusi puhdas paketti ja nykyiset Linux-/paketti-/PR- sekä uuden mainin portit.
+[Omistava rajaus](local-company-workspace-plan.md#w74n-pr-integraation-rajattu-jatkosopimus)
+ja [korjaushistoria](release-0.3.0-integration-history.md#w74n-pr-esteiden-rajattu-jatkokatselmus-5112026)
+erottavat tehdyn näytön avoimesta. Yhden rollback-journalin callbackin
+vertailuehdotus pysyy erillisenä hyväksymättömänä turvarajapäätöksenä.
+Turvavartijoita tai muita aikarajoja ei muutettu; paikalliset läpäisyt eivät
+yksin hyväksy W7.4:ää tai mergeä.
+
+**Edeltävä katselmuskorjaus:** koko W7.4:n riippumaton lähdekatselmus on tehty.
 Siinä löytyivät paketoidun testin kilpailevat ajastimet ja tämän sivun
 vanhentuneet jatko-ohjeet. Rajatut korjaukset ja deltakatselmus on tehty.
 Pakettiajurin valmistelu,
@@ -64,10 +119,11 @@ sekä lähteen muuttumattomuus varmennettiin; tämä ei ole yleinen muistivuoto-
 tai kapasiteettilupaus. Edeltävän `39a3c176`-revision Electron-stress ja
 loppusiivous ovat erillinen läpäissyt näyttö.
 
-**Seuraavaksi:** vaikutusalueen integraatioportit, julkaisuyksityisyys,
-täsmällisen PR-headin portit ja auditointi, suojattu merge sekä uuden mainin
-omat tarkistukset. Pakettitesti- ja dokumentointideltat on katselmoitu;
-tuotantoruntimen lähde vastaa koko W7.4:n riippumatonta loppukatselmusta.
+**Seuraavaksi:** yllä nimetyt korjaukset ja niiden omat portit, sitten
+julkaisuyksityisyys, täsmällisen PR-headin portit ja auditointi, suojattu
+merge sekä uuden mainin omat tarkistukset. Koko W7.4:n aiempi lähdekatselmus
+säilyy omana näyttönään; PR:n jälkeen muuttunut kopio-omistaja sekä tulevat
+testi-/CI-deltat vaativat oman rajatun katselmuksen ja lähdesidonnan.
 W7.4:ää tai koko 0.3.0:aa ei ole hyväksytty.
 W7.5:n delete-IPC, preload, painike ja backenditon tukivienti pysyvät suljettuina.
 

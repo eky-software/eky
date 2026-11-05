@@ -1473,16 +1473,27 @@ V2:n controller valitsee PR:n jobit riskisuunnitelman mukaan; `main`-,
 ajastettu ja manuaalinen kokonaisajo ovat täysiä. Feature-push ei käynnistä
 PR:n rinnalle toista raskasta matriisia. `ci.yml` on reusable core eikä sen
 vihreä osatulos yksin täytä `V2 acceptance` -porttia. Sen E2E-jobit ovat
-`System security E2E`, `Web critical E2E` ja
-`Windows Electron critical E2E`. Windows-jobi paketoi desktop-sovelluksen,
-ajaa packaged smoken ja sen jälkeen kriittiset Electron development -testit
-yhdellä workerilla. Endurance-baselineja tai soakia ei ajeta automaattisesti
+`System security E2E`, `Web critical E2E`,
+`Windows Electron critical E2E` ja `Windows packaged smoke and recovery`.
+`electronCritical` valitsee nykyisen development-työn ja sen kaikki 72
+tapausta yhdellä workerilla; `packageSmoke` valitsee uuden pakettityön.
+Pakettityö rakentaa yhden pilot-paketin, ajaa tavallisen smoken,
+pakettiruntimen valmistelun, nykyisen supervisor-buildin ja viisi
+pakettitapausta tässä järjestyksessä. Alkuperäinen manifestipin kulkee
+smokesta sarjan setupiin ja loppuvarmennukseen saman työn sisällä ilman
+rebuildiä tai cross-job-artifactia. `electron_diagnostic` valitsee molemmat
+työt, ei V2-koontia. Endurance-baselineja tai soakia ei ajeta automaattisesti
 CI:ssä.
 
-Windows Electron critical -työn kokonaisraja on 35 minuuttia. Se kattaa
-valmistelun, paketoinnin, packaged-todennuksen ja development-testit, eikä
-pidennä yksittäisen testin, käynnistyksen, palautuksen tai siivouksen rajaa.
-Salatun virheaineiston askeleen oma raja säilyy kolmessa minuutissa; muiden
-core-töiden budjetit eivät muutu. Kokonaisrajan muutos ei osoita aiempia
-yksittäisiä aikakatkaisuja korjatuiksi. Työn rajaus tarkistetaan nykyisessä
-`ciRunAcceptance.test.mjs`-sopimustestissä.
+Molempien Windows-E2E-töiden kokonaisraja on 35 minuuttia ja valmistelu on
+työkohtainen. Yhteenlaskettu enimmäisvara kasvaa 35:stä 70 runner-minuuttiin.
+Yksittäisen testin, Playwrightin, käynnistyksen, palautuksen ja siivouksen
+rajat sekä retry-ehdot säilyvät. Salatun virheaineiston askeleen oma raja
+säilyy kummassakin kolmessa minuutissa, developmentissa `core-electron-0`-
+ja pakettityössä `core-packaged-0`-sidonnalla. Natiivikäännöksen raakalokin
+rajattu lupa ei laajene pakettityöhön. Muiden core-töiden budjetit eivät muutu.
+Koonti vaatii molemmat valitut työt ja kaikki viisi pakettivaihetta;
+puuttuva vaihe ei kelpaa viereisen työn perusteella. Jako ei osoita aiempia
+aikakatkaisuja korjatuiksi eikä takaa kokonaisajon tai cleanupin valmistumista.
+Nykyiset `ciRunAcceptance.test.mjs`- ja `e2e-command-wiring.test.mjs`-
+sopimukset tarkistavat työrajat; uuden revision ajonäyttö on vielä avoin.

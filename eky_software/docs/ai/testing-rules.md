@@ -388,6 +388,16 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   poistoprosessitapauksen ja niiden sulun. Vanha tarkistinvirhetesti
   säilyttää viiden sekunnin rajansa ja ulompi OpenPGP-koe 240 sekuntia.
   Lisäys ei muuta tuotannon tai CI:n aikarajoja eikä oikeuta uusintaan.
+  Omistajan 5.11.2026 hyväksymä jako erottaa sisäisen monirajaisen
+  virheketjutestin kolmeen itsenäiseen viiden sekunnin vastuutestiin:
+  adapterit ja valmistelu, metadatan jälkiluku sekä terminal-/inventaarion
+  loppusiivous. Tämän osan yhteisvara kasvaa viidestä 15 sekuntiin;
+  sisäisen ajurin 90 sekunnin, loppukoukun kahden sekunnin ja ulomman
+  salauskokeen 240 sekunnin rajat säilyvät. Kaikki nykyiset virherajat,
+  alkuperäisen poikkeuksen identiteetti, säilyvien tavujen ja sulun
+  väittämät sekä jokaisen ryhmän todellinen projektio ja salaus-/purku
+  säilytetään. Jokainen ryhmä omistaa virheolionsa ja testisidontansa;
+  kaikkien ryhmien tietueet ja alkuperäiset tavut tarkistetaan erikseen.
 - `workspaceDeletionRolesCommand.test.ts`:n uusi kaikkien roolien
   yhdistelmätesti käyttää enintään 180 sekuntia. Samaan budjettiin kuuluvat
   kymmenen roolia, vanhan layoutin kaikki 13 sallittua jäsentä, 23 rivin
@@ -916,8 +926,25 @@ requesteissa riskisuunnitelman mukaan sekä täysinä `main`-pusheissa,
 ajastetusti ja käsin käynnistetyissä kokonaisajoissa. Feature-push ei aja
 PR:n rinnalle toista raskasta matriisia. `ci.yml` on kutsuttu core-työnkulku,
 ei erillinen `antsa`- tai PR-triggeri. Sen erillinen käsikäynnistys
-`electron_diagnostic=true` ajaa vain nykyisen Electron-jobin paketoinnin,
-packaged smoken, critical-polut ja käynnistyshavainnon kytkentätestin.
+`electron_diagnostic=true` valitsee sekä `Windows Electron critical E2E`-
+että `Windows packaged smoke and recovery` -työn. Ensimmäinen ajaa nykyiset
+72 development-tapausta ja erillisen käynnistyshavainnon kytkentätestin.
+Jälkimmäinen rakentaa yhden pilot-paketin, ajaa tavallisen smoken,
+pakettiruntimen valmistelun, nykyisen supervisor-buildin ja viisi
+pakettitapausta tässä järjestyksessä. Smoke välittää alkuperäisen
+manifestipinin saman työn sarjalle ja loppuvarmennukselle; sarja ei paketoi
+uudelleen eikä siirrä pin-sidontaa toiseen työhön.
+Riskisuunnitelmassa `electronCritical` valitsee development-työn ja
+`packageSmoke` pakettityön. Valittuna kumpikin työ ja kaikki viisi
+pakettivaihetta, myös supervisor-build, ovat koonnille pakollisia.
+Molempien kokonaisraja on 35 minuuttia: yhteenlaskettu enimmäisvara kasvaa
+35:stä 70 runner-minuuttiin ja valmistelu tehdään kummassakin työssä.
+Testi-, Playwright-, käynnistys- ja cleanup-rajat sekä retry-ehdot säilyvät.
+Molemmilla on nykyinen enintään kolmen minuutin ehdollinen salattu
+virhekeräys, erillisillä `core-electron-0`- ja `core-packaged-0`-sidonnoilla.
+Natiivikäännöksen raakalokipoikkeus pysyy vain development-työn sidonnassa.
+Jaon kokonaisajon ja cleanupin hyväksyntänäyttö on vielä avoin; jako ei
+korjaa aiempia hylkäyksiä tai puuttuvaa sulkutodistetta.
 Tämä rajattu diagnoosi ei tuota `V2 acceptance` -tulosta eikä korvaa normaalia
 kokonaiskierrosta. Reusable-kutsun pakollinen riskisuunnitelma säilyy;
 myös manuaalinen V2-kokonaisajo käyttää sitä muuttumattomana.

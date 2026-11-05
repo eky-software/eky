@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       electron_diagnostic:
-        description: Run only the existing Electron job; not a V2 acceptance cycle
+        description: Run Electron development and packaged jobs; not a V2 acceptance cycle
         required: true
         type: boolean
         default: true
@@ -348,21 +348,6 @@ jobs:
       - name: Prepare Electron development runtime
         run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
 
-      - name: Package Windows desktop
-        run: pnpm --filter @eky/desktop package:windows:pilot
-
-      - name: Run packaged Windows smoke
-        run: pnpm --filter @eky/desktop smoke:windows --pilot-series-start
-
-      - name: Prepare packaged legacy recovery runtime
-        run: pnpm --filter @eky/e2e e2e:prepare
-
-      - name: Build existing packaged process owner
-        run: pnpm --filter @eky/desktop installer:supervisor:build
-
-      - name: Run packaged legacy recovery
-        run: pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts
-
       - name: Run critical Electron E2E journeys
         run: pnpm test:e2e:electron:critical
 
@@ -397,6 +382,79 @@ jobs:
         uses: ./.github/actions/collect-ci-failure-evidence
         with:
           job-key: core-electron-${{ strategy.job-index || 0 }}
+          job-outcome: ${{ job.status }}
+          public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
+          fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
+          verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
+  e2e-packaged-windows-smoke:
+    name: Windows packaged smoke and recovery
+    if: (inputs.risk_plan == '' && inputs.electron_diagnostic) || (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.packageSmoke)
+    runs-on: windows-latest
+    timeout-minutes: 35
+
+    defaults:
+      run:
+        working-directory: eky_software
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version-file: eky_software/.node-version
+          package-manager-cache: false
+
+      - name: Prepare locked package manager
+        working-directory: .
+        run: node .github/scripts/prepareLockedPnpm.mjs
+
+      - name: Set up existing Windows test owner SDK
+        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        with:
+          dotnet-version: 10.0.302
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Electron development runtime
+        run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
+
+      - name: Package Windows desktop
+        run: pnpm --filter @eky/desktop package:windows:pilot
+
+      - name: Run packaged Windows smoke
+        run: pnpm --filter @eky/desktop smoke:windows --pilot-series-start
+
+      - name: Prepare packaged legacy recovery runtime
+        run: pnpm --filter @eky/e2e e2e:prepare
+
+      - name: Build existing packaged process owner
+        run: pnpm --filter @eky/desktop installer:supervisor:build
+
+      - name: Run packaged legacy recovery
+        run: pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts
+
+      - name: Preserve encrypted CI failure evidence
+        if: >-
+          ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
+            && (job.status == 'failure' || job.status == 'cancelled')
+            && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
+            && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
+            && (github.event_name == 'push' || github.event_name == 'schedule'
+              || github.event_name == 'workflow_dispatch'
+              || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
+            && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
+            && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        uses: ./.github/actions/collect-ci-failure-evidence
+        with:
+          job-key: core-packaged-${{ strategy.job-index || 0 }}
           job-outcome: ${{ job.status }}
           public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
           fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
