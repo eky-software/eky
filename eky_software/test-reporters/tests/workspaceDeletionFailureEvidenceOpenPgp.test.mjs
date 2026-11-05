@@ -17,6 +17,17 @@ import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-a
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+const publicationRootIdentity = '33333333-3333-4333-8333-333333333333';
+
+test('publication fixture identity survives a synthetic secret-word collision', () => {
+  const oldId = 'synthetic-task:w74-c-synthetic-root';
+  const oldProjection = projectExceptionChain({ message: oldId }, ['root']).chain[0].message;
+  assert.equal(oldProjection.endsWith(':w74-c-synthetic-root'), false);
+  assert.equal(oldProjection.includes('[redacted]'), true);
+  const id = `synthetic-task:${publicationRootIdentity}`;
+  const current = projectExceptionChain({ message: id }, ['root']).chain[0].message;
+  assert.equal(current === id, true, 'PUBLICATION_FIXTURE_COLLIDES_WITH_SYNTHETIC_SECRET');
+});
 
 function publicationIdentityDiagnostic(matches) {
   const id = matches[0]?.test.id;
@@ -32,12 +43,12 @@ function assertPublicationIdentity(matches) {
   const diagnostic = publicationIdentityDiagnostic(matches);
   assert.equal(matches.length, 1, diagnostic);
   const id = matches[0].test.id;
-  assert.equal(typeof id === 'string' && id.endsWith(':w74-c-synthetic-root'), true, diagnostic);
+  assert.equal(typeof id === 'string' && id.endsWith(`:${publicationRootIdentity}`), true, diagnostic);
 }
 
 test('publication identity diagnostics reject changed or duplicate records without exposing IDs', () => {
   const record = id => ({ test: { id } });
-  assertPublicationIdentity([record('synthetic-task:w74-c-synthetic-root')]);
+  assertPublicationIdentity([record(`synthetic-task:${publicationRootIdentity}`)]);
   for (const [matches, expected] of [
     [[], { matchCount: 0, idLength: null, atLimit: false, hasRedactionMarker: false }],
     [[record(null)], { matchCount: 1, idLength: null, atLimit: false, hasRedactionMarker: false }],
@@ -45,8 +56,8 @@ test('publication identity diagnostics reject changed or duplicate records witho
     [[record('task:[redacted]')], { matchCount: 1, idLength: 15, atLimit: false, hasRedactionMarker: true }],
     [[record('x'.repeat(STARTUP_EXCEPTION_LIMITS.message))],
       { matchCount: 1, idLength: STARTUP_EXCEPTION_LIMITS.message, atLimit: true, hasRedactionMarker: false }],
-    [[record('first:w74-c-synthetic-root'), record('second:w74-c-synthetic-root')],
-      { matchCount: 2, idLength: 26, atLimit: false, hasRedactionMarker: false }],
+    [[record(`first:${publicationRootIdentity}`), record(`second:${publicationRootIdentity}`)],
+      { matchCount: 2, idLength: 42, atLimit: false, hasRedactionMarker: false }],
   ]) {
     assert.throws(() => assertPublicationIdentity(matches), error => {
       assert.equal(error.code, 'ERR_ASSERTION');
@@ -55,7 +66,7 @@ test('publication identity diagnostics reject changed or duplicate records witho
       const diagnostic = JSON.parse(firstLine.slice(firstLine.indexOf('{')));
       assert.deepEqual(diagnostic, expected);
       assert.equal(error.message.includes('PRIVATE_UNEXPECTED_ID'), false);
-      assert.equal(error.message.includes('synthetic-root'), false);
+      assert.equal(error.message.includes(publicationRootIdentity), false);
       return true;
     });
   }
@@ -72,9 +83,9 @@ test('publication identity diagnostic survives the actual failed Node reporter a
     const binding = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
       GITHUB_JOB: 'w74-identity-proof', EKY_EVIDENCE_JOB_KEY: 'w74-identity-proof-0', GITHUB_SHA: 'a'.repeat(40) };
     const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...binding,
-      SYNTHETIC_TEST_SECRET: 'w74-c-synthetic-root' } });
+      SYNTHETIC_TEST_SECRET: publicationRootIdentity } });
     sink.record({ runner: 'vitest', phase: 'publicationIdentityControl',
-      testId: 'synthetic-task:w74-c-synthetic-root', error: new Error('SYNTHETIC_IDENTITY_ORIGINAL') });
+      testId: `synthetic-task:${publicationRootIdentity}`, error: new Error('SYNTHETIC_IDENTITY_ORIGINAL') });
     assert.equal((await sink.flush()).status, 'recorded');
     const [directory] = (await readdir(temp)).filter(name => name.startsWith(RUNNER_FAILURE_ROOT_PREFIX));
     const [name] = (await readdir(join(temp, directory))).filter(name => !name.includes('.summary.'));
@@ -88,6 +99,7 @@ test('publication identity diagnostic survives the actual failed Node reporter a
     await writeFile(file, `import assert from 'node:assert/strict';
 import test from 'node:test';
 const STARTUP_EXCEPTION_LIMITS = ${JSON.stringify({ message: STARTUP_EXCEPTION_LIMITS.message })};
+const publicationRootIdentity = ${JSON.stringify(publicationRootIdentity)};
 ${publicationIdentityDiagnostic.toString()}
 ${assertPublicationIdentity.toString()}
 test('synthetic publication identity failure', () => {
@@ -107,7 +119,7 @@ test('synthetic publication identity failure', () => {
     assert.equal(child.status, 1, 'IDENTITY_ASSERTION_MUST_FAIL');
     const publicOutput = (child.stdout ?? '') + (child.stderr ?? '');
     assert.equal(publicOutput.includes('synthetic-task'), false);
-    assert.equal(publicOutput.includes('w74-c-synthetic-root'), false);
+    assert.equal(publicOutput.includes(publicationRootIdentity), false);
     assert.equal(publicOutput.includes('SYNTHETIC_IDENTITY_ORIGINAL'), false);
     const originals = new Map();
     for (const directory of await readdir(temp)) {
@@ -682,7 +694,7 @@ test('publication comparison original exception through the command observer', a
     throw new Error('UNEXPECTED_PUBLICATION_SUCCESS');
   });
   const observed = observeDeletionCommandFailures(context);
-  observed.preparedRoot('w74-c-synthetic-root');
+  observed.preparedRoot(${JSON.stringify(publicationRootIdentity)});
   const never = async () => { throw new Error('UNEXPECTED_PUBLICATION_PORT'); };
   const command = createWorkspaceDeletionCommand({ userDataRoot: root,
     registry: { inspectSlots: never, writeSelected: never, recoverSelected: never }, assertWritersAbsent: never });
@@ -733,7 +745,8 @@ test('cold service original exception after safe management mapping', async cont
   expect(result.cause.errors[0] === original && result.cause.errors[1] === cleanup).toBe(true);
   expect(false, 'W74_COLD_EXPECTED_SUCCESS').toBe(true);
 });`, { flag: 'wx', mode: 0o600 });
-  const env = { ...process.env, ...binding, CI: '1', NO_COLOR: '1', TEMP: temp, TMP: temp, TMPDIR: temp };
+  const env = { ...process.env, ...binding, CI: '1', NO_COLOR: '1', TEMP: temp, TMP: temp, TMPDIR: temp,
+    SYNTHETIC_PUBLICATION_FIXTURE_SECRET: 'root' };
   delete env.NODE_TEST_CONTEXT; delete env.FORCE_COLOR;
   const child = spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'),
     'run', '--config', config, '--reporter=default',

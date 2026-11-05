@@ -5,6 +5,56 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n korjausrevision PR-esteet 6.11.2026
+
+PR #327:n revisio `ecfe654f35d0a673b6d2161ca2c008c4486cc3b3` läpäisi
+[riippuvuusauditoinnin](https://github.com/eky-software/eky/actions/runs/42121557074),
+mutta [V2-kierros](https://github.com/eky-software/eky/actions/runs/42121557200)
+hylättiin. Molemmat eriytetyt Windowsin Electron development- ja
+pakettityöt läpäisivät. Työtilan sopimustestin hylkäys esti sen myöhemmän
+paketoinnin ja hyväksynnät; niitä ei lasketa kuuteen tarkoituksella
+valitsematta jätettyyn diagnostiikkatyöhön tai onnistumisiksi.
+
+Saman puhtaan revision pilot-paketti läpäisi kuusi sisältöinventaariota,
+tavallisen hardened backup -> inspect -> restore -> restart -> compare
+-smoken ja kaikki viisi pakettitapausta ilman uusintaa. Erillinen täysi
+30 minuutin soak, sen työkuorman ja lopputilan varmennus sekä lähteiden ja
+saman paketin jälkivertailu läpäisivät. Näyttö kuuluu tälle revisiolle;
+myöhempi testikorjaus ei muuta paketin lähdeidentiteettiä.
+
+Työtilan salauskoe hylkäsi täsmällisen julkaisutunnisteen vertailun.
+Alkuperäinen assertion, lähdepino ja turvallinen peittohavainto löytyivät
+puretusta salatusta CI-paketista; manifesti, kaikki tavut ja PR:n testatun
+merge-revision vanhemmat varmennettiin. Sisäisen fixturen sanallinen
+tunniste oli peittynyt. Tarkkaa sisäistä tunnistetta tai vastaavaa
+ympäristöarvoa ei ollut säilyneessä aineistossa, eikä niitä päätelty.
+
+Rajattu testikorjaus korvaa vain synteettisen sanallisen tunnisteen
+teknisellä UUID-tunnisteella. Uusi synteettinen sanapeittokontrolli
+hylkäsi vanhan fixturen ennen korjausta. Korjauksen neljä kontrollia
+läpäisivät: myös todellinen epäonnistuva Node-reporterin lapsi ja
+OpenPGP-salaus/purku sekä kaikki 35 alkuperäistä raporttitiedostoa.
+Sisäinen fixture ajettiin myös nimetyn synteettisen peittosalaisuuden
+kanssa. Tarkka yksikäsitteinen sidonta, peittyneen tunnisteen hylkäys,
+viesti/pino/syyketju, todelliset tavut ja aikarajat säilyivät. Tämä ei
+todista myöhemmän hosted-ajon läpäisyä tai kaikkien ympäristöjen
+mahdollisten peittotörmäysten poistumista.
+
+Core-Linuxin pakettitestit, myös 23 kohteen ketju, ja tyypitys läpäisivät.
+Backend ja web kääntyivät, mutta nykyinen 15 minuutin työn kokonaisraja
+katkaisi desktop-käännöksen. Eristetyn Linux-tarkistimen valmistelua ja
+todellista koetta ei ajettu. Myös tämän työn alkuperäinen salattu paketti
+purettiin, kaikki 11 tiedostoa ja ajosidonnat varmennettiin. Mukana olevat
+reporterin ja säilytyksen tarkoitukselliset virhefixtuurit eivät muuta
+läpäisseitä testisarjoja hylätyiksi tai todista katkaisun jälkeistä siivousta.
+
+Rajattu lähdekatselmus ei löytänyt turhaa kokonaista testikierrosta.
+Pakettien esivalmistelu on nykyisen sopimuksen vaatimaa. Ehdotus erottaa
+pakettitestit ja myöhemmät tarkistukset kahteen pakolliseen peräkkäiseen
+15 minuutin työhön odottaa erillistä työnjako-/budjettipäätöstä; tämän
+kirjauksen perusteella CI:tä ei muutettu. Ensihylkäykset ja tuntematon
+siivoustila säilyvät avoimina. PR, merge ja mainin omat portit ovat avoimia.
+
 ## W7.4:n backend-fixturekorjaukset ja regressioportit 6.11.2026
 
 Normaali desktop-komento läpäisi koko nykyisen kolmivaiheisen sopimuksen:

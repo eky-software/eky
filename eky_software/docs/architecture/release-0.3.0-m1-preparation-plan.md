@@ -15,12 +15,16 @@ on varmennettu hyväksytyiksi. Nykyinen haara on `codex/w7-4-deletion`;
 kaikki sen keskeneräiset muutokset säilytetään.
 
 **Integraation nykytila:** [PR #327](https://github.com/eky-software/eky/pull/327)
-on avoinna. Sen ensimmäinen head oli `25bb186fc5dbd67805490dfb32c79e900952360e`;
-alla kuvattu korjaus jäädytetään saman haaran uudeksi revisioksi. Ajantasainen
-head ja hyväksyntä varmennetaan PR:stä, ei tästä historiallisesta SHA:sta.
-[Riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42018622115)
-läpäisi; [ensimmäinen V2](https://github.com/eky-software/eky/actions/runs/42018622466)
-hylättiin. Se ja sen katkaisujen epävarmat siivoustilat säilyvät
+on avoinna. Viimeisin testattu head on
+`ecfe654f35d0a673b6d2161ca2c008c4486cc3b3`:
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42121557074)
+läpäisi, mutta [V2](https://github.com/eky-software/eky/actions/runs/42121557200)
+hylättiin salauskokeen tunnistevertailuun ja core-työn kokonaiskatkaisuun.
+Nykyinen rajattu testikorjaus on tämän revision päällä. Ajantasainen head
+ja hyväksyntä varmennetaan PR:stä; vanhoja ajoja ei siirretä uudelle SHA:lle.
+Myös ensimmäinen head `25bb186fc5dbd67805490dfb32c79e900952360e`,
+[sen V2](https://github.com/eky-software/eky/actions/runs/42018622466)
+ja katkaisujen epävarmat siivoustilat säilyvät
 [historiassa](release-0.3.0-integration-history.md#w74n-ensimmäisen-pr-kierroksen-hylkäykset-5112026),
 eivät hyväksyttynä integraationa.
 
@@ -28,8 +32,9 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
 
 - Kopio-omistajan yksityiset kansio-oikeudet ja vanhan omistajan
   uudelleenkäytön esto on korjattu; kohderegressiot, tyypitys ja katselmus
-  läpäisivät. Linux-kohdeajo estyi valmisteluun ennen testien keräystä.
-  Oikea Linux-CI ja uusi puhdas paketti ovat yhä avoimia.
+  läpäisivät. Ensimmäinen Linux-kohdeajo estyi valmisteluun. Myöhempi
+  Linux-CI läpäisi pakettitestit, mutta kokonaiskatkaisu esti eristetyn
+  tarkistusprosessin todentamisen; sitä ei merkitä läpäistyksi.
 - OpenPGP-kontrollin hyväksytty jako kolmeen viiden sekunnin vastuutestiin
   on toteutettu, yhteisvara 15 sekuntia. Koko kolmen testin salaus-/purkusarja
   läpäisi kaikkien 35 tiedoston tavu-, tiiviste-, ajosidonta- ja
@@ -39,7 +44,7 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
   viiden testin pilot-pakettisarja ovat eri pakollisissa töissä, kummallakin
   35 minuutin raja. Yhteisvara on 70 koneminuuttia. 138 kohdekontrollia ja
   alkuperäistä CI-valintaa vastaava 72 + 5 tunnisteen vertailu läpäisivät;
-  uuden revision todellinen CI-ajo on vielä tekemättä.
+  molemmat työt läpäisivät yllä olevan revision todellisessa CI-ajossa.
 - Normaali työtilasarja hylättiin seitsemässä desktop-tiedostossa.
   Yksi erillinen sarjallinen kahdeksan tiedoston vertailu läpäisi 1 080
   testiä ja hylkäsi kahdeksan Main-tapausta. Viidessä näkyi lisäksi
@@ -59,9 +64,27 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
   backendissä 4 388 testiä ja viisi vanhaa alustaohitusta. Desktopin
   muuttumatonta osaa ei ajettu turhaan uudelleen. Näyttö on kahdesta
   erillisestä osasta, ei alkuperäisen hylätyn komennon muuttaminen vihreäksi.
+- Sama puhdas `ecfe654f`-pilot-paketti läpäisi kaikki kuusi inventaariota,
+  tavallisen hardened-palautussmoken ja kaikki viisi pakettitapausta ilman
+  uusintaa. Erillinen täysi 30 minuutin soak ja sen raportin jälkivarmennus
+  läpäisivät; lähteet ja paketti säilyivät muuttumattomina. Tämä ei korvaa
+  hylättyjä PR-portteja tai uuden mainin omia tarkistuksia.
+- Salauskokeen alkuperäinen assertion ja pino löytyivät puretusta
+  CI-paketista. Synteettinen sanallinen tunniste oli peittynyt; tarkkaa
+  sisäistä tunnistetta tai peittoon osunutta ympäristöarvoa ei kerätty.
+  Vain testifixturen tekninen tunniste on korjattu. Neljä kontrollia ja
+  koko nykyinen salaus-/purkukoe läpäisivät; tarkka sidonta, peitto,
+  35 tiedoston tavuvertailu ja kaikki aiemmat virherajat säilyivät.
 
-**Seuraava portti:** lähdejäädytys,
-uusi puhdas paketti ja nykyiset Linux-/paketti-/PR- sekä uuden mainin portit.
+**Seuraava portti:** testikorjauksen deltakatselmus ja vaikutussarja sekä
+core-CI:n työnjakopäätös. Sen pakettitestit ja tyypitys läpäisivät, mutta
+nykyinen 15 minuutin kokonaisraja katkesi desktop-käännöksessä ennen
+Linux-tarkistusprosessia. Kahden pakollisen peräkkäisen työn ehdotus
+(kumpikin 15 minuuttia, yhteisvara 30) odottaa omistajan päätöstä;
+CI:tä tai rajoja ei ole tämän perusteella muutettu. Sitten vaaditaan
+uuden jäädytetyn PR-headin kaikki portit ja uuden mainin omat portit.
+[Nykyisen korjausrevision näyttö ja avoimet esteet](release-0.3.0-integration-history.md#w74n-korjausrevision-pr-esteet-6112026)
+erottavat paikallisen läpäisyn integraatiohyväksynnästä.
 [Omistava rajaus](local-company-workspace-plan.md#w74n-pr-integraation-rajattu-jatkosopimus)
 ja [korjaushistoria](release-0.3.0-integration-history.md#w74n-pr-esteiden-rajattu-jatkokatselmus-5112026)
 erottavat tehdyn näytön avoimesta. Yhden rollback-journalin callbackin

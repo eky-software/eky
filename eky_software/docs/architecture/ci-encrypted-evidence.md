@@ -167,6 +167,12 @@ nykyiselle runner-sinkille. Purku vertaa viestin, pinon ja syyketjun lisäksi
 alkuperäiset raportti- ja toimituskuittitavut sekä tiivisteet. Koe ei lisää
 aineistolajia eikä todista koko poiston valmistumista tai hosted-toimitusta.
 
+Julkaisun testifixturen tekninen tunniste käyttää synteettistä UUID-arvoa,
+ei ympäristön tunnettuun salaisuuteen helposti osuvaa sanallista juurinimeä.
+Erillinen törmäyskontrolli ja koko salauskoe todentavat nimetyn synteettisen
+peittosalaisuuden käsittelyn. Tunnisteen tarkka yksikäsitteinen vertailu ja
+peittyneen tunnisteen hylkäys säilyvät; salaisuuksien peittoa ei kevennetä.
+
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 
