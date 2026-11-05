@@ -4,7 +4,45 @@ import test from 'node:test';
 
 import {
   runBoundedWindowsAdapterProcess,
+  captureBoundedWindowsAdapterProcessResult,
 } from './boundedWindowsAdapterProcess.mjs';
+
+test('bounded process result capture preserves uncertainty independently from Job-tree evidence', () => {
+  const value = { status: 'failed', resultCode: 'terminationUnconfirmed', exitCode: null, directProcessAbsent: false };
+  const captured = captureBoundedWindowsAdapterProcessResult(value);
+  assert.deepEqual(captured, value); assert.equal(Object.isFrozen(captured), true);
+  value.directProcessAbsent = true; assert.equal(captured.directProcessAbsent, false);
+});
+
+test('bounded process result capture rejects unsafe metadata without invoking getters', () => {
+  const value = { status: 'failed', resultCode: 'terminationUnconfirmed', exitCode: null, directProcessAbsent: false };
+  for (const changed of [{ ...value, resultCode: 'raw external error' }, { ...value, status: 'unknown' },
+    { ...value, exitCode: Number.NaN }, { ...value, directProcessAbsent: 'false' }, { ...value, extra: true }]) {
+    assert.throws(() => captureBoundedWindowsAdapterProcessResult(changed));
+  }
+  Object.defineProperty(value, 'resultCode', { get() { assert.fail('result getter must not execute'); } });
+  assert.throws(() => captureBoundedWindowsAdapterProcessResult(value));
+});
+
+test('bounded process result capture preserves a real Windows unsigned failure exit', {
+  skip: process.platform !== 'win32', timeout: 5_000,
+}, async () => {
+  const result = await runBoundedWindowsAdapterProcess({ command: process.execPath,
+    arguments: ['-e', 'process.exit(0xC0000005)'], cwd: process.cwd(),
+    timeoutMilliseconds: 1_000, terminationTimeoutMilliseconds: 1_000 });
+  assert.equal(result.exitCode, 0xC0000005); assert.equal(result.directProcessAbsent, true);
+  assert.deepEqual(captureBoundedWindowsAdapterProcessResult(result), result);
+});
+
+test('bounded process result capture retains all Windows exit bits and rejects overflow', () => {
+  const base = { status: 'completed', resultCode: 'processCompleted', directProcessAbsent: true };
+  for (const exitCode of [-2_147_483_648, -4058, 0, 2_147_483_648, 0xC0000005, 0xFFFFFFFF]) {
+    assert.equal(captureBoundedWindowsAdapterProcessResult({ ...base, exitCode }).exitCode, exitCode);
+  }
+  for (const exitCode of [-2_147_483_649, 0x100000000]) {
+    assert.throws(() => captureBoundedWindowsAdapterProcessResult({ ...base, exitCode }));
+  }
+});
 
 class FakeChild extends EventEmitter {
   constructor({ closeOnKill = true } = {}) {

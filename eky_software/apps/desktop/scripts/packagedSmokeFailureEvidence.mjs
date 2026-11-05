@@ -6,7 +6,7 @@ import { createStartupExceptionCapture, STARTUP_EXCEPTION_CONTROL,
 import { ordinaryPath } from '../installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
 import { readPackagedBuildInfo } from './readPackagedBuildInfo.mjs';
 
-const MAX_STREAM_BYTES = 64 * 1024;
+export const MAX_STREAM_BYTES = 64 * 1024;
 
 export async function prepareSmokeExceptionEvidence({ tempPath, smokeRootDirectory, smokeToken, installRoot }) {
   if (!/^[a-f0-9]{32}$/u.test(smokeToken)) throw new Error('PACKAGED_SMOKE_EVIDENCE_INVALID');
@@ -55,4 +55,22 @@ export function observeSmokeOutput(child, phase) {
     };
   }
   return () => ({ phase, stdout: streams.stdout(), stderr: streams.stderr() });
+}
+
+export function capturePackagedSmokePhaseOutput(value, expectedStage) {
+  const exact = (item, keys) => item !== null && typeof item === 'object' &&
+    Object.getPrototypeOf(item) === Object.prototype && Reflect.ownKeys(item).length === keys.length &&
+    keys.every(key => Object.hasOwn(Object.getOwnPropertyDescriptor(item, key) ?? {}, 'value'));
+  const invalid = () => new Error('PACKAGED_SMOKE_JOB_UNVERIFIED');
+  if (!exact(value, ['phase', 'stdout', 'stderr']) || value.phase !== expectedStage) throw invalid();
+  const streams = {};
+  for (const name of ['stdout', 'stderr']) {
+    const stream = value[name];
+    if (!exact(stream, ['text', 'truncated', 'readFailed', 'available', 'ended', 'changed', 'partial']) ||
+        typeof stream.text !== 'string' || stream.text.length > MAX_STREAM_BYTES ||
+        ['truncated', 'readFailed', 'available', 'ended', 'changed', 'partial'].some(key => typeof stream[key] !== 'boolean') ||
+        stream.partial !== (!stream.available || !stream.ended || stream.changed || stream.truncated || stream.readFailed)) throw invalid();
+    streams[name] = Object.freeze({ ...stream });
+  }
+  return Object.freeze({ phase: expectedStage, ...streams });
 }

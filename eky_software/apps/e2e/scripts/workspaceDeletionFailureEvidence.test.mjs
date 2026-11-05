@@ -149,3 +149,25 @@ test('request revocation and a later shutdown failure reach two distinct deliver
   assert.equal(context.testInfo.annotations[0].description, 'recorded');
   complete = true;
 });
+
+test('the real main reader delivers execution causes without pretending they came from IPC', async t => {
+  const old = globalThis.__EKY_ELECTRON_E2E__;
+  const execution = projectExceptionChain(new Error('SYNTHETIC_EXECUTION_ORIGINAL',
+    { cause: new Error('SYNTHETIC_EXECUTION_CAUSE') }));
+  const request = projectExceptionChain(new Error('SYNTHETIC_PREPARATION_ORIGINAL'));
+  t.after(() => { if (old === undefined) delete globalThis.__EKY_ELECTRON_E2E__; else globalThis.__EKY_ELECTRON_E2E__ = old; });
+  for (const withPreparation of [false, true]) {
+    globalThis.__EKY_ELECTRON_E2E__ = {
+      ...(withPreparation ? { workspaceDeletionProof: { readFailures: () => ({ request }) } } : {}),
+      workspaceDeletionExecutionProof: { readFailures: () => ({ execution }) },
+    };
+    const records = [];
+    const context = input(async read => read());
+    await captureWorkspaceDeletionFailure(context, { record(value) { records.push(value); },
+      async flush() { return { status: 'recorded' }; } });
+    assert.equal(context.testInfo.annotations[0].description, 'recorded');
+    assert.equal(records.length, withPreparation ? 2 : 1);
+    assert.equal(records.find(record => record.phase === 'workspaceDeletionExecution').projectedException, execution);
+    if (withPreparation) assert.equal(records.find(record => record.phase === 'workspaceDeletionIpc').projectedException, request);
+  }
+});

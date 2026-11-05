@@ -2,6 +2,21 @@ import { spawn } from 'node:child_process';
 
 const MAX_TIMEOUT_MILLISECONDS = 725_000;
 
+export function captureBoundedWindowsAdapterProcessResult(value) {
+  const keys = ['status', 'resultCode', 'exitCode', 'directProcessAbsent'];
+  if (value === null || typeof value !== 'object' || Object.getPrototypeOf(value) !== Object.prototype ||
+      Reflect.ownKeys(value).length !== keys.length ||
+      keys.some(key => !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, 'value'))) {
+    throw new Error('WINDOWS_ACCEPTANCE_ADAPTER_RESULT_INVALID');
+  }
+  const { status, resultCode, exitCode, directProcessAbsent } = value;
+  if (!['completed', 'failed'].includes(status) || !['cancelled', 'terminationFailed', 'terminationUnconfirmed',
+    'startFailed', 'timedOut', 'processError', 'exitInvalid', 'processCompleted'].includes(resultCode) ||
+      exitCode !== null && (!Number.isInteger(exitCode) || exitCode < -2_147_483_648 || exitCode > 0xFFFFFFFF) ||
+      typeof directProcessAbsent !== 'boolean') throw new Error('WINDOWS_ACCEPTANCE_ADAPTER_RESULT_INVALID');
+  return Object.freeze({ status, resultCode, exitCode, directProcessAbsent });
+}
+
 function requireTimeout(value) {
   if (
     !Number.isSafeInteger(value) ||

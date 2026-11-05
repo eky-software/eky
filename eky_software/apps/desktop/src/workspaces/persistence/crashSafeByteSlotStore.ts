@@ -20,6 +20,15 @@ export interface CrashSafeByteSlotSelection {
   assertExternalSelection(): Promise<void>;
 }
 
+export interface CrashSafeByteSlotReadSelection {
+  // The final content guard still runs after all selected slot reads.
+  assertBeforeSlotRead(): Promise<void>;
+}
+
+export interface CrashSafeByteSlotIntermediateReadSelection {
+  assertAfterSlotRead(): Promise<void>;
+}
+
 export class CrashSafeByteSlotStoreError extends Error {
   constructor() {
     super('CRASH_SAFE_BYTE_SLOT_UNAVAILABLE');
@@ -42,14 +51,15 @@ export class CrashSafeByteSlotStore {
 
   // Selected operations never infer admission or roll back on a lost reply.
   // The owning journal supplies semantic admission and live external guards.
-  async replaceSelected(bytes: Uint8Array, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+  async replaceSelected(bytes: Uint8Array, selection: CrashSafeByteSlotSelection,
+    readSelection?: CrashSafeByteSlotReadSelection, intermediate?: CrashSafeByteSlotIntermediateReadSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     const selected = captureSelectedSlots(selection);
     if (selected.slots.next !== undefined || selected.slots.backup !== undefined) {
       throw new CrashSafeByteSlotStoreError();
     }
     const content = Uint8Array.from(bytes);
-    const guard = this.selectedGuard(selected);
-    await guard.beforeMutation();
+    const guard = this.selectedGuard(selected, readSelection, intermediate);
+    await guard.beforeIntermediateRead();
     await this.fileSystem.prepareDirectory(guard);
     const writer = await this.fileSystem.createNextWriter(guard);
     let failure: unknown;
@@ -73,7 +83,7 @@ export class CrashSafeByteSlotStore {
     if (failed) throw failure;
     selected.slots.next = content;
     selected.identities.next = await this.readOwnedIdentity('next', createdIdentity!, content, selected.assertAuthority, true);
-    await guard.beforeMutation();
+    await guard.beforeIntermediateRead();
     if (selected.slots.current !== undefined) {
       await this.moveSelected('current', 'backup', selected, guard);
     }
@@ -89,9 +99,10 @@ export class CrashSafeByteSlotStore {
     return publishedIdentity(selected);
   }
 
-  async recoverSelected(selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+  async recoverSelected(selection: CrashSafeByteSlotSelection,
+    readSelection?: CrashSafeByteSlotReadSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
     const selected = captureSelectedSlots(selection);
-    const guard = this.selectedGuard(selected);
+    const guard = this.selectedGuard(selected, readSelection);
     if ((selected.slots.current === undefined && selected.slots.backup === undefined) ||
         (selected.slots.current !== undefined && selected.slots.next !== undefined && selected.slots.backup !== undefined)) {
       throw new CrashSafeByteSlotStoreError();
@@ -114,9 +125,9 @@ export class CrashSafeByteSlotStore {
     return publishedIdentity(selected);
   }
 
-  async clearSelected(selection: CrashSafeByteSlotSelection): Promise<void> {
+  async clearSelected(selection: CrashSafeByteSlotSelection, readSelection?: CrashSafeByteSlotReadSelection): Promise<void> {
     const selected = captureSelectedSlots(selection);
-    const guard = this.selectedGuard(selected);
+    const guard = this.selectedGuard(selected, readSelection);
     await guard.beforeMutation();
     for (const slot of ['next', 'backup', 'current'] as const) {
       if (selected.slots[slot] === undefined) continue;
@@ -142,13 +153,26 @@ export class CrashSafeByteSlotStore {
     return publishedIdentity(selected);
   }
 
-  private selectedGuard(selected: ReturnType<typeof captureSelectedSlots>): CrashSafeFileSlotMutationGuard {
+  private selectedGuard(selected: ReturnType<typeof captureSelectedSlots>,
+    readSelection?: CrashSafeByteSlotReadSelection, intermediate?: CrashSafeByteSlotIntermediateReadSelection): CrashSafeFileSlotMutationGuard & { beforeIntermediateRead(): Promise<void> } {
     const assertAuthority = selected.assertAuthority;
-    return {
-      assertAuthority,
-      beforeMutation: async () => {
+    let beforeRead = selected.assertExternalSelection;
+    if (readSelection !== undefined) {
+      if (readSelection === null || typeof readSelection !== 'object') throw new CrashSafeByteSlotStoreError();
+      const captured = readSelection.assertBeforeSlotRead;
+      if (typeof captured !== 'function') throw new CrashSafeByteSlotStoreError();
+      beforeRead = captured.bind(readSelection);
+    }
+    let afterIntermediate = selected.assertExternalSelection;
+    if (intermediate !== undefined) {
+      if (intermediate === null || typeof intermediate !== 'object') throw new CrashSafeByteSlotStoreError();
+      const captured = intermediate.assertAfterSlotRead;
+      if (typeof captured !== 'function') throw new CrashSafeByteSlotStoreError();
+      afterIntermediate = captured.bind(intermediate);
+    }
+    const readSelected = async (afterRead: () => Promise<void>) => {
         assertAuthority();
-        await selected.assertExternalSelection();
+        await beforeRead();
         assertAuthority();
         for (const slot of ['current', 'next', 'backup'] as const) {
           let identity: CrashSafeFileSlotIdentity | undefined;
@@ -163,9 +187,12 @@ export class CrashSafeByteSlotStore {
           if (expected !== undefined && (expectedIdentity === undefined || identity === undefined ||
             !sameCrashSafeFileSlotIdentity(expectedIdentity, identity))) throw new CrashSafeByteSlotStoreError();
         }
-        await selected.assertExternalSelection();
+        await afterRead();
         assertAuthority();
-      },
+    };
+    return { assertAuthority,
+      beforeMutation: () => readSelected(selected.assertExternalSelection),
+      beforeIntermediateRead: () => readSelected(afterIntermediate),
     };
   }
 

@@ -186,3 +186,215 @@ async function fixture(test: TestContext, mode: 'active' | 'selector' = 'active'
     },
   };
 }
+
+import * as sourceFactory from './workspaceDeletionInventorySources.js';
+import * as inventoryFiles from './workspaceDeletionInventoryFile.js';
+function privateScopeGate() {
+    let release!: () => void;
+    const promise = new Promise<void>(resolve => { release = resolve; });
+    return { promise, release };
+}
+it("keeps three independent finite authorities out of the original source and writes", async (context) => {
+    const authorities: unknown[] = [], scopes: {
+        assertAuthority(): void;
+        assertExternalSelection(): Promise<void>;
+    }[] = [];
+    const originalCapture = sourceFactory.captureWorkspaceDeletionInventorySources;
+    vi.spyOn(sourceFactory, 'captureWorkspaceDeletionInventorySources').mockImplementation(async (...args) => {
+        authorities.push(args[3]);
+        return originalCapture(...args);
+    });
+    const compare = WorkspaceDeletionInventoryStore.prototype.assertRecords;
+    vi.spyOn(WorkspaceDeletionInventoryStore.prototype, 'assertRecords').mockImplementation(async function (this: WorkspaceDeletionInventoryStore, ...args) {
+        for (const previous of scopes) {
+            expect(() => previous.assertAuthority()).toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+            await expect(previous.assertExternalSelection()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+        }
+        expect(authorities).toHaveLength(1);
+        expect(args[2]).not.toBe(authorities[0]);
+        expect(args[2].assertAuthority).not.toBe((authorities[0] as typeof args[2]).assertAuthority);
+        expect(args[3]).toBeTypeOf('function');
+        scopes.push(args[2]);
+        return compare.apply(this, args);
+    });
+    const f = await fixture(context), before = await f.preserved();
+    const result = await f.start();
+    expect(scopes).toHaveLength(3);
+    expect(new Set(scopes).size).toBe(3);
+    for (const scope of scopes)
+        expect(() => scope.assertAuthority()).toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    expect(result.journal.phase).toBe('authorized');
+    expect(result.journal.inventory.recordCount).toBe(1);
+    expect(await f.preserved()).toEqual(before);
+});
+it.for(['success', 'sourceFailure'] as const)("confines the inventory callback during source-owned wait: %s", async (mode, context) => {
+    const entered = privateScopeGate(), releaseSource = privateScopeGate(), closeEntered = privateScopeGate(), releaseClose = privateScopeGate();
+    const first = new Error('SYNTHETIC_OPAQUE_SOURCE_FAILURE');
+    let comparisons = 0, held = false, failed = false, sourceWaiting = false, reads = 0, writes = 0, settled = false;
+    let activeInventoryIo = 0, installedDirectories = false;
+    const prohibitedIo: string[] = [];
+    const observeIo = async <T>(name: string, work: () => Promise<T>) => {
+        if (sourceWaiting) {
+            prohibitedIo.push(name);
+            throw new Error('SYNTHETIC_INVENTORY_IO_DURING_SOURCE_WAIT');
+        }
+        activeInventoryIo++;
+        try {
+            return await work();
+        }
+        finally {
+            activeInventoryIo--;
+        }
+    };
+    let currentScope!: {
+        assertAuthority(): void;
+        assertExternalSelection(): Promise<void>;
+    };
+    let sourceAuthority: unknown;
+    const originalCapture = sourceFactory.captureWorkspaceDeletionInventorySources;
+    vi.spyOn(sourceFactory, 'captureWorkspaceDeletionInventorySources').mockImplementation(async (...args) => {
+        sourceAuthority = args[3];
+        const source = await originalCapture(...args);
+        return Object.freeze({ ...source, async *records() {
+                const inner = source.records();
+                try {
+                    while (true) {
+                        if (comparisons === 1 && !held) {
+                            expect(activeInventoryIo).toBe(0);
+                            held = true;
+                            sourceWaiting = true;
+                            entered.release();
+                            try {
+                                await releaseSource.promise;
+                            }
+                            finally {
+                                sourceWaiting = false;
+                            }
+                            if (mode === 'sourceFailure') {
+                                failed = true;
+                                throw first;
+                            }
+                        }
+                        const next = await inner.next();
+                        if (next.done)
+                            return;
+                        yield next.value;
+                    }
+                }
+                finally {
+                    await inner.return(undefined);
+                }
+            } });
+    });
+    const originalOpen = inventoryFiles.openWorkspaceDeletionInventoryFile;
+    vi.spyOn(inventoryFiles, 'openWorkspaceDeletionInventoryFile').mockImplementation(async (...args) => {
+        const file = await observeIo('open', () => originalOpen(...args));
+        return { ...file,
+            stat: () => observeIo('handleStat', () => file.stat()),
+            async read(...values) { reads++; return observeIo('read', () => file.read(...values)); },
+            async write(...values) { writes++; return observeIo('write', () => file.write(...values)); },
+            sync: () => observeIo('sync', () => file.sync()),
+            close: () => observeIo('close', async () => {
+                if (failed) {
+                    closeEntered.release();
+                    await releaseClose.promise;
+                }
+                return file.close();
+            }),
+        };
+    });
+    const inspectPath = inventoryFiles.inspectDeletionInventoryFile;
+    vi.spyOn(inventoryFiles, 'inspectDeletionInventoryFile').mockImplementation((...args) => observeIo('pathStat', () => inspectPath(...args)));
+    const compare = WorkspaceDeletionInventoryStore.prototype.assertRecords;
+    vi.spyOn(WorkspaceDeletionInventoryStore.prototype, 'assertRecords').mockImplementation(async function (this: WorkspaceDeletionInventoryStore, ...args) {
+        if (!installedDirectories) {
+            installedDirectories = true;
+            const directories = Reflect.get(this, 'directories') as typeof inventoryFiles.workspaceDeletionInventoryDirectoryReads;
+            Reflect.set(this, 'directories', {
+                identity: (...values: Parameters<typeof directories.identity>) => observeIo('directoryIdentity', () => directories.identity(...values)),
+                names: (...values: Parameters<typeof directories.names>) => observeIo('directoryNames', () => directories.names(...values)),
+            });
+        }
+        comparisons++;
+        currentScope = args[2];
+        expect(currentScope).not.toBe(sourceAuthority);
+        return compare.apply(this, args);
+    });
+    const f = await fixture(context), before = await f.preserved();
+    const work = f.start().then(value => value, error => error).finally(() => { settled = true; });
+    context.onTestFinished(async () => { releaseSource.release(); releaseClose.release(); await work; });
+    try {
+        await Promise.race([entered.promise, work.then(() => { throw new Error('SOURCE_WAIT_NOT_ENTERED'); })]);
+        expect(settled).toBe(false);
+        expect(comparisons).toBe(1);
+        expect(activeInventoryIo).toBe(0);
+        expect(prohibitedIo).toEqual([]);
+        expect(f.backup).not.toHaveBeenCalled();
+        await expect(readFile(f.journal.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+        releaseSource.release();
+        if (mode === 'sourceFailure') {
+            await Promise.race([closeEntered.promise, work.then(() => { throw new Error('INVENTORY_CLOSE_NOT_ENTERED'); })]);
+            expect(settled).toBe(false);
+            expect(() => currentScope.assertAuthority()).toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+            await expect(currentScope.assertExternalSelection()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+        }
+    }
+    finally {
+        releaseSource.release();
+        releaseClose.release();
+    }
+    const result = await work;
+    expect(prohibitedIo).toEqual([]);
+    expect(activeInventoryIo).toBe(0);
+    if (mode === 'sourceFailure') {
+        expect(result).toBe(first);
+        await expect(readFile(f.journal.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+        expect(await readFile(f.journal.nextPath)).not.toHaveLength(0);
+    }
+    else {
+        expect(result.journal.phase).toBe('authorized');
+        expect(comparisons).toBe(3);
+    }
+    expect(await f.preserved()).toEqual(before);
+});
+it("rejects a registry side slot added during the final inventory close", async (context) => {
+    const f = await fixture(context), before = await f.preserved();
+    let comparisons = 0, changed = false;
+    let committed: Awaited<ReturnType<WorkspaceDeletionJournalStore['inspect']>>['slots']['current'];
+    let thirdScope!: {
+        assertAuthority(): void;
+        assertExternalSelection(): Promise<void>;
+    };
+    const compare = WorkspaceDeletionInventoryStore.prototype.assertRecords;
+    vi.spyOn(WorkspaceDeletionInventoryStore.prototype, 'assertRecords').mockImplementation(async function (this: WorkspaceDeletionInventoryStore, ...args) {
+        comparisons++;
+        if (comparisons === 3)
+            thirdScope = args[2];
+        return compare.apply(this, args);
+    });
+    const originalOpen = inventoryFiles.openWorkspaceDeletionInventoryFile;
+    vi.spyOn(inventoryFiles, 'openWorkspaceDeletionInventoryFile').mockImplementation(async (...args) => {
+        const file = await originalOpen(...args);
+        return { ...file, async close() {
+                await file.close();
+                if (comparisons === 3 && !changed) {
+                    committed = (await new WorkspaceDeletionJournalStore(f.root).inspect(f.guard)).slots.current;
+                    expect(committed?.identity).toBeDefined();
+                    changed = true;
+                    await writeFile(`${f.registryPath}.next`, f.registryBytes, { flag: 'wx' });
+                }
+            } };
+    });
+    await expect(f.start()).rejects.toThrow('WORKSPACE_DELETE_STALE_CONFIRMATION');
+    expect(changed).toBe(true);
+    expect(comparisons).toBe(3);
+    const retained = (await new WorkspaceDeletionJournalStore(f.root).inspect(f.guard)).slots;
+    expect(Buffer.from(retained.current!.bytes)).toEqual(Buffer.from(committed!.bytes));
+    expect(retained.current!.identity).toEqual(committed!.identity);
+    expect(retained.next).toBeUndefined();
+    expect(retained.backup).toBeUndefined();
+    expect(() => thirdScope.assertAuthority()).toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    await expect(thirdScope.assertExternalSelection()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    expect((await readFile(`${f.registryPath}.next`)).equals(f.registryBytes)).toBe(true);
+    expect(await f.preserved()).toEqual(before);
+});

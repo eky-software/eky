@@ -7,9 +7,11 @@ type E2eNetServer = ReturnType<typeof createServer> & {
   ): E2eNetServer;
 };
 
+export const loopbackPortReleaseTimeoutMilliseconds = 5_000;
+
 export async function waitForLoopbackPortRelease(
   port: number,
-  timeoutMilliseconds = 5_000,
+  timeoutMilliseconds = loopbackPortReleaseTimeoutMilliseconds,
 ): Promise<void> {
   const deadline = Date.now() + timeoutMilliseconds;
 

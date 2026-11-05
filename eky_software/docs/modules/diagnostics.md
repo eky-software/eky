@@ -147,6 +147,19 @@ Smoke ei yksin todista kaikkien event-katalogien kattavuutta tai jokaisen
 ominaisuuden observer-kytkentää. Niille tarvitaan erilliset sopimus- ja
 composition-testit.
 
+## Työtilan poiston tekninen virheprojektio
+
+`workspaceManagement.operationFailed` hyväksyy W7.4:n `workspace.delete`
+ja `workspace.deleteResume` -arvot vain
+[katalogin suljetulla vaihe-/syysopimuksella](../architecture/r0-observability-event-catalog.md#työtilahallinnan-muu-ensivirhe).
+Journalista jatkaminen ei saa vaikutuksettomuuden `none`-arvoa.
+Ensivirhe ja erillinen loppusiivousvirhe säilyvät samalla korrelaatiolla
+erillisinä tapahtumina. Sanitoitu tukipaketti käyttää samaa sopimusta;
+incident-indeksi ei saa korrelaatiota, vaihetta tai operationId:tä.
+Yritys-, journal- ja raakavirhetietoja ei lisätä. Tämä lukijasopimus ei
+avaa poisto-IPC:tä tai backenditonta tukivientiä. Omistavan cold-kuluttajan
+ja mainin toteutustila luetaan M1:stä, ei päätellä lukijan hyväksynnästä.
+
 ## Arkiston ja päivityksen tapahtumaprojektiot
 
 G:n hyväksytty perhekohtainen rajaus on

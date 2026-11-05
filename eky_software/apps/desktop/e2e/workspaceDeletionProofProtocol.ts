@@ -17,6 +17,19 @@ export const workspaceDeletionProofScenarioIds = [
 
 export const workspaceDeletionProofChannel = 'eky:e2e:workspace-deletion-preparation';
 
+export const workspaceDeletionExecutionProofScenarioIds = [
+  'DESK-DELETE-ACTIVE-001',
+  'DESK-DELETE-LAST-001',
+  'DESK-DELETE-PASSIVE-001',
+  'DESK-DELETE-FAULT-001',
+] as const;
+
+export const workspaceDeletionExecutionProofFailureCode = 'E2E_WORKSPACE_DELETION_EXECUTION_FAILED';
+
+export function isWorkspaceDeletionExecutionProofScenario(scenarioId: string): boolean {
+  return workspaceDeletionExecutionProofScenarioIds.some(value => value === scenarioId);
+}
+
 export function isWorkspaceDeletionProofScenario(scenarioId: string): boolean {
   return workspaceDeletionProofScenarioIds.some(value => value === scenarioId);
 }

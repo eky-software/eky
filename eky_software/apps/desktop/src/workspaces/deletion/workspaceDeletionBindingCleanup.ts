@@ -15,7 +15,8 @@ import { captureWorkspaceReplacementRemnantSelection } from './workspaceReplacem
 export async function clearAbsentWorkspaceDeletionBinding(
   userDataRoot: string, targetValue: unknown, bindingValue: unknown, authority: WorkspaceInspectionRemnantAuthority,
   dependencies: { readonly fileSystem?: CrashSafeFileSlotFileSystem; readonly reads?: typeof workspaceDeletionRemnantReads;
-    readonly expectedOwnerSlots?: WorkspaceRemnantBindingCleanup['expectedOwnerSlots'] } = {},
+    readonly expectedOwnerSlots?: WorkspaceRemnantBindingCleanup['expectedOwnerSlots'];
+    readonly assertOriginalJournalsSelected?: () => Promise<void> } = {},
 ): Promise<void> {
   const target = captureDeletionInventoryHeader(targetValue), binding = captureWorkspaceRemnantBinding(bindingValue);
   if (binding.workspaceId !== target.workspaceId || binding.lineageIdentity.profileId !== target.lineageIdentity.profileId) {
@@ -24,6 +25,7 @@ export async function clearAbsentWorkspaceDeletionBinding(
   if (binding.owner === 'profileInspection') {
     return clearAbsentWorkspaceInspectionBinding(userDataRoot, target, binding, authority, dependencies);
   }
+  const originalJournals = dependencies.assertOriginalJournalsSelected?.bind(dependencies);
   const checkAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
   let failed = false;
   let firstFailure: unknown;
@@ -66,6 +68,7 @@ export async function clearAbsentWorkspaceDeletionBinding(
         await selected.assertPayloadsAbsent();
       }
       assertAuthority();
+      if (originalJournals !== undefined) { await originalJournals(); assertAuthority(); }
     } catch (error) { throw retain(error); }
   };
   const store = new WorkspaceRemnantBindingStore(userDataRoot, workspaceRemnantBindingKey(binding), dependencies.fileSystem);

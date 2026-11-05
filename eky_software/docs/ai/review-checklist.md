@@ -281,6 +281,10 @@ Tätä listaa käytetään ennen kuin AI:n tai ihmisen tekemä muutos hyväksyt�
 - Oliko tehtävä riittävän pieni?
 - Annettiinko tehtävälle [malli- ja päättelytasosuositus](workflow.md#mallin-ja-päättelytason-valinta)
   ja erotettiinko suositus todellisesta asetuksesta?
+- Oliko suuremman suunnittelun toteutussopimus riittävän täsmällinen
+  oletusmallille, ja tehtiinkö Goalin lopun koodikatselmus ennen sulkemista
+  omistajan mallijaon mukaisesti? Korjattiinko löydökset ja todennettiinko
+  muuttunut osa ilman työnaikaisten katselmusten tai PR/main-porttien ohitusta?
 - Oliko [agenttijako tarkoituksenmukainen](workflow.md#agenttien-tarkoituksenmukainen-käyttö):
   rajatut vastuut, tarvittava riippumaton katselmus ja pääagentin tarkistama
   näyttö ilman päällekkäistä tutkimusta tai CI-tilaseurantaa?

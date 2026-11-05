@@ -7,19 +7,17 @@ import { WorkspaceBackupReplacementError } from '../replacement/workspaceBackupR
 import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
 import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import type { WorkspaceManagementOperationKind } from './workspaceManagementTypes.js';
+import { isWorkspaceDeletionFailureCode, type WorkspaceDeletionFailureCode } from '../../observability/workspaceManagementFailureContext.js';
 
 export type WorkspaceManagementErrorCode =
-  | 'WORKSPACE_MANAGEMENT_BUSY'
-  | 'WORKSPACE_MANAGEMENT_INVALID'
+  | WorkspaceDeletionFailureCode
   | 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
   | 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED'
   | 'WORKSPACE_MANAGEMENT_CREATE_FAILED'
   | 'WORKSPACE_MANAGEMENT_IMPORT_FAILED'
   | 'WORKSPACE_MANAGEMENT_REPLACE_FAILED'
   | 'WORKSPACE_MANAGEMENT_SWITCH_FAILED'
-  | 'WORKSPACE_MANAGEMENT_RENAME_FAILED'
-  | 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'
-  | 'WORKSPACE_DELETE_FAILED';
+  | 'WORKSPACE_MANAGEMENT_RENAME_FAILED';
 
 export class WorkspaceManagementError extends Error {
   constructor(
@@ -36,12 +34,10 @@ export function mapWorkspaceManagementError(
   error: unknown,
   operationKind: WorkspaceManagementOperationKind,
 ): WorkspaceManagementError {
+  const deletion = operationKind === 'delete' || operationKind === 'deleteResume';
   if (error instanceof WorkspaceManagementError) {
-    if (operationKind !== 'delete') return error;
-    const code = error.code === 'WORKSPACE_MANAGEMENT_BUSY' ||
-      error.code === 'WORKSPACE_MANAGEMENT_INVALID' ||
-      error.code === 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' ||
-      error.code === 'WORKSPACE_DELETE_FAILED'
+    if (!deletion) return error;
+    const code = isWorkspaceDeletionFailureCode(error.code)
       ? error.code
       : error.code === 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED'
         ? 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'
@@ -73,14 +69,14 @@ export function mapWorkspaceManagementError(
     (error instanceof WorkspaceBackupImportError && error.code === 'WORKSPACE_IMPORT_LABEL_EXISTS')
   ) {
     return new WorkspaceManagementError(
-      operationKind === 'delete' ? 'WORKSPACE_DELETE_FAILED' : 'WORKSPACE_MANAGEMENT_LABEL_EXISTS',
+      deletion ? 'WORKSPACE_DELETE_FAILED' : 'WORKSPACE_MANAGEMENT_LABEL_EXISTS',
       operationKind,
       { cause: error },
     );
   }
   if (isRecoveryRequiredError(error)) {
     return new WorkspaceManagementError(
-      operationKind === 'delete'
+      deletion
         ? 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'
         : 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
       operationKind,
@@ -102,6 +98,7 @@ const failureCodeByOperation = {
   switch: 'WORKSPACE_MANAGEMENT_SWITCH_FAILED',
   rename: 'WORKSPACE_MANAGEMENT_RENAME_FAILED',
   delete: 'WORKSPACE_DELETE_FAILED',
+  deleteResume: 'WORKSPACE_DELETE_FAILED',
 } as const satisfies Record<
   WorkspaceManagementOperationKind,
   WorkspaceManagementErrorCode

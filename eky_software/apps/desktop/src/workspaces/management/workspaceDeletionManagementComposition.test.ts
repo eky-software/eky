@@ -28,6 +28,8 @@ import { WorkspaceDeletionInventoryStore } from '../deletion/workspaceDeletionIn
 import { WorkspaceDeletionJournalStore } from '../deletion/workspaceDeletionJournalStore.js';
 import { createWorkspaceDeletionPublisher } from '../deletion/workspaceDeletionPublication.js';
 import type { WorkspaceManagementServiceOptions } from './workspaceManagementService.js';
+import { createWorkspaceDeletionCommand } from '../deletion/workspaceDeletionCommand.js';
+import * as originalJournalSelectionFactory from '../deletion/workspaceDeletionOriginalJournalSelection.js';
 
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 const generation = '99999999-9999-4999-8999-999999999999';
@@ -489,3 +491,26 @@ async function fixture(test: TestContext, mode: 'active' | 'selector', options: 
     lease, launch, stopBackend, backup, createRuntime, confirmLoss, confirmDeletion, publish, runtimeRelaunch,
     log, registry, registryPath, registryBytes, sentinels };
 }
+
+it.for(['active', 'selector'] as const)('forwards the real %s composition read proof only to original selection', async (mode, test) => {
+  const f = await fixture(test, mode);
+  const capture = originalJournalSelectionFactory.captureWorkspaceDeletionOriginalJournals;
+  const originalCalls = vi.spyOn(originalJournalSelectionFactory, 'captureWorkspaceDeletionOriginalJournals');
+  originalCalls.mockImplementation((...args) => capture(...args));
+  const command = createWorkspaceDeletionCommand({ userDataRoot: f.root, registry: f.registry, assertWritersAbsent: f.assertWritersAbsent });
+  let read!: () => Promise<void>;
+  f.publish.mockImplementation(async (...args) => {
+    expect(args).toHaveLength(6); expect(args[5]).toBeTypeOf('function'); read = args[5]!;
+    expect(f.lease.readState()).toBe('busy');
+    await command.publish(...args);
+  });
+  expect(await f.start()).toBe('prepared');
+  expect(originalCalls).toHaveBeenCalledTimes(1);
+  expect(originalCalls.mock.calls[0]![3]).toBe(read);
+  const before = f.assertOwned.mock.calls.length;
+  await expect(read()).rejects.toThrow('WORKSPACE_DELETE_AUTHORITY_INVALID');
+  expect(f.assertOwned).toHaveBeenCalledTimes(before);
+  expect(await readFile(f.registryPath)).toEqual(f.registryBytes);
+  for (const sentinel of f.sentinels) expect(await readFile(sentinel, 'utf8')).toBe('retained');
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+});

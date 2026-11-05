@@ -3,12 +3,12 @@ import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.j
 import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import {
   captureWorkspaceDeletionJournal, parseWorkspaceDeletionJournalBytes, sameWorkspaceDeletionJournalBinding,
-  workspaceDeletionPhases, type WorkspaceDeletionJournalV1,
+  workspaceDeletionPhases, type WorkspaceDeletionJournal,
 } from './workspaceDeletionJournalCodec.js';
 
 const invalidCode = 'WORKSPACE_DELETE_JOURNAL_CONFLICT';
 
-export function planWorkspaceDeletionJournalSlots(slots: ReadOnlyJournalSlots<WorkspaceDeletionJournalV1>) {
+export function planWorkspaceDeletionJournalSlots(slots: ReadOnlyJournalSlots<WorkspaceDeletionJournal>) {
   const current = slots.current === undefined ? undefined : captureWorkspaceDeletionJournal(slots.current.value);
   const backup = slots.backup === undefined ? undefined : captureWorkspaceDeletionJournal(slots.backup.value);
   const next = slots.next === undefined ? undefined : captureWorkspaceDeletionJournal(slots.next.value);
@@ -22,7 +22,7 @@ export function planWorkspaceDeletionJournalSlots(slots: ReadOnlyJournalSlots<Wo
     if (next?.phase !== 'authorized') return invalidDeletionData(invalidCode);
     return Object.freeze({ mode: 'unpublished' as const });
   }
-  const rank = (value: WorkspaceDeletionJournalV1) => workspaceDeletionPhases.indexOf(value.phase);
+  const rank = (value: WorkspaceDeletionJournal) => workspaceDeletionPhases.indexOf(value.phase);
   if ((backup !== undefined && current !== undefined && rank(current) !== rank(backup) + 1) ||
       (next !== undefined && rank(next) !== rank(selected) + 1)) return invalidDeletionData(invalidCode);
   return Object.freeze({ mode: 'published' as const, selected,
@@ -33,7 +33,7 @@ export function planWorkspaceDeletionJournalSlots(slots: ReadOnlyJournalSlots<Wo
 export async function inspectWorkspaceDeletionJournal(
   fileSystem: CrashSafeFileSlotFileSystem, assertCurrent: () => void,
 ) {
-  const slots: Record<CrashSafeFileSlot, ReadOnlyJournalSlots<WorkspaceDeletionJournalV1>['current']> = {
+  const slots: Record<CrashSafeFileSlot, ReadOnlyJournalSlots<WorkspaceDeletionJournal>['current']> = {
     current: undefined, next: undefined, backup: undefined,
   };
   for (const slot of ['current', 'backup', 'next'] as const) {

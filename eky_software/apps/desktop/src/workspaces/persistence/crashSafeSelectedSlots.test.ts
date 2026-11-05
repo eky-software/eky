@@ -296,3 +296,188 @@ async function fixture(test: TestContext, initial: Partial<Record<CrashSafeFileS
     },
   };
 }
+
+for (const { label, initial } of [
+  { label: 'empty', initial: {} },
+  { label: 'current', initial: { current: 'current' } },
+  { label: 'next', initial: { next: 'next' } },
+  { label: 'backup', initial: { backup: 'backup' } },
+  { label: 'all', initial: { current: 'current', next: 'next', backup: 'backup' } },
+] as const) {
+  it(`committed clear preserves full native guard rounds with ${label}`, async (test) => {
+    const f = await fixture(test, initial), selected = await f.selection();
+    const retained = join(f.root, 'foreign');
+    await writeFile(retained, 'retained bytes', { flag: 'wx' });
+    const trace: string[] = [], operations: string[] = [];
+    selected.assertExternalSelection = async () => { trace.push('F'); };
+    const prefix = { async assertBeforeSlotRead() { trace.push('E'); } };
+    const read = f.fs.readSlot;
+    vi.spyOn(f.fs, 'readSlot').mockImplementation(async (...args) => {
+      trace.push(args[0]);
+      return read.apply(f.fs, args);
+    });
+    const remove = f.fs.removeSlot, sync = f.fs.syncDirectory;
+    vi.spyOn(f.fs, 'removeSlot').mockImplementation(async (...args) => {
+      const result = await remove.apply(f.fs, args);
+      operations.push(`remove:${args[0]}`);
+      return result;
+    });
+    vi.spyOn(f.fs, 'syncDirectory').mockImplementation(async (...args) => {
+      await sync.apply(f.fs, args);
+      operations.push('sync');
+    });
+    await (Reflect.apply(f.store.clearSelected, f.store, [selected, prefix]) as Promise<void>);
+    const rounds = Object.keys(initial).length + 3;
+    expect(trace).toEqual(Array.from({ length: rounds }, () => ['E', 'current', 'next', 'backup', 'F']).flat());
+    expect(operations).toEqual([...(['next', 'backup', 'current'] as const)
+        .filter(slot => Object.hasOwn(initial, slot)).map(slot => `remove:${slot}`), 'sync']);
+    expect(await f.snapshot()).toEqual({ current: undefined, next: undefined, backup: undefined });
+    expect(await readFile(retained, 'utf8')).toBe('retained bytes');
+  });
+}
+for (const slot of names)
+  for (const change of ['format', 'identity'] as const) {
+    it(`committed clear preserves changed ${slot} ${change}`, async (test) => {
+      const original = '{"same":1}', f = await fixture(test, { [slot]: original });
+      const selected = await f.selection(), retained = join(f.root, 'original');
+      if (change === 'format')
+        await writeFile(f.path(slot), '{ "same" : 1 }');
+      else {
+        await rename(f.path(slot), retained);
+        await writeFile(f.path(slot), original, { flag: 'wx' });
+      }
+      const before = await f.snapshot();
+      await expect(Reflect.apply(f.store.clearSelected, f.store, [selected,
+        { async assertBeforeSlotRead() { } }]) as Promise<void>).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
+      if (change === 'format')
+        expect(JSON.parse(Buffer.from(before[slot]!).toString())).toEqual(JSON.parse(original));
+      else
+        expect(await readFile(retained, 'utf8')).toBe(original);
+    });
+  }
+it('committed clear rejects an added side slot before removal', async (test) => {
+  const f = await fixture(test, { current: 'selected' }), selected = await f.selection();
+  await writeFile(f.path('backup'), 'unselected', { flag: 'wx' });
+  const before = await f.snapshot();
+  await expect(Reflect.apply(f.store.clearSelected, f.store, [selected,
+    { async assertBeforeSlotRead() { } }]) as Promise<void>).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+for (const phase of ['remove', 'sync'] as const) {
+  it(`committed clear blocks the actual ${phase} after a returned payload`, async (test) => {
+    const f = await fixture(test, { current: 'selected' }), selected = await f.selection();
+    const payload = join(f.root, 'returned-payload'), first = new Error('SYNTHETIC_RETURNED_PAYLOAD');
+    let boundary: 'remove' | 'sync' | undefined, inserted = false, removed = 0, synced = 0, proofRejected = 0;
+    selected.assertExternalSelection = async () => { if (inserted) {
+      proofRejected++;
+      throw first;
+    } };
+    const read = f.fs.readSlot;
+    vi.spyOn(f.fs, 'readSlot').mockImplementation(async (...args) => {
+      const result = await read.apply(f.fs, args);
+      if (!inserted && boundary === phase && args[0] === 'backup') {
+        await writeFile(payload, 'retained payload', { flag: 'wx' });
+        inserted = true;
+      }
+      return result;
+    });
+    const remove = f.fs.removeSlot, sync = f.fs.syncDirectory;
+    vi.spyOn(f.fs, 'removeSlot').mockImplementation(async (...args) => {
+      boundary = 'remove';
+      try {
+        const result = await remove.apply(f.fs, args);
+        removed++;
+        return result;
+      }
+      finally {
+        boundary = undefined;
+      }
+    });
+    vi.spyOn(f.fs, 'syncDirectory').mockImplementation(async (...args) => {
+      boundary = 'sync';
+      try {
+        await sync.apply(f.fs, args);
+        synced++;
+      }
+      finally {
+        boundary = undefined;
+      }
+    });
+    const result = await (Reflect.apply(f.store.clearSelected, f.store, [selected,
+      { async assertBeforeSlotRead() { } }]) as Promise<void>).then(() => ({ completed: true }), error => ({ error }));
+    expect('error' in result).toBe(true);
+    if (phase === 'remove')
+      expect(result).toMatchObject({ error: { name: 'CrashSafeFileSlotError', failure: 'unavailable' } });
+    else
+      expect((result as {
+        error: unknown;
+      }).error).toBe(first);
+    expect(inserted).toBe(true);
+    expect(proofRejected).toBe(1);
+    expect(synced).toBe(0);
+    expect(removed).toBe(phase === 'remove' ? 0 : 1);
+    expect(await readFile(payload, 'utf8')).toBe('retained payload');
+    expect(await f.snapshot()).toEqual({ current: phase === 'remove' ? bytes('selected') : undefined,
+      next: undefined, backup: undefined });
+  });
+}
+it('committed clear keeps the native target recheck after full proof', async (test) => {
+  const f = await fixture(test, { current: 'selected' }), selected = await f.selection();
+  const retained = join(f.root, 'original');
+  let inRemove = false, replaced = false, removed = 0;
+  selected.assertExternalSelection = async () => {
+    if (inRemove && !replaced) {
+      await rename(f.path('current'), retained);
+      await writeFile(f.path('current'), 'selected', { flag: 'wx' });
+      replaced = true;
+    }
+  };
+  const remove = f.fs.removeSlot;
+  vi.spyOn(f.fs, 'removeSlot').mockImplementation(async (...args) => {
+    inRemove = true;
+    try {
+      const result = await remove.apply(f.fs, args);
+      removed++;
+      return result;
+    }
+    finally {
+      inRemove = false;
+    }
+  });
+  await expect(Reflect.apply(f.store.clearSelected, f.store, [selected,
+    { async assertBeforeSlotRead() { } }]) as Promise<void>).rejects.toThrow();
+  expect(replaced).toBe(true);
+  expect(removed).toBe(0);
+  expect(await readFile(retained, 'utf8')).toBe('selected');
+  expect(await f.snapshot()).toEqual({ current: bytes('selected'), next: undefined, backup: undefined });
+});
+for (const [label, option] of [['null', null], ['empty', {}], ['nonFunction', { assertBeforeSlotRead: 1 }],
+  ['function', () => { }]] as const) {
+  it(`committed clear candidate rejects malformed ${label} before IO`, async (test) => {
+    const f = await fixture(test, { current: 'selected' }), selected = await f.selection();
+    const reads = vi.spyOn(f.fs, 'readSlot'), removes = vi.spyOn(f.fs, 'removeSlot'), syncs = vi.spyOn(f.fs, 'syncDirectory');
+    await expect(Reflect.apply(f.store.clearSelected, f.store, [selected, option]) as Promise<void>).rejects.toThrow();
+    expect(reads).not.toHaveBeenCalled();
+    expect(removes).not.toHaveBeenCalled();
+    expect(syncs).not.toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual({ current: bytes('selected'), next: undefined, backup: undefined });
+  });
+}
+it('committed clear candidate captures one callback and its original receiver', async (test) => {
+  const f = await fixture(test, { current: 'selected' }), selected = await f.selection();
+  let original = 0, replacement = 0, reads = 0;
+  const option = { value: 'owner', async assertBeforeSlotRead() { throw new Error('SYNTHETIC_UNEXPECTED_OPTION_METHOD'); } };
+  const method = async function (this: typeof option) { expect(this).toBe(option); expect(this.value).toBe('owner'); original++; };
+  Object.defineProperty(option, 'assertBeforeSlotRead', { configurable: true, get() { reads++; return method; } });
+  const before = selected.assertExternalSelection;
+  selected.assertExternalSelection = async () => {
+    Object.defineProperty(option, 'assertBeforeSlotRead', { configurable: true,
+      value: async () => { replacement++; throw new Error('SYNTHETIC_REPLACED_PREFIX'); } });
+    await before();
+  };
+  await (Reflect.apply(f.store.clearSelected, f.store, [selected, option]) as Promise<void>);
+  expect(reads).toBe(1);
+  expect(original).toBe(4);
+  expect(replacement).toBe(0);
+});

@@ -13,14 +13,14 @@ import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from '../switch/worksp
 import { deletionTestId, deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
 import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
 import { captureWorkspaceDeletionJournal, serializeWorkspaceDeletionJournal,
-  workspaceDeletionPhases, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+  workspaceDeletionPhases, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { createWorkspaceDeletionMetadataCleaner } from './workspaceDeletionMetadataCleanup.js';
 import { createWorkspaceDeletionPayloadExecutor } from './workspaceDeletionPayloadExecutor.js';
 import { captureWorkspaceDeletionPhaseSelection } from './workspaceDeletionPhaseSelection.js';
 import { createWorkspaceDeletionRegistryPublisher } from './workspaceDeletionRegistryPublication.js';
 
-async function fixture(test: TestContext, phase: WorkspaceDeletionJournalV1['phase'] = 'authorized') {
+async function fixture(test: TestContext, phase: WorkspaceDeletionJournal['phase'] = 'authorized') {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-phase-'));
   await chmod(root, 0o700);
   test.onTestFinished(async () => {
@@ -310,4 +310,37 @@ it.for(['payload', 'registry', 'metadata', 'terminal'] as const)('enforces the s
   await expect(create(input)(f.input.operationId, f.authority, expected)).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
   expect(read).not.toHaveBeenCalled(); expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
   expect(await readFile(f.registryPath)).toEqual(registryBytes);
+});
+
+it('keeps physical ownership cadence separate from journal selection during inventory reads', async test => {
+  const f = await fixture(test, 'purged');
+  const inspect = vi.spyOn(f.journal, 'inspect');
+  const selected = await f.capture();
+  const events: string[] = [];
+  f.authority.assertOwned.mockImplementation(async () => { events.push('owned'); f.authority.assertCurrent(); });
+  f.input.assertWritersAbsent.mockImplementation(async () => { events.push('writers'); });
+  inspect.mockClear();
+  await selected.assertJournalReadOwned();
+  expect(events).toEqual(['owned', 'writers', 'owned', 'owned', 'writers', 'owned']);
+  expect(inspect).not.toHaveBeenCalled();
+  await selected.assertJournalSelected();
+  expect(inspect).toHaveBeenCalledTimes(1);
+  selected.revoke();
+  await expect(selected.assertJournalReadOwned()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+});
+
+it('joins held read ownership and retains its first failure', async test => {
+  const f = await fixture(test, 'purged'), selected = await f.capture();
+  let release!: () => void, entered!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  f.authority.assertOwned.mockImplementationOnce(async () => { entered(); await held; });
+  let settled = false;
+  const result = selected.assertJournalReadOwned().then(
+    () => { settled = true; return null; }, error => { settled = true; return error; });
+  try { await started; f.loseOwner(); await new Promise<void>(resolve => setImmediate(resolve)); expect(settled).toBe(false); }
+  finally { release(); }
+  expect(await result).toBe(f.ownerError);
+  f.restoreOwner();
+  await expect(selected.assertJournalReadOwned()).rejects.toBe(f.ownerError);
 });

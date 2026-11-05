@@ -50,6 +50,8 @@ import {
 import type { WorkspaceBackupImportJournal } from '../import/workspaceBackupImportTypes.js';
 import { validateWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalValidation.js';
 
+export { captureColdWorkspaceDeletionAdmissionFromRoot } from './workspaceDeletionColdAdmission.js';
+
 export async function assertColdWorkspaceRecoveryAdmissionFromRoot(
   userDataRoot: string,
   expectedOwner: Exclude<WorkspaceColdRecoveryAdmission, 'none'>,

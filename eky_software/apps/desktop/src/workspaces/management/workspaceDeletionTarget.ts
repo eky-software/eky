@@ -60,14 +60,24 @@ export async function captureDeletionTarget(input: {
     registryEntrySha256: workspaceRegistryEntrySha256(entry),
     rootIdentity,
   });
+  const assertRootCurrent = async () => {
+    try {
+      assertValid();
+      await inspectWorkspaceRoot(paths);
+      assertValid();
+      if (await readWorkspaceProcessReservationIdentity(paths.workspaceRoot) !== rootIdentity) fail();
+      assertValid();
+    } catch (error) {
+      invalid = true;
+      throw error;
+    }
+  };
   const assertCurrent = async () => {
     try {
       assertValid();
       assertSameSlots(slots, captureSlots(await read()));
       assertValid();
-      await inspectWorkspaceRoot(paths);
-      assertValid();
-      if (await readWorkspaceProcessReservationIdentity(paths.workspaceRoot) !== rootIdentity) fail();
+      await assertRootCurrent();
       assertValid();
       assertSameSlots(slots, captureSlots(await read()));
       assertValid();
@@ -77,7 +87,7 @@ export async function captureDeletionTarget(input: {
     }
   };
   await assertCurrent();
-  return Object.freeze({ target, assertCurrent, assertValid, invalidate() { invalid = true; } });
+  return Object.freeze({ target, assertCurrent, assertRootCurrent, assertValid, invalidate() { invalid = true; } });
 }
 
 function matchesDeletionLabel(typed: unknown, currentLabel: unknown): boolean {

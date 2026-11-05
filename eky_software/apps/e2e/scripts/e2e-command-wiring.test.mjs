@@ -36,7 +36,7 @@ function assertWiring(rootManifest, e2eManifest) {
   assert.equal(e2eManifest.scripts['e2e:prepare-owner'], 'node scripts/prepare-windows-backend-owner.mjs');
   assert.deepEqual(e2eManifest.scripts['e2e:prepare'].split(' && '), preparations.slice(1, 5));
   assert.equal(e2eManifest.scripts['e2e:packaged:legacy'],
-    'pnpm e2e:prepare && pnpm --filter @eky/desktop package:windows && playwright test --config playwright.packaged-legacy.config.ts');
+    'pnpm e2e:prepare && pnpm --filter @eky/desktop installer:supervisor:build && pnpm --filter @eky/desktop package:windows && playwright test --config playwright.packaged-legacy.config.ts');
   assert.equal(e2eManifest.scripts['e2e:electron:evidence'],
     'pnpm e2e:electron:prepare && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs ../../test-reporters/tests/electronDevelopmentFailureEvidenceOpenPgp.test.mjs');
   for (const tag of ['security', 'fault']) {
@@ -49,7 +49,8 @@ function assertWiring(rootManifest, e2eManifest) {
 }
 
 test('packaged legacy recovery requires preparation and a fresh hardened package', () => {
-  for (const removed of ['pnpm e2e:prepare && ', 'pnpm --filter @eky/desktop package:windows && ']) {
+  for (const removed of ['pnpm e2e:prepare && ', 'pnpm --filter @eky/desktop installer:supervisor:build && ',
+    'pnpm --filter @eky/desktop package:windows && ']) {
     const changed = structuredClone(e2e);
     changed.scripts['e2e:packaged:legacy'] = changed.scripts['e2e:packaged:legacy'].replace(removed, '');
     assert.throws(() => assertWiring(root, changed), assert.AssertionError);
@@ -117,6 +118,17 @@ test('preparation delegates to existing build and staging owners', () => {
     'node scripts/clean-e2e-dist.mjs && tsc -p tsconfig.e2e.json && node scripts/copy-e2e-migrations.mjs');
 });
 
+test('initial and restarted Electron API contexts use the already verified real backend port', () => {
+  const source = readFileSync(new URL('../src/fixtures/isolatedElectronTest.ts', import.meta.url), 'utf8');
+  const bound = 'await createElectronApi(selectorBackendPort ?? backendPort, runtime.sessionSecret)';
+  assert.equal(source.split(bound).length - 1, 2);
+  assert.equal(source.includes('await createElectronApi(backendPort, runtime.sessionSecret)'), false);
+  for (const changed of [source.replace(bound, 'await createElectronApi(backendPort, runtime.sessionSecret)'),
+    source.replaceAll(bound, 'await createElectronApi(backendPort, runtime.sessionSecret)')]) {
+    assert.notEqual(changed.split(bound).length - 1, 2);
+  }
+});
+
 function assertWindowsOwnerCiPreparation(source) {
   const job = source.split('\n  e2e-electron-windows-critical:\n')[1]?.split(/\n  [\w-]+:\n/u)[0];
   assert.ok(job, 'the actual Windows consumer must remain reachable');
@@ -145,6 +157,7 @@ function assertPackagedLegacyCi(source) {
     ['Package Windows desktop', 'pnpm --filter @eky/desktop package:windows'],
     ['Run packaged Windows smoke', 'pnpm --filter @eky/desktop smoke:windows'],
     ['Prepare packaged legacy recovery runtime', 'pnpm --filter @eky/e2e e2e:prepare'],
+    ['Build existing packaged process owner', 'pnpm --filter @eky/desktop installer:supervisor:build'],
     ['Run packaged legacy recovery', 'pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts'],
     ['Run critical Electron E2E journeys', 'pnpm test:e2e:electron:critical'],
   ];
@@ -157,9 +170,23 @@ function assertPackagedLegacyCi(source) {
     previous = index;
   }
 }
+test('packaged deletion shares the existing aggregate budget and cannot omit its owned workflow', () => {
+  const source = readFileSync(new URL('../playwright.packaged-legacy.config.ts', import.meta.url), 'utf8');
+  assert.match(source, /workspaceDeletionRecovery/u);
+  assert.match(source, /timeout: packagedSmokeWorkflowTimeoutMilliseconds/u);
+  assert.match(source, /retries: 0/u);
+  const limits = readFileSync(new URL('../../desktop/scripts/packagedSmokeLimits.mjs', import.meta.url), 'utf8');
+  assert.match(limits, /packagedSmokeWorkflowTimeoutMilliseconds = 300_000/u);
+  const testSource = readFileSync(new URL('../tests/packaged/workspaceDeletionRecovery.spec.ts', import.meta.url), 'utf8');
+  assert.match(testSource, /runOwnedPackagedSmokeWorkflow/u);
+  assert.match(testSource, /createE2eFixtureLifetime/u);
+  assert.doesNotMatch(testSource, /runPackagedSmoke\(/u);
+});
+
 test('normal Windows CI binds legacy recovery to fresh packaging and required preparation', () => {
   assertPackagedLegacyCi(ci);
   for (const mutate of [
+    source => source.replace('Build existing packaged process owner\n', 'Build existing packaged process owner\n        continue-on-error: true\n'),
     source => source.replace('        run: pnpm --filter @eky/e2e e2e:prepare\n', '        run: echo omitted\n'),
     source => source.replace('Run packaged legacy recovery\n', 'Run packaged legacy recovery\n        continue-on-error: true\n'),
     source => source.replace('Run packaged legacy recovery\n', 'Run packaged legacy recovery\n        if: inputs.electron_diagnostic\n'),

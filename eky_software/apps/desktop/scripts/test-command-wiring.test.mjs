@@ -1,10 +1,13 @@
 import assert from 'node:assert/strict';
-import { lstat, readFile } from 'node:fs/promises';
-import { availableParallelism } from 'node:os';
+import { chmod, lstat, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { availableParallelism, tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import desktopVitestConfig, { desktopTestWorkers } from '../vitest.config.mjs';
+import { createRunnerFailureSink } from '../../../test-reporters/runnerFailureEvidence.mjs';
 
 const DESKTOP_ROOT = new URL('../', import.meta.url);
 const CI_ROOT = new URL('../../../../.github/', import.meta.url);
@@ -35,31 +38,55 @@ test('ordinary desktop Vitest resolution applies only the approved worker limit'
 
 const COMMANDS = {
   vitest: ['test', 0],
-  node: ['test', 1],
+  roles: ['test:deletion:roles', 0],
+  node: ['test', 2],
   unit: ['installer:test:unit', 0],
   process: ['installer:test:windows-process', 1],
   encrypted: ['installer:test:encrypted-evidence', 0],
 };
+const DELETION_ROLES_FILE = 'src/workspaces/deletion/workspaceDeletionRolesCommand.test.ts';
+const DELETION_ROLES_EXCLUSION = `--exclude=${DELETION_ROLES_FILE}`;
+const VITEST_PREFIX = ['vitest', 'run', '--reporter=default',
+  '--reporter=../../test-reporters/vitestFailureReporter.mjs'];
 const REQUIRED_FILES = [
+  [DELETION_ROLES_FILE, 'roles'],
   ['e2e/electronE2eBackendProcess.test.ts', 'vitest'],
   ['e2e/workspaceProofBackendDecorators.test.ts', 'vitest'],
   ['e2e/workspaceDeletionProof.test.ts', 'vitest'],
+  ['e2e/workspaceDeletionExecutionProof.test.ts', 'vitest'],
   ['../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs', 'encrypted'],
   ['e2e/electronE2eBackendRunner.test.ts', 'vitest'],
   ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
   ['e2e/electronE2eRuntimeSession.test.ts', 'vitest'],
   ['e2e/electronSecretReplyHold.test.ts', 'vitest'],
+  ['e2e/workspaceProofInitialShutdown.test.ts', 'vitest'],
   ['e2e/electronE2eWorkspaceStartupFailure.test.ts', 'vitest'],
   ['scripts/electronE2eInspectionResource.test.ts', 'vitest'],
   ['scripts/profileBackupSourceReceiptCompatibility.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedFaultWorkspaceProfile.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedWorkspaceEvidence.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedWorkspaceFixtures.test.ts', 'vitest'],
   ['e2e/w6b2PackagedWorkspaceMigrationHistory.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedWorkspaceProfileCommand.test.ts', 'vitest'],
+  ['e2e/w6b2PackagedWorkspaceProfileState.test.ts', 'vitest'],
   ['e2e/workspaceProofReservation.test.ts', 'vitest'],
   ['scripts/test-command-wiring.test.mjs', 'node'],
+  ['scripts/profileInspection/nativeBuildFailureEvidence.test.mjs', 'node'],
   ['scripts/asarToolchain.test.mjs', 'node'],
   ['scripts/profileInspection/linuxProfileInspection.test.mjs', 'node'],
   ['scripts/profileInspection/linuxSandboxProbe.test.mjs', 'node'],
   ['scripts/backendBuildMetadata.test.mjs', 'node'],
+  ['scripts/electron-development-runtime.test.mjs', 'node'],
+  ['scripts/inspect-support-bundle.test.mjs', 'node'],
+  ['scripts/package-artifact-inventory.test.mjs', 'node'],
+  ['scripts/packaged-release-candidate.test.mjs', 'node'],
+  ['scripts/pilot-build-gate.test.mjs', 'node'],
+  ['scripts/preparePackageBackendStage.test.mjs', 'node'],
   ['scripts/prepare-electron-e2e-backend.test.mjs', 'node'],
+  ['scripts/packageWindowsApplication.test.mjs', 'node'],
+  ['scripts/production-profile-audit.test.mjs', 'node'],
+  ['scripts/read-desktop-electron-version.test.mjs', 'node'],
+  ['scripts/staged-better-sqlite-runtime.test.mjs', 'node'],
   ...[
     'cleanInstallUninstallContracts', 'cleanInstallUninstallLifecycle',
     'cleanInstallUninstallPayload', 'localImmutableInstallerFixture',
@@ -80,6 +107,15 @@ const CI_EDGES = [
   { job: 'windows-contracts', name: 'Windows installer contract tests', gate: 'windowsContracts',
     step: 'Run Windows process-contract tests serially', run: 'pnpm --filter @eky/desktop installer:test:windows-process' },
 ];
+
+test('named packaged Job admission proof prepares its actual source and existing supervisor explicitly', async () => {
+  const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
+  assert.equal(desktop.scripts['smoke:proof:job-admission'],
+    'pnpm build && pnpm installer:supervisor:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/packagedSmokeJobWorker.process.test.mjs');
+  assert.equal(desktop.scripts.test.includes('packagedSmokeJobWorker.process.test.mjs'), false);
+  assert.equal(desktop.scripts['installer:test:encrypted-evidence'].includes('packagedSmokeJobWorker.process.test.mjs'), false);
+  assert.equal((await lstat(new URL('scripts/packagedSmokeJobWorker.process.test.mjs', DESKTOP_ROOT))).isFile(), true);
+});
 
 test('approved inspection source controls remain in the ordinary recursive test command', async () => {
   const backend = JSON.parse(await readFile(new URL('../../backend/package.json', import.meta.url), 'utf8'));
@@ -151,23 +187,26 @@ function assertPackageWiring({ root, desktop, files }) {
   assert.equal(root.scripts.test, 'pnpm --recursive test');
   assert.equal(desktop.name, '@eky/desktop');
   assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/linuxSandboxProbe.mjs');
-  const ordinary = commandChain(desktop.scripts.test, 2);
+  const ordinary = commandChain(desktop.scripts.test, 3);
+  const roles = commandChain(desktop.scripts['test:deletion:roles'], 1);
   const unit = commandChain(desktop.scripts['installer:test:unit'], 1);
   const process = commandChain(desktop.scripts['installer:test:windows-process'], 2);
   const encrypted = commandChain(desktop.scripts['installer:test:encrypted-evidence'], 1);
   assert.equal(process[0], 'pnpm installer:supervisor:build');
+  assert.equal(ordinary[1], 'pnpm test:deletion:roles');
   assert.equal(desktop.scripts['installer:supervisor:build'],
     'node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs');
   const selected = {
-    vitest: testFiles(ordinary[0], ['vitest', 'run', '--reporter=default',
-      '--reporter=../../test-reporters/vitestFailureReporter.mjs'], 'ts'),
-    node: testFiles(ordinary[1], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
+    vitest: testFiles(ordinary[0], [...VITEST_PREFIX, DELETION_ROLES_EXCLUSION], 'ts'),
+    roles: testFiles(roles[0], [...VITEST_PREFIX, '--maxWorkers=1', '--no-file-parallelism'], 'ts'),
+    node: testFiles(ordinary[2], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
     unit: testFiles(unit[0], ['node', '--test', '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
     process: testFiles(process[1], ['node', '--test', '--test-concurrency=1',
       '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
     encrypted: testFiles(encrypted[0], ['node', '--test', '--test-concurrency=1',
       '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'], 'mjs'),
   };
+  assert.deepEqual(selected.roles, [DELETION_ROLES_FILE]);
   assert.ok(selected.vitest.includes('src'), 'Existing desktop source tests must remain selected');
   assert.ok(selected.process.includes('installer/scripts/launchRollbackWindowsInstaller.test.mjs'));
   for (const [path, owner] of REQUIRED_FILES) {
@@ -275,6 +314,105 @@ test('T1 files and the wiring test reach their required commands and normal CI a
   assertWiring(original);
 });
 
+async function rejectDiscovery(result, sink = createRunnerFailureSink()) {
+  sink.record({ runner: 'node', phase: 'testSelection', attempt: 0,
+    testName: 'ordinary Vitest stage discovery',
+    error: result.error ?? new Error(result.stderr || result.stdout ||
+      `Discovery exited with status ${result.status} and signal ${result.signal}`),
+  });
+  await sink.flush();
+  throw new Error('DESKTOP_TEST_SELECTION_DISCOVERY_FAILED');
+}
+
+for (const kind of ['spawn', 'stderr', 'stdout', 'exit']) {
+  test(`discovery keeps the ${kind} cause private and awaits evidence delivery`, async () => {
+    const marker = 'SYNTHETIC_DISCOVERY_PRIVATE_ORIGINAL';
+    const originalError = new Error(marker);
+    const result = { error: kind === 'spawn' ? originalError : undefined,
+      stderr: kind === 'stderr' ? marker : '', stdout: kind === 'stdout' ? marker : '',
+      status: 1, signal: null };
+    const recorded = [];
+    let release;
+    const gate = new Promise(resolve => { release = resolve; });
+    let settled = false;
+    const outcome = rejectDiscovery(result, { record: value => recorded.push(value),
+      flush: () => gate }).catch(error => { settled = true; return error; });
+    assert.equal(recorded.length, 1);
+    assert.equal(recorded[0].phase, 'testSelection');
+    assert.equal(recorded[0].runner, 'node');
+    if (kind === 'spawn') assert.equal(recorded[0].error, originalError);
+    else assert.equal(recorded[0].error.message,
+      kind === 'exit' ? 'Discovery exited with status 1 and signal null' : marker);
+    await Promise.resolve();
+    assert.equal(settled, false);
+    release();
+    const error = await outcome;
+    assert.equal(error.message, 'DESKTOP_TEST_SELECTION_DISCOVERY_FAILED');
+    assert.equal(error.cause, undefined);
+    assert.equal(error.stack.includes(marker), false);
+  });
+}
+
+test('ordinary Vitest stages select the baseline exactly once with the role file isolated', async () => {
+  assertWiring(original);
+  const ordinary = commandChain(original.desktop.scripts.test, 3);
+  const parallel = testFiles(ordinary[0], [...VITEST_PREFIX, DELETION_ROLES_EXCLUSION], 'ts');
+  const roles = testFiles(original.desktop.scripts['test:deletion:roles'],
+    [...VITEST_PREFIX, '--maxWorkers=1', '--no-file-parallelism'], 'ts');
+  const directory = await mkdtemp(join(tmpdir(), 'eky-desktop-selection-'));
+  await chmod(directory, 0o700);
+  const identity = await lstat(directory);
+  assert.ok(identity.isDirectory() && !identity.isSymbolicLink());
+  const normalize = path => path.replaceAll('\\', '/');
+  const selected = {};
+  let complete = false;
+  try {
+    for (const [name, filters] of Object.entries({
+      baseline: parallel, parallel: [DELETION_ROLES_EXCLUSION, ...parallel], roles,
+    })) {
+      const output = join(directory, `${name}.json`);
+      await assert.rejects(lstat(output), { code: 'ENOENT' });
+      // JSON must name a fresh owned output; Vitest treats a string as a file path.
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL(
+        '../../node_modules/vitest/vitest.mjs', DESKTOP_ROOT)), 'list', '--filesOnly',
+      `--json=${output}`, ...filters], {
+        cwd: fileURLToPath(DESKTOP_ROOT), shell: false, windowsHide: true,
+        encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024,
+      });
+      await writeFile(join(directory, `${name}.result.json`), JSON.stringify({
+        status: result.status, signal: result.signal,
+        error: result.error === undefined ? null : {
+          code: result.error.code, message: result.error.message, stack: result.error.stack,
+        }, stdout: result.stdout, stderr: result.stderr,
+      }), { flag: 'wx', mode: 0o600 });
+      if (result.error !== undefined || result.signal !== null || result.status !== 0) {
+        await rejectDiscovery(result);
+      }
+      const metadata = await lstat(output);
+      assert.ok(metadata.isFile() && !metadata.isSymbolicLink());
+      assert.ok(metadata.size > 0 && metadata.size <= 4 * 1024 * 1024);
+      const list = JSON.parse(await readFile(output, 'utf8'));
+      assert.ok(Array.isArray(list) && list.length > 0);
+      assert.ok(list.every(item => typeof item.file === 'string'));
+      selected[name] = list.map(item => normalize(item.file)).sort();
+      assert.equal(new Set(selected[name]).size, selected[name].length);
+    }
+    assert.deepEqual(selected.roles, [normalize(fileURLToPath(new URL(DELETION_ROLES_FILE, DESKTOP_ROOT)))]);
+    assert.ok(selected.roles.every(path => !selected.parallel.includes(path)));
+    assert.deepEqual([...selected.parallel, ...selected.roles].sort(), selected.baseline);
+    complete = true;
+  } finally {
+    // Keep failed discovery evidence. Only the still-owned successful fixture is removed.
+    if (complete) {
+      const current = await lstat(directory);
+      assert.ok(current.isDirectory() && !current.isSymbolicLink());
+      assert.equal(current.dev, identity.dev);
+      assert.equal(current.ino, identity.ino);
+      await rm(directory, { recursive: true });
+    }
+  }
+});
+
 for (const [path, group] of REQUIRED_FILES) {
   test(`rejects a missing physical file: ${path}`, () => {
     rejectsMutation((fixture) => fixture.files.delete(path));
@@ -285,7 +423,7 @@ for (const [path, group] of REQUIRED_FILES) {
   test(`rejects the wrong command group: ${path}`, () => {
     rejectsMutation((fixture) => {
       editCommand(fixture, group, (command) => command.replace(` ${path}`, ''));
-      const wrongGroup = group === 'vitest' ? 'node' : group === 'unit' ? 'process' : 'unit';
+      const wrongGroup = group === 'vitest' || group === 'roles' ? 'node' : group === 'unit' ? 'process' : 'unit';
       editCommand(fixture, wrongGroup, (command) => `${command} ${path}`);
     });
   });
@@ -294,7 +432,8 @@ for (const [path, group] of REQUIRED_FILES) {
 for (const group of Object.keys(COMMANDS)) {
   test(`rejects the wrong runner: ${group}`, () => {
     rejectsMutation((fixture) => editCommand(fixture, group, (command) =>
-      command.replace(group === 'vitest' ? 'vitest run' : 'node --test', group === 'vitest' ? 'node --test' : 'vitest run')));
+      command.replace(group === 'vitest' || group === 'roles' ? 'vitest run' : 'node --test',
+        group === 'vitest' || group === 'roles' ? 'node --test' : 'vitest run')));
   });
 }
 
@@ -307,13 +446,32 @@ for (const [name, change] of [
   ['inspection proof duplicated', (f) => {
     f.desktop.scripts['inspection:proof:linux'] += ' && node scripts/profileInspection/runLinuxProfileInspectionProof.mjs';
   }],
-  ...['test', 'installer:test:unit', 'installer:test:windows-process', 'installer:supervisor:build']
+  ...['test', 'test:deletion:roles', 'installer:test:unit', 'installer:test:windows-process', 'installer:supervisor:build']
     .map((name) => [`script missing: ${name}`, (f) => { delete f.desktop.scripts[name]; }]),
   ['serial flag missing', (f) => editCommand(f, 'process', (s) => s.replace(' --test-concurrency=1', ''))],
   ['parallel process tests', (f) => editCommand(f, 'process', (s) => s.replace('--test-concurrency=1', '--test-concurrency=2'))],
   ['supervisor prerequisite missing', (f) => { f.desktop.scripts['installer:test:windows-process'] = f.desktop.scripts['installer:test:windows-process'].split(' && ')[1]; }],
   ['supervisor prerequisite reordered', (f) => { f.desktop.scripts['installer:test:windows-process'] = f.desktop.scripts['installer:test:windows-process'].split(' && ').reverse().join(' && '); }],
   ['supervisor build replaced', (f) => { f.desktop.scripts['installer:supervisor:build'] = 'node --version'; }],
+  ['role exclusion missing', (f) => editCommand(f, 'vitest', (s) => s.replace(` ${DELETION_ROLES_EXCLUSION}`, ''))],
+  ['role exclusion duplicated', (f) => editCommand(f, 'vitest', (s) => `${s} ${DELETION_ROLES_EXCLUSION}`)],
+  ['role exclusion broadened', (f) => editCommand(f, 'vitest', (s) => s.replace(DELETION_ROLES_EXCLUSION, '--exclude=src/workspaces/deletion/**'))],
+  ['role exclusion targets another file', (f) => editCommand(f, 'vitest', (s) => s.replace(DELETION_ROLES_EXCLUSION, '--exclude=src/workspaces/deletion/workspaceDeletionProcess.test.ts'))],
+  ['role workers missing', (f) => editCommand(f, 'roles', (s) => s.replace(' --maxWorkers=1', ''))],
+  ['role workers parallel', (f) => editCommand(f, 'roles', (s) => s.replace('--maxWorkers=1', '--maxWorkers=2'))],
+  ['role file parallelism restored', (f) => editCommand(f, 'roles', (s) => s.replace(' --no-file-parallelism', ''))],
+  ['role selector duplicated', (f) => editCommand(f, 'roles', (s) => `${s} ${DELETION_ROLES_FILE}`)],
+  ['role selector broadened', (f) => editCommand(f, 'roles', (s) => `${s} src`)],
+  ['role selector narrowed by name', (f) => editCommand(f, 'roles', (s) => `${s} --testNamePattern=success`)],
+  ['role retries added', (f) => editCommand(f, 'roles', (s) => `${s} --retry=1`)],
+  ['role timeout changed', (f) => editCommand(f, 'roles', (s) => `${s} --testTimeout=360000`)],
+  ['role stage missing', (f) => { f.desktop.scripts.test = f.desktop.scripts.test.replace(' && pnpm test:deletion:roles', ''); }],
+  ['role stage duplicated', (f) => { f.desktop.scripts.test = f.desktop.scripts.test.replace(' && pnpm test:deletion:roles', ' && pnpm test:deletion:roles && pnpm test:deletion:roles'); }],
+  ['role stage reordered', (f) => {
+    const commands = f.desktop.scripts.test.split(' && ');
+    f.desktop.scripts.test = [commands[1], commands[0], commands[2]].join(' && ');
+  }],
+  ['role stage failure ignored', (f) => { f.desktop.scripts.test = f.desktop.scripts.test.replace('pnpm test:deletion:roles', 'pnpm test:deletion:roles || true'); }],
 ]) {
   test(`rejects ${name}`, () => rejectsMutation(change));
 }

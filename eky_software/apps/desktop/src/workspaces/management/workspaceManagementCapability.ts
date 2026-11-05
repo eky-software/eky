@@ -386,7 +386,7 @@ async function runCapability<Result>(
 
 async function runMutation<Result>(
   state: { mutationInFlight: boolean },
-  operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
+  operationKind: Exclude<WorkspaceManagementOperationKind, 'status' | 'deleteResume'>,
   operation: () => Promise<Result>,
 ): Promise<Result> {
   if (state.mutationInFlight) {

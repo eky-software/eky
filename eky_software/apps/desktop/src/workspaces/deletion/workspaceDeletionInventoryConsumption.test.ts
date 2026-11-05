@@ -438,3 +438,23 @@ it.for(['replay EOF', 'file close', 'final names'] as const)('rejects selection 
   expect(await f.snapshot()).toEqual(before);
   expect(f.handles.closed).toBe(f.handles.opened);
 });
+
+it.for([new Error('SYNTHETIC_CONSUMER_FIRST'), undefined])(
+  'notifies consumer failure before close without replacing the returned chain: %s', async (first, context) => {
+    const f = await fixture(context), selected = await f.store().publish(header, records(1), f.authority);
+    const later = new Error('SYNTHETIC_LATER_CLOSE');
+    const events: string[] = [], failures: unknown[] = [];
+    const store = f.store(async (...args) => {
+      const file = await f.trackedOpen(...args);
+      return { ...file, async close() { events.push('close'); await file.close(); throw later; } };
+    });
+    const result = await store.consumeSelectedRecords(selected, f.authority, async () => { throw first; }, error => {
+      failures.push(error); events.push('failure');
+    }).then(() => null, error => error);
+    expect(result).toBeInstanceOf(AggregateError);
+    expect(result.errors).toEqual([first, later]);
+    expect(f.handles.closed).toBe(f.handles.opened);
+    expect(events[0]).toBe('failure');
+    expect(failures[0]).toBe(first);
+  },
+);

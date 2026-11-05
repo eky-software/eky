@@ -8,7 +8,7 @@ import { openWorkspaceDeletionInventoryFile, workspaceDeletionInventoryDirectory
   type OpenWorkspaceDeletionInventoryFile, type WorkspaceDeletionInventoryDirectoryReads } from './workspaceDeletionInventoryFile.js';
 import { createWorkspaceDeletionInventoryPaths, WorkspaceDeletionInventoryStore } from './workspaceDeletionInventoryStore.js';
 import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes,
-  workspaceDeletionPhases, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+  workspaceDeletionPhases, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 
 export async function deletionInventoryStoreFixture(context: TestContext) {
@@ -45,7 +45,7 @@ export async function deletionInventoryStoreFixture(context: TestContext) {
 }
 
 export async function deletionInventoryRetirementFixture(context: TestContext,
-  phase: WorkspaceDeletionJournalV1['phase'] = 'registryPublished') {
+  phase: WorkspaceDeletionJournal['phase'] = 'registryPublished') {
   const fixture = await deletionInventoryStoreFixture(context);
   const receipt = await fixture.store().publish(deletionTestHeader, deletionTestRecords(), fixture.authority);
   const journalPaths = createWorkspaceDeletionJournalPaths(fixture.root);

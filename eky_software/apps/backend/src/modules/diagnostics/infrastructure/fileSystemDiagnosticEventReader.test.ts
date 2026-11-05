@@ -23,14 +23,20 @@ describe('FileSystemDiagnosticEventReader', () => {
     }
   });
 
-  it.each(['admission', 'deletePreparation'].flatMap(stage =>
-    ['WORKSPACE_MANAGEMENT_BUSY', 'WORKSPACE_MANAGEMENT_INVALID',
-      'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_FAILED'].flatMap(errorCode => {
+  it.each(['workspace.delete', 'workspace.deleteResume'].flatMap(operationId =>
+    ['admission', 'deletePreparation', 'deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'].flatMap(stage =>
+      ['WORKSPACE_MANAGEMENT_BUSY', 'WORKSPACE_MANAGEMENT_INVALID',
+        'WORKSPACE_DELETE_STALE_CONFIRMATION', 'WORKSPACE_DELETE_BACKUP_UNAVAILABLE',
+        'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_INVENTORY_INVALID',
+        'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED',
+        'WORKSPACE_DELETE_CLEANUP_FAILED', 'WORKSPACE_DELETE_FAILED'].flatMap(errorCode => {
       const retryable = errorCode === 'WORKSPACE_MANAGEMENT_BUSY';
-      return (stage === 'admission' || retryable ? ['none', 'unknown'] : ['unknown'])
-        .map(sideEffectState => ({ stage, errorCode, retryable, sideEffectState }));
-    }),
-  ))('reads deletion $errorCode at $stage/$sideEffectState through diagnostics and support', async entry => {
+      return (operationId === 'workspace.delete' &&
+        (stage === 'admission' || (stage === 'deletePreparation' && retryable))
+        ? ['none', 'unknown'] : ['unknown'])
+        .map(sideEffectState => ({ operationId, stage, errorCode, retryable, sideEffectState }));
+    })),
+  ))('reads $operationId $errorCode at $stage/$sideEffectState through diagnostics and support', async entry => {
     const logsRoot = createLogsRoot();
     const event: Record<string, unknown> = {
       ...createDesktopOperationalEventFixture({
@@ -38,19 +44,19 @@ describe('FileSystemDiagnosticEventReader', () => {
         eventName: 'workspaceManagement.operationFailed', level: 'error', outcome: 'failure',
         timestamp: '2026-07-27T10:04:00.000Z',
       }),
-      ...entry, operationId: 'workspace.delete', correlationId: '22222222-2222-4222-8222-222222222222',
+      ...entry, correlationId: '22222222-2222-4222-8222-222222222222',
     };
     const invalidChanges = [
-      { operationId: 'workspace.deleteResume' }, { stage: 'operation' },
-      { stage: 'deleteAuthorization' }, { stage: 'deletePurge' },
-      { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
-      { errorCode: 'WORKSPACE_DELETE_IO_FAILED' }, { errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' },
+      { operationId: 'workspace.deleteAll' }, { stage: 'operation' }, { stage: 'deleteUnknown' },
+      { errorCode: 'WORKSPACE_DELETE_UNKNOWN' }, { errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' },
       { retryable: !entry.retryable }, { sideEffectState: 'completed' },
       { eventName: 'workspaceManagement.operationCompleted' },
       { workspaceId: 'synthetic-private-workspace' }, { workspaceLabel: 'synthetic-private-label' },
       { inventory: [] }, { lineageIdentity: 'synthetic-private-lineage' },
       { rawError: 'synthetic-private' }, { stack: 'synthetic-private' }, { cause: {} },
-      ...(entry.stage === 'deletePreparation' && !entry.retryable ? [{ sideEffectState: 'none' }] : []),
+      ...(entry.operationId === 'workspace.deleteResume' ||
+        (entry.stage !== 'admission' && !(entry.stage === 'deletePreparation' && entry.retryable))
+        ? [{ sideEffectState: 'none' }] : []),
     ];
     writeLines(logsRoot, 'desktop', 'desktop-warning-error-2026-07-001.jsonl', [
       event,
@@ -65,7 +71,7 @@ describe('FileSystemDiagnosticEventReader', () => {
       category: 'workspaceManagement', component: 'desktop',
       correlationId: event.correlationId, durationMs: event.durationMs,
       eventName: event.eventName, id: `desktop:${event.eventId}`,
-      level: 'error', occurredAt: event.timestamp, operationId: 'workspace.delete', outcome: 'failure',
+      level: 'error', occurredAt: event.timestamp, outcome: 'failure',
       runtimeInstanceId: event.runtimeInstanceId, ...entry,
     };
     for (const events of [diagnostic.diagnosticEvents, support.diagnosticEvents]) {

@@ -54,6 +54,7 @@ async function fixture(test: TestContext, sharedCommand = false) {
       elapsedMs: Math.round(performance.now() - started) }), { flag: 'wx', mode: 0o600 });
     if (test.task.result?.state === 'pass') await rm(root, { recursive: true, force: true });
   });
+  const prepared = (async () => {
   const registryPath = join(root, WORKSPACE_REGISTRY_FILE_NAME);
   const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
   const initial = { ...createSwitchRegistry(), formatVersion: 2 as const };
@@ -106,6 +107,8 @@ async function fixture(test: TestContext, sharedCommand = false) {
       expect(await readFile(inventoryPaths.currentPath)).toEqual(inventoryBytes);
     },
   };
+  })();
+  pending.push(prepared); return prepared;
 }
 
 it('advances the actual published inventory through physical purge while preserving registry and technical evidence', {
@@ -306,4 +309,49 @@ it('rejects concurrent execution and joins a pending rename before reporting own
   expect(f.purge.unlink).not.toHaveBeenCalled();
   expect(await readFile(join(f.payload.quarantinePath, 'corrupt.db'), 'utf8')).toBe('owned-but-not-a-database');
   await f.preserved();
+});
+
+it('joins interrupted fixture preparation before restoring shared mocks or writing evidence', async test => {
+  const publication = await import('./workspaceDeletionPublication.js');
+  const controller = new AbortController(), first = new Error('SYNTHETIC_PREPARATION_ABORTED');
+  let entered!: () => void, release!: () => void, finish: (() => Promise<void>) | undefined;
+  let closing: Promise<void> | undefined, root: string | undefined;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const jobs: Promise<unknown>[] = [], order: string[] = [];
+  const restore = vi.restoreAllMocks.bind(vi);
+  const close = () => closing ??= finish!();
+  test.onTestFinished(async () => {
+    controller.abort(first); release(); await Promise.allSettled(jobs);
+    try { if (finish !== undefined) await close(); }
+    finally { restore(); }
+    if (test.task.result?.state === 'pass' && root !== undefined) await rm(root, { recursive: true, force: true });
+  });
+  const inner = { signal: controller.signal, task: { result: { state: 'fail' } },
+    onTestFinished(callback: () => Promise<void>) { finish = callback; } } as unknown as TestContext;
+  vi.spyOn(publication, 'createWorkspaceDeletionPublisher').mockImplementation(input => {
+    root = input.userDataRoot;
+    return async () => {
+      entered();
+      try { await held; controller.signal.throwIfAborted(); throw new Error('SYNTHETIC_MISSING_ABORT'); }
+      finally { order.push('preparationFinished'); }
+    };
+  });
+  vi.spyOn(vi, 'restoreAllMocks').mockImplementation(() => {
+    order.push('mocksRestored');
+    expect(existsSync(join(root!, 'test-phases.json'))).toBe(false);
+    return restore();
+  });
+  const preparing = fixture(inner).catch(cause => cause); jobs.push(preparing);
+  await started; controller.abort(first);
+  let settled = false;
+  const cleanup = close().then(() => { settled = true; }); jobs.push(cleanup);
+  await Promise.resolve(); expect(settled).toBe(false);
+  release(); expect(await preparing).toBe(first); await cleanup; expect(settled).toBe(true);
+  expect(root).toBeDefined();
+  const report = JSON.parse(await readFile(join(root!, 'test-phases.json'), 'utf8'));
+  order.push('reportObserved');
+  expect(order).toEqual(['preparationFinished', 'mocksRestored', 'reportObserved']);
+  expect(report).toMatchObject({ schemaVersion: 1, measurements: [] });
+  expect(existsSync(root!)).toBe(true);
 });

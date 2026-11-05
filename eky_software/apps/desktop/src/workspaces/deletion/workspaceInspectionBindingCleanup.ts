@@ -13,12 +13,14 @@ export type WorkspaceInspectionBindingCleanupAuthority = WorkspaceInspectionRemn
 export async function clearAbsentWorkspaceInspectionBinding(
   userDataRoot: string, targetValue: unknown, bindingValue: unknown, authority: WorkspaceInspectionBindingCleanupAuthority,
   dependencies: { readonly fileSystem?: CrashSafeFileSlotFileSystem; readonly reads?: WorkspaceInspectionRemnantReads;
-    readonly expectedOwnerSlots?: WorkspaceRemnantBindingCleanup['expectedOwnerSlots'] } = {},
+    readonly expectedOwnerSlots?: WorkspaceRemnantBindingCleanup['expectedOwnerSlots'];
+    readonly assertOriginalJournalsSelected?: () => Promise<void> } = {},
 ): Promise<void> {
   const target = captureDeletionInventoryHeader(targetValue);
   const binding = captureWorkspaceRemnantBinding(bindingValue);
   if (binding.owner !== 'profileInspection' || binding.workspaceId !== target.workspaceId ||
       binding.lineageIdentity.profileId !== target.lineageIdentity.profileId) return invalidDeletionData(invalidCode);
+  const originalJournals = dependencies.assertOriginalJournalsSelected?.bind(dependencies);
   const checkAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
   const external = authority.assertExternalSelection.bind(authority);
   const writersAbsent = authority.assertWritersAbsent.bind(authority);
@@ -46,7 +48,10 @@ export async function clearAbsentWorkspaceInspectionBinding(
   try {
     await store.clearAfterPayloadsAbsent(binding, { ...capturedAuthority, mode: 'owner', bindingSha256,
       expectedOwnerSlots: dependencies.expectedOwnerSlots ?? observed.slots, async assertPayloadsAbsent() {
-        try { await absence.assertAbsent(); } catch (error) { throw retain(error); }
+        try {
+          await absence.assertAbsent(); assertAuthority();
+          if (originalJournals !== undefined) { await originalJournals(); assertAuthority(); }
+        } catch (error) { throw retain(error); }
       } });
   } catch (error) {
     // The low-level file owner may generalize a guard error; keep our first cause before that boundary.

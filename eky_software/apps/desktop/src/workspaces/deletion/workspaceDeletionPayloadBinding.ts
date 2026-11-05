@@ -28,27 +28,29 @@ export async function captureWorkspaceDeletionPayloadBinding(
     if (failed) throw firstFailure;
     try { check(); } catch (error) { throw retain(error); }
   };
-  const assertExternalSelection = async () => {
-    try {
-      guard(); await external(); guard(); await writers(); guard(); await external(); guard();
-    } catch (error) { throw retain(error); }
-  };
-  const guarded = { assertAuthority: guard, assertExternalSelection };
   const stores = keys.map(key => new WorkspaceRemnantBindingStore(root, key));
   const observe = async (): Promise<readonly Observation[]> => {
-    await assertExternalSelection();
-    const observations: Observation[] = [];
-    for (const [index, key] of keys.entries()) {
-      guard();
-      const directory = await inspectWorkspaceRemnantBindingOwnerDirectory(root, key.owner, guard);
-      const binding = await stores[index]!.inspect(guarded);
-      const after = await inspectWorkspaceRemnantBindingOwnerDirectory(root, key.owner, guard);
-      guard();
-      assertSameDirectory(directory, after);
-      observations.push(Object.freeze({ directory, binding }));
-    }
-    await assertExternalSelection();
-    return Object.freeze(observations);
+    let reading = true;
+    const assertReadCurrent = () => { guard(); if (!reading) return invalidDeletionData(invalidCode); };
+    const guarded = { assertAuthority: assertReadCurrent, assertExternalSelection: async () => {
+      assertReadCurrent();
+      try { await writers(); assertReadCurrent(); } catch (error) { throw retain(error); }
+    } };
+    try {
+      guard(); await external(); guard(); await writers(); guard();
+      const observations: Observation[] = [];
+      for (const [index, key] of keys.entries()) {
+        guard();
+        const directory = await inspectWorkspaceRemnantBindingOwnerDirectory(root, key.owner, guard);
+        const binding = await stores[index]!.inspect(guarded);
+        const after = await inspectWorkspaceRemnantBindingOwnerDirectory(root, key.owner, guard);
+        guard();
+        assertSameDirectory(directory, after);
+        observations.push(Object.freeze({ directory, binding }));
+      }
+      guard(); await writers(); guard(); await external(); guard();
+      return Object.freeze(observations);
+    } finally { reading = false; }
   };
   try {
     const baseline = await observe();

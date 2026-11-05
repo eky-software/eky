@@ -469,8 +469,8 @@ export async function createWorkspaceManagementComposition(
           if (assertDeletionReturn !== undefined) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
           assertDeletionReturn = guard;
         },
-        publish: (assertAuthority, assertSelection, target, context, assertPreparationCurrent) =>
-          deletion.publish(assertAuthority, assertSelection, target, context, assertPreparationCurrent),
+        publish: (assertAuthority, assertSelection, target, context, assertPreparationCurrent, assertPreparationReadOwned) =>
+          deletion.publish(assertAuthority, assertSelection, target, context, assertPreparationCurrent, assertPreparationReadOwned),
       }),
     } }),
     ...(options.deletionContinuation === undefined ? {} : { deletionContinuation: options.deletionContinuation }),

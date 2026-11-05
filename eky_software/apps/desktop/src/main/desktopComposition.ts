@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { bindWorkspaceDeletionContinuation, type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
 import { createWorkspaceDeletionMarkerBoundary } from './workspaceDeletionMarkerBoundary.js';
+import { recoverDesktopWorkspaceDeletion } from './recoverDesktopWorkspaceDeletion.js';
 import { writePackagedDiagnosticFixture } from './packagedDiagnosticFixture.js';
 import type { StartupExceptionStage } from './startupExceptionEvidence.js';
 import { mkdir } from 'node:fs/promises';
@@ -101,7 +102,11 @@ import {
   type InvoiceDeliveryDialogAdapter,
 } from './invoiceDeliveryConfirmation.js';
 import {
+  assertPackagedSelectorSmokeConfiguration,
   createPackagedSmokeSecretFileStore,
+  packagedSelectorVerificationPhase,
+  reportPackagedSmokeBackend,
+  runPackagedSelectorSmoke,
   runPackagedSmokeCheck,
   writePackagedSmokeResult,
   type PackagedSmokeConfiguration,
@@ -230,6 +235,7 @@ import { validateOwnedActiveProfile, type OwnedActiveProfileValidation,
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceBackupReplacementStartupRecovery } from '../workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import { createWorkspaceManagementComposition, recoverWorkspaceManagementBeforeRuntime } from '../workspaces/management/workspaceManagementComposition.js';
+import { createWorkspaceBackupOperationalObserver } from '../workspaces/management/workspaceBackupOperationalObserver.js';
 import { createWorkspaceDeletionConfirmations } from '../workspaces/management/createWorkspaceDeletionConfirmations.js';
 import type { WorkspaceDeletionPreparationOptions } from '../workspaces/management/workspaceDeletionPreparation.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../workspaces/management/workspaceManagementOperationGuard.js';
@@ -588,6 +594,8 @@ export async function startDesktopComposition(
     ...options.dependencies,
   };
   const smokeMode = options.smokeConfiguration.enabled;
+  const selectorSmokeConfiguration = options.smokeConfiguration.phase === packagedSelectorVerificationPhase
+    ? Object.freeze({ ...options.smokeConfiguration }) : undefined;
   const backendRoot = join(options.resourcesPath, 'backend');
   const installationRuntimeRoot = createDesktopProfilePaths(
     options.userDataPath,
@@ -619,6 +627,7 @@ export async function startDesktopComposition(
   let selectorOwnsReservation = false;
   let startupActive = true;
   const adoptionWork: { pending: boolean; uncertainty?: { reason: unknown } } = { pending: false };
+  const deletionWork: { pending: boolean; uncertainty?: { reason: unknown } } = { pending: false };
   const assertStartupAuthority = () => {
     if (!startupActive) throw new WorkspaceProcessReservationError('lost');
     options.assertSingleInstanceOwnership();
@@ -627,6 +636,9 @@ export async function startDesktopComposition(
   const workspaceMaintenanceLease = new InMemoryWorkspaceMaintenanceLease();
 
   try {
+    if (selectorSmokeConfiguration !== undefined) {
+      assertPackagedSelectorSmokeConfiguration(selectorSmokeConfiguration, options.userDataPath);
+    }
     await mkdir(options.userDataPath, { recursive: true });
     reservation = await acquireDesktopWorkspaceReservation({
       userDataRoot: options.userDataPath,
@@ -660,6 +672,13 @@ export async function startDesktopComposition(
         desktopOperationalIdentity,
       ),
     );
+    await recoverDesktopWorkspaceDeletion({ userDataRoot: options.userDataPath, buildInfo: options.buildInfo,
+      releaseInfo: options.releaseInfo, maintenanceLease: workspaceMaintenanceLease,
+      reservation: workspaceReservation, work: deletionWork, assertStartupCurrent: assertStartupAuthority,
+      observer: createWorkspaceBackupOperationalObserver({ operationalIdentity: desktopOperationalIdentity,
+        operationalLogger: desktopOperationalLogger }) });
+    // Deletion has settled, closed and released its lease. Re-read ordinary
+    // admission instead of carrying any pre-deletion registry/build observation.
     const coldRecoveryAdmission = await readColdWorkspaceRecoveryAdmissionFromRoot(options.userDataPath);
     const installationStateInput = {
       installationRuntimeRoot,
@@ -897,11 +916,25 @@ export async function startDesktopComposition(
       },
       onUncertain(reason: unknown) { adoptionWork.uncertainty ??= { reason }; },
     });
+    if (selectorSmokeConfiguration !== undefined) {
+      await workspaceReservation.assertMainOwned();
+      const slots = await new WorkspaceRegistryStore({ installationRoot: options.userDataPath,
+        filePath: join(options.userDataPath, WORKSPACE_REGISTRY_FILE_NAME) }).inspectSlots(assertStartupAuthority);
+      await workspaceReservation.assertMainOwned();
+      assertStartupAuthority();
+      const selected = slots.current?.value;
+      if (selected?.formatVersion !== 2 || selected.activeWorkspaceId !== null || selected.workspaces.length !== 0 ||
+          slots.next !== undefined || slots.backup !== undefined) {
+        throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
+      }
+    }
     adoptionWork.pending = true;
     let workspaceStartup: Awaited<ReturnType<typeof resolveDesktopWorkspaceStartup>>;
     try { workspaceStartup = await resolveDesktopWorkspaceStartup({
       assertStartupCurrent: assertStartupAuthority,
-      createRuntimeSession: dependencies.createRuntimeSession,
+      createRuntimeSession: selectorSmokeConfiguration === undefined ? dependencies.createRuntimeSession : () => {
+        throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
+      },
       relaunchApplication: options.relaunchApplication,
       resolveActiveWorkspace: dependencies.resolveActiveWorkspace,
       selectorAuthority,
@@ -913,17 +946,29 @@ export async function startDesktopComposition(
       return undefined;
     }
     if (workspaceStartup.status === 'selector') {
+      if (selectorSmokeConfiguration !== undefined && workspaceStartup.selection.registry.workspaces.length !== 0) {
+        throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
+      }
       // Transfer the reservation to the selector's real settlement owner. The
       // outer catch must not release it after an uncertain selector close.
       selectorOwnsReservation = true;
-      return await startDesktopSelectorComposition({
-        options, dependencies, selection: workspaceStartup.selection,
+      const lifecycle = await startDesktopSelectorComposition({
+        options: selectorSmokeConfiguration === undefined ? options
+          : { ...options, smokeConfiguration: selectorSmokeConfiguration },
+        dependencies, selection: workspaceStartup.selection,
         reservation: workspaceReservation, maintenanceLease: workspaceMaintenanceLease,
         localUpdateRuntimePaths: installationUpdateState.localUpdateRuntimePaths,
         operationalIdentity: desktopOperationalIdentity, operationalLogger: desktopOperationalLogger,
         failureSink: operationalLogFailureSink, startedAt: desktopStartedAt,
       });
+      if (selectorSmokeConfiguration !== undefined) {
+        await runPackagedSelectorSmoke({ configuration: selectorSmokeConfiguration,
+          electronVersion: process.versions.electron, lifecycle,
+          reportStage: options.reportSmokeStage, quitApplication: options.quitApplication });
+      }
+      return lifecycle;
     }
+    if (selectorSmokeConfiguration !== undefined) throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
     const { activeWorkspace, runtimeSessionSecret } = workspaceStartup;
     if (activeWorkspace.mode === 'adoption' && activeWorkspace.adoptionContext?.preparationAuthority !== adoptionPreparation) {
       throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
@@ -1019,7 +1064,8 @@ export async function startDesktopComposition(
       },
     };
   } catch (error) {
-    if (adoptionWork.pending || adoptionWork.uncertainty !== undefined) reservation?.invalidate();
+    if (adoptionWork.pending || adoptionWork.uncertainty !== undefined ||
+        deletionWork.pending || deletionWork.uncertainty !== undefined) reservation?.invalidate();
     // Closing refuses unresolved transfers; their reservation stays held until exit.
     if (!selectorOwnsReservation) await reservation?.close().catch(() => undefined);
     try { options.observeStartupException?.(error, 'compositionStartup', startupSessionSecret === undefined ? [] : [startupSessionSecret]); } catch { /* Optional private evidence. */ }
@@ -2880,6 +2926,7 @@ async function startDesktopCompositionRuntime({
       ),
       secretBrokerPort: secretBrokerChannel.port2,
     });
+    if (smokeMode) reportPackagedSmokeBackend(options.smokeConfiguration, backendHandle.port);
     if (bindSelectorTerminal !== undefined) backendHandle.onUnexpectedExit(() => { selectorBackendExited = true; });
     await profileSnapshotBrokerClient.waitUntilReady();
     await profileSnapshotBrokerClient.getStatus();

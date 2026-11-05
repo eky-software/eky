@@ -8,7 +8,7 @@ import { workspaceInspectionRemnantReads, type WorkspaceInspectionRemnantReads }
 import type { WorkspaceInspectionRemnantAuthority } from './workspaceInspectionRemnantObservation.js';
 import { captureWorkspaceInspectionRemnantSource } from './workspaceInspectionRemnantSelection.js';
 import { workspaceRemnantBindingInvalidCode as invalidCode } from './workspaceRemnantBindingCodec.js';
-import { observeWorkspaceRemnantBindings } from './workspaceRemnantBindingEnumeration.js';
+import { observeWorkspaceInspectionGenerationBindings } from './workspaceRemnantBindingEnumeration.js';
 import { assertSameWorkspaceRemnantBindingSelection, type WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js';
 import { captureWorkspaceRemnantParents } from './workspaceRemnantParentSelection.js';
 import { deriveWorkspaceReplacementRemnantParents } from './workspaceReplacementRemnantPaths.js';
@@ -138,7 +138,7 @@ export async function findUniqueWorkspaceInspectionBinding(
   let selected: Extract<Awaited<ReturnType<WorkspaceRemnantBindingStore['inspect']>>,
     { mode: 'published' }> | undefined;
   // Filenames bind operation as well as generation. A generation alone is not a lookup key or permission to pick the first match.
-  for await (const row of observeWorkspaceRemnantBindings(root, 'profileInspection', authority, reads)) {
+  for await (const row of observeWorkspaceInspectionGenerationBindings(root, generationId, authority, reads)) {
     if (row.binding.value.owner !== 'profileInspection') return invalidDeletionData(invalidCode);
     if (row.binding.value.generationId !== generationId) continue;
     if (selected !== undefined) return invalidDeletionData(invalidCode);

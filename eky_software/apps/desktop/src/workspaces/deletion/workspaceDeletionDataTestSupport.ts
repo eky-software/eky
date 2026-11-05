@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { captureDeletionInventoryHeader, captureDeletionInventoryRecord, deletionInventoryFormatVersion } from './workspaceDeletionInventoryCodec.js';
-import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 
 export const deletionTestDigest = (value: string) => createHash('sha256').update(value).digest('hex');
 export const deletionTestId = (value: number) => `00000000-0000-4000-8000-${value.toString(16).padStart(12, '0')}`;
@@ -15,7 +15,7 @@ export function deletionTestRecord(value = 1) {
     parentIdentity: deletionTestDigest('parent'), bindingSha256: deletionTestDigest(`binding-${value}`) });
 }
 
-export function deletionTestJournal(phase: WorkspaceDeletionJournalV1['phase'] = 'authorized') {
+export function deletionTestJournal(phase: WorkspaceDeletionJournal['phase'] = 'authorized') {
   return captureWorkspaceDeletionJournal({ formatVersion: 1, target: deletionTestHeader, phase,
     registryBeforeSha256: deletionTestDigest('before'), registryAfterSha256: deletionTestDigest('after'),
     previousActiveWorkspaceId: deletionTestHeader.workspaceId, backupDisposition: 'explicitDataLoss',

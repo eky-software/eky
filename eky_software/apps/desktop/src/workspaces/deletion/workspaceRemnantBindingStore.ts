@@ -1,4 +1,4 @@
-import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
+import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection, type CrashSafeByteSlotReadSelection } from '../persistence/crashSafeByteSlotStore.js';
 import { createNodeCrashSafeFileSlotFileSystem, sameCrashSafeFileSlotIdentity, type CrashSafeFileSlot, type CrashSafeFileSlotFileSystem,
   type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
@@ -123,8 +123,40 @@ export class WorkspaceRemnantBindingStore {
   }
 
   // Deletion-only resume: a committed digest identifies surviving slots without inventing a lost operation ID.
-  clearCommittedAfterPayloadsAbsent(targetValue: unknown, proof: CommittedCleanup) {
-    return this.exclusive(() => this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected)));
+  clearCommittedAfterPayloadsAbsent(targetValue: unknown, proof: CommittedCleanup,
+    readSelection?: CrashSafeByteSlotReadSelection) {
+    if (readSelection === undefined) {
+      return this.exclusive(() => this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected)));
+    }
+    if (readSelection === null || typeof readSelection !== 'object') return invalidDeletionData(invalidCode);
+    const captured = readSelection.assertBeforeSlotRead;
+    if (typeof captured !== 'function') return invalidDeletionData(invalidCode);
+    const beforeRead = captured.bind(readSelection);
+    return this.exclusive(async () => {
+      let active = true, readFailed = false;
+      let firstReadFailure: unknown;
+      const assertReadCurrent = () => {
+        if (readFailed) throw firstReadFailure;
+        if (!active) return invalidDeletionData(invalidCode);
+      };
+      const scoped = { async assertBeforeSlotRead() {
+        assertReadCurrent();
+        try { await beforeRead(); assertReadCurrent(); }
+        catch (error) {
+          if (!readFailed) { readFailed = true; firstReadFailure = error; }
+          throw firstReadFailure;
+        }
+      } };
+      try {
+        return await this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected, scoped));
+      } catch (error) {
+        // Native removal may normalize a failed prefix; retain its known original.
+        if (readFailed && error !== firstReadFailure) {
+          throw new AggregateError([firstReadFailure, error], invalidCode, { cause: firstReadFailure });
+        }
+        throw error;
+      } finally { active = false; }
+    });
   }
 
   // Read-only cleanup evidence, including side-only or absent metadata; never an ordinary published binding.
@@ -132,16 +164,60 @@ export class WorkspaceRemnantBindingStore {
     return this.exclusive(() => this.withCommittedCleanup(targetValue, proof, async selected => selected.slots));
   }
 
-  private async withCommittedCleanup<Result>(targetValue: unknown, proof: CommittedCleanup,
-    work: (selected: Awaited<ReturnType<WorkspaceRemnantBindingStore['observe']>>) => Promise<Result>): Promise<Result> {
+  // Observation only: the caller still needs fresh payload-absence proof before any retirement.
+  inspectCommittedDeletionSlots(targetValue: unknown, proof: WorkspaceRemnantBindingAuthority & {
+    readonly bindingSha256: string; readonly expectedDeletionSlots?: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>;
+  }) {
+    return this.exclusive(async () => {
+      const assertSelectedSlots = this.captureCommittedInspection(targetValue, proof);
+      const check = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
+      const external = proof.assertExternalSelection.bind(proof);
+      let failed = false;
+      let firstFailure: unknown;
+      const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+      const assertAuthority = () => {
+        if (failed) throw firstFailure;
+        try { check(); } catch (error) { throw retain(error); }
+      };
+      const assertExternalSelection = async () => {
+        try { assertAuthority(); await external(); assertAuthority(); } catch (error) { throw retain(error); }
+      };
+      try {
+        const selected = await this.observe({ assertAuthority, assertExternalSelection });
+        assertSelectedSlots(selected.slots); assertAuthority(); return selected.slots;
+      } catch (error) { if (failed) throw firstFailure; throw error; }
+    });
+  }
+
+  private captureCommittedInspection(targetValue: unknown, proof: {
+    readonly bindingSha256: string; readonly expectedDeletionSlots?: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>;
+  }) {
     const target = captureDeletionInventoryHeader(targetValue);
     const digest = deletionDigest(proof.bindingSha256, invalidCode);
+    const expectedSlots = proof.expectedDeletionSlots === undefined ? undefined : captureBindingSlotBytes(proof.expectedDeletionSlots);
+    return (slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>) => {
+      if (expectedSlots !== undefined) for (const slot of ['current', 'next', 'backup'] as const) {
+        const before = expectedSlots[slot], after = slots[slot];
+        if (before === undefined ? after !== undefined : after === undefined || after.identity === undefined ||
+            !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
+            !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) return invalidDeletionData(invalidCode);
+      }
+      for (const record of Object.values(slots)) {
+        if (record !== undefined && (record.value.workspaceId !== target.workspaceId ||
+            record.value.lineageIdentity.profileId !== target.lineageIdentity.profileId ||
+            workspaceRemnantBindingSha256(record.value) !== digest)) return invalidDeletionData(invalidCode);
+      }
+    };
+  }
+
+  private async withCommittedCleanup<Result>(targetValue: unknown, proof: CommittedCleanup,
+    work: (selected: Awaited<ReturnType<WorkspaceRemnantBindingStore['observe']>>) => Promise<Result>): Promise<Result> {
+    const assertSelectedSlots = this.captureCommittedInspection(targetValue, proof);
     if (proof.mode !== 'deletionPurged' || proof.expectedCurrentIdentity !== undefined || proof.expectedOwnerSlots !== undefined) {
       return invalidDeletionData(invalidCode);
     }
     const check = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
     const external = proof.assertExternalSelection.bind(proof), absent = proof.assertPayloadsAbsent.bind(proof);
-    const expectedSlots = proof.expectedDeletionSlots === undefined ? undefined : captureBindingSlotBytes(proof.expectedDeletionSlots);
     let failed = false;
     let firstFailure: unknown;
     const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
@@ -157,17 +233,7 @@ export class WorkspaceRemnantBindingStore {
     };
     try {
       const selected = await this.observe({ assertAuthority, assertExternalSelection });
-      if (expectedSlots !== undefined) for (const slot of ['current', 'next', 'backup'] as const) {
-        const before = expectedSlots[slot], after = selected.slots[slot];
-        if (before === undefined ? after !== undefined : after === undefined || after.identity === undefined ||
-            !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
-            !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) return invalidDeletionData(invalidCode);
-      }
-      for (const record of Object.values(selected.slots)) {
-        if (record !== undefined && (record.value.workspaceId !== target.workspaceId ||
-            record.value.lineageIdentity.profileId !== target.lineageIdentity.profileId ||
-            workspaceRemnantBindingSha256(record.value) !== digest)) return invalidDeletionData(invalidCode);
-      }
+      assertSelectedSlots(selected.slots);
       const result = await work(selected);
       assertAuthority();
       return result;
@@ -176,7 +242,7 @@ export class WorkspaceRemnantBindingStore {
 
   private async clearObservedSlots(selected: {
     slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>; guard: CrashSafeByteSlotSelection;
-  }): Promise<void> {
+  }, readSelection?: CrashSafeByteSlotReadSelection): Promise<void> {
     const authority = { assertAuthority: selected.guard.assertAuthority, assertExternalSelection: selected.guard.assertExternalSelection };
     if (Object.values(selected.slots).every(record => record === undefined)) {
       const before = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, authority.assertAuthority, this.readDirectoryIdentity);
@@ -189,7 +255,8 @@ export class WorkspaceRemnantBindingStore {
         return;
       }
     }
-    await this.byteStore.clearSelected(selected.guard);
+    if (readSelection === undefined) await this.byteStore.clearSelected(selected.guard);
+    else await this.byteStore.clearSelected(selected.guard, readSelection);
   }
 
   private captureBinding(value: unknown) {

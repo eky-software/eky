@@ -1,3 +1,4 @@
+import { isProfileInspectionOperationId } from '../../runtime/profileInspectionMessages.js';
 import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { observeWorkspaceDeletionDirectoryEntries, workspaceDeletionDirectoryReads,
   type WorkspaceDeletionDirectoryReads } from './workspaceDeletionDirectoryEntries.js';
@@ -25,10 +26,28 @@ export async function* observeWorkspaceRemnantBindings(
   }
 }
 
+// Uniqueness only: unrelated slot contents still belong to the complete source census.
+export async function* observeWorkspaceInspectionGenerationBindings(
+  userDataRoot: string, generationId: unknown, authority: WorkspaceRemnantBindingAuthority,
+  reads: WorkspaceDeletionDirectoryReads = workspaceDeletionDirectoryReads,
+): AsyncGenerator<BindingObservation, void> {
+  if (!isProfileInspectionOperationId(generationId)) return invalidDeletionData(invalidCode);
+  for await (const row of readWorkspaceRemnantBindingDirectory(userDataRoot, 'profileInspection', authority, reads, generationId)) {
+    if (row.kind === 'binding') yield Object.freeze({ key: row.key, binding: row.binding });
+  }
+}
+
 // The full source census also needs empty and missing directories, not only published bindings.
 export async function* observeWorkspaceRemnantBindingDirectory(
   userDataRoot: string, owner: WorkspaceRemnantBindingKey['owner'], authority: WorkspaceRemnantBindingAuthority,
   reads: WorkspaceDeletionDirectoryReads = workspaceDeletionDirectoryReads,
+): AsyncGenerator<WorkspaceRemnantBindingDirectoryObservation, void> {
+  yield* readWorkspaceRemnantBindingDirectory(userDataRoot, owner, authority, reads);
+}
+
+async function* readWorkspaceRemnantBindingDirectory(
+  userDataRoot: string, owner: WorkspaceRemnantBindingKey['owner'], authority: WorkspaceRemnantBindingAuthority,
+  reads: WorkspaceDeletionDirectoryReads, generationId?: string,
 ): AsyncGenerator<WorkspaceRemnantBindingDirectoryObservation, void> {
   const paths = createWorkspaceRemnantBindingOwnerDirectoryPaths(userDataRoot, owner);
   const assertAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
@@ -55,6 +74,10 @@ export async function* observeWorkspaceRemnantBindingDirectory(
     if (previousStem === parsed.stem) continue;
     // Sorted canonical current comes before its side slots. Never adopt a current appearing behind the cursor.
     if (parsed.slot !== 'current') return invalidDeletionData(invalidCode);
+    if (generationId !== undefined && (parsed.key.owner !== 'profileInspection' || parsed.key.generationId !== generationId)) {
+      previousStem = parsed.stem;
+      continue;
+    }
     const store = new WorkspaceRemnantBindingStore(userDataRoot, parsed.key);
     const original = await store.inspect(guarded);
     assertAuthority();

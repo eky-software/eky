@@ -62,9 +62,14 @@ on suositus. Arvioi valinta uudelleen työn vaikeuden tai riskin muuttuessa;
 samaa suositusta ei tarvitse toistaa jokaisessa väliviestissä. Noudata
 [työnkulun valintaohjetta](docs/ai/workflow.md#mallin-ja-päättelytason-valinta).
 Suositus ei vaihda käyttäjän asetusta eikä alenna hyväksyntävaatimuksia.
-Tarkista myös `.eky-local/local-toolchain-runbook.md`:n mallivalintaosio,
-jos tiedosto on olemassa. Omistajan paikallinen vähimmäistaso koskee myös
-aliagentteja; henkilökohtaista mallivalintaa ei kopioida julkisiin ohjeisiin.
+Erota rajattu toteutus, suuremman kokonaisuuden toteutussopimus ja ennen
+Goalin sulkemista tehtävä koodin loppukatselmus. Kirjaa tarvittavat
+katselmuspisteet työn alkuun; noudata työnkulun työnjakoa ja paikallista
+mallivalintaa. Loppukatselmus ei korvaa toteutuksen aikaisia tarkistuksia.
+Tarkista myös `.eky-local/local-toolchain-runbook.md`:n ajantasainen
+oletusmalli, vaihtokynnys ja vähimmäistaso, jos tiedosto on olemassa.
+Samat rajat koskevat aliagentteja; henkilökohtaista mallivalintaa ei
+kopioida julkisiin ohjeisiin.
 
 ### Mergen valtuus hyväksytyssä Goalissa
 

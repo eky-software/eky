@@ -116,6 +116,18 @@ Rinnakkaisuusraja hallitsee samanaikaista testityötä; sen kanssa onnistunut
 ajo ei yksin todista aiemman aikakatkaisun juurisyytä tai sovellusvirheen
 korjautumista. Aikaisemmat hylkäykset säilytetään erillisinä havaintoina.
 
+Desktopin tavallinen `test`-komento ajaa lisäksi pakollisen
+`test:deletion:roles`-vaiheen ennen nykyisiä Node-testejä. Vain
+`workspaceDeletionRolesCommand.test.ts` erotetaan ensimmäisestä
+Vitest-poolista, ja koko tiedosto ajetaan sen jälkeen yhdellä työntekijällä
+ilman tiedostorinnakkaisuutta. Molemmat nykyiset Vitest-reporterit säilyvät.
+Vaiheita yhdistää `&&`: epäonnistunutta vaihetta ei ohiteta. Muut testit,
+Vitestin oletusasetukset, ketjutestin 180 sekunnin raja ja CI:n kokonaisrajat
+eivät muutu. Ajokytkennän kielteiset kontrollit ja Vitestin todellisen
+tiedostovalinnan vertailu todentavat, ettei jako jätä testejä pois tai aja
+niitä kahdesti. Luettelointi ei korvaa koko komennon ajotodistusta, eikä
+sarjallistuksen läpäisy ratkaise aiemman aikakatkaisun syytä.
+
 ## Core-CI:n pakettisarjojen ajo
 
 Core-jobin testivaihe ajaa pakettien nykyiset testiskriptit yksi paketti
@@ -245,6 +257,17 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   10 sekuntia. Valmistelu, metadatan omistajakohtainen siivous, täydellisen
   inventaarion ja poiston aloituskirjauksen julkaisu sekä jälkivertailut
   kuuluvat samaan budjettiin. Muut julkaisijatapaukset säilyttävät rajansa.
+- Omistajan 2.11.2026 hyväksymä E:n neljän julkaisukokeen 10 sekunnin
+  budjetti koskee `workspaceDeletionRemnantPreparation.test.ts`:n tapauksia
+  `publishes selected original proof through all three comparisons without
+  a physical metadata row`, molempia `retains initial-next when selected
+  %s changes during the backup read` -variantteja (`original`, `foreign`)
+  sekä `rejects a selected original replacement after publication and
+  retains committed-current`. Valmistelu, nykyisen julkaisijan kolme
+  vertailua, alkuperäisjournalin ja sidonnan natiivi identiteetti sekä
+  hylkäyksen jälkeen säilyvät tavut kuuluvat samaan budjettiin. Saman
+  tiedoston sivutus- ja ennakkosiivouskontrollit säilyttävät oletusrajansa.
+  Aiemman koefixturen väärän budjettipoikkeuksen ajo ei ole hyväksyntänäyttöä.
 - `workspaceDeletionPayloadExecutor.test.ts`:n koko fyysisen vaiheketjun
   onnistumistesti, fyysisen poiston ja rekisteri-/metadata-/terminal-vaiheen
   yhteinen ketjutesti, kolme `moveAck`-/`unlinkAck`-/`phaseAck`-kuittauskatkoa
@@ -268,14 +291,57 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   omistajaportin sulku. Tavallisen käytön, muiden testien, sovelluksen ja
   CI:n aikarajat säilyvät. Nämä tiedostokatkot eivät korvaa oikean
   prosessikatkon tai mainin valtuusketjun näyttöä.
+- Omistajan 4.11.2026 antaman Goal-valtuuden perusteella saman tiedoston
+  `preflight keeps retirement, second-read, clear and post-clear guards distinct`
+  -yhdistelmätesti saa 10 sekuntia. Valmistelu, todellinen metadatasiivous,
+  kaikki viiden tarkistusvaiheen väittämät ja säilyvien tavujen vertailu
+  sisältyvät tähän rajaan. Rajattu vaihemittaus todensi työn ja kaikkien
+  väittämien valmistumisen, mutta aiemmat viiden sekunnin aikakatkaisut
+  säilyvät avoimina. Muut testit, sovelluksen määräajat, CI:n kokonaisrajat
+  ja kaikkien roolien 180 sekunnin ketjuraja säilyvät. Budjettimuutos ei
+  osoita sovelluksen nopeutumista tai hyväksy vaikutusalueen sarjaa.
+- Omistajan 4.11.2026 jatkovaltuuden perusteella saman tiedoston uusi
+  `post-clear stops before the next real key after a returned payload`
+  -yhdistelmätesti saa 10 sekuntia. Koko valmistelu, oikean poistokutsun
+  jälkeinen payloadin paluu, seuraavan kohdeavaimen estyminen sekä
+  säilyvien tavujen vertailu sisältyvät tähän rajaan. Yksi hyväksytty
+  vaihemittaus läpäisi alkuperäiset väittämät. Aiemmat viiden sekunnin
+  aikakatkaisut jäävät avoimiksi; muiden testien, sovelluksen ja CI:n
+  aikarajat sekä kaikkien roolien 180 sekunnin raja säilyvät.
+- Omistajan 2.11.2026 erikseen hyväksymä 30 sekunnin budjetti koskee vain
+  saman metadata-tiedoston seitsemää uutta E-yhdistelmätestiä:
+  `retires payloadless original %s proof metadata from a committed V2
+  purged fixture` neljällä omistajalla (`workspaceImport`,
+  `workspaceLegacyAdoption`, `workspaceReplacement`, `workspaceActivationMigration`),
+  `resumes a V2 original backup-slot acknowledgement cut through a fresh
+  metadata owner`, `rejects returning payload after original and binding
+  retirement instead of completing from proof alone` ja `preserves
+  original-current when payload returns during the final activation alias
+  read`. Valmistelu, oikeat slotit, mahdollinen uusi metadata-omistaja ja
+  säilyvien tavujen vertailu kuuluvat samaan budjettiin. Synteettinen
+  purged-fixture ei korvaa main-/cold-käynnistystä tai prosessikatkoa.
+  Kuuden ensimmäisen tapauksen aiemmat viiden sekunnin hylkäykset säilyvät;
+  budjettimuutos ei yksin todista niiden syytä. Muiden testien, sovelluksen
+  ja CI:n rajat eivät muutu eikä tämä anna uusia automaattisia nostoja.
 - `workspaceDeletionFinalization.test.ts`:n nimetyt loppuvaiheen
   yhdistelmätestit saavat kukin 30 sekuntia saman rajatun valtuuden nojalla.
+  Nykyisen `publishes terminal current before inventory retirement and
+  clears the journal last` -ketjun v1- ja alkuperäistodisteellinen v2-variantti
+  käyttävät samaa testikohtaista rajaa. Uudet proof-only-payloadin kielteiset
+  kontrollit säilyttävät viiden sekunnin oletusrajan.
   Valmistelu, oikeat journalin julkaisukatkot, uuden valinnan tekeminen,
   inventaarion tekninen loppusiivous ja viimeisen journalin poisto sekä
   säilyvien tavujen vertailu sisältyvät samaan rajaan. Alkuperäisen syyn,
   valitun tiedostoidentiteetin ja keskeneräisen työn regressiot eivät
   muuta sovelluksen tai CI:n aikarajoja. Tiedostokutsuissa aiheutettu katko
   ei korvaa prosessikatkoa, main-kytkentää tai paketoitua todennusta.
+- `workspaceDeletionTerminalMetadataReadSelection.test.ts`:n vain uusi
+  `preserves foreign binding bytes and identity across the whole terminal chain`
+  -testi saa omistajan erillisellä hyväksynnällä 10 sekuntia. Valmistelu,
+  terminal-inventaarion ja journalin loppusiivous sekä vieraan yrityksen
+  sidonnan tavujen ja identiteetin vertailu sisältyvät rajaan. Tiedoston
+  muiden testien oletusraja sekä sovelluksen ja CI:n rajat säilyvät.
+  Aiemmat aikakatkaisut jäävät avoimiksi; budjetti ei todista niiden syytä.
 - `workspaceDeletionPayloadExecutor.test.ts`:n kuusi `shared command`
   -ketjutestiä saavat kukin 60 sekuntia saman rajatun valtuuden nojalla.
   Sama nykyinen fixture valmistaa tiedostot ja käyttää yhteistä
@@ -299,22 +365,75 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   Valmistelu, nykyisen komennon oikea lapsiprosessi ja käyttöjärjestelmävaraus,
   nimetty katkaisuvaihe, todettu poistuminen, uuden prosessin jatko sekä
   säilyvien tiedostotavujen vertailu sisältyvät samaan rajaan. Tietokantaa
-  tai Electronia ei avata. Tämä ei korvaa cold-admissionin, mainin I/O:n,
+  tai Electronia ei avata. Authorized-katkon ja viimeisen vikatilaisen
+  yrityksen jatko käyttävät nykyistä mainin cold-adapteria ja sen oikeaa
+  delete-leasea; kaksi myöhempää katkoa säilyttävät suoran komentojatkon.
+  Tapauksia tai niiden budjetteja ei lisätty. Cold-adapterin kaksi
+  aikakatkaisua sekä korjausrevision yksi nimetty authorized-hylkäys
+  säilyvät avoimina, eivät onnistuneina prosessitodisteina.
+  Tämä ei korvaa täydellisen main-startupin, mainin I/O:n,
   tarkistusprosessin tai paketoidun sovelluksen erillistä todennusta.
   Muiden testien, sovelluksen ja CI:n aikarajat säilyvät. Epäonnistuneen
   tai kesken jääneen testin aineistoa ei poisteta, ja jokaisen käynnistetyn
   lapsen sulku odotetaan ennen testijuuren siivousta.
+  Fixturen nykyinen yksityinen sulkuraportti säilyttää myös vanhemman
+  odotukset keskeytyshetkellä, vastaanotettujen tapahtumien nimet sekä
+  todellisen `close`-koodin ja signaalin. IPC-sisältöjä ei kopioida tähän
+  havaintoon. Valmistumisviesti, `exit` ja `close` erotetaan toisistaan;
+  havainto ei yksilöi lapsen sisäistä kutsua tai todista natiivivarauksen
+  vapautumista. Paikallinen raportti ei yksin todista salattua CI-toimitusta.
 - `workspaceDeletionFailureEvidenceOpenPgp.test.mjs`:n sisäinen
   Vitest-ajuri saa 90 sekuntia aiemman 30 sekunnin sijaan, koska se ajaa
   nyt vanhan tarkistinvirheen lisäksi uuden, enintään 60 sekunnin
   poistoprosessitapauksen ja niiden sulun. Vanha tarkistinvirhetesti
   säilyttää viiden sekunnin rajansa ja ulompi OpenPGP-koe 240 sekuntia.
   Lisäys ei muuta tuotannon tai CI:n aikarajoja eikä oikeuta uusintaan.
+- `workspaceDeletionRolesCommand.test.ts`:n uusi kaikkien roolien
+  yhdistelmätesti käyttää enintään 180 sekuntia. Samaan budjettiin kuuluvat
+  kymmenen roolia, vanhan layoutin kaikki 13 sallittua jäsentä, 23 rivin
+  aloitusjulkaisu, yhteinen fyysinen jatko ja kaikkien säilyvien tavujen
+  jälkivertailu. Muiden testien tai tuotannon ja CI:n rajoja ei muuteta.
+  Ensimmäinen kokonaisajo ylitti tämänkin rajan ja säilyy hylättynä;
+  rajattu tarkistuskutsujen mittaus ei korvaa koko ketjun hyväksyntää.
+
+- Omistajan 4.11.2026 hyväksymä kymmenen sekunnin budjetti koskee vain
+  `workspaceDeletionMetadataCleanup.test.ts`:n kolmea uutta tapausta:
+  `second binding observation expires before independent strict clear`,
+  `second binding stable selection transient is distinguished from the next full guard`
+  ja `second binding strict clear still runs for emptyDirectory after empty observation`.
+  Valmistelu, todellinen siivous, loppuväittämät ja säilyvien tavujen vertailu
+  kuuluvat samaan rajaan. Muiden varianttien, sovelluksen ja CI:n rajat sekä
+  kaikki turvatarkistukset säilyvät; aiempia hylkäyksiä ei suljeta tällä päätöksellä.
+- Omistajan myöhempi 4.11.2026 hyväksyntä rajaa saman kymmenen sekunnin
+  budjetin vain kahteen uuteen saman tiedoston yhdistelmätestiin:
+  `second binding read distinguishes transient payload before strict removal`
+  ja `second binding strict clear still runs for missingDirectory after empty observation`.
+  Alkuperäiset loppuväittämät ja turvavartijat säilyvät. Tämä ei muuta
+  persistent-payload-varianttia, muita testejä, sovellusta tai CI:n rajoja
+  eikä ole 23 kohteen ketjun suorituskykyhyväksyntä.
 
 Kertautuva alku- ja juuriluentatyö on rajattu ennen näiden budjettien
 mitoitusta. Ensimmäiset aikakatkaisut säilytetään; uusi testibudjetti ei
 yksin osoita niitä korjatuiksi. Myös näissä testeissä keskeytys peruuttaa
 valtuuden, alkanut työ odotetaan loppuun ja epäonnistunut aineisto säilyy.
+
+Omistajan saman Goalin kattavan jatkovaltuuden perusteella vain
+`workspaceDeletionPreparation.test.ts`:n
+`joins authenticated export rereading with the real inventory and authorized journal publication`
+saa kymmenen sekuntia. Valmistelu, aito backup-kuittaus, inventaario,
+aloitusjulkaisu, säilyvien tavujen loppuväittämät ja sulku kuuluvat samaan
+budjettiin. Rajattu vaihemittaus erotti aidon ketjun valmistelusta ja
+siivouksesta; läpäisy ei sulje aiempaa aikakatkaisua tai todista
+suorituskykyvikaa korjatuksi. Muiden testien, sovelluksen, kaikkien roolien
+180 sekunnin ketjun ja CI:n rajat sekä kaikki turvaväittämät säilyvät.
+
+Sama kattava jatkovaltuus hyväksyy vain uuden
+`workspaceDeletionMetadataCleanup.test.ts`:n
+`post-clear stops before the next real key after a returned payload`
+-yhdistelmätestin kymmenen sekunnin budjetin. Kahden aidon kohdeavaimen
+valmistelu, poiston estyminen ja säilyvien tavujen loppuvertailu sisältyvät
+samaan rajaan. Tämä ei laajenna muiden jälkilukutestien rajoja eikä osoita
+koko poistoketjun suorituskykyä.
 
 Molempia vaiheita seuraa sama nykyinen testikohtainen elinkaarituki. Pelkkä
 valmistelun onnistuminen ei oikeuta aineiston poistamista. Valmistelun tai
@@ -464,6 +583,17 @@ Punainen tai jumittuneelta näyttävä CI-ajo tutkitaan ensin rajatusti:
    Jos syy jää tämän tarkistuksen jälkeen avoimeksi, käytä tarvittaessa alla
    sallittua yhtä uusintaa. Sitä varten ei edellytetä loputonta tutkimusta,
    uutta diagnostiikkakerrosta tai ennalta todistettua infrastruktuurivikaa.
+
+### Hyväksytyn työn testausvaltuus
+
+Omistajan 1.11.2026 täsmennys: hyväksyttyyn tehtävään kuuluvia rajattuja
+kohdetestejä, synteettisiä kokeita ja niiden nykyisen tiedonkeruusopimuksen
+mukaista diagnostiikkaa ei kysytä erikseen uudelleen hyväksyttäviksi.
+Nimeä silti kokeen kysymys, rajaus, aineiston säilytys ja seurannan omistaja.
+Yksittäisen luvan tarkat rajat säilyvät: kertamittaus ei hyväksy pysyvää
+testibudjettia, tuotantokytkentää, uutta aineistolajia tai hyväksyntäehdon
+muutosta. Alla oleva uusintaraja ja muut erilliset päätösportit säilyvät;
+testausvaltuus ei tarkoita uusintoja vihreään asti.
 
 ### Enintään yksi uusinta
 

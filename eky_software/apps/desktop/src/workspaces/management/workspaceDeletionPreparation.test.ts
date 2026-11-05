@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events';
 import { randomUUID } from 'node:crypto';
 import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
-import { expect, it, vi } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { BackendRequestQuiescence } from '../../main/backendRequestQuiescence.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
@@ -32,16 +32,32 @@ import { fixture as backupFixture, deferred, sourceId, profileId, processBoundar
 import { createWorkspaceDeletionPublisher } from '../deletion/workspaceDeletionPublication.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from '../deletion/workspaceDeletionJournalStore.js';
 import { deriveWorkspaceReplacementRemnantParents } from '../deletion/workspaceReplacementRemnantPaths.js';
+import * as reservationModule from '../../runtime/workspaceProcessReservation.js';
+import * as deletionTargetModule from './workspaceDeletionTarget.js';
 
 const workspaceId = validateWorkspaceId(sourceId);
 const label = 'Synthetic company';
+const preparationClosers: Array<() => Promise<void>> = [];
+// Drain outer owners before the imported backup fixture closes its brokers.
+afterEach(async () => {
+  const failures: unknown[] = [];
+  for (const close of preparationClosers.splice(0).reverse()) {
+    try { await close(); } catch (error) { failures.push(error); }
+  }
+  if (failures.length === 1) throw failures[0];
+  if (failures.length > 1) throw new AggregateError(failures, 'SYNTHETIC_HANDOFF_CLEANUP_FAILED', { cause: failures[0] });
+});
 type Options = { holdSecret?: boolean; holdArchive?: boolean; holdInspectionClose?: boolean;
   holdExit?: boolean; holdReclaim?: boolean; cancel?: boolean; returnChoice?: boolean;
   holdReturn?: boolean; holdPublication?: boolean; failStop?: boolean; failArchive?: boolean;
   failConfirmation?: boolean; failBackup?: boolean; backupChoice?: 'createBackup' | 'explicitDataLoss';
   otherTarget?: boolean; selector?: boolean; recoveryRequired?: boolean; rejectLoss?: boolean;
   holdLoss?: boolean; cancelBackup?: boolean; holdFence?: boolean; failFence?: boolean; checkPreparation?: boolean;
-  realPublication?: boolean; publicationMutation?: 'backup' | 'source'; };
+  realPublication?: boolean; publicationMutation?: 'backup' | 'source';
+  checkReadOwnership?(read: () => Promise<void>, full: () => Promise<void>, guard: () => void): Promise<void>;
+  assertReservationOwned?(): Promise<void>;
+  publicationCompleted?(): void;
+};
 
 it('joins authenticated export rereading with the real inventory and authorized journal publication', async () => {
   await exercise({ realPublication: true }, async f => {
@@ -60,7 +76,7 @@ it('joins authenticated export rereading with the real inventory and authorized 
     expect(await fs.readFile(f.base.destinationPath)).not.toHaveLength(0);
     expect(f.relaunch).not.toHaveBeenCalled();
   });
-});
+}, 10_000);
 
 it.for(['backup', 'source'] as const)('preserves actual files and initial-next when %s changes at the real publication boundary', async mutation => {
   await exercise({ realPublication: true, publicationMutation: mutation }, async f => {
@@ -482,12 +498,52 @@ it('prepares a selector target without fabricating a backend exit or a backup', 
   });
 });
 
+it('joins the registered preparation closer once before releasing outer ownership', async () => {
+  const entered = deferred();
+  let captured: Awaited<ReturnType<typeof fixture>> | undefined;
+  const work = exercise({ holdSecret: true }, async f => {
+    captured = f; entered.resolve(); await f.start();
+  }).then(() => undefined, (error: unknown) => error);
+  await entered.promise;
+  const f = captured!;
+  await f.drainStarted.promise;
+  const close = vi.spyOn(f, 'close');
+  const registered = preparationClosers.at(-1)!;
+  await Promise.all([registered(), registered()]);
+  expect(await work).toBeInstanceOf(Error);
+  expect(close).toHaveBeenCalledTimes(1);
+  expect(f.events).toContain('secret.drained');
+  expect(f.events).not.toContain('publish');
+  expect(f.relaunch).not.toHaveBeenCalled();
+  expect(processBoundary.run).not.toHaveBeenCalled();
+  await expect(fs.readFile(f.sentinel)).resolves.toEqual(Buffer.from('company retained'));
+});
+
+it('keeps the initial test error before cleanup failure without closing twice', async () => {
+  const first = new Error('SYNTHETIC_TEST_FIRST'), cleanup = new Error('SYNTHETIC_TEST_CLEANUP');
+  let closes = 0;
+  await expect(exercise({}, async f => {
+    const close = f.close.bind(f);
+    f.close = async () => { closes++; await close(); throw cleanup; };
+    throw first;
+  })).rejects.toMatchObject({
+    message: 'SYNTHETIC_HANDOFF_TEST_AND_CLEANUP_FAILED', errors: [first, cleanup], cause: first,
+  });
+  await preparationClosers.at(-1)!();
+  expect(closes).toBe(1);
+});
+
 async function exercise(options: Options, run: (f: Awaited<ReturnType<typeof fixture>>) => Promise<void>) {
-  const f = await fixture(options);
+  const prepared = fixture(options);
+  let closing: Promise<void> | undefined;
+  let closeSettled = false;
+  const close = () => closing ??= prepared.then(f => f.close()).finally(() => { closeSettled = true; });
+  preparationClosers.push(async () => { if (!closeSettled) await close(); });
+  const f = await prepared;
   let initial: { error: unknown } | undefined;
   try { await run(f); }
   catch (error) { initial = { error }; }
-  try { await f.close(); }
+  try { await close(); }
   catch (cleanupFailure) {
     if (initial !== undefined) throw new AggregateError([initial.error, cleanupFailure],
       'SYNTHETIC_HANDOFF_TEST_AND_CLEANUP_FAILED', { cause: initial.error });
@@ -644,7 +700,7 @@ async function fixture(options: Options) {
       lifetime = authority;
       return prepareWorkspaceDeletion({ operationId: sourceId, request: selected,
         installationRoot: base.root, runtimeGeneration: secretGeneration, lifetime: authority, registry,
-        assertLease, async assertMainReservation() { assertReservation(); }, assertMainReservationCurrent: assertReservation,
+        assertLease, async assertMainReservation() { assertReservation(); await options.assertReservationOwned?.(); }, assertMainReservationCurrent: assertReservation,
         closeServiceAdmission: () => service.closeAdmission(),
         runtime: selectorLifecycle !== undefined ? { kind: 'selector', lifecycle: selectorLifecycle } : { kind: 'active', workspaceId, lifecycle, broker: base.broker,
         createBackup: owner => {
@@ -667,7 +723,11 @@ async function fixture(options: Options) {
         async confirmDeletion() { events.push('confirm.delete'); if (options.failConfirmation) throw firstFailure; return !options.cancel; },
         async confirmReturn() { entered.return.resolve(); if (options.holdReturn) await gates.return.promise; return options.returnChoice ?? false; },
         setReturnGuard(value) { returnGuard = value; },
-        async publish(check, selection, target, context, assertPreparationCurrent) {
+        async publish(check, selection, target, context, assertPreparationCurrent, assertPreparationReadOwned) {
+          if (options.checkReadOwnership !== undefined) {
+            if (assertPreparationReadOwned === undefined) throw new Error('MISSING_READ_PROOF');
+            await options.checkReadOwnership(assertPreparationReadOwned, assertPreparationCurrent, check);
+          }
           expect(target.workspaceId).toBe(targetWorkspaceId);
           expect(target.previousActiveWorkspaceId).toBe(initial.activeWorkspaceId);
           expect(Object.isFrozen(target)).toBe(true);
@@ -691,13 +751,14 @@ async function fixture(options: Options) {
                 await fs.mkdir(unexpectedRoot, { recursive: true, mode: 0o700 });
                 await fs.writeFile(join(unexpectedRoot, 'retained'), 'unowned synthetic payload', { flag: 'wx' });
               }
-            }, target, context, assertPreparationCurrent);
+            }, target, context, assertPreparationCurrent, assertPreparationReadOwned);
             events.push('publish');
             return;
           }
           await selection(); check(); publications.push('attempt');
           entered.publish.resolve(); if (options.holdPublication) await gates.publish.promise;
           await selection(); check(); events.push('publish');
+          options.publicationCompleted?.();
         },
       }).catch(error => { originalFailures.push(error); throw error; });
     } },
@@ -725,10 +786,11 @@ async function fixture(options: Options) {
       track(lifecycle.stopAndProveHandlesClosed(workspaceId));
     },
     async close() {
+      capability.dispose(); guard.dispose(); requestQuiescence.stop();
       for (const gate of Object.values(gates)) gate.resolve();
       await Promise.allSettled(tasks);
       const cleanup = await Promise.allSettled([base.client.shutdown(), capability.shutdown(), service.shutdown(), secretMain.close()]);
-      secretClient.close(); guard.dispose(); requestQuiescence.stop();
+      secretClient.close();
       if (expectedCompletionFailures.length !== 0) {
         expect(cleanup[2]).toMatchObject({ status: 'rejected', reason: {
           message: 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', errors: expectedCompletionFailures,
@@ -741,3 +803,188 @@ async function fixture(options: Options) {
     },
   };
 }
+
+it('retains real root runtime reservation sampling while removing only registry reads', async () => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    const controller = new AbortController();
+    const reservation = await reservationModule.acquireWorkspaceProcessReservation({ userDataRoot: f.base.root, signal: controller.signal });
+    const physical = vi.fn(() => reservation.assertOwned());
+    options.assertReservationOwned = physical;
+    let saved!: () => Promise<void>;
+    const registry = vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots');
+    options.checkReadOwnership = async (read, full) => {
+      saved = read;
+      const root = vi.spyOn(reservationModule, 'readWorkspaceProcessReservationIdentity');
+      const runtime = vi.spyOn(f.lifecycle, 'assertNoActiveWorkspaceRuntime');
+      registry.mockClear(); physical.mockClear(); root.mockClear(); runtime.mockClear();
+      await read();
+      expect(registry).not.toHaveBeenCalled();
+      expect(root).toHaveBeenCalledTimes(1); expect(runtime).toHaveBeenCalledTimes(1); expect(physical).toHaveBeenCalledTimes(1);
+      registry.mockClear(); physical.mockClear(); root.mockClear(); runtime.mockClear();
+      await full();
+      expect(registry).toHaveBeenCalledTimes(2);
+      expect(root).toHaveBeenCalledTimes(1); expect(runtime).toHaveBeenCalledTimes(1); expect(physical).toHaveBeenCalledTimes(1);
+    };
+    try {
+      expect(await f.start()).toBe('prepared');
+      const before = physical.mock.calls.length;
+      await expect(saved()).rejects.toThrow('WORKSPACE_DELETE_AUTHORITY_INVALID');
+      expect(physical).toHaveBeenCalledTimes(before);
+      expect(await fs.readFile(f.sentinel, 'utf8')).toBe('company retained');
+    } finally { delete options.assertReservationOwned; await reservation.release(); }
+  });
+});
+
+it.each(['request', 'reservation', 'runtime'] as const)('rejects %s loss without granting publication', async loss => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    options.checkReadOwnership = async read => {
+      if (loss === 'request') f.navigate();
+      else if (loss === 'reservation') f.loseReservation();
+      else vi.spyOn(f.lifecycle, 'assertNoActiveWorkspaceRuntime').mockRejectedValueOnce(new Error('SYNTHETIC_RUNTIME_RETURNED'));
+      await read();
+      throw new Error('READ_SHOULD_NOT_SUCCEED');
+    };
+    await expect(f.start()).rejects.toThrow();
+    expect(f.events).not.toContain('publish');
+    expect(f.originalFailures[0]).not.toMatchObject({ message: 'READ_SHOULD_NOT_SUCCEED' });
+    expect(await fs.readFile(f.sentinel, 'utf8')).toBe('company retained');
+  });
+});
+
+it('joins held physical work before rejecting authority loss', async () => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    const entered = deferred(), release = deferred();
+    let settled = false;
+    options.checkReadOwnership = async read => {
+      options.assertReservationOwned = async () => { entered.resolve(); await release.promise; };
+      try { await read(); } finally { delete options.assertReservationOwned; }
+    };
+    const result = f.start().catch((error: unknown) => error).finally(() => { settled = true; });
+    try {
+      await Promise.race([entered.promise, result.then(() => { throw new Error('PHYSICAL_READ_NOT_REACHED'); })]);
+      f.navigate(); await Promise.resolve();
+      expect(settled).toBe(false); expect(f.base.lease.readState()).toBe('busy');
+    } finally { release.resolve(); await result; }
+    expect(await result).toBeInstanceOf(Error);
+    expect(f.events).not.toContain('publish');
+  });
+});
+
+it.each(['error', 'undefined'] as const)('retains its first %s before a different stop failure', async kind => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    const first = kind === 'error' ? new Error('SYNTHETIC_READ_FIRST') : undefined;
+    const cleanup = new Error('SYNTHETIC_DIFFERENT_STOP_FAILURE');
+    let attempts = 0;
+    options.checkReadOwnership = async (read, full, current) => {
+      options.assertReservationOwned = async () => { attempts++; throw first; };
+      try {
+        await expect(read()).rejects.toBe(first);
+        await expect(read()).rejects.toBe(first);
+        expect(attempts).toBe(1);
+        expect(current).toThrow();
+        await expect(full()).rejects.toThrow();
+      } finally { delete options.assertReservationOwned; }
+      vi.spyOn(f.lifecycle, 'stopForDelete').mockRejectedValueOnce(cleanup);
+      throw first;
+    };
+    await expect(f.start()).rejects.toThrow();
+    expect(f.originalFailures[0]).toBeInstanceOf(WorkspaceDeletionPreparationFailure);
+    expect(f.originalFailures[0]).toMatchObject({ firstFailure: first, cleanupFailure: cleanup });
+    expect(f.events).not.toContain('publish');
+  });
+});
+
+it('keeps verified backup receipt authority in the new physical callback', async () => {
+  const options: Options = {};
+await exercise(options, async f => {
+    let invalidate!: () => void;
+    const begin = backupProof.beginDeletionBackupProof;
+    vi.spyOn(backupProof, 'beginDeletionBackupProof').mockImplementation((...args) => {
+      const proof = begin(...args); invalidate = proof.invalidate; return proof;
+    });
+    const physical = vi.fn(async () => {});
+    options.checkReadOwnership = async read => { options.assertReservationOwned = physical; invalidate(); await read(); throw new Error('BACKUP_AUTHORITY_LOSS_MISSED'); };
+    await expect(f.start()).rejects.toThrow();
+    expect(physical).not.toHaveBeenCalled();
+    expect(f.originalFailures[0]).not.toMatchObject({ message: 'BACKUP_AUTHORITY_LOSS_MISSED' });
+    expect(f.events).not.toContain('publish');
+  });
+});
+
+it('expires the read proof before preparation settlement while publication is still valid', async () => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    let saved!: () => Promise<void>, guard!: () => void;
+    let ended = false, checked = false;
+    options.checkReadOwnership = async (read, _full, current) => { saved = read; guard = current; };
+    options.publicationCompleted = () => { ended = true; };
+    const physical = vi.fn(async () => {}); options.assertReservationOwned = physical;
+    const nativeRead = WorkspaceRegistryStore.prototype.inspectSlots;
+    vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots').mockImplementation(async function (this: WorkspaceRegistryStore, ...args) {
+      if (ended && !checked) {
+        checked = true; guard();
+        const before = physical.mock.calls.length;
+        await expect(saved()).rejects.toThrow('WORKSPACE_DELETE_AUTHORITY_INVALID');
+        expect(physical).toHaveBeenCalledTimes(before);
+      }
+      return nativeRead.apply(this, args);
+    });
+    expect(await f.start()).toBe('prepared'); expect(checked).toBe(true);
+  });
+});
+
+it('rejects a released native reservation rather than a synthetic current bit', async () => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    const reservation = await reservationModule.acquireWorkspaceProcessReservation({ userDataRoot: f.base.root, signal: new AbortController().signal });
+    options.assertReservationOwned = () => reservation.assertOwned();
+    options.checkReadOwnership = async read => { await reservation.release(); await read(); throw new Error('RELEASED_RESERVATION_MISSED'); };
+    try {
+      await expect(f.start()).rejects.toThrow();
+      expect(f.originalFailures[0]).toBeInstanceOf(reservationModule.WorkspaceProcessReservationError);
+      expect(f.originalFailures[0]).toMatchObject({ reason: 'released' });
+      expect(f.events).not.toContain('publish');
+      expect(await fs.readFile(f.sentinel, 'utf8')).toBe('company retained');
+    } finally { delete options.assertReservationOwned; await reservation.release(); }
+  });
+});
+
+it('stops an already admitted read at publication expiry before further physical I/O', async () => {
+  const options: Options = { backupChoice: 'explicitDataLoss' };
+await exercise(options, async f => {
+    const releaseRoot = deferred(), enteredOuter = deferred(), releaseOuter = deferred();
+    let ended = false, intercepted = false;
+    let readResult!: Promise<{ error: unknown }>;
+    const physical = vi.fn(async () => {}); options.assertReservationOwned = physical;
+    const runtime = vi.spyOn(f.lifecycle, 'assertNoActiveWorkspaceRuntime');
+    const capture = deletionTargetModule.captureDeletionTarget;
+    vi.spyOn(deletionTargetModule, 'captureDeletionTarget').mockImplementation(async (...args) => {
+      const receipt = await capture(...args);
+      return Object.freeze({ ...receipt, async assertRootCurrent() {
+        await receipt.assertRootCurrent(); await releaseRoot.promise;
+      } });
+    });
+    options.checkReadOwnership = async read => { readResult = read().then(() => { throw new Error('EXPIRED_READ_RESOLVED'); }, error => ({ error })); };
+    options.publicationCompleted = () => { ended = true; };
+    const originalRead = WorkspaceRegistryStore.prototype.inspectSlots;
+    vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots').mockImplementation(async function (this: WorkspaceRegistryStore, ...args) {
+      if (ended && !intercepted) { intercepted = true; enteredOuter.resolve(); await releaseOuter.promise; }
+      return originalRead.apply(this, args);
+    });
+    const work = f.start().then(() => { throw new Error('EXPIRED_OPERATION_RESOLVED'); }, (error: unknown) => error);
+    try {
+      await Promise.race([enteredOuter.promise, work.then(() => { throw new Error('OUTER_SETTLEMENT_NOT_REACHED'); })]);
+      const before = physical.mock.calls.length;
+      const runtimeBefore = runtime.mock.calls.length;
+      releaseRoot.resolve();
+      expect((await readResult).error).toMatchObject({ message: 'WORKSPACE_DELETE_AUTHORITY_INVALID' });
+      expect(physical).toHaveBeenCalledTimes(before);
+      expect(runtime).toHaveBeenCalledTimes(runtimeBefore);
+    } finally { releaseRoot.resolve(); releaseOuter.resolve(); await work; await readResult; }
+    expect(await work).toBeInstanceOf(Error);
+  });
+});

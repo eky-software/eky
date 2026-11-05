@@ -33,7 +33,7 @@ export async function* encodeDeletionInventory(
 // Yielded records are observations only; the commitment is available only after verified EOF.
 export async function* readDeletionInventoryRecords(
   chunks: AsyncIterable<Uint8Array>, expectedHeader: WorkspaceDeletionInventoryHeader,
-  expectedCommitment?: WorkspaceDeletionInventoryCommitment,
+  expectedCommitment?: WorkspaceDeletionInventoryCommitment, onFailure?: (error: unknown) => void,
 ): AsyncGenerator<WorkspaceDeletionInventoryRecord, WorkspaceDeletionInventoryCommitment> {
   const header = captureDeletionInventoryHeader(expectedHeader);
   const expected = expectedCommitment === undefined ? undefined : captureDeletionInventoryCommitment(expectedCommitment);
@@ -97,11 +97,12 @@ export async function* readDeletionInventoryRecords(
     if (expected !== undefined && (result.byteLength !== expected.byteLength ||
         result.recordCount !== expected.recordCount || result.sha256 !== expected.sha256)) return invalidDeletionData(invalidCode);
     return result;
-  } catch (error) { failed = true; failure = error; throw error; }
+  } catch (error) { failed = true; failure = error; notifyReadFailure(onFailure, error); throw error; }
   finally {
     // Manual iteration retains a byte-source close failure after parser/read failure too.
     try { await source.return?.(); }
     catch (error) {
+      notifyReadFailure(onFailure, error);
       if (failed) throw new AggregateError([failure, error], invalidCode);
       throw error;
     }
@@ -112,9 +113,9 @@ export async function* readDeletionInventoryRecords(
 export async function inspectDeletionInventory(
   chunks: AsyncIterable<Uint8Array>, expectedHeader: WorkspaceDeletionInventoryHeader,
   expectedCommitment?: WorkspaceDeletionInventoryCommitment,
-  reread?: () => AsyncIterable<Uint8Array>,
+  reread?: () => AsyncIterable<Uint8Array>, onFailure?: (error: unknown) => void,
 ): Promise<WorkspaceDeletionInventoryCommitment> {
-  const reader = readDeletionInventoryRecords(chunks, expectedHeader, expectedCommitment);
+  const reader = readDeletionInventoryRecords(chunks, expectedHeader, expectedCommitment, onFailure);
   let evidence = false;
   let result: WorkspaceDeletionInventoryCommitment;
   while (true) {
@@ -124,7 +125,7 @@ export async function inspectDeletionInventory(
   }
   if (evidence) {
     if (reread === undefined) return invalidDeletionData(invalidCode);
-    await assertInspectionRolesDisjoint(reread, expectedHeader, result);
+    await assertInspectionRolesDisjoint(reread, expectedHeader, result, onFailure);
   }
   return result;
 }
@@ -133,9 +134,9 @@ export async function inspectDeletionInventory(
 export async function assertDeletionInventoryRecords(
   chunks: AsyncIterable<Uint8Array>, header: WorkspaceDeletionInventoryHeader,
   commitment: WorkspaceDeletionInventoryCommitment, expected: AsyncIterable<WorkspaceDeletionInventoryRecord>,
-  assertAuthority: () => void,
+  assertAuthority: () => void, onFailure?: (error: unknown) => void,
 ): Promise<void> {
-  const actual: AsyncIterator<WorkspaceDeletionInventoryRecord> = readDeletionInventoryRecords(chunks, header, commitment);
+  const actual: AsyncIterator<WorkspaceDeletionInventoryRecord> = readDeletionInventoryRecords(chunks, header, commitment, onFailure);
   let source: AsyncIterator<WorkspaceDeletionInventoryRecord> | undefined;
   let failed = false;
   let failure: unknown;
@@ -156,10 +157,10 @@ export async function assertDeletionInventoryRecords(
         return invalidDeletionData(invalidCode);
       }
     }
-  } catch (error) { failed = true; failure = error; }
+  } catch (error) { failed = true; failure = error; notifyReadFailure(onFailure, error); }
   const closeFailures: unknown[] = [];
   for (const reader of [source, actual]) {
-    try { await reader?.return?.(); } catch (error) { closeFailures.push(error); }
+    try { await reader?.return?.(); } catch (error) { notifyReadFailure(onFailure, error); closeFailures.push(error); }
   }
   if (closeFailures.length > 0) {
     if (failed) throw new AggregateError([failure, ...closeFailures], invalidCode);
@@ -172,23 +173,23 @@ export async function assertDeletionInventoryRecords(
 
 async function* inspectionRecords(
   chunks: AsyncIterable<Uint8Array>, header: WorkspaceDeletionInventoryHeader,
-  commitment: WorkspaceDeletionInventoryCommitment, role: 'inspection' | 'inspectionEvidence',
+  commitment: WorkspaceDeletionInventoryCommitment, role: 'inspection' | 'inspectionEvidence', onFailure?: (error: unknown) => void,
 ) {
-  for await (const record of readDeletionInventoryRecords(chunks, header, commitment)) {
+  for await (const record of readDeletionInventoryRecords(chunks, header, commitment, onFailure)) {
     if (record.role === role) yield record;
   }
 }
 
 async function assertInspectionRolesDisjoint(
   reread: () => AsyncIterable<Uint8Array>, header: WorkspaceDeletionInventoryHeader,
-  commitment: WorkspaceDeletionInventoryCommitment,
+  commitment: WorkspaceDeletionInventoryCommitment, onFailure?: (error: unknown) => void,
 ) {
-  const payload = inspectionRecords(reread(), header, commitment, 'inspection');
+  const payload = inspectionRecords(reread(), header, commitment, 'inspection', onFailure);
   let evidence: AsyncGenerator<WorkspaceDeletionInventoryRecord> | undefined;
   let failed = false;
   let failure: unknown;
   try {
-    evidence = inspectionRecords(reread(), header, commitment, 'inspectionEvidence');
+    evidence = inspectionRecords(reread(), header, commitment, 'inspectionEvidence', onFailure);
     let current = await payload.next();
     let observed = await evidence.next();
     while (!observed.done) {
@@ -199,11 +200,11 @@ async function assertInspectionRolesDisjoint(
     }
     // Both sources must reach EOF, including any tail after the last evidence row.
     while (!current.done) current = await payload.next();
-  } catch (error) { failed = true; failure = error; }
+  } catch (error) { failed = true; failure = error; notifyReadFailure(onFailure, error); }
   // Explicitly close both: for-await would suppress a return failure after a primary conflict.
   const closeFailures: unknown[] = [];
   for (const reader of [evidence, payload]) {
-    try { await reader?.return(undefined); } catch (error) { closeFailures.push(error); }
+    try { await reader?.return(undefined); } catch (error) { notifyReadFailure(onFailure, error); closeFailures.push(error); }
   }
   if (closeFailures.length > 0) {
     if (failed) throw new AggregateError([failure, ...closeFailures], invalidCode);
@@ -215,4 +216,8 @@ async function assertInspectionRolesDisjoint(
 
 function inspectionKey(record: WorkspaceDeletionInventoryRecord): string {
   return `${record.ownerOperationId}/${record.generationId}`;
+}
+
+function notifyReadFailure(callback: ((error: unknown) => void) | undefined, error: unknown): void {
+  try { callback?.(error); } catch { /* Preserve the original failure. */ }
 }

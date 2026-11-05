@@ -118,6 +118,12 @@ tiedostolajia, kirjoitinta tai keräysrajaa ei lisätä. Erillinen
 [OpenPGP-regressio](../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs)
 vertaa puretun paketin alkuperäiset tavut ja molempien syiden testisidonnan;
 kontrolloitu main-lukuraja ei yksin todista oikeaa Electron- tai hosted-ajoa.
+Sama koe kattaa W7.4:n nimetyn cold-palvelusisääntulon turvallisen
+virhemuunnoksen: alkuperäinen synteettinen poikkeus ja sen syyketju säilyvät
+puretussa paketissa myös erillisen sulkuvirheen rinnalla. Koe käyttää
+nykyistä reporter-sinkiä ja samoja tavu-/sidontavertailuja ilman uutta
+aineistolajia. Palvelun valinta-/sulkuportit ovat tässä ohjattuja; koe ei
+todista mainin fyysistä varausta, onnistunutta poistoa tai hosted-toimitusta.
 Sama salauskoe käyttää tarkistimen oikeaa main-puolen virhemuunnosrajaa
 synteettisessä Vitest-kuluttajassa. Valinnainen `observeException` tarjoaa
 ensimmäisen poikkeuksen ennen turvallista `ProfileInspectionProcessError`-
@@ -146,6 +152,20 @@ saa sisältää niitä. Keräys käsittelee vain nykyiset runner-raportit,
 ei epäonnistumisen vuoksi säilytettyä profiilia tai tietokantaa. Tämä
 on tiedostokomennon ja raportoinnin näyttö, ei Electronin, tuotannon
 cold-admissionin tai GitHub-artifactin toimituksen hyväksyntä.
+
+Saman kokeen nykyinen execution-projektio saa alkuperäisen virheen oikealta
+poissaololukijalta: synteettinen `lstat`-vastaus hylätään ennen omistajuuden
+menetystä. Purku varmentaa tämän viestin, pinon ja syyketjun sekä erilliset
+sisarussyyt; myöhempi valtuusvirhe ei korvaa niitä. Ohjattu lukuvastaus ei
+todista natiivikahvan sulkua tai käyttöjärjestelmän I/O:n keskeyttämistä.
+
+Sama koe kattaa fyysisen journalin täyden sisältötarkistuksen alkuperäisen
+syyn ennen natiivin yleiskoodimuunnosta. Erillinen synteettinen tapaus ajaa
+nykyisen executorin ja journalitallentimen, tarkistaa säilyneet journal-,
+inventaarioluettelo- ja rekisteritavut ja tarjoaa havaitun poikkeuksen
+nykyiselle runner-sinkille. Purku vertaa viestin, pinon ja syyketjun lisäksi
+alkuperäiset raportti- ja toimituskuittitavut sekä tiivisteet. Koe ei lisää
+aineistolajia eikä todista koko poiston valmistumista tai hosted-toimitusta.
 
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.

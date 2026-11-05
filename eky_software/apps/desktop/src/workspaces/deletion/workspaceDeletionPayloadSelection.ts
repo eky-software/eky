@@ -1,6 +1,6 @@
 import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import type { WorkspaceDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
-import type { WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+import type { WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { deriveWorkspaceDeletionPayloadPaths } from './workspaceDeletionPayloadPaths.js';
 import type { WorkspaceLegacyEntryIdentity } from './workspaceLegacyRemnantReads.js';
 
@@ -10,7 +10,7 @@ export interface WorkspaceDeletionPayloadAuthority {
   assertAuthority(): void;
   // The executor proves published journal selection, inventory membership, registry and writer absence.
   // This must remain valid after a move; C's unchanged-source census is not this authority.
-  assertSelected(journal: WorkspaceDeletionJournalV1, record: WorkspaceDeletionInventoryPayloadRecord): Promise<void>;
+  assertSelected(journal: WorkspaceDeletionJournal, record: WorkspaceDeletionInventoryPayloadRecord): Promise<void>;
 }
 
 export interface WorkspaceDeletionPayloadReads {
@@ -22,7 +22,7 @@ export type WorkspaceDeletionPayloadState = 'source' | 'quarantine' | 'absent';
 
 // Read-only selection. The caller must separately enforce the published phase and every mutation grant.
 export async function selectWorkspaceDeletionPayload(
-  root: string, journal: WorkspaceDeletionJournalV1, record: WorkspaceDeletionInventoryPayloadRecord,
+  root: string, journal: WorkspaceDeletionJournal, record: WorkspaceDeletionInventoryPayloadRecord,
   reads: WorkspaceDeletionPayloadReads, guard: () => void, allowAbsent: boolean,
 ) {
   const candidates = deriveWorkspaceDeletionPayloadPaths(root, journal.target, record);

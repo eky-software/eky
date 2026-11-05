@@ -1,15 +1,12 @@
 import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
-import { dirname, join } from 'node:path';
-import { expect, it, type TestContext } from 'vitest';
-import { deriveWorkspaceLegacyRuntimePaths } from '../adoption/workspaceLegacyAdoptionPaths.js';
-import { workspaceOwnedEntryNames } from '../adoption/workspaceLegacyAdoptionRootStore.js';
+import { join } from 'node:path';
+import { expect, it } from 'vitest';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { deriveWorkspaceBackupImportPaths } from '../import/workspaceBackupImportPaths.js';
-import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { deletionTestDigest as hash, deletionTestHeader as header, deletionTestId as id,
   deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
 import { workspaceDeletionDirectoryEntryPageSize } from './workspaceDeletionDirectoryEntries.js';
-import { deletionInventoryRecordKey, type WorkspaceDeletionInventoryRecord } from './workspaceDeletionInventoryCodec.js';
+import { deletionInventoryRecordKey } from './workspaceDeletionInventoryCodec.js';
 import { captureWorkspaceDeletionInventorySources as capture } from './workspaceDeletionInventorySources.js';
 import { WorkspaceDeletionInventoryStore } from './workspaceDeletionInventoryStore.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
@@ -18,55 +15,9 @@ import { deriveWorkspaceInspectionRemnantPaths } from './workspaceInspectionRemn
 import { captureWorkspaceRemnantBinding, serializeWorkspaceRemnantBinding, workspaceRemnantBindingKey,
   workspaceRemnantBindingOwners, workspaceRemnantBindingSha256 } from './workspaceRemnantBindingCodec.js';
 import { createWorkspaceRemnantBindingPaths } from './workspaceRemnantBindingPaths.js';
-import { WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js';
-import { remnantBindingFixture, remnantTestBinding } from './workspaceRemnantBindingTestSupport.js';
+import { remnantTestBinding } from './workspaceRemnantBindingTestSupport.js';
 import { deriveWorkspaceReplacementRemnantParents } from './workspaceReplacementRemnantPaths.js';
-
-async function fixture(context: TestContext) {
-  const f = await remnantBindingFixture(context);
-  const workspace = deriveWorkspaceRoot(f.root, header.workspaceId, 1);
-  const retained: string[] = [];
-  let writersAbsent = true;
-  const authority = { ...f.authority,
-    assertAuthority() { context.signal.throwIfAborted(); f.authority.assertAuthority(); },
-    async assertWritersAbsent() { if (!writersAbsent) throw new Error('SYNTHETIC_WRITER_UNSETTLED'); },
-  };
-  const payload = async (root: string) => {
-    await mkdir(root, { recursive: true, mode: 0o700 });
-    const path = join(root, 'retained-payload');
-    await writeFile(path, 'retained synthetic bytes', { mode: 0o600 }); retained.push(path);
-  };
-  await payload(workspace.workspaceRoot);
-  const identity = nativeReads.directoryIdentity.bind(nativeReads);
-  const rootIdentity = await identity(workspace.workspaceRoot, authority.assertAuthority);
-  const publish = async (value: unknown) => {
-    const binding = captureWorkspaceRemnantBinding(value);
-    await new WorkspaceRemnantBindingStore(f.root, workspaceRemnantBindingKey(binding)).publish(binding, authority);
-    retained.push(createWorkspaceRemnantBindingPaths(f.root, workspaceRemnantBindingKey(binding)).currentPath);
-    return binding;
-  };
-  const inspection = async (number: number, location: number, foreign = false) => {
-    const initial = captureWorkspaceRemnantBinding({ ...remnantTestBinding('profileInspection'), operationId: id(number),
-      generationId: id(number + 1000), ...(foreign ? { workspaceId: id(99), lineageIdentity: { formatVersion: 1, profileId: hash('foreign') } } : {}) });
-    const paths = deriveWorkspaceInspectionRemnantPaths(f.root, initial)[location]!;
-    await payload(paths.rootPath);
-    return publish({ ...initial, rootIdentity: await identity(paths.rootPath, authority.assertAuthority),
-      parentIdentity: await identity(paths.parentPath, authority.assertAuthority) });
-  };
-  const collect = async (source: AsyncIterable<WorkspaceDeletionInventoryRecord>) => {
-    const work = (async () => { const rows = []; for await (const row of source) rows.push(row); return rows; })();
-    context.onTestFinished(async () => { await work.catch(() => undefined); });
-    return work;
-  };
-  return { ...f, workspace, rootIdentity, authority, payload, publish, inspection, collect,
-    capture: (reads = nativeReads) => {
-      const work = capture(f.root, header, rootIdentity, authority, reads);
-      context.onTestFinished(async () => { await work.catch(() => undefined); });
-      return work;
-    },
-    unsettled() { writersAbsent = false; },
-    async preserved() { return Promise.all(retained.map(path => readFile(path, 'hex'))); } };
-}
+import { deletionRoleSourceFixture as fixture, seedAllDeletionRoles, snapshotSeededDeletionRoles } from './workspaceDeletionRolesTestSupport.js';
 
 it('binds the real workspace and parent without opening business data, and compares real inventory bytes', async context => {
   const f = await fixture(context), before = await f.preserved();
@@ -119,24 +70,13 @@ it.for([false, true])('proves the proposed final source comparison with a change
 });
 
 it('projects all ten roles once, excludes foreign sources, and preserves every source byte', { timeout: 20_000 }, async context => {
-  const f = await fixture(context), parents = deriveWorkspaceReplacementRemnantParents(f.root);
-  const replacement = await f.publish(remnantTestBinding());
-  for (const parent of parents) await f.payload(join(parent.parentPath, replacement.operationId));
-  const migration = await f.publish({ ...remnantTestBinding('workspaceActivationMigration'), operationId: id(10) });
-  await f.payload(join(parents[1]!.parentPath, migration.operationId));
-  for (const [owner, number] of [['workspaceImport', 20], ['workspaceLegacyAdoption', 30]] as const) {
-    const binding = await f.publish({ ...remnantTestBinding(owner), operationId: id(number) });
-    await f.payload(deriveWorkspaceBackupImportPaths(f.root, validateWorkspaceBackupImportOperationId(binding.operationId), binding.workspaceId).candidateRoot);
-  }
-  const legacy = join(deriveWorkspaceLegacyRuntimePaths(f.root).legacyRuntimeRoot, workspaceOwnedEntryNames[0]!);
-  await mkdir(dirname(legacy), { recursive: true, mode: 0o700 });
-  await writeFile(legacy, 'retained legacy bytes', { mode: 0o600 });
-  await f.inspection(40, 0); await f.inspection(41, 2);
-  const foreign = await f.publish({ ...remnantTestBinding('workspaceImport'), operationId: id(50), workspaceId: id(99),
-    lineageIdentity: { formatVersion: 1, profileId: hash('foreign') } });
-  await f.payload(deriveWorkspaceBackupImportPaths(f.root, validateWorkspaceBackupImportOperationId(foreign.operationId), foreign.workspaceId).candidateRoot);
-  await f.inspection(51, 3, true);
+  const f = await fixture(context), seeded = await seedAllDeletionRoles(f);
+  const { replacement, foreign, legacy } = seeded;
+  const snapshot = snapshotSeededDeletionRoles(f, seeded);
+  context.onTestFinished(async () => { await snapshot.catch(() => undefined); });
+  const expected = await snapshot;
   const before = await f.preserved(), source = await f.capture(), rows = await f.collect(source.records());
+  expect(rows).toEqual(expected.records);
   expect(rows.map(row => row.role)).toEqual(['activationFailed', 'activationRollback', 'activationStaging', 'activationStaging',
     'adoptionCandidate', 'importCandidate', 'inspection', 'inspectionEvidence', 'legacyEntry', 'replacementImport', 'workspace']);
   expect(rows.map(deletionInventoryRecordKey)).toEqual([...rows.map(deletionInventoryRecordKey)].sort());
@@ -264,7 +204,7 @@ it('invalidates an abandoned partial source instead of silently starting it agai
   expect(await readdir(f.workspace.workspaceRoot)).toEqual(['retained-payload']);
 });
 
-it('uses the captured page once and rereads the entire source on the next consumption', async context => {
+it('reuses a complete expected page while verifying the fresh source at every EOF', async context => {
   const f = await fixture(context), binding = await f.publish(remnantTestBinding());
   await f.payload(join(deriveWorkspaceReplacementRemnantParents(f.root)[1]!.parentPath, binding.operationId));
   let opened = 0;
@@ -275,6 +215,8 @@ it('uses the captured page once and rereads the entire source on the next consum
   const first = await f.collect(source.records());
   expect(initialReads).toBeGreaterThan(0);
   expect(opened).toBe(initialReads * 2);
+  expect(await f.collect(source.records())).toEqual(first);
+  expect(opened).toBe(initialReads * 3);
   expect(await f.collect(source.records())).toEqual(first);
   expect(opened).toBe(initialReads * 4);
 });

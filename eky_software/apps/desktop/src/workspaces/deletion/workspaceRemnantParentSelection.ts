@@ -24,8 +24,9 @@ export async function captureWorkspaceRemnantParents(
       let value: string;
       try { value = await identity(path, assertCurrent); }
       catch (error) {
-        assertCurrent();
+        // A queued read failure must not be replaced by later authority loss.
         if (path === ancestors[0] || (error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+        assertCurrent();
         identities.push(null); missing = true; continue;
       }
       assertCurrent();

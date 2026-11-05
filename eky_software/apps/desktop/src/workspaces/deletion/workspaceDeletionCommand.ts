@@ -1,9 +1,9 @@
 import type { WorkspaceDeletionPreparationOptions } from '../management/workspaceDeletionPreparation.js';
-import type { WorkspaceDeletionCompletion, WorkspaceDeletionWorkAuthority } from '../management/workspaceManagementService.js';
+import type { WorkspaceDeletionCompletion, WorkspaceDeletionExecutionStage, WorkspaceDeletionWorkAuthority } from '../management/workspaceManagementService.js';
 import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
-import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
+import { checkedDeletionAuthority, deletionDataRecord, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
-import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { createWorkspaceDeletionMetadataCleaner } from './workspaceDeletionMetadataCleanup.js';
 import { createWorkspaceDeletionPayloadExecutor } from './workspaceDeletionPayloadExecutor.js';
@@ -18,20 +18,101 @@ export function createWorkspaceDeletionCommand(input: {
   userDataRoot: string;
   registry: Pick<WorkspaceRegistryStore, 'inspectSlots' | 'writeSelected' | 'recoverSelected'>;
   assertWritersAbsent(): Promise<void>;
+  observeStage?(stage: WorkspaceDeletionExecutionStage): void;
+  beforeMetadata?(): Promise<void>;
+  coldSelection?: { assertReservationOwned(): Promise<void>; assertStableSelection(): Promise<void> };
 }) {
   const root = input.userDataRoot, writers = input.assertWritersAbsent.bind(input);
+  const observe = input.observeStage?.bind(input);
+  const beforeMetadata = input.beforeMetadata?.bind(input);
+  const suppliedPair = input.coldSelection;
+  let coldSelection: { assertReservationOwned(): Promise<void>; assertStableSelection(): Promise<void> } | undefined;
+  if (suppliedPair !== undefined) {
+    deletionDataRecord(suppliedPair, ['assertReservationOwned', 'assertStableSelection'], invalidCode);
+    if (typeof suppliedPair.assertReservationOwned !== 'function' || typeof suppliedPair.assertStableSelection !== 'function') {
+      return invalidDeletionData(invalidCode);
+    }
+    coldSelection = Object.freeze({ assertReservationOwned: suppliedPair.assertReservationOwned.bind(suppliedPair),
+      assertStableSelection: suppliedPair.assertStableSelection.bind(suppliedPair) });
+  }
+  const observeStage = (stage: WorkspaceDeletionExecutionStage) => {
+    try {
+      const result: unknown = observe?.(stage);
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    } catch { /* Observation cannot change deletion or its first failure. */ }
+  };
   const registry = { inspectSlots: input.registry.inspectSlots.bind(input.registry),
     writeSelected: input.registry.writeSelected.bind(input.registry), recoverSelected: input.registry.recoverSelected.bind(input.registry) };
-  const stages = { userDataRoot: root, registry, assertWritersAbsent: writers };
+  const stages = { userDataRoot: root, registry, assertWritersAbsent: writers, ...(coldSelection === undefined ? {} : { assertStableSelection: coldSelection.assertStableSelection }) };
   const publish = createWorkspaceDeletionPublisher(stages), payload = createWorkspaceDeletionPayloadExecutor(stages);
   const publishRegistry = createWorkspaceDeletionRegistryPublisher(stages), clearMetadata = createWorkspaceDeletionMetadataCleaner(stages);
-  const finalize = createWorkspaceDeletionFinalizer(stages);
-  let running = false, published: WorkspaceDeletionJournalV1 | undefined;
+  const finalize = createWorkspaceDeletionFinalizer({ ...stages,
+    ...(coldSelection === undefined ? {} : { assertColdReadOwned: coldSelection.assertReservationOwned }) });
+  let running = false, published: WorkspaceDeletionJournal | undefined;
   const exclusive = async <T>(work: () => Promise<T>) => {
     if (running) return invalidDeletionData(invalidCode);
     running = true;
     try { return await work(); } finally { running = false; }
   };
+  const resumeBound = (operationId: string, authority: WorkspaceDeletionWorkAuthority,
+    expectedBinding?: WorkspaceDeletionJournal): Promise<WorkspaceDeletionCompletion> => exclusive(async () => {
+    const current = checkedDeletionAuthority(authority.assertCurrent.bind(authority), invalidCode);
+    const owned = coldSelection?.assertReservationOwned ?? authority.assertOwned.bind(authority);
+    const recordRemoved = authority.recordRemoved.bind(authority);
+    let active = true;
+    const assertCurrent = () => { if (!active) return invalidDeletionData(invalidCode); current(); };
+    const owner = { assertCurrent, async assertOwned() { assertCurrent(); await owned(); assertCurrent(); } };
+    const assertStableSelection = async () => {
+      assertCurrent();
+      const result: unknown = await coldSelection!.assertStableSelection();
+      assertCurrent(); if (result !== undefined) return invalidDeletionData(invalidCode);
+    };
+    try {
+      observeStage('deleteAuthorization');
+      if (coldSelection !== undefined) await assertStableSelection();
+      const selected = await captureWorkspaceDeletionPhaseSelection({ operationId, authority: owner,
+        journal: new WorkspaceDeletionJournalStore(root), registry, assertWritersAbsent: writers,
+        ...(expectedBinding === undefined ? {} : { expectedBinding }) });
+      let binding: WorkspaceDeletionJournal;
+      try {
+        if (coldSelection !== undefined) await assertStableSelection();
+        binding = selected.journal;
+      } finally { selected.revoke(); }
+      if (binding.phase !== 'registryPublished') {
+        observeStage('deletePurge');
+        if (coldSelection !== undefined) await assertStableSelection();
+        await payload(operationId, owner, binding);
+        if (coldSelection !== undefined) await assertStableSelection();
+        observeStage('deleteRegistry');
+        if (coldSelection !== undefined) await assertStableSelection();
+        await publishRegistry(operationId, owner, binding);
+        if (coldSelection !== undefined) await assertStableSelection();
+      }
+      observeStage('deleteCleanup');
+      if (beforeMetadata !== undefined) {
+        // This awaited authority handoff is not the optional stage observation.
+        if (coldSelection === undefined) await owner.assertOwned(); else await assertStableSelection();
+        assertCurrent();
+        const result: unknown = await beforeMetadata(); assertCurrent();
+        if (result !== undefined) return invalidDeletionData(invalidCode);
+      }
+      if (binding.phase !== 'registryPublished') {
+        if (coldSelection !== undefined) await assertStableSelection();
+        await clearMetadata(operationId, owner, binding);
+        if (coldSelection !== undefined) await assertStableSelection();
+      }
+      if (coldSelection !== undefined) await assertStableSelection();
+      const terminal = await finalize(operationId, owner, binding);
+      if (coldSelection !== undefined) await assertStableSelection();
+      const completion = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const,
+        navigation: terminal.previousActiveWorkspaceId === null || terminal.previousActiveWorkspaceId === terminal.target.workspaceId
+          ? 'selector' as const : 'reopenPrevious' as const });
+      // No await or further file work may follow main's synchronous completion receipt.
+      assertCurrent();
+      checkedDeletionAuthority(() => recordRemoved(Object.freeze({ status: 'removed', journal: terminal })), invalidCode)();
+      return completion;
+    } finally { active = false; }
+  });
   return Object.freeze({
     publish(...args: Parameters<WorkspaceDeletionPreparationOptions['publish']>) {
       return exclusive(async () => {
@@ -42,33 +123,11 @@ export function createWorkspaceDeletionCommand(input: {
       });
     },
     resume(operationId: string, authority: WorkspaceDeletionWorkAuthority): Promise<WorkspaceDeletionCompletion> {
-      return exclusive(async () => {
-        const current = checkedDeletionAuthority(authority.assertCurrent.bind(authority), invalidCode);
-        const owned = authority.assertOwned.bind(authority), recordRemoved = authority.recordRemoved.bind(authority);
-        let active = true;
-        const assertCurrent = () => { if (!active) return invalidDeletionData(invalidCode); current(); };
-        const owner = { assertCurrent, async assertOwned() { assertCurrent(); await owned(); assertCurrent(); } };
-        try {
-          const selected = await captureWorkspaceDeletionPhaseSelection({ operationId, authority: owner,
-            journal: new WorkspaceDeletionJournalStore(root), registry, assertWritersAbsent: writers,
-            ...(published === undefined ? {} : { expectedBinding: published }) });
-          const binding = selected.journal;
-          selected.revoke();
-          if (binding.phase !== 'registryPublished') {
-            await payload(operationId, owner, binding);
-            await publishRegistry(operationId, owner, binding);
-            await clearMetadata(operationId, owner, binding);
-          }
-          const terminal = await finalize(operationId, owner, binding);
-          const completion = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const,
-            navigation: terminal.previousActiveWorkspaceId === null || terminal.previousActiveWorkspaceId === terminal.target.workspaceId
-              ? 'selector' as const : 'reopenPrevious' as const });
-          // No await or further file work may follow main's synchronous completion receipt.
-          assertCurrent();
-          checkedDeletionAuthority(() => recordRemoved(Object.freeze({ status: 'removed', journal: terminal })), invalidCode)();
-          return completion;
-        } finally { active = false; }
-      });
+      return resumeBound(operationId, authority, published);
+    },
+    resumeSelected(journalValue: unknown, authority: WorkspaceDeletionWorkAuthority): Promise<WorkspaceDeletionCompletion> {
+      const binding = captureWorkspaceDeletionJournal(journalValue);
+      return resumeBound(binding.target.operationId, authority, binding);
     },
   });
 }

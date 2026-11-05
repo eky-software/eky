@@ -6,11 +6,11 @@ import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlot } from '.
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { deletionTestDigest as hash, deletionTestJournal as journal } from './workspaceDeletionDataTestSupport.js';
 import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, serializeWorkspaceDeletionJournal,
-  workspaceDeletionPhases, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+  workspaceDeletionPhases, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { inspectWorkspaceDeletionJournal, planWorkspaceDeletionJournalSlots } from './workspaceDeletionJournalSlots.js';
 
-function slots(values: Partial<Record<CrashSafeFileSlot, WorkspaceDeletionJournalV1>>): ReadOnlyJournalSlots<WorkspaceDeletionJournalV1> {
-  const record = (value?: WorkspaceDeletionJournalV1) => value === undefined ? undefined
+function slots(values: Partial<Record<CrashSafeFileSlot, WorkspaceDeletionJournal>>): ReadOnlyJournalSlots<WorkspaceDeletionJournal> {
+  const record = (value?: WorkspaceDeletionJournal) => value === undefined ? undefined
     : { value, bytes: serializeWorkspaceDeletionJournal(value) };
   return { current: record(values.current), next: record(values.next), backup: record(values.backup) };
 }

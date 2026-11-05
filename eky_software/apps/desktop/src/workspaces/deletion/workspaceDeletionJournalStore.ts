@@ -1,12 +1,12 @@
 import { isAbsolute, join, resolve } from 'node:path';
-import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
+import { CrashSafeByteSlotStore, type CrashSafeByteSlotIntermediateReadSelection, type CrashSafeByteSlotReadSelection, type CrashSafeByteSlotSelection } from '../persistence/crashSafeByteSlotStore.js';
 import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import {
   captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, parseWorkspaceDeletionJournalBytes,
   sameWorkspaceDeletionJournalBinding, serializeWorkspaceDeletionJournal, workspaceDeletionPhases,
-  type WorkspaceDeletionJournalV1,
+  type WorkspaceDeletionJournal,
 } from './workspaceDeletionJournalCodec.js';
 import { inspectWorkspaceDeletionJournal, planWorkspaceDeletionJournalSlots } from './workspaceDeletionJournalSlots.js';
 
@@ -14,7 +14,7 @@ export const workspaceDeletionJournalFileName = 'workspace-deletion-journal-v1.j
 const invalidCode = 'WORKSPACE_DELETE_JOURNAL_CONFLICT';
 
 export interface WorkspaceDeletionJournalSelection {
-  readonly slots: ReadOnlyJournalSlots<WorkspaceDeletionJournalV1>;
+  readonly slots: ReadOnlyJournalSlots<WorkspaceDeletionJournal>;
   assertAuthority(): void;
   // The owner revalidates inventory, target/registry and writer absence, not these changing journal slots.
   assertExternalSelection(): Promise<void>;
@@ -54,7 +54,7 @@ export class WorkspaceDeletionJournalStore {
     });
   }
 
-  advance(value: unknown, selection: WorkspaceDeletionJournalSelection) {
+  advance(value: unknown, selection: WorkspaceDeletionJournalSelection, readSelection?: CrashSafeByteSlotReadSelection, intermediate?: CrashSafeByteSlotIntermediateReadSelection) {
     return this.exclusive(async () => {
       const next = captureWorkspaceDeletionJournal(value);
       const selected = captureSelection(selection);
@@ -64,21 +64,21 @@ export class WorkspaceDeletionJournalStore {
           workspaceDeletionPhases.indexOf(next.phase) !== workspaceDeletionPhases.indexOf(selected.plan.selected.phase) + 1) {
         return invalidDeletionData(invalidCode);
       }
-      return this.byteStore.replaceSelected(serializeWorkspaceDeletionJournal(next), selected.guard);
+      return this.byteStore.replaceSelected(serializeWorkspaceDeletionJournal(next), selected.guard, readSelection, intermediate);
     });
   }
 
-  recover(selection: WorkspaceDeletionJournalSelection) {
+  recover(selection: WorkspaceDeletionJournalSelection, readSelection?: CrashSafeByteSlotReadSelection) {
     return this.exclusive(async () => {
       const selected = captureSelection(selection);
       if (selected.plan.mode !== 'published') return invalidDeletionData(invalidCode);
-      return this.byteStore.recoverSelected(selected.guard);
+      return this.byteStore.recoverSelected(selected.guard, readSelection);
     });
   }
 
   clearTerminal(selection: WorkspaceDeletionJournalSelection, terminal: Readonly<{
     assertInventoryAndOperationRootAbsent(): Promise<void>;
-  }>) {
+  }>, readSelection?: CrashSafeByteSlotReadSelection) {
     return this.exclusive(async () => {
       const selected = captureSelection(selection);
       if (selected.plan.mode !== 'published' || !selected.plan.terminalOnly) return invalidDeletionData(invalidCode);
@@ -90,7 +90,7 @@ export class WorkspaceDeletionJournalStore {
         await assertAbsent();
         selected.guard.assertAuthority();
         await assertExternalSelection();
-      } });
+      } }, readSelection);
     });
   }
 
@@ -126,7 +126,7 @@ function publicationFileSystem(
 function captureSelection(selection: WorkspaceDeletionJournalSelection) {
   const assertAuthority = checkedDeletionAuthority(selection.assertAuthority.bind(selection), invalidCode);
   const slots = { current: undefined, next: undefined, backup: undefined } as Record<
-    'current' | 'next' | 'backup', ReadOnlyJournalSlots<WorkspaceDeletionJournalV1>['current']>;
+    'current' | 'next' | 'backup', ReadOnlyJournalSlots<WorkspaceDeletionJournal>['current']>;
   for (const name of ['current', 'next', 'backup'] as const) {
     const record = selection.slots[name];
     if (record === undefined) continue;

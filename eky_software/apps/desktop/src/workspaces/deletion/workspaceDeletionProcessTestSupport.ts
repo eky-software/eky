@@ -5,6 +5,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { expect, type TestContext } from 'vitest';
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
+import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
 import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 import { createProfileSnapshotRuntimePaths } from '../../profileBackup/profileSnapshotRuntimePaths.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
@@ -12,10 +13,13 @@ import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { deletionTestId } from './workspaceDeletionDataTestSupport.js';
+import type { WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 
-export type DeletionProcessCut = 'authorized' | 'payloadAbsent' | 'registryPublished' | 'originalFailure';
+export type DeletionProcessCut = 'authorized' | 'payloadAbsent' | 'registryPublished' | 'originalFailure' |
+  `${'before' | 'after'}:${Exclude<WorkspaceDeletionJournal['phase'], 'authorized'>}`;
 type ChildMessage = { event: 'cut' | 'completed' | 'failed'; pid: number; cut?: DeletionProcessCut;
-  receiptCount?: number; completion?: { formatVersion: 1; status: 'completed'; navigation: 'selector' | 'reopenPrevious' } };
+  receiptCount?: number; coldSettled?: boolean;
+  completion?: { formatVersion: 1; status: 'completed'; navigation: 'selector' | 'reopenPrevious' } };
 const maximumOutputBytes = 64 * 1024;
 
 export async function assertDeletionReservationBusy(acquire: () => Promise<{ release(): Promise<void> }>) {
@@ -27,16 +31,27 @@ export async function assertDeletionReservationBusy(acquire: () => Promise<{ rel
   await expect(probe()).rejects.toMatchObject({ reason: 'busy' });
 }
 
-function startChild(test: TestContext, config: Record<string, unknown>) {
+export function startDeletionProcessChild(test: TestContext, config: Record<string, unknown>) {
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const child = fork(fileURLToPath(new URL('../../../scripts/workspaceDeletionProcess.fixture.mjs', import.meta.url)), [], {
     env, execArgv: ['--disable-warning=ExperimentalWarning'], stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   });
-  const messages: ChildMessage[] = [], waiters = new Set<() => void>();
-  let closed = false, first: unknown;
+  const messages: ChildMessage[] = [], messageEvents: ChildMessage['event'][] = [], waiters = new Set<() => void>();
+  let closed = false, terminationRequested = false, first: unknown;
+  const waiting = { cut: 0, completed: 0, failed: 0, termination: 0, exit: 0 };
+  const observe = () => Object.freeze({ waiting: Object.freeze({ ...waiting }),
+    messages: Object.freeze([...messageEvents]), closed, terminationRequested });
+  let atAbort: ReturnType<typeof observe> | null = null;
+  let closeResult: Readonly<{ code: number | null; signal: NodeJS.Signals | null }> | null = null;
+  const wait = async <T>(kind: keyof typeof waiting, work: () => Promise<T>): Promise<T> => {
+    waiting[kind]++;
+    try { return await work(); }
+    finally { waiting[kind]--; }
+  };
   let stdout: Buffer = Buffer.alloc(0), stderr: Buffer = Buffer.alloc(0);
-  const fail = (error: unknown) => { first ??= error; for (const wake of waiters) wake(); };
+  const wakeWaiters = () => { for (const wake of waiters) wake(); };
+  const fail = (error: unknown) => { first ??= error; wakeWaiters(); };
   const collect = (source: Buffer, chunk: Buffer) => {
     if (source.length + chunk.length > maximumOutputBytes) {
       fail(new Error('DELETION_PROCESS_OUTPUT_LIMIT'));
@@ -46,6 +61,8 @@ function startChild(test: TestContext, config: Record<string, unknown>) {
   };
   child.stdout!.on('data', (chunk: Buffer) => { stdout = collect(stdout, chunk); });
   child.stderr!.on('data', (chunk: Buffer) => { stderr = collect(stderr, chunk); });
+  child.stdout!.on('error', fail);
+  child.stderr!.on('error', fail);
   child.on('error', fail);
   child.on('message', (value: unknown) => {
     const message = value as ChildMessage;
@@ -54,48 +71,67 @@ function startChild(test: TestContext, config: Record<string, unknown>) {
       fail(new Error('DELETION_PROCESS_MESSAGE_INVALID')); return;
     }
     messages.push(message);
+    messageEvents.push(message.event);
     for (const wake of waiters) wake();
   });
   const close = new Promise<{ code: number | null; signal: NodeJS.Signals | null }>(resolve => {
-    child.once('close', (code, signal) => { closed = true; resolve({ code, signal }); for (const wake of waiters) wake(); });
+    child.once('close', (code, signal) => {
+      closed = true; closeResult = Object.freeze({ code, signal });
+      resolve(closeResult); for (const wake of waiters) wake();
+    });
   });
+  const terminate = () => {
+    if (closed || terminationRequested) return;
+    terminationRequested = true;
+    // Keep IPC attached so Node can account for its EOF in the real close event.
+    try { return child.kill('SIGKILL'); }
+    catch (error) { fail(error); return false; }
+  };
   const cancel = () => {
-    fail(test.signal.reason ?? new Error('DELETION_PROCESS_TEST_ENDED'));
-    if (child.connected) child.disconnect();
-    if (!closed) child.kill('SIGKILL');
+    atAbort ??= observe();
+    wakeWaiters();
+    terminate();
   };
   test.signal.addEventListener('abort', cancel, { once: true });
   child.send(config, error => { if (error) fail(error); });
   return {
     pid: child.pid,
+    readEvidence() { return Object.freeze({ atAbort, after: observe(), close: closeResult }); },
     async message(event: ChildMessage['event']) {
-      while (true) {
-        test.signal.throwIfAborted();
-        if (first !== undefined) throw first;
-        const found = messages.find(message => message.event === event);
-        if (found) return found;
-        if (closed || messages.some(message => message.event === 'failed')) throw new Error('DELETION_PROCESS_PHASE_NOT_REACHED');
-        await new Promise<void>(resolve => { const wake = () => { waiters.delete(wake); resolve(); }; waiters.add(wake); });
-      }
+      return wait(event, async () => {
+        while (true) {
+          test.signal.throwIfAborted();
+          if (first !== undefined) throw first;
+          const found = messages.find(message => message.event === event);
+          if (found) return found;
+          if (closed || messages.some(message => message.event === 'failed')) throw new Error('DELETION_PROCESS_PHASE_NOT_REACHED');
+          await new Promise<void>(resolve => { const wake = () => { waiters.delete(wake); resolve(); }; waiters.add(wake); });
+        }
+      });
     },
     async killAndJoin() {
-      expect(closed).toBe(false);
-      expect(child.kill('SIGKILL')).toBe(true);
-      const result = await close;
-      expect(result.code === 0).toBe(false);
-      if (first !== undefined) throw first;
-      expect(stdout.length === 0 && stderr.length === 0).toBe(true);
+      return wait('termination', async () => {
+        expect(closed).toBe(false);
+        expect(terminate()).toBe(true);
+        const result = await close;
+        expect(result.code === 0).toBe(false);
+        if (first !== undefined) throw first;
+        expect(stdout.length === 0 && stderr.length === 0).toBe(true);
+      });
     },
     async successfulExit() {
-      const result = await close;
-      if (first !== undefined) throw first;
-      expect(result).toEqual({ code: 0, signal: null });
-      expect(stdout.length === 0 && stderr.length === 0).toBe(true);
+      return wait('exit', async () => {
+        const result = await close;
+        if (first !== undefined) throw first;
+        expect(result).toEqual({ code: 0, signal: null });
+        expect(stdout.length === 0 && stderr.length === 0).toBe(true);
+      });
     },
     async finish() {
       test.signal.removeEventListener('abort', cancel);
-      if (!closed) { if (child.connected) child.disconnect(); child.kill('SIGKILL'); }
+      terminate();
       await close;
+      if (first !== undefined) throw first;
       return { stdout: stdout.toString('utf8'), stderr: stderr.toString('utf8'), closed };
     },
   };
@@ -106,12 +142,15 @@ export async function deletionProcessFixture(test: TestContext, lastWorkspace = 
   await chmod(directory, 0o700);
   const root = join(directory, 'installation');
   await mkdir(root, { mode: 0o700 });
-  const children: ReturnType<typeof startChild>[] = [];
+  const children: ReturnType<typeof startDeletionProcessChild>[] = [];
   test.onTestFinished(async () => {
     const results = await Promise.allSettled(children.map(child => child.finish()));
     const cleanupErrors = results.filter(result => result.status === 'rejected');
-    await writeFile(join(directory, 'children.private.json'), JSON.stringify(results), { flag: 'wx', mode: 0o600 });
-    expect(cleanupErrors.length).toBe(0);
+    await writeFile(join(directory, 'children.private.json'), JSON.stringify(results.map((result, index) => ({
+      ...result, observed: children[index]!.readEvidence(),
+    }))), { flag: 'wx', mode: 0o600 });
+    if (cleanupErrors.length > 0) throw new AggregateError(cleanupErrors.map(result => result.reason),
+      'DELETION_PROCESS_CLEANUP_FAILED', { cause: cleanupErrors[0]!.reason });
     if (test.task.result?.state === 'pass') await rm(directory, { recursive: true, force: true });
   });
   const initial = { ...createSwitchRegistry(lastWorkspace ? TEST_TARGET_WORKSPACE_ID : TEST_SOURCE_WORKSPACE_ID),
@@ -134,10 +173,18 @@ export async function deletionProcessFixture(test: TestContext, lastWorkspace = 
   const targetRootIdentity = await readWorkspaceProcessReservationIdentity(target.workspaceRoot);
   const targetParentIdentity = await readWorkspaceProcessReservationIdentity(target.workspacesRoot);
   const operationId = deletionTestId(401);
+  const time = '2026-10-25T12:00:00.000Z';
+  const buildInfo = { schemaVersion: 1, appVersion: '0.2.81', buildRevision: 'a'.repeat(40), buildCreatedAt: time, buildDirty: false };
+  const releaseInfo = { schemaVersion: 1, appIdentity: 'Eky', appVersion: '0.2.81', msiProductVersion: '0.2.81',
+    buildRevision: 'a'.repeat(40), platform: 'win32', architecture: 'x64', releaseChannel: 'pilot', upgradeCode: deletionTestId(50) };
+  const update = createLocalUpdateRuntimePaths({ userDataPath: root, legacyRuntimeRoot: createDesktopProfilePaths(root).runtimeRoot });
+  await mkdir(dirname(update.acceptedBuildMetadataPath), { recursive: true, mode: 0o700 });
+  await writeFile(update.acceptedBuildMetadataPath, JSON.stringify({ formatVersion: 1, acceptedAt: time,
+    appVersion: buildInfo.appVersion, buildRevision: buildInfo.buildRevision, releaseChannel: releaseInfo.releaseChannel }), { flag: 'wx', mode: 0o600 });
   return { root, registry, registryPath, registryBytes, operationId, target, targetFiles, retained, targetRootIdentity, targetParentIdentity,
-    start(mode: 'publish' | 'resume', cut: DeletionProcessCut | null) {
-      const child = startChild(test, { root, operationId, workspaceId: TEST_TARGET_WORKSPACE_ID,
-        label: initial.workspaces.at(-1)!.workspaceLabel, mode, cut, testId: test.task.id });
+    start(mode: 'publish' | 'resume' | 'resumeCold', cut: DeletionProcessCut | null) {
+      const child = startDeletionProcessChild(test, { root, operationId, workspaceId: TEST_TARGET_WORKSPACE_ID,
+        label: initial.workspaces.at(-1)!.workspaceLabel, mode, cut, testId: test.task.id, buildInfo, releaseInfo });
       children.push(child); return child;
     },
     async assertRetained() { for (const path of retained) expect(await readFile(path, 'utf8')).toBe('retained-independent-bytes'); },

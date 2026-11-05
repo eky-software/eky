@@ -55,7 +55,8 @@ export interface WorkspaceDeletionPreparationOptions {
   // W7.4 supplies the real journal consumer. W7.3 exposes no delete IPC.
   // Recheck after publication awaits; the backup branch also rereads its bytes.
   publish(assertAuthority: () => void, assertPublicationCurrent: () => Promise<void>, target: DeletionTarget,
-    context: Readonly<WorkspaceDeletionPublicationContext>, assertPreparationCurrent: () => Promise<void>): Promise<void>;
+    context: Readonly<WorkspaceDeletionPublicationContext>, assertPreparationCurrent: () => Promise<void>,
+    assertPreparationReadOwned?: () => Promise<void>): Promise<void>;
 }
 
 export class WorkspaceDeletionPreparationFailure extends Error {
@@ -242,10 +243,33 @@ export async function prepareWorkspaceDeletion(
       // Wrapping selection checks stay light. The receipt owns entry/settlement
       // content checks; only the final consumer requests intermediate rereads.
       await assertSelection(); assertPublication();
-      await input.publish(assertPublication, assertPublicationSelection, selection.target, Object.freeze({
-        operationId, target: selection.target,
-        backupDisposition: receipt === undefined ? 'explicitDataLoss' : 'verifiedBackup',
-      }), assertPreparationCurrent);
+      let readActive = true, readFailed = false;
+      let firstReadFailure: unknown;
+      const assertReadCurrent = () => {
+        if (readFailed) throw firstReadFailure;
+        if (!readActive) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
+        assertPublication();
+      };
+      const assertPreparationReadOwned = async () => {
+        if (readFailed) throw firstReadFailure;
+        if (!readActive) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
+        try {
+          assertReadCurrent();
+          await selection.assertRootCurrent(); assertReadCurrent();
+          await runtime.lifecycle.assertNoActiveWorkspaceRuntime(); assertReadCurrent();
+          await input.assertMainReservation(); assertReadCurrent();
+        } catch (error) {
+          if (!readFailed) { readFailed = true; firstReadFailure = error; }
+          readActive = false; phase = 'invalid';
+          throw firstReadFailure;
+        }
+      };
+      try {
+        await input.publish(assertPublication, assertPublicationSelection, selection.target, Object.freeze({
+          operationId, target: selection.target,
+          backupDisposition: receipt === undefined ? 'explicitDataLoss' : 'verifiedBackup',
+        }), assertPreparationCurrent, assertPreparationReadOwned);
+      } finally { readActive = false; }
       await assertSelection(); assertPublication();
     };
     if (receipt !== undefined) await receipt.consume(publish);

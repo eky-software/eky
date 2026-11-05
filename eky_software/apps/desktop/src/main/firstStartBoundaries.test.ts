@@ -7,6 +7,18 @@ import { describe, expect, it } from 'vitest';
 const sourceRoot = resolveSourceRoot();
 
 describe('desktop first-start boundaries', () => {
+  it('admits selector smoke only through the existing token-gated smoke configuration', async () => {
+    const source = await readFile(join(sourceRoot, 'main', 'index.ts'), 'utf8');
+    expect(source).toContain('hasSelectorVerificationSwitch: app.commandLine.hasSwitch(packagedSelectorVerificationSwitch)');
+    const configuration = source.slice(source.indexOf('const smokeConfiguration = createPackagedSmokeConfiguration({'),
+      source.indexOf('const smokeProgress ='));
+    expect(configuration).toContain("hasSmokeSwitch: app.commandLine.hasSwitch('desktop-smoke')");
+    expect(configuration).toContain('tokenValue: process.env.EKY_DESKTOP_SMOKE_TOKEN');
+    expect(configuration).toContain("tempPath: app.getPath('temp')");
+    expect(source).not.toContain('workspaceDeletionCommand:');
+    expect(source).not.toContain('workspaceDeletionPublisher:');
+  });
+
   it('uses the same opt-in private observation binding for both migration decision owners', async () => {
     const source = await readFile(join(sourceRoot, 'main', 'desktopComposition.ts'), 'utf8');
     const firstStart = source.indexOf('new FirstStartUpdateCoordinator({');

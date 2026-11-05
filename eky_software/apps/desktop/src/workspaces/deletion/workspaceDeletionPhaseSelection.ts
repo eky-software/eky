@@ -6,7 +6,7 @@ import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { captureWorkspaceDeletionJournal, parseWorkspaceDeletionJournalBytes, sameWorkspaceDeletionJournalBinding,
-  type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+  type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { planWorkspaceDeletionJournalSlots } from './workspaceDeletionJournalSlots.js';
 import type { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { captureWorkspaceDeletionRegistryState } from './workspaceDeletionRegistryState.js';
@@ -20,7 +20,7 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
   journal: Pick<WorkspaceDeletionJournalStore, 'inspect'>;
   registry: Pick<WorkspaceRegistryStore, 'inspectSlots'>;
   assertWritersAbsent(): Promise<void>;
-  readonly expectedBinding?: WorkspaceDeletionJournalV1;
+  readonly expectedBinding?: WorkspaceDeletionJournal;
 }) {
   const operationId = validateWorkspaceBackupReplacementOperationId(input.operationId);
   const expectedBinding = input.expectedBinding === undefined ? undefined : captureWorkspaceDeletionJournal(input.expectedBinding);
@@ -68,6 +68,10 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
       assertCurrent();
       await assertOwner();
     });
+    const assertJournalReadOwned = () => checked(async () => {
+      await assertOwner();
+      await assertOwner();
+    });
     const assertSelected = () => checked(async () => {
       await assertExternalSelection();
       assertSameSlots(journalSlots, (await readJournal(assertCurrent)).slots);
@@ -83,7 +87,7 @@ export async function captureWorkspaceDeletionPhaseSelection(input: {
       // Separate copies: mutating the values passed to a byte store cannot change the pinned observations.
       journalSlots: copySlots(journalSlots, parseWorkspaceDeletionJournalBytes),
       registrySlots: copySlots(registrySlots, parseWorkspaceRegistryBytes),
-      assertCurrent, assertSelected, assertExternalSelection, assertJournalSelected,
+      assertCurrent, assertSelected, assertExternalSelection, assertJournalSelected, assertJournalReadOwned,
       revoke() { active = false; },
     });
   } catch (error) { active = false; throw retain(error); }

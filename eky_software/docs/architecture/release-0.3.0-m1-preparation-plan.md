@@ -7,13 +7,458 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**1.11.2026: lähtötilan huolto on hyväksytty; jatketaan keskeneräistä W7.4:ää.**
+**5.11.2026: W7.4 on työpuussa; koko integraatiota ei ole hyväksytty.**
+Hyväksytty main on `dd5877408e3ca5b3952937b5e2aa43ea1fc58dfe`:
+[V2](https://github.com/eky-software/eky/actions/runs/41807951452) ja
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/41809217253)
+on varmennettu hyväksytyiksi. Nykyinen haara on `codex/w7-4-deletion`;
+kaikki sen keskeneräiset muutokset säilytetään.
+
+**Nykyinen korjauspala:** koko W7.4:n riippumaton lähdekatselmus on tehty.
+Siinä löytyivät paketoidun testin kilpailevat ajastimet ja tämän sivun
+vanhentuneet jatko-ohjeet. Rajatut korjaukset ja deltakatselmus on tehty.
+Pakettiajurin valmistelu,
+käynnistys, natiivin työn siivous, tuloksen julkaisu ja suoran prosessin
+katkaisusuoja sovitetaan samoihin 120 sekunnin vaihe- ja 300 sekunnin
+kokonaisrajoihin. Aikarajoja tai turvatarkistuksia ei nostettu tai poistettu.
+Myös kokonaisworkerin dynaaminen request sidotaan ensimmäiseen luentaan:
+myöhempi kelvollisenkin aikabudjetin muutos hylätään.
+
+**Korjauspalan näyttö:** neljän tiedoston yhtenäinen 452 testin kohdesarja,
+desktopin tyypitys ja rajattu riippumaton deltakatselmus läpäisivät.
+Mukana ovat molempien parent-adapterien valmistelukulut, liian vähäisen
+käynnistysvaran esto, oikean Windows-Jobin viivästetty käynnistys ja
+deadline-siivous, varauksen uudelleenotto sekä alkuperäisen virheen
+nykyinen OpenPGP-purku. Testatut lähteet varmennettiin muuttumattomiksi.
+Tämä ei vielä ole onnistuvan puhtaan sovelluspaketin hyväksyntä.
+[Korjaukset ja ensiehdokkaan hylkäys](release-0.3.0-integration-history.md#w74n-loppukatselmuksen-ajastus--ja-jatkamiskorjaukset-5112026)
+säilyvät erillisenä näyttönä.
+
+**Katselmusta edeltävä lähdenäyttö:** tavallinen desktop-komento läpäisi kaikki kolme
+pakollista vaihetta: 469 tiedoston 10 902 testiä ja 13 vanhaa alustaohitusta,
+erillinen kokonainen 23 kohteen ketju nykyisessä 180 sekunnin rajassa sekä
+alkuperäisen Node-jälkivaiheen 519 testiä ja 12 vanhaa alustaohitusta.
+Nykyisen lähteen prosessi-, cold-jatko-, Electron-/SQLite- ja virheaineiston
+kohdeportit läpäisivät erikseen; sarjoja ei summata.
+[Tarkka lähdekohtainen näyttö ja säilyvät ensihylkäykset](release-0.3.0-integration-history.md#w74n-fyysisen-journalin-tuotantokytkennän-ennakkoportit-5112026)
+eivät korvaa korjausten omia portteja tai puhtaan paketin hyväksyntää.
+
+**Seuraavaksi:** puhtaan revision ja paketin jäädytys sekä sama
+puhdas hardened Windows -paketti: backup -> inspect -> restore -> restart ->
+compare sekä sisäinen poisto/restart ja säilyvät tavut, nykyiset kesto- ja
+installer-portit, julkaisuyksityisyys, täsmällisen PR-headin portit ja
+auditointi, suojattu merge sekä uuden mainin omat tarkistukset.
+Nämä integraatioportit ovat vielä avoinna. W7.4:ää tai koko 0.3.0:aa ei
+ole hyväksytty. W7.5:n delete-IPC, preload,
+painike ja backenditon tukivienti pysyvät suljettuina.
+
+Vanhat aikakatkaisut, tuntemattomat alkuperäiset syyt ja epävarmat
+siivoustilat säilyvät avoimina; myöhempi läpäisy ei muuta niitä korjatuiksi.
+[Tämän sivun aiemmat ajokierrokset](release-0.3.0-integration-history.md#w74n-loppukatselmusta-edeltäneet-jatko-ohjeet-5112026)
+on siirretty muuttamattomina historiaan, eivätkä niiden silloiset
+`nykyinen`- ja `seuraava`-sanat ole nykyisiä toimintaohjeita.
+[Tarkistusvastuukartta](local-company-workspace-plan.md#poistoketjun-tarkistusvastuukartta)
+ja omistava W7-suunnitelma säilyvät teknisten sopimusten lähteenä.
+
+### Edeltävä viimeistelyselvitys
+
+Alla olevat aiempien kytkentöjen ja kokeiden tilat ovat historiaa,
+eivät uusi ajolupa tai yllä olevan nykytilan korvaava työjono.
+
+**Edeltävä mittaus:** [Yhteiskatselmus ja vaihemittaus](local-company-workspace-plan.md#viimeistelyketjun-yhteiskatselmus-ja-mittaussopimus)
+on tehty nykyisellä pienellä fixtuurellä, ei pitkän cold-kokeen uusintana.
+Mittarin korjausten jälkeen yhdeksän muistipohjaista kontrollia ja myös
+lopullisen mittarin kaksi fixturen sulkukontrollia läpäisivät. Korjatussa
+kuuden tapauksen mittauksessa kaksi valmistui ja neljä aikakatkaisi nykyiseen
+oletusrajaan.
+Kaikki havaittu työ päättyi sulussa ja epäonnistunut aineisto säilyi.
+Katkaisuhavainnot erottavat inventaarion ja journalin eri loppuvaiheet sekä
+niissä toistuvat valintaluennat; ne eivät todista aiemman cold-hylkäyksen syytä.
+Tuotantolähteitä, vartijoita tai rajoja ei muutettu. Tätä seurannut rajattu
+luentavartija on yllä mainittu erikseen tuotantokytkentään hyväksytty ehdokas.
+[Hyväksytty inventaarion luentavastuu](local-company-workspace-plan.md#terminal-inventaarion-luentavastuun-ehdotus)
+ja pysyvät regressiot ovat työpuussa. Tuotantotiedostot vastaavat koeehdokasta,
+vanhan fixturen runko säilyi ja nykyinen tyypitys sekä rajattu katselmus
+läpäisivät. Kahden kokonaisen regressiotiedoston ajossa 60 testiä läpäisi
+ja yksi tavallisen viimeistelypolun tapaus aikakatkaisi 30 sekunnissa.
+Sen yksi sallittu erillisdiagnoosi läpäisi samalla lähteellä ja rajalla;
+omistaja hyväksyi etenemisen, mutta ensihylkäys jää avoimeksi.
+Nykyinen salaus-/purkukoe säilytti alkuperäiset synteettiset virheet.
+
+**Uusi hyväksyntäeste:** tämän kytkennän yksi nimetty `authorized`-cold-prosessikoe
+aikakatkaisi muuttumattomassa 60 sekunnin rajassa. Kohde puuttuu julkaistusta
+rekisteristä; terminal-journal ja itse inventaariotiedosto säilyvät.
+Molempien lasten sulku kirjautui, mutta koko poistoa tai keskeytyksen jälkeistä
+natiivivarauksen vapautumista ei ole todistettu. Tämä uusi hylkäys ei kuulu
+aiemman 30 sekunnin tapauksen etenemispäätökseen. Ei muuttumatonta uusintaa,
+aikarajan nostoa tai mergepoikkeusta. Testin 60 sekuntia sisältää myös
+valmistelun, ensimmäisen julkaisun ja prosessin vaihdon, ei vain viimeistelyä.
+Säilynyt tila ei yksilöi yhtä odottavaa kutsua. Koko cold-ketjun hyväksyntä
+on edelleen avoinna.
+
+**Aiempi cold-koe ennen terminal-luentakytkentää:**
+Koe aikakatkaisi nykyisessä 60 sekunnin rajassa. Rekisteri ja terminal-journal
+on julkaistu, mutta inventaario on yhä paikallaan. Molempien lapsiprosessien
+sulku kirjautui; koko poiston valmistumista tai keskeytyksen jälkeistä
+natiivivarauksen vapautumista ei ole todistettu. Ei muuttumatonta uusintaa.
+Omistaja hyväksyi seitsemän nykyisen omistajan kytkennän ja nykyiset portit.
+Kytkentä on työpuussa; koko cold-ketjua ei ole hyväksytty. Sidontapoistojen,
+lukuryhmien ja main-sisältövalinnan pienet kokeet läpäisivät. Ensimmäiset
+pysyvät omistaja-/adapteri-/komentoregressiot ja natiivit kontrollit läpäisivät.
+Seitsemän kokonaisen testitiedoston yhteisajossa 214 läpäisi ja kahdeksan
+aikakatkaisi. Valintakuitin sulkukorjaus on mukana ajossa; myöhemmät neljä
+adapterikontrollia ja valmistelutyön sulkuregressio sekä nykyinen tyypitys
+läpäisivät erikseen. Valmisteluregressio hylkää myös vanhan puutteen palauttavan
+kielteisen kontrollin. Nykyinen salaus-/purkutodennus läpäisi.
+Erilliset palveluluovutuksen, ensivirheen, journal-valinnan ja alkuperäisen
+journalin jäännöksen 80 regressiota läpäisivät nykyisillä rajoilla.
+Omistajan hyväksymän yhden budjettimittauksen kaikki kahdeksan tapausta
+läpäisivät koerajoilla; tällä kertaa ne valmistuivat myös aiempien rajojen
+sisällä. Pysyviä testirajoja ei muutettu. Tämä ei sulje yhteisajon kahdeksaa
+hylkäystä, aiempia V2-viiveitä tai uuden cold-kokeen hylkäystä. Mittarin omat
+valmisteluvirheet on erotettu sovellustuloksista. Seuraava rajaus koskee
+nykyistä viimeistelyketjua, ei uutta yleistä diagnostiikkakerrosta.
+
+**Aiemmat kokeet:** alla olevat koeehdokkaan tulokset eivät ole uuden kytkennän hyväksyntä.
+Yhdistetty porttipari on nyt koeehdokkaassa: ohjattu palvelusidonta ja valitut
+natiivit ketjut läpäisivät, mutta kuusi tapausta hylättiin. Payloadin kolme
+virherajaa todennettiin pienemmällä natiivilla tilafixturellä; koeversion
+ensivirhe- ja synkroninen valtuusvartija korjattiin seitsemän kontrollin avulla.
+Kolme V2-metadataketjun aikakatkaisua säilyy avoimena; yhden muuttumattoman
+vertailun ja yhden sallitun kohdeuusinnan läpäisy ei sulje niitä.
+Näissä aiemmissa ajoissa koeehdokkaat olivat vain testiajon muistissa.
+Koko cold-ketjua ei ole hyväksytty.
+Mainin, vaihelukijan ja tiedostotallentimien rajattu lähdekatselmus on tehty.
+Ehdotus säilyttää täyden `assertOwned`-portin ja erottaa vain kylmäjatkon
+sisäisen varausvartijan nimetyksi portiksi. Täydet sisältövalinnat suojaisivat
+kokonaisluentoja ja nykyisiä muutosvartijoita. Kokonaan lukuryhmän sisällä
+ilmestyvän ja täsmälleen palautuvan ulkoisen muutoksen havaintoajankohta on
+hyväksyttiin ensin kokeeseen ja nyt erikseen tuotantokytkentään.
+Katselmus ei yksin ole koko integraation hyväksyntä tai aikakatkaisun korjaus.
+Rekisterikokeen 20 ja viimeistelijäkokeen 34 aiempaa testiä läpäisivät
+nykyisillä rajoilla; niiden erillisiä yksityisiä ehdokkaita ei edistetä
+samalla. Nykyiset paikalliset journal-/rekisterivartijat säilyvät ehdotuksessa.
+Kaksi ensimmäistä
+cold-prosessitapausta ylitti nykyisen 60 sekunnin testibudjetin.
+Katselmoitu tarkistusjärjestyksen korjaus läpäisi 85 kohdetestiä ja
+tyypityksen, mutta sen yksi nimetty authorized-prosessitodennus aikakatkaisi
+edelleen; säilynyt journal oli edennyt `purgeAuthorized`ista `purged`iin.
+Lasten loppusulku todettiin, aineisto säilyi, eikä syytä merkitä korjatuksi.
+Ei uutta saman kokonaisajon uusintaa tai aikarajan nostoa ilman uutta näyttöä.
+Mainin oletuskäynnistys kutsuu nyt työpuussa nimettyä cold-palvelusisääntuloa
+ennen korjaavaa installation-valmistelua. Omistajan alkuperäisvalinta,
+metadataluovutus ja sulku on kytketty; koko integraatiota ei ole hyväksytty.
+Nykyinen Main-käynnistys-/palautustiedosto läpäisi 368 testiä; myöhempi
+rajattu korjaus ja sen oma näyttö erotetaan tästä ajosta. Nykyinen
+OpenPGP-koe säilytti alkuperäiset synteettiset syyt puretussa paketissa.
+Korjaava installation-valmistelu ei saa edeltää poiston täsmällistä valintaa,
+eikä julkaistu poisto saa pudota vanhan cold-helperin import-haaraan.
+Komennon onnistumista ja sulun/vapautuksen varmuutta ei yhdistetä.
+Readonly-build-valinnan osuus on nyt työpuussa: normaali kolmen tiedoston
+kohdeajo läpäisi 111 testiä, tyypityksen ja rajatun katselmuksen.
+Poiston, rekisterin, alkuperäisjournalien ja muiden recovery-omistajien
+readonly-yhteisvalinta on myös työpuussa: neljän tiedoston vaikutusajo
+läpäisi 232 testiä, tyypityksen ja rajatun katselmuksen. Palvelusisääntulon
+delete-lease ja täsmällinen uusintavalinta ovat nyt mainin työpuukytkennässä;
+niiden onnistuneen prosessi-/pakettiketjun näyttö puuttuu. Tavallinen startup
+hylkää edelleen poistojournalin; vain erillinen varhainen cold-jatko saa
+käsitellä sen. Readonly-yhteisvalinta ei yksin ole muutos- tai runtime-lupa.
+Palvelun durable-jatko ja completion-/release-käsittely on erotettu saman
+omistajan yhteisiksi yksityisiksi toiminnoiksi: 66 nykyistä regressiota,
+tyypitys ja rajattu katselmus läpäisivät. Saman poistokomennon uusi
+`resumeSelected` kopioi valitun journal-sidonnan ennen odotusta; sen viisi
+ohjattua kontrollia ja nykyiset kahdeksan ensivirhekontrollia sekä tyypitys
+ja katselmus läpäisivät. Uusi staattinen palvelusisääntulo jakaa saman
+jatkon, sulun ja ensivirheen käsittelyn; sen normaali vaikutusajo läpäisi
+473 testiä. Nykyinen salauskoe todisti muunnetun palveluvirheen alkuperäisen
+synteettisen syyketjun puretusta paketista. Ohjatut palveluportit ja natiivin
+valinnan hylkäyskontrollit eivät vielä todista oikeaa cold-/main-poistoketjua.
+Koko uutta ketjua ei vielä ole hyväksytty.
+Hyväksytty deleteResume-/cleanup-virhesopimus on nyt desktopin,
+backendin, API-clientin ja täyden tukipaketin lukijoissa. Erilliset kohdeajot
+läpäisivät 391, 299 ja 151 testiä; tyypitykset ja rajattu katselmus
+läpäisivät. Oikea JSONL-kirjoitus ja minimoitu incident-projektio on
+todennettu. Komennon vaihehavainnot ja palvelukuluttaja ovat työpuussa;
+mainin kytkennän hyväksyntä sekä prosessi-/pakettinäyttö ovat vielä avoinna.
+Mainin pysyvä build-/vierasomistajavalinta on erotettu samassa lukijassa
+omista muuttuvista vaiheista. Komennossa on nyt vartioitu, odotettava
+metadatan siirtymä myös suoralle viimeistelypolulle. Näiden yhdeksän tiedoston
+vaikutusajo läpäisi 305 testiä, tyypityksen ja katselmuksen; todellista main-
+sidontaa tai onnistunutta fyysistä poistoa ei päätellä porttikontrolleista.
+Nykyisen alkuperäisjournalien lukijan nimetty jatkoportti on työpuussa;
+se vertaa uuden omistajan havaintoa pysyvään todisteeseen eikä anna
+admission-, recovery- tai muutoslupaa. Normaali kolmen tiedoston kohdeajo
+läpäisi 59 testiä, tyypityksen ja rajatun katselmuksen. Tämä ei korvaa
+main-/cold-kytkentää tai oikeaa prosessikatkoa.
+Tavallisen käynnistyksen poistojournalin esto säilyy varhaisen cold-haaran jälkeen.
+Omistaja hyväksyi D:n ennakkoluennan tuotantokytkennän sekä E:n täsmällisen
+v2-journalin toteutuksen ja testit. Näitä päätöksiä ei kysytä uudelleen.
+D:n normaali kolmen tiedoston kohdeajo läpäisi 78 testiä, tyypityksen ja
+rajatun katselmuksen. Vain ensimmäinen sidontalukukierros on kevennetty;
+viimeinen retirement-luku, clear ja post-clear säilyvät strictinä.
+E:n codec-/slot-/vaihe-/rekisterijoukko läpäisi 327 testiä, tyypityksen ja
+rajatun katselmuksen. Harvan tai poikkeavan JavaScript-todistetaulukon
+validointipuute korjattiin pysyvine kielteisine kontrolleineen. V1 säilyy
+omalla sopimuksellaan, v2-todiste on muuttumaton ja sekoittuneet versiot
+hylätään. Tämä on codec-/tallennusnäyttö, ei mainin cold-kytkennän hyväksyntä.
+E:n natiivi alkuperäisjournalivalinta, täsmällisen sidonnan säilytys,
+sivutus ja nykyisen julkaisijan kolme vertailua on nyt kytketty.
+Normaali viiden tiedoston vaikutusajo läpäisi 152 testiä; myös tyypitys ja
+rajatut katselmukset läpäisivät. Uuden kytkennän sisäkkäinen luenta
+aikakatkaisi ensin julkaisukontrolleja. Yksityinen vaihe- ja kutsumittaus
+paikansi jäljelle jäävän hylkäyksen ennakkosiivoukseen ennen ensimmäistä
+julkaisuvertailua. Alkuperäisjournalin tarkistus kuuluu nyt kokonaisen
+lukukierroksen rajoille ja nykyiseen payload-poissaolotodistukseen ennen
+varsinaista sidontamuutosta; sitä ei ketjuteta jokaisen sisäisen luennan
+vartijaan. Tuore kohde, kirjoittajien päättyminen, tiedostoidentiteetit,
+todelliset slotit ja kaikki varsinaiset muutosvartijat säilyvät.
+Muuttunut journal estää myös initial-nextin syntymisen inventaarion jo
+valmistuttua. Hylkäyksen jälkeiset tavut ja identiteetit säilyvät.
+Muiden kutsujien oletuskäyttäytyminen ja aikarajat eivät muuttuneet;
+ensivirheet säilyvät eikä vanhoja CI-viiveitä väitetä korjatuiksi.
+Metadatan jatkokytkentä on nyt työpuussa. Sallitun slot-puuttumisjärjestyksen
+vertailija ja kiinteiden payload-juurten poissaololukija läpäisivät 26
+kohdekontrollia. Katselmuksen löytämä viimeisen aliasluennan jälkeinen
+payload-aukko korjattiin; sitä vastaava natiivi säilyttämisregressio läpäisi.
+Omistaja hyväksyi vain seitsemälle uudelle metadata-ketjutestille 30 sekuntia
+[testausohjeen mukaan](../ai/testing-rules.md). Ensimmäinen ajo läpäisi neljä
+tapausta, mutta kolme onnistumisketjua aikakatkaisi. Säilyneet slotit
+tarkistettiin vain lukemalla; alkuperäisjournalit ja sidonnat olivat jo poissa.
+Ehdokas välttää näiden poissa olevien artifactien uudet poistokutsut mutta
+säilyttää tuoreet luku-, alias-, vaihe- ja koko payloadin tarkistukset.
+Idempotentin ehdokkaan seitsemän tapauksen ajo läpäisi kuusi; korvauspolku
+aikakatkaisi. Sen yksi sallittu kohdeuusinta läpäisi muuttumattomalla
+lähteellä ja samalla rajalla. Ensimmäistä hylkäystä ei suljeta tai lasketa
+onnistuneeksi. Loppuviimeistelijän sama kiinteä poissaolotarkistus on nyt
+työpuussa. Normaali koko viimeistelijätiedoston ajo läpäisi 32 testiä,
+mukaan lukien V1/V2-ketjut ja inventaarion sekä viimeisen journalin
+natiivipoiston estot. Tyypitys ja rajattu katselmus läpäisivät samalla
+muuttumattomalla lähteellä. Uuden kontrollin väärä
+virheluokka korjattiin nykyisen vartijan mukaiseksi. Toisen kontrollin
+viiden sekunnin hylkäyksen jälkeen se rajattiin journalin poistorajaan
+synteettisestä inventory-retired-tilasta; kokonainen onnistumisketju
+säilyy erillisenä testinä. Kaikki neljä uutta kielteistä kontrollia
+läpäisivät muuttumattomilla viiden sekunnin rajoilla. Tämä ei korvaa
+oikeaa prosessikatkoa, main-/cold-kytkentää tai koko W7.4:n hyväksyntää.
+Kahden vanhan D:n viiden sekunnin yhdistelmätestin
+hylkäys toistui yhdessä sallitussa kohdeuusinnassa. Niitä ei ohiteta tai
+ajeta uudelleen muuttumattomalla ehdokkaalla. V1-tuotantopolun palautushash
+vastaa aiempaa lähdettä; se ei yksin selitä viivettä tai hyväksy testejä.
+Aiemmat [D/E-kokeet](local-company-workspace-plan.md#w74-d-metadatan-ennakkoluennan-rajattu-koesopimus)
+säilyvät erillisenä näyttönä; päällekkäisiä sarjoja ei summata. Neljän
+julkaisukokeen uusi hyväksytty kohdetodennus ei hyväksy takautuvasti vanhaa
+väärällä budjettivaltuudella tehtyä ajoa. Ensivirheet säilyvät.
+Koko W7.4:n natiivi palautus-/poistoketju, loppukatselmus sekä PR/main-portit
+ovat edelleen avoinna. Ei saman epäonnistuneen kokonaiskokeen uusintaa
+vihreyden vuoksi tai aikarajan nostoa. W7.5 pysyy erillään.
+Hyväksytyn inspection-haun
+[tuotantokytkentä](local-company-workspace-plan.md#w74-c-inspection-haun-rajattu-jatkoehdotus)
+läpäisi normaalin 23 tiedoston vaikutusajon: 508 testiä, kolme ennestään
+alustakohtaista ohitusta erikseen. Nykyisen alkuperäisen virheen salaus/purku
+läpäisi. Sama jäädytetty lähde läpäisi natiivin aloitusjulkaisun kaikilla
+23 rivillä ja kolmella täydellä vertailulla; journalin tarkat tavut,
+ennen-tilan rekisteri ja vieraat payloadit säilyivät. Tämä ei ajanut fyysistä
+jatkoa. Sitä seurannut kokonainen 180 sekunnin koe aikakatkaisi
+metadatan siivouksessa. Testin ylimääräinen valmisteleva census korvattiin
+fixturen kirjoituskuitteihin ja todellisiin tiedostoidentiteetteihin
+perustuvalla riippumattomalla odotuksella. Julkaistu inventaario verrataan
+nyt myös kaikkine kenttineen tähän odotukseen, ja siemenjuurten poissaolo
+tarkistetaan erikseen. Sovelluksen tarkistukset ja yhteinen aikaraja
+säilyvät. Muutos, kuusi kielteistä orakkelikontrollia, nykyisen lähdelukijan vertailu,
+tyypitys ja rajattu katselmus läpäisivät; kohdesarjassa oli 37 tapausta.
+Yksi tällä testikorjauksella tehty kokonaiskoe aikakatkaisi edelleen
+metadatassa: valmistelu, julkaisu, fyysinen vaihe ja rekisteri valmistuivat,
+mutta metadata ja viimeistely eivät. Jäädytetyt lähteet säilyivät.
+Viimeisimmän epäonnistumisen aineistosta varmennettiin vain lukemalla
+`purged`-current ilman sivuslotteja, jälkeen-tilan rekisteri sekä kaikkien
+22 fyysisen kohderivin source-/quarantine-juurten poissaolo. Alkuperäinen
+aineisto säilyy; vaihe ei todista tarkkaa odottavaa kutsua tai juurisyytä.
+Erilliset metadata-, viimeistely- ja rekisteriregressiot varmentavat
+loppuomistajien nykyistä toimintaa ilman kokonaiskokeen uusintaa.
+
+**Kytkennän lähtönäyttö:** omistaja hyväksyi nimetyn
+vastuunjaon tuotantokytkennän nykyisten porttien kautta. Kaksi nykyistä
+lähdeomistajaa ja kaksi pysyvää testitiedostoa on kytketty; normaali 85 testin
+kohdeajo ja tyypitys läpäisivät. Uuden testifixturen taulukon tyyppivirhe
+korjattiin erikseen, ei ajonaikaista ehtoa muuttamalla. Rajattu katselmus
+läpäisi. Jäädytetyt lähteet vastaavat katselmoitua ehdokasta. Rajattu
+koe valmistui: nykyinen ja ehdotettu haku läpäisivät saman 83 kohdetestin
+joukon, ja katselmuksen sulku- sekä sivurajakontrollit läpäisivät erikseen.
+Ehdokas vähentää sidontalukuja, mutta muuttaa toisen generationin myöhäisen
+sisältövirheen havaitsemiskohtaa. Ero toistettiin oikean inventaarion ja
+census-kuittauksen portissa; myöhempi täydellinen luenta hylkäsi säilyvän
+virheen. Kontrolloitu julkaisukoe paikansi eron viimeiseen kuittaukseen,
+mutta ei korvaa natiivia kokonaisjulkaisua. Sen kaksi uutta tapausta
+aikakatkaisivat kummallakin toteutuksella; nämä alkuperäiset hylkäykset
+säilyvät. Aikarajat eivät muutu. Myöhempi natiivi julkaisukoe läpäisi
+kaikilla rooleilla ja kolmella vertailulla; fyysinen jatko valmistui
+seuraavissa koostekokeissa, mutta metadatan siivous ei vielä valmistunut.
+E:n erillinen metadata-todistemuoto ja Goalin loppuportit ovat edelleen auki.
+
+**Viimeisin toteutusnäyttö:** omistaja hyväksyi
+2.11.2026 nimetyn inventaarioluvun ja rivin muutosvaltuuden erottelun kokeen
+sekä toteutuksen näyttöporttien kautta; varsinaiset siirto-/poistovartijat,
+aikarajat ja hyväksyntäehdot säilyvät. Pieni vertailu, ehdokkaan kielteiset
+kokeet ja tahallisen virheversion hylkäys on todennettu. Pysyvä kytkentä,
+tyypitys, 36 normaalia kohdekontrollia ja rajattu katselmus läpäisivät;
+muu rajattu vaikutussarja ja nykyinen salaus/purku-koe läpäisivät samoilla
+lähteillä. Uusi 23 rivin kooste aikakatkaisi alkuperäisellä rajalla.
+Vaihehavainto erottaa valmistelun ja aloitusjulkaisun valmistuneiksi ennen
+fyysistä vaihetta; rekisterijulkaisu, metadata ja viimeistely eivät alkaneet.
+Säilyneessä tilassa osa kohdejuurista oli poistettu ja osa vielä eristetyssä
+paikassa; yritysrekisteri oli ennen-tilassa. Seuraava rajaus on
+aloitusjulkaisun nykyisen lähdelukuketjun tarkistusvastuu, ei saman ehdokkaan
+uusinta tai aikarajan nosto. Kaksi pientä nykyisen lähteen julkaisukontrollia
+ja vain aloitusjulkaisuun rajattu kaikkien roolien koe läpäisivät. Jälkimmäinen
+todensi journalin, kolme vertailua, ennen-tilan rekisterin ja säilytettävät
+tavut, mutta ei ajanut fyysistä poistoa tai myöhempiä vaiheita. Nykyiset
+luentavaltuuden rajaukset ovat jo käytössä; niitä ei toteuteta uudelleen.
+Jatkosta tarvitaan rajattu toteutussopimuksen katselmus ennen uusia lähteen
+vartijoihin vaikuttavia kokeita. Vaihehavainto ei ole tarkka odottava kutsu
+tai juurisyy, eikä koko koosteen hylkäys muutu onnistumiseksi.
+Testiapurin
+IPC-sulkukorjaus, 13 pysyvää regressiota, tyypitys ja rajattu riippumaton
+katselmus läpäisivät. Oikean prosessirajan kaikki viisi tapausta sekä
+tiukennettu salaus/purku-koe läpäisivät samoilla lähteillä. Viimeksi mainittu
+todensi alkuperäiset virheketjut, kolme tarkoituksellista hylkäystä ja oikean
+lapsen sulkukuitin ilman aikarajojen tai ehtojen muutosta. Uusi normaali
+kooste eteni aloitusjulkaisun läpi; journal säilyi `purgeAuthorized`-tilassa
+ja rekisteri ennen-tilassa. Sama ehdokas ei saa uutta ajoa vihreyden vuoksi.
+Paketti-, katselmus- ja PR/main-portit sekä E:n erillinen päätös ovat auki.
+
+**Edeltävä rajattu näyttö:** omistajan 1.11.2026 hyväksymän D:n
+[rajatun tuotantokytkennän](local-company-workspace-plan.md#w74-d-rajattu-tuotantokytkentäehdotus)
+toteutuksen jälkeinen integraatio. Viiden omistajan lähdekytkentä,
+pysyvät regressiot ja tyypitys on todennettu rajatusti. Tavallinen
+39 tiedoston vaikutusajo läpäisi 986 testiä, kuusi alustakohtaista
+ohitusta erikseen. Journalin testifixturen descriptor-korjauksen jälkeen
+sen 33 testiä läpäisivät; muiden kohdetiedostojen läpäisyt säilyivät.
+Nykyinen alkuperäisen synteettisen virheen OpenPGP-toimituskoe läpäisi.
+Rajattu lähdekatselmus ei jättänyt löydöksiä. Koko 23 rivin ketjun,
+mainin poistojatkon ja pakettinäytön hyväksyntä on vielä kesken;
+E:n erillistä omistajuuspäätöstä ei päätellä tästä hyväksytyksi.
+Normaali 23 rivin koostetesti aikakatkaisi alkuperäisellä aikarajalla.
+Ennen ajoa jäädytetyt lähteet säilyivät; nykyinen virhesinkki säilytti
+ensivirheen ja aloitusjulkaisun aktiivisena alavaiheena. Kolme pientä
+kytkentä-/virhekontrollia ja tyypitys läpäisivät ennen koostetestiä.
+Yksi hallittu kohdeuusinta samoilla lähteillä, tavallisella testijuurella
+ja alkuperäisellä aikarajalla aikakatkaisi myös aloitusjulkaisussa.
+Pelkkä tutkimusajurin lisähakemisto ei siis ole hylkäyksen välttämätön
+ehto; tarkkaa odottavaa kutsua tai juurisyytä ei ole todistettu.
+Rajattu aloitusjulkaisun [luentakatselmus](local-company-workspace-plan.md#w74-c-aloitusjulkaisun-rajattu-luentakatselmus)
+valmistui: pienet muuttumattoman lähteen kontrollit vahvistivat toistuvan
+lukutyön ja sovitun vertailujärjestyksen. Ne eivät todista koko viiveen
+syytä. Hakujen ulompien parent-vartijoiden siirtämistä vain alkuun ja loppuun
+ei hyväksytty jatkoratkaisuksi. C:n puhtaan inventory-vertailuluennan
+ensivirherajan muistikoe läpäisi 200 testiä ja tyypityksen; yksi ennestään
+alustakohtainen tapaus jäi pois. Vastakoe ja rajattu katselmus todensivat
+inventaarion omien virheiden ilmoituksen ennen niiden sulkuodotuksia.
+Lähteen sisäisen siivouksen aikana ulompi virhehavainto voi kuitenkin vielä
+puuttua; tämä toistettiin oikealla lähdeketjulla ilman valtuuden muutosta.
+Valtuuden eristyksen ehdollinen muistikoe läpäisi nykyiset 16
+julkaisukontrollia ja neljä uutta elinikä-/eristyskontrollia. Katselmuksen
+näyttöpuutteet korjattiin; vastakoe, tyypitys ja jälkikatselmus läpäisivät.
+Pieni vertailu osoitti vähemmän rekisterilukuja, ei vielä koko viiveen korjausta.
+Omistaja hyväksyi 1.11.2026 neljän nykyisen C-omistajan rajatun
+tuotantokytkennän ja testit: ensimmäisen itse havaitun virheen raja erotetaan
+lähteen sisäisestä sulusta. Koetodettu lähde ja pysyvät kontrollit on kytketty.
+Normaali kohdesarja läpäisi 220 testiä ja desktopin tyypityksen; yksi
+alustakohtainen tapaus jäi pois. Laajempi poisto-/hallinta-/palautusvaikutusten
+sarja läpäisi 1 941 testiä 62 tiedostossa, neljä ennestään alustakohtaista
+tapausta erikseen. Mukana olivat main-kytkennät ja oikeat prosessikatkot;
+pitkä 23 rivin komento oli valinnasta erikseen pois. Lähteet säilyivät, ja
+rajattu lähdekatselmus läpäisi. Nykyisen testihavainnon inventaariokirjoitus
+ja kolme vertailua on erotettu; kahdeksan kontrollia ja tyypitys läpäisivät.
+Yksi uusi normaali kooste eteni fyysiseen vaiheeseen mutta aikakatkaisi;
+sitä ei merkitä onnistuneeksi. Paketoitu näyttö ja PR/main-portit ovat
+vielä kesken. Kaikki lähteiden
+parent-/census-vartijat säilyvät. Kolme täydellistä
+luettelovertailua ja varsinaiset julkaisuvartijat säilyvät. C-kytkennän lupa
+perustuu yllä mainittuun erilliseen päätökseen, ei viiden omistajan D-lupaan.
+Samaa koostetestiä ei uusita uudelleen vihreyden vuoksi.
+Erillisessä oikeiden lapsiprosessien sarjassa neljä tapausta läpäisi;
+yksi aikakatkaisi ja sen siivouskuitti jäi puuttumaan. Vain tämän
+tapauksen yksi kohdeuusinta läpäisi sulku- ja siivoustarkistuksineen.
+Alkuperäinen testivirhe, ensimmäisen siivouksen epävarmuus ja myöhempi
+prosessipoissaolohavainto pidetään erillisinä. Kokonais- tai
+pakettihyväksyntää ei ole vielä saatu.
+Ehdokkaan kaikki 31 kohdetestiä ja vertailun 29 testiä
+läpäisivät; kaksi vain uutta luentavaihetta koskevaa kontrollia jäi
+vertailussa tarkoituksella pois. Katselmuksen callback-testin aukko
+korjattiin ja erottelukyky todistettiin virheellisellä koeversiolla.
+Vaikutustarkistus läpäisi 144 testiä viidessä tiedostossa; yksi ennestään
+alustakohtainen tapaus jäi pois. Jäädytetyt lähteet säilyivät samoina.
+Täydet valinnat säilyvät
+lukukierroksen rajoilla ja kaikki varsinaiset poistovartijat ennallaan;
+hyväksyntä koskee vain nimettyä tuotantokytkentää ja regressioita.
+Koko 23 rivin ketjun valmistuminen ja W7.4:n integraatio ovat vielä kesken.
+
+**D:n aiempi koenäyttö:** journal-vartijan rajattu
+[luentavastuun koesopimus](local-company-workspace-plan.md#w74-d-journalin-luentavartijan-koesopimus).
+Täysi sisältötarkistus säilyy jokaisen nykyisen muutosvartijan lopussa;
+vain sitä edeltävän slot-luennan alkutarkistus erotettiin muistiin
+ladattavassa kokeessa. Lopulliset 34 kontrollia ja vertailukontrollit
+läpäisivät; muiden journalikutsujien vaikutussarja läpäisi molemmilla
+ehdokkailla samat 986 testiä 39 tiedostossa, kuusi alustakohtaista
+ohitusta erikseen. Katselmuksen kaksi koetodistuksen aukkoa suljettiin
+vahvistetuilla natiivivartija- ja palautusparikontrolleilla sekä
+jälkikatselmuksella. Tuotantolähteet ja aikarajat säilyvät muuttumattomina.
+Omistajan hyväksymä yksi 23 rivin kokonaiskoe aikakatkaisi nykyisessä
+rajassa. Jäädytetyt lähteet säilyivät. Säilynyt journal on `purged`
+ilman sivuslotteja, mutta rekisteri on vielä ennen-tilassa ja kuusi
+kohteen sidontatietuetta on jäljellä. Rekisterijulkaisu, loppusiivous ja
+kokonainen poisto eivät siis valmistuneet. Tarkkaa odottavaa kutsua ei
+päätellä journalista. Seuraava rajaus on nykyiseen yksityiseen raporttiin
+perustuva loppuvaiheiden mittauserottelu. Omistaja hyväksyi nykyisen
+yksityisen raportin täydennyksen, pienen kontrollin ja yhden nimetyn
+mittauskokeen samalla aikarajalla. Mittauksen 48 kontrollia ja katselmus
+läpäisivät. Yksi mittausajo aikakatkaisi, mutta osoitti valmistelun,
+aloitusjulkaisun ja fyysisen vaiheen valmistuneen: keskeytys tapahtui
+rekisterikirjoituksessa. Säilyivät backup/ennen- ja next/jälkeen-tavut,
+current puuttuu; metadata- ja viimeistelyvaiheet eivät vielä alkaneet.
+Yksityiskohtainen mittaus on paikallinen. Yksi vain tämän yhdistelmätestin
+pidemmän budjetin kertamittaus hyväksyttiin 1.11.2026 ja aikakatkaisi
+myös siinä rajassa. Se osoitti rekisterijulkaisun valmistuneen: currentin
+tavut vastaavat jälkeen-tilaa eikä kohde ole rekisterissä. Aika loppui
+metadatan siivouksessa; viimeistely ei alkanut. Jäädytetyt lähteet ja
+alkuperäiset tarkistukset säilyivät. Seuraava rajaus on metadatan vain
+lukevien tarkistusten kertautuminen, ei uusi aikarajan nosto. Pysyvää
+rajamuutosta ei ole tehty. Ei saman ehdokkaan uusintaa vihreyden vuoksi.
+Tuotantokytkentä ja E:n erillinen metadata-raja pysyvät avoimina.
 Hyväksytty main on `dd5877408e3ca5b3952937b5e2aa43ea1fc58dfe`.
 [PR #326:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/326#issuecomment-6551098648)
 erottaa tarkat PR- ja main-todisteet. Molempien V2-kierrosten 38 työtä sekä
 omat riippuvuustarkistukset läpäisivät ensimmäisellä yrityksellä ilman
 uusintaa. Kuusi tarkoituksella valitsematonta diagnostiikkatyötä eivät ole
 läpäisyjä. Aiemmat hylkäykset ja tuntemattomat syyt säilyvät avoimina.
+
+**Uusin seuranta 1.11.2026:** saman main-revision
+[V2:n yksi kohdeuusinta, yritys 2](https://github.com/eky-software/eky/actions/runs/41293014942/attempts/2)
+valmistui: 38 työtä läpäisi ja kuusi diagnostiikkatyötä jäi tarkoituksella
+valitsematta. Kaikkien 44 työn lähde-/suoritusyrityssidonta tarkistettiin.
+Erillinen saman revision
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/41293479582)
+läpäisi. Ensimmäisen yrityksen workspace- ja legacy-ydinsopimustöiden
+molemmat salatut virhepaketit ladattiin, purettiin ja niiden
+suoritus-/lähdesidonta sekä tiedostotiivisteet varmennettiin. Workspace-työn
+hylkäys on `OPENPGP_TEST_GPG_FAILED` salauksen koepurussa; alkuperäinen
+GnuPG-tuloste ei kuulu toimitettuun aineistoon, joten tarkka syy on avoin.
+Legacy-työssä MSI-ikkunatestin varsinaisen luettelonäytteen provider-luku
+aikakatkaisi; kyse ei ole tyhjästä stderr-rivistä eikä osoitetusta EKYn
+asennusvirheestä. Rajattu lähdekatselmus ei osoittanut korjattavaa syytä.
+Ensihylkäysten käsittely on paikallisesta W7.4-koeehdokkaasta erillinen hyväksyntäkysymys.
+Aiempi hyväksyntänäyttö säilyy historiallisena, ei uuden ajon hyväksyntänä.
+
+Molemmat aiemmin hylätyt työt sekä niiden aiemmin suorittamatta jääneet
+pakolliset paketti- ja toimintatarkistukset sekä koonti läpäisivät.
+Työtila- ja legacy-paketit rakennettiin nyt ensimmäistä kertaa tässä
+ajossa. Aiemmin valmistuneiden clean- ja upgrade-pakettien identiteetit
+ja tiivisteet säilyivät. Uusien pakettien omat identiteetit tarkistettiin.
+Ensivirheet ja puuttuvat siivoustodisteet säilyvät; uusinta ei yksin ole
+hyväksyntä eikä korjausnäyttö. Omistaja hyväksyi 1.11.2026 rajatun
+etenemisen vain jo hyväksyttyihin D:n suunnittelu- ja synteettisiin
+kokeisiin. Ensihylkäykset säilyvät avoimina; päätös ei ole
+tuotantokytkentä- tai mergepoikkeus eikä ratkaise E:n erillistä metadata-rajaa.
 
 Tilatarkistus vahvisti alla kuvatun W7.4-rajan: C:n tiedosto-/fixture-näyttö
 ei vielä ole valmis mainin poistoketju. `WorkspaceManagementService`n
@@ -96,7 +541,7 @@ turvallinen IPC-muunnos. Tyypitys, rajattu katselmus ja ohjeiden linkit
 läpäisivät. Kohdeajoja ei lasketa yhteen tämän vaikutusajon kanssa;
 oma deletion-admission ja pakettinäyttö jäävät avoimiksi.
 
-**F:n prosessiraja:** neljä oikean Node-lapsen katko-/jatkotapausta
+**F:n prosessiraja (`8ca8ea94`):** neljä oikean Node-lapsen katko-/jatkotapausta
 läpäisi. Katkot koskevat aloitusjulkaisua, payloadin poissaoloa ja
 terminal-julkaisua; viimeinen vikatilainen yritys palautuu tyhjään
 valitsimeen. Vanhan lapsen todettu poistuminen edeltää uuden omistajan
@@ -114,8 +559,64 @@ ennestään alustakohtaista tapausta jäi suorittamatta. Tyypitys,
 salaus/purku-varmennus ja ohjeiden linkit läpäisivät. Kohdeajoja ei summata
 tähän vaikutusajoon. Tämä ei ole koko W7.4:n integraatio- tai pakettihyväksyntä.
 
-Seuraavaksi toteutetaan E:n oma deletion-admission ennen mainin
-oletuskytkentää. Lähdekatselmus vahvisti samalla payloadittomaksi muuttuneen
+**F:n avoin yhteiskoe:** kaikki kymmenen roolia ja vanhan layoutin 13
+sallittua jäsentä kattava 23 rivin komento aikakatkaisi ensimmäisellä
+yrityksellä. Jaetun inventaariofixturen 31 testiä ja tyypitys läpäisivät;
+ne eivät korvaa yhteiskokeen lopputulosta. Rajattu mittaus ja lähdekatselmus
+vahvistivat sisäkkäisten valintatarkistusten kertautumisen ennen ensimmäistä
+siirtoa. Omistaja hyväksyi 1.11.2026 D:n vain luku -tarkistusvastuun
+rajatun suunnittelun ja synteettiset kokeet; aiempi C-lupa ei kata tätä
+kutsupolkua. Tuotantokytkentää tai aikarajamuutoksia ei ole hyväksytty.
+Rajattu muistissa ladattu ehdokas läpäisi 160 kontrollia; yksi ennestään
+alustakohtainen tapaus jäi suorittamatta. Valintaluvut vähenivät, mutta
+23 rivin kokonaiskoe aikakatkaisi edelleen `quarantined`-tilaan edettyään.
+Ehdokas ei yksin riitä tuotantoon. Seuraava rajaus on saman nykyisen
+`validate`-lukukierroksen sekä `move`/`purge`-muutosten valtuusraja;
+ensihylkäykset ja E:n metadata-todiste jäävät avoimiksi.
+
+D:n seuraava muistissa ladattu ehdokas läpäisi 21 kohdekontrollia ja
+nykyisen vaikutusalueen 296 regressiota; yksi ennestään alustakohtainen
+tapaus jäi suorittamatta. Koeehdokkaan syynsäilytyspuute toistettiin ja
+korjattiin, eikä katselmuksessa jäänyt sen koerajaukseen löydöksiä.
+Kokonainen 23-rivinen koe aikakatkaisi edelleen samassa rajassa, nyt
+`purgeAuthorized`-vaiheeseen edettyään. Se ei todista valmista poistoa.
+Tuotantolähteet säilyvät muuttumattomina. Seuraava rajaus koskee
+sidontaluennan sisäkkäisiä kokonaisia valintoja; muutosvartijoita tai
+aikarajaa ei heikennetä eikä samaa epäonnistumista ajeta uudelleen ilman
+uutta yksilöityä koeehdokasta.
+
+Uusin lukuvaiheen rajausehdokas läpäisi 325 kontrollia ja regressiota;
+yksi ennestään alustakohtainen tapaus jäi suorittamatta. Vertailun
+yhteiset tulokset täsmäsivät. Koetilan tunnistusta täydennettiin
+katselmuksen perusteella ja 21 kohdekontrollia varmensi sen sekä todellisen
+tarkistuskutsujen määrän. Kokonainen 23-rivinen koe aikakatkaisi edelleen
+nykyisessä rajassa: journalin nykyinen vaihe on `purgeAuthorized` ja
+varakappale `quarantined`. Valmista poistoa tai loppusiivousta ei ole
+todistettu. Tuotantolähteet säilyvät muuttumattomina; ehdokasta ei kytketä
+tuotantoon eikä samaa ajoa uusita. Seuraava suunnitteluraja on koko
+inventaarion luennan kertautuminen journalin teknisten slottitoimien
+vartijoissa; tarkka keskeneräinen kutsu ei selviä pelkästä journalista.
+[Kokeen rajaus ja säilyvät vaatimukset](local-company-workspace-plan.md#w74n-todistus--ja-valmistumisportit)
+omistavat jatkon. E:n päätös ja varsinaiset integraatioportit säilyvät avoimina.
+
+**E:n journal-lukutarkistus ja metadatan ennakkotarkistus:** alkuperäisten tuonti-, adoptio- ja
+aktivointijournalien sallittujen slottisuhteiden nykyinen tarkistus on
+erotettu puhtaiksi lukufunktioiksi. Samat siivousomistajat käyttävät niitä
+muuttumattomin vartijoin. Kaikkien omistajien slottisuhteet varmennetaan nyt
+ennen ensimmäistä journalisiivousta. Kaksi tiedostoregressiota toisti
+myöhemmän journaliristiriidan liian myöhäisen havaitsemisen; korjattu ketju
+säilyttää myös kaikki aiemmat journalit ja sidonnat. Mukana ovat myös kolme
+todellisten tiedostojen lukukontrollia. Lopullinen tuonti-, adoptio-,
+palautus- ja poistoloppuvaiheiden vaikutusajo läpäisi 2 075 testiä
+70 tiedostossa; neljä ennestään alustakohtaista tapausta jäi suorittamatta.
+Kohdesarjaa ei summata vaikutusajoon. Tyypitys, rajattu lähdekatselmus ja
+ohjeiden linkit läpäisivät. Tämä ei ole deletion-admission, fyysisen
+omistajuuden todistus tai lupa muuttaa avoinna olevia metadata- ja
+tarkistusvastuusopimuksia.
+
+Seuraavaksi ratkaistaan tämä nimetty rooliketjun jatko. E:n oma
+deletion-admission tarvitaan edelleen ennen mainin oletuskytkentää.
+Lähdekatselmus vahvisti samalla payloadittomaksi muuttuneen
 keskeytyneen tuonnin metadata-rajan, jonka pysyvä kohdetodiste on vielä
 [ratkaistava omistavassa sopimuksessa](local-company-workspace-plan.md#w74n-cold-admission-ja-havaittava-tulos).
 Sitä ei nimetä nykyisen mainin toistetuksi viaksi eikä ohiteta guardin

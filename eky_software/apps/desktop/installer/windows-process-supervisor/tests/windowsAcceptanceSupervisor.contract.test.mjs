@@ -3,8 +3,9 @@ import { spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
 import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { isDeepStrictEqual } from 'node:util';
 import { gunzipSync } from 'node:zlib';
 import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openPgpTestFixture.mjs';
@@ -1460,6 +1461,53 @@ test(
     await waitForProcessAbsent(grandchild.processId);
   },
 );
+
+async function prepareWorkspaceReservationFixture(context) {
+  const root = join(context.testRoot, 'reservation-runtime');
+  await mkdir(root, { mode: 0o700 });
+  await writeFile(join(root, 'package.json'), JSON.stringify({ type: 'module' }), { flag: 'wx', mode: 0o600 });
+  for (const name of ['workspaceProcessReservation', 'workspaceProcessReservationDescriptor']) {
+    const source = await readFile(new URL(`../../../src/runtime/${name}.ts`, import.meta.url), 'utf8');
+    await writeFile(join(root, `${name}.js`), stripTypeScriptTypes(source, { mode: 'transform' }), { flag: 'wx', mode: 0o600 });
+  }
+  return import(pathToFileURL(join(root, 'workspaceProcessReservation.js')).href);
+}
+
+for (const mode of ['workspaceReservationRelease', 'workspaceReservationFailure', 'workspaceReservationDeadline']) {
+test(`workspace exclusion: ${mode} proves live contention and post-terminal reacquisition`, WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, mode);
+  const { acquireWorkspaceProcessReservation } = await prepareWorkspaceReservationFixture(context);
+  const { marker: foreign, child: foreignChild } = await startForeignSentinel(context);
+  await writeRequest(context, createRequest(context, mode));
+  const execution = startSupervisor(context);
+  const root = await waitForMarker(context, 'root');
+  assert.equal(isProcessAlive(root.processId), true);
+  await assert.rejects(acquireWorkspaceProcessReservation({
+    userDataRoot: context.runRoot, signal: new AbortController().signal,
+  }), error => error.reason === 'busy');
+  if (mode !== 'workspaceReservationDeadline') await releaseFixture(context, 'root');
+  const { completion, result } = await readCompletedExecution(context, execution);
+  assert.equal(result.processTreeAbsent, true);
+  await waitForProcessAbsent(root.processId);
+  assert.equal(isProcessAlive(foreign.processId), true);
+  assert.equal(foreignChild.exitCode, null); assert.equal(foreignChild.killed, false);
+  if (mode === 'workspaceReservationRelease') {
+    assert.equal(completion.exitCode, 0); assert.equal(result.status, 'completed');
+    assert.equal(result.processResultCode, 'processCompleted');
+    assert.equal(result.workerResultCode, 'workerResultValidated');
+  } else {
+    assert.equal(completion.exitCode, 1); assert.equal(result.status, 'failed');
+    assert.equal(result.processResultCode, mode === 'workspaceReservationFailure' ? 'processExitFailed' : 'deadlineExceeded');
+    if (mode === 'workspaceReservationFailure') assert.equal(result.childExitCode, 23);
+    else assert.equal(result.cleanupResultCode, 'processTreeAbsent');
+  }
+  const next = await acquireWorkspaceProcessReservation({
+    userDataRoot: context.runRoot, signal: new AbortController().signal,
+  });
+  try { await next.assertOwned(); }
+  finally { await next.release(); }
+});
+}
 
 async function completeControlledFixture(context, mode) {
   await startForeignSentinel(context);

@@ -1,5 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
+import { readFileSync } from 'node:fs';
 import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -92,7 +93,8 @@ import { WorkspaceFirstStartMigrationJournalStore } from '../workspaces/update/w
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../workspaces/update/workspaceFirstStartMigrationJournalPaths.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { WorkspaceManagementService } from '../workspaces/management/workspaceManagementService.js';
-import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from '../workspaces/deletion/workspaceDeletionJournalCodec.js';
+import { captureDeletionTarget } from '../workspaces/management/workspaceDeletionTarget.js';
+import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournal } from '../workspaces/deletion/workspaceDeletionJournalCodec.js';
 import { deletionInventoryFormatVersion } from '../workspaces/deletion/workspaceDeletionInventoryCodec.js';
 import { createWorkspaceDeletionCommand } from '../workspaces/deletion/workspaceDeletionCommand.js';
 import { createWorkspaceDeletionInventoryPaths } from '../workspaces/deletion/workspaceDeletionInventoryStore.js';
@@ -104,6 +106,8 @@ import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
 import { createRestoreStartupTestLifetime, releaseRestoreStartupTestResources } from './desktopRestoreStartupTestSupport.js';
 import { registerApplicationProtocol } from './applicationProtocol.js';
+import * as packagedSmoke from './packagedSmoke.js';
+import { projectExceptionChain } from './startupExceptionEvidence.js';
 import { getWorkspaceManagementStatusIpcChannel, importWorkspaceBackupAsNewIpcChannel, replaceActiveWorkspaceFromBackupIpcChannel } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
 
 const electronBoundary = vi.hoisted(() => ({
@@ -3821,10 +3825,34 @@ describe('desktop restore startup composition', () => {
   it.each([false, true])('retains the original packaged exception before its safe code (observer throws: %s)', async throws => {
     const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true, smoke: true });
     const original = new Error('synthetic packaged original', { cause: new Error('synthetic packaged cause') });
+    const port = vi.spyOn(packagedSmoke, 'reportPackagedSmokeBackend').mockImplementation(() => {
+      expect(fixture.events).toContain('backendStarted');
+    });
     electronBoundary.loadWindow.mockRejectedValueOnce(original);
     const observe = vi.fn(() => { if (throws) throw new Error('synthetic evidence failure'); });
     await expect(fixture.start(observe)).rejects.toThrow('PACKAGED_SMOKE_FAILED');
     expect(observe.mock.calls).toContainEqual([original, 'packagedSmoke', ['d'.repeat(64)]]);
+    expect(port).toHaveBeenCalledExactlyOnceWith(fixture.smokeConfiguration, 12345);
+  });
+
+  it('does not publish a packaged backend port observation during normal startup', async () => {
+    const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
+    const port = vi.spyOn(packagedSmoke, 'reportPackagedSmokeBackend').mockImplementation(() => {
+      throw new Error('normal startup must not publish a smoke observation');
+    });
+    const lifecycle = await fixture.start();
+    expect(lifecycle).toBeDefined(); expect(port).not.toHaveBeenCalled();
+    await lifecycle!.shutdown();
+  });
+
+  it('retains a packaged backend port observation failure and still stops its backend', async () => {
+    const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true, smoke: true });
+    const first = new Error('synthetic backend observation writer failure');
+    vi.spyOn(packagedSmoke, 'reportPackagedSmokeBackend').mockImplementation(() => { throw first; });
+    const observe = vi.fn();
+    await expect(fixture.start(observe)).rejects.toThrow('DESKTOP_START_FAILED');
+    expect(observe.mock.calls).toContainEqual([first, 'runtimeStartup', ['d'.repeat(64)]]);
+    expect(fixture.stop).toHaveBeenCalledOnce();
   });
 
   it('observes the first runtime startup exception before recovery cleanup', async () => {
@@ -4836,6 +4864,7 @@ async function createFixture(
     selectorReplacement?: boolean;
     completeStartup?: boolean;
     smoke?: boolean;
+    selectorSmoke?: boolean;
     skipRestore?: boolean;
     inspectBackendStartup?(input: StartDesktopBackendOptions): Promise<void>;
     observeControlledBackend?(handle: DesktopBackendHandle): void;
@@ -4860,8 +4889,9 @@ async function createFixture(
     stopForDelete?(operationId: string): Promise<void>;
   } = {},
 ) {
-  const root = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
-  (options.ownedRoots ?? roots).push(root);
+  const fixtureRoot = await mkdtemp(join(tmpdir(), 'eky-desktop-restore-startup-'));
+  (options.ownedRoots ?? roots).push(fixtureRoot);
+  const root = options.selectorSmoke ? join(fixtureRoot, 'user-data') : fixtureRoot;
   let windowDestroyed = false;
   const mainWindow = Object.assign(new EventEmitter(), {
     destroy: vi.fn(() => { windowDestroyed = true; }),
@@ -5103,8 +5133,14 @@ async function createFixture(
   const assertRegistryUnchanged = async () => {
     await expect(readFile(registryPath)).resolves.toEqual(registryBytes);
   };
+  const smokeConfiguration: packagedSmoke.PackagedSmokeConfiguration = options.selectorSmoke
+    ? { enabled: true, phase: packagedSmoke.packagedSelectorVerificationPhase,
+        root: fixtureRoot, userDataPath: root }
+    : { enabled: options.smoke === true, phase: 'initial',
+        root: options.smoke ? root : undefined, userDataPath: options.smoke ? root : undefined };
   return {
     root,
+    smokeConfiguration,
     registry,
     databasePath: paths.databaseFilePath,
     events,
@@ -5244,16 +5280,175 @@ async function createFixture(
       resourcesPath: join(root, 'resources'),
       runtimeInstanceId: '33333333-3333-4333-8333-333333333333',
       reportSmokeStage,
-      smokeConfiguration: {
-        enabled: options.smoke === true,
-        phase: 'initial',
-        root: options.smoke ? root : undefined,
-        userDataPath: options.smoke ? root : undefined,
-      },
+      smokeConfiguration,
       userDataPath: root,
     }),
   };
 }
+
+describe('packaged empty-selector verification main coupling', () => {
+  async function prepare(context: TestContext, options: Parameters<typeof createFixture>[1] = {}) {
+    const lifetime = beginTrackedStartupTest(context);
+    const fixture = await lifetime.prepare(() => createFixture(originalProfileId, {
+      ...options, ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, selectorSmoke: true,
+    }));
+    const registry = (await fixture.registry.read())!;
+    const emptyRegistry = { ...registry, formatVersion: 2 as const, activeWorkspaceId: null, workspaces: [] };
+    await fixture.registry.write(emptyRegistry);
+    const reporter = packagedSmoke.createPackagedSmokeProgressReporter(fixture.smokeConfiguration);
+    await reporter.reportStage('startup');
+    // Electron itself is mocked in this composition fixture, including its version.
+    const run = packagedSmoke.runPackagedSelectorSmoke;
+    const smoke = vi.spyOn(packagedSmoke, 'runPackagedSelectorSmoke').mockImplementation(input =>
+      run({ ...input, electronVersion: '0.0.0' }));
+    const resultPath = join(fixture.smokeConfiguration.root!, 'result', 'desktop-smoke-result.json');
+    const readResult = async () => packagedSmoke.readPackagedSmokeResult(JSON.parse(await readFile(resultPath, 'utf8')));
+    return { lifetime, fixture, registry, emptyRegistry, reporter, smoke, resultPath, readResult };
+  }
+
+  it('loads the actual empty selector, closes its owner and writes the result before quit', async context => {
+    const f = await prepare(context);
+    await f.lifetime.run(async () => {
+      const bytes = await readFile(join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME));
+      f.fixture.quit.mockImplementation(() => {
+        expect(packagedSmoke.readPackagedSmokeResult(JSON.parse(readFileSync(f.resultPath, 'utf8'))))
+          .toEqual({ stage: 'shutdown', status: 'ok', electronVersion: '0.0.0' });
+        expect(electronBoundary.reservationReleased).toHaveBeenCalledExactlyOnceWith(f.fixture.root);
+        expect(f.fixture.mainWindow.destroy).toHaveBeenCalledOnce();
+      });
+      const lifecycle = await f.lifetime.step('startup', () => f.fixture.start(undefined, f.reporter.reportStage));
+      try {
+        expect(f.smoke).toHaveBeenCalledOnce();
+        expect(electronBoundary.loadWindow).toHaveBeenCalledExactlyOnceWith(f.fixture.mainWindow, 'selector');
+        expect(await f.readResult()).toEqual({ stage: 'shutdown', status: 'ok', electronVersion: '0.0.0' });
+        expect(f.fixture.quit).toHaveBeenCalledOnce();
+        expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+        expect(f.fixture.events).toEqual([]);
+        expect(electronBoundary.fork).not.toHaveBeenCalled();
+        expect(await readFile(join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(bytes);
+        expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+      } finally { await lifecycle?.shutdown(); }
+    });
+  });
+
+  it.for(['active', 'nonemptySelector', 'missingRegistry', 'pendingRegistry', 'wrongProfile', 'otherProfile'] as const)(
+    'rejects %s before business startup or selector success', async (scenario, context) => {
+      const f = await prepare(context);
+      await f.lifetime.run(async () => {
+        const path = join(f.fixture.root, WORKSPACE_REGISTRY_FILE_NAME);
+        if (scenario === 'active') await f.fixture.registry.write({ ...f.registry, formatVersion: 2 });
+        if (scenario === 'nonemptySelector') await f.fixture.registry.write({ ...f.registry, formatVersion: 2, activeWorkspaceId: null });
+        if (scenario === 'missingRegistry') await rm(path);
+        if (scenario === 'pendingRegistry') await writeFile(`${path}.next`, await readFile(path));
+        if (scenario === 'wrongProfile') f.fixture.smokeConfiguration.userDataPath = f.fixture.smokeConfiguration.root;
+        if (scenario === 'otherProfile') {
+          f.fixture.smokeConfiguration.root = join(f.fixture.root, 'other');
+          f.fixture.smokeConfiguration.userDataPath = join(f.fixture.smokeConfiguration.root, 'user-data');
+        }
+        const observe = vi.fn();
+        let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+        try {
+          await expect(f.lifetime.step('startup', async () => {
+            lifecycle = await f.fixture.start(observe, f.reporter.reportStage);
+          })).rejects.toThrow();
+          expect(f.smoke).not.toHaveBeenCalled();
+          expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+          expect(f.fixture.events).toEqual([]);
+          expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+          expect(f.fixture.quit).not.toHaveBeenCalled();
+          expect(await f.readResult()).toEqual({ stage: 'startup', status: 'started' });
+          expect(observe).toHaveBeenCalledOnce();
+        } finally { await lifecycle?.shutdown(); }
+      });
+    });
+
+  it.for(['load', 'shutdown', 'loadAndShutdown', 'loadAndUndefinedShutdown'] as const)(
+    'retains the original %s failure without an ok result', async (failure, context) => {
+    const f = await prepare(context);
+    await f.lifetime.run(async () => {
+      const first = new Error(`synthetic-selector-${failure}`);
+      const cleanup = failure === 'loadAndUndefinedShutdown' ? undefined : new Error('synthetic-selector-release');
+      if (failure !== 'shutdown') electronBoundary.loadWindow.mockRejectedValueOnce(first);
+      if (failure === 'shutdown') electronBoundary.reservationReleased.mockRejectedValueOnce(first);
+      if (failure === 'loadAndShutdown' || failure === 'loadAndUndefinedShutdown') {
+        electronBoundary.reservationReleased.mockRejectedValueOnce(cleanup);
+      }
+      const observe = vi.fn();
+      let lifecycle: Awaited<ReturnType<typeof f.fixture.start>>;
+      try {
+        await expect(f.lifetime.step('startup', async () => {
+          lifecycle = await f.fixture.start(observe, f.reporter.reportStage);
+        })).rejects.toThrow();
+        expect(f.fixture.quit).not.toHaveBeenCalled();
+        expect((await f.readResult())?.status).toBe('started');
+        expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+        expect(f.fixture.events).toEqual([]);
+        const original = observe.mock.calls[0]?.[0];
+        expect(original === first || original?.cause === first).toBe(true);
+        if (failure === 'loadAndShutdown' || failure === 'loadAndUndefinedShutdown') {
+          expect(original).toBeInstanceOf(AggregateError);
+          expect(original.errors[0]).toBe(first);
+          expect(original.errors[1].cause).toBe(cleanup);
+          expect(original.errors).toHaveLength(2);
+          expect(projectExceptionChain(original, []).chain.map(part => part.message)).toEqual([
+            'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', first.message,
+          ]);
+          expect(packagedSmoke.readPackagedSmokeResult(JSON.parse(await readFile(f.resultPath, 'utf8')))?.status).toBe('started');
+        }
+        if (failure === 'shutdown') expect(f.fixture.mainWindow.destroy).not.toHaveBeenCalled();
+      } finally { await lifecycle?.shutdown(); }
+    });
+    });
+
+  it.for(['load', 'shutdown'] as const)('joins a held %s before success or quit', async (heldAt, context) => {
+    const f = await prepare(context);
+    await f.lifetime.run(async () => {
+      const entered = createCompletionGate(), release = createCompletionGate();
+      const hold = async () => { entered.resolve(); await release.promise; return undefined; };
+      if (heldAt === 'load') electronBoundary.loadWindow.mockImplementationOnce(hold);
+      else electronBoundary.reservationReleased.mockImplementationOnce(hold);
+      let settled = false;
+      const outcome = f.lifetime.step('startup', () => f.fixture.start(undefined, f.reporter.reportStage))
+        .then(value => ({ value }), error => ({ error })).then(result => { settled = true; return result; });
+      let failure: { error: unknown } | undefined;
+      try {
+        await Promise.race([entered.promise, outcome.then(() => { throw new Error('SELECTOR_TEST_GATE_NOT_REACHED'); })]);
+        await nextEventLoopTurn();
+        expect(settled).toBe(false);
+        expect(f.fixture.quit).not.toHaveBeenCalled();
+        expect(f.fixture.mainWindow.destroy).not.toHaveBeenCalled();
+        expect((await f.readResult())?.status).toBe('started');
+        if (heldAt === 'load') expect(f.smoke).not.toHaveBeenCalled();
+      } catch (error) { failure = { error }; }
+      finally { release.resolve(); }
+      const result = await outcome;
+      if ('error' in result) {
+        if (failure !== undefined) throw new AggregateError([failure.error, result.error], 'SELECTOR_TEST_AND_JOIN_FAILED', { cause: failure.error });
+        throw result.error;
+      }
+      await result.value?.shutdown();
+      if (failure !== undefined) throw failure.error;
+      expect(await f.readResult()).toEqual({ stage: 'shutdown', status: 'ok', electronVersion: '0.0.0' });
+    });
+  });
+
+  it.for(['beforeSelection', 'duringLoad'] as const)('rejects an added company %s without creating a session', async (changedAt, context) => {
+    let f: Awaited<ReturnType<typeof prepare>>;
+    const change = async () => { await f.fixture.registry.write({ ...f.registry, formatVersion: 2 }); };
+    f = await prepare(context, changedAt === 'beforeSelection' ? {
+      async resolveActiveWorkspace(root, options) { await change(); return resolveActiveWorkspaceStartup(root, options); },
+    } : {});
+    await f.lifetime.run(async () => {
+      if (changedAt === 'duringLoad') electronBoundary.loadWindow.mockImplementationOnce(async () => { await change(); return undefined; });
+      await expect(f.lifetime.step('startup', () => f.fixture.start(undefined, f.reporter.reportStage))).rejects.toThrow();
+      expect(f.fixture.createRuntimeSession).not.toHaveBeenCalled();
+      expect(f.fixture.events).toEqual([]);
+      expect(f.smoke).not.toHaveBeenCalled();
+      expect(f.fixture.quit).not.toHaveBeenCalled();
+      expect((await f.readResult())?.status).toBe('started');
+    });
+  });
+});
 
 describe('W7.4 main replacement binding', () => {
   it.for(['ownStop', 'lostAcknowledgement', 'shutdown', 'reservationLoss'] as const)(
@@ -5409,7 +5604,7 @@ describe('W7.4 normal startup deletion guard', () => {
 });
 
 describe('W7.4 actual main deletion chain', () => {
-  it.for(['active', 'selector', 'passive'] as const)(
+  it.for(['active', 'selector', 'passive', 'cold'] as const)(
     'completes the actual published file chain under the %s main owner', { timeout: 60_000 }, async (mode, context) => {
       const lifetime = beginTrackedStartupTest(context);
       await lifetime.run(async () => {
@@ -5446,10 +5641,25 @@ describe('W7.4 actual main deletion chain', () => {
           async assertWritersAbsent() {
             context.signal.throwIfAborted();
             // Native execution/lock ownership are controlled; main's lifecycle and file identities stay real.
-            expect(stopForDelete).toHaveBeenCalledTimes(mode === 'selector' ? 0 : 1);
+            expect(stopForDelete).toHaveBeenCalledTimes(mode === 'selector' || mode === 'cold' ? 0 : 1);
           },
         });
-        fixtureOptions.workspaceDeletionCommand = {
+        if (mode === 'cold') {
+          await lifetime.step('fixturePreparation', async () => {
+            const selected = await captureDeletionTarget({ installationRoot: f.root,
+              workspaceId: targetWorkspaceId, typedLabel: registry.workspaces[0]!.workspaceLabel,
+              registry: f.registry, assertAuthority: () => context.signal.throwIfAborted() });
+            publishedOperationId = operationId;
+            await command.publish(() => context.signal.throwIfAborted(), async () => context.signal.throwIfAborted(),
+              selected.target, { operationId, target: selected.target, backupDisposition: 'explicitDataLoss' },
+              selected.assertCurrent);
+            const paths = createWorkspaceDeletionJournalPaths(f.root);
+            expect(captureWorkspaceDeletionJournal(JSON.parse(await readFile(paths.currentPath, 'utf8'))).phase).toBe('authorized');
+            expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+          });
+          // Startup must consume the real journal, not the injected live command.
+          expect(fixtureOptions.workspaceDeletionCommand).toBeUndefined();
+        } else fixtureOptions.workspaceDeletionCommand = {
           async publish(...args) {
             publishedOperationId = args[3].operationId;
             return command.publish(...args);
@@ -5469,17 +5679,29 @@ describe('W7.4 actual main deletion chain', () => {
         try {
           await lifetime.step('startup', async () => { lifecycle = await f.start(); });
           if (lifecycle === undefined || service === undefined) throw new Error('MISSING_MAIN_DELETION_OWNER');
-          f.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false });
-          const result = await lifetime.step('restoredContentCheck', () => service!.deleteWorkspace({
-            formatVersion: 1, workspaceId: targetWorkspaceId,
-            typedLabel: registry.workspaces.find(entry => entry.workspaceId === targetWorkspaceId)!.workspaceLabel,
-            backupChoice: 'explicitDataLoss',
-          }, {
-            assertCurrent() { context.signal.throwIfAborted(); if (!requesterCurrent) throw new Error('SYNTHETIC_REQUESTER_GONE'); },
-            closeAdmissionForOwnStop() { service!.closeAdmission(); },
-          }));
-          expect(result).toEqual({ formatVersion: 1, status: 'completed', navigation: mode === 'passive' ? 'reopenPrevious' : 'selector' });
-          expect(requesterCurrent).toBe(false);
+          if (mode === 'cold') {
+            expect(requesterCurrent).toBe(true);
+            expect(f.events).toEqual([]);
+            expect(f.createRuntimeSession).not.toHaveBeenCalled();
+            expect(electronBoundary.fork).not.toHaveBeenCalled();
+            expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+            expect(registerApplicationProtocol).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ mode: 'selector' }));
+            expect(f.showMessageBox).not.toHaveBeenCalled();
+            expect(stopForDelete).not.toHaveBeenCalled();
+            expect(electronBoundary.reservationReleased).not.toHaveBeenCalledWith(f.root);
+          } else {
+            f.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false });
+            const result = await lifetime.step('restoredContentCheck', () => service!.deleteWorkspace({
+              formatVersion: 1, workspaceId: targetWorkspaceId,
+              typedLabel: registry.workspaces.find(entry => entry.workspaceId === targetWorkspaceId)!.workspaceLabel,
+              backupChoice: 'explicitDataLoss',
+            }, {
+              assertCurrent() { context.signal.throwIfAborted(); if (!requesterCurrent) throw new Error('SYNTHETIC_REQUESTER_GONE'); },
+              closeAdmissionForOwnStop() { service!.closeAdmission(); },
+            }));
+            expect(result).toEqual({ formatVersion: 1, status: 'completed', navigation: mode === 'passive' ? 'reopenPrevious' : 'selector' });
+            expect(requesterCurrent).toBe(false);
+          }
           expect(publishedOperationId).toBeDefined();
           const selectedRegistry = await f.registry.inspectSlots();
           expect(selectedRegistry.current!.value).toEqual({ ...registry,
@@ -5510,6 +5732,9 @@ describe('W7.4 actual main deletion chain', () => {
           }
         }
         expect(marker).toHaveBeenCalledTimes(mode === 'passive' ? 1 : 0);
+        if (mode === 'cold') {
+          expect(electronBoundary.reservationReleased.mock.calls.filter(([root]) => root === f.root)).toHaveLength(1);
+        }
       });
     });
 });
@@ -5525,7 +5750,7 @@ describe('W7.4 main deletion completion wiring', () => {
         const releaseFails = scenario === 'releaseFailure' || scenario === 'releaseFailureBeforeShutdown';
         const closeFails = scenario === 'beforeReceipt' || releaseFails;
         let service: WorkspaceManagementService | undefined;
-        let binding: WorkspaceDeletionJournalV1 | undefined;
+        let binding: WorkspaceDeletionJournal | undefined;
         const targetWorkspaceId = scenario === 'otherCompanyRemoved'
           ? validateWorkspaceId('77777777-7777-4777-8777-777777777777') : workspaceId;
         const command: NonNullable<StartDesktopCompositionOptions['workspaceDeletionCommand']> = {

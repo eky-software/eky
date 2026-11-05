@@ -150,7 +150,7 @@ describe('W7.3 E2E-only preparation assembly', () => {
     const target = {} as never;
     const pending = track(f.proof.publish(guard, selection, target, {
       operationId: request.workspaceId, target, backupDisposition: 'explicitDataLoss',
-    }));
+    }, async () => { guard(); }));
     await vi.waitFor(() => expect(f.proof.snapshot().entered).toBe(true));
     active = false; f.proof.release();
     await expect(pending).rejects.toThrow('SYNTHETIC_AUTHORITY_REVOKED');

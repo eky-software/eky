@@ -1,7 +1,7 @@
 import { expect, test, type ElectronApplication } from '@playwright/test';
 
 import { readSelectorTestRelease, selectorCreateScenarioId, selectorImportScenarioId, selectorRecoveryScenarioId, usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
-import { workspaceDeletionProofScenarioIds } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
+import { workspaceDeletionExecutionProofScenarioIds, workspaceDeletionProofScenarioIds } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
 import { observeSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestBackend.js';
 import type { DesktopBackendHandle, StartDesktopBackendOptions } from '../../../desktop/src/runtime/backendProcess.js';
 import type { ElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
@@ -12,7 +12,8 @@ import { readSelectorTestBackendPort } from '../../src/electron/readElectronMain
 
 test('SYS-SELECTOR-RECOVERY-RUN-001 @security limits synthetic release admission to the named scenarios', () => {
   expect(readSelectorTestRelease('DESK-SELECTOR-READY-001')).toBeUndefined();
-  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, selectorImportScenarioId, ...workspaceDeletionProofScenarioIds]) {
+  for (const scenarioId of [selectorRecoveryScenarioId, selectorCreateScenarioId, selectorImportScenarioId,
+    ...workspaceDeletionProofScenarioIds, ...workspaceDeletionExecutionProofScenarioIds]) {
     expect(readSelectorTestRelease(`${scenarioId}-OTHER`)).toBeUndefined();
     expect(readSelectorTestRelease(scenarioId)).toMatchObject({
       appVersion: '0.2.0', buildRevision: 'a'.repeat(40), releaseChannel: 'pilot',
@@ -135,7 +136,8 @@ test('SYS-SELECTOR-BACKEND-002 @security preserves startup failure and unexpecte
 });
 
 test('SYS-SELECTOR-BACKEND-003 @security accepts only a bound real port or a backendless selector observation', async () => {
-  for (const scenarioId of [selectorCreateScenarioId, selectorImportScenarioId, ...workspaceDeletionProofScenarioIds]) {
+  for (const scenarioId of [selectorCreateScenarioId, selectorImportScenarioId,
+    ...workspaceDeletionProofScenarioIds, ...workspaceDeletionExecutionProofScenarioIds]) {
     const selector = { scenarioId, starts: 0, running: false, port: undefined };
     const business = { ...selector, starts: 1, running: true, port: 12345 };
     const application = (observation: unknown) => ({ evaluate: async () => observation }) as unknown as ElectronApplication;

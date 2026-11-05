@@ -607,8 +607,10 @@ palautus-/relaunch-tuloksen mainille muuttumattomana; muut virheet luokitellaan
 edelleen turvallisesti. Todiste kattaa source-null-virhepaluun ja erillisen
 fyysisen restartin, ei business-avauksen jälkeistä rollbackia tai pakettia.
 
-`DESK-SELECTOR-CREATE-001`, `DESK-SELECTOR-IMPORT-001` ja W7.3:n kuusi
-testimatriisissa nimettyä `DESK-DELETE-*`-tapausta käyttävät samaa
+`DESK-SELECTOR-CREATE-001`, `DESK-SELECTOR-IMPORT-001`, W7.3:n kuusi
+valmistelutapausta sekä W7.4:n `DESK-DELETE-ACTIVE-001`,
+`DESK-DELETE-LAST-001`, `DESK-DELETE-PASSIVE-001` ja
+`DESK-DELETE-FAULT-001` käyttävät samaa
 eristettyä Electron-fixtureä. Vain nämä täsmälliset skenaariot
 delegoivat backendin käynnistyksen tuotannon `startDesktopBackend`-omistajalle. Tavallinen fake-backend ei
 suorita FirstStartin tarvitsemaa migraatioporttia. Havaintodekoraattori
@@ -617,6 +619,10 @@ se ei ole toinen prosessiomistaja. Fixture tallettaa kunkin käynnistyksen
 todellisen portin ja varmentaa sen vapautumisen puun sulun jälkeen,
 ennen uutta käynnistystä tai juuren poistamista. Puuttuva tai ristiriitainen
 havainto estää siivouksen hyväksymisen. Muut skenaariot säilyvät ennallaan.
+API-asiakas sidotaan jokaisessa käynnistyksessä tähän varmennettuun todelliseen
+backend-porttiin, kun sellainen on olemassa. Backendittömän valitsimen ja
+tavallisen fake-backendin konfiguroitu portti ei korvaa oikean backendin
+havaintoa. Restart ei käytä edellisen sukupolven porttia.
 
 W7.3:n valmistelutodennus käyttää nykyistä UI-luontia ja -avausta eikä
 rinnakkaista profiilin tai prosessin omistajaa. Vain testin yksityiseen
@@ -638,6 +644,35 @@ yksityiseen keräykseen; puuttuvaa tai osittaista havaintoa ei arvata.
 Kytkentäkontrollit eivät yksin ole oikean Electron-/SQLite-ketjun tai
 paketoidun palautuksen hyväksyntä. Tarkka sopimus ja todennuksen tila ovat
 [W7.3:n omistajalla](local-company-workspace-plan.md#w73n-toteutussopimus).
+
+W7.4:n erilliset lopullisen poiston testit käyttävät vain E2E-mainin
+kertakäyttöistä kutsua nykyisen hallintapalvelun `deleteWorkspace`-metodiin.
+Todellinen composition sitoo julkaisijan, jatkokomennon, huoltovarauksen ja
+lifecycle-sulun; backend-havaitsin ei anna itsenäistä poistovaltuutta.
+Testit luovat yrityksen normaalisti ja tuottavat oikean SQLiten, PDF:n sekä
+synteettisen SMTP-salaisuuden nykyisillä API-kutsuilla. Ne tarkistavat
+todellisen completion-kuitin, yrityskansion ja journal-slottien poissaolon,
+null-valinnan, vieraan yrityksen ja ulkoisen tiedoston säilyvät tavut sekä
+fyysisen restartin. Nykyinen fixture todentaa prosessipuun ja portin sulun.
+Näille skenaarioille ei asenneta valmistelun preload-siltaa eikä uutta
+renderer-IPC:tä. Ne eivät todista W7.5:n tuotannon poistokäyttöliittymää.
+Alkuperäinen main-poistovirhe säilytetään ennen turvallista virhemuunnosta
+ja toimitetaan nykyisen keräyksen `workspaceDeletionExecution`-vaiheena;
+AggregateErrorin sisarusvirheet toimitetaan rajattuina
+`workspaceDeletionExecutionRelated`-tietueina. Puuttuvat tai rajatut haarat
+eivät anna täydellisen keräyksen väitettä.
+IPC-valmistelun ja shutdownin virheet säilyvät erillisinä. Kutsun sulku
+ei kuittaa palvelun keskeneräistä työtä päättyneeksi. Kohde- ja salaus/purku-
+kontrollit eivät korvaa todellisen Electron-ajon tai puhtaan paketin näyttöä.
+Passiivisen yrityksen tapaus käyttää ensin kohdetta ja vaihtaa toiseen
+yritykseen. Poistokuitti ohjaa vain aiempaan yritykseen; testin erikseen
+pyytämän restartin yli verrataan sen laskun sisältöä, PDF-tavuja ja salattuja
+SMTP-tavuja. Avoimen yrityksen SQLite-tiedoston raakabittien samuutta ei
+väitetä normaalin sulun WAL-checkpointin yli. Vikatilatapaus rikkoo vain
+normaalisti luodun ja jo suljetun synteettisen tietokannan otsikon:
+backendittömän valitsimen havainto varmistetaan ennen muutosta. Kanta ei ole
+poistoluvan lähde. Testi vaatii käynnistyslaskurin pysymisen nollassa sekä
+tyhjän valitsimen ja loppusiivouksen restartin jälkeen.
 
 Testisession ensimmäinen arvo tulee edelleen eristetystä konfiguraatiosta;
 myöhemmät arvot syntyvät nykyisellä tuotannon generaattorilla. Näin
@@ -1185,6 +1220,201 @@ ja [ensivirheen seurantaohjetta](../ai/workflow.md#ci-ajon-seuranta-ja-virhetodi
 
 Packaged-artifactin fuseja, sandboxia, preload-rajaa tai navigointipolitiikkaa
 ei heikennetä testauksen vuoksi.
+
+W7.4:n `selectorVerification` on nykyisen smoke-omistajan sisäinen
+valitsimen todennusvaihe. Se vaatii saman smoke-valinnan ja kelvollisen tokenin,
+johtaa saman testijuuren eikä yhdisty legacy-/restore-vaiheeseen. Vaiheistus
+on `startup` -> `shutdown`; tulosformaatti ja tavalliset smoke-polut säilyvät.
+`runPackagedSelectorSmoke` saa vain jo käynnistetyn valitsimen sulkukahvan.
+Se odottaa raportoinnin ja sulun, säilyttää ensivirheen erillään myöhemmästä
+sulkuvirheestä ja kirjoittaa onnistumisen vasta alkuperäisen ikkunan sulun
+jälkeen ennen quit-pyyntöä. Apuri ei valitse yritystä, avaa backendia tai
+julkaise tai suorita poistoa. Indexin nimetty valinta käyttää samaa
+smoke-/token-porttia. Main vaatii samasta juuresta johdetun profiilin ja
+normaalin cold-/build-palautuksen jälkeen vakaan tyhjän v2-rekisterin ennen
+yritysratkaisua. Erillinen torjuva sessionluoja estää business-käynnistyksen
+myös valinnan muuttuessa. Valitsimen lataus sekä sen jälkeinen nykyinen
+valinta- ja omistajuustarkistus odotetaan ennen sulkuapuria; tavallinen
+valitsinkäynnistys palauttaa sulkuomistajansa edelleen ennen latauksen loppua.
+Latauksen ja siivouksen yhteisvirheen alkuperäinen poikkeus on todellinen
+`cause`, ja siivousvirheet säilyvät erikseen. Nykyinen yksityinen keräys lukee
+ensisyyn tätä ketjua pitkin; julkinen virhesopimus säilyy.
+Pakettiajurin ohjelmallinen `workspaceDeletionPreparation`-liitos säilyttää
+ensin molemmat nykyiset restore-prosessit. Vasta toisen prosessin onnistunut
+tulos, poistuminen ja stdio-sulku sallivat `prepareAfterRestoredExit`-kutsun.
+Sen jälkeen ajetaan kaksi erillistä valitsinprosessia ja odotetaan
+`verifyAfterRecoveryExit`- sekä `verifyAfterRestartExit`-vertailut ennen
+onnistumista tai testijuuren siivousta. Molempien uusien prosessien tulos
+nollataan `startup`-tilaan ennen käynnistystä, jotta edellinen `ok` ei kelpaa.
+Kummankin lapsen nykyinen 120 sekunnin raja säilyy; vaiheita ei uusita.
+Liitos ei yhdisty legacy-/workspace-recovery-valmisteluun, eikä tavallinen
+kahden prosessin komentorivipolku muutu. Puuttuva vertailukutsu hylätään jo
+ennen valmistelua. Virhe säilyttää juuren ja nykyisen yksityisen aineiston.
+[Erillinen valmistelija](../../apps/desktop/scripts/packagedWorkspaceDeletionPreparation.mjs)
+on nimetyn pakettityöntekijän testikokoonpano. Se hyväksyy vain johdetun kertakäyttöjuuren,
+yhden aktiivisen yrityksen ja puhtaan recovery-valinnan. V1-fixturen muunnos
+käyttää nykyistä valittua rekisterikirjoitusta; sen jälkeen nykyinen komentaja
+julkaisee vain poistojournalin. Valmistelija ei itse suorita poistoa, avaa
+tietokantaa tai lue salaisuutta. Jälkivertailu sitoo rekisterin tavut ja
+identiteetin, poistokohteiden turvalliset esi-isät sekä ulkoisten backupien
+ja arkistoidun PDF:n muuttumattomat tavut. Kesken vapautuksen tehty uusi
+kutsu tai peruutus ei voi palauttaa epäonnistunutta instanssia käyttöön.
+Valmistelijan oma työn virhe säilyttää hankitun OS-varauksen työntekijän
+todettuun päättymiseen asti, koska kirjaston yleinen virhe ei yksin todista
+kaikkien tiedostokahvojen sulkua. Jo alkanut epäonnistunut varauksen vapautus
+on epävarma sulku, ei todiste varauksen säilymisestä tai vapautumisesta.
+Vaihetyöntekijän ja nykyisen prosessiomistajan nimetty liitos on työpuussa;
+sen onnistuvan puhtaan paketin koko prosessi-/porttiketjun näyttö on avoin. Kontrolloitu
+kirjoittajien poissaolon portti ei todista natiivin prosessipuun päättymistä;
+oikeiden tiedostojen koe ei ole hardened-paketin hyväksyntä. Ajurin tai mainin
+kontrollit eivät myöskään yksin ole salatun toimituksen näyttö.
+Nykyisen Job-omistajan varauskontrollit kattavat hallitun lopun,
+virhepoistumisen ja määräaikakatkon. Ne eivät korvaa pakettivaiheen sidottua
+worker-terminalia tai per-vaiheista koko puun poissaoloa ennen valmistelukutsua.
+
+Nykyisen ajurin `runPackagedSmokePhase` on erotettu samassa tiedostossa
+jaetuksi vaiheeksi: nykyinen tulos, exit, stdio-sulku ja 120 sekunnin raja
+säilyvät yhdessä toteutuksessa. Kytkemätön
+[vaihetuloksen tuottaja](../../apps/desktop/scripts/packagedSmokeJobWorker.mjs)
+käyttää sitä ja nykyistä runner-virhekeräystä. Neljä nimettyä vaihetta
+eivät ota vastaan vapaata komentoa tai tiedostopolkua. Token johtaa saman
+testijuuren, ja nonce johtaa sen `result/phase-jobs`-alikansioon.
+Pysyvien juurten ja vaihehakemiston identiteetit säilytetään, käytetty
+tulospaikka estää uuden vaiheen käynnistämisen ja metadata sidotaan ennen
+odotuksia. `worker-result.json` käyttää nykyistä seitsemän kentän sopimusta;
+se ei väitä Jobin tai muiden kirjoittajien jo päättyneen.
+
+Smoken oma main ilmoittaa onnistuneesti käynnistyneen backendinsä portin
+vain lapsen nykyiseen yksityiseen stdout-virtaan. Normaali käynnistys ei
+ilmoita sitä. Rajattu havainto sisältää vain version, smoke-vaiheen ja portin;
+ei sessionia, profiilia tai business-sisältöä. Nykyisen workerin onnistuminen
+vaatii alku-/restore-vaiheessa yhden täydellisen, oikean vaiheen havainnon,
+kokonaisen tulostevirran sekä erillisen nykyisen loopback-tarkistuksen.
+Valitsinvaihe vaatii ettei backend-havaintoa ole. Myös puuttuva rivin loppu,
+keskeneräinen varattu merkintä ja ristiriitainen lisähavainto hylätään.
+Virhe kulkee nykyiseen runner-sinkkiin ja salaus/purkuun; uutta keräyspolkua
+tai sovelluksen lopputulosformaattia ei lisätä. Nimetty parent-adapteri tekee
+erillisen tuoreen tarkistuksen vasta Jobin lopputodisteen ja oman workerin
+kuittauksen jälkeen. Se käyttää saman vaiheen sidottua tulostetta; puuttuva
+tai osittainen havainto jättää portin varmentamatta, ei muuta onnistunutta
+sovellusta epäonnistuneeksi. Nykyisen viiden sekunnin porttibudjetin ylärajaa
+lyhentää saman 120 sekunnin vaiheen jäljellä oleva aika. Myös viimeisen
+asynkronisen juuritarkistuksen pitää päättyä tässä budjetissa. Peruutus
+säilyy havaittavana koko odotuksen ajan, ja alkanut työ päätetään ennen paluuta.
+Tulos on vain tämän hetken erillinen kuitti; workerin aikaisempi tarkistus tai
+pelkkä Job-tulos ei korvaa sitä eikä kuitti yksin anna poistovalmistelun valtuutta.
+Oikean kirjoittajan, suljetun stdout-virran ja soketin Node-fixture ei ole
+onnistuvan paketoidun sovelluksen hyväksyntä.
+
+Workerin kiinteä CLI, täsmällinen yhdeksän kentän request-sidonta ja
+startup-alkutilan tarkistus ovat nyt toteutettu. Argumenttien järjestys,
+kertakäyttöinen nonce, artifact, nimetty vaihe, nykyinen Node, kiinteä
+worker-polku, todellinen työjuuri sekä nykyinen työ-/siivousbudjetti
+tarkistetaan ennen sovelluksen käynnistämistä. Ylimääräiset tai toistetut
+argumentit ja JSON-avaimet hylätään. Request luetaan uudelleen valmistelun
+jälkeen; vanha onnistunut tai kesken palautuksen oleva tulos ei kelpaa
+startup-tilaksi. Parentin on edelleen nollattava tulos ennen jokaista uutta
+vaihepyyntöä; alkutilan tavut eivät yksin todista tämän tekemistä.
+
+Nimetty `smoke:proof:job-admission` valmistelee nykyisen desktop-buildin ja
+olemassa olevan supervisorin ennen oikean CLI-/Job-hylkäysketjun testiä.
+Se ei käynnistä paketoitua sovellusta tai asenninta eikä lisää valmistelua
+tavalliseen core- tai virhekeräyssarjaan. Tahallinen hylkäys vaatii juuri
+työntekijän yhden turvallisen virherivin, epäonnistuneen prosessituloksen ja
+Jobin tyhjenemistodisteen; yleistä stderr-sopimusta ei lievennetä.
+Oikean lukijavirheen raportti on todennettu myös puretusta OpenPGP-paketista.
+Tämä ei todista onnistuvaa sovellusvaihetta tai pakettipalautusta.
+Saman nimetyn komennon valmistelijaregressiot käyttävät todellista
+valmistelukomponenttia ja OS-varausta: odotettu valmisteluvirhe säilyttää
+varauksen, kunnes hallittu virhepoistuminen tai nykyinen Job-määräaika
+päättää omistetun prosessipuun. Vieras kontrolliprosessi ja säilytettävät
+tavut jäävät ennalleen. Aiemman sovellusvaiheen poissaolo on näissä
+kontrolloitu, ei paketoidun sovelluksen sulkutodiste. Testin odottamaton
+epäonnistuminen välittää lapsen alkuperäisen poikkeuksen nykyiseen
+runner-sinkkiin; onnistuvan virhetestin poikkeus ei ole uusi testihylkäys.
+Alkuperäinen poikkeus kirjataan ennen testifixturen omaa koodimuunnosta.
+Siivous säilyttää sen myös lopullisen juuritarkistuksen ja osittaisen
+kontekstipoiston yli. Kielteiset kontrollit ja saman todellisen
+Job-virheen salaus/purku todentavat alkuperäisen ja välitetyn projektion;
+profiileja tai supervisorin raakavirtoja ei lisätä keräimen polkuihin.
+
+Parent-ajurin per-vaiheinen Job-liitos, tuore alkutilan julkaisu ja porttikuitti
+on kytketty vain nimettyyn `workspaceDeletion`-työntekijään.
+[Nimetty vaihe-adapteri](../../apps/desktop/scripts/packagedSmokeJob.mjs)
+on nyt erikseen toteutettu: sen artifact-sidonta on nykyisen kokonaisen
+paketti-inventaarion kanoninen tiiviste, ei julkaisijan luottamustodiste.
+Se luo tuoreen vaihehakemiston, nollaa alkutilan ja vaatii nykyisen
+supervisorin sidotun tuloksen, suoran prosessin päättymisen sekä oman workerin
+täsmällisen terminalin. Valmistelu kuluttaa samaa nykyistä vaihebudjettia
+jo ennen paketti-inventaariota, eikä käynnistys nollaa sitä. Natiivin
+requestin työ-/siivousajasta erotetaan saman kokonaisrajan sisältä yksi
+sekunti requestin loppuvalmistelulle ja käynnistymiselle, nykyisen
+supervisorin budjettitiedoston viiden sekunnin julkaisu-/exit-varaus sekä
+yksi sekunti suoran prosessin viimeiselle katkaisusuojalle. Natiivin
+nykyinen yhden sekunnin siivousvaraus sisältyy requestin aikaan.
+Requestin jälkeen kulunut valmisteluaika vähentää käynnistysvaraa;
+liian vähäinen jäljellä oleva aika estää käynnistyksen. Sama jako koskee
+300 sekunnin kokonais-Jobia. Ylärajat eivät kasva. Varaus ei takaa
+mielivaltaisen hitaan käyttöjärjestelmäkäynnistyksen valmistumista:
+ulompi katkaisu säilyy viimeisenä suojana, ja puuttuva terminal tai
+siivoustodiste jää epäonnistuneeksi ja varmentamattomaksi.
+Suoran prosessin epävarmuus ja Jobin siivoustulos säilyvät
+erillisinä myös nykyisen runner-virhetietueen kautta; myöhempi signalointivirhe
+ei ohita jo havaittua määräaikaa tai peruutusta. Diagnostiikkatiedoston
+puuttumista ei nimetä epäonnistuneeksi sovellustoiminnaksi.
+
+Adapterin oikea negatiivinen .NET-/worker-ketju ja sen alkuperäisen
+käyttöjärjestelmän spawn-virheen salaus/purku on todennettu. Näissä
+paketti-inventaarion antaja on kontrolloitu eikä sovellusta käynnistetä:
+kyse ei ole puhtaan paketin tai onnistuvan sovellusvaiheen hyväksynnästä.
+Adapteri ei omista profiilia tai virheessä varauksen säilyttävän valmistelijan
+koko prosessielinikää. Sen rajattu tuore porttikuitti ei ole pysyvä käyttö-
+tai siivousvaltuus; koko ajurin omistaja sitoo vaihejärjestyksen erikseen.
+`phase-output.private.json` on vain yksityinen
+siirtotiedosto; sitä ei lisätä keräimen polkuihin. Kaikki nämä tekniset
+tiedostot ovat testiprofiilin ulkopuolella, eivät business-backupin sisältöä.
+Tuottajan kontrolloidun vaihevirheen viesti, pino, syyketju sekä raporttien
+tavut ja tiivisteet on todennettu nykyisestä puretusta OpenPGP-paketista;
+profiili ja uusi sisäinen tulostepolku jäivät ulkopuolelle. Tämä ei ole
+oikean paketoidun sovelluksen virhetoimituksen näyttö. Yllä nimetty
+CLI-/Job-todennus kattaa erikseen vain admissionissa syntyvän lukijavirheen.
+[W7.4:n omistava suunnitelma](local-company-workspace-plan.md#w74n-todistus--ja-valmistumisportit)
+omistaa seuraavan kytkentä- ja hyväksyntärajan.
+
+`runOwnedPackagedSmokeWorkflow` käyttää samaa C#-omistajaa myös Node-ajurin
+ympärillä. Kiinteä whole-workflow-request käyttää nykyistä yhdeksää kenttää,
+ja oma loppukuittaus nykyistä seitsemää kenttää. Metadata ja ympäristö
+sidotaan ennen odotuksia. Jokainen neljästä vaiheesta saa oman noncen ja
+nykyisen vaihe-Jobin; edellinen kuitti mitätöityy ennen seuraavaa aloitusta.
+Vain oikean vaiheen sidottu onnistuminen, suljettu stdout sekä Jobin ja
+portin todistus sallivat valmistelijan seuraavan koukun. Tavallinen CLI ei
+käytä tätä polkua. Uutta renderer- tai preload-poistokanavaa ei avata.
+
+Nykyinen `e2eFixtureLifetime` alkaa ennen paketin inventaariota ja jatkuu
+valmistelun, ajon, porttien ja siivouksen läpi. Sama 300 sekunnin yläraja
+on keskitetty pakettikonfiguraation kanssa; 120 sekunnin vaiheet säilyvät.
+Ajuri ei poista juurta ennen omaa terminaliaan. Ulompi omistaja vaatii sen,
+koko Jobin päättymisen ja kahden backend-portin tuoreen tarkistuksen ennen
+juuren siivousta. Sisäiset `rm`-uusinnat on poistettu vain tästä uudesta
+siivouskutsusta: nykyisen 20 uusinnan ylärajan jokainen uusi yritys tarkistaa
+ajan, peruutuksen ja juuren identiteetin. Aloitettu tiedostokutsu odotetaan
+loppuun; määräaika ei todista sen pysähtymistä eikä salli uutta yritystä.
+Valmistelun aikainen ensimmäinen peruutus säilyy myös myöhemmän lukuvirheen yli.
+
+Natiivifixture käyttää oikeaa kiinteää CLI:tä, valmistelijaa, OS-varausta ja
+ulompaa Jobia, mutta ohjaa sisäisten vaiheiden kuitit ja paketin valmistelun.
+Se todensi elävän varauksen, virhepoistumisen, uuden omistajan ja muuttumattomat
+tavut; alkuperäinen whole-workflow-virhe löytyi myös nykyisestä puretusta
+salatusta paketista. Tämä ei ole Eky-, SQLite- tai puhtaan paketin hyväksyntä.
+Nimetty `DESK-WORKSPACE-DELETION-PACKAGED-LAST-001` on lisätty nykyiseen
+pakettivalintaan; paikallinen valmistelu ja CI rakentavat nykyisen
+installer-supervisorin ennen sitä. SDK, workerit, retryt ja kokonaisrajat eivät
+muutu. Tämä tavallinen pakettitesti käyttää nykyistä `package:windows`-
+artifactia, ei versionostetun pilotin release-candidate-valmistelua.
+Julkaisuehdokkaan erilliset manifesti-, first-parent-versio- ja puhtausportit
+säilyvät muuttumattomina. Tavallinen pakettitesti ei hyväksy julkaisua, eikä
+kehityspaketin käyttö korvaa W7.4:n saman puhtaan paketin näyttöä.
+Sen oikean puhtaan paketin ajo on vielä erillinen avoin portti.
 
 ## Endurance-mittaus
 

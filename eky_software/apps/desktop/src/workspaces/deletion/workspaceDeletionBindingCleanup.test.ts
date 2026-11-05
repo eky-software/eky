@@ -74,6 +74,22 @@ it.for(workspaceRemnantBindingOwners)('clears only payloadless %s metadata and p
   expect(await readFile(foreignPaths.currentPath)).toEqual(original);
 });
 
+it.for(workspaceRemnantBindingOwners)('checks the captured original-journal guard at actual %s slot removal', async (owner, context) => {
+  const f = await fixture(context, owner); await f.publish();
+  const before = await f.snapshot(), first = new Error('SYNTHETIC_ORIGINAL_JOURNAL_CHANGED');
+  let changed = false, checks = 0, checkedAtRemoval = false;
+  const dependencies = { fileSystem: f.atRemoval(async () => {
+    changed = true; dependencies.assertOriginalJournalsSelected = async () => {};
+  }), async assertOriginalJournalsSelected() {
+    checks++; if (changed) { checkedAtRemoval = true; throw first; }
+  } };
+  const work = clear(f.root, header, f.binding, f.authority, dependencies);
+  context.onTestFinished(async () => { await work.catch(() => undefined); });
+  await expect(work).rejects.toBe(first);
+  expect(checks).toBeGreaterThan(0); expect(checkedAtRemoval).toBe(true);
+  expect(await f.snapshot()).toEqual(before);
+});
+
 for (const side of ['next', 'backup', 'both'] as const) {
   it.for(owners)(`clears exact %s metadata with original ${side} side slots`, async (owner, context) => {
     const f = await fixture(context, owner); await f.publish();

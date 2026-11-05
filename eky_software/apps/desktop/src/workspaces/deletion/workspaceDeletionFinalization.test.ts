@@ -1,90 +1,28 @@
-import { createHash } from 'node:crypto';
-import { chmod, mkdir, mkdtemp, readFile, readdir, rename, rm, rmdir, unlink, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { mkdir, readFile, readdir, rename, rmdir, unlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { setImmediate } from 'node:timers/promises';
-import { expect, it, vi, type TestContext } from 'vitest';
+import { expect, it, vi } from 'vitest';
 import { createNodeCrashSafeFileSlotFileSystem, type CrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../import/workspaceBackupImportJournalPaths.js';
 import { serializeWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalSerializer.js';
 import { validateWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalValidation.js';
-import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
-import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
-import { removeWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
-import { serializeWorkspaceRegistry, workspaceRegistryEntrySha256 } from '../registry/workspaceRegistrySerializer.js';
-import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
-import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
-import { deletionTestId as id, deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
+import { deletionTestId as id } from './workspaceDeletionDataTestSupport.js';
 import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
-import { captureDeletionInventoryHeader, captureDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
-import { readDeletionInventoryDirectoryIdentity as identity } from './workspaceDeletionInventoryFile.js';
+import { createWorkspaceDeletionFinalizationTestFixture as fixture } from './workspaceDeletionFinalizationTestSupport.js';
 import * as inventoryRetirement from './workspaceDeletionInventoryRetirement.js';
-import { createWorkspaceDeletionInventoryPaths, WorkspaceDeletionInventoryStore, workspaceDeletionInventoryFileName } from './workspaceDeletionInventoryStore.js';
-import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, serializeWorkspaceDeletionJournal, workspaceDeletionPhases } from './workspaceDeletionJournalCodec.js';
-import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
+import { WorkspaceDeletionInventoryStore, workspaceDeletionInventoryFileName } from './workspaceDeletionInventoryStore.js';
+import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, serializeWorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
+import { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { createWorkspaceRemnantBindingPaths } from './workspaceRemnantBindingPaths.js';
 import { WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js';
-
 const terminalChainTimeoutMs = 30_000;
-
-async function fixture(test: TestContext, terminal = false) {
-  const root = await mkdtemp(join(tmpdir(), 'eky-delete-finalization-')); await chmod(root, 0o700);
-  let active = true, asyncOwnerFailure: Error | undefined;
-  const jobs: Promise<unknown>[] = [], releases: (() => void)[] = [];
-  const first = new Error('SYNTHETIC_FINALIZATION_OWNER_LOST');
-  const assertCurrent = () => { test.signal.throwIfAborted(); if (!active) throw first; };
-  const authority = { assertCurrent, async assertOwned() { assertCurrent(); if (asyncOwnerFailure !== undefined) throw asyncOwnerFailure; } };
-  const external = { assertAuthority: assertCurrent, async assertExternalSelection() { assertCurrent(); } };
-  test.onTestFinished(async () => {
-    active = false; for (const release of releases) release(); await Promise.allSettled(jobs); vi.restoreAllMocks();
-    if (test.task.result?.state === 'pass') await rm(root, { recursive: true, force: true });
-  });
-  const registryPath = join(root, WORKSPACE_REGISTRY_FILE_NAME), registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
-  const before = { ...createSwitchRegistry(), formatVersion: 2 as const }; await registry.write(before);
-  const target = before.workspaces.find(row => row.workspaceId === TEST_TARGET_WORKSPACE_ID)!;
-  const after = removeWorkspaceEntry({ registry: before, targetWorkspaceId: target.workspaceId, expectedActiveWorkspaceId: before.activeWorkspaceId });
-  const header = captureDeletionInventoryHeader({ ...deletionTestJournal().target, operationId: id(220), workspaceId: target.workspaceId,
-    lineageIdentity: target.lineageIdentity, registryEntrySha256: workspaceRegistryEntrySha256(target) });
-  const workspace = deriveWorkspaceRoot(root, target.workspaceId, 1);
-  await mkdir(workspace.workspaceRoot, { recursive: true, mode: 0o700 });
-  const row = captureDeletionInventoryPayloadRecord({ role: 'workspace', ownerOperationId: null, generationId: null, member: null, bindingSha256: null,
-    rootIdentity: await identity(workspace.workspaceRoot, assertCurrent), parentIdentity: await identity(workspace.workspacesRoot, assertCurrent) });
-  const inventory = await new WorkspaceDeletionInventoryStore(root, header.operationId).publish(header, (async function* () { yield row; })(), external);
-  // Terminal-state fixture only: actual quarantine and purge have separate physical-chain tests.
-  await rmdir(workspace.workspaceRoot);
-  const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-  const journal = captureWorkspaceDeletionJournal({ ...deletionTestJournal(), ...inventory,
-    previousActiveWorkspaceId: before.activeWorkspaceId, registryBeforeSha256: hash(await readFile(registryPath)), registryAfterSha256: hash(serializeWorkspaceRegistry(after)) });
-  const store = new WorkspaceDeletionJournalStore(root);
-  await store.publish(journal, { ...external, slots: (await store.inspect(assertCurrent)).slots });
-  for (const phase of workspaceDeletionPhases.slice(1, terminal ? undefined : -1)) {
-    await store.advance({ ...journal, phase }, { ...external, slots: (await store.inspect(assertCurrent)).slots });
-  }
-  await registry.write(after);
-  const journalPaths = createWorkspaceDeletionJournalPaths(root), inventoryPaths = createWorkspaceDeletionInventoryPaths(root, header.operationId);
-  const journalBytes = await readFile(journalPaths.currentPath), inventoryBytes = await readFile(inventoryPaths.currentPath);
-  const other = deriveWorkspaceRoot(root, before.workspaces[0]!.workspaceId, 1);
-  await mkdir(other.workspaceRoot, { recursive: true, mode: 0o700 });
-  const kept = join(other.workspaceRoot, 'kept'), backup = join(root, 'user-export.ekybackup');
-  await writeFile(kept, 'other company', { mode: 0o600 }); await writeFile(backup, 'external backup', { mode: 0o600 });
-  const command = createWorkspaceDeletionFinalizer({ userDataRoot: root, registry, async assertWritersAbsent() { assertCurrent(); } });
-  return { root, registry, registryPath, before, after, header, workspace, store, journal, journalPaths, inventoryPaths, journalBytes, inventoryBytes,
-    authority, external, first, releases, revoke() { active = false; }, failAsyncOwner(error: Error) { asyncOwnerFailure = error; },
-    run() { const result = command(header.operationId, authority); jobs.push(result); return result; },
-    async preserved() {
-      expect(await readFile(kept, 'utf8')).toBe('other company'); expect(await readFile(backup, 'utf8')).toBe('external backup');
-      expect(await readFile(registryPath)).toEqual(Buffer.from(serializeWorkspaceRegistry(after)));
-    },
-  };
-}
-
 type Fixture = Awaited<ReturnType<typeof fixture>>;
 function journalSystem(f: Fixture): CrashSafeFileSlotFileSystem {
   return createNodeCrashSafeFileSlotFileSystem(f.journalPaths, maximumWorkspaceDeletionJournalBytes);
 }
 
-it('publishes terminal current before inventory retirement and clears the journal last', { timeout: terminalChainTimeoutMs }, async test => {
-  const f = await fixture(test), advance = WorkspaceDeletionJournalStore.prototype.advance, clear = WorkspaceDeletionJournalStore.prototype.clearTerminal;
+it.for([false, true])('publishes terminal current before inventory retirement and clears the journal last (original proof: %s)', { timeout: terminalChainTimeoutMs }, async (originalProof, test) => {
+  const f = await fixture(test, false, originalProof), advance = WorkspaceDeletionJournalStore.prototype.advance, clear = WorkspaceDeletionJournalStore.prototype.clearTerminal;
   const order: string[] = [];
   vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'advance').mockImplementation(async function (this: WorkspaceDeletionJournalStore, ...args) {
     expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); order.push('publish'); return advance.apply(this, args);
@@ -98,6 +36,55 @@ it('publishes terminal current before inventory retirement and clears the journa
   expect((await f.store.inspect(f.authority.assertCurrent)).plan.mode).toBe('absent');
   expect(await readdir(f.inventoryPaths.parentPath)).toEqual([]); await f.preserved();
   await expect(f.run()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT'); await f.preserved();
+});
+
+it.for([false, true])('rejects a proof-only payload before terminal cleanup (terminal: %s)', async (terminal, test) => {
+  const f = await fixture(test, terminal, true);
+  await f.track((async () => {
+    expect(f.journal.inventory.recordCount).toBe(1);
+    await expect(readFile(join(f.root, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME))).rejects.toMatchObject({ code: 'ENOENT' });
+    const retire = vi.spyOn(inventoryRetirement, 'retireWorkspaceDeletionInventory');
+    const clear = vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'clearTerminal');
+    await mkdir(f.originalPaths.candidateRoot, { recursive: true, mode: 0o700 });
+    const path = join(f.originalPaths.candidateRoot, 'retained'); await writeFile(path, 'returned payload', { mode: 0o600, flag: 'wx' });
+    await expect(f.run()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    expect(retire).not.toHaveBeenCalled(); expect(clear).not.toHaveBeenCalled();
+    expect(await readFile(path, 'utf8')).toBe('returned payload');
+    expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+    expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
+  })());
+});
+
+it.for(['inventory', 'journal'] as const)('preserves terminal evidence after a proof-only payload returns before native %s removal', async (boundary, test) => {
+  const f = await fixture(test, true, true); let injected = false;
+  await f.track((async () => {
+    const path = join(f.originalPaths.candidateRoot, 'retained');
+    const inject = async () => {
+      expect(injected).toBe(false); injected = true;
+      await mkdir(f.originalPaths.candidateRoot, { recursive: true, mode: 0o700 });
+      await writeFile(path, 'late returned payload', { mode: 0o600, flag: 'wx' });
+    };
+    if (boundary === 'inventory') {
+      const retire = inventoryRetirement.retireWorkspaceDeletionInventory;
+      vi.spyOn(inventoryRetirement, 'retireWorkspaceDeletionInventory').mockImplementationOnce(async (root, journal, authority) => {
+        const fs = createNodeCrashSafeFileSlotFileSystem(f.inventoryPaths, Number.MAX_SAFE_INTEGER), remove = fs.removeSlot.bind(fs);
+        fs.removeSlot = async (...args) => { await inject(); return remove(...args); };
+        return retire(root, journal, authority, { inventory: fs });
+      });
+    } else {
+      // Select the interrupted terminal state after inventory retirement, not that earlier mutation chain.
+      await unlink(f.inventoryPaths.currentPath); await rmdir(f.inventoryPaths.directoryPath);
+      const clear = WorkspaceDeletionJournalStore.prototype.clearTerminal, fs = journalSystem(f), remove = fs.removeSlot.bind(fs);
+      fs.removeSlot = async (...args) => { await inject(); return remove(...args); };
+      vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'clearTerminal').mockImplementationOnce((...args) => clear.apply(new WorkspaceDeletionJournalStore(f.root, fs), args));
+    }
+    await expect(f.run()).rejects.toThrow('WORKSPACE_REMNANT_BINDING_INVALID'); expect(injected).toBe(true);
+    expect(await readFile(path, 'utf8')).toBe('late returned payload');
+    expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+    if (boundary === 'inventory') expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes);
+    else await expect(readdir(f.inventoryPaths.directoryPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await f.preserved();
+  })());
 });
 
 it.for(['beforeBackup', 'beforePublication', 'afterPublication', 'backupRemoval'] as const)(
@@ -213,6 +200,32 @@ it.for(['beforeRemove', 'afterRemove', 'afterSync'] as const)(
   },
 );
 
+it('rejects full-proof loss inside native journal sync after the journal removal', async test => {
+  const f = await fixture(test, true, false, { coldSelection: true });
+  await unlink(f.inventoryPaths.currentPath); await rmdir(f.inventoryPaths.directoryPath);
+  const first = new Error('SYNTHETIC_FINAL_JOURNAL_SYNC_PROOF_LOST');
+  const fs = journalSystem(f), sync = fs.syncDirectory.bind(fs);
+  let reached = false, guardStarted = false, guardCompleted = false, syncCompleted = false;
+  fs.syncDirectory = async (...args) => {
+    reached = true; f.fullProof.mockRejectedValue(first);
+    const guard = args[0];
+    if (guard === undefined) throw new Error('SYNTHETIC_JOURNAL_SYNC_GUARD_MISSING');
+    args[0] = { assertAuthority: guard.assertAuthority.bind(guard), async beforeMutation() {
+      guardStarted = true; await guard.beforeMutation(); guardCompleted = true;
+    } };
+    await sync(...args); syncCompleted = true;
+  };
+  const clear = WorkspaceDeletionJournalStore.prototype.clearTerminal;
+  vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'clearTerminal').mockImplementationOnce((...args) =>
+    clear.apply(new WorkspaceDeletionJournalStore(f.root, fs), args));
+  await expect(f.run()).rejects.toBe(first);
+  expect(reached).toBe(true);
+  expect(guardStarted).toBe(true); expect(guardCompleted).toBe(false); expect(syncCompleted).toBe(false);
+  expect((await f.store.inspect(f.authority.assertCurrent)).plan.mode).toBe('absent');
+  await expect(readdir(f.inventoryPaths.directoryPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  await f.preserved();
+});
+
 it.for(['inventory', 'source', 'binding', 'registry'] as const)(
   'does not publish completion when the original %s proof is missing or changed', { timeout: terminalChainTimeoutMs }, async (change, test) => {
     const f = await fixture(test);
@@ -284,4 +297,101 @@ it('joins a pending terminal write and rejects concurrent finalization after own
     await expect(f.run()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT'); f.revoke(); await setImmediate(); expect(settled).toBe(false);
   } finally { release(); await result; }
   expect(await result).toBe(f.first); expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
+});
+
+it.for(['inventory', 'journal'] as const)('cold terminal rejects full-proof loss before native %s removal', async (boundary, test) => {
+  const f = await fixture(test, true, false, { coldSelection: true }), first = new Error('SYNTHETIC_FULL_TERMINAL_SELECTION_LOST');
+  let injected = false;
+  const inject = () => { injected = true; f.fullProof.mockRejectedValueOnce(first); };
+  if (boundary === 'inventory') {
+    const retire = inventoryRetirement.retireWorkspaceDeletionInventory;
+    let narrowCalls = 0;
+    vi.spyOn(inventoryRetirement, 'retireWorkspaceDeletionInventory').mockImplementationOnce(async (root, journal, authority, fileSystems, readSelection) => {
+      if (readSelection === undefined) throw new Error('SYNTHETIC_TERMINAL_READ_CONTEXT_REQUIRED');
+      const fs = createNodeCrashSafeFileSlotFileSystem(f.inventoryPaths, Number.MAX_SAFE_INTEGER), remove = fs.removeSlot.bind(fs);
+      fs.removeSlot = async (...args) => { inject(); expect(narrowCalls).toBeGreaterThan(0); return remove(...args); };
+      return retire(root, journal, authority, { inventory: fs }, { async assertExternalSelection() { narrowCalls++; await readSelection.assertExternalSelection(); } });
+    });
+  } else {
+    await unlink(f.inventoryPaths.currentPath); await rmdir(f.inventoryPaths.directoryPath);
+    const clear = WorkspaceDeletionJournalStore.prototype.clearTerminal, fs = journalSystem(f), remove = fs.removeSlot.bind(fs);
+    fs.removeSlot = async (...args) => { inject(); return remove(...args); };
+    vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'clearTerminal').mockImplementationOnce((...args) => clear.apply(new WorkspaceDeletionJournalStore(f.root, fs), args));
+  }
+  await expect(f.run()).rejects.toBe(first); expect(injected).toBe(true);
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  if (boundary === 'inventory') expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes);
+  else await expect(readdir(f.inventoryPaths.directoryPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  await f.preserved();
+});
+
+it('cold terminal rejects an ancestor replaced after its once-per-phase capture', async test => {
+  const f = await fixture(test, true, true, { coldSelection: true }), retire = inventoryRetirement.retireWorkspaceDeletionInventory;
+  await mkdir(f.originalPaths.operationRoot, { recursive: true, mode: 0o700 });
+  let replaced = false;
+  const retained = join(f.originalPaths.operationsRoot, 'retained-original-operation-parent');
+  vi.spyOn(inventoryRetirement, 'retireWorkspaceDeletionInventory').mockImplementationOnce(async (...args) => {
+    await rename(f.originalPaths.operationRoot, retained);
+    await mkdir(f.originalPaths.operationRoot, { mode: 0o700 }); replaced = true;
+    return retire(...args);
+  });
+  await expect(f.run()).rejects.toThrow(); expect(replaced).toBe(true);
+  await expect(readdir(f.originalPaths.candidateRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await readdir(retained)).toEqual([]);
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
+});
+
+it('cold nonterminal retains exact full-proof failure at native terminal promotion', async test => {
+  const f = await fixture(test), first = new Error('SYNTHETIC_PURGED_FULL_SELECTION_LOST');
+  const advance = WorkspaceDeletionJournalStore.prototype.advance, fs = journalSystem(f), move = fs.moveSlot.bind(fs);
+  let changed = false;
+  fs.moveSlot = async (source, destination, guard) => {
+    if (source === 'next' && destination === 'current') changed = true;
+    return move(source, destination, guard);
+  };
+  vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'advance').mockImplementationOnce((...args) =>
+    advance.apply(new WorkspaceDeletionJournalStore(f.root, fs), args));
+  const command = createWorkspaceDeletionFinalizer({ userDataRoot: f.root, registry: f.registry,
+    async assertWritersAbsent() { f.authority.assertCurrent(); },
+    async assertStableSelection() { f.authority.assertCurrent(); if (changed) throw first; } });
+  await expect(f.track(command(f.header.operationId, f.authority))).rejects.toBe(first);
+  expect(changed).toBe(true);
+  const retained = await f.store.inspect(f.authority.assertCurrent);
+  expect(retained.slots.current).toBeUndefined(); expect(retained.slots.next).toBeDefined(); expect(retained.slots.backup).toBeDefined();
+  expect(Buffer.from(retained.slots.backup!.bytes)).toEqual(f.journalBytes);
+  expect(Buffer.from(retained.slots.next!.bytes)).toEqual(serializeWorkspaceDeletionJournal({ ...f.journal, phase: 'registryPublished' }));
+  expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
+});
+
+
+it.for([false, true])('keeps the actual finalizer call boundary (cold: %s)', async (cold, test) => {
+  const f = await fixture(test, true, false, { coldSelection: cold }), first = new Error('SYNTHETIC_STOP_AFTER_CALLER_PROOF');
+  let observed = false;
+  vi.spyOn(inventoryRetirement, 'retireWorkspaceDeletionInventory').mockImplementationOnce(async (root, journal, authority, fileSystems, readSelection) => {
+    observed = true; expect(root).toBe(f.root); expect(captureWorkspaceDeletionJournal(journal).phase).toBe('registryPublished'); expect(fileSystems).toBeUndefined();
+    expect(readSelection).toBeDefined();
+    { if (readSelection === undefined) throw new Error('SYNTHETIC_TERMINAL_READ_CONTEXT_REQUIRED'); const calls = f.fullProof.mock.calls.length; await readSelection.assertExternalSelection(); expect(f.fullProof.mock.calls.length).toBe(calls); }
+    await authority.assertExternalSelection(); if (cold) expect(f.fullProof).toHaveBeenCalled();
+    throw first;
+  });
+  await expect(f.run()).rejects.toBe(first); expect(observed).toBe(true);
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
+});
+
+it('keeps the actual original ancestor proof after the complete read', async test => {
+  const f = await fixture(test, true, true, { coldSelection: true });
+  await mkdir(f.originalPaths.operationRoot, { recursive: true, mode: 0o700 });
+  const original = WorkspaceDeletionInventoryStore.prototype.inspect, retained = join(f.originalPaths.operationsRoot, 'kept-original-parent');
+  let replaced = false;
+  vi.spyOn(WorkspaceDeletionInventoryStore.prototype, 'inspect').mockImplementationOnce(async function (this: WorkspaceDeletionInventoryStore, ...args) {
+    const result = await original.apply(this, args);
+    await rename(f.originalPaths.operationRoot, retained); await mkdir(f.originalPaths.operationRoot, { mode: 0o700 });
+    replaced = true; return result;
+  });
+  await expect(f.run()).rejects.toThrow(); expect(replaced).toBe(true);
+  expect(await readdir(retained)).toEqual([]);
+  expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
+  expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
 });

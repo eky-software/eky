@@ -1,3 +1,7 @@
+import { CrashSafeByteSlotStore, type CrashSafeByteSlotReadSelection } from '../persistence/crashSafeByteSlotStore.js';
+import type { FileHandle } from 'node:fs/promises';
+import { open as openRetirementHandle } from 'node:fs/promises';
+import type { CrashSafeFileSlotMutationGuard as RetirementMutationGuard } from '../persistence/crashSafeFileSlot.js';
 import { chmod, mkdtemp, readFile, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -308,5 +312,343 @@ it('joins pending removal, refuses concurrency and reports the owner cause befor
   } finally { release(); await result; }
   expect(await result).toMatchObject({ message: unavailable });
   expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(f.ownerError);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+const retirementNativeHandles = vi.hoisted(() => ({ hook: undefined as ((file: import('node:fs/promises').FileHandle, path: unknown) => import('node:fs/promises').FileHandle) | undefined }));
+
+vi.mock('node:fs/promises', async () => {
+  const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+  return { ...actual, async open(...args: Parameters<typeof actual.open>) {
+      const file = await actual.open(...args);
+      return retirementNativeHandles.hook?.(file, args[0]) ?? file;
+    } };
+});
+
+function deferredRetirement() {
+  let release!: () => void;
+  const promise = new Promise<void>(resolve => { release = resolve; });
+  return { promise, release };
+}
+
+async function retirementFixture(test: TestContext) {
+  const f = await fixture(test);
+  test.onTestFinished(() => { retirementNativeHandles.hook = undefined; vi.restoreAllMocks(); });
+  return f;
+}
+
+it.for(['empty', 'current', 'next', 'backup', 'currentNext', 'backupCurrent', 'backupNext'] as const)('deletion read guard ordered real slots %s', async (layout, test) => {
+  const f = await retirementFixture(test);
+  if (layout === 'currentNext') {
+    await f.put('current', journal('prepared'));
+    await f.put('next', journal('candidateRootCreated'));
+  }
+  else if (layout === 'backupCurrent') {
+    await f.put('backup', journal('prepared'));
+    await f.put('current', journal('candidateRootCreated'));
+  }
+  else if (layout === 'backupNext') {
+    await f.put('backup', journal('prepared'));
+    await f.put('next', journal('candidateRootCreated'));
+  }
+  else if (layout !== 'empty')
+    await f.put(layout, journal('prepared'));
+  const selected = await f.select(), trace: string[] = [], reading = f.fs.readSlot.bind(f.fs);
+  f.external.mockImplementation(async () => { trace.push('E'); });
+  f.purged.mockImplementation(async () => { trace.push('P'); });
+  f.fs.readSlot = async (...args) => { trace.push(`S:${args[0]}`); return reading(...args); };
+  const removes = vi.spyOn(f.fs, 'removeSlot'), sync = vi.spyOn(f.fs, 'syncDirectory');
+  await f.clear(selected);
+  const round = ['E',
+    'S:current', 'S:next', 'S:backup', 'E', 'P', 'E'];
+  expect(trace.length % round.length).toBe(0);
+  expect(trace).toEqual(Array.from({ length: removes.mock.calls.length + 3 }, () => round).flat());
+  expect(sync).toHaveBeenCalledOnce();
+  await f.assertEmpty();
+});
+
+it.for(['external', 'purged', 'authority'] as const)('deletion read guard persistent %s blocks native removal', async (change, test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot(), remove = f.fs.removeSlot.bind(f.fs);
+  f.fs.removeSlot = async (...args) => { f.state[change === 'authority' ? 'current' : change] = false; return remove(...args); };
+  await expect(f.clear(selected)).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+  expect(f.onUncertain).toHaveBeenCalledOnce();
+});
+
+it('deletion read guard characterizes transient omitted proof and competing read precedence', async (test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select();
+  let absent = false;
+  f.external.mockImplementationOnce(async () => { absent = true; });
+  f.purged.mockImplementation(async () => { if (absent)
+    throw f.purgedError; });
+  const read = f.fs.readSlot.bind(f.fs);
+  f.fs.readSlot = async (...args) => { absent = false; return read(...args); };
+  await f.clear(selected);
+  await f.assertEmpty();
+});
+
+it('deletion read guard read error can precede omitted purged error', async (test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot(), readError = new Error('SYNTHETIC_SLOT_READ_FIRST');
+  f.state.purged = false;
+  f.fs.readSlot = async () => { throw readError; };
+  await expect(f.clear(selected)).rejects.toThrow(unavailable);
+  expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(readError);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it('deletion read guard final external proof catches payload returned after purged', async (test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot();
+  f.purged.mockImplementationOnce(async () => { f.state.external = false; });
+  await expect(f.clear(selected)).rejects.toThrow(unavailable);
+  expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(f.externalError);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it.for(['initial', 'remove', 'sync'] as const)('deletion read guard retains undefined and Error prefix causes at %s', async (boundary, test) => {
+  for (const first of [undefined, new Error('SYNTHETIC_PREFIX_FIRST')]) {
+    const f = await retirementFixture(test);
+    if (boundary !== 'sync')
+      await f.put('current', journal('prepared'));
+    const selected = await f.select(), before = await f.snapshot();
+    const fail = () => { f.external.mockImplementationOnce(async () => { throw first; }); };
+    if (boundary === 'initial')
+      fail();
+    else if (boundary === 'remove') {
+      const remove = f.fs.removeSlot.bind(f.fs);
+      f.fs.removeSlot = async (...args) => { fail(); return remove(...args); };
+    }
+    else {
+      const sync = f.fs.syncDirectory.bind(f.fs);
+      f.fs.syncDirectory = async (...args) => { fail(); return sync(...args); };
+    }
+    f.onUncertain.mockImplementationOnce(() => { throw new Error('SYNTHETIC_LATER_NOTIFICATION'); });
+    await expect(f.clear(selected)).rejects.toThrow(unavailable);
+    expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(first);
+    expect(await f.snapshot()).toEqual(before);
+  }
+});
+
+it('deletion read guard joins held prefix before revocation returns and keeps busy', async (test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot(), entered = deferredRetirement(), held = deferredRetirement();
+  f.releases.push(held.release);
+  f.external.mockImplementationOnce(async () => { entered.release(); await held.promise; });
+  let settled = false;
+  const result = f.clear(selected).then(() => { settled = true; }, error => { settled = true; return error; });
+  await entered.promise;
+  try {
+    f.state.current = false;
+    await setImmediate();
+    expect(settled).toBe(false);
+    await expect(f.store.inspectSlots()).rejects.toThrow('WORKSPACE_BACKUP_IMPORT_JOURNAL_BUSY');
+  }
+  finally {
+    held.release();
+    await result;
+  }
+  expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(f.ownerError);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it.for(['read', 'close'] as const)('deletion read guard joins a real held handle %s before settling', async (method, test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot(), entered = deferredRetirement(), held = deferredRetirement();
+  f.releases.push(held.release);
+  let captured = false, closed = 0;
+  retirementNativeHandles.hook = (file, path) => {
+    if (String(path) !== f.paths.currentPath || captured)
+      return file;
+    captured = true;
+    return new Proxy(file, { get(target, key) {
+        const value = Reflect.get(target, key, target);
+        if (key === 'close')
+          return async () => {
+            if (method === 'close') {
+              entered.release();
+              await held.promise;
+            }
+            await target.close();
+            closed++;
+          };
+        if (key === 'read' && method === 'read')
+          return async (...args: Parameters<FileHandle['read']>) => {
+            entered.release();
+            await held.promise;
+            return Reflect.apply(value, target, args);
+          };
+        return typeof value === 'function' ? value.bind(target) : value;
+      } });
+  };
+  let settled = false;
+  const result = f.clear(selected).then(() => { settled = true; }, error => { settled = true; return error; });
+  await entered.promise;
+  try {
+    f.state.current = false;
+    await setImmediate();
+    expect(settled).toBe(false);
+    expect(closed).toBe(0);
+    await expect(f.store.inspectSlots()).rejects.toThrow('WORKSPACE_BACKUP_IMPORT_JOURNAL_BUSY');
+  }
+  finally {
+    held.release();
+    await result;
+  }
+  expect(closed).toBe(1);
+  expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(f.ownerError);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it.for(['success', 'failure'] as const)('deletion read guard expired prefix does no I/O after %s or in fresh operation', async (outcome, test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const oldCallbacks: CrashSafeByteSlotReadSelection[] = [];
+  const original = CrashSafeByteSlotStore.prototype.clearSelected;
+  vi.spyOn(CrashSafeByteSlotStore.prototype, 'clearSelected').mockImplementation(async function (this: CrashSafeByteSlotStore, selection, readSelection) {
+    expect(readSelection).toBeDefined();
+    oldCallbacks.push(readSelection!);
+    return original.call(this, selection, readSelection);
+  });
+  if (outcome === 'failure') {
+    f.external.mockImplementationOnce(async () => { throw f.externalError; });
+    await expect(f.clear()).rejects.toThrow(unavailable);
+  }
+  else
+    await f.clear();
+  const old = oldCallbacks[0]!;
+  const count = f.external.mock.calls.length;
+  await expect(old.assertBeforeSlotRead()).rejects.toThrow();
+  expect(f.external).toHaveBeenCalledTimes(count);
+  f.onUncertain.mockClear();
+  const entered = deferredRetirement(), held = deferredRetirement();
+  f.releases.push(held.release);
+  f.external.mockImplementationOnce(async () => { entered.release(); await held.promise; });
+  const result = f.clear();
+  await entered.promise;
+  try {
+    const currentCount = f.external.mock.calls.length;
+    await expect(old.assertBeforeSlotRead()).rejects.toThrow();
+    expect(f.external).toHaveBeenCalledTimes(currentCount);
+  }
+  finally {
+    held.release();
+    await result;
+  }
+  expect(f.onUncertain).not.toHaveBeenCalled();
+  await f.assertEmpty();
+});
+
+it('deletion read guard labels each native remove and sync with its own complete round', async (test) => {
+  const f = await retirementFixture(test);
+  await f.put('backup', journal('prepared'));
+  await f.put('current', journal('candidateRootCreated'));
+  const selected = await f.select(), trace: string[] = [], completed: string[] = [];
+  const reading = f.fs.readSlot.bind(f.fs), remove = f.fs.removeSlot.bind(f.fs), sync = f.fs.syncDirectory.bind(f.fs);
+  f.external.mockImplementation(async () => { trace.push('E'); });
+  f.purged.mockImplementation(async () => { trace.push('P'); });
+  f.fs.readSlot = async (...args) => { trace.push(`S:${args[0]}`); return reading(...args); };
+  const round = ['E', 'S:current', 'S:next', 'S:backup', 'E', 'P', 'E'];
+  const tagged = (guard: RetirementMutationGuard | undefined, name: string): RetirementMutationGuard => {
+    expect(guard).toBeDefined();
+    return { assertAuthority: guard!.assertAuthority.bind(guard), async beforeMutation() {
+        const start = trace.length;
+        await guard!.beforeMutation();
+        expect(trace.slice(start)).toEqual(round);
+        completed.push(name);
+      } };
+  };
+  f.fs.removeSlot = async (slot, guard) => {
+    const result = await remove(slot, tagged(guard, `remove:${slot}`));
+    expect(completed.at(-1)).toBe(`remove:${slot}`);
+    return result;
+  };
+  f.fs.syncDirectory = async (guard) => {
+    await sync(tagged(guard, 'sync'));
+    expect(completed.at(-1)).toBe('sync');
+  };
+  await f.clear(selected);
+  expect(completed).toEqual(['remove:backup', 'remove:current', 'sync']);
+  await f.assertEmpty();
+});
+
+it.for(['initial', 'remove', 'sync'] as const)('deletion read guard transient omitted proof at native %s', async (boundary, test) => {
+  const f = await retirementFixture(test);
+  if (boundary !== 'sync')
+    await f.put('current', journal('prepared'));
+  const selected = await f.select();
+  let zone = 'initial', armed = false, violates = false;
+  const read = f.fs.readSlot.bind(f.fs), remove = f.fs.removeSlot.bind(f.fs), sync = f.fs.syncDirectory.bind(f.fs);
+  f.fs.removeSlot = async (...args) => { zone = 'remove'; return remove(...args); };
+  f.fs.syncDirectory = async (...args) => { zone = 'sync'; return sync(...args); };
+  f.external.mockImplementation(async () => { if (zone === boundary && !armed) {
+    armed = true;
+    violates = true;
+  } });
+  f.purged.mockImplementation(async () => { if (violates)
+    throw f.purgedError; });
+  f.fs.readSlot = async (...args) => { violates = false; return read(...args); };
+  await f.clear(selected);
+  await f.assertEmpty();
+  expect(armed).toBe(true);
+});
+
+const persistentRetirementCases = (['remove', 'sync'] as const).flatMap(boundary => (['external', 'purged', 'authority'] as const).map(change => ({ boundary, change })));
+
+it.for(persistentRetirementCases)('deletion read guard persistent $change in native $boundary preserves bytes', async ({ boundary, change }, test) => {
+  const f = await retirementFixture(test);
+  if (boundary === 'remove')
+    await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot();
+  let reached = false, completed = false;
+  const inject = () => { reached = true; f.state[change === 'authority' ? 'current' : change] = false; };
+  if (boundary === 'remove') {
+    const remove = f.fs.removeSlot.bind(f.fs);
+    f.fs.removeSlot = async (...args) => { inject(); const value = await remove(...args); completed = true; return value; };
+  }
+  else {
+    const sync = f.fs.syncDirectory.bind(f.fs);
+    f.fs.syncDirectory = async (...args) => { inject(); await sync(...args); completed = true; };
+  }
+  await expect(f.clear(selected)).rejects.toThrow();
+  expect(reached).toBe(true);
+  expect(completed).toBe(false);
+  expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(change === 'external' ? f.externalError
+    : change === 'purged' ? f.purgedError : f.ownerError);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it.for(['error', 'undefined'] as const)('deletion read guard prefix %s survives later owner and owned close fault', async (kind, test) => {
+  const f = await retirementFixture(test);
+  await f.put('current', journal('prepared'));
+  const selected = await f.select(), before = await f.snapshot();
+  const first = kind === 'error' ? new Error('SYNTHETIC_PREFIX_BEFORE_CLOSE') : undefined;
+  const later = new Error('SYNTHETIC_OWNED_CLOSE_AFTER_PREFIX');
+  const remove = f.fs.removeSlot.bind(f.fs);
+  let closed = 0, reached = false;
+  f.fs.removeSlot = async (...args) => {
+    const real = await openRetirementHandle(f.paths.currentPath, 'r');
+    const handle = { async close() { await real.close(); closed++; throw later; } };
+    f.external.mockImplementationOnce(async () => { reached = true; f.state.current = false; throw first; });
+    try {
+      return await remove(...args);
+    }
+    finally {
+      await handle.close();
+    }
+  };
+  f.onUncertain.mockImplementationOnce(() => { throw new Error('SYNTHETIC_NOTIFICATION_AFTER_CLOSE'); });
+  await expect(f.clear(selected)).rejects.toThrow(unavailable);
+  expect(reached).toBe(true);
+  expect(closed).toBe(1);
+  expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(first);
   expect(await f.snapshot()).toEqual(before);
 });

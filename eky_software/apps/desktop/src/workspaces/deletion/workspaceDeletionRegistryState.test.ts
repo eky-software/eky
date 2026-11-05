@@ -7,12 +7,12 @@ import { serializeWorkspaceRegistry, workspaceRegistryEntrySha256 } from '../reg
 import type { LocalWorkspaceRegistry } from '../registry/workspaceRegistryTypes.js';
 import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
-import { captureWorkspaceDeletionJournal, workspaceDeletionPhases, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+import { captureWorkspaceDeletionJournal, workspaceDeletionPhases, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { captureWorkspaceDeletionRegistryState } from './workspaceDeletionRegistryState.js';
 
 const hash = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
 
-function fixture(phase: WorkspaceDeletionJournalV1['phase'] = 'purged',
+function fixture(phase: WorkspaceDeletionJournal['phase'] = 'purged',
   active: typeof TEST_SOURCE_WORKSPACE_ID | null = TEST_SOURCE_WORKSPACE_ID, last = false) {
   const before = parseWorkspaceRegistryBytes(serializeWorkspaceRegistry({ ...createSwitchRegistry(), formatVersion: 2,
     activeWorkspaceId: active, ...(last ? { workspaces: [createSwitchRegistry().workspaces[1]!] } : {}) }));

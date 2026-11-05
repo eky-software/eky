@@ -23,6 +23,7 @@ import { createApplicationWindow, loadApplicationWindow } from './applicationWin
 import type { acquireDesktopWorkspaceReservation, DesktopCompositionDependencies, DesktopLifecycleHandle, StartDesktopCompositionOptions } from './desktopComposition.js';
 import { reportDesktopStarted } from './desktopStartupCompletion.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
+import { packagedSelectorVerificationPhase } from './packagedSmoke.js';
 
 interface DesktopSelectorCompositionOptions {
   options: StartDesktopCompositionOptions;
@@ -198,27 +199,33 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
     });
     assertCurrent();
     reportDesktopStarted({ identity: input.operationalIdentity, logger: input.operationalLogger, startedAt: input.startedAt });
-    // Publish the lifecycle before renderer loading settles, as on the business
-    // path. A load failure also drains owned work before requesting quit.
-    void loadApplicationWindow(window, 'selector').catch(async () => {
-      if (shutdownTask !== undefined) return;
-      try {
-        input.dependencies.showErrorBox('Eky ei käynnistynyt', 'Käyttöliittymää ei voitu ladata turvallisesti.');
-      } catch { /* Shutdown must still run if the native error dialog fails. */ }
-      try { await shutdown(); } catch { /* The shutdown owner records its failure. */ }
-      options.quitApplication();
-    });
+    if (options.smokeConfiguration.phase === packagedSelectorVerificationPhase) {
+      await loadApplicationWindow(window, 'selector');
+      await input.selection.assertCurrent();
+      await reservation.assertMainOwned();
+      assertCurrent();
+    } else {
+      // Normal startup returns its close owner before renderer loading settles.
+      void loadApplicationWindow(window, 'selector').catch(async () => {
+        if (shutdownTask !== undefined) return;
+        try {
+          input.dependencies.showErrorBox('Eky ei käynnistynyt', 'Käyttöliittymää ei voitu ladata turvallisesti.');
+        } catch { /* Shutdown must still run if the native error dialog fails. */ }
+        try { await shutdown(); } catch { /* The shutdown owner records its failure. */ }
+        options.quitApplication();
+      });
+    }
     return {
       applicationWindow: window, focusApplicationWindow: () => restoreWindowInputFocus(window),
       isInstallerHandoffPending: () => false, deferQuitForInstallerHandoff: () => false, shutdown,
     };
   } catch (error) {
-    let cleanupError: unknown;
-    try { await shutdown(); } catch (failure) { cleanupError = failure; }
+    const failures = [error];
+    try { await shutdown(); } catch (failure) { failures.push(failure); }
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
-      try { mainWindow.destroy(); } catch (failure) { cleanupError ??= failure; }
+      try { mainWindow.destroy(); } catch (failure) { failures.push(failure); }
     }
-    if (cleanupError !== undefined) throw new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', { cause: { error, cleanupError } });
+    if (failures.length > 1) throw new AggregateError(failures, 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', { cause: error });
     throw error;
   }
 }

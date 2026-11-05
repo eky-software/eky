@@ -25,10 +25,14 @@ import {
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
 import { runPackagedSupportBundleSmoke } from './packagedSupportBundleSmoke.js';
 
+export const packagedSelectorVerificationPhase = 'selectorVerification' as const;
+export const packagedSelectorVerificationSwitch = 'desktop-smoke-selector-verification';
+export const packagedSmokeBackendObservationPrefix = 'EKY_PACKAGED_SMOKE_BACKEND ';
+
 export interface PackagedSmokeConfiguration {
   enabled: boolean;
   scenario?: 'legacyInvoice';
-  phase: 'initial' | 'restoredProfile';
+  phase: 'initial' | 'restoredProfile' | typeof packagedSelectorVerificationPhase;
   root: string | undefined;
   userDataPath: string | undefined;
 }
@@ -69,6 +73,8 @@ const legacyPackagedSmokeStages: readonly PackagedSmokeStage[] = Object.freeze([
   'restoredSessionValidated', 'profileComparison', 'secondBackup', 'shutdown',
 ]);
 
+const selectorPackagedSmokeStages: readonly PackagedSmokeStage[] = Object.freeze(['startup', 'shutdown']);
+
 export type PackagedSmokeStage = (typeof packagedSmokeStages)[number];
 
 export type PackagedSmokeResult =
@@ -90,6 +96,48 @@ export type PackagedSmokeResult =
 export interface PackagedSmokeProgressReporter {
   currentStage(): PackagedSmokeStage;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
+}
+
+export function reportPackagedSmokeBackend(
+  configuration: PackagedSmokeConfiguration,
+  port: number,
+  write: (message: string) => void = message => { process.stdout.write(message); },
+): void {
+  if (!configuration.enabled) return;
+  if (!['initial', 'restoredProfile'].includes(configuration.phase) ||
+      !Number.isInteger(port) || port < 1 || port > 65_535) {
+    throw new Error('DESKTOP_SMOKE_BACKEND_OBSERVATION_INVALID');
+  }
+  write(packagedSmokeBackendObservationPrefix + JSON.stringify({
+    schemaVersion: 1, phase: configuration.phase, port,
+  }) + '\n');
+}
+
+export function readPackagedSmokeBackend(
+  text: string,
+  phase: PackagedSmokeConfiguration['phase'],
+): number | undefined {
+  const fail = (): never => { throw new Error('DESKTOP_SMOKE_BACKEND_OBSERVATION_INVALID'); };
+  if (typeof text !== 'string' || !['initial', 'restoredProfile', packagedSelectorVerificationPhase].includes(phase)) return fail();
+  const framed = text.split('\n'), lines: string[] = [];
+  const marker = packagedSmokeBackendObservationPrefix.trimEnd();
+  for (const [index, raw] of framed.entries()) {
+    if (!raw.trimStart().startsWith(marker)) continue;
+    if (index === framed.length - 1 || !raw.startsWith(packagedSmokeBackendObservationPrefix)) return fail();
+    lines.push(raw.endsWith('\r') ? raw.slice(0, -1) : raw);
+  }
+  if (phase === packagedSelectorVerificationPhase) {
+    if (lines.length !== 0) return fail();
+    return undefined;
+  }
+  if (lines.length !== 1) return fail();
+  let value: { schemaVersion?: unknown; phase?: unknown; port?: unknown };
+  try { value = JSON.parse(lines[0]!.slice(packagedSmokeBackendObservationPrefix.length)); }
+  catch { return fail(); }
+  if (value === null || typeof value !== 'object' || typeof value.port !== 'number' ||
+      !Number.isInteger(value.port) || value.port < 1 || value.port > 65_535 ||
+      lines[0] !== packagedSmokeBackendObservationPrefix + JSON.stringify({ schemaVersion: 1, phase, port: value.port })) return fail();
+  return value.port;
 }
 
 export function resolvePackagedSmokeTempPath(tempPath: string): string {
@@ -125,6 +173,7 @@ interface RunPackagedSmokeCheckOptions {
 }
 
 export function createPackagedSmokeConfiguration(options: {
+  hasSelectorVerificationSwitch?: boolean;
   hasLegacyInvoiceSwitch?: boolean;
   hasRestoredProfileSwitch?: boolean;
   hasSmokeSwitch: boolean;
@@ -141,13 +190,19 @@ export function createPackagedSmokeConfiguration(options: {
           token,
         );
   const enabled = token !== undefined && options.hasSmokeSwitch;
+  if (enabled && options.hasSelectorVerificationSwitch === true &&
+      (options.hasRestoredProfileSwitch === true || options.hasLegacyInvoiceSwitch === true)) {
+    throw new Error('DESKTOP_SMOKE_CONFIGURATION_INVALID');
+  }
 
   return {
     enabled,
     ...(enabled && options.hasLegacyInvoiceSwitch === true
       ? { scenario: 'legacyInvoice' as const } : {}),
     phase:
-      enabled && options.hasRestoredProfileSwitch === true
+      enabled && options.hasSelectorVerificationSwitch === true
+        ? packagedSelectorVerificationPhase
+        : enabled && options.hasRestoredProfileSwitch === true
         ? 'restoredProfile'
         : 'initial',
     root,
@@ -187,8 +242,9 @@ export function createPackagedSmokeSecretFileStore(
 export function createPackagedSmokeProgressReporter(
   configuration: PackagedSmokeConfiguration,
 ): PackagedSmokeProgressReporter {
-  const stages = configuration.scenario === 'legacyInvoice'
-    ? legacyPackagedSmokeStages : packagedSmokeStages;
+  const stages = configuration.phase === packagedSelectorVerificationPhase
+    ? selectorPackagedSmokeStages : configuration.scenario === 'legacyInvoice'
+      ? legacyPackagedSmokeStages : packagedSmokeStages;
   let currentStageIndex =
     configuration.phase === 'restoredProfile'
       ? stages.indexOf('restoreRestart')
@@ -212,6 +268,44 @@ export function createPackagedSmokeProgressReporter(
       currentStageIndex = nextStageIndex;
     },
   });
+}
+
+export function assertPackagedSelectorSmokeConfiguration(
+  configuration: Readonly<PackagedSmokeConfiguration>,
+  userDataPath: string | undefined,
+): void {
+  if (!configuration.enabled || configuration.phase !== packagedSelectorVerificationPhase ||
+      configuration.scenario !== undefined || configuration.root === undefined ||
+      userDataPath !== join(configuration.root, 'user-data') || configuration.userDataPath !== userDataPath) {
+    throw new Error('DESKTOP_SMOKE_CONFIGURATION_INVALID');
+  }
+}
+
+// Verification only: the caller has already completed normal selector startup.
+export async function runPackagedSelectorSmoke(options: {
+  configuration: Readonly<PackagedSmokeConfiguration>;
+  electronVersion: string;
+  lifecycle: { applicationWindow: Pick<BrowserWindow, 'destroy'>; shutdown(): Promise<void> };
+  reportStage(stage: PackagedSmokeStage): Promise<void>;
+  quitApplication(): void;
+}): Promise<void> {
+  const configuration = Object.freeze({ ...options.configuration });
+  assertPackagedSelectorSmokeConfiguration(configuration, configuration.userDataPath);
+  const version = options.electronVersion;
+  const report = options.reportStage.bind(options), close = options.lifecycle.shutdown.bind(options.lifecycle);
+  const destroy = options.lifecycle.applicationWindow.destroy.bind(options.lifecycle.applicationWindow);
+  const quit = options.quitApplication.bind(options);
+  let failure: { error: unknown } | undefined;
+  try { await report('shutdown'); } catch (error) { failure = { error }; }
+  try { await close(); }
+  catch (error) {
+    failure = { error: failure === undefined ? error : new AggregateError([failure.error, error],
+      'DESKTOP_SMOKE_SELECTOR_CLOSE_FAILED', { cause: failure.error }) };
+  }
+  if (failure !== undefined) throw failure.error;
+  destroy();
+  await writePackagedSmokeResult(configuration, { electronVersion: version, stage: 'shutdown', status: 'ok' });
+  quit();
 }
 
 export async function writePackagedSmokeResult(

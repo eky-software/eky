@@ -52,6 +52,36 @@ async function run(config) {
   const { join } = await import('node:path');
   const reservation = await acquireWorkspaceProcessReservation({ userDataRoot: config.root, signal: controller.signal });
   const leases = new InMemoryWorkspaceMaintenanceLease();
+  if (config.mode === 'resumeCold') {
+    const { recoverDesktopWorkspaceDeletion } = await import('../src/main/recoverDesktopWorkspaceDeletion.ts');
+    let active = true, first;
+    const work = { pending: false };
+    const assertCurrent = () => {
+      controller.signal.throwIfAborted(); reservation.invalidated.throwIfAborted();
+      assert.equal(active, true, 'DELETION_FIXTURE_OWNER_ENDED');
+    };
+    try {
+      const completion = await recoverDesktopWorkspaceDeletion({ userDataRoot: config.root,
+        buildInfo: config.buildInfo, releaseInfo: config.releaseInfo, maintenanceLease: leases, work,
+        assertStartupCurrent: assertCurrent,
+        reservation: { assertMainCurrent: assertCurrent, assertMainOwned: () => reservation.assertOwned(),
+          invalidate() { active = false; } }, observer: { record() {} } });
+      assertCurrent(); await reservation.assertOwned(); assertCurrent();
+      assert.equal(work.pending, false); assert.equal(work.uncertainty, undefined); assert.equal(leases.readState(), 'idle');
+      assert.equal(completion?.status, 'completed');
+      await send({ event: 'completed', pid: process.pid, coldSettled: true, completion });
+    } catch (error) { first = error; }
+    finally {
+      active = false;
+      // Uncertain main work retains the physical reservation until process exit.
+      if (work.uncertainty === undefined && !work.pending) {
+        try { await reservation.release(); }
+        catch (error) { first = first === undefined ? error : new AggregateError([first, error], 'DELETION_FIXTURE_CLOSE_FAILED', { cause: first }); }
+      }
+    }
+    if (first !== undefined) throw first;
+    return;
+  }
   const lease = await leases.acquire('delete');
   const leaseCurrent = leases.captureCurrentOwner(['delete'], lease);
   let active = true, receiptCount = 0, first;
@@ -74,7 +104,9 @@ async function run(config) {
       throw new Error('SYNTHETIC_W74_DELETION_ORIGINAL', { cause: new Error('SYNTHETIC_W74_DELETION_CAUSE') });
     }
     if (args[0].phase === 'purged') await holdAtCut(config.cut, 'payloadAbsent', assertCurrent);
+    await holdAtCut(config.cut, `before:${args[0].phase}`, assertCurrent);
     const result = await advance.apply(this, args);
+    await holdAtCut(config.cut, `after:${args[0].phase}`, assertCurrent);
     if (args[0].phase === 'registryPublished') await holdAtCut(config.cut, 'registryPublished', assertCurrent);
     return result;
   };
@@ -109,9 +141,11 @@ async function run(config) {
 
 process.once('message', async config => {
   try {
-    assert.deepEqual(Object.keys(config).sort(), ['cut', 'label', 'mode', 'operationId', 'root', 'testId', 'workspaceId']);
-    assert.ok(['publish', 'resume'].includes(config.mode));
-    assert.ok(['authorized', 'payloadAbsent', 'registryPublished', 'originalFailure', null].includes(config.cut));
+    const { workspaceDeletionPhases } = await import('../src/workspaces/deletion/workspaceDeletionJournalCodec.ts');
+    assert.deepEqual(Object.keys(config).sort(), ['buildInfo', 'cut', 'label', 'mode', 'operationId', 'releaseInfo', 'root', 'testId', 'workspaceId']);
+    assert.ok(['publish', 'resume', 'resumeCold'].includes(config.mode));
+    assert.ok(['authorized', 'payloadAbsent', 'registryPublished', 'originalFailure', null].includes(config.cut) ||
+      workspaceDeletionPhases.slice(1).some(phase => config.cut === `before:${phase}` || config.cut === `after:${phase}`));
     assert.equal(typeof config.testId, 'string');
     await run(config);
   } catch (error) {

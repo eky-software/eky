@@ -125,6 +125,8 @@ export class WorkspaceBackupImportJournalStore
       let failed = false;
       let firstFailure: unknown;
       const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+      let readActive = true;
+      const assertReading = () => { if (!readActive) throw new WorkspaceBackupImportJournalValidationError(); };
       try {
         const current = selection.assertAuthority.bind(selection);
         const external = selection.assertExternalSelection.bind(selection);
@@ -133,6 +135,12 @@ export class WorkspaceBackupImportJournalStore
           if (failed) throw firstFailure;
           try { assertSynchronousAuthority(current); } catch (error) { throw retain(error); }
         };
+        const assertBeforeSlotRead = async () => {
+          assertReading();
+          try {
+            assertAuthority(); await external(); assertReading(); assertAuthority();
+          } catch (error) { throw retain(error); }
+        };
         const assertExternalSelection = async () => {
           try {
             assertAuthority(); await external(); assertAuthority();
@@ -140,7 +148,7 @@ export class WorkspaceBackupImportJournalStore
           } catch (error) { throw retain(error); }
         };
         const { expectedSlots, expectedIdentities } = captureWorkspaceBackupImportDeletionSlots(bindingValue, selection);
-        await this.byteStore.clearSelected({ expectedSlots, expectedIdentities, assertAuthority, assertExternalSelection });
+        await this.byteStore.clearSelected({ expectedSlots, expectedIdentities, assertAuthority, assertExternalSelection }, { assertBeforeSlotRead });
         assertAuthority();
       } catch (error) {
         const original = retain(error);
@@ -149,7 +157,7 @@ export class WorkspaceBackupImportJournalStore
           if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
         } catch { /* A notification cannot replace the first failure. */ }
         throw this.mapStoreError(original);
-      }
+      } finally { readActive = false; }
     });
   }
 

@@ -68,7 +68,7 @@ import {
 import { assertElectronSelectorFixtureCombination, prepareElectronSelectorProfile, type ElectronSelectorProfileState } from '../../../desktop/e2e/electronSelectorProfileFixture.js';
 import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
 import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
-import { isWorkspaceDeletionProofScenario } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
+import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
 import { captureWorkspaceDeletionFailure, shouldCaptureWorkspaceDeletionFailure } from './captureWorkspaceDeletionFailure.js';
 import { captureElectronPrivateCloseFailure, reportElectronCloseFailure, reportElectronStartupException,
   type ElectronPrivateCloseFailure } from './reportElectronPrivateFailure.js';
@@ -406,7 +406,7 @@ export const test = base.extend<
         );
       }
       const launched = await launchCurrentRuntime();
-      api = await createElectronApi(backendPort, runtime.sessionSecret);
+      api = await createElectronApi(selectorBackendPort ?? backendPort, runtime.sessionSecret);
 
       async function prepareNextRuntime(): Promise<void> {
         backendPort = await reserveLoopbackPort();
@@ -430,7 +430,7 @@ export const test = base.extend<
       async function launchNextRuntime(): Promise<void> {
         await prepareNextRuntime();
         const restarted = await launchCurrentRuntime();
-        api = await createElectronApi(backendPort, runtime.sessionSecret);
+        api = await createElectronApi(selectorBackendPort ?? backendPort, runtime.sessionSecret);
         harness.api = api;
         harness.electronApp = restarted.electronApp;
         harness.page = restarted.page;
@@ -537,7 +537,7 @@ export const test = base.extend<
     } catch (error) {
       failure = { error };
     } finally {
-      if (isWorkspaceDeletionProofScenario(scenarioId) &&
+      if ((isWorkspaceDeletionProofScenario(scenarioId) || isWorkspaceDeletionExecutionProofScenario(scenarioId)) &&
           shouldCaptureWorkspaceDeletionFailure(testInfo.status, testInfo.expectedStatus,
             failure !== undefined || testInfo.errors.length > 0)) {
         await captureWorkspaceDeletionFailure({ application: electronApp,

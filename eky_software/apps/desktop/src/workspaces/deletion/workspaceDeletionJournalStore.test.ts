@@ -8,6 +8,7 @@ import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes, 
   workspaceDeletionPhases } from './workspaceDeletionJournalCodec.js';
 import { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore,
   type WorkspaceDeletionJournalSelection } from './workspaceDeletionJournalStore.js';
+import { deletionTestOriginalJournalProof, deletionTestJournalV2 } from './workspaceDeletionOriginalJournalProofTestSupport.js';
 
 async function fixture(context: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-deletion-store-'));
@@ -38,6 +39,65 @@ async function fixture(context: TestContext) {
     },
   };
 }
+
+it('preserves version-2 commitments through every real phase write and a fresh store', async context => {
+  const f = await fixture(context), initial = deletionTestJournalV2();
+  await f.store.publish(initial, await f.select());
+  for (const phase of workspaceDeletionPhases.slice(1)) {
+    const value = deletionTestJournalV2(phase);
+    await f.store.advance(value, await f.select());
+    expect((await new WorkspaceDeletionJournalStore(f.root).inspect(f.assertAuthority)).plan).toMatchObject({ mode: 'published', selected: value });
+    expect(await readFile(f.paths.currentPath)).toEqual(serializeWorkspaceDeletionJournal(value));
+  }
+});
+
+it('rejects changed version-2 commitments and version downgrade before writing', async context => {
+  const f = await fixture(context), original = deletionTestOriginalJournalProof();
+  await f.store.publish(deletionTestJournalV2(), await f.select());
+  const before = await f.snapshot();
+  const changed = { ...original, slots: { ...original.slots,
+    current: { ...original.slots.current!, sha256: hash('changed original journal') } } };
+  await expect(f.store.advance(deletionTestJournalV2('quarantined', [changed]), await f.select())).rejects.toThrow();
+  await expect(f.store.advance(journal('quarantined'), await f.select())).rejects.toThrow();
+  expect(await f.snapshot()).toEqual(before);
+});
+
+it.for(['initialNext', 'currentNext', 'backupNext', 'currentBackup'] as const)(
+  'keeps version-2 proof across the actual %s slot interruption', async (state, context) => {
+    const f = await fixture(context);
+    await mkdir(f.paths.directoryPath, { mode: 0o700 });
+    const initial = deletionTestJournalV2(), advanced = deletionTestJournalV2('quarantined');
+    if (state === 'initialNext') await writeFile(f.paths.nextPath, serializeWorkspaceDeletionJournal(initial), { flag: 'wx', mode: 0o600 });
+    else {
+      await writeFile(state === 'backupNext' ? f.paths.backupPath : f.paths.currentPath,
+        serializeWorkspaceDeletionJournal(state === 'currentBackup' ? advanced : initial), { flag: 'wx', mode: 0o600 });
+      await writeFile(state === 'currentBackup' ? f.paths.backupPath : f.paths.nextPath,
+        serializeWorkspaceDeletionJournal(state === 'currentBackup' ? initial : advanced), { flag: 'wx', mode: 0o600 });
+    }
+    if (state === 'initialNext') {
+      const before = await f.snapshot();
+      expect((await f.store.inspect(f.assertAuthority)).plan.mode).toBe('unpublished');
+      await expect(f.store.recover(await f.select())).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
+    } else {
+      await f.store.recover(await f.select());
+      expect((await new WorkspaceDeletionJournalStore(f.root).inspect(f.assertAuthority)).plan).toMatchObject({
+        mode: 'published', selected: state === 'currentBackup' ? advanced : initial,
+      });
+      expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json']);
+    }
+  },
+);
+
+it('rejects mixed version-1 and version-2 native slots without recovery or conversion', async context => {
+  const f = await fixture(context);
+  await mkdir(f.paths.directoryPath, { mode: 0o700 });
+  await writeFile(f.paths.currentPath, serializeWorkspaceDeletionJournal(journal()), { flag: 'wx', mode: 0o600 });
+  await writeFile(f.paths.nextPath, serializeWorkspaceDeletionJournal(deletionTestJournalV2('quarantined')), { flag: 'wx', mode: 0o600 });
+  const before = await f.snapshot();
+  await expect(f.store.inspect(f.assertAuthority)).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+  expect(await f.snapshot()).toEqual(before);
+});
 
 it('publishes, advances and retires actual slots with live external guards', async context => {
   const f = await fixture(context);
@@ -274,3 +334,72 @@ for (const changed of ['absence', 'registry'] as const) {
     expect(await f.snapshot()).toEqual(before);
   });
 }
+
+it.for([false, true])('terminal prefix keeps native read/full-absence/read guards (option: %s)', async (option, context) => {
+  const f = await fixture(context);
+  await mkdir(f.paths.directoryPath, { mode: 0o700 });
+  await writeFile(f.paths.currentPath, serializeWorkspaceDeletionJournal(journal('registryPublished')), { flag: 'wx', mode: 0o600 });
+  const selected = await f.select(), events: string[] = [];
+  const read = f.fs.readSlot.bind(f.fs), remove = f.fs.removeSlot.bind(f.fs), sync = f.fs.syncDirectory.bind(f.fs);
+  f.fs.readSlot = async (...args) => { events.push('read.' + args[0]); return read(...args); };
+  f.fs.removeSlot = async (...args) => { events.push('remove.start'); const value = await remove(...args); events.push('remove.end'); return value; };
+  f.fs.syncDirectory = async (...args) => { events.push('sync.start'); await sync(...args); events.push('sync.end'); };
+  const external = { ...selected, async assertExternalSelection() { events.push('full'); await selected.assertExternalSelection(); } };
+  const absent = { async assertInventoryAndOperationRootAbsent() { events.push('absent'); } };
+  if (option)
+    await f.store.clearTerminal(external, absent, { async assertBeforeSlotRead() { events.push('prefix'); } });
+  else
+    await f.store.clearTerminal(external, absent);
+  const full = ['full', 'absent', 'full'];
+  const round = [...(option ? ['prefix'] : full), 'read.current', 'read.next', 'read.backup', ...full];
+  expect(events).toEqual([...round, 'remove.start', ...round, 'remove.end', 'sync.start', ...round, 'sync.end', ...round]);
+  expect(await f.snapshot()).toEqual({});
+});
+it.for(['first', 'nativeRemove', 'nativeSync'] as const)('terminal prefix retains the full guard at %s', async (boundary, context) => {
+  const f = await fixture(context), first = new Error('SYNTHETIC_TERMINAL_FULL_PROOF_LOST');
+  await mkdir(f.paths.directoryPath, { mode: 0o700 });
+  const bytes = serializeWorkspaceDeletionJournal(journal('registryPublished'));
+  await writeFile(f.paths.currentPath, bytes, { flag: 'wx', mode: 0o600 });
+  const selected = await f.select();
+  let armed = boundary === 'first', removes = 0, syncs = 0;
+  const remove = f.fs.removeSlot.bind(f.fs), sync = f.fs.syncDirectory.bind(f.fs);
+  f.fs.removeSlot = async (...args) => { removes++; if (boundary === 'nativeRemove')
+    armed = true; return remove(...args); };
+  f.fs.syncDirectory = async (...args) => { syncs++; if (boundary === 'nativeSync')
+    armed = true; return sync(...args); };
+  const outcome = await f.store.clearTerminal({ ...selected, async assertExternalSelection() {
+      if (armed)
+        throw first;
+      await selected.assertExternalSelection();
+    } }, { async assertInventoryAndOperationRootAbsent() { } }, { async assertBeforeSlotRead() { f.assertAuthority(); } })
+    .then(() => ({ ok: true }), (error: unknown) => ({ error }));
+  expect('error' in outcome).toBe(true);
+  if (boundary === 'nativeRemove')
+    expect((outcome as {
+      error: unknown;
+    }).error).toMatchObject({ name: 'CrashSafeFileSlotError', failure: 'unavailable' });
+  else
+    expect((outcome as {
+      error: unknown;
+    }).error).toBe(first);
+  expect(removes).toBe(boundary === 'first' ? 0 : 1);
+  expect(syncs).toBe(boundary === 'nativeSync' ? 1 : 0);
+  if (boundary === 'nativeSync')
+    await expect(readFile(f.paths.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+  else
+    expect(await readFile(f.paths.currentPath)).toEqual(bytes);
+});
+it('terminal prefix cannot authorize changed selected slot bytes', async (context) => {
+  const f = await fixture(context);
+  await mkdir(f.paths.directoryPath, { mode: 0o700 });
+  await writeFile(f.paths.currentPath, serializeWorkspaceDeletionJournal(journal('registryPublished')), { flag: 'wx', mode: 0o600 });
+  const selected = await f.select(), unexpected = Buffer.from('unexpected independent bytes');
+  await writeFile(f.paths.nextPath, unexpected, { flag: 'wx', mode: 0o600 });
+  const before = await f.snapshot();
+  let removes = 0;
+  const remove = f.fs.removeSlot.bind(f.fs);
+  f.fs.removeSlot = async (...args) => { removes++; return remove(...args); };
+  await expect(f.store.clearTerminal(selected, { async assertInventoryAndOperationRootAbsent() { } }, { async assertBeforeSlotRead() { f.assertAuthority(); } })).rejects.toThrow();
+  expect(removes).toBe(0);
+  expect(await f.snapshot()).toEqual(before);
+});

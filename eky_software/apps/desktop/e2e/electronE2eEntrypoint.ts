@@ -33,7 +33,8 @@ import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSele
 import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
 import { createWorkspaceDeletionProof } from './workspaceDeletionProof.js';
-import { isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
+import { createWorkspaceDeletionExecutionProof } from './workspaceDeletionExecutionProof.js';
+import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -87,6 +88,11 @@ const deletionProof = isWorkspaceDeletionProofScenario(config.scenarioId)
   : undefined;
 const selectorBackend = usesSelectorTestBackend(config.scenarioId)
   ? observeSelectorTestBackend(startDesktopBackend) : undefined;
+const deletionExecutionProof = isWorkspaceDeletionExecutionProofScenario(config.scenarioId)
+  ? createWorkspaceDeletionExecutionProof({ scenarioId: config.scenarioId, userDataRoot: config.paths.userDataPath,
+    sessionSecret: config.backend.sessionSecret, assertMainCurrent: assertProofSingleInstanceOwnership,
+    backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning() })
+  : undefined;
 app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');
 });
@@ -168,6 +174,7 @@ if (hasSingleInstanceLock) {
     async onFailure(errorCode) {
       await startupException?.waitForDelivery();
       deletionProof?.closeChannel();
+      deletionExecutionProof?.close();
       startupObservation.record('startupFailed');
       nativeAdapters.recordStartupFailure(errorCode, backendController.getStartupFailure());
       nativeAdapters.showErrorBox(
@@ -190,8 +197,8 @@ if (hasSingleInstanceLock) {
           schemaVersion: 1,
         },
         dependencies: {
-          ...(deletionProof === undefined ? {} : {
-            createWorkspaceManagementCapability: deletionProof.createCapability,
+          ...(deletionProof === undefined && deletionExecutionProof === undefined ? {} : {
+            createWorkspaceManagementCapability: deletionExecutionProof?.createCapability ?? deletionProof!.createCapability,
           }),
           createRuntimeSession: () => {
             runtimeSessionCount += 1;
@@ -260,8 +267,10 @@ if (hasSingleInstanceLock) {
         },
         userDataPath: config.paths.userDataPath,
         ...(deletionProof === undefined ? {} : { workspaceDeletionPublisher: deletionProof.publish }),
+        ...(deletionExecutionProof === undefined ? {} : { workspaceDeletionCommand: deletionExecutionProof.command }),
       });
       deletionProof?.register();
+      deletionExecutionProof?.ready();
       startupObservation.record('compositionCompleted');
     },
     async waitUntilReady() {
@@ -287,12 +296,18 @@ const handleBeforeQuit = createDesktopBeforeQuitHandler({
 });
 app.on('before-quit', (event) => {
   deletionProof?.closeChannel();
+  deletionExecutionProof?.close();
   void handleBeforeQuit(event);
 });
 app.on('window-all-closed', () => app.quit());
 
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
+    workspaceDeletionExecutionProof: deletionExecutionProof === undefined ? undefined : Object.freeze({
+      execute: deletionExecutionProof.execute,
+      snapshot: deletionExecutionProof.snapshot,
+      readFailures: deletionExecutionProof.readFailures,
+    }),
     workspaceDeletionProof: deletionProof === undefined ? undefined : Object.freeze({
       arm: deletionProof.arm,
       release: deletionProof.release,

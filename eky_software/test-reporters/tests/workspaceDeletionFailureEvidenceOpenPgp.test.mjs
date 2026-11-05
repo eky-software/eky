@@ -75,7 +75,8 @@ test('workspace main projections retain original causes and coverage through Ope
         originals.set(`temporary/${directory}/${file}`, await readFile(join(temp, directory, file)));
       }
     }
-    assert.equal(originals.size, 14);
+    // The new case adds the original, its sink receipt and the reporter assertion.
+    assert.equal(originals.size, 27);
     // Synthetic collector identity, not hosted admission or an artifact upload.
     const collected = await collectJobFailureEvidence({ ...binding,
       RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
@@ -105,6 +106,16 @@ test('workspace main projections retain original causes and coverage through Ope
     const shutdown = records.find(record => record.phase === 'workspaceDeletionShutdown');
     assert.equal(shutdown.exception.incomplete, true);
     assert.equal(shutdown.exception.chain.every(part => part.truncated), true);
+    const execution = records.find(record => record.phase === 'workspaceDeletionExecution');
+    assert.equal(execution.exception.chain[0].message === 'SYNTHETIC_W74_EXECUTION_ORIGINAL', true);
+    assert.equal(execution.exception.chain[1].message === 'SYNTHETIC_W74_EXECUTION_CAUSE', true);
+    assert.equal(execution.exception.chain[0].stack.includes('inspection.test.mjs'), true);
+    const related = records.filter(record => record.phase === 'workspaceDeletionExecutionRelated');
+    assert.equal(related.length, 2);
+    for (const suffix of ['READ', 'CLOSE']) {
+      assert.equal(related.some(record => record.exception.chain[0].message === `SYNTHETIC_W74_EXECUTION_${suffix}`), true);
+      assert.equal(related.some(record => record.exception.chain[0].stack.includes('inspection.test.mjs')), true);
+    }
     const adoption = records.find(record => record.phase === 'workspaceAdoptionAcceptance');
     assert.equal(adoption.exception.chain[0].message === 'SYNTHETIC_W74_ADOPTION_ORIGINAL', true);
     assert.equal(adoption.exception.chain[1].message === 'SYNTHETIC_W74_ADOPTION_CAUSE', true);
@@ -122,12 +133,33 @@ test('workspace main projections retain original causes and coverage through Ope
     assert.equal(deletion.exception.chain[1].message === 'SYNTHETIC_W74_DELETION_CAUSE', true);
     assert.equal(deletion.exception.chain[0].stack.includes('workspaceDeletionProcess.fixture.mjs'), true);
     assert.equal(deletion.test.id.endsWith(':publish'), true);
+    const publication = records.find(record => record.phase === 'workspaceDeletionRoles_publicationComparison2');
+    assert.equal(publication.exception.chain[0].message === 'SYNTHETIC_W74_PUBLICATION_ORIGINAL', true);
+    assert.equal(publication.exception.chain[1].message === 'SYNTHETIC_W74_PUBLICATION_CAUSE', true);
+    assert.equal(publication.exception.chain[0].stack.includes('inspection.test.mjs'), true);
+    assert.equal(publication.test.id.endsWith(':w74-c-synthetic-root'), true);
+    const cold = records.find(record => record.phase === 'workspaceDeletionColdResume');
+    assert.equal(cold.exception.chain[0].message === 'WORKSPACE_DELETE_FAILED', true);
+    assert.equal(cold.exception.chain.some(part => part.message === 'SYNTHETIC_W74_COLD_ORIGINAL'), true);
+    assert.equal(cold.exception.chain.some(part => part.message === 'SYNTHETIC_W74_COLD_CAUSE'), true);
+    assert.equal(cold.exception.chain.some(part => part.stack?.includes('inspection.test.mjs')), true);
+    const payloadJournal = records.find(record => record.phase === 'workspaceDeletionPayloadJournal');
+    assert.equal(records.filter(record => record.phase === 'workspaceDeletionPayloadJournal').length, 1);
+    assert.equal(payloadJournal.exception.chain[0].message, 'SYNTHETIC_W74_PAYLOAD_JOURNAL_ORIGINAL');
+    assert.equal(payloadJournal.exception.chain[1].message, 'SYNTHETIC_W74_PAYLOAD_JOURNAL_CAUSE');
+    assert.equal(payloadJournal.exception.chain[0].stack.includes('inspection.test.mjs'), true);
     const assertion = records.find(record => record.phase === 'testFailure');
     assert.equal(assertion.exception.chain[0].message.includes('W74_INSPECTION_EXPECTED_SUCCESS'), true);
     assert.equal(JSON.stringify(assertion.exception).includes('SYNTHETIC_W74_INSPECTION_ORIGINAL'), false);
+    for (const marker of ['W74_INSPECTION_EXPECTED_SUCCESS', 'W74_DELETION_EXPECTED_SUCCESS',
+      'W74_PUBLICATION_EXPECTED_SUCCESS', 'W74_COLD_EXPECTED_SUCCESS', 'W74_PAYLOAD_JOURNAL_EXPECTED_SUCCESS']) {
+      const expected = records.filter(record => record.phase === 'testFailure' &&
+        record.exception.chain[0].name === 'AssertionError' && record.exception.chain[0].message?.startsWith(`${marker}: `));
+      assert.equal(expected.length, 1, 'EXPECTED_SYNTHETIC_ASSERTION_NOT_RETAINED');
+    }
     for (const record of records) {
       assert.equal(record.test.attempt, 0);
-      if (!['testFailure', 'workspaceDeletionProcess'].includes(record.phase)) {
+      if (!['testFailure', 'workspaceDeletionProcess', 'workspaceDeletionRoles_publicationComparison2'].includes(record.phase)) {
         assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);
       }
     }
@@ -146,12 +178,286 @@ async function runInspectionFailureWorker(parent, temp, binding) {
   } }, test: { include: ['inspection.test.mjs'],
     maxWorkers: 1, fileParallelism: false, retry: 0, testTimeout: 5000,
     hookTimeout: 2000, includeTaskLocation: true } };`, { flag: 'wx', mode: 0o600 });
-  await writeFile(file, `import { resolve } from 'node:path';
+  await writeFile(file, `import { resolve, join } from 'node:path';
+import { promises as fs } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { test, expect, vi } from 'vitest';
 import { runProfileSnapshotInspection } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/profileBackup/runProfileSnapshotInspection.ts'))};
 import { createRunnerFailureSink } from ${JSON.stringify(moduleUrl('../runnerFailureEvidence.mjs'))};
 import { deletionProcessFixture } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionProcessTestSupport.ts'))};
+import { observeDeletionCommandFailures } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionCommandEvidenceTestSupport.ts'))};
+import { createWorkspaceDeletionCommand } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionCommand.ts'))};
+import * as publication from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionPublication.ts'))};
+import { WorkspaceDeletionInventoryStore, createWorkspaceDeletionInventoryPaths } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionInventoryStore.ts'))};
+import { assertWorkspaceDeletionInventoryRetired, retireWorkspaceDeletionInventory } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionInventoryRetirement.ts'))};
+import { deletionInventoryRetirementFixture } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionInventoryStoreTestSupport.ts'))};
+import * as terminalFiles from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionInventoryFile.ts'))};
+import { deletionTestJournal, deletionTestRecords } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionDataTestSupport.ts'))};
+import { WorkspaceManagementService } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/management/workspaceManagementService.ts'))};
+import { InMemoryWorkspaceMaintenanceLease } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/maintenance/workspaceMaintenanceLease.ts'))};
+import { projectWorkspaceDeletionExecutionFailure } from ${JSON.stringify(moduleUrl('../../apps/desktop/e2e/workspaceDeletionExecutionProof.ts'))};
+import { captureWorkspaceDeletionFailure } from ${JSON.stringify(moduleUrl('../../apps/e2e/src/fixtures/captureWorkspaceDeletionFailure.ts'))};
+import { workspaceInspectionRemnantReads } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceInspectionRemnantAbsence.ts'))};
+import { captureWorkspaceDeletionOriginalPayloadAbsence } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionOriginalPayloadAbsence.ts'))};
+import * as originalPayload from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionOriginalPayloadAbsence.ts'))};
+import { createWorkspaceDeletionFinalizer } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionFinalization.ts'))};
+import { createWorkspaceDeletionFinalizationTestFixture, captureWorkspaceDeletionMetadataPostClearTestFailure, captureWorkspaceDeletionPurgedInventoryTestFailure, captureWorkspaceDeletionTerminalPrefixTestFailure, captureWorkspaceDeletionPublicationPrefixTestFailure, captureWorkspaceDeletionRetirementReadTestFailure } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionFinalizationTestSupport.ts'))};
+import { captureWorkspaceDeletionPayloadJournalTestFailure } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionJournalReadTestSupport.ts'))};
+import { remnantBindingFixture } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceRemnantBindingTestSupport.ts'))};
+import { prepareWorkspaceDeletion, WorkspaceDeletionPreparationFailure } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/management/workspaceDeletionPreparation.ts'))};
+import { WorkspaceRegistryStore } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/registry/workspaceRegistryStore.ts'))};
+import { createWorkspaceDeletionRegistryPublisher } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionRegistryPublication.ts'))};
+import * as registryPhases from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionPhaseSelection.ts'))};
+import { WORKSPACE_REGISTRY_FILE_NAME } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/registry/workspaceRegistryPaths.ts'))};
+import { deriveWorkspaceRoot } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/registry/deriveWorkspaceRoot.ts'))};
+import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/switch/workspaceSwitchTestSupport.ts'))};
+const absenceIo = vi.hoisted(() => ({ result: undefined, calls: 0 }));
+const terminalIo = vi.hoisted(() => ({ enabled: false, ownerCurrent: true, parentPath: '',
+  directoryPath: '', parentIdentity: '', error: undefined, calls: 0 }));
+vi.mock(${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionInventoryFile.ts'))}, async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, workspaceDeletionInventoryDirectoryReads: {
+    ...actual.workspaceDeletionInventoryDirectoryReads,
+    identity(path, assertCurrent) {
+      if (!terminalIo.enabled) return actual.workspaceDeletionInventoryDirectoryReads.identity(path, assertCurrent);
+      assertCurrent(); terminalIo.calls++;
+      if (path === terminalIo.parentPath) return Promise.resolve(terminalIo.parentIdentity);
+      if (path === terminalIo.directoryPath) {
+        const rejected = Promise.reject(terminalIo.error);
+        terminalIo.ownerCurrent = false;
+        return rejected;
+      }
+      throw new Error('UNEXPECTED_TERMINAL_EVIDENCE_READ');
+    },
+  } };
+});
+vi.mock('node:fs/promises', async importOriginal => {
+  const actual = await importOriginal();
+  return { ...actual, lstat(path, ...args) {
+    if (path === 'synthetic-absence-evidence') {
+      absenceIo.calls++;
+      if (absenceIo.result === undefined) throw new Error('UNEXPECTED_ABSENCE_EVIDENCE_READ');
+      return absenceIo.result;
+    }
+    return actual.lstat(path, ...args);
+  } };
+});
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn(() => { throw new Error('UNEXPECTED_INSPECTION_FORK'); }) } }));
+test('rejected absence read keeps its original chain through actual projection and delivery', async context => {
+  const original = Object.assign(new Error('SYNTHETIC_W74_EXECUTION_ORIGINAL',
+    { cause: new AggregateError([new Error('SYNTHETIC_W74_EXECUTION_READ'),
+      new Error('SYNTHETIC_W74_EXECUTION_CLOSE')], 'SYNTHETIC_W74_EXECUTION_CAUSE') }), { code: 'EIO' });
+  let rejectRead, ownerCurrent = true;
+  absenceIo.result = new Promise((_resolve, reject) => { rejectRead = reject; });
+  void absenceIo.result.catch(() => undefined);
+  let failure, outcome;
+  try {
+    outcome = workspaceInspectionRemnantReads.assertAbsent('synthetic-absence-evidence', () => {
+      context.signal.throwIfAborted();
+      if (!ownerCurrent) throw new Error('SYNTHETIC_W74_EXECUTION_OWNER_LOST');
+    }).then(() => undefined, error => error);
+    // Reject first, then revoke before the actual reader's catch resumes.
+    rejectRead(original); ownerCurrent = false;
+    failure = await outcome;
+  } finally {
+    ownerCurrent = false; rejectRead(original);
+    await outcome;
+    absenceIo.result = undefined;
+  }
+  expect(absenceIo.calls).toBe(1);
+  expect(failure === original).toBe(true);
+  // Exercise the actual terminal catch too; its identity-read response is controlled, not native IO.
+  const terminalRoot = resolve('unused-terminal-evidence-root');
+  const terminalJournal = { ...deletionTestJournal(), phase: 'registryPublished' };
+  const terminalPaths = createWorkspaceDeletionInventoryPaths(terminalRoot, terminalJournal.target.operationId);
+  Object.assign(terminalIo, { enabled: true, ownerCurrent: true, parentPath: terminalPaths.parentPath,
+    directoryPath: terminalPaths.directoryPath, parentIdentity: terminalJournal.operationParentIdentity, error: original, calls: 0 });
+  try {
+    failure = await assertWorkspaceDeletionInventoryRetired(terminalRoot, terminalJournal, {
+      assertAuthority() {
+        context.signal.throwIfAborted();
+        if (!terminalIo.ownerCurrent) throw new Error('SYNTHETIC_W74_TERMINAL_OWNER_LOST');
+      },
+      async assertExternalSelection() {},
+    }).then(() => undefined, error => error);
+  } finally { terminalIo.enabled = false; }
+  expect(terminalIo.calls).toBe(2);
+  expect(failure === original).toBe(true);
+  // Enter the actual native removal adapter, whose mapping must not erase the
+  // retirement owner's original guard error. Identity response is controlled.
+  const native = await deletionInventoryRetirementFixture(context);
+  const beforeNative = await native.snapshot();
+  const removeNative = native.fileSystem.removeSlot.bind(native.fileSystem);
+  let inNativeRemoval = false, nativeGuardReached = false;
+  native.fileSystem.removeSlot = async (...args) => {
+    inNativeRemoval = true;
+    try { return await removeNative(...args); } finally { inNativeRemoval = false; }
+  };
+  const identitySpy = vi.spyOn(terminalFiles.workspaceDeletionInventoryDirectoryReads, 'identity').mockImplementation(async (path, current) => {
+    if (inNativeRemoval && path === native.paths.directoryPath) { nativeGuardReached = true; throw original; }
+    return terminalFiles.readDeletionInventoryDirectoryIdentity(path, current);
+  });
+  try {
+    failure = await retireWorkspaceDeletionInventory(native.root, native.expected, native.authority,
+      { inventory: native.fileSystem }).then(() => undefined, error => error);
+  } finally { identitySpy.mockRestore(); }
+  expect(nativeGuardReached).toBe(true); expect(failure === original).toBe(true);
+  expect(await native.snapshot()).toEqual(beforeNative);
+  // The finite original-root reader must deliver the same first cause after
+  // its read-only owner port rejects and the outer authority is revoked.
+  const originalRoot = await remnantBindingFixture(context, 'workspaceImport');
+  let originalReadEnabled = false, originalOwnerCurrent = true, originalReadReached = false;
+  const assertOriginalCurrent = () => {
+    context.signal.throwIfAborted();
+    if (!originalOwnerCurrent) throw new Error('SYNTHETIC_W74_ORIGINAL_READ_OWNER_LOST');
+    originalRoot.authority.assertAuthority();
+  };
+  const originalAbsence = await captureWorkspaceDeletionOriginalPayloadAbsence(originalRoot.root, originalRoot.binding, {
+    assertAuthority: assertOriginalCurrent,
+    async assertExternalSelection() { assertOriginalCurrent(); },
+    async assertWritersAbsent() { assertOriginalCurrent(); },
+    async assertReadSelection() {
+      if (originalReadEnabled) { originalReadReached = true; originalOwnerCurrent = false; throw original; }
+      assertOriginalCurrent();
+    },
+  });
+  originalReadEnabled = true;
+  failure = await originalAbsence.assertAbsent().then(() => undefined, error => error);
+  expect(originalReadReached).toBe(true); expect(failure === original).toBe(true);
+  // Exercise the actual finalizer's new original-read callback before the same
+  // projection. A different cleanup failure must not replace its first cause.
+  const finalized = await createWorkspaceDeletionFinalizationTestFixture(context, true, true);
+  const captureOriginal = originalPayload.captureWorkspaceDeletionOriginalPayloadAbsence;
+  let finalizerReadArmed = false, finalizerFirstCaught = false;
+  const finalizerSpy = vi.spyOn(originalPayload, 'captureWorkspaceDeletionOriginalPayloadAbsence').mockImplementation(async (...args) => {
+    const authority = args[2], read = authority.assertReadSelection;
+    expect(typeof read).toBe('function');
+    try {
+      return await captureOriginal(args[0], args[1], { ...authority,
+        async assertReadSelection() { finalizerReadArmed = true; await read(); },
+      });
+    } catch (error) {
+      finalizerFirstCaught = error === original; finalized.revoke();
+      throw new Error('SYNTHETIC_W74_FINALIZER_CLEANUP');
+    }
+  });
+  const finalize = createWorkspaceDeletionFinalizer({ userDataRoot: finalized.root, registry: finalized.registry,
+    async assertWritersAbsent() {
+      finalized.authority.assertCurrent(); if (finalizerReadArmed) throw original;
+    } });
+  try {
+    failure = await finalized.track(finalize(finalized.header.operationId, finalized.authority))
+      .then(() => undefined, error => error);
+  } finally { finalizerSpy.mockRestore(); }
+  expect(finalizerReadArmed).toBe(true); expect(finalizerFirstCaught).toBe(true);
+  expect(failure === original).toBe(true); await finalized.preserved();
+  // Feed the actual preparation read failure through the same projection and
+  // encrypted records. Its independent stop failure must not become the cause.
+  const preparationRoot = await fs.mkdtemp(join(tmpdir(), 'eky-preparation-evidence-'));
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') await fs.rm(preparationRoot, { recursive: true, force: true });
+  });
+  const registryPath = join(preparationRoot, WORKSPACE_REGISTRY_FILE_NAME);
+  const registry = new WorkspaceRegistryStore({ installationRoot: preparationRoot, filePath: registryPath });
+  const initial = { ...createSwitchRegistry(), formatVersion: 2, activeWorkspaceId: null };
+  await registry.write(initial);
+  const targetEntry = initial.workspaces.find(entry => entry.workspaceId === TEST_TARGET_WORKSPACE_ID);
+  const workspaceRoot = deriveWorkspaceRoot(preparationRoot, TEST_TARGET_WORKSPACE_ID, 1).workspaceRoot;
+  await fs.mkdir(workspaceRoot, { recursive: true });
+  const sentinel = join(workspaceRoot, 'retained'); await fs.writeFile(sentinel, 'synthetic company');
+  const registryBytes = await fs.readFile(registryPath);
+  const stopFailure = new Error('SYNTHETIC_W74_PREPARATION_STOP_FAILURE');
+  let readArmed = false, stopped = false, preparationReadReached = false;
+  const preparationFailure = await prepareWorkspaceDeletion({
+    operationId: '11111111-1111-4111-8111-111111111111',
+    runtimeGeneration: '22222222-2222-4222-8222-222222222222',
+    installationRoot: preparationRoot, registry,
+    request: { formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+      typedLabel: targetEntry.workspaceLabel, backupChoice: 'explicitDataLoss' },
+    lifetime: { assertCurrent() { context.signal.throwIfAborted(); }, closeAdmissionForOwnStop() {} },
+    assertLease() { context.signal.throwIfAborted(); }, assertMainReservationCurrent() {},
+    async assertMainReservation() { if (readArmed) { preparationReadReached = true; throw original; } },
+    closeServiceAdmission() {}, async confirmDataLoss() { return true; },
+    async confirmDeletion() { return true; }, async confirmReturn() { throw new Error('UNEXPECTED_RETURN'); }, setReturnGuard() {},
+    runtime: { kind: 'selector', lifecycle: {
+      async quiesceWrites() {}, async stopAndProveHandlesClosed() { if (readArmed) throw stopFailure; stopped = true; },
+      assertStoppedCurrent() { expect(stopped).toBe(true); }, async assertNoActiveWorkspaceRuntime() { expect(stopped).toBe(true); },
+      async ensurePreviousWorkspaceRunning() { throw new Error('UNEXPECTED_RESTART'); },
+    } },
+    async publish(_guard, _selection, _target, _context, _full, read) {
+      expect(typeof read).toBe('function'); readArmed = true; await read();
+      throw new Error('UNEXPECTED_PREPARATION_SUCCESS');
+    },
+  }).then(() => undefined, error => error);
+  expect(preparationReadReached).toBe(true);
+  expect(preparationFailure).toBeInstanceOf(WorkspaceDeletionPreparationFailure);
+  expect(preparationFailure.firstFailure === original).toBe(true);
+  expect(preparationFailure.cleanupFailure === stopFailure).toBe(true);
+  expect(await fs.readFile(registryPath)).toEqual(registryBytes);
+  expect(await fs.readFile(sentinel, 'utf8')).toBe('synthetic company');
+  failure = preparationFailure.firstFailure;
+  // Exercise the registry publisher's real inventory read and joined file close.
+  // Phase selection is controlled here; its native checks have separate regressions.
+  const registryRead = await deletionInventoryRetirementFixture(context, 'purged');
+  const registryReadBefore = await registryRead.snapshot();
+  const journalSlots = (await registryRead.journal.inspect(registryRead.authority.assertAuthority)).slots;
+  const phaseSpy = vi.spyOn(registryPhases, 'captureWorkspaceDeletionPhaseSelection').mockResolvedValue({
+    journal: registryRead.expected, journalSlots,
+    registrySlots: { current: undefined, next: undefined, backup: undefined },
+    registryState: 'before', registryNeedsRecovery: false, afterRegistry: initial,
+    assertCurrent: registryRead.authority.assertAuthority,
+    async assertSelected() {}, async assertExternalSelection() {},
+    async assertJournalSelected() {}, async assertJournalReadOwned() {}, revoke() {},
+  });
+  const openRegistryInventory = terminalFiles.openWorkspaceDeletionInventoryFile;
+  const registryClose = new Error('SYNTHETIC_W74_REGISTRY_CLOSE');
+  let registryClosed = 0;
+  const readSpy = vi.spyOn(terminalFiles, 'openWorkspaceDeletionInventoryFile').mockImplementation(async (...args) => {
+    expect(args[0]).toBe(registryRead.paths.currentPath); expect(args[1]).toBe('r');
+    const file = await openRegistryInventory(...args);
+    return { ...file, async read() { throw original; }, async close() {
+      await file.close(); registryClosed++; throw registryClose;
+    } };
+  });
+  const neverRegistry = async () => { throw new Error('UNEXPECTED_REGISTRY_PUBLICATION'); };
+  const publishRegistry = createWorkspaceDeletionRegistryPublisher({ userDataRoot: registryRead.root,
+    registry: { inspectSlots: neverRegistry, writeSelected: neverRegistry, recoverSelected: neverRegistry },
+    async assertWritersAbsent() { registryRead.authority.assertAuthority(); } });
+  let registryFailure;
+  try {
+    registryFailure = await publishRegistry(registryRead.expected.target.operationId, {
+      assertCurrent: registryRead.authority.assertAuthority,
+      async assertOwned() { registryRead.authority.assertAuthority(); },
+    }).then(() => undefined, error => error);
+  } finally { readSpy.mockRestore(); phaseSpy.mockRestore(); }
+  expect(registryClosed).toBe(1);
+  expect(registryFailure).toBeInstanceOf(AggregateError);
+  expect(registryFailure.errors[0] === original).toBe(true);
+  expect(registryFailure.errors[1] === registryClose).toBe(true);
+  expect(await registryRead.snapshot()).toEqual(registryReadBefore);
+  // The actual post-read/outer-close chain reuses the existing sibling projection.
+  // Its close object is the same one checked in the unchanged decrypted records.
+  const postClose = original.cause.errors[1];
+  const metadataFailure = await captureWorkspaceDeletionMetadataPostClearTestFailure(context, original, postClose);
+  expect(metadataFailure.errors[0] === original).toBe(true);
+  expect(metadataFailure.errors[1] === postClose).toBe(true);
+  const purgedFailure = await captureWorkspaceDeletionPurgedInventoryTestFailure(context, original, postClose);
+  expect(purgedFailure.errors[0] === original).toBe(true);
+  expect(purgedFailure.errors[1] === postClose).toBe(true);
+  failure = await captureWorkspaceDeletionTerminalPrefixTestFailure(context, original);
+  expect(failure === original).toBe(true);
+  const retirementFailure = await captureWorkspaceDeletionRetirementReadTestFailure(context, original, postClose);
+  expect(retirementFailure.errors[0] === original).toBe(true);
+  expect(retirementFailure.errors[1] === postClose).toBe(true);
+  failure = retirementFailure.errors[0];
+  const projection = projectWorkspaceDeletionExecutionFailure(failure, 'synthetic-secret');
+  const testInfo = { title: 'Synthetic execution aggregate', testId: 'w74-execution',
+    file: 'electron/workspaceDeletionExecution.spec.ts', line: 1, column: 1,
+    retry: 0, repeatEachIndex: 0, annotations: [] };
+  await captureWorkspaceDeletionFailure({ application: { evaluate: async () => projection },
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111', testInfo });
+  expect(testInfo.annotations[0]?.description === 'recorded').toBe(true);
+});
 test('inspection original exception before safe conversion', async context => {
   const original = new Error('SYNTHETIC_W74_INSPECTION_ORIGINAL', { cause: new Error('SYNTHETIC_W74_INSPECTION_CAUSE') });
   let first;
@@ -182,7 +488,79 @@ test('deletion command original exception before safe child result', { timeout: 
   const fixture = await deletionProcessFixture(context);
   const child = fixture.start('publish', 'originalFailure');
   await expect(child.message('completed')).rejects.toThrow('DELETION_PROCESS_PHASE_NOT_REACHED');
+  expect(await child.finish()).toEqual({ stdout: '', stderr: '', closed: true });
   expect(false, 'W74_DELETION_EXPECTED_SUCCESS').toBe(true);
+});
+test('publication comparison original exception through the command observer', async context => {
+  const original = new Error('SYNTHETIC_W74_PUBLICATION_ORIGINAL', { cause: new Error('SYNTHETIC_W74_PUBLICATION_CAUSE') });
+  const prefixFailure = await captureWorkspaceDeletionPublicationPrefixTestFailure(context, original);
+  expect(prefixFailure === original).toBe(true);
+  const journal = deletionTestJournal(), root = resolve('unused-deletion-root');
+  const selected = { target: journal.target, inventory: journal.inventory,
+    inventoryFileIdentity: journal.inventoryFileIdentity, operationRootIdentity: journal.operationRootIdentity,
+    operationParentIdentity: journal.operationParentIdentity };
+  let comparisons = 0;
+  vi.spyOn(WorkspaceDeletionInventoryStore.prototype, 'assertRecords').mockImplementation(async () => {
+    if (++comparisons === 2) throw original;
+  });
+  vi.spyOn(publication, 'createWorkspaceDeletionPublisher').mockReturnValue(async () => {
+    const store = new WorkspaceDeletionInventoryStore(root, journal.target.operationId);
+    const authority = { assertAuthority() {}, async assertExternalSelection() {} };
+    await store.assertRecords(selected, deletionTestRecords(), authority);
+    await store.assertRecords(selected, deletionTestRecords(), authority);
+    throw new Error('UNEXPECTED_PUBLICATION_SUCCESS');
+  });
+  const observed = observeDeletionCommandFailures(context);
+  observed.preparedRoot('w74-c-synthetic-root');
+  const never = async () => { throw new Error('UNEXPECTED_PUBLICATION_PORT'); };
+  const command = createWorkspaceDeletionCommand({ userDataRoot: root,
+    registry: { inspectSlots: never, writeSelected: never, recoverSelected: never }, assertWritersAbsent: never });
+  const target = { workspaceId: journal.target.workspaceId, workspaceLabel: 'Synthetic company',
+    profileId: journal.target.lineageIdentity.profileId, lifecycleState: 'ready',
+    previousActiveWorkspaceId: journal.previousActiveWorkspaceId, registrySha256: journal.registryBeforeSha256,
+    registryEntrySha256: journal.target.registryEntrySha256, rootIdentity: journal.inventoryFileIdentity };
+  const result = await command.publish(() => {}, async () => {}, target,
+    { operationId: journal.target.operationId, target, backupDisposition: 'explicitDataLoss' }, async () => {})
+    .catch(error => { observed.record(error); return error; });
+  expect(result === original).toBe(true);
+  expect(observed.phase()).toBe('publicationComparison2');
+  expect(false, 'W74_PUBLICATION_EXPECTED_SUCCESS').toBe(true);
+});
+test('payload journal original exception before native mapping', { timeout: 30000 }, async context => {
+  const original = new Error('SYNTHETIC_W74_PAYLOAD_JOURNAL_ORIGINAL', { cause: new Error('SYNTHETIC_W74_PAYLOAD_JOURNAL_CAUSE') });
+  const result = await captureWorkspaceDeletionPayloadJournalTestFailure(context, original);
+  const sink = createRunnerFailureSink();
+  context.onTestFailed(async () => {
+    sink.record({ runner: 'vitest', phase: 'workspaceDeletionPayloadJournal', error: result,
+      testName: context.task.fullTestName, testId: context.task.id + ':11111111-1111-4111-8111-111111111111',
+      file: context.task.file.filepath, line: context.task.location?.line, column: context.task.location?.column,
+      attempt: 0, retryCount: 0, repeatCount: 0 });
+    await sink.flush();
+  });
+  expect(result === original).toBe(true);
+  expect(false, 'W74_PAYLOAD_JOURNAL_EXPECTED_SUCCESS').toBe(true);
+});
+test('cold service original exception after safe management mapping', async context => {
+  const original = new Error('SYNTHETIC_W74_COLD_ORIGINAL', { cause: new Error('SYNTHETIC_W74_COLD_CAUSE') });
+  const cleanup = new Error('SYNTHETIC_W74_COLD_CLEANUP');
+  const journal = deletionTestJournal(), lease = new InMemoryWorkspaceMaintenanceLease(), sink = createRunnerFailureSink();
+  const receipt = () => ({ journal, async assertSelected() {}, revoke() {} });
+  const result = await WorkspaceManagementService.recoverDeletionBeforeRuntime({
+    selection: receipt(), maintenanceLease: lease, async captureSelection() { return receipt(); },
+    async captureAuthority() { return { assertCurrent() {}, async assertOwned() {},
+      recordRemoved() { throw new Error('SYNTHETIC_UNEXPECTED_REMOVAL'); }, async close() { throw cleanup; } }; },
+    async resumeSelected() { throw original; }, assertCurrent() {}, isStopping: () => false, onUncertain() {},
+  }).catch(error => error);
+  context.onTestFailed(async () => {
+    sink.record({ runner: 'vitest', phase: 'workspaceDeletionColdResume', error: result,
+      testName: context.task.fullTestName, testId: context.task.id + ':11111111-1111-4111-8111-111111111111',
+      file: context.task.file.filepath, line: context.task.location?.line, column: context.task.location?.column,
+      attempt: 0, retryCount: 0, repeatCount: 0 });
+    await sink.flush();
+  });
+  expect(result.code).toBe('WORKSPACE_DELETE_FAILED');
+  expect(result.cause.errors[0] === original && result.cause.errors[1] === cleanup).toBe(true);
+  expect(false, 'W74_COLD_EXPECTED_SUCCESS').toBe(true);
 });`, { flag: 'wx', mode: 0o600 });
   const env = { ...process.env, ...binding, CI: '1', NO_COLOR: '1', TEMP: temp, TMP: temp, TMPDIR: temp };
   delete env.NODE_TEST_CONTEXT; delete env.FORCE_COLOR;
@@ -197,8 +575,23 @@ test('deletion command original exception before safe child result', { timeout: 
   assert.equal(child.error === undefined && child.signal === null, true, 'INSPECTION_WORKER_INTERRUPTED');
   assert.equal(child.status, 1, 'INSPECTION_EXPECTED_ASSERTION_DID_NOT_FAIL');
   const output = (child.stdout ?? '') + (child.stderr ?? '');
+  assert.equal(/(?:Test|Hook) timed out|Unhandled (?:Error|Rejection)|uncaughtException/u.test(output), false,
+    'SYNTHETIC_WORKER_UNEXPECTED_FAILURE');
+  const processRoots = (await readdir(temp)).filter(name => /^eky-delete-process-[A-Za-z0-9]{6}$/u.test(name));
+  assert.equal(processRoots.length, 1, 'SYNTHETIC_CHILD_FIXTURE_NOT_UNIQUE');
+  const closed = JSON.parse(await readFile(join(temp, processRoots[0], 'children.private.json'), 'utf8'));
+  assert.equal(closed.length, 1, 'SYNTHETIC_CHILD_RECEIPT_INVALID');
+  assert.equal(closed[0].status === 'fulfilled' && closed[0].value?.closed === true, true,
+    'SYNTHETIC_CHILD_CLOSE_UNVERIFIED');
   for (const marker of ['SYNTHETIC_W74_INSPECTION_ORIGINAL', 'SYNTHETIC_W74_INSPECTION_CAUSE',
-    'SYNTHETIC_W74_DELETION_ORIGINAL', 'SYNTHETIC_W74_DELETION_CAUSE']) {
+    'SYNTHETIC_W74_EXECUTION_ORIGINAL', 'SYNTHETIC_W74_EXECUTION_CAUSE',
+    'SYNTHETIC_W74_EXECUTION_READ', 'SYNTHETIC_W74_EXECUTION_CLOSE', 'SYNTHETIC_W74_EXECUTION_OWNER_LOST',
+    'SYNTHETIC_W74_TERMINAL_OWNER_LOST',
+    'SYNTHETIC_W74_ORIGINAL_READ_OWNER_LOST',
+    'SYNTHETIC_W74_DELETION_ORIGINAL', 'SYNTHETIC_W74_DELETION_CAUSE',
+    'SYNTHETIC_W74_PUBLICATION_ORIGINAL', 'SYNTHETIC_W74_PUBLICATION_CAUSE',
+    'SYNTHETIC_W74_PAYLOAD_JOURNAL_ORIGINAL', 'SYNTHETIC_W74_PAYLOAD_JOURNAL_CAUSE',
+    'SYNTHETIC_W74_COLD_ORIGINAL', 'SYNTHETIC_W74_COLD_CAUSE', 'SYNTHETIC_W74_COLD_CLEANUP']) {
     assert.equal(output.includes(marker), false, 'INSPECTION_ORIGINAL_LEAKED_TO_PUBLIC_OUTPUT');
   }
 }

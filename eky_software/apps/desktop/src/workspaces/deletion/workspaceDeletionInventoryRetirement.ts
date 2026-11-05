@@ -1,13 +1,13 @@
 import { rmdir } from 'node:fs/promises';
 import { createNodeCrashSafeFileSlotFileSystem, sameCrashSafeFileSlotIdentity,
   type CrashSafeFileSlotFileSystem, type CrashSafeFileSlotIdentity, type CrashSafeFileSlotMutationGuard } from '../persistence/crashSafeFileSlot.js';
-import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
+import { checkedDeletionAuthority, deletionDataRecord, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { deletionInventoryFileIdentity, inspectDeletionInventoryFile, sameDeletionInventoryFile,
   workspaceDeletionInventoryDirectoryReads, type WorkspaceDeletionInventoryDirectoryReads } from './workspaceDeletionInventoryFile.js';
 import { createWorkspaceDeletionInventoryPaths, WorkspaceDeletionInventoryStore, workspaceDeletionInventoryFileName,
   type WorkspaceDeletionInventoryAuthority } from './workspaceDeletionInventoryStore.js';
 import { captureWorkspaceDeletionJournal, maximumWorkspaceDeletionJournalBytes,
-  serializeWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+  serializeWorkspaceDeletionJournal, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { inspectWorkspaceDeletionJournal } from './workspaceDeletionJournalSlots.js';
 import { createWorkspaceDeletionJournalPaths } from './workspaceDeletionJournalStore.js';
 
@@ -21,11 +21,26 @@ interface InventoryRetirementFileSystem {
   readonly removeDirectory?: (path: string) => Promise<void>;
 }
 
+export interface WorkspaceDeletionInventoryRetirementReadSelection {
+  assertExternalSelection(): Promise<void>;
+}
+
 // This only retires technical inventory bytes. It never removes payloads, parent directories, or the journal.
 export async function retireWorkspaceDeletionInventory(
   userDataRoot: string, value: unknown, authority: WorkspaceDeletionInventoryAuthority,
   fileSystems: InventoryRetirementFileSystem = {},
+  readSelection?: WorkspaceDeletionInventoryRetirementReadSelection,
+  onReadFailure?: (error: unknown) => void,
 ): Promise<void> {
+  if (onReadFailure !== undefined && typeof onReadFailure !== 'function') return invalidDeletionData(invalidCode);
+  const completedReadFailure = onReadFailure;
+  let selectedRead: (() => Promise<void>) | undefined;
+  if (readSelection !== undefined) {
+    deletionDataRecord(readSelection, ['assertExternalSelection'], invalidCode);
+    if (typeof readSelection.assertExternalSelection !== 'function') return invalidDeletionData(invalidCode);
+    selectedRead = readSelection.assertExternalSelection.bind(readSelection);
+  }
+  const read = selectedRead;
   const expected = captureWorkspaceDeletionJournal(value);
   if (expected.phase !== 'registryPublished') return invalidDeletionData(invalidCode);
   const paths = createWorkspaceDeletionInventoryPaths(userDataRoot, expected.target.operationId);
@@ -43,8 +58,8 @@ export async function retireWorkspaceDeletionInventory(
     await authority.assertExternalSelection();
     assertAuthority();
   };
-  const assertTerminal = async () => {
-    await assertExternal();
+  const assertSelectedTerminal = async (external: () => Promise<void>) => {
+    await external();
     const observed = await inspectWorkspaceDeletionJournal(journal, assertAuthority);
     if (observed.plan.mode !== 'published' || !observed.plan.terminalOnly || observed.slots.current?.identity === undefined ||
         !serializeWorkspaceDeletionJournal(observed.plan.selected).equals(expectedBytes)) return invalidDeletionData(invalidCode);
@@ -53,7 +68,19 @@ export async function retireWorkspaceDeletionInventory(
         !Buffer.from(current.bytes).equals(journalBytes!))) return invalidDeletionData(invalidCode);
     journalIdentity ??= Object.freeze({ ...current.identity! });
     journalBytes ??= Uint8Array.from(current.bytes);
-    await assertExternal();
+    await external();
+  };
+  const assertTerminal = () => assertSelectedTerminal(assertExternal);
+  let reading = false;
+  const assertReadTerminal = read === undefined ? assertTerminal : async () => {
+    const assertRead = async () => {
+      assertAuthority();
+      if (!reading) return invalidDeletionData(invalidCode);
+      const result: unknown = await read();
+      assertAuthority();
+      if (!reading || result !== undefined) return invalidDeletionData(invalidCode);
+    };
+    await assertSelectedTerminal(assertRead);
   };
   const inspectDirectories = async (allowAbsent: boolean): Promise<boolean> => {
     if (await directories.identity(paths.parentPath, assertAuthority) !== expected.operationParentIdentity) return invalidDeletionData(invalidCode);
@@ -61,9 +88,9 @@ export async function retireWorkspaceDeletionInventory(
       if (await directories.identity(paths.directoryPath, assertAuthority) !== expected.operationRootIdentity) return invalidDeletionData(invalidCode);
       return true;
     } catch (error) {
+      if (!allowAbsent || (error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
       assertAuthority();
-      if (allowAbsent && (error as NodeJS.ErrnoException)?.code === 'ENOENT') return false;
-      throw error;
+      return false;
     }
   };
   const rootGuard: CrashSafeFileSlotMutationGuard = { assertAuthority, beforeMutation: async () => {
@@ -77,11 +104,42 @@ export async function retireWorkspaceDeletionInventory(
     await assertTerminal();
   } };
   const readNames = async () => {
-    await rootGuard.beforeMutation();
-    const names = await directories.names(paths.directoryPath);
-    assertAuthority();
-    await assertTerminal();
-    return names;
+    if (read === undefined) {
+      await assertTerminal();
+      await inspectDirectories(false);
+      const names = await directories.names(paths.directoryPath);
+      assertAuthority();
+      await assertTerminal();
+      return names;
+    }
+    let readingNames = true, namesFailed = false;
+    let namesFailure: unknown;
+    const failNames = (error: unknown) => {
+      if (!namesFailed) { namesFailed = true; namesFailure = error; }
+      readingNames = false;
+      return namesFailure;
+    };
+    const assertNamesCurrent = () => {
+      if (namesFailed) throw namesFailure;
+      if (!readingNames) return invalidDeletionData(invalidCode);
+      assertAuthority();
+    };
+    const assertNamesSelection = async () => {
+      assertNamesCurrent();
+      try {
+        const result: unknown = await read(); assertNamesCurrent();
+        if (result !== undefined) return invalidDeletionData(invalidCode);
+      } catch (error) { throw failNames(error); }
+    };
+    try {
+      await assertSelectedTerminal(assertNamesSelection);
+      await inspectDirectories(false); assertNamesCurrent();
+      const names = await directories.names(paths.directoryPath); assertNamesCurrent();
+      // The full trailing selection still closes every names read, including native mutation guards.
+      await assertTerminal(); assertNamesCurrent();
+      return names;
+    } catch (error) { throw failNames(error); }
+    finally { readingNames = false; }
   };
 
   await assertTerminal();
@@ -93,8 +151,17 @@ export async function retireWorkspaceDeletionInventory(
       const before = await inspectDeletionInventoryFile(paths.currentPath, assertAuthority);
       if (deletionInventoryFileIdentity(before) !== expected.inventoryFileIdentity) return invalidDeletionData(invalidCode);
       const selection = inventorySelection(expected);
-      await new WorkspaceDeletionInventoryStore(userDataRoot, expected.target.operationId).inspect(selection,
-        { assertAuthority, assertExternalSelection: assertTerminal });
+      if (read !== undefined) await assertTerminal();
+      try {
+        reading = true;
+        await new WorkspaceDeletionInventoryStore(userDataRoot, expected.target.operationId).inspect(selection,
+          { assertAuthority, assertExternalSelection: assertReadTerminal });
+      } catch (error) {
+        // inspect has joined the real handle close; report only this completed read tree.
+        try { completedReadFailure?.(error); } catch { /* Preserve the read failure. */ }
+        throw error;
+      } finally { reading = false; }
+      if (read !== undefined) await assertTerminal();
       const removeGuard = { assertAuthority, beforeMutation: async () => {
         await rootGuard.beforeMutation();
         const currentNames = await readNames();
@@ -103,10 +170,10 @@ export async function retireWorkspaceDeletionInventory(
             !sameDeletionInventoryFile(before, actual)) return invalidDeletionData(invalidCode);
         await assertTerminal();
       } };
-      if (!await inventory.removeSlot('current', removeGuard)) return invalidDeletionData(invalidCode);
+      if (!await preserveMutationGuardCause(removeGuard, guard => inventory.removeSlot('current', guard))) return invalidDeletionData(invalidCode);
       assertAuthority();
     } else if (names.length !== 0) return invalidDeletionData(invalidCode);
-    await inventory.syncDirectory(rootGuard);
+    await preserveMutationGuardCause(rootGuard, guard => inventory.syncDirectory(guard));
     if ((await readNames()).length !== 0) return invalidDeletionData(invalidCode);
     await rootGuard.beforeMutation();
     // Revalidate the source after the guard's journal awaits, as slot mutation does.
@@ -115,7 +182,7 @@ export async function retireWorkspaceDeletionInventory(
     await (fileSystems.removeDirectory ?? rmdir)(paths.directoryPath);
     assertAuthority();
   }
-  await parent.syncDirectory(parentGuard);
+  await preserveMutationGuardCause(parentGuard, guard => parent.syncDirectory(guard));
   await parentGuard.beforeMutation();
 }
 
@@ -137,14 +204,33 @@ export async function assertWorkspaceDeletionInventoryRetired(
     await workspaceDeletionInventoryDirectoryReads.identity(paths.directoryPath, assertAuthority);
     return invalidDeletionData(invalidCode);
   } catch (error) {
-    assertAuthority();
     if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
+    assertAuthority();
   }
   await authority.assertExternalSelection();
   assertAuthority();
 }
 
-function inventorySelection(value: WorkspaceDeletionJournalV1) {
+function inventorySelection(value: WorkspaceDeletionJournal) {
   return { target: value.target, inventory: value.inventory, inventoryFileIdentity: value.inventoryFileIdentity,
     operationRootIdentity: value.operationRootIdentity, operationParentIdentity: value.operationParentIdentity };
+}
+
+// The native slot adapter maps errors; retain this owner's guard rejection before that boundary.
+async function preserveMutationGuardCause<T>(
+  guard: CrashSafeFileSlotMutationGuard,
+  work: (selected: CrashSafeFileSlotMutationGuard) => Promise<T>,
+): Promise<T> {
+  let first: { cause: unknown } | undefined;
+  const retain = (cause: unknown) => { first ??= { cause }; return first.cause; };
+  const selected = {
+    async beforeMutation() {
+      try { await guard.beforeMutation(); } catch (cause) { throw retain(cause); }
+    },
+    assertAuthority() {
+      try { guard.assertAuthority(); } catch (cause) { throw retain(cause); }
+    },
+  };
+  try { return await work(selected); }
+  catch (cause) { throw first === undefined ? cause : first.cause; }
 }

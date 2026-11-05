@@ -6,7 +6,7 @@ import type { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.
 import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { captureDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
 import { WorkspaceDeletionInventoryStore } from './workspaceDeletionInventoryStore.js';
-import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournalV1 } from './workspaceDeletionJournalCodec.js';
+import { captureWorkspaceDeletionJournal, type WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 import { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
 import { selectWorkspaceDeletionPayload } from './workspaceDeletionPayloadSelection.js';
 import { captureWorkspaceDeletionPhaseSelection } from './workspaceDeletionPhaseSelection.js';
@@ -20,14 +20,16 @@ export function createWorkspaceDeletionRegistryPublisher(input: {
   userDataRoot: string;
   registry: Pick<WorkspaceRegistryStore, 'inspectSlots' | 'writeSelected' | 'recoverSelected'>;
   assertWritersAbsent(): Promise<void>;
+  assertStableSelection?(): Promise<void>;
 }) {
   const root = input.userDataRoot;
   const readRegistry = input.registry.inspectSlots.bind(input.registry);
   const writeRegistry = input.registry.writeSelected.bind(input.registry);
   const recoverRegistry = input.registry.recoverSelected.bind(input.registry);
   const writers = input.assertWritersAbsent.bind(input);
+  const stable = input.assertStableSelection?.bind(input);
   let running = false;
-  return async (operationId: string, authority: WorkspaceDeletionContinuationAuthority, expectedBinding?: WorkspaceDeletionJournalV1) => {
+  return async (operationId: string, authority: WorkspaceDeletionContinuationAuthority, expectedBinding?: WorkspaceDeletionJournal) => {
     if (running) return invalidDeletionData(invalidCode);
     const binding = expectedBinding === undefined ? undefined : captureWorkspaceDeletionJournal(expectedBinding);
     running = true;
@@ -51,22 +53,48 @@ export function createWorkspaceDeletionRegistryPublisher(input: {
         const inventoryStore = new WorkspaceDeletionInventoryStore(root, journal.target.operationId);
         const assertAbsent = async () => {
           try {
+            assertCurrent(); if (stable !== undefined) { await stable(); assertCurrent(); }
             assertCurrent();
             await phase.assertJournalSelected();
             let workspaces = 0;
-            await inventoryStore.consumeSelectedRecords(inventory, {
-              assertAuthority: assertCurrent, assertExternalSelection: phase.assertJournalSelected,
-            }, async row => {
-              if (row.role === 'inspectionEvidence') return;
-              if (row.role === 'workspace') workspaces++;
-              const selected = await selectWorkspaceDeletionPayload(root, journal, captureDeletionInventoryPayloadRecord(row),
-                workspaceDeletionQuarantineFileSystem, assertCurrent, true);
-              if (selected.state !== 'absent') return invalidDeletionData(invalidCode);
-              await phase.assertJournalSelected();
-            });
+            let readActive = true, readFailed = false;
+            let firstReadFailure: unknown;
+            const failRead = (error: unknown) => {
+              if (!readFailed) { readFailed = true; firstReadFailure = error; }
+              readActive = false;
+            };
+            const assertReadCurrent = () => {
+              if (readFailed) throw firstReadFailure;
+              if (!readActive) return invalidDeletionData(invalidCode);
+              try {
+                if (failed) throw firstFailure;
+                phase.assertCurrent();
+              } catch (error) { failRead(error); throw error; }
+            };
+            const checkedRead = async (work: () => Promise<void>) => {
+              assertReadCurrent();
+              try { await work(); assertReadCurrent(); }
+              catch (error) { failRead(error); throw error; }
+            };
+            const assertReadJournalSelected = () => checkedRead(phase.assertJournalSelected);
+            // Retain the completed read/close chain in the parent, not its early raw notification.
+            try {
+              await inventoryStore.consumeSelectedRecords(inventory, {
+                assertAuthority: assertReadCurrent,
+                assertExternalSelection: () => checkedRead(phase.assertJournalReadOwned),
+              }, async row => {
+                if (row.role === 'inspectionEvidence') return;
+                if (row.role === 'workspace') workspaces++;
+                const selected = await selectWorkspaceDeletionPayload(root, journal, captureDeletionInventoryPayloadRecord(row),
+                  workspaceDeletionQuarantineFileSystem, assertReadCurrent, true);
+                if (selected.state !== 'absent') return invalidDeletionData(invalidCode);
+                await assertReadJournalSelected();
+              }, failRead);
+            } finally { readActive = false; }
             if (workspaces !== 1) return invalidDeletionData(invalidCode);
             await phase.assertJournalSelected();
             assertCurrent();
+            if (stable !== undefined) { await stable(); assertCurrent(); }
           } catch (error) { throw retain(error); }
         };
         const mutation = (slots: ReadOnlyJournalSlots<LocalWorkspaceRegistry>): Parameters<WorkspaceRegistryStore['writeSelected']>[1] => ({

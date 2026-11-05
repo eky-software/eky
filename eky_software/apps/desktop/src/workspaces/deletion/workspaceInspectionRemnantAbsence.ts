@@ -14,9 +14,10 @@ export const workspaceInspectionRemnantReads: WorkspaceInspectionRemnantReads = 
     assertCurrent();
     try { await lstat(path); }
     catch (error) {
+      // A rejected read must not be replaced by later authority loss.
+      if ((error as NodeJS.ErrnoException)?.code !== 'ENOENT') throw error;
       assertCurrent();
-      if ((error as NodeJS.ErrnoException)?.code === 'ENOENT') return;
-      throw error;
+      return;
     }
     assertCurrent();
     return invalidDeletionData(invalidCode);

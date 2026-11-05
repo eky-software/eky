@@ -100,17 +100,22 @@ export async function inspectDeletionInventoryFile(path: string, assertCurrent: 
 
 // A failed read/write still joins close; a later close failure must not replace the first cause.
 export async function withDeletionInventoryFile<T>(
-  file: WorkspaceDeletionInventoryFile, work: () => Promise<T>,
+  file: WorkspaceDeletionInventoryFile, work: () => Promise<T>, onFailure?: (error: unknown) => void,
 ): Promise<T> {
   let failure: unknown;
   let failed = false;
   let result!: T;
-  try { result = await work(); } catch (error) { failed = true; failure = error; }
+  try { result = await work(); } catch (error) { failed = true; failure = error; notifyReadFailure(onFailure, error); }
   try { await file.close(); }
   catch (error) {
+    notifyReadFailure(onFailure, error);
     if (failed) throw new AggregateError([failure, error], invalidCode);
     throw error;
   }
   if (failed) throw failure;
   return result;
+}
+
+function notifyReadFailure(callback: ((error: unknown) => void) | undefined, error: unknown): void {
+  try { callback?.(error); } catch { /* Preserve the original failure. */ }
 }

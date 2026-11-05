@@ -21,6 +21,7 @@ import { showProfileRestoreRecoveryDialog } from './profileRestoreRecoveryDialog
 import {
   createPackagedSmokeConfiguration,
   createPackagedSmokeProgressReporter,
+  packagedSelectorVerificationSwitch,
   writePackagedSmokeResult,
 } from './packagedSmoke.js';
 import {
@@ -80,6 +81,7 @@ if ('mode' in packageModeResult) {
 }
 
 const smokeConfiguration = createPackagedSmokeConfiguration({
+  hasSelectorVerificationSwitch: app.commandLine.hasSwitch(packagedSelectorVerificationSwitch),
   hasLegacyInvoiceSwitch: app.commandLine.hasSwitch('desktop-smoke-legacy-invoice'),
   hasRestoredProfileSwitch: app.commandLine.hasSwitch(
     'desktop-smoke-restored',
