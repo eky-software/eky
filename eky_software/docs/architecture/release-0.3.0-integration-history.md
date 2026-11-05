@@ -5,6 +5,26 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n täysi soak ja katselmuksen kattavuus 5.11.2026
+
+Puhtaan revision `2db58f0f0c55b734aa8935863cdebf8eedf6ba5d` täysi
+30 minuutin Electron-soak läpäisi nykyisellä työkuormalla ja nykyisillä
+rajoilla. Näkymä-/PDF-/salaisuus-/tukipakettikierrot ja runtime-restartit
+suoritettiin. Mittausraportin täysi kesto, toteutunut työkuorma, lopun
+terve backend, yksi pääikkuna ja hallittu prosessimäärä varmennettiin.
+Testi ja sen loppusiivous palauttivat onnistumisen; lähde säilyi muuttumattomana.
+Yksityiset mittaukset pysyvät paikallisina. Yksi ennen/jälkeen-mittaus ei
+osoita yleistä kapasiteettia tai muistivuodottomuutta.
+
+Koko W7.4:n riippumattoman loppukatselmuksen 456 tiedoston lähdekehystä
+verrattiin nykyiseen lähteeseen. Yhtään katselmoitua tiedostoa ei puuttunut,
+eikä tuotantoruntimen lähde ollut muuttunut. Ajastus-, pakettibudjetti-,
+pilot-testikytkentä- ja dokumentointimuutokset katettiin niiden omilla
+rajatuilla katselmuksilla ja nykyisillä regressioilla. Vertailu ei itsessään
+ole uusi riippumaton katselmus tai PR/main-porttien poikkeus.
+Seuraava vaihe on yksi jäädytetty PR-revisio normaaleine tarkistuksineen;
+installer-, PR- ja uuden mainin portteja ei päätellä tästä läpäisseiksi.
+
 ## W7.4:n pilot-paketin palautus- ja poistoketju 5.11.2026
 
 Pilot-kytkentä kirjattiin puhtaaseen revisioon

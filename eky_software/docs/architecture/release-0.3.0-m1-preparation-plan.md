@@ -9,8 +9,8 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 **5.11.2026: W7.4 on haarassa; koko integraatiota ei ole hyväksytty.**
 Hyväksytty main on `dd5877408e3ca5b3952937b5e2aa43ea1fc58dfe`:
-[V2](https://github.com/eky-software/eky/actions/runs/41807951452) ja
-[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/41809217253)
+[V2](https://github.com/eky-software/eky/actions/runs/42004068173) ja
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42004841938)
 on varmennettu hyväksytyiksi. Nykyinen haara on `codex/w7-4-deletion`;
 kaikki sen keskeneräiset muutokset säilytetään.
 
@@ -58,11 +58,17 @@ Kehityskomennon oletus, sovellusbudjetit, turvatarkistukset ja aikarajat säilyv
 [Pakettisarjan näyttö ja säilyvät ensihylkäykset](release-0.3.0-integration-history.md#w74n-pilot-paketin-palautus--ja-poistoketju-5112026)
 eivät vielä hyväksy koko W7.4:ää.
 
-**Seuraavaksi:** nykyisen lähteen täysi soak ja vaikutusalueen integraatioportit,
-julkaisuyksityisyys, täsmällisen PR-headin portit ja auditointi, suojattu merge
-sekä uuden mainin omat tarkistukset. Edeltävän `39a3c176`-revision
-Electron-stress ja loppusiivous läpäisivät; nykyisen revision täysi soak on
-vielä avoin. W7.4:ää tai koko 0.3.0:aa ei ole hyväksytty.
+**Kestoportti:** revision `2db58f0f` täysi 30 minuutin soak läpäisi
+työkuorman, terveystarkistuksen ja loppusiivouksen. Nykyinen mittausraportti
+sekä lähteen muuttumattomuus varmennettiin; tämä ei ole yleinen muistivuoto-
+tai kapasiteettilupaus. Edeltävän `39a3c176`-revision Electron-stress ja
+loppusiivous ovat erillinen läpäissyt näyttö.
+
+**Seuraavaksi:** vaikutusalueen integraatioportit, julkaisuyksityisyys,
+täsmällisen PR-headin portit ja auditointi, suojattu merge sekä uuden mainin
+omat tarkistukset. Pakettitesti- ja dokumentointideltat on katselmoitu;
+tuotantoruntimen lähde vastaa koko W7.4:n riippumatonta loppukatselmusta.
+W7.4:ää tai koko 0.3.0:aa ei ole hyväksytty.
 W7.5:n delete-IPC, preload, painike ja backenditon tukivienti pysyvät suljettuina.
 
 Vanhat aikakatkaisut, tuntemattomat alkuperäiset syyt ja epävarmat
