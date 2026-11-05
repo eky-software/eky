@@ -135,6 +135,7 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
       },
     },
     'node:fs/promises': {
+      appendFile: async () => { throw new Error('UNEXPECTED_SERIES_EXPORT'); },
       readFile: async () => JSON.stringify(await readResult()),
       writeFile: async (path, text, options) => { writes.push({ path, value: JSON.parse(text), options }); },
       rm: async path => { removed.push(path); },
@@ -152,6 +153,10 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
       },
     },
     './read-desktop-electron-version.mjs': { readDesktopElectronVersion: async () => 'synthetic-version' },
+    './packagedPilotSeries.mjs': { packagedSeriesManifestVariable: 'EKY_PACKAGED_SERIES_MANIFEST_SHA256',
+      requirePackagedSeriesPin: () => 'a'.repeat(64), inspectPackagedPilotSeries: async pin => {
+        await controls.onPilotInspection?.(pin); return { pin: 'a'.repeat(64) };
+      } },
     './packaged-release-candidate.mjs': { preparePackagedReleaseCandidateSmoke: async input => {
       await controls.onReleasePreparation?.(input);
     } },
@@ -175,10 +180,11 @@ function startSmokeDriver(t, readResult = async () => ({ stage: 'startup', statu
       .finally(() => { process.argv = previous; });
     return { outcome, writes, removed, exceptions, progressWrites };
   }
-  const outcome = import(target.href).then(module => controls.singlePhase === undefined
+  const module = import(target.href);
+  const outcome = module.then(module => controls.singlePhase === undefined
     ? module.runPackagedSmoke(options) : module.runPackagedSmokePhase(controls.singlePhase))
     .then(() => ({ status: 'passed' }), error => ({ status: 'failed', error }));
-  return { outcome, writes, removed, exceptions, progressWrites,
+  return { outcome, module, writes, removed, exceptions, progressWrites,
     nextChild: () => children.length ? Promise.resolve(children.shift()) : new Promise(accept => waiting.push(accept)) };
 }
 
@@ -198,6 +204,41 @@ test('release-candidate CLI refuses extra arguments without entering the release
   const result = await fixture.outcome;
   assert.equal(result.status, 'failed'); assert.match(result.error.message, /Unsupported packaged smoke argument/u);
   assert.equal(calls, 0); assert.equal(fixture.progressWrites.length, 0); assert.equal(fixture.removed.length, 0);
+});
+
+for (const kind of ['legacyPreparation', 'workspaceRecoveryPreparation']) {
+test(`pilot series rejects the artifact before ${kind} can write fixture bytes`, async t => {
+  const first = new Error('SYNTHETIC_PILOT_PREFLIGHT_FIRST'); let prepared = false;
+  const fixture = startSmokeDriver(t, undefined, { seriesManifestSha256: 'a'.repeat(64),
+    [kind]: { async prepare() { prepared = true; } } },
+  { onPilotInspection() { throw first; } });
+  const result = await fixture.outcome;
+  assert.equal(result.status, 'failed'); assert.equal(result.error, first); assert.equal(prepared, false);
+  assert.equal(fixture.progressWrites.length, 0); assert.equal(fixture.removed.length, 0);
+});
+}
+
+test('CI series exports only the unchanged successful smoke pin', async t => {
+  const f = startSmokeDriver(t, undefined, { seriesManifestSha256: 'a'.repeat(64) }, {
+    onPilotInspection() { throw new Error('SYNTHETIC_IMPORT_ONLY'); } });
+  await f.outcome;
+  const { startPackagedPilotSeries } = await f.module;
+  const pin = 'a'.repeat(64), environment = { CI: 'true', GITHUB_ENV: 'synthetic-owned-environment-file' };
+  const calls = [];
+  await startPackagedPilotSeries({ environment,
+    async inspect(expected) { calls.push(['inspect', expected]); return { pin }; },
+    async smoke(value) { calls.push(['smoke', value.seriesManifestSha256]); },
+    async writeEnvironment(path, text) { calls.push(['export', path, text]); } });
+  assert.deepEqual(calls, [['inspect', undefined], ['smoke', pin], ['inspect', pin],
+    ['export', environment.GITHUB_ENV, `EKY_PACKAGED_SERIES_MANIFEST_SHA256=${pin}\n`]]);
+  for (const phase of ['smoke', 'finalInspection']) {
+    const first = new Error(`SYNTHETIC_${phase}`); let reads = 0, exported = false;
+    await assert.rejects(startPackagedPilotSeries({ environment,
+      async inspect() { if (++reads > 1 && phase === 'finalInspection') throw first; return { pin }; },
+      async smoke() { if (phase === 'smoke') throw first; },
+      async writeEnvironment() { exported = true; } }), error => error === first);
+    assert.equal(exported, false);
+  }
 });
 
 function closeChild(child, code) {
@@ -730,6 +771,13 @@ async function deletionPreparationFiles(t, { version = 1, companyCount = 1, cont
   companion.searchParams.set('fixture', String(++fixtureId));
   const key = `__ekyDeletionPreparationFixture${fixtureId}`, ports = {};
   const heldReservations = new Set();
+  const pilot = { buildInfo: { schemaVersion: 1, appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
+    buildDirty: false, buildCreatedAt: '2026-11-05T00:00:00.000Z' },
+    releaseInfo: { schemaVersion: 1, appIdentity: 'Eky', appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
+      architecture: 'x64', platform: 'win32', releaseChannel: 'pilot', msiProductVersion: '0.2.81',
+      upgradeCode: '00000000-0000-4000-8000-000000000001' } };
+  ports['./packagedPilotSeries.mjs'] = { requirePackagedSeriesPin: () => 'a'.repeat(64),
+    inspectPackagedPilotSeries: async () => pilot };
   globalThis[key] = ports;
   const forbidden = new Set(['electron', 'better-sqlite3', 'node:sqlite', 'node:child_process']);
   const hooks = registerHooks({
@@ -767,6 +815,16 @@ async function deletionPreparationFiles(t, { version = 1, companyCount = 1, cont
   const { deriveWorkspaceRoot } = await import('../src/workspaces/registry/deriveWorkspaceRoot.ts');
   const { createWorkspaceDeletionJournalPaths, WorkspaceDeletionJournalStore } = await import('../src/workspaces/deletion/workspaceDeletionJournalStore.ts');
   const { createWorkspaceDeletionCommand } = await import('../src/workspaces/deletion/workspaceDeletionCommand.ts');
+  if (controls.afterPublicationCheck !== undefined) {
+    ports['../dist/workspaces/deletion/workspaceDeletionCommand.js'] = { createWorkspaceDeletionCommand(options) {
+      const command = createWorkspaceDeletionCommand(options);
+      return { ...command, publish(...args) {
+        const checked = args[1];
+        args[1] = async () => { await checked(); await controls.afterPublicationCheck(); };
+        return command.publish(...args);
+      } };
+    } };
+  }
   const reservations = await import('../src/runtime/workspaceProcessReservation.ts');
   const { acquireWorkspaceProcessReservation } = reservations;
   const { InMemoryWorkspaceMaintenanceLease } = await import('../src/workspaces/maintenance/workspaceMaintenanceLease.ts');
@@ -796,6 +854,13 @@ async function deletionPreparationFiles(t, { version = 1, companyCount = 1, cont
   await mkdir(dirname(root), { recursive: true }); await mkdir(root, { mode: 0o700 });
   t.after(async () => { if (t.passed === true) await rm(root, { recursive: true, force: true }); });
   const userDataRoot = join(root, 'user-data'); await mkdir(userDataRoot, { mode: 0o700 });
+  const { createLocalUpdateRuntimePaths } = await import('../src/update/localUpdateRuntimePaths.ts');
+  const { createDesktopProfilePaths } = await import('../src/runtime/desktopProfilePaths.ts');
+  const update = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot,
+    legacyRuntimeRoot: createDesktopProfilePaths(userDataRoot).runtimeRoot });
+  await mkdir(dirname(update.acceptedBuildMetadataPath), { recursive: true });
+  await writeFile(update.acceptedBuildMetadataPath, JSON.stringify({ formatVersion: 1, acceptedAt: '2026-11-05T00:00:00.000Z',
+    appVersion: pilot.buildInfo.appVersion, buildRevision: pilot.buildInfo.buildRevision, releaseChannel: 'pilot' }), { flag: 'wx' });
   const context = Object.freeze({ smokeToken: token, smokeRootDirectory: root });
   const registryPath = join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME);
   const registry = new WorkspaceRegistryStore({ installationRoot: userDataRoot, filePath: registryPath });
@@ -846,9 +911,55 @@ async function deletionPreparationFiles(t, { version = 1, companyCount = 1, cont
     return result;
   };
   return { preparation, createPackagedWorkspaceDeletionPreparation, context, root, userDataRoot,
-    registry, registryPath, targetFile, targetRoot, retained, assertRetained, journal,
+    registry, registryPath, targetFile, targetRoot, retained, assertRetained, journal, update, pilot,
     journalPaths: createWorkspaceDeletionJournalPaths(userDataRoot), controller, phases, resume, acquireWorkspaceProcessReservation };
 }
+
+for (const kind of ['missing', 'wrongRevision', 'selectorOnly', 'nextSlot']) {
+test(`packaged deletion rejects ${kind} build acceptance before registry or journal writes`, { timeout: 60_000 }, async t => {
+  const f = await deletionPreparationFiles(t);
+  const path = f.update.acceptedBuildMetadataPath;
+  const metadata = JSON.parse(await readFile(path, 'utf8'));
+  if (kind === 'missing') await rm(path);
+  else if (kind === 'nextSlot') await writeFile(`${path}.next`, JSON.stringify(metadata));
+  else if (kind === 'wrongRevision') await writeFile(path, JSON.stringify({ ...metadata, buildRevision: 'b'.repeat(40) }));
+  else await writeFile(path, JSON.stringify({ formatVersion: 2, acceptanceScope: 'selector',
+    acceptedBuild: metadata, businessBaseline: { ...metadata, appVersion: '0.2.80' } }));
+  const before = await readFile(f.registryPath), database = await readFile(f.targetFile);
+  await assert.rejects(f.preparation.prepareAfterRestoredExit(f.context));
+  assert.deepEqual(await readFile(f.registryPath), before); assert.deepEqual(await readFile(f.targetFile), database);
+  await assert.rejects(readFile(f.journalPaths.currentPath), { code: 'ENOENT' });
+});
+}
+
+test('accepted metadata changed during retained reads prevents registry conversion and publication', { timeout: 60_000 }, async t => {
+  let f, changed = false;
+  f = await deletionPreparationFiles(t, { controls: { async afterFileClose(path) {
+    if (changed || !path.endsWith('.ekybackup')) return;
+    changed = true;
+    const metadata = JSON.parse(await readFile(f.update.acceptedBuildMetadataPath, 'utf8'));
+    await writeFile(f.update.acceptedBuildMetadataPath, JSON.stringify({ ...metadata, buildRevision: 'b'.repeat(40) }));
+  } } });
+  const before = await readFile(f.registryPath);
+  await assert.rejects(f.preparation.prepareAfterRestoredExit(f.context));
+  assert.equal(changed, true); assert.deepEqual(await readFile(f.registryPath), before);
+  await assert.rejects(readFile(f.journalPaths.currentPath), { code: 'ENOENT' });
+});
+
+test('accepted metadata changed after publication check cannot escape through the final source comparison', { timeout: 60_000 }, async t => {
+  let f, changed = false;
+  f = await deletionPreparationFiles(t, { version: 2, controls: { async afterPublicationCheck() {
+    assert.equal(changed, false); changed = true;
+    const path = f.update.acceptedBuildMetadataPath;
+    const metadata = JSON.parse(await readFile(path, 'utf8'));
+    await writeFile(path, JSON.stringify({ ...metadata, buildRevision: 'b'.repeat(40) }));
+  } } });
+  const before = await readFile(f.registryPath), database = await readFile(f.targetFile);
+  await assert.rejects(f.preparation.prepareAfterRestoredExit(f.context));
+  assert.equal(changed, true); assert.deepEqual(await readFile(f.registryPath), before);
+  assert.deepEqual(await readFile(f.targetFile), database);
+  await assert.rejects(readFile(f.journalPaths.currentPath), { code: 'ENOENT' });
+});
 
 for (const version of [1, 2]) {
 test(`real-file preparation v${version} publishes the actual journal without deleting or opening the database`, { timeout: 60_000 }, async t => {
@@ -1528,6 +1639,8 @@ async function smokeJobParent(t, controls = {}) {
   const mocks = {
     './packagedSmokeJobWorker.mjs': { capturePackagedSmokeJobPhase: f.worker.capturePackagedSmokeJobPhase,
       createPackagedSmokeJobRequest: f.worker.createPackagedSmokeJobRequest, packagedSmokeJobCleanupReserveMilliseconds: 1_000 },
+    './packagedPilotSeries.mjs': { requirePackagedSeriesPin: () => 'a'.repeat(64),
+      inspectPackagedPilotSeries: async () => ({ manifest: { inventoryIdentity: selected.binding.artifactDescriptorSha256 } }) },
     './run-packaged-smoke.mjs': { packagedSmokeTimeoutMilliseconds: 120_000 },
     './package-artifact-inventory.mjs': { async inspectPackageArtifactInventory(options) {
       if (workflow) {
@@ -1998,7 +2111,8 @@ test('the parent Job adapter keeps cancellation ahead of a later port failure an
 
 for (const kind of ['remaining', 'exhausted', 'lateCompletion']) {
 test(`the parent Job adapter preserves the total phase budget for ${kind}`, { timeout: 60_000 }, async t => {
-  let clock = performance.now();
+  // Integral synthetic time avoids floating-point floor drift in an exact 500 ms assertion.
+  let clock = Math.ceil(performance.now());
   const mocked = t.mock.method(performance, 'now', () => clock); t.after(() => mocked.mock.restore());
   const f = await smokeJobParent(t, { async enter() { clock += kind === 'exhausted' ? 120_001 : 119_500; },
     async portControl(_port, milliseconds) {

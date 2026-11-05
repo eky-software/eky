@@ -349,10 +349,10 @@ jobs:
         run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
 
       - name: Package Windows desktop
-        run: pnpm --filter @eky/desktop package:windows
+        run: pnpm --filter @eky/desktop package:windows:pilot
 
       - name: Run packaged Windows smoke
-        run: pnpm --filter @eky/desktop smoke:windows
+        run: pnpm --filter @eky/desktop smoke:windows --pilot-series-start
 
       - name: Prepare packaged legacy recovery runtime
         run: pnpm --filter @eky/e2e e2e:prepare

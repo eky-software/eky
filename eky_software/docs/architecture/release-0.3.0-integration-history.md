@@ -5,6 +5,61 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n pilot-kytkennän kohdeportit 5.11.2026
+
+Katselmoidun pilot-sopimuksen rajattu testikytkentä on toteutettu. Nykyinen
+smoke-ajuri sitoo sarjan todellisiin manifestitavuihin, ja packaged-config
+omistaa paikallisen aloituksen sekä samaan alkuvalintaan vertaavan loppulukemisen.
+Poistovalmistelu tarkistaa oikean business-buildin ennen muutoksia ja myös
+julkaisun jatkuvassa alkuperäisvalinnan vartijassa. Sovelluksen cold-portti,
+kehityspaketin oletus, vanhat neljä palautussyötettä ja aikarajat säilyvät.
+
+Yhtenäinen 212 testin kohdesarja, 25 oikean Windows-prosessiketjun kontrollia,
+80 ajokytkentäkontrollia, E2E-tyypitys ja rajatut riippumattomat katselmukset
+läpäisivät. Sarjoja ei summata. Alkuperäinen virhe löytyi nykyisen salatun
+paketin todellisesta OpenPGP-purusta. Esikäännettyä desktopia vaatinut
+testiriippuvuus ja viimeisen vertailun jälkeinen build-valinnan aukko korjattiin
+katselmuksen perusteella. Täsmällisen testikellon desimaalipyöristys korjattiin
+kokonaislukukellolla; testin tai sovelluksen aikarajaa ei muutettu.
+Natiivifixturen uuden pakettiehtoon pysähtynyt valmistelu korjattiin sen
+nykyisessä kontrollirajassa. Ensihylkäykset ja epävarma aineisto säilyvät.
+Tämä ei vielä ole uuden puhtaan pilot-paketin, koko W7.4:n tai integraation
+hyväksyntä. Alkuperäinen kehityspaketti säilytettiin itsenäisin tavuin.
+
+## W7.4:n puhtaan paketin palautusportti 5.11.2026
+
+Puhdas revisio `bee5469ed3d1d52fb422a68d1304531bf759e208` sisältää
+hyväksytyn pakettibudjetin. Uusi paketointi ja kaikkien kuuden vaiheen
+täydet inventaariot läpäisivät. Paketin sisäinen build-info vastasi
+puhtaan lähteen revisiota; ASARin koko jäi hyväksytyn rajan alle.
+Tavallinen hardened backup -> inspect -> restore -> restart -> compare
+läpäisi samoilla pakettitavuilla. Tämä ei yksin hyväksy sisäistä poistoa.
+
+Nykyinen viiden tapauksen paketoitu palautusajo suoritettiin ilman
+uusintoja. Legacy-038, cold-create, cold-import ja sidottu cold-import
+läpäisivät. Uusi viimeisen yrityksen poisto/restart hylättiin ensimmäisen
+valitsinprosessin startupissa. Prosessi palautti virhekoodin ja natiivi
+Job raportoi puun poissaolon; tämä ei ollut ulomman ajastimen katkaisu.
+Testijuuri ja epäonnistumisen alkuperäinen aineisto säilyivät, eikä
+poiston tai loppusiivouksen onnistumista päätelty prosessin päättymisestä.
+
+Nykyinen yksityinen ensivirhekeräys säilytti alkuperäisen syyketjun:
+`WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED` ja sen syy
+`LOCAL_UPDATE_STATE_MIGRATION_CONFLICT`. Pinon osoittama ehto varmennettiin
+samasta ASARista: `releaseInfo` puuttui. Paketin oma tila oli
+`localDevelopment`, eikä se sisältänyt `release-info.json`-tiedostoa.
+Nykyinen index antaa release-tiedot vain pilot-paketille. Uusi
+pakettiajuri ja nykyinen CI-käsky valitsivat kuitenkin kehityspaketin.
+
+[Cold-build-sopimus](local-company-workspace-plan.md) vaatii poiston
+jatkolle todellisen packaged-build-todisteen; tavallinen kehityskäynnistys
+ei korvaa sitä. Hylkäys on tämän portin mukainen, mutta pakettitestin
+valmistelu ei täytä hyväksytyn tuotantopolun lähtöehtoa. Korjaus rajataan
+testin pakettivalinnan ja olemassa olevan pilot-/build-hyväksynnän
+kytkentään. Tuotannon ehtoa ei poisteta, hyväksyntämetadataa ei keksitä,
+eikä vanhaa pakettia muuteta tai ajoa uusita sellaisenaan. Tarkka kytkentä
+ja kielteiset kontrollit katselmoidaan ennen seuraavaa kokonaisajoa.
+
 ## W7.4:n puhtaan paketin sisältöbudjetti 5.11.2026
 
 Katselmuskorjaukset ja koko W7.4:n nykyinen toteutus kirjattiin puhtaaseen

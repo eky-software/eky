@@ -11,6 +11,7 @@ interface SmokePreparation {
 
 export function runPackagedSmoke(options?: {
   releaseCandidateSmoke?: boolean;
+  seriesManifestSha256?: string;
   legacyPreparation?: SmokePreparation;
   workspaceRecoveryPreparation?: SmokePreparation;
   workspaceDeletionPreparation?: {

@@ -7,7 +7,7 @@ Päivätyt tutkimusraportit eivät ole rinnakkainen toteutusjono.
 
 ## Jatka tästä
 
-**5.11.2026: W7.4 on työpuussa; koko integraatiota ei ole hyväksytty.**
+**5.11.2026: W7.4 on haarassa; koko integraatiota ei ole hyväksytty.**
 Hyväksytty main on `dd5877408e3ca5b3952937b5e2aa43ea1fc58dfe`:
 [V2](https://github.com/eky-software/eky/actions/runs/41807951452) ja
 [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/41809217253)
@@ -43,23 +43,38 @@ kohdeportit läpäisivät erikseen; sarjoja ei summata.
 [Tarkka lähdekohtainen näyttö ja säilyvät ensihylkäykset](release-0.3.0-integration-history.md#w74n-fyysisen-journalin-tuotantokytkennän-ennakkoportit-5112026)
 eivät korvaa korjausten omia portteja tai puhtaan paketin hyväksyntää.
 
-**Pakettivalmistelun nykytila:** puhdas lähderevisio `39a3c176` sisältää
-katselmuskorjaukset. Sen ensimmäinen paketointi pysähtyi sovellusosan
-vanhaan tiedostomäärärajaan; valmista pakettia ei hyväksytty.
-Omistaja hyväksyi 544 tiedoston ja 4,25 MiB:n rajauksen sekä saman koon
-vain täsmälliselle ASARille. Rajatut 81 paketointi-/sisältöregressiota,
-riippumaton katselmus ja valmistellun sovellusosan täysi sisältöinventaario
-läpäisivät.
-Tämä ei korvaa uuden puhtaan paketin todennusta. Saman lähderevision
-nykyinen täysi Electron-stress-työkuorma ja loppusiivous läpäisivät.
+**Pakettivalmistelun nykytila:** puhdas revisio `bee5469e` sisältää
+hyväksytyn 544 tiedoston ja 4,25 MiB:n sovellusbudjetin sekä saman koon
+vain täsmälliselle ASARille. Rajatut 81 regressiota, riippumaton katselmus,
+uusi paketointi ja kaikki kuusi sisältöinventaariota läpäisivät. Samoilla
+muuttamattomilla pakettitavuilla tavallinen hardened backup-/restore-smoke
+sekä legacy-, create- ja kahden import-tapauksen palautukset läpäisivät.
+Uusi poisto/restart hylättiin: kehityspaketista puuttuva pilot-build-todiste
+estää poiston cold-jatkon nykyisen sopimuksen mukaisesti. Alkuperäinen
+syyketju säilyi; kyse ei ollut ajastimen katkaisusta. Testin
+paketointilähtötilan ja cold-admissionin yhteinen kytkentä on vielä avoin.
+Edeltävän `39a3c176`-revision Electron-stress ja loppusiivous läpäisivät;
+nykyisen revision täysi soak ei ole vielä tehty.
 [Pakettivalmistelun näyttö](release-0.3.0-integration-history.md#w74n-puhtaan-paketin-sisältöbudjetti-5112026)
 säilyy erillään puuttuvista paketti- ja integraatioporteista.
 
-**Seuraavaksi:** uusi puhdas revisio ja sama
-puhdas hardened Windows -paketti: backup -> inspect -> restore -> restart ->
-compare sekä sisäinen poisto/restart ja säilyvät tavut, nykyiset kesto- ja
+**Seuraavaksi:** todenna [pakettitestin pilot-identiteetin kytkentä](local-company-workspace-plan.md#pakettitestin-pilot-identiteetin-korjaussopimus)
+yhdellä uudella puhtaalla pilot-paketilla.
+Yksi puhdas pilot-paketti korvaa tämän pakettisarjan kehitysartifactin;
+oikea FirstStart luo hyväksynnän, jonka valmistelija tarkistaa ennen
+poistojournalin julkaisua. Rajattu suunnitelmakatselmus täsmensi sarjan
+yhteisen pakettisidonnan: tarkistus ennen jokaista valmistelua sekä samaan
+alkusidontaan vertaava loppuvarmennus. Rajattu kytkentä on työpuussa;
+212 kohdetestiä, 25 oikean prosessiketjun kontrollia, 80 ajokytkentäkontrollia,
+tyypitys ja rajatut katselmukset läpäisivät. Sarjoja ei summata.
+Puhtaan pilot-paketin ajot ovat vielä tekemättä.
+Kehityskomennon oletus säilyy. Kehityspaketille
+ei anneta pilot-identiteettiä jälkikäteen eikä tuotannon cold-porttia ohiteta.
+Ennen uutta kokonaisajoa vaaditaan pienet kontrollit ja katselmus;
+uusi puhdas paketti sidotaan samaan lähteeseen ja sen omiin palautus- sekä
+sisäisen poiston/restartin näyttöihin. Myös nykyiset kesto- ja
 installer-portit, julkaisuyksityisyys, täsmällisen PR-headin portit ja
-auditointi, suojattu merge sekä uuden mainin omat tarkistukset.
+auditointi, suojattu merge sekä uuden mainin omat tarkistukset vaaditaan.
 Nämä integraatioportit ovat vielä avoinna. W7.4:ää tai koko 0.3.0:aa ei
 ole hyväksytty. W7.5:n delete-IPC, preload,
 painike ja backenditon tukivienti pysyvät suljettuina.

@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -18,6 +18,7 @@ import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs'
 import { preparePackagedReleaseCandidateSmoke } from './packaged-release-candidate.mjs';
 import { capturePackagedSmokePhaseOutput, observeSmokeOutput, prepareSmokeExceptionEvidence } from './packagedSmokeFailureEvidence.mjs';
 import { packagedSmokeTimeoutMilliseconds as smokeTimeoutMilliseconds } from './packagedSmokeLimits.mjs';
+import { inspectPackagedPilotSeries, packagedSeriesManifestVariable, requirePackagedSeriesPin } from './packagedPilotSeries.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
@@ -26,7 +27,9 @@ const executablePath = resolve(
 );
 export { smokeTimeoutMilliseconds as packagedSmokeTimeoutMilliseconds };
 export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPreparation, workspaceRecoveryPreparation,
-  workspaceDeletionPreparation, workspaceDeletionExecution } = {}) {
+  workspaceDeletionPreparation, workspaceDeletionExecution,
+  seriesManifestSha256 = process.env[packagedSeriesManifestVariable] } = {}) {
+  if (releaseCandidateSmoke && seriesManifestSha256 !== undefined) throw new Error('PACKAGED_SMOKE_PREPARATION_CONFLICT');
   if ([legacyPreparation, workspaceRecoveryPreparation, workspaceDeletionPreparation].filter(value => value !== undefined).length > 1) {
     throw new Error('PACKAGED_SMOKE_PREPARATION_CONFLICT');
   }
@@ -73,6 +76,7 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
   childEnvironment.EKY_DESKTOP_SMOKE_TOKEN = smokeToken;
 
   try {
+    if (seriesManifestSha256 !== undefined) await inspectPackagedPilotSeries(seriesManifestSha256);
     await preparation?.prepare({ smokeToken, smokeRootDirectory });
     if (releaseCandidateSmoke) {
       await preparePackagedReleaseCandidateSmoke({
@@ -256,9 +260,24 @@ export async function runPackagedSmokePhase({ argumentsList, expectedStage, smok
   });
 }
 
+export async function startPackagedPilotSeries({ environment = process.env,
+  inspect = inspectPackagedPilotSeries, smoke = runPackagedSmoke, writeEnvironment = appendFile } = {}) {
+  if (environment.CI !== 'true' || environment[packagedSeriesManifestVariable] !== undefined ||
+      typeof environment.GITHUB_ENV !== 'string' || environment.GITHUB_ENV.length === 0) {
+    throw new Error('PACKAGED_PILOT_SERIES_INVALID');
+  }
+  const selected = await inspect();
+  await smoke({ seriesManifestSha256: selected.pin });
+  await inspect(selected.pin);
+  await writeEnvironment(environment.GITHUB_ENV,
+    `${packagedSeriesManifestVariable}=${requirePackagedSeriesPin({ [packagedSeriesManifestVariable]: selected.pin })}\n`);
+}
+
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const scriptArguments = process.argv.slice(2);
-  if (scriptArguments.some(argument => argument !== '--release-candidate') ||
+  if (scriptArguments.some(argument => !['--release-candidate', '--pilot-series-start'].includes(argument)) ||
       scriptArguments.length > 1) throw new Error('Unsupported packaged smoke argument.');
-  await runPackagedSmoke({ releaseCandidateSmoke: scriptArguments.includes('--release-candidate') });
+  if (scriptArguments.includes('--pilot-series-start')) {
+    await startPackagedPilotSeries();
+  } else await runPackagedSmoke({ releaseCandidateSmoke: scriptArguments.includes('--release-candidate') });
 }

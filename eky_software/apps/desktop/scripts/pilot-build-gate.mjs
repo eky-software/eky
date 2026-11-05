@@ -67,6 +67,10 @@ export async function readPilotArtifactManifest(path, expected) {
   } catch {
     throw new Error('PILOT_ARTIFACT_MANIFEST_MISSING_OR_INVALID');
   }
+  return parsePilotArtifactManifest(value, expected);
+}
+
+export function parsePilotArtifactManifest(value, expected) {
   if (
     !isRecord(value) ||
     Object.keys(value).some((key) => !manifestFields.has(key)) ||

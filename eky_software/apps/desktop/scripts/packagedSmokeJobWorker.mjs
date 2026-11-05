@@ -10,6 +10,7 @@ import { packagedSmokeTimeoutMilliseconds, packagedSmokeWorkflowTimeoutMilliseco
   packagedSmokeJobCallerReserveMilliseconds } from './packagedSmokeLimits.mjs';
 import { capturePackagedSmokePhaseOutput } from './packagedSmokeFailureEvidence.mjs';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
+import { inspectPackagedPilotSeries, requirePackagedSeriesPin } from './packagedPilotSeries.mjs';
 import { packagedSelectorVerificationPhase, packagedSelectorVerificationSwitch,
   readPackagedSmokeBackend, resolvePackagedSmokeTempPath } from '../dist/main/packagedSmoke.js';
 import { waitForLoopbackPortRelease } from '../../e2e/src/environment/waitForLoopbackPortRelease.ts';
@@ -280,12 +281,15 @@ async function runPackagedSmokeJobWorkflow(input, environment, sink) {
       if (!absent) throw invalid();
     }
     await assertRequest(); await assertRoot();
+    const pilot = await inspectPackagedPilotSeries(requirePackagedSeriesPin(env), { assertCurrent() { controller.signal.throwIfAborted(); } });
+    if (pilot.manifest.inventoryIdentity !== selected.binding.artifactDescriptorSha256) throw invalid();
+    await assertRequest(); await assertRoot();
     admitted = true;
     owner = createPackagedSmokeWorkflowExecution(input, env, { signal: controller.signal });
     const { createPackagedWorkspaceDeletionPreparation } = await import('./packagedWorkspaceDeletionPreparation.mjs');
     const preparation = createPackagedWorkspaceDeletionPreparation({ signal: controller.signal,
       assertPreviousPhaseStopped: owner.assertPreviousPhaseStopped });
-    // Ordinary packaged CI uses localDevelopment, not a version-bumped pilot release.
+    // The series uses the same clean pilot artifact; FirstStart owns build acceptance.
     await runPackagedSmoke({ workspaceDeletionPreparation: preparation,
       workspaceDeletionExecution: owner.execution });
     if (owner.readOutputs().length !== 4) throw invalid();

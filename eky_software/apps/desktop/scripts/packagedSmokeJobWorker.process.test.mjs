@@ -374,6 +374,11 @@ async function parentWithControlledInventory(t, input) {
   target.searchParams.set('nativeNegative', input.runNonce);
   // Admission-only evidence: no accepted package is claimed or launched.
   const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
+    if (context.parentURL === target.href && specifier === './packagedPilotSeries.mjs') {
+      return { url: 'data:text/javascript,export function requirePackagedSeriesPin(){return "' + 'a'.repeat(64) +
+        '";} export async function inspectPackagedPilotSeries(){return {manifest:{inventoryIdentity:"' +
+        input.artifactDescriptorSha256 + '"}};}', shortCircuit: true };
+    }
     if (context.parentURL === target.href && specifier === './package-artifact-inventory.mjs') {
       return { url: 'data:text/javascript,export async function inspectPackageArtifactInventory() { return { identity: "' +
         input.artifactDescriptorSha256 + '" }; }', shortCircuit: true };
@@ -526,7 +531,7 @@ async function verifyWholeWorkflowFailure(t, baseEnvironment = process.env, veri
     } });
   pending.catch(() => undefined);
   await waitForMarker({ ...context, runRoot: selected.phaseRoot }, 'root');
-  // Ordinary CI builds localDevelopment, not a version-bumped pilot release.
+  // This fixture controls package admission; it must not invoke the distinct release-candidate gate.
   await assert.rejects(lstat(join(selected.phaseRoot, 'unexpected-release-preparation.json')), { code: 'ENOENT' });
   await assertPreparationReservationBusy(state, () => acquireWorkspaceProcessReservation({
     userDataRoot: profile, signal: new AbortController().signal }));

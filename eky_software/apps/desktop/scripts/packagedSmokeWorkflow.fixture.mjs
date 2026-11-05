@@ -45,6 +45,10 @@ capture.waitForDelivery = () => delivery ??= (async () => {
   return 'recorded';
 })();
 const mocks = {
+  './packagedPilotSeries.mjs': { packagedSeriesManifestVariable: 'EKY_PACKAGED_SERIES_MANIFEST_SHA256',
+    requirePackagedSeriesPin() { return 'a'.repeat(64); },
+    async inspectPackagedPilotSeries() { return { pin: 'a'.repeat(64),
+      manifest: { inventoryIdentity: values['artifact-descriptor-sha256'] } }; } },
   './packagedSmokeJob.mjs': { async runOwnedPackagedSmokePhase(input, options) {
     const { capturePackagedSmokeJobPhase } = await import(worker.href);
     const selected = capturePackagedSmokeJobPhase(input, options.environment);
@@ -71,7 +75,8 @@ const mocks = {
 const key = '__ekyOwnedWorkflowFixture'; globalThis[key] = mocks;
 registerHooks({ resolve(specifier, context, nextResolve) {
   const owner = specifier === './packagedSmokeJob.mjs' ? worker.href : driver.href;
-  if (context.parentURL === owner && Object.hasOwn(mocks, specifier)) {
+  if ((context.parentURL === owner || specifier === './packagedPilotSeries.mjs' && context.parentURL === worker.href) &&
+      Object.hasOwn(mocks, specifier)) {
     const source = Object.keys(mocks[specifier]).map(name =>
       `export const ${name} = globalThis[${JSON.stringify(key)}][${JSON.stringify(specifier)}][${JSON.stringify(name)}];`).join('\n');
     return { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true };

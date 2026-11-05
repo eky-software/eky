@@ -7,6 +7,7 @@ import { packagedSmokeWorkflowTimeoutMilliseconds } from '../desktop/scripts/pac
 export default defineConfig({
   ...standard,
   retries: 0,
+  globalSetup: './scripts/packagedPilotSeriesSetup.mjs',
   projects: [{
     name: 'packaged-legacy-recovery',
     testMatch: /packaged\/(legacyInvoiceRecovery|workspaceColdRecovery|workspaceDeletionRecovery)\.spec\.ts/,

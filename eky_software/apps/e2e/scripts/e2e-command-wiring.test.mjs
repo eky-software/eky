@@ -4,6 +4,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'nod
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { setupPackagedPilotSeries } from './packagedPilotSeriesSetup.mjs';
+import { packagedSeriesManifestVariable } from '../../desktop/scripts/packagedPilotSeries.mjs';
 
 const readManifest = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const root = readManifest('../../../package.json');
@@ -36,7 +38,7 @@ function assertWiring(rootManifest, e2eManifest) {
   assert.equal(e2eManifest.scripts['e2e:prepare-owner'], 'node scripts/prepare-windows-backend-owner.mjs');
   assert.deepEqual(e2eManifest.scripts['e2e:prepare'].split(' && '), preparations.slice(1, 5));
   assert.equal(e2eManifest.scripts['e2e:packaged:legacy'],
-    'pnpm e2e:prepare && pnpm --filter @eky/desktop installer:supervisor:build && pnpm --filter @eky/desktop package:windows && playwright test --config playwright.packaged-legacy.config.ts');
+    'pnpm e2e:prepare && pnpm --filter @eky/desktop installer:supervisor:build && pnpm --filter @eky/desktop package:windows:pilot && playwright test --config playwright.packaged-legacy.config.ts');
   assert.equal(e2eManifest.scripts['e2e:electron:evidence'],
     'pnpm e2e:electron:prepare && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs ../../test-reporters/tests/electronDevelopmentFailureEvidenceOpenPgp.test.mjs');
   for (const tag of ['security', 'fault']) {
@@ -50,12 +52,64 @@ function assertWiring(rootManifest, e2eManifest) {
 
 test('packaged legacy recovery requires preparation and a fresh hardened package', () => {
   for (const removed of ['pnpm e2e:prepare && ', 'pnpm --filter @eky/desktop installer:supervisor:build && ',
-    'pnpm --filter @eky/desktop package:windows && ']) {
+    'pnpm --filter @eky/desktop package:windows:pilot && ']) {
     const changed = structuredClone(e2e);
     changed.scripts['e2e:packaged:legacy'] = changed.scripts['e2e:packaged:legacy'].replace(removed, '');
     assert.throws(() => assertWiring(root, changed), assert.AssertionError);
   }
   assert.doesNotMatch(e2e.scripts['e2e:all'], /packaged/u);
+});
+
+test('packaged local setup runs ordinary smoke once and teardown checks its original pin', async () => {
+  const environment = {}, calls = [], pin = 'a'.repeat(64);
+  const teardown = await setupPackagedPilotSeries({ environment,
+    async inspect(expected) { calls.push(['inspect', expected]); return { pin }; },
+    async smoke(value) { calls.push(['smoke', value.seriesManifestSha256]); } });
+  assert.equal(environment[packagedSeriesManifestVariable], pin);
+  environment[packagedSeriesManifestVariable] = 'b'.repeat(64);
+  await teardown();
+  assert.deepEqual(calls, [['inspect', undefined], ['smoke', pin], ['inspect', pin]]);
+  assert.equal(Object.hasOwn(environment, packagedSeriesManifestVariable), false);
+});
+
+test('packaged CI setup requires the prior smoke pin and never recaptures or repeats smoke', async () => {
+  let reads = 0, smokes = 0;
+  const pin = 'a'.repeat(64), environment = { CI: 'true', [packagedSeriesManifestVariable]: pin };
+  const inspect = async expected => { reads++; assert.equal(expected, pin); return { pin }; };
+  const smoke = async () => { smokes++; };
+  await assert.rejects(setupPackagedPilotSeries({ environment: { CI: 'true' }, inspect, smoke }));
+  await assert.rejects(setupPackagedPilotSeries({ environment: { [packagedSeriesManifestVariable]: pin }, inspect, smoke }));
+  assert.equal(reads, 0); assert.equal(smokes, 0);
+  const teardown = await setupPackagedPilotSeries({ environment, inspect, smoke });
+  await teardown(); assert.equal(reads, 2); assert.equal(smokes, 0);
+  assert.equal(environment[packagedSeriesManifestVariable], pin);
+});
+
+test('packaged teardown rejects changed bytes without replacing its original pin', async () => {
+  let reads = 0; const first = new Error('SYNTHETIC_SERIES_CHANGED');
+  const teardown = await setupPackagedPilotSeries({ environment: {},
+    async inspect() { if (++reads > 1) throw first; return { pin: 'a'.repeat(64) }; }, smoke: async () => {} });
+  await assert.rejects(teardown(), error => error === first);
+});
+
+test('packaged setup controls import and execute without any desktop dist access', () => {
+  const setup = new URL('./packagedPilotSeriesSetup.mjs', import.meta.url).href;
+  const dist = new URL('../../desktop/dist/', import.meta.url).href;
+  const source = [
+    'import { registerHooks } from "node:module";',
+    `const dist = ${JSON.stringify(dist)};`,
+    'registerHooks({ resolve(specifier, context, nextResolve) {',
+    '  const result = nextResolve(specifier, context);',
+    '  if (result.url.startsWith(dist)) throw new Error("PACKAGED_CONTROL_UNEXPECTED_DIST");',
+    '  return result;',
+    '} });',
+    `const { setupPackagedPilotSeries } = await import(${JSON.stringify(setup)});`,
+    'const teardown = await setupPackagedPilotSeries({ environment: {},',
+    '  inspect: async () => ({ pin: "a".repeat(64) }), smoke: async () => {} });',
+    'await teardown();',
+  ].join('\n');
+  const result = spawnSync(process.execPath, ['--input-type=module', '-e', source], { encoding: 'utf8', timeout: 5_000 });
+  assert.ifError(result.error); assert.equal(result.status, 0, result.stderr);
 });
 
 const consumerContracts = ['linuxConsumerLossContract', 'linuxConsumerLossRecords', 'linuxConsumerLossOutcome',
@@ -154,8 +208,8 @@ function assertPackagedLegacyCi(source) {
   const job = source.split('  e2e-electron-windows-critical:\n')[1]?.split('\n  windows-contracts:')[0];
   assert.ok(job);
   const required = [
-    ['Package Windows desktop', 'pnpm --filter @eky/desktop package:windows'],
-    ['Run packaged Windows smoke', 'pnpm --filter @eky/desktop smoke:windows'],
+    ['Package Windows desktop', 'pnpm --filter @eky/desktop package:windows:pilot'],
+    ['Run packaged Windows smoke', 'pnpm --filter @eky/desktop smoke:windows --pilot-series-start'],
     ['Prepare packaged legacy recovery runtime', 'pnpm --filter @eky/e2e e2e:prepare'],
     ['Build existing packaged process owner', 'pnpm --filter @eky/desktop installer:supervisor:build'],
     ['Run packaged legacy recovery', 'pnpm --filter @eky/e2e exec playwright test --config playwright.packaged-legacy.config.ts'],
@@ -175,6 +229,7 @@ test('packaged deletion shares the existing aggregate budget and cannot omit its
   assert.match(source, /workspaceDeletionRecovery/u);
   assert.match(source, /timeout: packagedSmokeWorkflowTimeoutMilliseconds/u);
   assert.match(source, /retries: 0/u);
+  assert.match(source, /globalSetup: '\.\/scripts\/packagedPilotSeriesSetup\.mjs'/u);
   const limits = readFileSync(new URL('../../desktop/scripts/packagedSmokeLimits.mjs', import.meta.url), 'utf8');
   assert.match(limits, /packagedSmokeWorkflowTimeoutMilliseconds = 300_000/u);
   const testSource = readFileSync(new URL('../tests/packaged/workspaceDeletionRecovery.spec.ts', import.meta.url), 'utf8');

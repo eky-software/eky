@@ -12744,10 +12744,113 @@ Nykyinen 300 sekunnin pakettitestin kokonaisraja ja vaiheiden 120 sekuntia
 säilyvät; yhteinen testibudjetti kattaa myös valmistelun eikä nollaudu.
 Pienet kytkentä- ja keskeytyskontrollit edeltävät puhtaan paketin ajoa;
 niiden läpäisy ei ole tämän uuden koko ketjun pakettihyväksyntä.
-Tavallinen CI-kytkentä käyttää nykyistä `package:windows`-artifactia eikä
-pyydä versionostetun pilotin release-candidate-valmistelua. Julkaisun omat
-manifesti-, versio- ja puhtausportit sekä W7.4:n puhtaan paketin vaatimus
-säilyvät erillisinä ja muuttumattomina.
+Ensimmäinen CI-kytkentä valitsi `package:windows`-kehityspaketin. Todellinen
+pakettikoe osoitti tämän vääräksi lähtötilaksi poiston cold-jatkolle:
+kehityspaketilla ei ole vaadittua release-identiteettiä. Seuraava rajattu
+korjaussopimus korvaa vain tämän pakettivalinnan, ei cold-build-porttia.
+
+###### Pakettitestin pilot-identiteetin korjaussopimus
+
+**5.11.2026, toteutussopimus ja rajattu kytkentä; ei vielä pakettihyväksyntä.**
+Nykyinen `package:windows:pilot` muodostaa puhtaasta revisiosta oikeat
+package-mode-, build- ja release-tiedot sekä sisältöön sidotun manifestin.
+W7.4:n pakettisarja käyttää tätä yhtä artifactia. Tavallisen
+`package:windows`-komennon kehitystila ja profiilirajaus eivät muutu.
+Testi ei ole release-candidate-, päivitys- tai jakeluhyväksyntä: versiota ei
+nosteta, first-parent-porttia ei ohiteta eikä vanhaa accepted-metadataa
+kirjoiteta testin valmistelussa. Julkaisun omat portit säilyvät erillisinä.
+
+Poistotapauksen tyhjän synteettisen profiilin ensimmäinen normaali pilot-käynnistys saa
+`initialInstall`-luvan. Nykyinen FirstStart tallentaa business-hyväksynnän
+vasta oikean backendin, sisällön, session ja salaisuuden identiteetin
+tarkistusten jälkeen. Nykyinen smoke vaatii tämän todellisen hyväksynnän.
+Vasta backup/restore-vertailun, toisen prosessin ja kirjoittajien todetun
+sulun jälkeen valmistelija saa tarkistaa saman buildin hyväksynnän ja
+julkaista poistojournalin. Seuraava cold-käynnistys saa näin nykyisen
+`exactAcceptedBuild`-luvan. `initialInstall` yksin ei edelleenkään riitä
+poistojournalin jatkamiseen; tuotannon vartijoita ei muuteta.
+Vanhojen neljän tapauksen legacy-tietokannat ja keskeytysjournalit säilyvät
+nykyisinä syötteinä; niitä ei tyhjennetä pilot-lähtötilan saavuttamiseksi.
+Niiden normaali hyväksyntäketju todennetaan erikseen samalla pilot-paketilla.
+
+| Omistaja | Rajattu muutos ja säilyvä vastuu |
+| --- | --- |
+| `.github/workflows/ci.yml`, `apps/e2e/package.json`, nykyinen `e2e-command-wiring.test.mjs` | Nykyisen Electron critical -työn ja paikallisen pakettisarjan yksi build käyttää `package:windows:pilot`-komentoa. Tavallinen smoke sekä kaikki viisi palautustapausta käyttävät samoja tavuja. Ei toista buildia, uutta jobia, ohitusta tai aikabudjettia. |
+| `scripts/run-packaged-smoke.mjs`, `packagedSmokeJob.mjs` / `packagedSmokeJobWorker.mjs` | Yhteinen ennakkotarkistus sitoo todellisen ASARin package-mode/build/release-tiedot ja nykyisen pilot-manifestin koko sarjalle jäädytettyyn paketti-identiteettiin. Se tehdään ennen tavallista smokea ja ennen kunkin tapauksen valmistelijan `prepare`-kutsua, ei vain ennen poistotyötä. Parent/worker säilyttävät lisäksi nykyisen pyynnön sidonnan. Käytä hyväksyttyä ASAR-lukijaa ja nykyisiä parsereita; ei omaa parseria tai uuden protokollan release-tietoa. |
+| `scripts/packagedWorkspaceDeletionPreparation.mjs` | Nykyisen varauksen ja leasen alla tarkistetaan nykyisillä readonly-slot- ja build-lukijoilla täsmällinen hyväksytty business-build. Pelkkä selector-hyväksyntä, puuttuva metadata tai sivuslotit eivät kelpaa. Sidottu hyväksyntä tarkistetaan tuoreesti ennen rekisterimuunnosta ja julkaisua; valmistelija ei kirjoita sitä. |
+| Nykyiset ajuri-, valmistelija-, main- ja admission-testit | Todellinen metadata syntyy vain normaalissa sovellusketjussa. Pienet fixturet saavat valmistaa synteettisen metadatan omiin kontrollitesteihinsä, mutta eivät korvata pakettikokeen todellista FirstStart-näyttöä. |
+| Testiympäristö, testimatriisi ja M1 | Kirjaa nimenomainen vaihto kehityspaketista pilot-pakettiin. Vanhojen neljän skenaarion sisältö- ja sulkuväittämät säilyvät; niiden uusi pilot-lähtötila on todennettava, ei pääteltävä vanhasta kehityspaketin läpäisystä. |
+
+**Sarjan pakettisidonnan omistajat:** nykyinen smoke-ajuri saa nimenomaisen
+sarjanaloitusvalinnan. CI:n nykyisessä smoke-vaiheessa se validoi pilot-manifestin,
+ASARin ja koko inventaarion ennen käynnistystä ja jäädyttää manifestin todellisten
+tavujen SHA-256:n. Manifesti sitoo jo version, revision ja inventaarion.
+Vain onnistuneen smoken jälkeen sama tiiviste viedään `GITHUB_ENV`-kanavaan
+nimellä `EKY_PACKAGED_SERIES_MANIFEST_SHA256`. Oletuskomento ei ala muodostaa
+sarjatilaa. Uutta kuittitiedostoa tai formaattia ei tarvita.
+
+Vain `playwright.packaged-legacy.config.ts` saa rajatut setup-/teardown-koukut.
+CI-setup vaatii edellisen vaiheen tiivisteen; puuttuva tai virheellinen arvo
+ei vaihda sitä paikalliseen kaappaukseen. Paikallisessa sarjassa setup hylkää
+perityn sarjatiivisteen, kaappaa oman kerran ja ajaa tavallisen smoken tällä
+sidonnalla ennen viittä tapausta. Setup välittää alkuperäisen tiivisteen
+workereille ja säilyttää sen loppuvarmennusta varten. Jokainen kuluttaja
+lukee nykyiset tavut uudelleen vertailuksi, ei uudeksi odotusarvoksi.
+Poistospecin requestin inventaario-identiteetti johdetaan sidotusta
+validoidusta manifestista, ei juuri havaitun inventaarion hyväksymisestä.
+Nämä sidonnat ovat vain testisarjan evidenssiä, eivät yrityksen avaamis- tai
+poistovaltuutta. Kiinteät pakettipolut ja synteettiset profiilirajat säilyvät.
+
+Sarjan loppuvarmennuksen omistaa saman configin teardown: se vertaa
+manifestia, ASARia ja koko inventaariota setupin alkuperäiseen sidontaan
+kaikkien tapausten jälkeen. Virhe hylkää komennon ja säilyy erillään
+mahdollisesta aiemmasta testivirheestä. Puuttuva loppuvarmennus tai keskeytys
+ei ole sarjan hyväksyntä. Nykyiset komento-/config-kytkentätestit vaativat
+molemmat koukut sekä paikallisen smoken; valmistelua tai loppuvarmennusta
+ei saa ohittaa. Käynnistykset ja uudet tarkistukset kuluttavat nykyisiä
+aikabudjetteja; setup ei anna uutta aikaa yksittäiselle palautustapaukselle.
+
+Paketti-identiteetin luku käyttää kiinteää nykyistä output-juurta, ei
+rendereriltä, journalista tai vapaasta ympäristöpolusta saatua sijaintia.
+Parent/worker käyttävät samaa nykyiseen testiajuriin rajattua tarkistusta;
+ei uutta manageria. Uudet tarkistukset kuluttavat nykyistä kokonaisbudjettia.
+Saman artifactin inventaario varmennetaan myös onnistuneen kokonaisajon
+jälkeen ennen hyväksyntää. Puuttuva/virheellinen smoke-valinta ei saa
+käynnistää pilot-pakettia tavalliseen käyttäjäprofiiliin.
+
+**Pienet ennakkoportit:** kehityspaketti; puuttuva tai ristiriitainen
+release/build/manifest; väärä artifact-identiteetti; dirty build;
+paketin tai manifestin vaihto tavallisen smoken ja myöhempien tapausten
+välillä; ennakkotarkistuksen hylkäys ennen jokaisen valmistelijan kutsua;
+puuttuva CI-sidonta, paikalliseen ajoon peritty sidonta, kuluttajan yritys
+korvata odotusarvo nykyhavainnolla sekä puuttuva/epäonnistunut loppuvarmennus;
+puuttuva, väärän revision tai vain sovelluksen hyväksyvä metadata;
+sivuslotit; hyväksynnän muutos rekisterimuunnoksen tai julkaisun aikana;
+peruutus, sulku ja alkuperäinen virhe nykyisestä salatusta paketista.
+Hylkäys ennen journalin julkaisua ja säilyvät tiedostot todistetaan erikseen.
+Positiivinen kontrolli käyttää nykyistä FirstStart- ja smoke-hyväksyntää;
+tyypitys ja riippumaton rajattu katselmus edeltävät puhtaan paketin ajoa.
+
+**Kokonaisportti:** säilytä ensimmäinen epäonnistunut paketti ja aineisto.
+Jäädytä korjattu lähde, rakenna yksi uusi puhdas pilot-paketti ja varmista
+sen identiteetti. Aja tavallinen smoke ja kaikki viisi nykyistä pakettitapausta
+samalla artifactilla. Poiston neljä vaihetta, ulkoisten backup-/PDF-tavujen
+säilyminen, puun ja porttien poissaolo sekä loppusiivous vaaditaan.
+120 sekunnin vaihe-, 300 sekunnin workflow- ja 35 minuutin CI-raja säilyvät.
+Uusi vika säilytetään ja käsitellään; uusi pakettityyppi ei ole uusintasilmukka.
+Stress/soak, installer sekä PR/main-portit ja W7.5:n sulku säilyvät.
+
+Rajattu kytkentä ja pysyvät kontrollit ovat työpuussa. Yhtenäinen 212 testin
+kohdesarja, 25 oikean Windows-prosessiketjun kontrollia ja 80 ajokytkentäkontrollia
+läpäisivät; päällekkäisiä sarjoja ei summata. Mukana ovat hyväksynnän muutos
+viimeisen julkaisukuittauksen jälkeen, lähdeparsereilla luettu oikea ASAR,
+desktopin käännöshakemiston käytön kieltävä setup-koe ja alkuperäisen virheen
+todellinen OpenPGP-purku. E2E-tyypitys ja rajatut riippumattomat katselmukset
+läpäisivät. Katselmuksen kaksi puutetta korjattiin: kontrollit eivät vaadi
+esikäännettyä desktopia, ja build-valinta kuuluu myös julkaisun jatkuvaan
+alkuperäisvalinnan vartijaan. Kontrolloidut natiivifixturet eivät väitä
+pilot-hyväksyntää. Sama uusi puhdas pilot-paketti ja sen kaikki viisi tapausta
+ovat edelleen erillinen avoin portti.
 
 Indexin ja mainin rajattu kytkentä on nyt työpuussa: sama smoke-/token-portti
 ja täsmällinen testiprofiili, vakaa tyhjä rekisteri ennen yritysratkaisua,

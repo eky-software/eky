@@ -12,6 +12,7 @@ import { packagedSmokeTimeoutMilliseconds, packagedSmokeWorkflowTimeoutMilliseco
   packagedSmokeJobTerminationReserveMilliseconds } from './packagedSmokeLimits.mjs';
 import { capturePackagedSmokePhaseOutput } from './packagedSmokeFailureEvidence.mjs';
 import { inspectPackageArtifactInventory } from './package-artifact-inventory.mjs';
+import { inspectPackagedPilotSeries, requirePackagedSeriesPin } from './packagedPilotSeries.mjs';
 import { packagedSelectorVerificationPhase, readPackagedSmokeBackend,
   writePackagedSmokeResult } from '../dist/main/packagedSmoke.js';
 import { loopbackPortReleaseTimeoutMilliseconds, waitForLoopbackPortRelease }
@@ -105,6 +106,12 @@ async function runOwnedPackagedSmokeJob(input, { environment = process.env, sign
     await assertRoots(false);
     const inventory = await inspectPackageArtifactInventory({ root: packageRoot, stage: 'packagedApp' }); current();
     if (inventory.identity !== selected.binding.artifactDescriptorSha256) throw invalid();
+    if (workflow) {
+      const pilot = await inspectPackagedPilotSeries(requirePackagedSeriesPin(env), {
+        assertCurrent: current, inspectInventory: async () => inventory,
+      });
+      if (pilot.manifest.inventoryIdentity !== selected.binding.artifactDescriptorSha256) throw invalid();
+    }
     await assertRoots(false);
     try { await mkdir(dirname(selected.phaseRoot), { mode: 0o700 }); }
     catch (error) { if (error?.code !== 'EEXIST') throw error; }

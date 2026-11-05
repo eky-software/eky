@@ -1221,6 +1221,19 @@ ja [ensivirheen seurantaohjetta](../ai/workflow.md#ci-ajon-seuranta-ja-virhetodi
 Packaged-artifactin fuseja, sandboxia, preload-rajaa tai navigointipolitiikkaa
 ei heikennetä testauksen vuoksi.
 
+W7.4:n pakettisarjan kehitysartifact ei täytä poiston cold-build-porttia.
+[Pilot-identiteetin korjaussopimus](local-company-workspace-plan.md#pakettitestin-pilot-identiteetin-korjaussopimus)
+määrittää korjauksen: nykyinen yksi puhdas pilot-build, oikean FirstStartin
+tuottama hyväksyntä ja sen tuore tarkistus ennen poistojournalia. Rajattu
+kytkentä on työpuussa; puhtaan pilot-paketin hyväksyntä on vielä avoin. Kaikki viisi
+pakettitapausta ja tavallinen smoke säilyvät, samoin synteettinen testijuuri
+ja aikarajat. Release-candidate- ja jakeluportit ovat erilliset.
+Sarjan alussa validoidun pilot-manifestin tavutiiviste säilyy vertailuarvona
+kaikissa valmisteluissa ja packaged-configin loppuvarmennuksessa. CI:n
+nykyinen smoke-vaihe välittää sen vasta onnistuttuaan; paikallisen sarjan
+setup ajaa saman tavallisen smoken ennen viittä tapausta. Loppuvarmennus
+ei kaappaa uutta vertailuarvoa eikä epäonnistuminen korvaa aiempaa testivirhettä.
+
 W7.4:n `selectorVerification` on nykyisen smoke-omistajan sisäinen
 valitsimen todennusvaihe. Se vaatii saman smoke-valinnan ja kelvollisen tokenin,
 johtaa saman testijuuren eikä yhdisty legacy-/restore-vaiheeseen. Vaiheistus

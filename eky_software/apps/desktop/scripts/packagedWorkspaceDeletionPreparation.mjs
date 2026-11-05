@@ -22,6 +22,10 @@ import { readWorkspaceColdRecoveryOwnerPresence, assertWorkspaceColdRecoveryConf
 import { createReadOnlyJournalSlotPaths } from '../dist/workspaces/management/mainOwnedWorkspaceManagementOperationGuard.js';
 import { createDesktopProfilePaths } from '../dist/runtime/desktopProfilePaths.js';
 import { createLocalUpdateRuntimePaths } from '../dist/update/localUpdateRuntimePaths.js';
+import { captureWorkspaceDeletionLocalUpdateSelection, createWorkspaceDeletionLocalUpdateReaders }
+  from '../dist/update/workspaceDeletionLocalUpdateSelection.js';
+import { readAcceptedBusinessBuild } from '../dist/update/acceptedBuildMetadata.js';
+import { inspectPackagedPilotSeries, requirePackagedSeriesPin } from './packagedPilotSeries.mjs';
 import { createProfileSnapshotRuntimePaths } from '../dist/profileBackup/profileSnapshotRuntimePaths.js';
 import { createWorkspaceCreationJournalPaths, WORKSPACE_CREATION_JOURNAL_FILE_NAME } from '../dist/workspaces/creation/workspaceCreationJournalPaths.js';
 import { createWorkspaceBackupImportJournalPaths, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../dist/workspaces/import/workspaceBackupImportJournalPaths.js';
@@ -47,7 +51,7 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
     if (state !== expected) { state = 'failed'; throw invalid(); }
     state = `${expected}:running`;
     const running = state;
-    let active = true, reservation, lease, failure, value, firstGuardFailure, closeUncertain = false;
+    let active = true, reservation, lease, failure, value, firstGuardFailure, closeUncertain = false, buildSelection;
     const retainExclusion = () => { closeUncertain = true; };
     const retainGuardFailure = error => { firstGuardFailure ??= { error }; return firstGuardFailure.error; };
     const current = () => {
@@ -99,9 +103,31 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
         } catch (error) { throw retainGuardFailure(error); }
       };
       await assertOwned();
+      let assertBuild = expected === 'new' ? async () => { throw invalid(); } : async () => {};
+      const captureBuild = async () => {
+        if (expected !== 'new' || buildSelection !== undefined) throw invalid();
+        const pilot = await inspectPackagedPilotSeries(requirePackagedSeriesPin(), { assertCurrent: current });
+        const update = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot,
+          legacyRuntimeRoot: createDesktopProfilePaths(userDataRoot).runtimeRoot });
+        const readers = createWorkspaceDeletionLocalUpdateReaders(update);
+        buildSelection = await captureWorkspaceDeletionLocalUpdateSelection({ readers,
+          buildInfo: pilot.buildInfo, releaseInfo: pilot.releaseInfo, assertCurrent: current, assertOwned });
+        if (buildSelection.admission !== 'exactAcceptedBuild') throw invalid();
+        assertBuild = async () => {
+          await buildSelection.assertSelected();
+          const slots = await readers.metadata(); current();
+          const legacy = await readers.legacyMetadata(); current();
+          const business = readAcceptedBusinessBuild(slots.current?.value ?? legacy.current?.value);
+          if (business?.appVersion !== pilot.buildInfo.appVersion || business?.buildRevision !== pilot.buildInfo.buildRevision ||
+              business?.releaseChannel !== pilot.releaseInfo.releaseChannel) throw invalid();
+          await buildSelection.assertSelected();
+        };
+        await assertBuild();
+      };
       const registry = new WorkspaceRegistryStore({ installationRoot: userDataRoot,
         filePath: join(userDataRoot, WORKSPACE_REGISTRY_FILE_NAME) });
-      value = await work({ root, userDataRoot, registry, current, assertOwned, retainExclusion });
+      value = await work({ root, userDataRoot, registry, current, assertOwned,
+        captureBuild, assertBuild: () => assertBuild(), retainExclusion });
       await assertOwned();
     } catch (error) {
       // Slot owners may safely map a failed close. Do not infer settlement from their generic rejection.
@@ -110,6 +136,7 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
       : new AggregateError([firstGuardFailure.error, error], 'PACKAGED_DELETION_PREPARATION_FAILED', { cause: firstGuardFailure.error }) }; }
     finally {
       active = false;
+      buildSelection?.revoke();
       const closeFailure = error => { failure = { error: failure === undefined ? error : new AggregateError([failure.error, error],
           'PACKAGED_DELETION_PREPARATION_CLOSE_FAILED', { cause: failure.error }) }; }
       try { await lease?.release(); }
@@ -147,6 +174,7 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
         const before = slots.current?.value;
         if (before === undefined || before.workspaces.length !== 1 ||
             before.activeWorkspaceId !== before.workspaces[0].workspaceId || slots.next !== undefined || slots.backup !== undefined) throw invalid();
+        await owner.captureBuild();
         const entry = before.workspaces[0];
         await assertCleanPreparation(owner, before);
         const retained = await captureRetained(owner, entry.workspaceId);
@@ -165,10 +193,12 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
         await assertCleanPreparation(owner, slots.current.value);
         const selected = await captureDeletionTarget({ installationRoot: owner.userDataRoot, registry: owner.registry,
           workspaceId: entry.workspaceId, typedLabel: entry.workspaceLabel, assertAuthority: owner.current });
+        const assertPublication = async () => { await owner.assertOwned(); await owner.assertBuild(); };
+        const assertPreparation = async () => { await selected.assertCurrent(); await owner.assertBuild(); };
         const command = createWorkspaceDeletionCommand({ userDataRoot: owner.userDataRoot, registry: owner.registry,
           assertWritersAbsent: owner.assertOwned });
-        const result = await command.publish(owner.current, owner.assertOwned, selected.target,
-          { operationId: randomUUID(), target: selected.target, backupDisposition: 'explicitDataLoss' }, selected.assertCurrent);
+        const result = await command.publish(owner.current, assertPublication, selected.target,
+          { operationId: randomUUID(), target: selected.target, backupDisposition: 'explicitDataLoss' }, assertPreparation);
         const journal = result.journal;
         if (journal.phase !== 'authorized' || journal.target.workspaceId !== entry.workspaceId ||
             journal.originalJournalProofs.length !== 0) throw invalid();
@@ -201,6 +231,7 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
 
 async function assertCleanPreparation(owner, registry) {
   await owner.assertOwned();
+  await owner.assertBuild();
   const root = owner.userDataRoot;
   const deletionJournal = createWorkspaceDeletionJournalPaths(root);
   const present = await readWorkspaceColdRecoveryOwnerPresence(
