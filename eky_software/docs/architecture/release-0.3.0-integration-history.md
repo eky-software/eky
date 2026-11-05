@@ -5,6 +5,42 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n puhtaan paketin sisältöbudjetti 5.11.2026
+
+Katselmuskorjaukset ja koko W7.4:n nykyinen toteutus kirjattiin puhtaaseen
+revisioon `39a3c17651cf941a16dcbab7cd0f9671de72f084`. Kaikki aiemmin
+katselmoidut uudet omistajat ja testit olivat mukana. Staged-tarkistus
+poisti yhdestä uudesta testistä vain rivinloppuvälin ja tyhjän loppurivin;
+sisällön samuus todennettiin whitespace-normalisoinnilla. Julkaisurajaus,
+muutoslista ja whitespace-portti tarkistettiin ennen committia.
+
+Ensimmäinen puhdas paketointi hylättiin sovellusosan `FILE_COUNT`-rajaan.
+Valmisteltu sovellusosa sisälsi 486 itsenäistä tavallista tiedostoa ja
+3 794 364 tavua; aiemmat rajat olivat 448 tiedostoa ja 3,25 MiB.
+Nimi- ja tiedostotyyppitarkistus ei löytänyt kiellettyä sisältöä.
+Valmista nykyisen revision Electron-pakettia ei syntynyt eikä vanhaa
+outputia hyväksytty sen korvikkeena. Alkuperäinen hylkäys säilyy.
+
+Omistaja hyväksyi 5.11.2026 rajatun budjetin: 544 tiedostoa ja 4,25 MiB
+sovellusosalle sekä sama kokoraja vain täsmälliselle `resources/app.asar`-
+tiedostolle. Muiden vaiheiden, yksittäisten tiedostojen, polkujen,
+sisältöjen, eheyden, aikojen ja CI:n rajat säilyvät. Nykyinen omistava
+[pakettibudjetti](windows-installer-acceptance-harness-v2.md#sovellusosan-pakettibudjetti)
+erottaa tämän salattujen virhelokien suuremmista säilytysrajoista.
+
+Rajatut nykyisten inventaario-, pakkaaja- ja ASAR-kontrollien 81 testiä
+läpäisivät ilman ohituksia: täsmällinen uusi raja ja yhden tiedoston/tavun
+ylitys, muiden tiedostojen muuttumattomat rajat sekä sisältö- ja
+eheystorjunnat. Valmistellun sovellusosan täysi nykyinen inventaariotarkistus
+läpäisi hyväksytyllä budjetilla. Kumpikaan ei hyväksy valmista puhdasta
+pakettia: uusi revisio, paketointi ja nykyiset palautus-/poistoportit
+vaaditaan edelleen.
+
+Erillinen `39a3c176`-revision täysi nykyinen Electron-stress-koe läpäisi
+näkymäsiirtymät, laskuavaukset, PDF-esikatselut, tukipaketit, synteettiset
+salaisuuskierrot ja hallitut uudelleenkäynnistykset sekä fixture-siivouksen.
+Tämä ei korvaa täyttä soakia, pakettia tai revision PR/main-portteja.
+
 ## W7.4:n loppukatselmuksen ajastus- ja jatkamiskorjaukset 5.11.2026
 
 Koko W7.4:n rajattu riippumaton lähdekatselmus löysi kaksi korjauskohtaa:

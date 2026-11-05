@@ -43,7 +43,19 @@ kohdeportit läpäisivät erikseen; sarjoja ei summata.
 [Tarkka lähdekohtainen näyttö ja säilyvät ensihylkäykset](release-0.3.0-integration-history.md#w74n-fyysisen-journalin-tuotantokytkennän-ennakkoportit-5112026)
 eivät korvaa korjausten omia portteja tai puhtaan paketin hyväksyntää.
 
-**Seuraavaksi:** puhtaan revision ja paketin jäädytys sekä sama
+**Pakettivalmistelun nykytila:** puhdas lähderevisio `39a3c176` sisältää
+katselmuskorjaukset. Sen ensimmäinen paketointi pysähtyi sovellusosan
+vanhaan tiedostomäärärajaan; valmista pakettia ei hyväksytty.
+Omistaja hyväksyi 544 tiedoston ja 4,25 MiB:n rajauksen sekä saman koon
+vain täsmälliselle ASARille. Rajatut 81 paketointi-/sisältöregressiota,
+riippumaton katselmus ja valmistellun sovellusosan täysi sisältöinventaario
+läpäisivät.
+Tämä ei korvaa uuden puhtaan paketin todennusta. Saman lähderevision
+nykyinen täysi Electron-stress-työkuorma ja loppusiivous läpäisivät.
+[Pakettivalmistelun näyttö](release-0.3.0-integration-history.md#w74n-puhtaan-paketin-sisältöbudjetti-5112026)
+säilyy erillään puuttuvista paketti- ja integraatioporteista.
+
+**Seuraavaksi:** uusi puhdas revisio ja sama
 puhdas hardened Windows -paketti: backup -> inspect -> restore -> restart ->
 compare sekä sisäinen poisto/restart ja säilyvät tavut, nykyiset kesto- ja
 installer-portit, julkaisuyksityisyys, täsmällisen PR-headin portit ja

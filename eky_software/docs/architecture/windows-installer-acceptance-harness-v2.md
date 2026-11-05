@@ -112,11 +112,12 @@ on päivitettävä riippuvuusohjeen mukaisesti.
 
 ### Sovellusosan pakettibudjetti
 
-Omistajan 26.10.2026 hyväksymä W7.2:n rajaus nostaa sovellusosan
-tiedostomäärän 400:sta 448:aan sekä kokonaiskoon 2,75:stä 3,25 MiB:iin
-(3 407 872 tavua). Vain täsmällinen `resources/app.asar` saa saman
-laajemman 3,25 MiB:n tiedostokokorajan. Aiempi K:n 12.10.2026 hyväksytty
-rajaus oli 400 tiedostoa ja 2,75 MiB.
+Omistajan 5.11.2026 hyväksymä W7.4:n rajaus nostaa sovellusosan
+tiedostomäärän 448:sta 544:ään sekä kokonaiskoon 3,25:stä 4,25 MiB:iin
+(4 456 448 tavua). Vain täsmällinen `resources/app.asar` saa saman
+laajemman 4,25 MiB:n tiedostokokorajan. Aiemmat hyväksytyt rajaukset
+olivat W7.2:n 26.10.2026 448 tiedostoa / 3,25 MiB ja K:n 12.10.2026
+400 tiedostoa / 2,75 MiB.
 Muiden tiedostojen, vaiheiden ja artifactien rajat, sallitut sisällöt ja
 eheysvaatimukset säilyvät. Raja-arvo- ja ylitysregressiot sekä puhtaan
 revision uusi paketti-inventaario vaaditaan. Jaeltavaa artifactia ei rakenneta
