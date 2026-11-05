@@ -12751,7 +12751,8 @@ korjaussopimus korvaa vain tämän pakettivalinnan, ei cold-build-porttia.
 
 ###### Pakettitestin pilot-identiteetin korjaussopimus
 
-**5.11.2026, toteutussopimus ja rajattu kytkentä; ei vielä pakettihyväksyntä.**
+**5.11.2026, rajattu kytkentä ja puhdas pilot-pakettisarja todennettu;
+koko W7.4:n integraatio on vielä avoin.**
 Nykyinen `package:windows:pilot` muodostaa puhtaasta revisiosta oikeat
 package-mode-, build- ja release-tiedot sekä sisältöön sidotun manifestin.
 W7.4:n pakettisarja käyttää tätä yhtä artifactia. Tavallisen
@@ -12849,8 +12850,12 @@ todellinen OpenPGP-purku. E2E-tyypitys ja rajatut riippumattomat katselmukset
 läpäisivät. Katselmuksen kaksi puutetta korjattiin: kontrollit eivät vaadi
 esikäännettyä desktopia, ja build-valinta kuuluu myös julkaisun jatkuvaan
 alkuperäisvalinnan vartijaan. Kontrolloidut natiivifixturet eivät väitä
-pilot-hyväksyntää. Sama uusi puhdas pilot-paketti ja sen kaikki viisi tapausta
-ovat edelleen erillinen avoin portti.
+pilot-hyväksyntää. Puhtaan `a45244ed`-revision yksi pilot-paketti läpäisi
+myös tavallisen hardened-smoken ja kaikki viisi pakettitapausta, mukaan lukien
+sisäisen poiston ja kaksi tyhjään valitsimeen päättyvää käynnistystä.
+Sarjan loppuvarmennus ja erillinen jälkivertailu todistivat samojen paketti-
+ja lähdetavujen säilymisen. Rebuildiä tai uusintaa ei tehty. Soak ja
+nykyiset integraation PR/main-portit eivät sulkeudu tällä pakettinäytöllä.
 
 Indexin ja mainin rajattu kytkentä on nyt työpuussa: sama smoke-/token-portti
 ja täsmällinen testiprofiili, vakaa tyhjä rekisteri ennen yritysratkaisua,

@@ -43,41 +43,27 @@ kohdeportit läpäisivät erikseen; sarjoja ei summata.
 [Tarkka lähdekohtainen näyttö ja säilyvät ensihylkäykset](release-0.3.0-integration-history.md#w74n-fyysisen-journalin-tuotantokytkennän-ennakkoportit-5112026)
 eivät korvaa korjausten omia portteja tai puhtaan paketin hyväksyntää.
 
-**Pakettivalmistelun nykytila:** puhdas revisio `bee5469e` sisältää
-hyväksytyn 544 tiedoston ja 4,25 MiB:n sovellusbudjetin sekä saman koon
-vain täsmälliselle ASARille. Rajatut 81 regressiota, riippumaton katselmus,
-uusi paketointi ja kaikki kuusi sisältöinventaariota läpäisivät. Samoilla
-muuttamattomilla pakettitavuilla tavallinen hardened backup-/restore-smoke
-sekä legacy-, create- ja kahden import-tapauksen palautukset läpäisivät.
-Uusi poisto/restart hylättiin: kehityspaketista puuttuva pilot-build-todiste
-estää poiston cold-jatkon nykyisen sopimuksen mukaisesti. Alkuperäinen
-syyketju säilyi; kyse ei ollut ajastimen katkaisusta. Testin
-paketointilähtötilan ja cold-admissionin yhteinen kytkentä on vielä avoin.
-Edeltävän `39a3c176`-revision Electron-stress ja loppusiivous läpäisivät;
-nykyisen revision täysi soak ei ole vielä tehty.
-[Pakettivalmistelun näyttö](release-0.3.0-integration-history.md#w74n-puhtaan-paketin-sisältöbudjetti-5112026)
-säilyy erillään puuttuvista paketti- ja integraatioporteista.
-
-**Seuraavaksi:** todenna [pakettitestin pilot-identiteetin kytkentä](local-company-workspace-plan.md#pakettitestin-pilot-identiteetin-korjaussopimus)
-yhdellä uudella puhtaalla pilot-paketilla.
-Yksi puhdas pilot-paketti korvaa tämän pakettisarjan kehitysartifactin;
-oikea FirstStart luo hyväksynnän, jonka valmistelija tarkistaa ennen
-poistojournalin julkaisua. Rajattu suunnitelmakatselmus täsmensi sarjan
-yhteisen pakettisidonnan: tarkistus ennen jokaista valmistelua sekä samaan
-alkusidontaan vertaava loppuvarmennus. Rajattu kytkentä on työpuussa;
+**Pakettikytkennän nykytila:** puhdas revisio
+`a45244ed0517841b64e319d3dc5fb7b950bd26bb` sisältää
+[pilot-identiteetin kytkennän](local-company-workspace-plan.md#pakettitestin-pilot-identiteetin-korjaussopimus).
 212 kohdetestiä, 25 oikean prosessiketjun kontrollia, 80 ajokytkentäkontrollia,
-tyypitys ja rajatut katselmukset läpäisivät. Sarjoja ei summata.
-Puhtaan pilot-paketin ajot ovat vielä tekemättä.
-Kehityskomennon oletus säilyy. Kehityspaketille
-ei anneta pilot-identiteettiä jälkikäteen eikä tuotannon cold-porttia ohiteta.
-Ennen uutta kokonaisajoa vaaditaan pienet kontrollit ja katselmus;
-uusi puhdas paketti sidotaan samaan lähteeseen ja sen omiin palautus- sekä
-sisäisen poiston/restartin näyttöihin. Myös nykyiset kesto- ja
-installer-portit, julkaisuyksityisyys, täsmällisen PR-headin portit ja
-auditointi, suojattu merge sekä uuden mainin omat tarkistukset vaaditaan.
-Nämä integraatioportit ovat vielä avoinna. W7.4:ää tai koko 0.3.0:aa ei
-ole hyväksytty. W7.5:n delete-IPC, preload,
-painike ja backenditon tukivienti pysyvät suljettuina.
+tyypitys ja rajatut katselmukset läpäisivät; sarjoja ei summata.
+Yksi uusi puhdas pilot-paketti läpäisi kaikki kuusi sisältöinventaariota,
+tavallisen hardened backup-/restore-smoken ja kaikki viisi pakettitapausta:
+legacy-038, cold-create, molemmat cold-importit sekä viimeisen yrityksen
+poisto ja kaksi tyhjään valitsimeen päättyvää käynnistystä. Todellinen
+FirstStart loi hyväksynnän. Sarjan loppuvarmennus sekä erillinen lähde- ja
+paketti-identiteetin jälkivertailu läpäisivät ilman rebuildiä tai uusintaa.
+Kehityskomennon oletus, sovellusbudjetit, turvatarkistukset ja aikarajat säilyvät.
+[Pakettisarjan näyttö ja säilyvät ensihylkäykset](release-0.3.0-integration-history.md#w74n-pilot-paketin-palautus--ja-poistoketju-5112026)
+eivät vielä hyväksy koko W7.4:ää.
+
+**Seuraavaksi:** nykyisen lähteen täysi soak ja vaikutusalueen integraatioportit,
+julkaisuyksityisyys, täsmällisen PR-headin portit ja auditointi, suojattu merge
+sekä uuden mainin omat tarkistukset. Edeltävän `39a3c176`-revision
+Electron-stress ja loppusiivous läpäisivät; nykyisen revision täysi soak on
+vielä avoin. W7.4:ää tai koko 0.3.0:aa ei ole hyväksytty.
+W7.5:n delete-IPC, preload, painike ja backenditon tukivienti pysyvät suljettuina.
 
 Vanhat aikakatkaisut, tuntemattomat alkuperäiset syyt ja epävarmat
 siivoustilat säilyvät avoimina; myöhempi läpäisy ei muuta niitä korjatuiksi.

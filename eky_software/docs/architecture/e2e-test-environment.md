@@ -1225,7 +1225,8 @@ W7.4:n pakettisarjan kehitysartifact ei täytä poiston cold-build-porttia.
 [Pilot-identiteetin korjaussopimus](local-company-workspace-plan.md#pakettitestin-pilot-identiteetin-korjaussopimus)
 määrittää korjauksen: nykyinen yksi puhdas pilot-build, oikean FirstStartin
 tuottama hyväksyntä ja sen tuore tarkistus ennen poistojournalia. Rajattu
-kytkentä on työpuussa; puhtaan pilot-paketin hyväksyntä on vielä avoin. Kaikki viisi
+kytkentä ja saman puhtaan pilot-paketin viisi tapausta on todennettu
+revisiolla `a45244ed`; koko W7.4:n integraatio on vielä avoin. Kaikki viisi
 pakettitapausta ja tavallinen smoke säilyvät, samoin synteettinen testijuuri
 ja aikarajat. Release-candidate- ja jakeluportit ovat erilliset.
 Sarjan alussa validoidun pilot-manifestin tavutiiviste säilyy vertailuarvona

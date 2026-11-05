@@ -5,6 +5,30 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n pilot-paketin palautus- ja poistoketju 5.11.2026
+
+Pilot-kytkentä kirjattiin puhtaaseen revisioon
+`a45244ed0517841b64e319d3dc5fb7b950bd26bb`. Yksi uusi pilot-paketointi
+ja kaikki kuusi sisältöinventaariota läpäisivät; todellinen ASAR, manifesti,
+build ja julkaisutiedot vastasivat samaa puhdasta lähdettä.
+Alkuperäinen kehityspaketti säilytettiin erillisin, inventaariolla varmennetuin
+tavuin ennen uuden paketin rakentamista.
+
+Paikallisen packaged-configin setup ajoi tavallisen hardened backup ->
+inspect -> restore -> restart -> compare -smoken. Sen jälkeen kaikki viisi
+tapausta läpäisivät: legacy-038, keskeytynyt luonti, sidonnaton ja sidottu
+tuonti sekä viimeisen yrityksen poisto ja kaksi käynnistystä tyhjään
+yritysvalitsimeen. Oikea FirstStart tuotti business-hyväksynnän, jonka
+valmistelija tarkisti ennen journalin julkaisua. Poiston omat prosessi-,
+portti-, sisältö- ja siivousväittämät täyttyivät. Sarjan teardown sekä
+erillinen jälkivertailu varmensivat alkuperäisen paketin ja testattujen
+lähteiden muuttumattomuuden. Rebuildiä tai uusintaa ei tehty.
+
+Tämä hyväksyy nimetyn paikallisen pilot-pakettiketjun, ei koko W7.4:ää,
+installeria, PR/main-portteja tai jakelujulkaisua. Aiemmat hylkäykset ja
+epävarmuudet säilyvät erillään. Täysi soak ja integraation nykyiset portit
+ovat edelleen avoinna; W7.5:n julkinen poistokanava pysyy suljettuna.
+
 ## W7.4:n pilot-kytkennän kohdeportit 5.11.2026
 
 Katselmoidun pilot-sopimuksen rajattu testikytkentä on toteutettu. Nykyinen
