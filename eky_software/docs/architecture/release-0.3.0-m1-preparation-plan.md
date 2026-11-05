@@ -72,12 +72,12 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
 - Salauskokeen alkuperäinen assertion ja pino löytyivät puretusta
   CI-paketista. Synteettinen sanallinen tunniste oli peittynyt; tarkkaa
   sisäistä tunnistetta tai peittoon osunutta ympäristöarvoa ei kerätty.
-  Vain testifixturen tekninen tunniste on korjattu. Neljä kontrollia ja
-  koko nykyinen salaus-/purkukoe läpäisivät; tarkka sidonta, peitto,
+  Vain testifixturen tekninen tunniste on korjattu. Neljä kohdekontrollia,
+  koko 363 testin nykyinen salaus- ja virheaineistosarja sekä rajattu
+  riippumaton deltakatselmus läpäisivät. Tarkka sidonta, peitto,
   35 tiedoston tavuvertailu ja kaikki aiemmat virherajat säilyivät.
 
-**Seuraava portti:** testikorjauksen deltakatselmus ja vaikutussarja sekä
-core-CI:n työnjakopäätös. Sen pakettitestit ja tyypitys läpäisivät, mutta
+**Seuraava portti:** core-CI:n työnjakopäätös. Sen pakettitestit ja tyypitys läpäisivät, mutta
 nykyinen 15 minuutin kokonaisraja katkesi desktop-käännöksessä ennen
 Linux-tarkistusprosessia. Kahden pakollisen peräkkäisen työn ehdotus
 (kumpikin 15 minuuttia, yhteisvara 30) odottaa omistajan päätöstä;

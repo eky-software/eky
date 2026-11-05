@@ -38,7 +38,10 @@ Sisäinen fixture ajettiin myös nimetyn synteettisen peittosalaisuuden
 kanssa. Tarkka yksikäsitteinen sidonta, peittyneen tunnisteen hylkäys,
 viesti/pino/syyketju, todelliset tavut ja aikarajat säilyivät. Tämä ei
 todista myöhemmän hosted-ajon läpäisyä tai kaikkien ympäristöjen
-mahdollisten peittotörmäysten poistumista.
+mahdollisten peittotörmäysten poistumista. Koko nykyinen 363 testin
+salaus- ja virheaineistosarja läpäisi ilman hylkäyksiä tai ohituksia,
+samoin rajattu riippumaton koodi- ja dokumentaatiokatselmus. Kohde- ja
+vaikutussarjoja ei summata.
 
 Core-Linuxin pakettitestit, myös 23 kohteen ketju, ja tyypitys läpäisivät.
 Backend ja web kääntyivät, mutta nykyinen 15 minuutin työn kokonaisraja
