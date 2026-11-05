@@ -48,7 +48,7 @@ async function fixture(context: TestContext, location: 'current' | 'legacy' | 'b
   context.onTestFinished(async ({ task }) => { if (task.result?.state === 'pass') await rm(root, { recursive: true, force: true }); });
   const paths = createLocalUpdateRuntimePaths({ userDataPath: root, legacyRuntimeRoot: join(root, 'runtime') });
   async function put(path: string, value: unknown) {
-    await mkdir(dirname(path), { recursive: true });
+    await mkdir(dirname(path), { recursive: true, mode: 0o700 });
     await writeFile(path, encode(value));
   }
   if (location !== 'legacy') await put(paths.acceptedBuildMetadataPath, target);

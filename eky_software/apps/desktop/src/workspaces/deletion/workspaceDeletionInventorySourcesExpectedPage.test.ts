@@ -86,7 +86,7 @@ it.for(['secondRaw', 'thirdRaw', 'next', 'root', 'foreign', 'newRoot'] as const)
     if (kind === 'next') { retainedPath = paths.nextPath; await writeFile(retainedPath, original, { flag: 'wx' }); }
     if (kind === 'root') {
       retainedPath = join(f.root, 'original-workspace');
-      await rename(f.workspace.workspaceRoot, retainedPath); await mkdir(f.workspace.workspaceRoot);
+      await rename(f.workspace.workspaceRoot, retainedPath); await mkdir(f.workspace.workspaceRoot, { mode: 0o700 });
     }
     if (kind === 'newRoot') {
       retainedPath = join(deriveWorkspaceReplacementRemnantParents(f.root)[1]!.parentPath, id(99));

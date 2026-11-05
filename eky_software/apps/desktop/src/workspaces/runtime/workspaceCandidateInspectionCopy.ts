@@ -24,6 +24,7 @@ export class WorkspaceCandidateInspectionCopy {
   private parentIdentity: BigIntStats | undefined;
   private creationIdentity: Readonly<WorkspaceInspectionCopyCreationIdentity> | undefined;
   private removedCreationIdentity: Readonly<WorkspaceInspectionCopyCreationIdentity> | undefined;
+  private removed = false;
 
   constructor(readonly root: string, private readonly kind?: 'coldRestoreContent') {}
 
@@ -97,7 +98,7 @@ export class WorkspaceCandidateInspectionCopy {
   }
 
   async discard(assertMainOwned: () => Promise<void>, signal: AbortSignal): Promise<void> {
-    if (this.rootIdentity === undefined || this.parentIdentity === undefined) throw new Error(failureCode);
+    if (this.removed || this.rootIdentity === undefined || this.parentIdentity === undefined) throw new Error(failureCode);
     if (signal.aborted) throw new Error(failureCode);
     await assertMainOwned();
     await this.assertOwnedDirectory();
@@ -137,20 +138,21 @@ export class WorkspaceCandidateInspectionCopy {
       await assertMainOwned();
       await this.assertOwnedDirectory();
       await assertFileCurrent(name);
-      if (signal.aborted) throw new Error(failureCode);
+      if (signal.aborted || this.removed) throw new Error(failureCode);
       await fileSystem.unlink(join(this.root, name));
     }
     await assertMainOwned();
     await this.assertOwnedDirectory();
-    if (signal.aborted) throw new Error(failureCode);
+    if (signal.aborted || this.removed) throw new Error(failureCode);
     await fileSystem.rmdir(this.root);
+    this.removed = true;
     this.removedCreationIdentity = this.creationIdentity;
     this.creationIdentity = undefined;
   }
 
   /** Only a caller with proven child exit may use the unused-copy terminal. */
   async discardAfterExit(assertMainOwned: () => Promise<void>, signal: AbortSignal, requireEmpty = false): Promise<void> {
-    if (this.rootIdentity === undefined || this.parentIdentity === undefined || signal.aborted) throw new Error(failureCode);
+    if (this.removed || this.rootIdentity === undefined || this.parentIdentity === undefined || signal.aborted) throw new Error(failureCode);
     await this.assertOwnedDirectory();
     const initialNames = await fileSystem.readdir(this.root);
     if (signal.aborted) throw new Error(failureCode);
@@ -170,17 +172,20 @@ export class WorkspaceCandidateInspectionCopy {
     // rmdir rejects an entry arriving after the final empty-directory check.
     await assertMainOwned();
     await this.assertOwnedDirectory();
-    if (signal.aborted) throw new Error(failureCode);
+    if (signal.aborted || this.removed) throw new Error(failureCode);
     await fileSystem.rmdir(this.root);
+    this.removed = true;
     this.removedCreationIdentity = this.creationIdentity;
     this.creationIdentity = undefined;
   }
 
   private async assertOwnedDirectory(assertCurrent?: () => void): Promise<void> {
+    if (this.removed) throw new Error(failureCode);
     assertCurrent?.();
     assertIdentity(this.parentIdentity!, await inspectDirectory(dirname(this.root), assertCurrent));
     assertCurrent?.();
     assertIdentity(this.rootIdentity!, await inspectDirectory(this.root, assertCurrent));
+    if (this.removed) throw new Error(failureCode);
     assertCurrent?.();
   }
 

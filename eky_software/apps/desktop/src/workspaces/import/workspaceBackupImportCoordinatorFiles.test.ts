@@ -43,7 +43,7 @@ async function fixture(test: TestContext) {
   } };
   const stage = f.container.stage.bind(f.container);
   vi.spyOn(f.container, 'stage').mockImplementation(async value => {
-    await stage(value); await mkdir(value.importStagingRoot); return f.container.inspect(value);
+    await stage(value); await mkdir(value.importStagingRoot, { mode: 0o700 }); return f.container.inspect(value);
   });
   const migrate = f.candidate.migrate.bind(f.candidate);
   vi.spyOn(f.candidate, 'migrate').mockImplementation(async value => {

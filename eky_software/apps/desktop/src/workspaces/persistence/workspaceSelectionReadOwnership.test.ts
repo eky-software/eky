@@ -57,7 +57,7 @@ async function fixture(family: typeof families[number]) {
       createdAt: '2026-10-29T00:00:00.000Z', lineageIdentity: { formatVersion: 1, profileId: 'a'.repeat(64) },
     }] })
     : serializeWorkspaceSwitchJournal(createSwitchJournal('prepared'));
-  await mkdir(dirname(paths.currentPath), { recursive: true });
+  await mkdir(dirname(paths.currentPath), { recursive: true, mode: 0o700 });
   for (const slot of slots) await writeFile(paths[`${slot}Path`], bytes);
   return { store, paths, bytes,
     async assertPreserved() {

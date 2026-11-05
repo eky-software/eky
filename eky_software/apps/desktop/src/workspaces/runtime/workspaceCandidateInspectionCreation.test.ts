@@ -164,6 +164,57 @@ describe('inspection copy original creation identity', () => {
     expect(await readFile(join(f.root, 'profile.sqlite'), 'utf8')).toBe('foreign next owner');
   });
 
+  it.each([
+    ['discard', 'discard'], ['discard', 'discardAfterExit'],
+    ['discardAfterExit', 'discard'], ['discardAfterExit', 'discardAfterExit'],
+  ] as const)('retires cleanup authority after %s before another %s can observe a reused path', async (initial, method) => {
+    const f = await fixture();
+    await f.copy.prepare(f.cancellation.signal);
+    if (initial === 'discard') await writeFile(join(f.root, 'profile.sqlite'), 'owned initial copy', { mode: 0o600 });
+    await f.copy[initial](f.authority.assertMainOwned, f.cancellation.signal);
+    await mkdir(f.root, { mode: 0o700 });
+    const payload = join(f.root, 'profile.sqlite');
+    await writeFile(payload, 'foreign next owner', { mode: 0o600 });
+    const inspect = vi.spyOn(fileSystem, 'lstat');
+    const names = vi.spyOn(fileSystem, 'readdir');
+    const removeFile = vi.spyOn(fileSystem, 'unlink');
+    const removeDirectory = vi.spyOn(fileSystem, 'rmdir');
+    f.authority.assertMainOwned.mockClear();
+    await expect(f.copy[method](f.authority.assertMainOwned, f.cancellation.signal)).rejects.toThrow();
+    expect(f.authority.assertMainOwned).not.toHaveBeenCalled();
+    expect(inspect).not.toHaveBeenCalled();
+    expect(names).not.toHaveBeenCalled();
+    expect(removeFile).not.toHaveBeenCalled();
+    expect(removeDirectory).not.toHaveBeenCalled();
+    expect(await readFile(payload, 'utf8')).toBe('foreign next owner');
+  });
+
+  it('rejects already waiting cleanup after its copy was removed by the original owner', async () => {
+    const f = await fixture();
+    await f.copy.prepare(f.cancellation.signal);
+    await writeFile(join(f.root, 'profile.sqlite'), 'owned initial copy', { mode: 0o600 });
+    let release!: () => void, enter!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const pending = f.copy.discard(async () => { enter(); await held; }, f.cancellation.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    try {
+      await entered;
+      await f.copy.discardAfterExit(f.authority.assertMainOwned, f.cancellation.signal);
+      await mkdir(f.root, { mode: 0o700 });
+      await writeFile(join(f.root, 'profile.sqlite'), 'foreign next owner', { mode: 0o600 });
+      const inspect = vi.spyOn(fileSystem, 'lstat');
+      const removeFile = vi.spyOn(fileSystem, 'unlink');
+      const removeDirectory = vi.spyOn(fileSystem, 'rmdir');
+      release();
+      await rejected;
+      expect(inspect).not.toHaveBeenCalled();
+      expect(removeFile).not.toHaveBeenCalled();
+      expect(removeDirectory).not.toHaveBeenCalled();
+      expect(await readFile(join(f.root, 'profile.sqlite'), 'utf8')).toBe('foreign next owner');
+    } finally { release(); await rejected; }
+  });
+
   it.each(['empty', 'database'] as const)('proves only its own removed %s copy without mutating files', async kind => {
     const f = await fixture();
     await f.copy.prepare(f.cancellation.signal);

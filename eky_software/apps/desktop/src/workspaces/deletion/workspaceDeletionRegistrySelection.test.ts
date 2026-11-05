@@ -106,7 +106,7 @@ it('reads real selected registry bytes through the existing target owner without
   const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
   await registry.write(f.before);
   const paths = deriveWorkspaceRoot(root, TEST_TARGET_WORKSPACE_ID, 1);
-  await mkdir(paths.workspaceRoot, { recursive: true });
+  await mkdir(paths.workspaceRoot, { recursive: true, mode: 0o700 });
   const sentinel = join(paths.workspaceRoot, 'retained');
   await writeFile(sentinel, 'unchanged');
   const selected = await captureDeletionTarget({ installationRoot: root, workspaceId: TEST_TARGET_WORKSPACE_ID,

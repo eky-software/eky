@@ -530,7 +530,7 @@ async function importFixture(test: TestContext) {
   const f = await fixture(test, { ...selectorRegistry, workspaces: [] });
   vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'inspect').mockResolvedValue(createTestImportPreflight());
   vi.spyOn(WorkspaceBackupContainerAdapter.prototype, 'stage').mockImplementation(async value => {
-    await mkdir(value.importStagingRoot); return createTestImportPreflight();
+    await mkdir(value.importStagingRoot, { mode: 0o700 }); return createTestImportPreflight();
   });
   vi.spyOn(PrivateWorkspaceBackupCandidateAdapter.prototype, 'migrate').mockImplementation(async value => {
     await writeFile(value.databaseFilePath, 'synthetic database bytes', { flag: 'wx' });

@@ -176,7 +176,7 @@ async function fixture(context: TestContext) {
   const root = await mkdtemp(join(tmpdir(), 'eky-adoption-selected-'));
   context.onTestFinished(async () => { if (context.task.result?.state === 'pass') await rm(root, { recursive: true, force: true }); });
   const paths = createWorkspaceLegacyAdoptionJournalPaths(root);
-  await mkdir(paths.directoryPath);
+  await mkdir(paths.directoryPath, { mode: 0o700 });
   const fs = createNodeCrashSafeFileSlotFileSystem(paths, maximumWorkspaceLegacyAdoptionJournalBytes);
   const store = new WorkspaceLegacyAdoptionJournalStore(root, fs);
   const state = { current: true };

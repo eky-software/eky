@@ -71,8 +71,8 @@ async function fixture(test: TestContext, phase: WorkspaceDeletionJournal['phase
   const authority = { assertAuthority: input.assertCurrent, assertExternalSelection: input.assertOwned,
     assertWritersAbsent: input.assertWritersAbsent };
   async function put(path: string, value: unknown) {
-    check(); await mkdir(dirname(path), { recursive: true }); check();
-    await writeFile(path, value instanceof Uint8Array ? value : typeof value === 'string' ? value : JSON.stringify(value)); check();
+    check(); await mkdir(dirname(path), { recursive: true, mode: 0o700 }); check();
+    await writeFile(path, value instanceof Uint8Array ? value : typeof value === 'string' ? value : JSON.stringify(value), { mode: 0o600 }); check();
   }
   const registryPath = join(root, WORKSPACE_REGISTRY_FILE_NAME);
   const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
@@ -131,7 +131,7 @@ async function fixture(test: TestContext, phase: WorkspaceDeletionJournal['phase
     else if (owner === 'workspaceLegacyAdoption') await new WorkspaceLegacyAdoptionJournalStore(root).write({
       ...createAdoptionJournal('prepared'), operationId: binding.operationId, workspaceId: target.workspaceId });
     else {
-      await mkdir(dirname(paths.activation), { recursive: true });
+      await mkdir(dirname(paths.activation), { recursive: true, mode: 0o700 });
       await new ProfileRestoreActivationJournalStore(paths.activation).write({ formatVersion: 1, operationId: binding.operationId,
         phase: 'prepared', revision: 0, hadActiveDatabase: true, hadActiveDocuments: true });
     }

@@ -424,7 +424,7 @@ it.for(['build', 'foreign', 'heldBuild', 'original'] as const)(
       msiProductVersion: accepted.appVersion, buildRevision: accepted.buildRevision, platform: 'win32' as const,
       architecture: 'x64' as const, releaseChannel: 'pilot' as const, upgradeCode: deletionTestId(50) };
     const update = nativeUpdatePaths({ userDataPath: f.root, legacyRuntimeRoot: nativeProfilePaths(f.root).runtimeRoot });
-    await mkdir(nativeDirname(update.acceptedBuildMetadataPath), { recursive: true });
+    await mkdir(nativeDirname(update.acceptedBuildMetadataPath), { recursive: true, mode: 0o700 });
     await writeFile(update.acceptedBuildMetadataPath, JSON.stringify(accepted));
     const original = variant === 'original' ? await originalColdMainProof(f, time) : undefined;
     const physical = await acquireNativeReservation({ userDataRoot: f.root, signal: test.signal });
