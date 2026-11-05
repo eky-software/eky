@@ -18,6 +18,145 @@ import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-a
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 
+function publicationIdentityDiagnostic(matches) {
+  const id = matches[0]?.test.id;
+  return 'W74_PUBLICATION_IDENTITY_INVALID ' + JSON.stringify({
+    matchCount: matches.length,
+    idLength: typeof id === 'string' ? id.length : null,
+    atLimit: typeof id === 'string' && id.length === STARTUP_EXCEPTION_LIMITS.message,
+    hasRedactionMarker: typeof id === 'string' && id.includes('[redacted'),
+  });
+}
+
+function assertPublicationIdentity(matches) {
+  const diagnostic = publicationIdentityDiagnostic(matches);
+  assert.equal(matches.length, 1, diagnostic);
+  const id = matches[0].test.id;
+  assert.equal(typeof id === 'string' && id.endsWith(':w74-c-synthetic-root'), true, diagnostic);
+}
+
+test('publication identity diagnostics reject changed or duplicate records without exposing IDs', () => {
+  const record = id => ({ test: { id } });
+  assertPublicationIdentity([record('synthetic-task:w74-c-synthetic-root')]);
+  for (const [matches, expected] of [
+    [[], { matchCount: 0, idLength: null, atLimit: false, hasRedactionMarker: false }],
+    [[record(null)], { matchCount: 1, idLength: null, atLimit: false, hasRedactionMarker: false }],
+    [[record('PRIVATE_UNEXPECTED_ID')], { matchCount: 1, idLength: 21, atLimit: false, hasRedactionMarker: false }],
+    [[record('task:[redacted]')], { matchCount: 1, idLength: 15, atLimit: false, hasRedactionMarker: true }],
+    [[record('x'.repeat(STARTUP_EXCEPTION_LIMITS.message))],
+      { matchCount: 1, idLength: STARTUP_EXCEPTION_LIMITS.message, atLimit: true, hasRedactionMarker: false }],
+    [[record('first:w74-c-synthetic-root'), record('second:w74-c-synthetic-root')],
+      { matchCount: 2, idLength: 26, atLimit: false, hasRedactionMarker: false }],
+  ]) {
+    assert.throws(() => assertPublicationIdentity(matches), error => {
+      assert.equal(error.code, 'ERR_ASSERTION');
+      const firstLine = error.message.split('\n')[0];
+      assert.equal(firstLine, publicationIdentityDiagnostic(matches));
+      const diagnostic = JSON.parse(firstLine.slice(firstLine.indexOf('{')));
+      assert.deepEqual(diagnostic, expected);
+      assert.equal(error.message.includes('PRIVATE_UNEXPECTED_ID'), false);
+      assert.equal(error.message.includes('synthetic-root'), false);
+      return true;
+    });
+  }
+});
+
+test('publication identity diagnostic survives the actual failed Node reporter and OpenPGP delivery', {
+  skip: !['win32', 'linux'].includes(process.platform), timeout: 30_000,
+}, async () => {
+  const fixture = await createOpenPgpTestFixture(root);
+  let completed = false;
+  try {
+    const temp = join(fixture.root, 'identity-temp'), checkout = join(fixture.root, 'identity-checkout');
+    await mkdir(temp); await mkdir(checkout);
+    const binding = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'w74-identity-proof', EKY_EVIDENCE_JOB_KEY: 'w74-identity-proof-0', GITHUB_SHA: 'a'.repeat(40) };
+    const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...binding,
+      SYNTHETIC_TEST_SECRET: 'w74-c-synthetic-root' } });
+    sink.record({ runner: 'vitest', phase: 'publicationIdentityControl',
+      testId: 'synthetic-task:w74-c-synthetic-root', error: new Error('SYNTHETIC_IDENTITY_ORIGINAL') });
+    assert.equal((await sink.flush()).status, 'recorded');
+    const [directory] = (await readdir(temp)).filter(name => name.startsWith(RUNNER_FAILURE_ROOT_PREFIX));
+    const [name] = (await readdir(join(temp, directory))).filter(name => !name.includes('.summary.'));
+    const redacted = validateRunnerFailureEvidence(JSON.parse(await readFile(join(temp, directory, name), 'utf8')));
+    assert.equal(redacted.test.id, 'synthetic-task:[redacted]');
+    assert.throws(() => assertPublicationIdentity([redacted]), error => {
+      assert.equal(error.message.split('\n')[0], publicationIdentityDiagnostic([redacted]));
+      return true;
+    });
+    const file = join(fixture.root, 'identity.test.mjs');
+    await writeFile(file, `import assert from 'node:assert/strict';
+import test from 'node:test';
+const STARTUP_EXCEPTION_LIMITS = ${JSON.stringify({ message: STARTUP_EXCEPTION_LIMITS.message })};
+${publicationIdentityDiagnostic.toString()}
+${assertPublicationIdentity.toString()}
+test('synthetic publication identity failure', () => {
+  assertPublicationIdentity([{ test: { id: 'synthetic-task:[redacted]' } }]);
+});`, { flag: 'wx', mode: 0o600 });
+    const env = { ...process.env, ...binding, TEMP: temp, TMP: temp, TMPDIR: temp, NO_COLOR: '1' };
+    delete env.NODE_TEST_CONTEXT; delete env.FORCE_COLOR;
+    const child = spawnSync(process.execPath, ['--test',
+      '--test-reporter=' + new URL('../nodeFailureReporter.mjs', import.meta.url).href, file], {
+      cwd: root, env, encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024, windowsHide: true,
+    });
+    await writeFile(join(fixture.root, 'identity-child.private.json'), JSON.stringify({ status: child.status,
+      signal: child.signal, stdout: child.stdout, stderr: child.stderr, processError: child.error?.code ?? null }),
+    { flag: 'wx', mode: 0o600 });
+    assert.equal(child.error, undefined, 'IDENTITY_REPORTER_PROCESS_FAILED');
+    assert.equal(child.signal, null);
+    assert.equal(child.status, 1, 'IDENTITY_ASSERTION_MUST_FAIL');
+    const publicOutput = (child.stdout ?? '') + (child.stderr ?? '');
+    assert.equal(publicOutput.includes('synthetic-task'), false);
+    assert.equal(publicOutput.includes('w74-c-synthetic-root'), false);
+    assert.equal(publicOutput.includes('SYNTHETIC_IDENTITY_ORIGINAL'), false);
+    const originals = new Map();
+    for (const directory of await readdir(temp)) {
+      if (!directory.startsWith(RUNNER_FAILURE_ROOT_PREFIX)) continue;
+      for (const name of await readdir(join(temp, directory))) {
+        originals.set(`temporary/${directory}/${name}`, await readFile(join(temp, directory, name)));
+      }
+    }
+    // Keep this test-key home short for socket-based GPG agents.
+    const recipient = await fixture.generate('id');
+    await fixture.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicPath = await fixture.exportKey(recipient, 'identity-public.asc');
+    const collected = await collectJobFailureEvidence({ ...binding, RUNNER_TEMP: temp,
+      GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
+      EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') });
+    await encryptArchive(collected.root, collected);
+    const decrypted = await fixture.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    assert.equal(archive.manifest.jobOutcome, 'failure');
+    assert.equal(archive.manifest.cleanup, 'notInferred');
+    assert.equal(archive.manifest.files.length, originals.size);
+    const records = archive.manifest.files.map(entry => {
+      assert.equal(entry.status, 'retained');
+      const bytes = Buffer.from(archive.files[entry.name], 'base64');
+      assert.equal(bytes.length, entry.bytes);
+      assert.equal(sha256(bytes), entry.sha256);
+      assert.equal(bytes.equals(originals.get(entry.source) ?? Buffer.alloc(0)), true);
+      originals.delete(entry.source);
+      return validateRunnerFailureEvidence(JSON.parse(bytes));
+    }).filter(record => record.kind === 'runnerFailure');
+    assert.equal(originals.size, 0);
+    const failures = records.filter(record => record.phase === 'testFailure');
+    assert.equal(failures.length, 1);
+    const failure = failures[0];
+    assert.equal(failure.exception.chain[0].message.split('\n')[0], publicationIdentityDiagnostic([redacted]));
+    assert.equal(failure.exception.chain[0].message.includes('false !== true'), true);
+    assert.equal(failure.exception.chain.length, 2);
+    assert.equal(failure.exception.chain[0].name, 'Error');
+    assert.equal(failure.exception.chain[1].name, 'AssertionError');
+    assert.equal(failure.exception.chain[1].message, failure.exception.chain[0].message);
+    assert.equal(failure.exception.chain[1].stack.includes('identity.test.mjs'), true);
+    assert.equal(failure.binding.jobKey, binding.EKY_EVIDENCE_JOB_KEY);
+    completed = true;
+  } finally { await fixture.finish({ completed, failed: !completed }); }
+});
+
 test('workspace main projections retain original causes and coverage through OpenPGP delivery', {
   skip: !['win32', 'linux'].includes(process.platform), timeout: 240_000,
 }, async () => {
@@ -75,8 +214,8 @@ test('workspace main projections retain original causes and coverage through Ope
         originals.set(`temporary/${directory}/${file}`, await readFile(join(temp, directory, file)));
       }
     }
-    // The new case adds the original, its sink receipt and the reporter assertion.
-    assert.equal(originals.size, 27);
+    // Each execution group retains its own primary, two related causes and receipt.
+    assert.equal(originals.size, 35);
     // Synthetic collector identity, not hosted admission or an artifact upload.
     const collected = await collectJobFailureEvidence({ ...binding,
       RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
@@ -106,15 +245,26 @@ test('workspace main projections retain original causes and coverage through Ope
     const shutdown = records.find(record => record.phase === 'workspaceDeletionShutdown');
     assert.equal(shutdown.exception.incomplete, true);
     assert.equal(shutdown.exception.chain.every(part => part.truncated), true);
-    const execution = records.find(record => record.phase === 'workspaceDeletionExecution');
-    assert.equal(execution.exception.chain[0].message === 'SYNTHETIC_W74_EXECUTION_ORIGINAL', true);
-    assert.equal(execution.exception.chain[1].message === 'SYNTHETIC_W74_EXECUTION_CAUSE', true);
-    assert.equal(execution.exception.chain[0].stack.includes('inspection.test.mjs'), true);
+    const executions = records.filter(record => record.phase === 'workspaceDeletionExecution');
+    assert.equal(executions.length, 3);
     const related = records.filter(record => record.phase === 'workspaceDeletionExecutionRelated');
-    assert.equal(related.length, 2);
-    for (const suffix of ['READ', 'CLOSE']) {
-      assert.equal(related.some(record => record.exception.chain[0].message === `SYNTHETIC_W74_EXECUTION_${suffix}`), true);
-      assert.equal(related.some(record => record.exception.chain[0].stack.includes('inspection.test.mjs')), true);
+    assert.equal(related.length, 6);
+    for (const group of ['preparation', 'metadataPostClear', 'finalization']) {
+      const id = `w74-execution-${group}:11111111-1111-4111-8111-111111111111`;
+      const groupExecutions = executions.filter(record => record.test.id === id);
+      assert.equal(groupExecutions.length, 1, 'EXECUTION_GROUP_NOT_UNIQUE');
+      const execution = groupExecutions[0];
+      assert.equal(execution.exception.chain[0].message, 'SYNTHETIC_W74_EXECUTION_ORIGINAL');
+      assert.equal(execution.exception.chain[1].message, 'SYNTHETIC_W74_EXECUTION_CAUSE');
+      assert.equal(execution.exception.chain[0].stack.includes('inspection.test.mjs'), true);
+      const groupRelated = related.filter(record => record.test.id === id);
+      assert.equal(groupRelated.length, 2, 'EXECUTION_GROUP_RELATED_CAUSES_MISSING');
+      for (const suffix of ['READ', 'CLOSE']) {
+        const matches = groupRelated.filter(record =>
+          record.exception.chain[0].message === `SYNTHETIC_W74_EXECUTION_${suffix}`);
+        assert.equal(matches.length, 1, 'EXECUTION_GROUP_RELATED_CAUSE_NOT_UNIQUE');
+        assert.equal(matches[0].exception.chain[0].stack.includes('inspection.test.mjs'), true);
+      }
     }
     const adoption = records.find(record => record.phase === 'workspaceAdoptionAcceptance');
     assert.equal(adoption.exception.chain[0].message === 'SYNTHETIC_W74_ADOPTION_ORIGINAL', true);
@@ -133,11 +283,13 @@ test('workspace main projections retain original causes and coverage through Ope
     assert.equal(deletion.exception.chain[1].message === 'SYNTHETIC_W74_DELETION_CAUSE', true);
     assert.equal(deletion.exception.chain[0].stack.includes('workspaceDeletionProcess.fixture.mjs'), true);
     assert.equal(deletion.test.id.endsWith(':publish'), true);
-    const publication = records.find(record => record.phase === 'workspaceDeletionRoles_publicationComparison2');
+    const publications = records.filter(record => record.phase === 'workspaceDeletionRoles_publicationComparison2');
+    assert.equal(publications.length, 1, publicationIdentityDiagnostic(publications));
+    const publication = publications[0];
     assert.equal(publication.exception.chain[0].message === 'SYNTHETIC_W74_PUBLICATION_ORIGINAL', true);
     assert.equal(publication.exception.chain[1].message === 'SYNTHETIC_W74_PUBLICATION_CAUSE', true);
     assert.equal(publication.exception.chain[0].stack.includes('inspection.test.mjs'), true);
-    assert.equal(publication.test.id.endsWith(':w74-c-synthetic-root'), true);
+    assertPublicationIdentity(publications);
     const cold = records.find(record => record.phase === 'workspaceDeletionColdResume');
     assert.equal(cold.exception.chain[0].message === 'WORKSPACE_DELETE_FAILED', true);
     assert.equal(cold.exception.chain.some(part => part.message === 'SYNTHETIC_W74_COLD_ORIGINAL'), true);
@@ -159,6 +311,11 @@ test('workspace main projections retain original causes and coverage through Ope
     }
     for (const record of records) {
       assert.equal(record.test.attempt, 0);
+      assert.equal(record.binding.runId, binding.GITHUB_RUN_ID);
+      assert.equal(record.binding.attempt, binding.GITHUB_RUN_ATTEMPT);
+      assert.equal(record.binding.job, binding.GITHUB_JOB);
+      assert.equal(record.binding.jobKey, binding.EKY_EVIDENCE_JOB_KEY);
+      assert.equal(record.binding.sourceRevision, binding.GITHUB_SHA);
       if (!['testFailure', 'workspaceDeletionProcess', 'workspaceDeletionRoles_publicationComparison2'].includes(record.phase)) {
         assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);
       }
@@ -243,10 +400,22 @@ vi.mock('node:fs/promises', async importOriginal => {
   } };
 });
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn(() => { throw new Error('UNEXPECTED_INSPECTION_FORK'); }) } }));
-test('rejected absence read keeps its original chain through actual projection and delivery', async context => {
-  const original = Object.assign(new Error('SYNTHETIC_W74_EXECUTION_ORIGINAL',
+function createExecutionFailure() {
+  return Object.assign(new Error('SYNTHETIC_W74_EXECUTION_ORIGINAL',
     { cause: new AggregateError([new Error('SYNTHETIC_W74_EXECUTION_READ'),
       new Error('SYNTHETIC_W74_EXECUTION_CLOSE')], 'SYNTHETIC_W74_EXECUTION_CAUSE') }), { code: 'EIO' });
+}
+async function deliverExecutionFailure(failure, group) {
+  const projection = projectWorkspaceDeletionExecutionFailure(failure, 'synthetic-secret');
+  const testInfo = { title: 'Synthetic execution aggregate: ' + group, testId: 'w74-execution-' + group,
+    file: 'electron/workspaceDeletionExecution.spec.ts', line: 1, column: 1,
+    retry: 0, repeatEachIndex: 0, annotations: [] };
+  await captureWorkspaceDeletionFailure({ application: { evaluate: async () => projection },
+    runtimeInstanceId: '11111111-1111-4111-8111-111111111111', testInfo });
+  expect(testInfo.annotations[0]?.description === 'recorded').toBe(true);
+}
+test('execution adapters and preparation keep original causes through projection and delivery', async context => {
+  const original = createExecutionFailure();
   let rejectRead, ownerCurrent = true;
   absenceIo.result = new Promise((_resolve, reject) => { rejectRead = reject; });
   void absenceIo.result.catch(() => undefined);
@@ -435,28 +604,30 @@ test('rejected absence read keeps its original chain through actual projection a
   expect(registryFailure.errors[0] === original).toBe(true);
   expect(registryFailure.errors[1] === registryClose).toBe(true);
   expect(await registryRead.snapshot()).toEqual(registryReadBefore);
+  await deliverExecutionFailure(failure, 'preparation');
+});
+test('metadata post-clear keeps original causes through projection and delivery', async context => {
+  const original = createExecutionFailure();
   // The actual post-read/outer-close chain reuses the existing sibling projection.
   // Its close object is the same one checked in the unchanged decrypted records.
   const postClose = original.cause.errors[1];
   const metadataFailure = await captureWorkspaceDeletionMetadataPostClearTestFailure(context, original, postClose);
   expect(metadataFailure.errors[0] === original).toBe(true);
   expect(metadataFailure.errors[1] === postClose).toBe(true);
+  await deliverExecutionFailure(metadataFailure.errors[0], 'metadataPostClear');
+});
+test('terminal cleanup keeps original causes through projection and delivery', async context => {
+  const original = createExecutionFailure(), postClose = original.cause.errors[1];
   const purgedFailure = await captureWorkspaceDeletionPurgedInventoryTestFailure(context, original, postClose);
   expect(purgedFailure.errors[0] === original).toBe(true);
   expect(purgedFailure.errors[1] === postClose).toBe(true);
-  failure = await captureWorkspaceDeletionTerminalPrefixTestFailure(context, original);
+  let failure = await captureWorkspaceDeletionTerminalPrefixTestFailure(context, original);
   expect(failure === original).toBe(true);
   const retirementFailure = await captureWorkspaceDeletionRetirementReadTestFailure(context, original, postClose);
   expect(retirementFailure.errors[0] === original).toBe(true);
   expect(retirementFailure.errors[1] === postClose).toBe(true);
   failure = retirementFailure.errors[0];
-  const projection = projectWorkspaceDeletionExecutionFailure(failure, 'synthetic-secret');
-  const testInfo = { title: 'Synthetic execution aggregate', testId: 'w74-execution',
-    file: 'electron/workspaceDeletionExecution.spec.ts', line: 1, column: 1,
-    retry: 0, repeatEachIndex: 0, annotations: [] };
-  await captureWorkspaceDeletionFailure({ application: { evaluate: async () => projection },
-    runtimeInstanceId: '11111111-1111-4111-8111-111111111111', testInfo });
-  expect(testInfo.annotations[0]?.description === 'recorded').toBe(true);
+  await deliverExecutionFailure(failure, 'finalization');
 });
 test('inspection original exception before safe conversion', async context => {
   const original = new Error('SYNTHETIC_W74_INSPECTION_ORIGINAL', { cause: new Error('SYNTHETIC_W74_INSPECTION_CAUSE') });

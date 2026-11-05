@@ -3611,7 +3611,7 @@ describe('desktop restore startup composition', () => {
   );
 
   describe.each(['creation', 'import'] as const)('cold %s production wiring', (kind) => {
-    it.each([
+    it.for([
       { terminal: 'completed', state: 'rootPublished', duplicateLabel: false },
       { terminal: 'failed', state: 'rootPublished', duplicateLabel: false },
       { terminal: 'completed', state: 'rootPublished', duplicateLabel: true },
@@ -3619,105 +3619,110 @@ describe('desktop restore startup composition', () => {
       { terminal: 'completed', state: 'candidateValidated', duplicateLabel: true },
       { terminal: 'failed', state: 'candidateValidated', duplicateLabel: true },
     ] as const)(
-      'waits for candidate exit after $terminal from $state (historical duplicate: $duplicateLabel)', async ({ terminal, state, duplicateLabel }) => {
-        const fixture = await createFixture(originalProfileId, { skipRestore: true, completeStartup: true });
-        const pending = await prepareColdJournal(fixture.root, kind, {
-          state, ...(duplicateLabel ? { workspaceLabel: 'SYNTHETIC  RESTORE TEST' } : {}),
-        });
-        const previousRegistry = await fixture.registry.read();
-        expect(hasWorkspaceLabelConflict(previousRegistry!.workspaces, pending.value.workspaceLabel)).toBe(duplicateLabel);
-        if (duplicateLabel) expect(pending.value.workspaceLabel).toBe('SYNTHETIC  RESTORE TEST');
-        const journalBytes = await readFile(pending.paths.currentPath);
-        const databaseBytes = await readFile(fixture.databasePath);
-        const pdfBytes = await readFile(fixture.pdfPath);
-        const child = new EventEmitter();
-        let signalShutdownRequested!: () => void;
-        const shutdownRequested = new Promise<void>(resolve => { signalShutdownRequested = resolve; });
-        const operations: string[] = [];
-        let exited = false;
-        const exit = () => {
-          if (!exited) { exited = true; child.emit('exit', 0); }
-        };
-        const kill = vi.fn(exit);
-        electronBoundary.fork.mockImplementation(() => {
-          queueMicrotask(() => child.emit('message', createWorkspaceCandidateReadyStatus()));
-          return Object.assign(child, {
-            kill,
-            postMessage(raw: unknown) {
-              const command = parseWorkspaceCandidateProcessCommand(raw);
-              if (command === undefined) throw new Error('TEST_CANDIDATE_COMMAND_INVALID');
-              if (command.type === 'prepare') {
-                queueMicrotask(() => child.emit('message', createWorkspaceCandidateReservationReadyStatus(command)));
-              } else if (command.type === 'start') {
-                operations.push(command.operation.operation);
-                const status = terminal === 'failed'
-                  ? createWorkspaceCandidateFailedStatus(command)
-                  : createWorkspaceCandidateCompletedStatus({
-                    ...command,
-                    result: {
-                      actorId: 'local-owner', artifactRootHealth: 'ready',
-                      companyId: 'local-company-1234567890abcdef1234567890abcdef',
-                      databaseHealth: 'healthy', foreignKeyHealth: 'healthy', kind: 'readiness',
-                      migrationChainIdentity: 'c'.repeat(64), profileId: foreignProfileId,
-                    },
-                  });
-                queueMicrotask(() => child.emit('message', status));
-              } else {
-                signalShutdownRequested();
-              }
-            },
+      'waits for candidate exit after $terminal from $state (historical duplicate: $duplicateLabel)', async ({ terminal, state, duplicateLabel }, context) => {
+        const lifetime = beginTrackedStartupTest(context);
+        await lifetime.run(async () => {
+          const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+            skipRestore: true, completeStartup: true, ownedRoots: lifetime.roots,
+          }));
+          const pending = await prepareColdJournal(fixture.root, kind, {
+            state, ...(duplicateLabel ? { workspaceLabel: 'SYNTHETIC  RESTORE TEST' } : {}),
           });
-        });
-        const started = fixture.start().then(
-          lifecycle => ({ status: 'completed' as const, lifecycle }),
-          error => ({ status: 'failed' as const, error }),
-        );
-        try {
-          await Promise.race([
-            shutdownRequested,
-            started.then(() => { throw new Error('TEST_RECOVERY_RETURNED_BEFORE_EXIT'); }),
-          ]);
-          expect(operations).toEqual(['validatePublished']);
-          await expect(pending.journal.read()).resolves.toMatchObject({ state });
-          await expect(readFile(pending.paths.currentPath)).resolves.toEqual(journalBytes);
-          await expect(readFile(pending.publishedFile, 'utf8')).resolves.toBe('synthetic published');
-          await fixture.assertRegistryUnchanged();
-          expect(fixture.events).toEqual([]);
-          expect(electronBoundary.createWindow).not.toHaveBeenCalled();
-          expect(kill).not.toHaveBeenCalled();
-          exit();
-          const result = await started;
-          expect(result.status).toBe(terminal);
-          if (result.status === 'completed') {
-            expect(result.lifecycle).toBeDefined();
-            await expect(pending.journal.read()).resolves.toBeUndefined();
-            const registry = await fixture.registry.read();
-            expect(registry?.activeWorkspaceId).toBe(workspaceId);
-            expect(registry?.workspaces).toHaveLength(2);
-            expect(registry?.workspaces[0]).toEqual(previousRegistry?.workspaces[0]);
-            expect(registry?.workspaces[1]).toMatchObject({
-              workspaceId: pending.value.workspaceId,
-              workspaceLabel: pending.value.workspaceLabel,
-              lineageIdentity: pending.value.lineageIdentity,
-              createdAt: pending.value.createdAt,
-              lifecycleState: 'ready', layoutVersion: 1,
+          const previousRegistry = await fixture.registry.read();
+          expect(hasWorkspaceLabelConflict(previousRegistry!.workspaces, pending.value.workspaceLabel)).toBe(duplicateLabel);
+          if (duplicateLabel) expect(pending.value.workspaceLabel).toBe('SYNTHETIC  RESTORE TEST');
+          const journalBytes = await readFile(pending.paths.currentPath);
+          const databaseBytes = await readFile(fixture.databasePath);
+          const pdfBytes = await readFile(fixture.pdfPath);
+          const child = new EventEmitter();
+          let signalShutdownRequested!: () => void;
+          const shutdownRequested = new Promise<void>(resolve => { signalShutdownRequested = resolve; });
+          const operations: string[] = [];
+          let exited = false;
+          const exit = () => {
+            if (!exited) { exited = true; child.emit('exit', 0); }
+          };
+          const kill = vi.fn(exit);
+          electronBoundary.fork.mockImplementation(() => {
+            queueMicrotask(() => child.emit('message', createWorkspaceCandidateReadyStatus()));
+            return Object.assign(child, {
+              kill,
+              postMessage(raw: unknown) {
+                const command = parseWorkspaceCandidateProcessCommand(raw);
+                if (command === undefined) throw new Error('TEST_CANDIDATE_COMMAND_INVALID');
+                if (command.type === 'prepare') {
+                  queueMicrotask(() => child.emit('message', createWorkspaceCandidateReservationReadyStatus(command)));
+                } else if (command.type === 'start') {
+                  operations.push(command.operation.operation);
+                  const status = terminal === 'failed'
+                    ? createWorkspaceCandidateFailedStatus(command)
+                    : createWorkspaceCandidateCompletedStatus({
+                      ...command,
+                      result: {
+                        actorId: 'local-owner', artifactRootHealth: 'ready',
+                        companyId: 'local-company-1234567890abcdef1234567890abcdef',
+                        databaseHealth: 'healthy', foreignKeyHealth: 'healthy', kind: 'readiness',
+                        migrationChainIdentity: 'c'.repeat(64), profileId: foreignProfileId,
+                      },
+                    });
+                  queueMicrotask(() => child.emit('message', status));
+                } else {
+                  signalShutdownRequested();
+                }
+              },
             });
-            expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
-          } else {
+          });
+          const started = fixture.start().then(
+            lifecycle => ({ status: 'completed' as const, lifecycle }),
+            error => ({ status: 'failed' as const, error }),
+          );
+          try {
+            await Promise.race([
+              shutdownRequested,
+              started.then(() => { throw new Error('TEST_RECOVERY_RETURNED_BEFORE_EXIT'); }),
+            ]);
+            expect(operations).toEqual(['validatePublished']);
             await expect(pending.journal.read()).resolves.toMatchObject({ state });
             await expect(readFile(pending.paths.currentPath)).resolves.toEqual(journalBytes);
+            await expect(readFile(pending.publishedFile, 'utf8')).resolves.toBe('synthetic published');
             await fixture.assertRegistryUnchanged();
             expect(fixture.events).toEqual([]);
             expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+            expect(kill).not.toHaveBeenCalled();
+            exit();
+            const result = await started;
+            expect(result.status).toBe(terminal);
+            if (result.status === 'completed') {
+              expect(result.lifecycle).toBeDefined();
+              await expect(pending.journal.read()).resolves.toBeUndefined();
+              const registry = await fixture.registry.read();
+              expect(registry?.activeWorkspaceId).toBe(workspaceId);
+              expect(registry?.workspaces).toHaveLength(2);
+              expect(registry?.workspaces[0]).toEqual(previousRegistry?.workspaces[0]);
+              expect(registry?.workspaces[1]).toMatchObject({
+                workspaceId: pending.value.workspaceId,
+                workspaceLabel: pending.value.workspaceLabel,
+                lineageIdentity: pending.value.lineageIdentity,
+                createdAt: pending.value.createdAt,
+                lifecycleState: 'ready', layoutVersion: 1,
+              });
+              expect(electronBoundary.createWindow).toHaveBeenCalledOnce();
+            } else {
+              await expect(pending.journal.read()).resolves.toMatchObject({ state });
+              await expect(readFile(pending.paths.currentPath)).resolves.toEqual(journalBytes);
+              await fixture.assertRegistryUnchanged();
+              expect(fixture.events).toEqual([]);
+              expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+            }
+            await expect(readFile(pending.publishedFile, 'utf8')).resolves.toBe('synthetic published');
+            await expect(readFile(fixture.databasePath)).resolves.toEqual(databaseBytes);
+            await expect(readFile(fixture.pdfPath)).resolves.toEqual(pdfBytes);
+          } finally {
+            exit();
+            const result = await started;
+            if (result.status === 'completed') await result.lifecycle?.shutdown();
           }
-          await expect(readFile(pending.publishedFile, 'utf8')).resolves.toBe('synthetic published');
-          await expect(readFile(fixture.databasePath)).resolves.toEqual(databaseBytes);
-          await expect(readFile(fixture.pdfPath)).resolves.toEqual(pdfBytes);
-        } finally {
-          exit();
-          const result = await started;
-          if (result.status === 'completed') await result.lifecycle?.shutdown();
-        }
+        });
       },
     );
 
@@ -4395,38 +4400,48 @@ describe('desktop restore startup composition', () => {
     },
   );
 
-  it.each([false, true])('does not relaunch another workspace after rollback restores original database absence (replacement: %s)', async replacementTarget => {
-    const fixture = await createFixture(originalProfileId, { replacementTarget, originalDatabaseAbsent: true });
-    electronBoundary.fetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
-    await expect(fixture.start()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
-    expect(originalInspection.runProfileRestoreOriginalInspection).toHaveBeenCalled();
-    expect(ProfileRestoreActivationTransaction.prototype.rollback).toHaveBeenCalledOnce();
-    await expect(readFile(fixture.databasePath)).rejects.toMatchObject({ code: 'ENOENT' });
-    await expect(fixture.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack', hadActiveDatabase: false });
-    expect(fixture.relaunch).not.toHaveBeenCalled();
-    expect(electronBoundary.createWindow).not.toHaveBeenCalled();
-    await fixture.assertRegistryUnchanged();
+  it.for([false, true])('does not relaunch another workspace after rollback restores original database absence (replacement: %s)', async (replacementTarget, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget, originalDatabaseAbsent: true, ownedRoots: lifetime.roots,
+      }));
+      electronBoundary.fetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
+      await expect(fixture.start()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      expect(originalInspection.runProfileRestoreOriginalInspection).toHaveBeenCalled();
+      expect(ProfileRestoreActivationTransaction.prototype.rollback).toHaveBeenCalledOnce();
+      await expect(readFile(fixture.databasePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      await expect(fixture.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack', hadActiveDatabase: false });
+      expect(fixture.relaunch).not.toHaveBeenCalled();
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+      await fixture.assertRegistryUnchanged();
+    });
   });
 
-  it.each([false, true])('checks fresh original content after writer stop before rollback (replacement: %s)', async replacementTarget => {
-    const fixture = await createFixture(originalProfileId, { replacementTarget });
-    electronBoundary.fetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
-    await expect(fixture.start()).resolves.toBeUndefined();
-    const inspect = vi.mocked(originalInspection.runProfileRestoreOriginalInspection);
-    const rollback = vi.mocked(ProfileRestoreActivationTransaction.prototype.rollback);
-    expect(inspect).toHaveBeenCalled(); expect(rollback).toHaveBeenCalledOnce();
-    expect(fixture.stop.mock.invocationCallOrder[0]).toBeLessThan(inspect.mock.invocationCallOrder[0]!);
-    expect(inspect.mock.invocationCallOrder[0]).toBeLessThan(rollback.mock.invocationCallOrder[0]!);
-    expect(rollback.mock.calls[0]![0]?.phase).toBe('validationStarting');
-    expect(rollback.mock.calls[0]![1]).toBeTypeOf('function');
-    expect(rollback.mock.calls[0]![2]?.assertContent).toBeTypeOf('function');
-    expect(fixture.relaunch).toHaveBeenCalledOnce();
-    if (replacementTarget) {
-      await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
-      await expect(readFile(fixture.pdfPath, 'utf8')).resolves.toBe('%PDF-1.7 original pdf');
-      await expect(fixture.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack' });
-      await expect(fixture.registry.read()).resolves.toMatchObject({ activeWorkspaceId: '44444444-4444-4444-8444-444444444444' });
-    } else await fixture.assertOriginalRestored();
+  it.for([false, true])('checks fresh original content after writer stop before rollback (replacement: %s)', async (replacementTarget, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget, ownedRoots: lifetime.roots,
+      }));
+      electronBoundary.fetch.mockResolvedValueOnce(new Response(null, { status: 503 }));
+      await expect(fixture.start()).resolves.toBeUndefined();
+      const inspect = vi.mocked(originalInspection.runProfileRestoreOriginalInspection);
+      const rollback = vi.mocked(ProfileRestoreActivationTransaction.prototype.rollback);
+      expect(inspect).toHaveBeenCalled(); expect(rollback).toHaveBeenCalledOnce();
+      expect(fixture.stop.mock.invocationCallOrder[0]).toBeLessThan(inspect.mock.invocationCallOrder[0]!);
+      expect(inspect.mock.invocationCallOrder[0]).toBeLessThan(rollback.mock.invocationCallOrder[0]!);
+      expect(rollback.mock.calls[0]![0]?.phase).toBe('validationStarting');
+      expect(rollback.mock.calls[0]![1]).toBeTypeOf('function');
+      expect(rollback.mock.calls[0]![2]?.assertContent).toBeTypeOf('function');
+      expect(fixture.relaunch).toHaveBeenCalledOnce();
+      if (replacementTarget) {
+        await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
+        await expect(readFile(fixture.pdfPath, 'utf8')).resolves.toBe('%PDF-1.7 original pdf');
+        await expect(fixture.journal.peek()).resolves.toMatchObject({ phase: 'rolledBack' });
+        await expect(fixture.registry.read()).resolves.toMatchObject({ activeWorkspaceId: '44444444-4444-4444-8444-444444444444' });
+      } else await fixture.assertOriginalRestored();
+    });
   });
 
   it.each([false, true])('retains original evidence when post-stop original inspection fails (replacement: %s)', async replacementTarget => {
@@ -4439,39 +4454,44 @@ describe('desktop restore startup composition', () => {
     await fixture.assertPendingRestoreRetained();
   });
 
-  it.each([false, true])('keeps one restore owner from isolated rejection through stopped rollback (replacement: %s)', async replacementTarget => {
-    const fixture = await createFixture(originalProfileId, { replacementTarget });
-    const acquired: (() => void)[] = [];
-    const acquire = InMemoryWorkspaceMaintenanceLease.prototype.acquire;
-    vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire').mockImplementation(async function (
-      this: InMemoryWorkspaceMaintenanceLease, purpose,
-    ) {
-      const handle = await acquire.call(this, purpose);
-      if (purpose === 'restore' && fixture.events.includes('backendStarted')) {
-        acquired.push(this.captureCurrentOwner(['restore']));
-      }
-      return handle;
+  it.for([false, true])('keeps one restore owner from isolated rejection through stopped rollback (replacement: %s)', async (replacementTarget, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const fixture = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        replacementTarget, ownedRoots: lifetime.roots,
+      }));
+      const acquired: (() => void)[] = [];
+      const acquire = InMemoryWorkspaceMaintenanceLease.prototype.acquire;
+      vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire').mockImplementation(async function (
+        this: InMemoryWorkspaceMaintenanceLease, purpose,
+      ) {
+        const handle = await acquire.call(this, purpose);
+        if (purpose === 'restore' && fixture.events.includes('backendStarted')) {
+          acquired.push(this.captureCurrentOwner(['restore']));
+        }
+        return handle;
+      });
+      const first = new ProfileInspectionProcessError('PROFILE_SCHEMA_UNSUPPORTED', {
+        processAbsent: true, reservationReclaimed: true, forced: false,
+      });
+      let assertOwner: (() => void) | undefined;
+      vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockImplementationOnce(async () => {
+        expect(acquired).toHaveLength(1); assertOwner = acquired[0]!; assertOwner(); throw first;
+      });
+      const stop = fixture.stop.getMockImplementation()!;
+      fixture.stop.mockImplementation(async () => { assertOwner!(); return stop(); });
+      const original = vi.mocked(originalInspection.runProfileRestoreOriginalInspection).getMockImplementation()!;
+      vi.mocked(originalInspection.runProfileRestoreOriginalInspection).mockImplementation(async input => {
+        expect(acquired).toHaveLength(1); assertOwner!(); return original(input);
+      });
+      await expect(fixture.start()).resolves.toBeUndefined();
+      expect(fixture.events).toEqual(['backendStarted', 'backendStopped', 'rollback']);
+      expect(fixture.relaunch).toHaveBeenCalledOnce(); expect(acquired).toHaveLength(1);
+      expect(assertOwner).toBeTypeOf('function'); expect(assertOwner!).toThrow();
+      expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
+      expect(await readFile(fixture.databasePath, 'utf8')).toBe(fixture.originalBytes);
+      expect(await fixture.journal.peek()).toMatchObject({ phase: 'rolledBack' });
     });
-    const first = new ProfileInspectionProcessError('PROFILE_SCHEMA_UNSUPPORTED', {
-      processAbsent: true, reservationReclaimed: true, forced: false,
-    });
-    let assertOwner: (() => void) | undefined;
-    vi.mocked(snapshotInspection.runProfileSnapshotInspection).mockImplementationOnce(async () => {
-      expect(acquired).toHaveLength(1); assertOwner = acquired[0]!; assertOwner(); throw first;
-    });
-    const stop = fixture.stop.getMockImplementation()!;
-    fixture.stop.mockImplementation(async () => { assertOwner!(); return stop(); });
-    const original = vi.mocked(originalInspection.runProfileRestoreOriginalInspection).getMockImplementation()!;
-    vi.mocked(originalInspection.runProfileRestoreOriginalInspection).mockImplementation(async input => {
-      expect(acquired).toHaveLength(1); assertOwner!(); return original(input);
-    });
-    await expect(fixture.start()).resolves.toBeUndefined();
-    expect(fixture.events).toEqual(['backendStarted', 'backendStopped', 'rollback']);
-    expect(fixture.relaunch).toHaveBeenCalledOnce(); expect(acquired).toHaveLength(1);
-    expect(assertOwner).toBeTypeOf('function'); expect(assertOwner!).toThrow();
-    expect('validateActiveProfile' in ProfileSnapshotBrokerClient.prototype).toBe(false);
-    expect(await readFile(fixture.databasePath, 'utf8')).toBe(fixture.originalBytes);
-    expect(await fixture.journal.peek()).toMatchObject({ phase: 'rolledBack' });
   });
 
   it('retains restore evidence when isolated validation cannot prove inspector exit', async () => {
@@ -4907,7 +4927,7 @@ async function createFixture(
   // This composition fixture has a controlled backend, not a delivered native addon.
   const inspectionContractPath = join(root, 'resources', 'backend', 'dist',
     'database', 'connection', 'profileInspectionNativeContract.js');
-  await mkdir(dirname(inspectionContractPath), { recursive: true });
+  await mkdir(dirname(inspectionContractPath), { recursive: true, mode: 0o700 });
   await writeFile(inspectionContractPath,
     'export const profileInspectionNativeContract = { directoryName: "synthetic-inspection-native" };\n');
   const releaseInfo = options.update ? {
@@ -5803,7 +5823,7 @@ describe('W7.4 main deletion completion wiring', () => {
             workspaceLabel: 'Synthetic other company', lineageIdentity: { formatVersion: 1 as const, profileId: foreignProfileId },
           }] : originalRegistry.workspaces,
         };
-        if (scenario === 'otherCompanyRemoved') await mkdir(deriveWorkspaceRoot(f.root, targetWorkspaceId, 1).workspaceRoot, { recursive: true });
+        if (scenario === 'otherCompanyRemoved') await mkdir(deriveWorkspaceRoot(f.root, targetWorkspaceId, 1).workspaceRoot, { recursive: true, mode: 0o700 });
         await f.registry.write(registry);
         const releaseFailure = new Error('SYNTHETIC_DELETE_LEASE_RELEASE_FAILED');
         if (releaseFails) {

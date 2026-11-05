@@ -29,6 +29,13 @@ export function createRestoreStartupTestLifetime(
   let finished = false;
   let evidenceRetained = false;
   let workState: 'idle' | 'preparing' | 'prepared' | 'running' | 'settled' = 'idle';
+  let activeWork: Promise<void> | undefined;
+  let settleWork: (() => void) | undefined;
+
+  const beginWork = () => {
+    bodySettled = false;
+    activeWork = new Promise<void>(resolve => { settleWork = resolve; });
+  };
 
   const report = () => console.error(JSON.stringify({
     diagnostic: 'desktopRestoreStartupTest', phase, lastCompletedPhase,
@@ -48,10 +55,15 @@ export function createRestoreStartupTestLifetime(
     }
   };
   const finishWork = () => {
+    const settle = settleWork;
+    settleWork = undefined;
+    activeWork = undefined;
     bodySettled = true;
     // A timed-out hook or body can still own shared mocks and late files.
-    releaseIfSettled();
-    if (finished) report();
+    try {
+      releaseIfSettled();
+      if (finished) report();
+    } finally { settle?.(); }
   };
   const step = async <T>(nextPhase: RestoreStartupTestPhase, work: () => Promise<T>): Promise<T> => {
     context.signal.throwIfAborted();
@@ -68,6 +80,8 @@ export function createRestoreStartupTestLifetime(
       context.signal.aborted || resourceCleanup !== 'completed';
     if (evidenceRetained) {
       report();
+      // Join the real invocation within the runner's existing completion-hook budget.
+      await activeWork;
       return;
     }
     const results = await Promise.allSettled(roots.map(root => rm(root, { recursive: true, force: true })));
@@ -86,6 +100,7 @@ export function createRestoreStartupTestLifetime(
         throw new Error('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
       }
       workState = 'preparing';
+      beginWork();
       try {
         const result = await step('fixturePreparation', work);
         workState = 'prepared';
@@ -100,7 +115,7 @@ export function createRestoreStartupTestLifetime(
         throw new Error('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
       }
       workState = 'running';
-      bodySettled = false;
+      beginWork();
       try {
         context.signal.throwIfAborted();
         await body();
