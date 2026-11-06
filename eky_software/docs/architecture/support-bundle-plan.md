@@ -149,6 +149,21 @@ Tämä täsmentää hyväksyttyä native-entryä, ei avaa yleistä startup-fallb
 Toteutuspalat ja portit ovat [W7.5-suunnitelmassa](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus).
 V2:n sisältö, permission ja kutsusopimus sekä B1:n v3-formaatti säilyvät.
 
+**B3a:n haaratoteutus:** palvelun `captureOperationContext` ja compositionin
+`captureOperationObservation` ovat sisäisiä vain luku -portteja. Jälkimmäinen
+palauttaa tuoreusvartijan ja erillisen synkronisen `readObservation`-luvun.
+Palvelun `operationStarted`/`operationSettled`-ilmoitukset rajaavat enintään
+kaksi turvallista projektiota; ne eivät ole uusia lokitapahtumia tai
+valtuuksia. `observeProjectedEvent` toimittaa saman validoidun muuttumattoman
+tapahtuman vastaanottajalle ennen loggeria. Näyttö ja seuraava portti ovat
+[M1:n nykytilassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Näitä portteja ei vielä ole liitetty valitsimen vientipyyntöön tai startupiin.
+Tavallisen delete-komennon todettu loppukäsittely-/vapautusvirhe tuottaa
+nykyisen ensitapahtuman lisäksi saman katalogin `deleteCleanup`-tapahtuman
+samalla korrelaatiolla, enintään kerran. Se ei muuta heitettyä ensivirhettä,
+varauksen vapautusta tai sulun epävarmuutta. Cold-jatkon nykyinen erillinen
+siivoustapahtuma säilyy eikä sitä kahdenneta tässä liitoksessa.
+
 **Valitsimen sukupolvi.** Nykyinen `WorkspaceManagementService` omistaa
 sisäisen, vain lukuun tarkoitetun operaatiokontekstin: sukupolven,
 korrelaation ja operaatiolajin. Sukupolvi vaihtuu ennen hyväksytyn

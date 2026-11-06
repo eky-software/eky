@@ -5,6 +5,31 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.5:n main-pohjan ensihylkäykset 6.11.2026
+
+Seuraava alkuperäinen checkpoint on siirretty M1:stä sellaisenaan.
+Myöhempi purku tai kohdeuusinta ei muuta sitä onnistuneeksi ajoksi.
+
+**Uudempi tarkistus on hylätty:** saman main-revision määräajoin ajettu
+[V2 42195653452](https://github.com/eky-software/eky/actions/runs/42195653452)
+hylkäsi workspace-työn salatun aineiston sopimuskokeen ja jälkimmäisen
+core-työn pakettitestivaiheen; myös koonti hylättiin. Molempien
+ensivirhepaketit on säilytetty ja lähde-/tarkistussummasidonta varmennettu.
+Sisältöä ei vielä ole purettu eikä syytä tai siivoustilaa ratkaistu.
+Saman mainin [uusi auditointi](https://github.com/eky-software/eky/actions/runs/42196766347)
+läpäisi. Aiempi hyväksyntä säilyy historiana, ei uuden hylkäyksen ohituksena.
+Ei uusintaa tai koodikorjausta tämän lähdekatselmuksen perusteella.
+
+Myöhempi rajattu purku varmisti molemmat alkuperäiset paketit ja niiden
+14 ja 2 tiedostoa ajosidontoineen ja tiivisteineen. Varsinaiset hylkäykset
+olivat backendin native-muistivirheen ja historiallisen backup-migraation
+testien viiden sekunnin aikakatkaisut sekä keräystestin 128 raportin
+`flush`-tuloksen `timedOut`, kun vaatimus oli `recorded`. Mukana olevia
+raportointifixturen tarkoituksellisia virheitä ei lasketa uusiksi
+sovellushylkäyksiksi. Rajattu lähdekatselmus ei yksilöinyt korjattavaa
+syytä; alkuperäinen viive ja siivoustila säilyvät avoimina. Yksi sallittu
+kohdeuusinta on eri yritys samalla main-lähteellä, ei W7.5-muutoksen testi.
+
 ## W7.5:n A:n edeltävät osanäytöt 6.11.2026
 
 Seuraavat osanäytöt on siirretty W7.5-suunnitelmasta sellaisinaan.

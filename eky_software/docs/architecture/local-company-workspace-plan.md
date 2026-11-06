@@ -2709,8 +2709,10 @@ Tämä jatkaa B2:ta; kyse ei ole jo todennetusta main-kytkennästä.
 Sovelluslähdettä tai aikarajoja ei muutettu sopimuksen suunnittelussa.
 Rajattu riippumaton lähde-/sopimuskatselmus ei löytänyt korjattavaa puutetta.
 Se ei todista alla olevia toteutusportteja; erityisesti admission-sulun
-jälkeinen virhehavainto ja erillisen raportointiluvan sulku on vielä
-todennettava oikeiden nykyisten omistajien kautta.
+jälkeinen virhehavainto ja erillisen raportointiluvan sulku tarvitsevat
+oikeiden nykyisten omistajien näytön. B3a:n palvelu-/observer-/composition-
+osan nykyinen näyttö on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä);
+B3b:n vientipyyntö ja B4:n startup-lupa ovat edelleen avoinna.
 
 | Pala | Nykyiset omistajat ja rajattu muutos | Pieni näyttö ennen kytkentää |
 | --- | --- | --- |

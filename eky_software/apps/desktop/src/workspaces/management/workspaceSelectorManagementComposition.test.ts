@@ -33,12 +33,146 @@ import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from '../switch/worksp
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
 import { createWorkspaceManagementComposition } from './workspaceManagementComposition.js';
 import { MainOwnedWorkspaceManagementOperationGuard } from './mainOwnedWorkspaceManagementOperationGuard.js';
+import * as backupObserver from './workspaceBackupOperationalObserver.js';
+import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError.js';
+import { readSupportBundleDesktopData } from '../../supportBundle/supportBundleDesktopData.js';
+import { createDesktopOperationalEvent } from '../../observability/createDesktopOperationalEvent.js';
 
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 
 const selectorRegistry: Readonly<LocalWorkspaceRegistry> = {
   ...createSwitchRegistry(), formatVersion: 2, activeWorkspaceId: null,
 };
+
+it('captures only the settled current operation through the real observer even when logging fails', async test => {
+  const f = await fixture(test);
+  const initial = f.composition.captureOperationObservation();
+  expect(initial.readObservation()).toEqual({ scope: 'currentOperation', status: 'unavailable' });
+  f.log.mockImplementation(() => { throw new Error('SYNTHETIC_LOGGING_FAILURE'); });
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+    .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+  expect(() => initial.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  expect(observation).toMatchObject({ scope: 'currentOperation', status: 'available', cleanupError: null,
+    firstError: { eventName: 'workspaceManagement.operationFailed', operationId: 'workspace.rename',
+      errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' } });
+  if (observation.status !== 'available') throw new Error('MISSING_CURRENT_OBSERVATION');
+  expect(observation.firstError).toBe(f.log.mock.calls[0]![0]);
+  expect(Object.isFrozen(observation)).toBe(true);
+  expect(Object.isFrozen(observation.firstError)).toBe(true);
+  await f.composition.service.getStatus();
+  expect(selected.readObservation()).toEqual(observation);
+  await f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, 'New successful operation');
+  expect(() => selected.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  expect(f.composition.captureOperationObservation().readObservation()).toEqual({
+    scope: 'currentOperation', status: 'unavailable',
+  });
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+});
+
+it('allows a fresh observation after admission closure but never after composition disposal', async test => {
+  const f = await fixture(test);
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+    .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+  const old = f.composition.captureOperationObservation();
+  f.composition.service.closeAdmission();
+  expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  const fresh = f.composition.captureOperationObservation();
+  expect(fresh.readObservation()).toMatchObject({ status: 'available' });
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, 'Forbidden')).rejects.toMatchObject({
+    code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+  });
+  f.composition.dispose();
+  expect(() => fresh.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  expect(() => f.composition.captureOperationObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+});
+
+it('retains both safe import roles across its own admission closure before failing logger writes', async test => {
+  const f = await fixture(test);
+  const failure = new WorkspaceBackupImportError('WORKSPACE_IMPORT_VALIDATION_FAILED', 'candidateValidation', {
+    cause: new AggregateError([new Error('PROFILE_INSPECTION_LIMIT_EXCEEDED'), new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED')]),
+  });
+  vi.spyOn(WorkspaceBackupImportCoordinator.prototype, 'import').mockImplementation(async () => {
+    f.composition.service.closeAdmission();
+    throw failure;
+  });
+  f.log.mockImplementation(() => { throw new Error('SYNTHETIC_LOGGING_FAILURE'); });
+  await expect(f.composition.service.importBackupAsNew({ workspaceLabel: 'Synthetic', password: 'synthetic',
+    containerPath: join(f.root, 'synthetic.ekybackup') })).rejects.toMatchObject({
+    code: 'WORKSPACE_MANAGEMENT_IMPORT_FAILED', cause: failure,
+  });
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  expect(observation).toMatchObject({ status: 'available',
+    firstError: { eventName: 'workspaceBackup.operationFailed', errorCode: 'PROFILE_INSPECTION_LIMIT_EXCEEDED' },
+    cleanupError: { eventName: 'workspaceBackup.cleanupFailed', errorCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' },
+  });
+  const validated = readSupportBundleDesktopData({ observation,
+    system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+    availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+  });
+  expect(validated.observation).toEqual(observation);
+  expect(f.log).toHaveBeenCalledTimes(2);
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+  await f.composition.shutdown();
+  expect(() => selected.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+});
+
+it('rejects foreign and late projected events without replacing the first current failure', async test => {
+  const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
+  let receive: Parameters<typeof createObserver>[0]['observeProjectedEvent'];
+  vi.spyOn(backupObserver, 'createWorkspaceBackupOperationalObserver').mockImplementation(options => {
+    receive = options.observeProjectedEvent;
+    return createObserver({ ...options, observeProjectedEvent(event) {
+      if (event.eventName !== 'workspaceManagement.operationFailed') return;
+      receive!({ ...event, correlationId: '11111111-1111-4111-8111-111111111111' });
+      receive!({ ...event, runtimeInstanceId: '11111111-1111-4111-8111-111111111111' });
+      receive!({ ...event, operationId: 'workspace.create' });
+      receive!({ ...event, appVersion: '0.1.0' });
+      receive!({ ...event, buildRevision: 'b'.repeat(40) });
+      receive!(event);
+    } });
+  });
+  const f = await fixture(test);
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+    .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+  const selected = f.composition.captureOperationObservation();
+  const first = selected.readObservation();
+  expect(first).toMatchObject({ status: 'available', firstError: { errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' } });
+  if (first.status !== 'available') throw new Error('MISSING_CURRENT_OBSERVATION');
+  expect(first.firstError).toBe(f.log.mock.calls[0]![0]);
+  receive!(f.log.mock.calls[0]![0]);
+  expect(selected.readObservation()).toEqual(first);
+  expect(f.log).toHaveBeenCalledOnce();
+});
+
+it('rejects a matching late cleanup event while the current cleanup role is still empty', async test => {
+  const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
+  let receive: Parameters<typeof createObserver>[0]['observeProjectedEvent'];
+  vi.spyOn(backupObserver, 'createWorkspaceBackupOperationalObserver').mockImplementation(options => {
+    receive = options.observeProjectedEvent;
+    return createObserver(options);
+  });
+  const f = await fixture(test);
+  vi.spyOn(WorkspaceBackupImportCoordinator.prototype, 'import').mockRejectedValueOnce(
+    new WorkspaceBackupImportError('WORKSPACE_IMPORT_VALIDATION_FAILED', 'candidateValidation', {
+      cause: new Error('PROFILE_INSPECTION_LIMIT_EXCEEDED'),
+    }),
+  );
+  await expect(f.composition.service.importBackupAsNew({ workspaceLabel: 'Synthetic', password: 'synthetic',
+    containerPath: join(f.root, 'synthetic.ekybackup') })).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_IMPORT_FAILED' });
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  if (observation.status !== 'available' || observation.firstError === null) throw new Error('MISSING_CURRENT_OBSERVATION');
+  expect(observation.cleanupError).toBeNull();
+  const first = observation.firstError;
+  receive!(createDesktopOperationalEvent({ eventName: 'workspaceBackup.cleanupFailed',
+    correlationId: first.correlationId, durationMs: 1, errorCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+    retryable: false, sideEffectState: 'unknown', stage: 'import',
+  }, { appVersion: first.appVersion, buildRevision: first.buildRevision, runtimeInstanceId: first.runtimeInstanceId }));
+  expect(selected.readObservation()).toEqual(observation);
+});
 
 it.for(['ready', 'empty', 'recoveryOnly'] as const)(
   'reads %s selector status without creating a runtime or active context', async (kind, test) => {

@@ -34,6 +34,8 @@ import type { WorkspaceManagementOperationGuard } from './workspaceManagementOpe
 import { createWorkspaceManagementStatus } from './workspaceManagementStatus.js';
 import type {
   WorkspaceManagementObserver,
+  WorkspaceManagementOperationContext,
+  WorkspaceManagementOperationIdentity,
   WorkspaceManagementOperationKind,
   WorkspaceManagementStatusV1,
   WorkspaceDeletionPreparationLifetime,
@@ -169,6 +171,8 @@ export class WorkspaceManagementService {
   private readonly pendingWork = new Set<Promise<void>>();
   private shutdownTask: Promise<void> | undefined;
   private shutdownRequested = false;
+  private observationGeneration: object = {};
+  private observedOperation: Readonly<WorkspaceManagementOperationIdentity> | null = null;
   private readonly deletionCompletionFailures: unknown[] = [];
   private readonly now: () => number;
 
@@ -296,7 +300,22 @@ export class WorkspaceManagementService {
   }
 
   closeAdmission(): void {
+    if (!this.admissionClosed) this.observationGeneration = {};
     this.admissionClosed = true;
+  }
+
+  captureOperationContext(): Readonly<WorkspaceManagementOperationContext> {
+    const generation = this.observationGeneration;
+    let current = true;
+    const assertCurrent = () => {
+      if (!current || this.shutdownRequested || this.activeOperation ||
+          this.pendingWork.size !== 0 || this.observationGeneration !== generation) {
+        current = false;
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+    };
+    assertCurrent();
+    return Object.freeze({ operation: this.observedOperation, assertCurrent });
   }
 
   shutdown(): Promise<void> {
@@ -569,7 +588,12 @@ export class WorkspaceManagementService {
       throw busyError;
     }
     this.activeOperation = true;
+    this.observationGeneration = {};
+    const observedOperation = Object.freeze({ correlationId, operationKind });
+    this.observedOperation = observedOperation;
+    this.observeOperation('operationStarted', observedOperation);
     let operationStarted = false;
+    let deletionCleanupFailed = false;
     const failures: unknown[] = [];
     try {
       let result!: T;
@@ -585,7 +609,7 @@ export class WorkspaceManagementService {
       if (deletionCompletion !== undefined) {
         await WorkspaceManagementService.completeDeletion(deletionCompletion,
           () => this.options.runtimeRelaunchCompletion?.complete(deletionCompletion.assertRelaunch), failures,
-          cause => { this.deletionCompletionFailures.push(cause); this.closeAdmission(); });
+          cause => { deletionCleanupFailed = true; this.deletionCompletionFailures.push(cause); this.closeAdmission(); });
       } else {
         try { this.options.runtimeRelaunchCompletion?.complete(undefined); }
         catch (cause) { failures.push(cause); this.closeAdmission(); }
@@ -610,6 +634,7 @@ export class WorkspaceManagementService {
       const deletionSideEffectState = !operationStarted && failures.length === 1 ? 'none' : 'unknown';
       WorkspaceManagementService.reportDeletionFailure(deletionCompletion?.onFailureOutcome, mapped, deletionSideEffectState);
       const cleanupCauseCode = operationStarted ? readWorkspaceCandidateCleanupCause(error) : undefined;
+      const durationMs = Math.max(0, this.now() - startedAt);
       this.record({
         ...((operationKind === 'import' || operationKind === 'replace')
           ? {
@@ -619,7 +644,7 @@ export class WorkspaceManagementService {
             }
           : {}),
         correlationId,
-        durationMs: Math.max(0, this.now() - startedAt),
+        durationMs,
         errorCode: classification.lineageMismatch ? 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH' : mapped.code,
         operationKind,
         outcome: 'failed',
@@ -635,8 +660,14 @@ export class WorkspaceManagementService {
           ? operationStarted ? 'deletePreparation' : 'admission'
           : classification.lineageMismatch ? 'lineageCheck' : 'operation',
       });
+      if (operationKind === 'delete' && deletionCleanupFailed) {
+        this.record({ correlationId, durationMs, operationKind, outcome: 'failed',
+          errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED', retryable: false,
+          sideEffectState: 'unknown', stage: 'deleteCleanup' });
+      }
       throw mapped;
     } finally {
+      this.observeOperation('operationSettled', observedOperation);
       this.activeOperation = false;
     }
   }
@@ -673,6 +704,19 @@ export class WorkspaceManagementService {
     event: Parameters<WorkspaceManagementObserver['record']>[0],
   ): void {
     WorkspaceManagementService.recordObservation(this.options.observer, event);
+  }
+
+  private observeOperation(
+    phase: 'operationStarted' | 'operationSettled',
+    operation: Readonly<WorkspaceManagementOperationIdentity>,
+  ): void {
+    try {
+      const observer = this.options.observer;
+      const result: unknown = observer?.[phase]?.(operation);
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // Observation callbacks cannot grant authority or change command settlement.
+    }
   }
 
   private static mapOperationFailure(error: unknown, operationKind: WorkspaceManagementOperationKind,

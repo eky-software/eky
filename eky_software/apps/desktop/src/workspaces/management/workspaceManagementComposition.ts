@@ -69,6 +69,9 @@ import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOpera
 import { prepareWorkspaceDeletion, type WorkspaceDeletionPreparationOptions } from './workspaceDeletionPreparation.js';
 import type { DesktopOperationalIdentity } from '../../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../../observability/desktopOperationalLogger.js';
+import { workspaceManagementOperationIds } from '../../observability/workspaceManagementFailureContext.js';
+import type { DesktopSupportFailureEvent, SupportBundleDesktopObservation } from '../../supportBundle/supportBundleDesktopData.js';
+import type { WorkspaceManagementOperationIdentity } from './workspaceManagementTypes.js';
 
 interface SharedWorkspaceRuntimeRelaunch
   extends WorkspaceRuntimeRelaunchCompletion {
@@ -137,6 +140,10 @@ export interface SelectorWorkspaceManagementCompositionOptions extends Omit<Work
 
 export interface WorkspaceManagementComposition {
   readonly service: WorkspaceManagementService;
+  captureOperationObservation(): Readonly<{
+    assertCurrent(): void;
+    readObservation(): SupportBundleDesktopObservation;
+  }>;
   readActiveWorkspaceLabel(): Promise<string>;
   dispose(): void;
   shutdown(): Promise<void>;
@@ -220,6 +227,11 @@ export async function createWorkspaceManagementComposition(
     assertMainOwned: options.importOwner.assertMainOwned.bind(options.importOwner), invalidate: options.importOwner.invalidate.bind(options.importOwner) });
   let importUncertain = false;
   let managementClosed = false;
+  let observationClosed = false;
+  let observedOperation: Readonly<WorkspaceManagementOperationIdentity> | undefined;
+  let observingOperation = false;
+  let firstError: DesktopSupportFailureEvent | null = null;
+  let cleanupError: DesktopSupportFailureEvent | null = null;
   let assertImportReturn: (() => void) | undefined;
   let markImportUncertain: (() => void) | undefined;
   const candidateRuntimeFactory = await createCandidateRuntimeFactory(options);
@@ -438,11 +450,41 @@ export async function createWorkspaceManagementComposition(
   } : renameOptions);
   let assertDeletionReturn: (() => void) | undefined;
   const deletion = options.deletionPreparation;
+  const operationalObserver = createWorkspaceBackupOperationalObserver({
+    operationalIdentity: options.operationalIdentity,
+    operationalLogger: options.operationalLogger,
+    observeProjectedEvent(event) {
+      if (event.eventName !== 'workspaceManagement.operationFailed' &&
+          event.eventName !== 'workspaceBackup.operationFailed' && event.eventName !== 'workspaceBackup.cleanupFailed') return;
+      if (!observingOperation || observedOperation === undefined ||
+          event.correlationId !== observedOperation.correlationId ||
+          event.runtimeInstanceId !== options.operationalIdentity.runtimeInstanceId ||
+          event.appVersion !== options.operationalIdentity.appVersion ||
+          event.buildRevision !== options.operationalIdentity.buildRevision) return;
+      if (event.eventName === 'workspaceManagement.operationFailed') {
+        if (event.operationId !== workspaceManagementOperationIds[observedOperation.operationKind]) return;
+        if (event.stage === 'deleteCleanup') cleanupError ??= event;
+        else firstError ??= event;
+      } else if (event.eventName === 'workspaceBackup.operationFailed' || event.eventName === 'workspaceBackup.cleanupFailed') {
+        if (event.stage !== observedOperation.operationKind) return;
+        if (event.eventName === 'workspaceBackup.cleanupFailed') cleanupError ??= event;
+        else firstError ??= event;
+      }
+    },
+  });
   const service = new WorkspaceManagementService({
-    observer: createWorkspaceBackupOperationalObserver({
-      operationalIdentity: options.operationalIdentity,
-      operationalLogger: options.operationalLogger,
-    }),
+    observer: {
+      operationStarted(operation) {
+        observedOperation = operation;
+        observingOperation = true;
+        firstError = null;
+        cleanupError = null;
+      },
+      operationSettled(operation) {
+        if (operation === observedOperation) observingOperation = false;
+      },
+      record: operationalObserver.record,
+    },
     createEmpty,
     importBackup,
     maintenanceState: options.maintenanceLease,
@@ -503,12 +545,31 @@ export async function createWorkspaceManagementComposition(
 
   const composition: SelectorWorkspaceManagementComposition = Object.freeze({
     service,
+    captureOperationObservation() {
+      const context = service.captureOperationContext();
+      const assertCurrent = () => {
+        context.assertCurrent();
+        if (observationClosed || managementClosed) {
+          throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+        }
+      };
+      assertCurrent();
+      return Object.freeze({ assertCurrent, readObservation(): SupportBundleDesktopObservation {
+        assertCurrent();
+        if (context.operation !== observedOperation || (firstError === null && cleanupError === null)) {
+          return Object.freeze({ scope: 'currentOperation', status: 'unavailable' });
+        }
+        return Object.freeze({ scope: 'currentOperation', status: 'available', firstError, cleanupError });
+      } });
+    },
     dispose() {
       // Capability disposal seals new requests, not the already captured import owner.
+      observationClosed = true;
       service.closeAdmission();
       operationGuard.dispose();
     },
     async shutdown() {
+      observationClosed = true;
       managementClosed = true;
       await service.shutdown();
       operationGuard.dispose();

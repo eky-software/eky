@@ -1,5 +1,8 @@
 import { createDesktopOperationalEvent } from '../../observability/createDesktopOperationalEvent.js';
-import type { DesktopOperationalIdentity } from '../../observability/desktopOperationalEvent.js';
+import type {
+  DesktopOperationalEvent,
+  DesktopOperationalIdentity,
+} from '../../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../../observability/desktopOperationalLogger.js';
 import { workspaceManagementOperationIds } from '../../observability/workspaceManagementFailureContext.js';
 import type {
@@ -10,7 +13,24 @@ import type {
 export function createWorkspaceBackupOperationalObserver(options: {
   operationalIdentity: DesktopOperationalIdentity;
   operationalLogger: DesktopOperationalLogger;
+  // Main-only synchronous observation, never operation authority.
+  observeProjectedEvent?(event: Readonly<DesktopOperationalEvent>): void;
 }): WorkspaceManagementObserver {
+  function recordProjectedEvent(event: DesktopOperationalEvent): void {
+    // The event factory validates and freezes this same projection for both consumers.
+    try {
+      const result: unknown = options.observeProjectedEvent?.(event);
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // A receiver failure must not suppress the logger or separate cleanup.
+    }
+    try {
+      options.operationalLogger.write(event);
+    } catch {
+      // Logging cannot change the original failure or workspace recovery.
+    }
+  }
+
   function recordFailure(
     event: Readonly<WorkspaceManagementOperationEvent>,
     eventName:
@@ -22,7 +42,7 @@ export function createWorkspaceBackupOperationalObserver(options: {
       return;
     }
     try {
-      options.operationalLogger.write(
+      recordProjectedEvent(
         createDesktopOperationalEvent(
           {
             correlationId: event.correlationId,
@@ -51,7 +71,7 @@ export function createWorkspaceBackupOperationalObserver(options: {
         recordFailure(event, 'workspaceBackup.operationFailed', event.inspectionCauseCode);
       } else if (event.stage !== 'status' && event.errorCode !== undefined) {
         try {
-          options.operationalLogger.write(createDesktopOperationalEvent({
+          recordProjectedEvent(createDesktopOperationalEvent({
             eventName: 'workspaceManagement.operationFailed', correlationId: event.correlationId,
             durationMs: event.durationMs, errorCode: event.errorCode,
             operationId: workspaceManagementOperationIds[event.operationKind],

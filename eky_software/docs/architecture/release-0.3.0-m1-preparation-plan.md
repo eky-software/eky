@@ -30,24 +30,36 @@ Myös tämän mainin oma [V2](https://github.com/eky-software/eky/actions/runs/4
 ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42176483388)
 läpäisivät. Tämä ei avaa hyväksyttyä W7.4:ää uudelleen.
 
-**Uudempi tarkistus on hylätty:** saman main-revision määräajoin ajettu
+**Main-pohjan uudempi tarkistus on hylätty:** saman revision määräajoin ajettu
 [V2 42195653452](https://github.com/eky-software/eky/actions/runs/42195653452)
-hylkäsi workspace-työn salatun aineiston sopimuskokeen ja jälkimmäisen
-core-työn pakettitestivaiheen; myös koonti hylättiin. Molempien
-ensivirhepaketit on säilytetty ja lähde-/tarkistussummasidonta varmennettu.
-Sisältöä ei vielä ole purettu eikä syytä tai siivoustilaa ratkaistu.
-Saman mainin [uusi auditointi](https://github.com/eky-software/eky/actions/runs/42196766347)
-läpäisi. Aiempi hyväksyntä säilyy historiana, ei uuden hylkäyksen ohituksena.
-Ei uusintaa tai koodikorjausta tämän lähdekatselmuksen perusteella.
+hylkäsi kaksi backend-testiä viiden sekunnin rajaan sekä salatun aineiston
+keräystestin `timedOut`-toimitukseen. Molemmat paketit on purettu ja kaikki
+ajosidonnat/tiedostotiivisteet varmennettu. Rajattu lähdetarkistus ei
+osoittanut korjattavaa vikaa; yksi failed-only-kohdeuusinta samalla lähteellä
+on käynnistetty. Ensimmäisen viiveen syy ja siivoustila pysyvät avoimina.
+[Alkuperäinen havainto](release-0.3.0-integration-history.md#w75n-main-pohjan-ensihylkäykset-6112026)
+säilyy erillisenä. [Uusi auditointi](https://github.com/eky-software/eky/actions/runs/42196766347)
+läpäisi. Uusinta ei yksin hyväksy alkuperäistä hylkäystä tai W7.5:tä.
 
 **Aktiivinen työ on W7.5 A/B:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
-toteutuscheckpoint on [B3/B4:n omistajuuskokeet](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus):
-ensin todellinen sukupolvi ja havaintolähde, sitten varhainen native-vienti,
-ei poistopainikkeen julkaisu. Rajattu omistajuussopimus on kirjattu ja
-riippumaton katselmus läpäisi, mutta toteutus- ja ajonaikainen näyttö ovat
-tekemättä. Uuden main-hylkäyksen säilynyt aineisto tutkitaan erillään
-tästä toteutuksesta ennen integraatiovalmiuden toteamista.
+toteutuscheckpoint on [B3b:n pyyntökaappaus ja B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
+ei poistopainikkeen julkaisu. B3a:n todellinen palvelu-/observer-/composition-
+kytkentä läpäisi seitsemän kokonaisen testitiedoston 197 testiä, tyypityksen
+ja nykyisen neljän testin salaus/purku-sarjan. Katselmuksen kielteisen
+kontrollin peittoaukko korjattiin; jälkikatselmuksessa ei löydöstä.
+Koko main-regressiossa 395 testiä läpäisi ja kolme vanhaa replacement-
+palautustapausta aikakatkaisi viiden sekunnin rajaan. Niiden työt päättyivät,
+testiresurssien siivous valmistui ja aineistot säilyivät; juurisyy on avoin.
+Yksi rajattu kolmen tapauksen erillisdiagnoosi samalla lähteellä ja rajoilla
+hylkäsi samat tapaukset. B3a:ta edeltävän kolmen toteutustiedoston
+muistivertailussa kaksi aikakatkaisua toistui, yksi tapaus läpäisi. Tämä
+ei hyväksy nykyistä toteutusta tai ratkaise alkuperäistä viivettä.
+Viimeisen siivoustapahtumaliitoksen kahdeksan main-vaikutuskontrollia
+läpäisivät; muut 390 tapausta eivät kuuluneet kohdeajoon.
+Ei lisäuusintaa tai aikarajan nostoa. Tukiviennin todellinen pyyntö- ja
+käynnistyslupa sekä julkinen/native-/pakettinäyttö ovat edelleen avoinna.
+Main-pohjan ensihylkäykset käsitellään erillään W7.5-koodimuutoksista.
 Nykyisen sisäisen paluu- ja
 pyyntöelinikäliitoksen osanäyttö on alla; julkinen/paketoitu ketju ja tuki
 ennen yritysvalinnan valmistumista ovat vielä todentamatta. Omistaja

@@ -15,8 +15,84 @@ import {
 } from './workspaceManagementService.js';
 import type { WorkspaceDeletionPreparationOutcome } from './workspaceManagementTypes.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
+import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
+import type { DesktopOperationalEvent } from '../../observability/desktopOperationalEvent.js';
 
 describe('workspace deletion service-owned shutdown settlement', () => {
+  it.each([false, true])('projects actual release failure separately without replacing the first cause (earlier failure: %s)', async earlier => {
+    const first = new Error('SYNTHETIC_FIRST_FAILURE');
+    const completion = new Error('SYNTHETIC_COMPLETION_FAILURE');
+    const cleanup = new Error('SYNTHETIC_RELEASE_FAILURE');
+    const projected: Readonly<DesktopOperationalEvent>[] = [];
+    const f = fixture({ async prepare() { if (earlier) throw first; return 'prepared'; },
+      complete() { if (earlier) throw completion; },
+      release() { throw cleanup; },
+      observer: createWorkspaceBackupOperationalObserver({
+        operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40),
+          runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+        operationalLogger: { write() { throw new Error('SYNTHETIC_LOGGING_FAILURE'); } },
+        observeProjectedEvent: event => projected.push(event),
+      }),
+    });
+    const failure: unknown = await f.start().catch(error => error);
+    expect(failure).toMatchObject({ code: 'WORKSPACE_DELETE_FAILED' });
+    if (earlier) expectCompletionFailure((failure as Error).cause, [first, completion, cleanup]);
+    else expect((failure as Error).cause).toBe(cleanup);
+    const context = f.service.captureOperationContext();
+    expect(projected).toEqual([
+      expect.objectContaining({ eventName: 'workspaceManagement.operationFailed', stage: 'deletePreparation',
+        operationId: 'workspace.delete', correlationId: context.operation!.correlationId }),
+      expect.objectContaining({ eventName: 'workspaceManagement.operationFailed', stage: 'deleteCleanup',
+        errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED', operationId: 'workspace.delete',
+        correlationId: context.operation!.correlationId }),
+    ]);
+    expect(projected[0]!.eventId).not.toBe(projected[1]!.eventId);
+    expect(JSON.stringify(projected)).not.toContain('SYNTHETIC_');
+    expect(() => context.assertCurrent()).not.toThrow();
+    await expect(f.service.shutdown()).rejects.toMatchObject({ message: 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED' });
+    const shutdownFailure: unknown = await f.service.shutdown().catch(error => error);
+    await expect(f.service.shutdown()).rejects.toBe(shutdownFailure);
+    expect(projected).toHaveLength(2);
+  });
+
+  it.each(['cancelled', 'completed', 'releaseFailure'] as const)(
+    'publishes observation freshness only after actual deletion release for %s', async outcome => {
+      const finish = deferred();
+      const cause = new Error('SYNTHETIC_RELEASE_FAILURE');
+      const started: unknown[] = [], settled: unknown[] = [], events: unknown[] = [];
+      const f = fixture({
+        async prepare() { return outcome === 'cancelled' ? 'cancelled' : 'prepared'; },
+        async release() { await finish.promise; if (outcome === 'releaseFailure') throw cause; },
+        observer: { operationStarted: value => started.push(value), operationSettled: value => settled.push(value),
+          record: value => events.push(value) },
+      });
+      const old = f.service.captureOperationContext();
+      const work = observe(f.start());
+      try {
+        await waitForRelease(f, work.result);
+        expect(() => f.service.captureOperationContext()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+        expect(settled).toEqual([]);
+        expect(f.lease.readState()).toBe('busy');
+        finish.resolve();
+        if (outcome === 'releaseFailure') await expect(work.result).rejects.toMatchObject({ cause });
+        else await expect(work.result).resolves.toBe(outcome === 'cancelled' ? 'cancelled' : 'prepared');
+        const current = f.service.captureOperationContext();
+        expect(current.operation).toBe(started[0]);
+        expect(settled).toEqual(started);
+        expect(started).toHaveLength(1);
+        expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+        expect(() => current.assertCurrent()).not.toThrow();
+        expect(f.lease.readState()).toBe('idle');
+        if (outcome === 'releaseFailure') expect(events).toContainEqual(expect.objectContaining({
+          correlationId: current.operation!.correlationId, outcome: 'failed',
+        }));
+      } finally {
+        finish.resolve();
+        await Promise.allSettled([work.result, f.service.shutdown()]);
+      }
+    },
+  );
+
   it.each(['completion', 'release'] as const)(
     'retains a %s failure raised before shutdown and rejects repeated shutdown', async stage => {
       const failure = new Error(`SYNTHETIC_${stage.toUpperCase()}_FAILURE`);
@@ -457,7 +533,10 @@ describe('main-only deletion failure outcome', () => {
       const failure = await f.startDurable(report).catch(error => error);
       expectCompletionFailure(failure.cause, [first, cleanup]);
       expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure, sideEffectState: 'unknown' });
-      expect(events).toEqual([expect.objectContaining({ sideEffectState: 'unknown', stage: 'admission' })]);
+      expect(events).toEqual([
+        expect.objectContaining({ sideEffectState: 'unknown', stage: 'admission' }),
+        expect.objectContaining({ sideEffectState: 'unknown', stage: 'deleteCleanup', errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED' }),
+      ]);
       expect(f.acquire).not.toHaveBeenCalled();
     } finally {
       await f.service.shutdown().then(() => { throw new Error('MISSING_CLOSE_FAILURE'); },

@@ -61,5 +61,18 @@ export interface WorkspaceManagementOperationEvent {
 }
 
 export interface WorkspaceManagementObserver {
+  operationStarted?(operation: Readonly<WorkspaceManagementOperationIdentity>): void;
+  operationSettled?(operation: Readonly<WorkspaceManagementOperationIdentity>): void;
   record(event: Readonly<WorkspaceManagementOperationEvent>): void;
+}
+
+export interface WorkspaceManagementOperationIdentity {
+  readonly correlationId: string;
+  readonly operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>;
+}
+
+// Main-only observation freshness, never workspace mutation or restart authority.
+export interface WorkspaceManagementOperationContext {
+  readonly operation: Readonly<WorkspaceManagementOperationIdentity> | null;
+  assertCurrent(): void;
 }

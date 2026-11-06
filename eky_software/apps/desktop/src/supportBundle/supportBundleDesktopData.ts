@@ -7,7 +7,7 @@ export const desktopOnlySupportBundleFormatVersion = 3 as const;
 export const desktopOnlySupportBundleKind = 'desktopOnly' as const;
 export const desktopOnlySupportBundleSections = Object.freeze(['system', 'availability', 'observation'] as const);
 
-type DesktopSupportFailureEvent = Extract<DesktopOperationalEvent, {
+export type DesktopSupportFailureEvent = Extract<DesktopOperationalEvent, {
   eventName: 'workspaceManagement.operationFailed' | 'workspaceBackup.operationFailed' | 'workspaceBackup.cleanupFailed';
 }>;
 
