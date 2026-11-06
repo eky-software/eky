@@ -13,6 +13,7 @@ import {
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
 import type { DesktopOperationalIdentity } from '../observability/desktopOperationalEvent.js';
 import type { DesktopOperationalLogger } from '../observability/desktopOperationalLogger.js';
+import { assertUpdateJournalAuthority } from '../update/updateJournalStore.js';
 import {
   createSupportBundleArchive,
   createSupportBundleFileName,
@@ -23,6 +24,7 @@ import { writeSupportBundleAtomically } from './supportBundleFileStore.js';
 interface SupportBundleCapabilityOptions {
   appVersion: string;
   architecture: string;
+  assertCurrent?(): void;
   confirmCreation(): Promise<boolean>;
   ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
   loadBackendData(): Promise<unknown>;
@@ -30,6 +32,8 @@ interface SupportBundleCapabilityOptions {
   now?(): Date;
   operationalLogger: DesktopOperationalLogger;
   operationalIdentity: DesktopOperationalIdentity;
+  // Synthetic tests can retain a first cause privately before the IPC projection.
+  observeFailure?(error: unknown): void;
   platform: string;
   runtimeRoot: string;
   selectTargetPath(defaultFileName: string): Promise<string | null>;
@@ -49,38 +53,76 @@ export function createSupportBundleCapability(
   options: SupportBundleCapabilityOptions,
 ): SupportBundleCapability {
   let creationInProgress = false;
+  let disposed = false;
+  let documentEpoch = 0;
+  const assertRuntimeCurrent = options.assertCurrent?.bind(options);
+  const documentEvents = options.mainWindow.webContents;
+  const invalidateDocument = () => { documentEpoch += 1; };
+  const navigationStarted = (details: { isMainFrame: boolean }) => {
+    if (details.isMainFrame) invalidateDocument();
+  };
+  documentEvents.on('did-start-navigation', navigationStarted);
+  documentEvents.on('did-start-loading', invalidateDocument);
+  documentEvents.on('render-process-gone', invalidateDocument);
+  documentEvents.on('destroyed', invalidateDocument);
+  options.mainWindow.on('close', invalidateDocument);
 
   options.ipcMain.removeHandler(createSupportBundleIpcChannel);
   options.ipcMain.handle(
     createSupportBundleIpcChannel,
     async (event, ...args: unknown[]): Promise<SupportBundleCreationResult> => {
-      if (
-        !isTrustedMainWindowRequest(event, options.mainWindow) ||
-        args.length !== 0
-      ) {
-        throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
-      }
+      const epoch = documentEpoch;
+      let failureObserved = false;
+      const observeFailure = (cause: unknown) => {
+        if (failureObserved) return;
+        failureObserved = true;
+        try {
+          const result: unknown = options.observeFailure?.(cause);
+          if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+        } catch { /* Private evidence cannot change the IPC result. */ }
+      };
+      const assertRequestCurrent = () => {
+        if (disposed || documentEpoch !== epoch || args.length !== 0 ||
+            !isTrustedMainWindowRequest(event, options.mainWindow)) {
+          throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+        }
+      };
+      const assertCurrent = () => {
+        try {
+          assertRequestCurrent();
+          if (assertRuntimeCurrent !== undefined) assertUpdateJournalAuthority(assertRuntimeCurrent);
+          assertRequestCurrent();
+        } catch (cause) {
+          observeFailure(cause);
+          throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+        }
+      };
+      assertCurrent();
       if (creationInProgress) {
         throw new Error('SUPPORT_BUNDLE_CREATION_IN_PROGRESS');
       }
       creationInProgress = true;
 
-      const createdAt = options.now?.() ?? new Date();
       const creationCorrelationId = randomUUID();
       const startedAt = Date.now();
 
       try {
-        if (!(await options.confirmCreation())) {
+        const createdAt = options.now?.() ?? new Date();
+        assertCurrent();
+        const confirmed = await options.confirmCreation();
+        assertCurrent();
+        if (!confirmed) {
           return 'cancelled';
         }
         const targetPath = await options.selectTargetPath(
           createSupportBundleFileName(createdAt),
         );
+        assertCurrent();
         if (targetPath === null) {
           return 'cancelled';
         }
 
-        options.operationalLogger.write(
+        recordSafely(options, () =>
           createDesktopOperationalEvent(
             {
               correlationId: creationCorrelationId,
@@ -91,9 +133,10 @@ export function createSupportBundleCapability(
           ),
         );
 
-        const backendData = readSupportBundleBackendData(
-          await options.loadBackendData(),
-        );
+        assertCurrent();
+        const backendValue = await options.loadBackendData();
+        assertCurrent();
+        const backendData = readSupportBundleBackendData(backendValue);
         const archive = createSupportBundleArchive({
           appVersion: options.appVersion,
           architecture: options.architecture,
@@ -104,13 +147,14 @@ export function createSupportBundleCapability(
         });
         const writeArchive =
           options.writeArchive ?? writeSupportBundleAtomically;
+        assertCurrent();
         writeArchive({
           archive: archive.compressed,
           runtimeRoot: options.runtimeRoot,
           targetPath,
         });
 
-        options.operationalLogger.write(
+        recordSafely(options, () =>
           createDesktopOperationalEvent(
             {
               correlationId: creationCorrelationId,
@@ -122,8 +166,9 @@ export function createSupportBundleCapability(
           ),
         );
         return 'created';
-      } catch {
-        options.operationalLogger.write(
+      } catch (cause) {
+        observeFailure(cause);
+        recordSafely(options, () =>
           createDesktopOperationalEvent(
             {
               correlationId: creationCorrelationId,
@@ -137,7 +182,7 @@ export function createSupportBundleCapability(
             options.operationalIdentity,
           ),
         );
-        options.showSafeError();
+        try { assertCurrent(); options.showSafeError(); } catch { /* No stale UI or replacement failure. */ }
         throw new Error('SUPPORT_BUNDLE_CREATION_FAILED');
       } finally {
         creationInProgress = false;
@@ -147,7 +192,15 @@ export function createSupportBundleCapability(
 
   return {
     dispose() {
+      if (disposed) return;
+      disposed = true;
+      invalidateDocument();
       options.ipcMain.removeHandler(createSupportBundleIpcChannel);
+      documentEvents.off('did-start-navigation', navigationStarted);
+      documentEvents.off('did-start-loading', invalidateDocument);
+      documentEvents.off('render-process-gone', invalidateDocument);
+      documentEvents.off('destroyed', invalidateDocument);
+      options.mainWindow.off('close', invalidateDocument);
     },
   };
 }
@@ -158,7 +211,15 @@ function isTrustedMainWindowRequest(
 ): boolean {
   return (
     !mainWindow.isDestroyed() &&
+    !mainWindow.webContents.isDestroyed() &&
     event.sender === mainWindow.webContents &&
     event.senderFrame === mainWindow.webContents.mainFrame
   );
+}
+
+function recordSafely(
+  options: SupportBundleCapabilityOptions,
+  createEvent: () => Parameters<DesktopOperationalLogger['write']>[0],
+): void {
+  try { options.operationalLogger.write(createEvent()); } catch { /* Observability is non-authoritative. */ }
 }

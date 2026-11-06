@@ -525,6 +525,15 @@ OpenPGP-purkukokeella. Tavalliseen käyttäjäprofiiliin ei kytketä raakakeräy
 Tämä ei todista alempien adapterien jo hävittämän syyn tai pakkokatkaisun
 talteenottoa: keräyksen kattavuus ilmoitetaan todennetun rajan mukaan.
 
+Tukiviennin `supportBundleCapability` tarjoaa synteettiselle testille
+nykyisen pyynnön ensimmäisen poikkeuksen ennen turvallista IPC-virhettä.
+Havaitsija kytketään vain testikoostamisessa; sen virhe tai puuttuminen
+ei muuta käyttäjätulosta. Alkuperäistä poikkeusta ei säilytetä IPC:stä
+heitettävän `Error`-olion `cause`-kentässä, koska se voisi vuotaa konsoliin.
+Nykyinen `workspaceDeletionFailureEvidenceOpenPgp`-koe vaatii alkuperäisen
+viestin, pinon ja syyketjun puretusta salatusta paketista sekä julkisen
+tulosteen poissulun. Käyttäjän sanitoitu tukipaketti pysyy tästä erillisenä.
+
 HTTP:n F/R15-raja käyttää `createHttpRequestFailureCapture`-testifixtureä
 ennen Honon turvallista muunnosta. Anna fixture nykyisen testin kontekstista
 `createApp`-option `httpRequestFailureObserver`-kenttään tai saman HTTP-rajan

@@ -45,7 +45,7 @@ muut jäljellä olevat tehtävät ja M5 ovat [roadmapissa](release-0.3.0-plan.md
 
 **A:n nykyinen osanäyttö:** tulosparserit, vastauselinikä sekä main-only-
 paluu- ja virhesovitus ovat haarassa. Neljäntoista kokonaisen desktop-
-lähitiedoston 472 testiä, koko main-tiedoston 396 testiä ilman ohituksia,
+lähitiedoston 472 testiä, koko main-tiedoston 398 testiä ilman ohituksia,
 webin kahden vastaanottorajatiedoston 157 testiä ja molempien tyypitys
 läpäisivät nykyisillä rajoilla. Rajatun katselmuksen accessor-peittoaukko
 korjattiin. [Näytön rajaus](local-company-workspace-plan.md#w75-an-virhetulos-ja-vastaanottoraja)
@@ -53,6 +53,17 @@ ei ole uusi fyysisen poiston, julkisen IPC:n tai paketoidun sovelluksen
 hyväksyntä. Edeltävät päällekkäiset osanäytöt säilyvät
 [historiassa](release-0.3.0-integration-history.md#w75n-an-edeltävät-osanäytöt-6112026),
 eikä testimääriä summata.
+
+**Tukivientipyynnön elinikä:** nykyisen v2-entryn vanhentuminen estää
+tallennuksen ja vanhan virhedialogin. Neljän tukivientitiedoston 83 testiä,
+kaksi mainin sulkukontrollia, tyypitys ja nykyinen OpenPGP-sarja läpäisivät.
+Alkuperäinen tukivientivirhe löytyi puretusta salatusta paketista ilman
+raakasyytä IPC-virheessä tai julkisessa testitulosteessa.
+[Näytön tarkka raja](local-company-workspace-plan.md#w75-an-tukivientipyynnön-elinikä)
+ei vielä kata v3:a tai varhaista native-entryä. Myös koko 398 testin
+main-regressio läpäisi ilman ohituksia. Rajatun katselmuksen IPC-vuotoriski
+korjattiin, eikä jälkikatselmukseen jäänyt löydöstä. Seuraava työ on yllä
+nimetty varhaisen tukiviennin ja backendittömän paketin toteutusnäyttö.
 
 Vanhat ensihylkäykset, epäselvät alkuperäiset syyt ja varmentamattomat
 siivoustilat säilyvät [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-prmain-loppuhyväksyntä-6112026),

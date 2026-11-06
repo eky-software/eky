@@ -38,6 +38,23 @@ Runtime-/build-identiteetti on ensin validoitava. Ilman sitä nykyinen
 virheilmoitus ja poistuminen säilyvät, eikä yleistä startup-fallbackia avata.
 Havainto otetaan ennen turvallista koodimuunnosta; puuttuva jää puuttuvaksi.
 
+**W7.5:n nykyisen v2-entryn elinikäkorjaus:** sama capability tarkistaa
+ikkunan, pääframen, dokumenttisukupolven ja dispose-tilan myös vahvistuksen,
+tallennusvalinnan ja backend-haun jälkeen sekä juuri ennen synkronista
+tiedostokirjoittajaa. Mainin erillisen tilavartijan on valmistuttava
+synkronisesti; Promise ei ole valtuustodiste. Vanhentunut pyyntö ei kirjoita
+eikä avaa vanhaa virhedialogia. Dispose poistaa omat kuuntelijat ja estää
+myös jo odottavan pyynnön jatkon, ei vain uutta IPC-kutsua.
+
+Alkuperäinen poikkeus tarjotaan synteettisen testin nimenomaisesti kytkemälle
+yksityiselle havaitsijalle ennen turvallista virhemuunnosta. IPC:stä
+heitetty virhe ei sisällä `cause`-ketjua tai raakaa metadataa: myös
+Electronin konsoliraja on julkaisuraja. Havaitsijan, lokituksen tai
+virheilmoituksen häiriö ei korvaa ensisyytä eikä muuta onnistunutta vientiä
+epäonnistumiseksi. Tuotannon main ei kytke raakakeräystä tällä muutoksella.
+Tämä korjaus ei vielä toteuta v3:a, hallintaoperaation varsinaista
+sukupolvikytkentää tai ennen ensimmäistä ikkunaa käytettävää native-entryä.
+
 Omistaja hyväksyi 24.10.2026 yritysvalintaan rajatun desktop-tukipaketin
 nykyisen keräyksen pohjalta myös ilman business-backendia.
 [W7:n sopimus](local-company-workspace-plan.md#palaute-vastuut-ja-todennus)

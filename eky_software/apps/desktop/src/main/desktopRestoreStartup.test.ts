@@ -1,7 +1,7 @@
 import { EventEmitter } from 'node:events';
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
@@ -109,6 +109,8 @@ import { registerApplicationProtocol } from './applicationProtocol.js';
 import * as packagedSmoke from './packagedSmoke.js';
 import { projectExceptionChain } from './startupExceptionEvidence.js';
 import { getWorkspaceManagementStatusIpcChannel, importWorkspaceBackupAsNewIpcChannel, replaceActiveWorkspaceFromBackupIpcChannel } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
+import { createSupportBundleIpcChannel } from '../diagnostics/desktopDiagnosticsTypes.js';
+import * as supportBundleCapability from '../supportBundle/supportBundleCapability.js';
 
 const electronBoundary = vi.hoisted(() => ({
   fetch: vi.fn(),
@@ -6257,6 +6259,79 @@ describe('W7.3 main preparation wiring', () => {
       }
     });
   });
+});
+
+describe('W7.5 main support export lifetime', () => {
+  for (const heldAt of ['confirmation', 'target'] as const) {
+    it(`revokes a pending ${heldAt} export through actual main shutdown`, async (context) => {
+      const lifetime = beginTrackedStartupTest(context);
+      await lifetime.run(async () => {
+        const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+          skipRestore: true, completeStartup: true, ownedRoots: lifetime.roots,
+        }));
+        const observeFailure = vi.fn();
+        const createCapability = supportBundleCapability.createSupportBundleCapability;
+        vi.spyOn(supportBundleCapability, 'createSupportBundleCapability').mockImplementation(options =>
+          createCapability({ ...options, observeFailure }));
+        let enter!: () => void, release!: () => void;
+        const entered = new Promise<void>(resolve => { enter = resolve; });
+        const held = new Promise<void>(resolve => { release = resolve; });
+        let lifecycle: Awaited<ReturnType<typeof f.start>>;
+        let work: Promise<{ value: unknown } | { error: unknown }> | undefined;
+        let firstFailure: { error: unknown } | undefined;
+        const targetPath = join(f.root, 'support.json.gz');
+        try {
+          await lifetime.step('startup', async () => { lifecycle = await f.start(); });
+          expect(lifecycle).toBeDefined();
+          const originalDatabase = await readFile(f.databasePath);
+          const originalPdf = await readFile(f.pdfPath);
+          f.showMessageBox.mockImplementation(async () => {
+            if (heldAt === 'confirmation') { enter(); await held; }
+            return { response: 1, checkboxChecked: false };
+          });
+          f.showSaveDialog.mockImplementation(async () => {
+            if (heldAt === 'target') { enter(); await held; }
+            return { canceled: false, filePath: targetPath };
+          });
+          const handler = electronBoundary.handle.mock.calls.find(([channel]) => channel === createSupportBundleIpcChannel)?.[1];
+          if (handler === undefined) throw new Error('SUPPORT_CAPABILITY_NOT_REGISTERED');
+          work = Promise.resolve(handler({ sender: f.mainWindow.webContents,
+            senderFrame: f.mainWindow.webContents.mainFrame }))
+            .then(value => ({ value }), error => ({ error }));
+          expect(await Promise.race([entered.then(() => 'held'), work])).toBe('held');
+          await lifecycle!.shutdown();
+          expect(electronBoundary.removeHandler).toHaveBeenCalledWith(createSupportBundleIpcChannel);
+          release();
+          const result = await work;
+          expect(result).toHaveProperty('error');
+          if (!('error' in result)) throw new Error('STALE_SUPPORT_REQUEST_WAS_ACCEPTED');
+          expect(result.error).toMatchObject({ message: 'SUPPORT_BUNDLE_CREATION_FAILED' });
+          expect(result.error).not.toHaveProperty('cause');
+          expect(observeFailure).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ message: 'SUPPORT_BUNDLE_FORBIDDEN' }));
+          expect(f.showMessageBox).toHaveBeenCalledOnce();
+          expect(electronBoundary.fetch.mock.calls.some(([url]) =>
+            String(url).includes('/diagnostics/support-bundle-data'))).toBe(false);
+          await expect(stat(targetPath)).rejects.toMatchObject({ code: 'ENOENT' });
+          await expect(readFile(f.databasePath)).resolves.toEqual(originalDatabase);
+          await expect(readFile(f.pdfPath)).resolves.toEqual(originalPdf);
+          await f.assertRegistryUnchanged();
+          expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+        } catch (error) {
+          firstFailure = { error };
+          throw error;
+        } finally {
+          release();
+          await work;
+          try { await lifecycle?.shutdown(); }
+          catch (cleanupFailure) {
+            if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+              'SYNTHETIC_SUPPORT_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+            throw cleanupFailure;
+          }
+        }
+      });
+    });
+  }
 });
 
 function hashFixtureBytes(bytes: Buffer): string { return createHash('sha256').update(bytes).digest('hex'); }

@@ -2404,7 +2404,7 @@ Desktop-polut ovat `apps/desktop/src/`-juuresta, web-polut
 | Renderer-raja | `preload/index.cts`; webin `app/desktopBridge.ts`, `app/desktopWorkspaceManagement.ts` | Nimetty metodi ja molempien päiden suljettu validointi. Ei raakaa IPC:tä, polkua, journalia, salasanaa tai rendererin valitsemaa palautus-/poistokohdetta. |
 | Yrityshallinnan UI | `features/workspaces/WorkspaceManagementDialog.tsx`, `WorkspaceList.tsx`, `WorkspaceOperationForm.tsx`, `useWorkspaceManagement.ts`, `workspaceSelectorState.ts`, `workspaceManagementOperation.ts` | Nykyinen lista, lomake ja reducer laajennetaan poistolle. Myöhäiset operaatiovastaukset sidotaan nykyiseen capabilityyn ja yritysvalintaan; pelkkä statuslukijan sukupolvisuoja ei riitä. |
 | Runtime-siirtymä | `main/desktopComposition.ts`, `main/desktopSelectorComposition.ts`, `workspaces/runtime/deferredWorkspaceRuntimeRelaunch.ts` | Main-only-paluusovitus yhdistää palvelutyön, varauksen vapautuksen ja nykyisen käynnistyspyynnön. Julkinen käyttäjäpolku ja todellisen paketin todennus puuttuvat. Oma sulku sulkee myös tavalliset capabilityt; niitä ei elvytetä vastauksen vuoksi. |
-| Tukivienti | `supportBundle/supportBundleCapability.ts`, `supportBundleArchive.ts`, `supportBundleFileStore.ts`; `apps/desktop/scripts/inspect-support-bundle.mjs` | Nykyinen täysi v2 tarvitsee backendin. Backenditön v3, todellinen sukupolvisidonta ja virallinen tarkastin puuttuvat. Pelkkä handlerin poistaminen ei katkaise jo odottavaa dialogikutsua. |
+| Tukivienti | `supportBundle/supportBundleCapability.ts`, `supportBundleArchive.ts`, `supportBundleFileStore.ts`; `apps/desktop/scripts/inspect-support-bundle.mjs` | Nykyinen täysi v2 tarvitsee backendin. Sen ikkuna-/dokumentti- ja dispose-vartijat on lisätty. Backenditön v3, hallintaoperaation sukupolvikytkentä, varhainen main-entry ja virallinen tarkastin puuttuvat. |
 | Varhainen virhe | `main/desktopComposition.ts`, `main/index.ts`, `main/earlyStartup.ts` | Cold-poiston hylkäys voi tapahtua ennen valitsimen luomista. Sitä ei voi ratkaista pelkällä valitsimen tukipainikkeella eikä kiertämällä startup-porttia. |
 
 #### Pyyntö, tulos ja elinikä
@@ -2618,6 +2618,37 @@ puuttuvan varianttipeiton; jokaisen neljän tulosvariantin kaikki kentät
 tarkistetaan nyt getterin kutsumattomuuteen asti. Jälkikatselmukseen ei
 jäänyt löydöstä. Varhaisen tukiviennin
 omistajuus- ja kytkentänäyttö on edelleen avoin.
+
+##### W7.5 A:n tukivientipyynnön elinikä
+
+Nykyinen `supportBundleCapability` tarkistaa saman ikkunan, pääframen,
+dokumenttisukupolven ja sulkemattoman kyvykkyyden jokaisen nykyisen
+odotuksen jälkeen sekä ennen synkronista kirjoittajaa. Mahdollinen mainin
+tilavartija vaaditaan synkroniseksi. Vanhentunut pyyntö ei tallenna tai
+näytä vanhan näkymän virhedialogia; uuden dokumentin erillinen pyyntö ei
+elvytä vanhaa. Lokitus tai virheilmoitus ei korvaa alkuperäistä syytä.
+IPC-virhe ei sisällä alkuperäistä poikkeusta; testin yksityinen havaitsija
+saa sen ennen turvallista muunnosta. V2:n sisältö, backend-permission,
+kirjoittaja ja kokorajat säilyvät.
+
+Neljän kokonaisen tukivientitiedoston 83 testiä ja tyypitys läpäisivät.
+Oikeat gzip-/kohde-/naapuritavut tarkistettiin myös vanhentuneessa pyynnössä.
+Kaksi nykyisen main-koostamisen sulkukontrollia läpäisi: vahvistuksessa
+tai tallennusvalinnassa odottava pyyntö ei sulun jälkeen avaa palautetta,
+hae backendin tukitietoja tai kirjoita tiedostoa. Tietokanta-, PDF- ja
+rekisteritavut säilyivät. Main-kokeen Electron-/backend-rajat ovat
+kontrolloituja, eivät native-todiste.
+
+Nykyisen OpenPGP-sarjan neljä koetta läpäisivät. Sen uusi pakotettu
+tukivientihylkäys säilyi hylkäyksenä; alkuperäinen viesti, pino ja syyketju
+löytyivät puretuista samoista tavuista testin ja ajon sidontoineen,
+eivät julkisesta testitulosteesta. Ensimmäisen kokeen vanha tiedostomäärä-
+väittämä täsmennettiin uuden tapauksen kolmelle tiedostolle; aiempi
+epäonnistuminen säilytetään. Tämä ei ole backendittömän v3:n, varhaisen
+native-entryn tai koko W7.5:n hyväksyntä. Koko main-regressio läpäisi 398
+testiä ilman ohituksia samoilla rajoilla. Rajatussa katselmuksessa havaittu
+IPC:n raakasyyn vuotoriski korjattiin; jälkikatselmukseen ei jäänyt löydöstä.
+Kohdeajot ja koko main-sarja ovat päällekkäisiä, eivät summattavaa kattavuutta.
 
 #### Testikattavuus ilman rinnakkaista testijärjestelmää
 
