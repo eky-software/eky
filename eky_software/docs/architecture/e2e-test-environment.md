@@ -1458,6 +1458,13 @@ vertailutaso on dokumentoitu tiedostossa
 
 ## CI-ajojen eristys
 
+Linuxin core-tarkistusten omistajuus jakautuu
+`Package regression tests` -> `Test, typecheck and build` -ketjuun.
+Jälkimmäinen käynnistyy vain ensimmäisen onnistuttua. Kumpikin käyttää
+saman revision omaa checkoutia ja lukittua valmistelua ilman build-artifactin
+siirtoa. Molempien 15 minuutin ja nykyisen salatun virheaineiston sopimus
+on [testausohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).
+
 GitHub Actionsin concurrency-ryhmä sisältää workflow-nimen, tapahtumalajin ja
 haaran tai pull requestin lähdehaaran. Näin eri tapahtumalajit eivät peruuta
 toistensa ajoja:

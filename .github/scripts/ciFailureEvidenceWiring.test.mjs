@@ -17,6 +17,7 @@ const uploadPin = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6
 // In particular, dependency preparation retains its existing safe console evidence only.
 const normalFamilies = {
   'ci.yml': {
+    'test-packages': 'core-tests',
     verify: 'core-verify',
     'e2e-system-security': 'core-system',
     'e2e-web-critical': 'core-web',
@@ -67,7 +68,7 @@ const diagnosticFamilies = {
 
 function platformsFor(key) {
   if (key === 'cadence-contracts') return ['Windows', 'Linux'];
-  return [['core-verify', 'core-system', 'core-web'].includes(key) ? 'Linux' : 'Windows'];
+  return [['core-tests', 'core-verify', 'core-system', 'core-web'].includes(key) ? 'Linux' : 'Windows'];
 }
 
 // Match the repository's existing named-job/named-step layout. A layout change must
@@ -210,7 +211,7 @@ test('shared optional projection rejects changed guards, duplicate fields and hi
 });
 
 test('Linux and mixed-platform hooks reject weakened trust, failure and mandatory-step policies', () => {
-  for (const [file, id] of [['ci.yml', 'verify'], ['ci.yml', 'e2e-system-security'],
+  for (const [file, id] of [['ci.yml', 'test-packages'], ['ci.yml', 'verify'], ['ci.yml', 'e2e-system-security'],
     ['ci.yml', 'e2e-web-critical'], ['ci-cadence-contracts.yml', 'cadence_contracts']]) {
     const original = workflows.get(file).get(id);
     for (const changed of [
@@ -339,7 +340,7 @@ test('all normal Linux and Windows families collect last, independently of which
       count++;
     }
   }
-  assert.equal(count, 19);
+  assert.equal(count, 20);
 });
 
 test('split Windows evidence keeps distinct job keys without extending native raw capture', () => {

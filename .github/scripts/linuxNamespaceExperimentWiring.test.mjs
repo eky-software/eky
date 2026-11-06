@@ -105,9 +105,9 @@ test('only two existing Linux jobs contain the experiment and core/risk/acceptan
     assert.equal(core.match(new RegExp(`${file}\\.mjs`, 'gu'))?.length, 2);
     assert.ok(!job(core, 'e2e-electron-windows-critical').includes(file));
   }
-  const required = withoutOptionalEvidenceAllowance(core, 6, false, ['Linux', 'Linux', 'Linux', 'Windows', 'Windows', 'Windows']);
+  const required = withoutOptionalEvidenceAllowance(core, 7, false, ['Linux', 'Linux', 'Linux', 'Linux', 'Windows', 'Windows', 'Windows']);
   assert.doesNotMatch(required, /continue-on-error:/u);
-  for (const id of ['verify', 'e2e-system-security', 'e2e-web-critical']) {
+  for (const id of ['test-packages', 'verify', 'e2e-system-security', 'e2e-web-critical']) {
     assert.match(job(core, id), /uses: \.\/\.github\/actions\/collect-ci-failure-evidence/u);
   }
   assert.match(job(cadence, 'core'), /risk_plan: \$\{\{ needs\.classification\.outputs\.plan \}\}/u);

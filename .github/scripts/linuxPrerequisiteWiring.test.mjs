@@ -109,9 +109,9 @@ test('observation remains in each existing Linux test step after its prerequisit
     }
   }
   assert.equal(core.match(/probeLinuxPrerequisites\.mjs/gu)?.length, 2);
-  const required = withoutOptionalEvidenceAllowance(core, 6, false, ['Linux', 'Linux', 'Linux', 'Windows', 'Windows', 'Windows']);
+  const required = withoutOptionalEvidenceAllowance(core, 7, false, ['Linux', 'Linux', 'Linux', 'Linux', 'Windows', 'Windows', 'Windows']);
   assert.doesNotMatch(required, /continue-on-error:/u);
-  for (const id of ['verify', 'e2e-system-security', 'e2e-web-critical']) {
+  for (const id of ['test-packages', 'verify', 'e2e-system-security', 'e2e-web-critical']) {
     assert.match(jobBlock(core, id), /uses: \.\/\.github\/actions\/collect-ci-failure-evidence/u);
   }
 });

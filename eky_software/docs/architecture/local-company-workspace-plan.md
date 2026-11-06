@@ -12866,8 +12866,9 @@ nykyiset integraation PR/main-portit eivät sulkeudu tällä pakettinäytöllä.
 
 ###### W7.4:n PR-integraation rajattu jatkosopimus
 
-**5.11.2026: rajattu CI-työnjako on työpuussa ja sen 138 kohdekontrollia
-läpäisi; kolmen jäljellä olevan esteen integraationäyttö on avoin.**
+**6.11.2026: Windowsin erilliset development- ja pakettityöt läpäisivät
+korjausrevision CI:ssä. Linuxin kahden peräkkäisen työn rajaus on hyväksytty;
+sen uusi integraationäyttö on avoin.**
 Nykyinen lähde ja ensihylkäykset ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 ja [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-ensimmäisen-pr-kierroksen-hylkäykset-5112026).
 Tämä rajaus ei avaa poistoketjun turvasopimuksia tai W7.5:tä uudelleen.
@@ -12875,8 +12876,14 @@ Tämä rajaus ei avaa poistoketjun turvasopimuksia tai W7.5:tä uudelleen.
 **Linuxin kohdetodennus on avoin.** Kopio-omistajan kolmen kohdetiedoston
 ajo pysähtyi runnerin valmistelussa puuttuvaan alustakohtaiseen riippuvuuteen
 ennen testien keräystä. Tämä ei ole testihylkäys tai korjauksen hyväksyntä.
-Lähde säilyi muuttumattomana; nykyinen puhtaan revision Linux-CI-portti
-vaaditaan edelleen. Valmisteluestettä ei ratkaista rinnakkaisella testirunnerilla.
+Lähde säilyi muuttumattomana. Myöhempi CI läpäisi pakettitestit, mutta
+kokonaiskatkaisu esti varsinaisen Linux-tarkistusprosessin kokeen.
+Nykyinen puhtaan revision Linux-CI-portti vaaditaan edelleen.
+Hyväksytty jako erottaa pakettitestit ja niiden jälkeiset tarkistukset
+kahteen pakolliseen peräkkäiseen 15 minuutin työhön, yhteisvara 30 minuuttia.
+Se ei muuta poistokoodia, testivalikoimaa tai tarkistusprosessin turvarajoja.
+Tarkka CI-sopimus on [testausohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).
+Valmisteluestettä ei ratkaista rinnakkaisella testirunnerilla.
 
 **Mainin kahden ensimmäisen aikakatkaisun mittaus.**
 `desktopRestoreStartup.test.ts`:n `registryReturnBackup`-paluu ja onnistuneen

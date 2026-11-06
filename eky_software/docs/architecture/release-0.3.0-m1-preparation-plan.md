@@ -77,12 +77,19 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
   riippumaton deltakatselmus läpäisivät. Tarkka sidonta, peitto,
   35 tiedoston tavuvertailu ja kaikki aiemmat virherajat säilyivät.
 
-**Seuraava portti:** core-CI:n työnjakopäätös. Sen pakettitestit ja tyypitys läpäisivät, mutta
-nykyinen 15 minuutin kokonaisraja katkesi desktop-käännöksessä ennen
-Linux-tarkistusprosessia. Kahden pakollisen peräkkäisen työn ehdotus
-(kumpikin 15 minuuttia, yhteisvara 30) odottaa omistajan päätöstä;
-CI:tä tai rajoja ei ole tämän perusteella muutettu. Sitten vaaditaan
-uuden jäädytetyn PR-headin kaikki portit ja uuden mainin omat portit.
+**Seuraava portti:** hyväksytyn core-CI-työnjaon deltakatselmuksen viimeistely,
+uuden jäädytetyn PR-headin kaikki portit sekä uuden mainin omat portit.
+Kohdesarja, normaali 429 testin CI-sarja ja desktopin 225 kytkentätestiä
+läpäisivät. Katselmuksen löytämä vanha testityön omistajaodotus on korjattu;
+[erillinen näyttö](release-0.3.0-integration-history.md#w74n-hyväksytty-linux-core-ci-työnjako-6112026)
+säilyttää myös ensimmäiset hylkäykset. Omistaja hyväksyi kaksi pakollista peräkkäistä
+15 minuutin työtä, yhteisvara 30 minuuttia. Pakettitestit säilyvät
+ensimmäisessä; tyypitys, kaikki kolme käännöstä ja todellinen Linux-
+tarkistusprosessi toisessa. Koonti vaatii kaikki varsinaiset vaiheet;
+molemmilla on nykyinen ehdollinen salattu virhekeräys
+[core-sopimuksen](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo) mukaan.
+Uusi jako ei nimeä vanhaa kokonaiskatkaisua korjatuksi tai hyväksy
+ajamatta jäänyttä Linux-tarkistinta.
 [Nykyisen korjausrevision näyttö ja avoimet esteet](release-0.3.0-integration-history.md#w74n-korjausrevision-pr-esteet-6112026)
 erottavat paikallisen läpäisyn integraatiohyväksynnästä.
 [Omistava rajaus](local-company-workspace-plan.md#w74n-pr-integraation-rajattu-jatkosopimus)

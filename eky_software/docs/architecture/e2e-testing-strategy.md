@@ -151,6 +151,11 @@ muutosta; paikallinen dokumentaatio ei muuta GitHub-asetuksia.
 Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa
 GitHubissa täsmällisiin check-nimiin.
 
+Linuxin pakettitestit ja myöhemmät tyypitys-/build-/tarkistusprosessivaiheet
+ovat kaksi pakollista peräkkäistä 15 minuutin työtä, yhteisvara 30 minuuttia.
+Molemmat vaaditaan koontiin; tarkka valmistelu-, sisältö- ja
+virheaineistosopimus on [core-testauksen ohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).
+
 `pnpm test:e2e:stress` on manuaalinen, eikä kuulu jokaiseen pull requestiin.
 System/web-työkuorma ja ensimmäiset vertailuarvot on dokumentoitu tiedostossa
 `e2e-endurance-baseline.md`. Electronin rajattu stress-baseline ajetaan

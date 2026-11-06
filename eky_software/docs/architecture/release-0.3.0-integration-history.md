@@ -5,6 +5,34 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n hyväksytty Linux core-CI-työnjako 6.11.2026
+
+Omistaja hyväksyi kaksi pakollista peräkkäistä 15 minuutin työtä,
+yhteisvara 30 minuuttia. `Package regression tests` ajaa nykyisen
+sarjallisen pakettitestikomennon. Sen onnistumisesta riippuva
+`Test, typecheck and build` säilyttää tyypityksen, kaikki kolme käännöstä
+ja todellisen eristetyn Linux-tarkistusprosessin. Kumpikin valmistelee
+saman lähderevision ja lukitut riippuvuudet itsenäisesti; töiden välillä
+ei siirretä rakennettua sisältöä. Koonti vaatii molempien kaikki nimetyt
+varsinaiset vaiheet. Nykyinen ehdollinen salattu virhekeräys säilyy
+kummallakin omalla työavaimellaan.
+
+Kaksi uutta lähtökontrollia hylkäsivät vanhan yhden työn kytkennän.
+Ensimmäinen kohdesarja löysi vanhan virhekeräysperheiden lukumääräodotuksen;
+korjattu kuuden tiedoston sarja läpäisi 64 testiä ilman ohituksia.
+Normaali koko `test:ci`-komento läpäisi 429 testiä ilman ohituksia.
+Riippumaton katselmus löysi lisäksi desktopin kytkentätestistä vanhan
+testityön omistajaodotuksen. Sen hylkäys toistettiin ennen korjausta,
+ja korjattu koko kytkentätiedosto läpäisi 225 testiä ilman ohituksia,
+myös nykyiset kielteiset valinta- ja hyväksyntäkontrollit.
+Näitä osittain päällekkäisiä sarjoja ei summata.
+
+Muutos ei koske sovelluskoodia, riippuvuuksia, yksittäisten testien tai
+Linux-tarkistusprosessin aikarajoja eikä Windowsin työnjakoa. Vanha
+kokonaiskatkaisu ja epävarma siivoustila säilyvät avoimina. Paikallinen
+näyttö ei hyväksy uutta hosted-ajojakoa, PR:ää, mergeä tai uutta mainia;
+ne vaativat uuden täsmällisen revision omat portit.
+
 ## W7.4:n korjausrevision PR-esteet 6.11.2026
 
 PR #327:n revisio `ecfe654f35d0a673b6d2161ca2c008c4486cc3b3` läpäisi

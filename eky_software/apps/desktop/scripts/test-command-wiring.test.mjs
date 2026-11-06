@@ -95,7 +95,7 @@ const REQUIRED_FILES = [
   ['installer/windows-acceptance-harness/upgradeRollbackBinaryHandoff.test.mjs', 'process'],
 ];
 const CI_EDGES = [
-  { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
+  { job: 'test-packages', name: 'Package regression tests', gate: 'verify',
     step: 'Run tests', run: "pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --stream run test" },
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
     step: 'Prepare Linux inspection Electron runtime', run: 'pnpm --filter @eky/desktop e2e:prepare-electron-runtime' },
@@ -251,10 +251,11 @@ function assertCiWiring({ core, caller, plan, coverage }) {
   for (const edge of CI_EDGES) {
     const job = jobBlock(core, edge.job);
     const header = job.split('\n    steps:\n')[0];
+    const linuxCore = ['test-packages', 'verify'].includes(edge.job);
     property(header, 4, 'name', edge.name);
-    property(header, 4, 'if', edge.job === 'verify' ? "inputs.risk_plan != ''"
+    property(header, 4, 'if', linuxCore ? "inputs.risk_plan != ''"
       : "inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts");
-    property(header, 4, 'runs-on', edge.job === 'verify' ? 'ubuntu-latest' : 'windows-latest');
+    property(header, 4, 'runs-on', linuxCore ? 'ubuntu-latest' : 'windows-latest');
     property(header, 8, 'working-directory', 'eky_software');
     assert.doesNotMatch(header, /^    continue-on-error:/mu);
     assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n${edge.environment ?? ''}        run: ${edge.run}`);
@@ -483,7 +484,7 @@ for (const [name, change] of [
   ['first package failure ignored in core CI', command => command.replace(' run test', ' --no-bail run test')],
 ]) {
   test(`rejects ${name}`, () => rejectsMutation(fixture => {
-    const command = CI_EDGES.find(edge => edge.job === 'verify' && edge.step === 'Run tests').run;
+    const command = CI_EDGES.find(edge => edge.job === 'test-packages' && edge.step === 'Run tests').run;
     fixture.core = fixture.core.replace(`        run: ${command}\n`, `        run: ${change(command)}\n`);
   }));
 }

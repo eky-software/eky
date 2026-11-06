@@ -130,16 +130,31 @@ sarjallistuksen läpäisy ratkaise aiemman aikakatkaisun syytä.
 
 ## Core-CI:n pakettisarjojen ajo
 
-Core-jobin testivaihe ajaa pakettien nykyiset testiskriptit yksi paketti
+Core-CI:n `Package regression tests` ajaa pakettien nykyiset testiskriptit yksi paketti
 kerrallaan. Pakettien sisäiset työntekijämäärät, testikohtaiset aikarajat,
 pretest-vaiheet, eristys, reporterit ja testivalikoima säilyvät. Juuren
 orkestroiva `eky-software`-skripti suljetaan nimenomaisesti pois, joten
 samoja sarjoja ei käynnistetä sen kautta uudelleen. Riippuvuusjärjestys ja
 ensimmäiseen epäonnistuneeseen pakettiin pysähtyminen säilyvät.
 
-Core-jobin kokonaisaikaraja ja myöhemmät typecheck-, build- ja Linux-
-tarkistukset säilyvät. Ajotavan läpäisy ei yksin todista vanhan timeoutin
-juurisyytä tai muuta ensimmäistä hylkäystä onnistumiseksi.
+Omistajan 6.11.2026 hyväksymä työnjako erottaa pakettitestit ja niiden
+jälkeiset tarkistukset kahteen pakolliseen peräkkäiseen Linux-työhön.
+`test-packages` ajaa vain nykyisen pakettitestikomennon;
+`verify` (`Test, typecheck and build`) odottaa sen onnistumista ja ajaa
+nykyisen tyypityksen, backendin/webin/desktopin käännökset sekä eristetyn
+Linux-tarkistusprosessin valmistelun ja todellisen kokeen. Molemmat saavat
+15 minuuttia, joten yhteinen enimmäisvara kasvaa 15:stä 30 koneminuuttiin.
+
+Kumpikin työ tekee saman versionmukaisen checkoutin ja lukitun
+paketinhallinta-/riippuvuusvalmistelun itsenäisesti. Valmiita build-tavuja
+ei siirretä töiden välillä. Molemmat käyttävät nykyistä ehdollista salattua
+virhekeräystä sen omassa kolmen minuutin rajassa; sidonnat ovat
+`core-tests-0` ja `core-verify-0`. Kerättävä sisältö ei laajene.
+Koonti vaatii kummankin työn ja jokaisen sille kuuluvan vaiheen onnistumisen;
+toisen työn vihreä vaihe ei korvaa puuttuvaa, peittynyttä tai ohitettua vaihetta.
+Testien omat aikarajat, valmistelu, eristys ja uusintaehdot eivät muutu.
+Jaon ajotodennus vaatii uuden revision CI:n; lähdetarkistus ei yksin hyväksy
+sitä tai muuta ensimmäistä kokonaiskatkaisua onnistumiseksi.
 
 ## Palautustestin erillinen valmistelu
 
