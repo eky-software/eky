@@ -2342,7 +2342,16 @@ erillisenä commitina vihreästä lähdepuusta.
 
 ## W7: Workspace deletion
 
-**Tila:** omistajan 2026-09-22 päätöksellä `0.3.0`-julkaisuun kuuluva
+**Nykytila 6.11.2026:** W7.1-W7.4 on hyväksytty omine PR/main-portteineen.
+W7.4:n sisäisen lopullisen poiston ja keskeytysjatkon loppuhyväksyntä on
+[PR #327:ssä](https://github.com/eky-software/eky/pull/327#issuecomment-6678341652);
+[M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa täsmällisen hyväksytyn lähteen ja seuraavan W7.5-suunnittelun.
+Poiston IPC, preload, painike ja backenditon tukivienti pysyvät suljettuina.
+Alla olevat aiemmat päivätyt tilat ovat historiaa, eivät nykyinen työjono;
+hyväksytyt turvasopimukset ja avoimet ensihavainnot säilyvät.
+
+**Alkuperäinen rajaus:** omistajan 2026-09-22 päätöksellä `0.3.0`-julkaisuun kuuluva
 vaadittu ominaisuus. M1:n valmistelussa keskustelun nimetyt
 käyttäytymisvalinnat on hyväksytty 23.10.2026. Omistaja hyväksyi 24.10.2026
 myös W7-P1-P3:n suunnat ja W7-P4:n ehdollisen toteutuksen. Tarkat tekniset
@@ -4946,6 +4955,15 @@ Tuotantototeutus ei saa arvata uutta sulkubudjettia, ohittaa yleistä
 recovery-estoa tai nimetä valmistelua lopulliseksi poistoksi.
 
 #### W7.4:n toteutussopimus
+
+**Hyväksytty 6.11.2026:** A-F:n toteutus ja vaaditut PR/main-portit on
+todennettu mainissa `3da3f6a29fda299221b01b067848fa634f1d882d`.
+[PR #327:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/327#issuecomment-6678341652)
+ja [M1:n nykytila](release-0.3.0-m1-preparation-plan.md#jatka-tästä) erottavat
+hyväksytyn integraation vanhoista kokeista ja avoimista ensihylkäyksistä.
+Tämän sopimuksen alla olevat päivätyt toteutus-/tutkimustilat ovat oman
+revisionsa historiaa. Niiden keskeneräisyysmerkinnät eivät avaa hyväksyttyjä
+osia uudelleen. Varsinaiset turvaehdot säilyvät; W7.5 ei sisälly hyväksyntään.
 
 **28.10.2026: A:n journal-, kohdeluettelo- ja sidontatallennus; ei vielä poiston tuotantokytkentää.**
 Lähtö on W7.3:n hyväksytty main `11e0eadfee002806db01a1b7152532e04dec5ca4`.
@@ -12866,15 +12884,19 @@ nykyiset integraation PR/main-portit eivät sulkeudu tällä pakettinäytöllä.
 
 ###### W7.4:n PR-integraation rajattu jatkosopimus
 
-**6.11.2026: Windowsin erilliset development- ja pakettityöt läpäisivät
-korjausrevision CI:ssä. Linuxin kahden peräkkäisen työn testit ja buildit
-läpäisivät; todellisen tarkistusprosessin vanha fixture-kutsu on korjattu,
-mutta uuden prosessiketjun ja sulun näyttö on avoin.**
-Nykyinen lähde ja ensihylkäykset ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
-ja [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-ensimmäisen-pr-kierroksen-hylkäykset-5112026).
-Tämä rajaus ei avaa poistoketjun turvasopimuksia tai W7.5:tä uudelleen.
+**Loppuhyväksyntä 6.11.2026:** täsmällinen PR-head `ee8765fb9ca751924c6775c30cb425420c77a2a7`
+ja uuden mainin `3da3f6a29fda299221b01b067848fa634f1d882d` omat V2- ja
+riippuvuusportit läpäisivät ilman uusintaa. Kummankin V2:n kaikki 40
+pakollista työtä ja vaaditut vaiheet varmennettiin. Myös todellinen
+Linux-tarkistus suojauksineen ja siivouksineen sekä Windowsin development-,
+paketti-, legacy- ja fault-polut läpäisivät. Kaksi peräkkäistä Linuxin
+core-työtä säilyttää omat 15 minuutin rajansa ja kaikki tarkistukset.
+[M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) omistaa nykytilan ja
+[integraatiohistoria](release-0.3.0-integration-history.md#w74n-prmain-loppuhyväksyntä-6112026)
+tarkan näytön sekä vanhat ensihylkäykset. Aiemmat epävarmat siivoustilat
+eivät muutu läpäisyiksi. W7.5:n kanavat pysyvät suljettuina.
 
-**Linuxin kohdetodennus on avoin.** Kopio-omistajan kolmen kohdetiedoston
+**Edeltävä Linuxin kohdetodennus, ennen hyväksyttyä revisiota.** Kopio-omistajan kolmen kohdetiedoston
 ajo pysähtyi runnerin valmistelussa puuttuvaan alustakohtaiseen riippuvuuteen
 ennen testien keräystä. Tämä ei ole testihylkäys tai korjauksen hyväksyntä.
 Lähde säilyi muuttumattomana. Myöhempi CI läpäisi pakettitestit, mutta
