@@ -188,7 +188,7 @@ jobs:
       - name: Upload encrypted delivery proof only
         id: evidence_upload
         if: success() && steps.evidence_seal.outcome == 'success' && steps.evidence_seal.outputs.sealed == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eky-encrypted-delivery-proof-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ steps.evidence_seal.outputs.ciphertext }}
@@ -389,7 +389,7 @@ jobs:
         run: node installer/windows-acceptance-harness/ciFailureEvidence.mjs
       - name: Upload only sealed MSI policy evidence
         if: ${{ always() && steps.policy-evidence.outcome == 'success' && steps.policy-evidence.outputs.sealed == 'true' && steps.policy-evidence.outputs.ciphertext != '' }}
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: ci-failure-msi-policy-0-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ steps.policy-evidence.outputs.ciphertext }}
@@ -848,7 +848,7 @@ jobs:
 
       - name: Upload exact encrypted workspace fault evidence only
         if: always() && steps.fault_evidence_seal.outcome == 'success' && steps.fault_evidence_seal.outputs.sealed == 'true'
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: eky-encrypted-workspace-fault-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ steps.fault_evidence_seal.outputs.ciphertext }}
