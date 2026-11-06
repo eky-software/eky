@@ -171,6 +171,7 @@ function scenario(variant = 'current', change = {}) {
     async createProfileInspectionDeployment(value) { await Promise.resolve(); return value; },
     async runProfileSnapshotInspection(input) {
       assert.equal(input.kind, 'inspect');
+      assert.deepEqual(input.target, { kind: 'unbound' });
       assert.equal(input.migrationPolicy, 'restoreCompatible');
       assert.equal(input.runnerPath, '/source/apps/desktop/dist/runtime/profileInspectionRunner.js');
       assert.equal(input.deployment.resourcesRoot, paths.resourcesRoot);

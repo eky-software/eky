@@ -33,6 +33,7 @@ export async function runLinuxInspectionCase({ config, paths, repository, ports,
     let rejected;
     try {
       returned = await ports.runProfileSnapshotInspection({ operationId: config.operationId,
+        target: { kind: 'unbound' },
         kind: 'inspect', migrationPolicy: 'restoreCompatible',
         runnerPath: join(repository, 'apps/desktop/dist/runtime/profileInspectionRunner.js'),
         deployment: await ports.createProfileInspectionDeployment({

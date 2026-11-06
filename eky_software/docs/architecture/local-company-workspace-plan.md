@@ -12867,8 +12867,9 @@ nykyiset integraation PR/main-portit eivät sulkeudu tällä pakettinäytöllä.
 ###### W7.4:n PR-integraation rajattu jatkosopimus
 
 **6.11.2026: Windowsin erilliset development- ja pakettityöt läpäisivät
-korjausrevision CI:ssä. Linuxin kahden peräkkäisen työn rajaus on hyväksytty;
-sen uusi integraationäyttö on avoin.**
+korjausrevision CI:ssä. Linuxin kahden peräkkäisen työn testit ja buildit
+läpäisivät; todellisen tarkistusprosessin vanha fixture-kutsu on korjattu,
+mutta uuden prosessiketjun ja sulun näyttö on avoin.**
 Nykyinen lähde ja ensihylkäykset ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 ja [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-ensimmäisen-pr-kierroksen-hylkäykset-5112026).
 Tämä rajaus ei avaa poistoketjun turvasopimuksia tai W7.5:tä uudelleen.
@@ -12879,6 +12880,11 @@ ennen testien keräystä. Tämä ei ole testihylkäys tai korjauksen hyväksynt�
 Lähde säilyi muuttumattomana. Myöhempi CI läpäisi pakettitestit, mutta
 kokonaiskatkaisu esti varsinaisen Linux-tarkistusprosessin kokeen.
 Nykyinen puhtaan revision Linux-CI-portti vaaditaan edelleen.
+Seuraava tasapainotettu jako läpäisi testit ja buildit, mutta Linux-hostin
+pakollisen kohdeargumentin puuttuminen esti varsinaisen kokeen.
+Fixture käyttää nyt omaan staging-snapshotiinsa eksplisiittistä `unbound`-
+kohdetta. Tämä ei muuta tuotannon kohde- tai poistovartijoita eikä vielä
+todista varmentamattoman prosessipuun sulkeutumista.
 Hyväksytyn kahden peräkkäisen 15 minuutin työn sisäinen kuorma jaetaan
 desktopin testeihin ensimmäisessä sekä muiden pakettien testeihin ja
 nykyisiin jatkotarkistuksiin toisessa. Yhteisvara pysyy 30 minuutissa.

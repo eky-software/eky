@@ -15,19 +15,22 @@ on varmennettu hyväksytyiksi. Nykyinen haara on `codex/w7-4-deletion`;
 kaikki sen keskeneräiset muutokset säilytetään.
 
 **Integraation nykytila:** [PR #327](https://github.com/eky-software/eky/pull/327)
-on avoinna. Nykyisen työnjaon korjauksen lähtöhead on
-`3e74c09f0273ee5fd5a5f3500a91892dcdd92868`:
-[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42155202662)
-läpäisi, mutta [V2:n](https://github.com/eky-software/eky/actions/runs/42155202744)
-ensimmäinen core-työ katkaistiin 15 minuutissa kesken backendin testien.
-Toinen työ jäi oikein ajamatta. Lisäksi ensimmäinen workspace-fault-ajo
-hylättiin MSI:n sulkemisvahvistuksen odotukseen; säilynyt strict-luettu
-epäonnistumistulos todistaa omistetun prosessipuun ja fixturen siivouksen.
-Toinen fault-ajo läpäisi kaikki viisi skenaariota, mutta ei korvaa ensimmäistä.
-Rajattu lähdekatselmus ei osoittanut korjattavaa EKY-vikaa tähän odotukseen;
-havainto jää avoimeksi. Muut läpäisseet portit eivät korvaa esteitä.
-Kuorma jaetaan samoihin kahteen 15 minuutin työhön: desktop ensin,
-muut paketit ja nykyiset jatkotarkistukset toisessa. Ajantasainen head
+on avoinna. Nykyisen Linux-fixturekorjauksen lähtöhead on
+`d6cc1a607e7fbcff76498fa3bf3f32d96fe3a1bf`:
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42159461248)
+läpäisi. [V2:n](https://github.com/eky-software/eky/actions/runs/42159461215)
+kuormanjako läpäisi kaikki pakettitestit, tyypityksen ja kolme käännöstä,
+mutta todellinen Linux-tarkistusprosessi hylättiin. Lähdetarkistus löysi
+Linux-testihostista puuttuvan pakollisen kohdeargumentin; vain fixture ja
+sen tarkka kolmen variantin väittämä on korjattu. Windowsin 56 kontrollia
+ja 12 vanhaa alustarajausta, Linuxin kaikki 68 kontrollia ja rajattu
+riippumaton katselmus läpäisivät. Todellinen prosessiketju ja sen sulku
+odottavat vielä uuden revision näyttöä.
+[Ensiaineisto ja korjausraja](release-0.3.0-integration-history.md#w74n-linux-tarkistusfixturen-kohdesopimus-6112026)
+eivät muuta vanhaa varmentamatonta prosessipuuta hyväksytyksi.
+Aiemman revision MSI-odotus säilyy erillisenä avoimena havaintona.
+Molempien peräkkäisten core-töiden 15 minuutin raja ja kaikki
+turvatarkistukset säilyvät. Ajantasainen head
 ja hyväksyntä varmennetaan PR:stä; vanhoja ajoja ei siirretä uudelle SHA:lle.
 Myös ensimmäinen head `25bb186fc5dbd67805490dfb32c79e900952360e`,
 [sen V2](https://github.com/eky-software/eky/actions/runs/42018622466)
@@ -84,7 +87,7 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
   riippumaton deltakatselmus läpäisivät. Tarkka sidonta, peitto,
   35 tiedoston tavuvertailu ja kaikki aiemmat virherajat säilyivät.
 
-**Seuraava portti:** tasapainotetun core-työnjaon uuden jäädytetyn PR-headin
+**Seuraava portti:** Linux-fixturekorjauksen uuden jäädytetyn PR-headin
 kaikki portit sekä uuden mainin omat portit. Todellinen pakettivalinta
 kattaa samat 11 workspace-pakettia ja seitsemän testiskriptiä ilman
 puuttuvia tai päällekkäisiä valintoja. Pakettien valmistelut säilyvät.

@@ -260,6 +260,11 @@ Node-valmistelussa, ei Electron mainissa.
 
 Host käyttää oikeaa `runProfileSnapshotInspection`-porttia,
 `restoreCompatible`-politiikkaa ja nykyistä prepare-grant-exit-ketjua.
+Fixturen erillinen staging-snapshot ei kuulu yritysrekisteriin. Host antaa
+siksi nykyisen portin vaatiman eksplisiittisen `target: { kind: 'unbound' }`
+-kohteen; puuttuva kohde ei kelpaa, eikä sidottua yrityskohdetta päätellä
+tarkistettavan tietokannan sisällöstä. Kaikki kolme varianttia todentavat
+saman kohdeargumentin. Tämä ei muuta tuotannon kohde- tai poistovartijoita.
 Ehjä kopio, muutettu rakenne ja puuttuva tarkistusajuri ovat erillisiä tapauksia.
 Utilityn tulos ja poistuminen, testihostin normaali poistuminen, lähdetavujen
 säilyminen, varauksen palautuminen sekä ulomman prosessipuun siivous ovat

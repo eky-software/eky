@@ -5,6 +5,41 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n Linux-tarkistusfixturen kohdesopimus 6.11.2026
+
+Revisio `d6cc1a607e7fbcff76498fa3bf3f32d96fe3a1bf` läpäisi
+[riippuvuusauditoinnin](https://github.com/eky-software/eky/actions/runs/42159461248).
+[V2-kierroksessa](https://github.com/eky-software/eky/actions/runs/42159461215)
+desktopin koko testiskripti läpäisi ensimmäisessä 15 minuutin työssä.
+Muiden pakettien testit, tyypitys ja kaikki kolme käännöstä läpäisivät
+toisessa, mutta todellinen Linux-tarkistusprosessi hylättiin. Tämä ei
+ollut core-työn kokonaiskatkaisu tai hyväksytty Linux-prosessinäyttö.
+
+Salatun ensiaineiston kaikki 14 tiedostoa, tiivisteet ja testatun
+merge-revision vanhemmat varmennettiin. Ensimmäinen `current`-tapaus
+hylättiin `hostExit`-vaiheessa; myös ulompi sulku epäonnistui ja
+prosessipuun tila jäi varmentamattomaksi. Tarkka sisäinen poikkeus ei
+ollut säilyneessä tulosraportissa. AppArmor-profiilin siivous valmistui,
+mutta ei korvaa prosessipuun todistetta. Raportin suorittamatta jääneiden
+loppukontrollien oletusarvot eivät osoita globaalin käytännön muutosta.
+
+Rajattu lähdetarkistus löysi testihostin vanhan kutsusopimuksen:
+`runProfileSnapshotInspection` vaatii nyt `target`-argumentin, mutta
+Linux-case ei antanut sitä. Tuotannon nykyinen kohdevartija hylkää
+puuttuvan argumentin ennen tarkistusta. Fixture luo itsenäisen
+staging-snapshotin ilman yritysrekisteriä, joten rajattu korjaus antaa
+eksplisiittisen `unbound`-kohteen. Sidottua kohdetta ei muuteta
+kohteettomaksi, eikä tuotannon vartijaa muuteta.
+
+Kaikkien kolmen variantin täsmällinen kohdeväittämä hylkäsi vanhan kutsun
+ennen korjausta. Korjattu kolmen tiedoston sarja läpäisi Windowsissa
+56 testiä ja säilytti 12 vanhaa alustarajausta; sama sarja Linuxissa
+läpäisi kaikki 68 ilman ohituksia. Sarjoja ei summata. Riippumaton
+rajattu katselmus ei löytänyt puutetta. Nämä ovat sopimuskontrolleja,
+eivät todellisen Linux-Electron-ketjun tai sen sulun hyväksyntä.
+Korjauksen normaali CI-todennus ja uuden mainin omat portit ovat avoimia.
+Ensihylkäys ja varmentamaton prosessipuu säilyvät erillisinä havaintoina.
+
 ## W7.4:n core-testikuorman tasapainotus 6.11.2026
 
 Ensimmäinen kahden työn revisio `3e74c09f0273ee5fd5a5f3500a91892dcdd92868`
