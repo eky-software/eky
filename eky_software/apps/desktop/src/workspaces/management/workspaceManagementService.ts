@@ -193,6 +193,7 @@ export class WorkspaceManagementService {
     const assertInitial = input.selection.assertSelected.bind(input.selection);
     const releases = [input.selection.revoke.bind(input.selection)];
     const correlationId = randomUUID(), failures: unknown[] = [];
+    const observedOperation = Object.freeze({ correlationId, operationKind: 'deleteResume' as const });
     let startedAt: number | undefined;
     let active = true, observing = true, primaryFailed = false, cleanupReported = false;
     let authorityFailure: { cause: unknown } | undefined;
@@ -235,6 +236,7 @@ export class WorkspaceManagementService {
         });
       } catch { /* Optional timing must not replace the first failure or prevent close. */ }
     };
+    WorkspaceManagementService.observeOperation(observer, 'operationStarted', observedOperation);
     try {
       try {
         startedAt = now();
@@ -292,7 +294,10 @@ export class WorkspaceManagementService {
         throw WorkspaceManagementService.mapOperationFailure(first, 'deleteResume', failures);
       }
       return result!;
-    } finally { active = false; observing = false; }
+    } finally {
+      active = false; observing = false;
+      WorkspaceManagementService.observeOperation(observer, 'operationSettled', observedOperation);
+    }
   }
 
   getStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
@@ -710,8 +715,15 @@ export class WorkspaceManagementService {
     phase: 'operationStarted' | 'operationSettled',
     operation: Readonly<WorkspaceManagementOperationIdentity>,
   ): void {
+    WorkspaceManagementService.observeOperation(this.options.observer, phase, operation);
+  }
+
+  private static observeOperation(
+    observer: WorkspaceManagementObserver | undefined,
+    phase: 'operationStarted' | 'operationSettled',
+    operation: Readonly<WorkspaceManagementOperationIdentity>,
+  ): void {
     try {
-      const observer = this.options.observer;
       const result: unknown = observer?.[phase]?.(operation);
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
     } catch {

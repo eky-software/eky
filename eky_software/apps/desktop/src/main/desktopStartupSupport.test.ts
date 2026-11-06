@@ -39,6 +39,29 @@ it.for(['unavailable', 'available'] as const)('index exports the supplied %s rec
   ]);
 });
 
+it('index consumes the real admitted composition failure without a window', async context => {
+  const f = await fixture(context, { actualCompositionFailure: true });
+  await f.finished();
+  expect(f.realWorkspaceFailure).toHaveBeenCalledOnce();
+  expect(f.receiptDelivery).toHaveBeenCalledOnce();
+  expect(f.runtimeDesktopDataRead).toHaveBeenCalled();
+  expect(f.exit).toHaveBeenCalledExactlyOnceWith(1);
+  expect(f.showMessageBox).toHaveBeenCalledOnce(); expect(f.showSaveDialog).toHaveBeenCalledOnce();
+  expect(f.showErrorBox).not.toHaveBeenCalled();
+  const inspector = await import(new URL('../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+  const inspected = inspector.inspectSupportBundle(f.targetPath);
+  expect(inspected.summary).toMatchObject({ formatVersion: 3, kind: 'desktopOnly', observationStatus: 'unavailable',
+    backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' });
+  expect(inspected.document.observation).toEqual(f.receipt().observation);
+  expect(f.receipt().operationalIdentity).toEqual({ appVersion: '0.3.0', buildRevision: 'development',
+    runtimeInstanceId: f.compositionOptions().runtimeInstanceId });
+  const document = JSON.stringify(inspected.document);
+  for (const excluded of [f.root, 'SYNTHETIC_REAL_WORKSPACE_STARTUP_ORIGINAL']) expect(document).not.toContain(excluded);
+  // No workspace, backend or window was created. The real reservation was closed.
+  expect(existsSync(join(f.app.getPath('userData'), 'workspaces'))).toBe(false);
+  await f.proveReservationReleased();
+});
+
 it.for(['confirmation', 'save'] as const)('index consumes cancellation at %s without a file', async (cancelledAt, context) => {
   const f = await fixture(context, { cancelledAt });
   await f.finished();
@@ -187,18 +210,25 @@ async function fixture(context: TestContext, options: {
   relaunch?: boolean;
   startupErrorCode?: string;
   excludedMode?: 'smoke' | 'proof';
+  actualCompositionFailure?: boolean;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-startup-support-'));
   const paths: Record<string, string> = { userData: join(root, 'user-data'), appData: root, temp: root };
   const targetPath = join(root, 'support.json.gz');
   const descriptor = Object.getOwnPropertyDescriptor(process, 'versions')!;
+  const resourcesDescriptor = Object.getOwnPropertyDescriptor(process, 'resourcesPath');
   Object.defineProperty(process, 'versions', { configurable: true,
     value: { ...process.versions, electron: '43.8.1' } });
+  if (options.actualCompositionFailure) Object.defineProperty(process, 'resourcesPath', {
+    configurable: true, value: join(root, 'resources'),
+  });
   let startupWork: Promise<void> | undefined;
+  let reservationProofWork: Promise<void> | undefined;
+  let fixtureClosing = false;
   let startupInput: StartupOptions | undefined;
   let compositionInput: StartDesktopCompositionOptions | undefined;
   let originalReceipt: Readonly<DesktopWorkspaceStartupSupportReceipt> | undefined;
-  let firstStartupFailure: { error: unknown } | undefined;
+  let firstStartupFailure: { error: unknown; phase: 'earlyStartup' | 'compositionStartup' } | undefined;
   let firstSupportFailure: { error: unknown } | undefined;
   let excludedResultPath: string | undefined;
   context.onTestFailed(async () => {
@@ -209,7 +239,7 @@ async function fixture(context: TestContext, options: {
       const sink = createRunnerFailureSink();
       const task = context.task;
       const retryCount = task.result?.retryCount ?? 0, repeatCount = task.result?.repeatCount ?? 0;
-      sink.record({ runner: 'vitest', phase: firstSupportFailure === undefined ? 'earlyStartup' : 'supportBundleNativeCreationCatch',
+      sink.record({ runner: 'vitest', phase: firstSupportFailure === undefined ? firstStartupFailure!.phase : 'supportBundleNativeCreationCatch',
         error: observed.error, testName: task.fullTestName, testId: task.id, file: task.file.filepath,
         ...(task.location === undefined ? {} : { line: task.location.line, column: task.location.column }),
         ...(retryCount === 0 && repeatCount === 0 ? { attempt: 0 } : {}), retryCount, repeatCount });
@@ -225,6 +255,7 @@ async function fixture(context: TestContext, options: {
   const runtimeDesktopDataRead = vi.fn(readSupportBundleDesktopData);
   const receiptDelivery = vi.fn((observe: NonNullable<StartDesktopCompositionOptions['observeWorkspaceStartupFailure']>,
     receipt: Readonly<DesktopWorkspaceStartupSupportReceipt>) => observe(receipt));
+  const realWorkspaceFailure = vi.fn(async (): Promise<never> => { throw new Error('SYNTHETIC_REAL_WORKSPACE_STARTUP_ORIGINAL'); });
   const app = Object.assign(new EventEmitter(), {
     isPackaged: false, commandLine: { hasSwitch: (name: string) =>
       (options.excludedMode === 'smoke' && name === 'desktop-smoke') ||
@@ -248,11 +279,20 @@ async function fixture(context: TestContext, options: {
   const release = () => options.gate?.release();
   context.signal.addEventListener('abort', release, { once: true });
   context.onTestFinished(async ({ task }) => {
+    fixtureClosing = true;
     release();
-    try { await startupWork; }
+    const settled = await Promise.allSettled([startupWork, reservationProofWork]);
+    try {
+      const failures = settled.filter(result => result.status === 'rejected');
+      if (failures.length !== 0) throw new AggregateError(failures.map(result => result.reason), 'STARTUP_SUPPORT_FIXTURE_WORK_FAILED');
+    }
     finally {
       context.signal.removeEventListener('abort', release);
       Object.defineProperty(process, 'versions', descriptor);
+      if (options.actualCompositionFailure) {
+        if (resourcesDescriptor === undefined) Reflect.deleteProperty(process, 'resourcesPath');
+        else Object.defineProperty(process, 'resourcesPath', resourcesDescriptor);
+      }
       vi.doUnmock('electron'); vi.doUnmock('./earlyStartup.js'); vi.doUnmock('./desktopComposition.js');
       vi.doUnmock('../supportBundle/supportBundleCapability.js');
       vi.doUnmock('../supportBundle/supportBundleDesktopData.js');
@@ -302,7 +342,7 @@ async function fixture(context: TestContext, options: {
     return { ...actual, runSafeDesktopStartup(input: StartupOptions) {
       startupInput = input;
       startupWork = actual.runSafeDesktopStartup({ ...input, observeStartupException(error) {
-        firstStartupFailure ??= { error };
+        firstStartupFailure ??= { error, phase: 'earlyStartup' };
         input.observeStartupException?.(error);
       } });
       return startupWork;
@@ -324,8 +364,26 @@ async function fixture(context: TestContext, options: {
       } });
     } };
   });
-  // This fake producer exercises index consumption, not real composition/build admission.
-  vi.doMock('./desktopComposition.js', () => ({ async startDesktopComposition(input: StartDesktopCompositionOptions) {
+  vi.doMock('./desktopComposition.js', async importOriginal => {
+    if (options.actualCompositionFailure) {
+      const actual = await importOriginal<typeof import('./desktopComposition.js')>();
+      return { ...actual, async startDesktopComposition(input: StartDesktopCompositionOptions) {
+        compositionInput = input;
+        return actual.startDesktopComposition({ ...input,
+          dependencies: { ...input.dependencies, resolveActiveWorkspace: realWorkspaceFailure },
+          observeStartupException(error, phase, excluded) {
+            firstStartupFailure ??= { error, phase: 'compositionStartup' };
+            input.observeStartupException?.(error, phase, excluded);
+          },
+          observeWorkspaceStartupFailure(receipt) {
+            originalReceipt = receipt;
+            if (input.observeWorkspaceStartupFailure !== undefined) receiptDelivery(input.observeWorkspaceStartupFailure, receipt);
+          },
+        });
+      } };
+    }
+    // Controlled receipt cases exercise only index consumption, not build admission.
+    return { async startDesktopComposition(input: StartDesktopCompositionOptions) {
     compositionInput = input;
     await mkdir(join(app.getPath('userData'), 'runtime'), { recursive: true, mode: 0o700 });
     const operationalIdentity = { appVersion: input.appVersion, buildRevision: input.buildInfo.buildRevision,
@@ -355,10 +413,20 @@ async function fixture(context: TestContext, options: {
     }
     if (options.relaunch) input.relaunchApplication();
     if (!options.successfulStartup) throw new Error(options.startupErrorCode ?? 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
-  } }));
+    } };
+  });
   await import('./index.js');
   return { root, targetPath, app, state, exit, logger, showMessageBox, showSaveDialog, showErrorBox,
-    nativeExportCreation, supportDataLoad, supportWrite, runtimeDesktopDataRead, receiptDelivery,
+    nativeExportCreation, supportDataLoad, supportWrite, runtimeDesktopDataRead, receiptDelivery, realWorkspaceFailure,
+    proveReservationReleased() {
+      context.signal.throwIfAborted();
+      if (fixtureClosing) throw new Error('STARTUP_SUPPORT_FIXTURE_CLOSED');
+      return reservationProofWork ??= Promise.resolve().then(async () => {
+        const { acquireWorkspaceProcessReservation } = await import('../runtime/workspaceProcessReservation.js');
+        const reopened = await acquireWorkspaceProcessReservation({ userDataRoot: app.getPath('userData'), signal: context.signal });
+        try { await reopened.assertOwned(); } finally { await reopened.release(); }
+      });
+    },
     excludedResultPath: () => excludedResultPath,
     finished: () => startupWork!, receipt: () => originalReceipt!,
     startupOptions: () => startupInput!, compositionOptions: () => compositionInput! };

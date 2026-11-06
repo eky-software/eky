@@ -225,6 +225,57 @@ it('rejects a matching late cleanup event while the current cleanup role is stil
   expect(selected.readObservation()).toEqual(observation);
 });
 
+it.for([false, true])('ignores an ineligible delete cleanup projection without blocking genuine cleanup (present: %s)', async (includeCleanup, test) => {
+  const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
+  let receive: Parameters<typeof createObserver>[0]['observeProjectedEvent'];
+  let actualDeleteFailure: { correlationId: string; operationId: string } | undefined;
+  let genuineCleanup: ReturnType<typeof createDesktopOperationalEvent> | undefined;
+  const projected: ReturnType<typeof createDesktopOperationalEvent>[] = [];
+  vi.spyOn(backupObserver, 'createWorkspaceBackupOperationalObserver').mockImplementation(options => {
+    receive = options.observeProjectedEvent;
+    return createObserver({ ...options, observeProjectedEvent(event) {
+      if (event.eventName !== 'workspaceManagement.operationFailed' || event.operationId !== 'workspace.delete') {
+        receive!(event); return;
+      }
+      actualDeleteFailure = event;
+      const fields = { eventName: 'workspaceManagement.operationFailed', correlationId: event.correlationId,
+        durationMs: 1, retryable: false, sideEffectState: 'unknown', stage: 'deleteCleanup', operationId: 'workspace.delete' } as const;
+      const identity = { appVersion: event.appVersion, buildRevision: event.buildRevision, runtimeInstanceId: event.runtimeInstanceId };
+      const ineligible = createDesktopOperationalEvent({ ...fields, errorCode: 'WORKSPACE_DELETE_FAILED' }, identity);
+      genuineCleanup = createDesktopOperationalEvent({ ...fields, errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED' }, identity);
+      projected.push(ineligible); receive!(ineligible);
+      if (includeCleanup) { projected.push(genuineCleanup); receive!(genuineCleanup); }
+    } });
+  });
+  const f = await fixture(test);
+  // Enter the real delete operation without enabling destructive preparation; only projections are controlled.
+  await expect(f.composition.service.prepareDeletion({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+    typedLabel: selectorRegistry.workspaces[1]!.workspaceLabel, backupChoice: 'explicitDataLoss' }, {
+    assertCurrent() { if (!f.state.current) throw new Error('SELECTOR_EXPIRED'); }, closeAdmissionForOwnStop() {},
+  })).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_INVALID' });
+  expect(actualDeleteFailure).toMatchObject({ operationId: 'workspace.delete', correlationId: expect.any(String) });
+  expect(f.log).toHaveBeenCalledOnce(); expect(f.log.mock.calls[0]![0]).toBe(actualDeleteFailure);
+  expect(projected).toHaveLength(includeCleanup ? 2 : 1);
+  expect(genuineCleanup).toMatchObject({ operationId: 'workspace.delete', correlationId: actualDeleteFailure!.correlationId });
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  if (includeCleanup) {
+    expect(observation).toEqual({ scope: 'currentOperation', status: 'available', firstError: null, cleanupError: genuineCleanup });
+    if (observation.status !== 'available') throw new Error('MISSING_CURRENT_OBSERVATION');
+    expect(observation.cleanupError).toBe(genuineCleanup);
+  } else {
+    expect(observation).toEqual({ scope: 'currentOperation', status: 'unavailable' });
+  }
+  const validated = readSupportBundleDesktopData({ observation,
+    system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+    availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+  });
+  expect(validated.observation).toEqual(observation);
+  receive!(genuineCleanup!); expect(selected.readObservation()).toEqual(observation);
+  expect(f.lease.readState()).toBe('idle'); expect(utilityProcess.fork).not.toHaveBeenCalled();
+  expect(await readFile(f.registryPath)).toEqual(Buffer.from(serializeWorkspaceRegistry(selectorRegistry)));
+});
+
 it.for(['ready', 'empty', 'recoveryOnly'] as const)(
   'reads %s selector status without creating a runtime or active context', async (kind, test) => {
     const registry = kind === 'empty' ? { ...selectorRegistry, workspaces: [] }

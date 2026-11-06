@@ -1026,8 +1026,9 @@ V3:n valitsin-entry on haarassa sidottu todellisen hallintapalvelun
 pyyntökohtaiseen havaintokontekstiin ennen ensimmäistä native-odotusta.
 Startupin raportointiluvan kuluttaja on haarassa indexin ja before-quitin
 nykyisissä omistajissa. Sulku mitätöi sen heti myös ilman lifecycleä;
-onnistunut composition-kutsu poistaa aiemmankin kuitin. Tuottajan
-build-/vaihesidonta on vielä avoin: oikea composition ei lähetä kuittausta.
+onnistunut composition-kutsu poistaa aiemmankin kuitin. Compositionin
+tuottajaliitos sitoo kuitin nykyiseen build-porttiin ja nimettyyn vaiheeseen;
+myöhempi build-hylkäys tai onnistunut vaihe ei säilytä raportointilupaa.
 Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
 poissaoloa tai packaged-ketjua. Vanha v2 säilyttää backend-permissioninsa;
 sen epäonnistuminen ei käynnistä v3:a fallbackina.

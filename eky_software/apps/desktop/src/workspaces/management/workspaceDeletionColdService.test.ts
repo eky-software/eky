@@ -10,7 +10,7 @@ import { InMemoryWorkspaceMaintenanceLease, type WorkspaceMaintenanceLeaseHandle
 import { WorkspaceManagementService, type WorkspaceDeletionRecoveryOptions,
   type WorkspaceDeletionWorkAuthority } from './workspaceManagementService.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
-import type { WorkspaceManagementOperationEvent } from './workspaceManagementTypes.js';
+import type { WorkspaceManagementOperationEvent, WorkspaceManagementOperationIdentity } from './workspaceManagementTypes.js';
 
 // Real lease, controlled selection/command/close ports. Native file admission is
 // tested separately; these controls do not enable the startup consumer.
@@ -62,15 +62,17 @@ function fixture(phase: 'authorized' | 'registryPublished' = 'authorized') {
   });
   const events: WorkspaceManagementOperationEvent[] = [];
   const record = vi.fn((event: WorkspaceManagementOperationEvent) => { events.push(event); });
+  const operationStarted = vi.fn<(operation: Readonly<WorkspaceManagementOperationIdentity>) => void>();
+  const operationSettled = vi.fn<(operation: Readonly<WorkspaceManagementOperationIdentity>) => void>();
   const onUncertain = vi.fn((_cause: unknown) => {});
   const options: WorkspaceDeletionRecoveryOptions = {
     selection: initial, maintenanceLease: { acquire, captureCurrentOwner: capture },
     captureSelection, captureAuthority, resumeSelected: resume,
     assertCurrent() { if (!mainCurrent) throw new Error('SYNTHETIC_MAIN_LOST'); },
-    isStopping: () => stopping, onUncertain, observer: { record },
+    isStopping: () => stopping, onUncertain, observer: { record, operationStarted, operationSettled },
   };
   return { journal, options, initial, fresh, owner, lease, release, acquire, capture, completion,
-    captureSelection, captureAuthority, resume, events, record, onUncertain,
+    captureSelection, captureAuthority, resume, events, record, operationStarted, operationSettled, onUncertain,
     stop: () => { stopping = true; }, loseMain: () => { mainCurrent = false; }, restoreMain: () => { mainCurrent = true; },
     async releaseHeld() { for (const held of handles.values()) await held.release(); },
   };
@@ -94,6 +96,8 @@ describe('cold deletion service entry', () => {
     expect(f.initial.revoke).toHaveBeenCalledOnce(); expect(f.acquire).not.toHaveBeenCalled();
     expect(f.resume).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('idle');
     expect(f.events).toEqual([]);
+    expect(f.operationStarted).toHaveBeenCalledOnce();
+    expect(f.operationSettled).toHaveBeenCalledExactlyOnceWith(f.operationStarted.mock.calls[0]![0]);
   });
   it.each(['authorized', 'registryPublished'] as const)('hands the exact %s selection to one lease and the shared continuation', async phase => {
     const f = fixture(phase);
@@ -107,6 +111,86 @@ describe('cold deletion service entry', () => {
     expect(f.owner.close).toHaveBeenCalledOnce(); expect(f.release).toHaveBeenCalledOnce();
     expect(f.owner.close.mock.invocationCallOrder[0]).toBeLessThan(f.release.mock.invocationCallOrder[0]!);
     expect(f.lease.readState()).toBe('idle'); expect(f.events).toEqual([]); expect(f.onUncertain).not.toHaveBeenCalled();
+    expect(f.operationStarted).toHaveBeenCalledOnce();
+    const operation = f.operationStarted.mock.calls[0]![0];
+    expect(operation).toEqual({ correlationId: expect.any(String), operationKind: 'deleteResume' });
+    expect(Object.isFrozen(operation)).toBe(true);
+    expect(f.operationSettled).toHaveBeenCalledExactlyOnceWith(operation);
+    expect(f.operationSettled.mock.calls[0]![0]).toBe(operation);
+    expect(f.operationStarted.mock.invocationCallOrder[0]).toBeLessThan(f.initial.assertSelected.mock.invocationCallOrder[0]!);
+    expect(f.release.mock.invocationCallOrder[0]).toBeLessThan(f.operationSettled.mock.invocationCallOrder[0]!);
+  });
+
+  it('settles one frozen observation identity only after held close and cleanup reporting, ignoring late stages', async () => {
+    const f = fixture(), entered = deferred(), held = deferred();
+    const original = new Error('SYNTHETIC_COLD_FIRST'), cleanup = new Error('SYNTHETIC_COLD_CLOSE');
+    const order: string[] = [];
+    let operation: Readonly<WorkspaceManagementOperationIdentity> | undefined;
+    let late: Parameters<WorkspaceDeletionRecoveryOptions['resumeSelected']>[2] | undefined;
+    f.operationStarted.mockImplementation(value => {
+      operation = value; order.push('started');
+    });
+    f.record.mockImplementation(event => {
+      f.events.push(event); order.push(`record:${event.stage}`);
+    });
+    f.resume.mockImplementationOnce(async (_journal, _authority, observe) => {
+      late = observe; observe('deleteRegistry'); order.push('command'); throw original;
+    });
+    f.owner.close.mockImplementationOnce(async () => {
+      order.push('close'); entered.resolve(); await held.promise; order.push('closeFailed'); throw cleanup;
+    });
+    f.operationSettled.mockImplementation(() => { order.push('settled'); });
+    const work = WorkspaceManagementService.recoverDeletionBeforeRuntime(f.options);
+    const observed = work.catch(error => error);
+    try {
+      await awaitEntry(entered.promise, work);
+      expect(f.operationSettled).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('busy');
+      late!('deletePurge');
+      expect(f.events.map(event => event.stage)).toEqual(['deleteRegistry']);
+      held.resolve(); const error = await observed;
+      expect(error.cause.errors).toEqual([original, cleanup]);
+      expect(f.operationStarted).toHaveBeenCalledOnce(); expect(f.operationSettled).toHaveBeenCalledOnce();
+      expect(f.operationStarted.mock.calls[0]![0]).toBe(f.operationSettled.mock.calls[0]![0]);
+      expect(Object.isFrozen(operation)).toBe(true);
+      expect(operation).toEqual({ correlationId: expect.any(String), operationKind: 'deleteResume' });
+      expect(f.operationStarted.mock.invocationCallOrder[0]).toBeLessThan(f.initial.assertSelected.mock.invocationCallOrder[0]!);
+      expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(cleanup); expect(f.release).not.toHaveBeenCalled();
+      expect(order).toEqual(['started', 'command', 'record:deleteRegistry', 'close', 'closeFailed', 'record:deleteCleanup', 'settled']);
+      late!('deleteAuthorization'); expect(f.events).toHaveLength(2);
+      expect(f.events.every(event => event.correlationId === operation!.correlationId)).toBe(true);
+      expect(f.events.every(event => event.operationKind === operation!.operationKind)).toBe(true);
+    } finally { held.resolve(); await Promise.allSettled([work]); await f.releaseHeld(); }
+  });
+
+  it.each(['sync', 'async'] as const)('ignores %s lifecycle notification failures without changing successful cleanup', async mode => {
+    const f = fixture(), notificationFailure = new Error('SYNTHETIC_COLD_OBSERVER');
+    const notify = () => { if (mode === 'async') return Promise.reject(notificationFailure); throw notificationFailure; };
+    f.operationStarted.mockImplementation(notify); f.operationSettled.mockImplementation(notify);
+    try {
+      await expect(WorkspaceManagementService.recoverDeletionBeforeRuntime(f.options)).resolves.toEqual(f.completion);
+      expect(f.resume).toHaveBeenCalledOnce(); expect(f.owner.close).toHaveBeenCalledOnce(); expect(f.release).toHaveBeenCalledOnce();
+      expect(f.lease.readState()).toBe('idle'); expect(f.onUncertain).not.toHaveBeenCalled(); expect(f.record).not.toHaveBeenCalled();
+      expect(f.operationStarted).toHaveBeenCalledOnce();
+      expect(f.operationSettled).toHaveBeenCalledExactlyOnceWith(f.operationStarted.mock.calls[0]![0]);
+    } finally { await f.releaseHeld(); }
+  });
+
+  it.each(['sync', 'async'] as const)('keeps command and cleanup causes when both %s lifecycle notifications fail', async mode => {
+    const f = fixture(), original = new Error('SYNTHETIC_COLD_PRIMARY'), cleanup = new Error('SYNTHETIC_COLD_CLEANUP');
+    const notify = () => { const error = new Error('SYNTHETIC_COLD_OBSERVER');
+      if (mode === 'async') return Promise.reject(error); throw error; };
+    f.operationStarted.mockImplementation(notify); f.operationSettled.mockImplementation(notify);
+    f.resume.mockRejectedValueOnce(original); f.owner.close.mockRejectedValueOnce(cleanup);
+    try {
+      const error = await WorkspaceManagementService.recoverDeletionBeforeRuntime(f.options).catch(error => error);
+      expect(error.cause.errors).toEqual([original, cleanup]);
+      expect(f.owner.close).toHaveBeenCalledOnce(); expect(f.release).not.toHaveBeenCalled();
+      expect(f.lease.readState()).toBe('busy'); expect(f.onUncertain).toHaveBeenCalledExactlyOnceWith(cleanup);
+      expect(f.events.map(event => event.stage)).toEqual(['deleteAuthorization', 'deleteCleanup']);
+      expect(f.operationStarted).toHaveBeenCalledOnce();
+      expect(f.operationSettled).toHaveBeenCalledExactlyOnceWith(f.operationStarted.mock.calls[0]![0]);
+      expect(f.events.every(event => event.correlationId === f.operationStarted.mock.calls[0]![0].correlationId)).toBe(true);
+    } finally { await f.releaseHeld(); }
   });
 
   it('does not acquire a lease after an initial selection failure', async () => {

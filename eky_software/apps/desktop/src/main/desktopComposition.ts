@@ -36,7 +36,8 @@ import {
   type SupportBundleCapability,
 } from '../supportBundle/supportBundleCapability.js';
 import { removeExpiredSupportBundleTemporaryFiles } from '../supportBundle/supportBundleFileStore.js';
-import type { SupportBundleDesktopAvailability, SupportBundleDesktopObservation } from '../supportBundle/supportBundleDesktopData.js';
+import type { DesktopSupportFailureEvent, SupportBundleDesktopAvailability, SupportBundleDesktopObservation } from '../supportBundle/supportBundleDesktopData.js';
+import type { WorkspaceManagementOperationIdentity } from '../workspaces/management/workspaceManagementTypes.js';
 import {
   createInvoicePdfPreviewWindowController,
   type InvoicePdfPreviewWindowController,
@@ -597,6 +598,40 @@ export async function acquireDesktopWorkspaceReservation(options: {
 
 type DesktopWorkspaceReservation = Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>>;
 
+// Reporting is optional: an incomplete or unusual failure graph cannot revive build admission.
+const startupReportingMaximumFailureNodes = 32;
+function hasRejectedStartupBuild(failure: unknown): boolean {
+  const pending: unknown[] = [failure], visited = new Set<unknown>();
+  try {
+    while (pending.length !== 0) {
+      const error = pending.pop();
+      if (!(error instanceof Error) || visited.has(error)) continue;
+      if (visited.size === startupReportingMaximumFailureNodes) return true;
+      visited.add(error);
+      if (error instanceof PreWorkspaceBuildAdmissionError) return true;
+      const cause = Object.getOwnPropertyDescriptor(error, 'cause');
+      if (cause !== undefined) {
+        if (!('value' in cause)) return true;
+        pending.push(cause.value);
+      }
+      if (error instanceof AggregateError) {
+        const contents = Object.getOwnPropertyDescriptor(error, 'errors');
+        if (contents === undefined || !('value' in contents)) return true;
+        const errors: unknown = contents.value;
+        if (!Array.isArray(errors)) return true;
+        const length = errors.length;
+        if (!Number.isSafeInteger(length) || length > startupReportingMaximumFailureNodes) return true;
+        for (let index = 0; index < length; index += 1) {
+          const child = Object.getOwnPropertyDescriptor(errors, index);
+          if (child === undefined || !('value' in child)) return true;
+          pending.push(child.value);
+        }
+      }
+    }
+    return false;
+  } catch { return true; }
+}
+
 export async function startDesktopComposition(
   options: StartDesktopCompositionOptions,
 ): Promise<DesktopLifecycleHandle | undefined> {
@@ -639,6 +674,22 @@ export async function startDesktopComposition(
   let startupActive = true;
   const adoptionWork: { pending: boolean; uncertainty?: { reason: unknown } } = { pending: false };
   const deletionWork: { pending: boolean; uncertainty?: { reason: unknown } } = { pending: false };
+  let workspaceStartupFailure: Readonly<{ cause: unknown; receipt: Readonly<DesktopWorkspaceStartupSupportReceipt> }> | undefined;
+  const reportWorkspaceStage = async <T>(work: () => Promise<T>, admitted: () => boolean,
+    readObservation: () => SupportBundleDesktopObservation = () => Object.freeze({ scope: 'currentOperation', status: 'unavailable' }),
+  ): Promise<T> => {
+    workspaceStartupFailure = undefined;
+    try { return await work(); }
+    catch (cause) {
+      if (!smokeMode && options.w6b2PackagedProof === undefined && admitted() && !hasRejectedStartupBuild(cause)) {
+        workspaceStartupFailure = Object.freeze({ cause, receipt: Object.freeze({
+          operationalIdentity: Object.freeze({ ...desktopOperationalIdentity }), operationalLogger: desktopOperationalLogger,
+          observation: readObservation(), backendState: 'exitUnconfirmed',
+        }) });
+      }
+      throw cause;
+    }
+  };
   const assertStartupAuthority = () => {
     if (!startupActive) throw new WorkspaceProcessReservationError('lost');
     options.assertSingleInstanceOwnership();
@@ -683,11 +734,32 @@ export async function startDesktopComposition(
         desktopOperationalIdentity,
       ),
     );
-    await recoverDesktopWorkspaceDeletion({ userDataRoot: options.userDataPath, buildInfo: options.buildInfo,
+    let coldBuildAdmitted = false, coldObserving = false;
+    let coldOperation: Readonly<WorkspaceManagementOperationIdentity> | undefined;
+    let coldFirstError: DesktopSupportFailureEvent | null = null, coldCleanupError: DesktopSupportFailureEvent | null = null;
+    const coldObserver = createWorkspaceBackupOperationalObserver({ operationalIdentity: desktopOperationalIdentity,
+      operationalLogger: desktopOperationalLogger, observeProjectedEvent(event) {
+        if (!coldObserving || coldOperation === undefined || event.eventName !== 'workspaceManagement.operationFailed' ||
+            event.operationId !== 'workspace.deleteResume' || event.correlationId !== coldOperation.correlationId ||
+            event.runtimeInstanceId !== desktopOperationalIdentity.runtimeInstanceId ||
+            event.appVersion !== desktopOperationalIdentity.appVersion || event.buildRevision !== desktopOperationalIdentity.buildRevision) return;
+        if (event.stage === 'deleteCleanup') {
+          if (event.errorCode === 'WORKSPACE_DELETE_CLEANUP_FAILED') coldCleanupError ??= event;
+        }
+        else coldFirstError ??= event;
+      } });
+    await reportWorkspaceStage(() => recoverDesktopWorkspaceDeletion({ userDataRoot: options.userDataPath, buildInfo: options.buildInfo,
       releaseInfo: options.releaseInfo, maintenanceLease: workspaceMaintenanceLease,
       reservation: workspaceReservation, work: deletionWork, assertStartupCurrent: assertStartupAuthority,
-      observer: createWorkspaceBackupOperationalObserver({ operationalIdentity: desktopOperationalIdentity,
-        operationalLogger: desktopOperationalLogger }) });
+      observeBuildAdmission(admission) {
+        coldBuildAdmitted = admission === 'exactAcceptedBuild' || admission === 'authorizedNewerBuild';
+      },
+      observer: { record: coldObserver.record,
+        operationStarted(operation) { coldOperation = operation; coldObserving = true; },
+        operationSettled(operation) { if (operation === coldOperation) coldObserving = false; },
+      } }), () => coldBuildAdmitted, () => Object.freeze(coldFirstError === null && coldCleanupError === null
+        ? { scope: 'currentOperation', status: 'unavailable' }
+        : { scope: 'currentOperation', status: 'available', firstError: coldFirstError, cleanupError: coldCleanupError }));
     // Deletion has settled, closed and released its lease. Re-read ordinary
     // admission instead of carrying any pre-deletion registry/build observation.
     const coldRecoveryAdmission = await readColdWorkspaceRecoveryAdmissionFromRoot(options.userDataPath);
@@ -746,7 +818,7 @@ export async function startDesktopComposition(
       });
     let preWorkspaceBuildAdmission = await readBuildAdmission();
     let coldImportUncertain = false;
-    await recoverWorkspaceManagementBeforeRuntime({
+    await reportWorkspaceStage(() => recoverWorkspaceManagementBeforeRuntime({
       admission: coldRecoveryAdmission,
       captureColdImportOwner(held) {
         const assertLease = workspaceMaintenanceLease.captureCurrentOwner(['import'], held);
@@ -795,7 +867,7 @@ export async function startDesktopComposition(
           await workspaceReservation.assertMainOwned();
         },
       },
-    });
+    }), () => preWorkspaceBuildAdmission !== undefined);
     if (coldRecoveryAdmission !== 'none') {
       // Recovery may publish a first v1 selection, or retain v2 null. Do not
       // carry the earlier registry observation into the selector branch.
@@ -827,14 +899,16 @@ export async function startDesktopComposition(
         userDataRoot: options.userDataPath,
       });
     let workspaceFirstStartMigration = createWorkspaceMigration();
-    await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution();
+    await reportWorkspaceStage(() => workspaceFirstStartMigration.recoverBeforeWorkspaceResolution(),
+      () => preWorkspaceBuildAdmission !== undefined);
     if (installationUpdateState.deferredBusiness?.businessAccepted) {
       // Recovery has completed the already-published business target. Subsequent
       // startup is the normal accepted-build path, not a second deferred migration.
       await deferredBusinessStartup!.assertCurrent();
       deferredBusinessStartup = undefined;
       workspaceFirstStartMigration = createWorkspaceMigration();
-      await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution();
+      await reportWorkspaceStage(() => workspaceFirstStartMigration.recoverBeforeWorkspaceResolution(),
+        () => preWorkspaceBuildAdmission !== undefined);
     }
     let runtimeEntered = false;
     let proveRuntimeTerminal: ((request: DesktopSelectorTerminalRequest) => Promise<Readonly<DesktopSelectorRuntimeTerminalProof>>) | undefined;
@@ -941,7 +1015,7 @@ export async function startDesktopComposition(
     }
     adoptionWork.pending = true;
     let workspaceStartup: Awaited<ReturnType<typeof resolveDesktopWorkspaceStartup>>;
-    try { workspaceStartup = await resolveDesktopWorkspaceStartup({
+    try { workspaceStartup = await reportWorkspaceStage(() => resolveDesktopWorkspaceStartup({
       assertStartupCurrent: assertStartupAuthority,
       createRuntimeSession: selectorSmokeConfiguration === undefined ? dependencies.createRuntimeSession : () => {
         throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
@@ -951,7 +1025,7 @@ export async function startDesktopComposition(
       selectorAuthority,
       adoptionAuthority: adoptionPreparation,
       userDataRoot: options.userDataPath,
-    }); } finally { adoptionWork.pending = false; }
+    }), () => preWorkspaceBuildAdmission !== undefined); } finally { adoptionWork.pending = false; }
     if (workspaceStartup.status === 'relaunching') {
       await workspaceReservation.close();
       return undefined;
@@ -963,7 +1037,7 @@ export async function startDesktopComposition(
       // Transfer the reservation to the selector's real settlement owner. The
       // outer catch must not release it after an uncertain selector close.
       selectorOwnsReservation = true;
-      const lifecycle = await startDesktopSelectorComposition({
+      const lifecycle = await reportWorkspaceStage(() => startDesktopSelectorComposition({
         options: selectorSmokeConfiguration === undefined ? options
           : { ...options, smokeConfiguration: selectorSmokeConfiguration },
         dependencies, selection: workspaceStartup.selection,
@@ -971,7 +1045,7 @@ export async function startDesktopComposition(
         localUpdateRuntimePaths: installationUpdateState.localUpdateRuntimePaths,
         operationalIdentity: desktopOperationalIdentity, operationalLogger: desktopOperationalLogger,
         failureSink: operationalLogFailureSink, startedAt: desktopStartedAt,
-      });
+      }), () => preWorkspaceBuildAdmission !== undefined);
       if (selectorSmokeConfiguration !== undefined) {
         await runPackagedSelectorSmoke({ configuration: selectorSmokeConfiguration,
           electronVersion: process.versions.electron, lifecycle,
@@ -1111,6 +1185,13 @@ export async function startDesktopComposition(
     ) {
       options.relaunchApplication();
       return undefined;
+    }
+    const reporting = workspaceStartupFailure;
+    if (reporting !== undefined && reporting.cause === error) {
+      try {
+        const notified: unknown = options.observeWorkspaceStartupFailure?.(reporting.receipt);
+        if (notified !== undefined) void Promise.resolve(notified).catch(() => undefined);
+      } catch { /* Reporting cannot replace the original startup failure or restore authority. */ }
     }
     throw new Error(errorCode);
   } finally {

@@ -47,20 +47,25 @@ alkuperäistä hylkäystä tai W7.5:tä.
 
 **Aktiivinen työ on W7.5 A/B:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 säilyvät. [B3b:n pyyntökaappausnäyttö](release-0.3.0-integration-history.md#w75n-b3bn-checkpoint-6112026)
-on säilytetty historiassa. B4:n index-kuluttaja validoi main-only-kuittauksen
-ja omistaa erillisen kertakäyttöisen raportointiluvan. Sulku/relaunch estää
-myöhäisen dialogituloksen, onnistunut startup poistaa aiemman kuitin ja
-vanhat smoke/proof/recovery-polut säilyvät. Kuluttajan hallittu tuottaja
-ei todista oikeaa build-porttia tai nimetyn workspace-vaiheen virhettä.
-Pakotettu alkuperäinen kirjoitusvirhe löytyi nykyisen salaus/purku-ketjun
-puretuista tavuista viesteineen, pinoineen ja syyketjuineen; sisäinen testi
-jäi tarkoituksella punaiseksi ja julkinen tuloste turvalliseksi.
-Seuraava nimetty pala on [B4:n todellinen tuottajaliitos](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus)
-nykyiseen build- ja vaiheporttiin, ei yleinen startup-fallback tai
-poistopainikkeen julkaisu. Neljän kokonaisen kuluttaja-/sulkutiedoston
-62 testiä, desktopin tyypitys ja nykyinen neljän testin OpenPGP-regressio
-läpäisivät. Rajattu riippumaton kuluttajakatselmus ei löytänyt korjattavaa
-puutetta; tämä ei ole tuottajaliitoksen tai koko W7.5:n hyväksyntä.
+on säilytetty historiassa. [B4:n tuottaja ja kuluttaja](support-bundle-plan.md#w75n-nykyisen-operaation-ja-varhaisen-viennin-omistajuus)
+ovat haarassa: vain nykyisen build-portin hyväksymä nimetty virhevaihe
+toimittaa main-only-kuittauksen erilliselle kertakäyttöiselle viennille.
+Myöhempi build-hylkäys, onnistunut vaihe tai sulku ei lainaa aiempaa lupaa.
+Katselmuksen siivousrooli- ja syyketjuaukot korjattiin regressioineen.
+Nykyinen oikea index -> composition -> native-export -> kirjoittaja ->
+virallinen tarkastin -kehitysketju läpäisi; prosessivaraus saatiin uudelleen
+haltuun sulun jälkeen. Tämä ei ole paketoidun pilot-buildin hyväksyntä.
+Kahdentoista kokonaisen vaikutustiedoston 394 testiä, tuottajan 18
+kohdekontrollia ja desktopin tyypitys läpäisivät; osanäyttöjä ei summata.
+Viimeinen fixture-sulkukorjaus läpäisi koko 19 testin index-tiedoston.
+Saman oikean ketjun pakotettu alkuperäinen kirjoitusvirhe löytyi nykyisen
+salatun aineiston puretuista tavuista viesteineen, pinoineen ja
+syyketjuineen. Ajokytkentä ja tiivisteet varmennettiin, sisäinen testi jäi
+tarkoituksella punaiseksi eikä raakasyy tullut julkiseen tulosteeseen.
+Nykyinen neljän testin OpenPGP-regressio läpäisi myös tuottajaliitoksella.
+Katselmuksen rajattuihin korjauksiin ei jäänyt löydöstä. Seuraavaksi A/B:n
+jäljellä olevat integraatioportit ja C:n julkinen käyttäjäpolku;
+koko W7.5 ei ole hyväksytty.
 
 **Main-regression avoin portti:** edellisen 398 testin sarjan kolme
 replacement-aikakatkaisua ja rajattu erillisdiagnoosi säilyvät hylättyinä.
@@ -76,7 +81,7 @@ tapausta läpäisivät tässä ajossa, mutta aiempia hylkäyksiä ei suljeta.
 Koko main-portti on siis edelleen hylätty, ei B3b:n tai mergen hyväksyntä.
 Ei muuttumatonta lisäuusintaa tai aikarajan nostoa. [Edellinen checkpoint](release-0.3.0-integration-history.md#w75n-b3an-checkpoint-6112026)
 säilyttää tarkat osanäytöt ja muistivertailun rajat.
-Delete-IPC, preload, poistopainike, B4 sekä julkinen/paketoitu näyttö ovat
+Delete-IPC, preload, poistopainike sekä B4:n paketoitu ja julkinen näyttö ovat
 edelleen avoinna. Ei W7.5-PR:ää tai uutta CI-kierrosta. Koko 0.3.0 ja M5
 säilyvät [roadmapin](release-0.3.0-plan.md) erillisinä hyväksyntöinä.
 

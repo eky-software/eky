@@ -2720,9 +2720,11 @@ cold-forward-palautustapauksen aikakatkaisuun; M1 erottaa uuden lähteen
 401 läpäisyä tästä hylkäyksestä ja säilyttää aiemmat havainnot avoimina.
 B4:n erillisen startup-luvan kuluttaja on haarassa: index ja before-quit
 käyttävät kertakäyttöistä raportointielinikää, eivät vanhaa startup-/lease-
-vartijaa. Oikea composition ei vielä toimita kuittausta; kokeen hallittu
-tuottaja ei todista build-porttia tai sallittua virhevaihetta. Nämä sekä
-todellinen composition -> native-vienti ovat edelleen avoinna.
+vartijaa. Compositionin tuottajaliitos käyttää nyt vain nykyisen build-portin
+hyväksymiä nimettyjä vaiheita; cold-palvelun operaatioprojektiot sulkeutuvat
+todellisen loppukäsittelyn jälkeen. Hallittu jatkotyö ei todista koko
+fyysistä cold-ketjua eikä kuluttajan hallittu tuottaja oikeaa build-porttia.
+Natiivi-/pakettinäyttö ja nykyiset integraatioportit ovat edelleen avoinna.
 Tarkka näyttö ja vanhat
 hylkäykset säilyvät M1:ssä ja sen linkitetyssä historiassa.
 

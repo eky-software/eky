@@ -5,6 +5,29 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.5:n B4:n valmisteluhavainnot 6.11.2026
+
+Kuluttajan erillinen checkpoint läpäisi neljän kokonaisen tiedoston
+62 testiä, tyypityksen ja nykyisen neljän testin OpenPGP-regression.
+Sen hallittu kuittaustuottaja ei todistanut oikeaa build-porttia.
+Ensimmäinen yksityisen salauskokeen kohdistus pysähtyi ennen sisäistä
+testiä; korjattu kohdistus todensi alkuperäisen kirjoitusvirheen.
+
+Tuottajan kaksi ensimmäistä cold-koetta yhdistivät oikean aloitusvalinnan
+ja koko syvän jatkovalmistelun viiden sekunnin oletusrajaan ja
+aikakatkaisivat. Työ ja testiresurssien siivous päättyivät ja aineisto
+säilyi. Aikarajaa ei nostettu. Rajattu raportointikoe käyttää oikeaa
+alkuvalinnan build-porttia ja oikeaa palvelun virheprojektiota, mutta
+hallittua jatkotyötä; se ei korvaa muuttumatonta syvän cold-ketjun testiä
+eikä sulje ensimmäisten viiveiden syytä. Myös kehitystilan
+istunnonluonnin puuttuva spy ja Node-fixturen puuttuva Electron-
+`resourcesPath` korjattiin vain testiaineistoon.
+
+Katselmus löysi siivousprojektioroolin, aggregate-syyketjun lukemisen ja
+testin varauksen uudelleenhankinnan sulun puutteet. Korjaukset ja niiden
+ajantasainen näyttö erotetaan [M1:n nykytilassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+koko Main-regression avoimesta cold-forward-aikakatkaisusta.
+
 ## W7.5:n B3b:n checkpoint 6.11.2026
 
 Seuraava edeltävä jatkamiskohta on siirretty M1:stä sellaisenaan.

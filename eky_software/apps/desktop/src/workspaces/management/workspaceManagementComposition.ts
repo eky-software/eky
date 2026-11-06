@@ -463,7 +463,9 @@ export async function createWorkspaceManagementComposition(
           event.buildRevision !== options.operationalIdentity.buildRevision) return;
       if (event.eventName === 'workspaceManagement.operationFailed') {
         if (event.operationId !== workspaceManagementOperationIds[observedOperation.operationKind]) return;
-        if (event.stage === 'deleteCleanup') cleanupError ??= event;
+        if (event.stage === 'deleteCleanup') {
+          if (event.errorCode === 'WORKSPACE_DELETE_CLEANUP_FAILED') cleanupError ??= event;
+        }
         else firstError ??= event;
       } else if (event.eventName === 'workspaceBackup.operationFailed' || event.eventName === 'workspaceBackup.cleanupFailed') {
         if (event.stage !== observedOperation.operationKind) return;

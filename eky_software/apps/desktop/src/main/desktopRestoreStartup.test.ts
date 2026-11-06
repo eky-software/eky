@@ -35,6 +35,7 @@ import {
   parseWorkspaceCandidateProcessCommand,
 } from '../runtime/workspaceCandidateMessages.js';
 import { AcceptedBuildMetadataStore } from '../update/acceptedBuildMetadataStore.js';
+import { PreWorkspaceBuildAdmissionError } from '../update/preWorkspaceBuildAdmission.js';
 import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadata, type AcceptedBuildMetadata } from '../update/acceptedBuildMetadata.js';
 import { createDirectSetupMigrationRecovery } from '../update/directSetupMigrationRecovery.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
@@ -102,7 +103,7 @@ import { createWorkspaceDeletionInventoryPaths } from '../workspaces/deletion/wo
 import { createWorkspaceDeletionJournalPaths } from '../workspaces/deletion/workspaceDeletionJournalStore.js';
 import { MainOwnedActiveWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.js';
 import { createWorkspaceManagementCapability, type WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
-import { startDesktopComposition, type StartDesktopCompositionOptions } from './desktopComposition.js';
+import { startDesktopComposition, type DesktopWorkspaceStartupSupportReceipt, type StartDesktopCompositionOptions } from './desktopComposition.js';
 import { BackendRequestQuiescence } from './backendRequestQuiescence.js';
 import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
 import { createRestoreStartupTestLifetime, releaseRestoreStartupTestResources } from './desktopRestoreStartupTestSupport.js';
@@ -720,6 +721,231 @@ describe('business-accepted selector startup', () => {
       });
     },
   );
+});
+
+describe('B4 actual startup reporting producer', () => {
+  it.for([
+    { stage: 'deleteAuthorization', cleanupFailure: false }, { stage: 'deleteAuthorization', cleanupFailure: true },
+    { stage: 'deleteCleanup', cleanupFailure: false }, { stage: 'deleteCleanup', cleanupFailure: true },
+  ] as const)('captures cold admission and real service projections ($stage, cleanup failure: $cleanupFailure)', async ({ stage, cleanupFailure }, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      let receipt: Readonly<DesktopWorkspaceStartupSupportReceipt> | undefined;
+      const receive = vi.fn((value: Readonly<DesktopWorkspaceStartupSupportReceipt>) => { receipt = value; });
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, observeWorkspaceStartupFailure: receive,
+      }));
+      const registry = { ...(await f.registry.read())!, formatVersion: 2 as const, activeWorkspaceId: null };
+      await f.registry.write(registry);
+      const selected = await captureDeletionTarget({ installationRoot: f.root, workspaceId,
+        typedLabel: registry.workspaces[0]!.workspaceLabel, registry: f.registry,
+        assertAuthority: () => context.signal.throwIfAborted() });
+      const command = createWorkspaceDeletionCommand({ userDataRoot: f.root, registry: f.registry,
+        assertWritersAbsent: async () => context.signal.throwIfAborted() });
+      await command.publish(() => context.signal.throwIfAborted(), async () => context.signal.throwIfAborted(), selected.target,
+        { operationId, target: selected.target, backupDisposition: 'explicitDataLoss' }, selected.assertCurrent);
+      const journalPath = createWorkspaceDeletionJournalPaths(f.root).currentPath;
+      const journalBytes = await readFile(journalPath), registryBytes = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+      const first = new Error('SYNTHETIC_COLD_COMMAND_FIRST'), second = new Error('SYNTHETIC_COLD_CLOSE_SECOND');
+      // The initial on-disk cold/build admission stays real. Repeated selection,
+      // mutation authority and physical resume have their own existing deep tests.
+      const realRecover = WorkspaceManagementService.recoverDeletionBeforeRuntime;
+      vi.spyOn(WorkspaceManagementService, 'recoverDeletionBeforeRuntime').mockImplementationOnce(input => {
+        const controlledSelection = { ...input.selection, assertSelected: async () => input.assertCurrent(), revoke() {} };
+        return realRecover({ ...input, selection: controlledSelection, captureSelection: async () => controlledSelection,
+          captureAuthority: async () => ({ assertCurrent: input.assertCurrent, assertOwned: async () => input.assertCurrent(),
+            recordRemoved() { throw new Error('SYNTHETIC_UNEXPECTED_REMOVAL'); },
+            async close() { if (cleanupFailure) throw second; },
+          }), async resumeSelected(_journal, _authority, observeStage) { observeStage(stage); throw first; },
+        });
+      });
+      const raw = vi.fn();
+      await lifetime.step('startup', async () => { await expect(f.start(raw)).rejects.toThrow(); });
+      expect(receive).toHaveBeenCalledOnce();
+      const eligiblePrimary = stage !== 'deleteCleanup';
+      expect(receipt!.observation.status).toBe(eligiblePrimary || cleanupFailure ? 'available' : 'unavailable');
+      const data = supportBundleDesktopData.readSupportBundleDesktopData({
+        system: { appVersion: receipt!.operationalIdentity.appVersion, buildRevision: receipt!.operationalIdentity.buildRevision,
+          architecture: process.arch, platform: process.platform, electronVersion: '43.8.1' },
+        availability: { backend: receipt!.backendState, database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+        observation: receipt!.observation,
+      });
+      if (data.observation.status === 'available') {
+        if (eligiblePrimary) expect(data.observation.firstError).toMatchObject({
+          eventName: 'workspaceManagement.operationFailed', operationId: 'workspace.deleteResume' });
+        else expect(data.observation.firstError).toBeNull();
+        if (cleanupFailure) expect(data.observation.cleanupError).toMatchObject({ stage: 'deleteCleanup',
+          errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED', operationId: 'workspace.deleteResume',
+          ...(eligiblePrimary ? { correlationId: data.observation.firstError!.correlationId } : {}),
+        });
+        else expect(data.observation.cleanupError).toBeNull();
+      }
+      expect(data.availability.backend).toBe('exitUnconfirmed');
+      expect(f.events).not.toContain('backendStarted'); expect(f.createRuntimeSession).not.toHaveBeenCalled();
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+      expect(raw.mock.calls.some(([error]) => hasErrorCause(error, first))).toBe(true);
+      expect((await readFile(journalPath)).equals(journalBytes)).toBe(true);
+      expect((await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).equals(registryBytes)).toBe(true);
+      expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+      expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+      const encoded = JSON.stringify(data);
+      for (const excluded of [f.root, workspaceId, first.message, second.message, operationId]) expect(encoded).not.toContain(excluded);
+    });
+  });
+
+  it.for([false, true])('reports only the admitted workspace failure (packaged gate: %s)', async (update, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const first = new Error('SYNTHETIC_NAMED_WORKSPACE_FAILURE');
+      let receipt: Readonly<DesktopWorkspaceStartupSupportReceipt> | undefined;
+      const receive = vi.fn((value: Readonly<DesktopWorkspaceStartupSupportReceipt>) => { receipt = value; });
+      const resolve = vi.fn(async (): Promise<never> => { throw first; });
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update, skipRestore: true, completeStartup: true,
+        resolveActiveWorkspace: resolve, observeWorkspaceStartupFailure: receive,
+      }));
+      const raw = vi.fn();
+      await lifetime.step('startup', async () => { await expect(f.start(raw)).rejects.toThrow(); });
+      expect(resolve).toHaveBeenCalledOnce();
+      expect(raw).toHaveBeenCalledWith(first, 'compositionStartup', []);
+      expect(receive).toHaveBeenCalledOnce();
+      expect(receive.mock.invocationCallOrder[0]).toBeGreaterThan(electronBoundary.reservationReleased.mock.invocationCallOrder[0]!);
+      expect(Object.isFrozen(receipt)).toBe(true);
+      expect(Object.isFrozen(receipt!.operationalIdentity)).toBe(true);
+      expect(receipt).toMatchObject({ backendState: 'exitUnconfirmed', observation: { scope: 'currentOperation', status: 'unavailable' },
+        operationalIdentity: { appVersion: '0.2.8', buildRevision: 'a'.repeat(12), runtimeInstanceId: '33333333-3333-4333-8333-333333333333' } });
+      expect(f.createRuntimeSession).not.toHaveBeenCalled();
+      expect(f.events).not.toContain('backendStarted');
+      expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+      const data = supportBundleDesktopData.readSupportBundleDesktopData({
+        system: { appVersion: receipt!.operationalIdentity.appVersion, buildRevision: receipt!.operationalIdentity.buildRevision,
+          architecture: process.arch, platform: process.platform, electronVersion: '43.8.1' },
+        availability: { backend: receipt!.backendState, database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+        observation: receipt!.observation,
+      });
+      const targetPath = join(f.root, 'startup-support.json.gz');
+      const exporter = supportBundleCapability.createDesktopOnlySupportBundleExport({
+        assertCurrent: () => context.signal.throwIfAborted(), loadDesktopData: () => data,
+        operationalIdentity: receipt!.operationalIdentity, operationalLogger: receipt!.operationalLogger,
+        runtimeRoot: createDesktopProfilePaths(f.root).runtimeRoot, confirmCreation: async () => true,
+        selectTargetPath: async () => targetPath, showSafeError: vi.fn(),
+      });
+      try { await expect(exporter.create()).resolves.toBe('created'); } finally { exporter.dispose(); }
+      const inspector = await import(new URL('../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+      expect(inspector.inspectSupportBundle(targetPath).summary).toMatchObject({ formatVersion: 3, kind: 'desktopOnly',
+        observationStatus: 'unavailable', backend: 'exitUnconfirmed' });
+      const document = JSON.stringify(inspector.inspectSupportBundle(targetPath).document);
+      for (const excluded of [f.root, workspaceId, originalProfileId, first.message]) expect(document).not.toContain(excluded);
+      expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+      expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+    });
+  });
+
+  it('does not grant reporting from build metadata when the actual build gate rejects', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const receive = vi.fn(), resolve = vi.fn(async (): Promise<never> => { throw new Error('SYNTHETIC_UNREACHED_WORKSPACE'); });
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true,
+        observeWorkspaceStartupFailure: receive, resolveActiveWorkspace: resolve,
+      }));
+      const metadata = await f.acceptedBuild.read();
+      if (metadata?.formatVersion !== 1) throw new Error('SYNTHETIC_INITIAL_BUILD_METADATA_MISSING');
+      await f.acceptedBuild.write({ ...metadata, appVersion: '0.2.9' });
+      await lifetime.step('startup', async () => { await expect(f.start()).rejects.toThrow('DESKTOP_BUILD_ADMISSION_REJECTED'); });
+      expect(resolve).not.toHaveBeenCalled(); expect(receive).not.toHaveBeenCalled();
+      expect(f.createRuntimeSession).not.toHaveBeenCalled();
+      expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+    });
+  });
+
+  it.for(['direct', 'cause', 'aggregate'] as const)('burns reporting on a later %s build rejection', async (graph, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const rejected = new PreWorkspaceBuildAdmissionError('downgrade');
+      const first = graph === 'direct' ? rejected : graph === 'cause' ? new Error('SYNTHETIC_WRAPPED_BUILD', { cause: rejected })
+        : new AggregateError([new Error('SYNTHETIC_OTHER_CAUSE'), new Error('SYNTHETIC_WRAPPED_BUILD', { cause: rejected })], 'SYNTHETIC_BUILD_GRAPH');
+      const receive = vi.fn(), raw = vi.fn(), resolve = vi.fn(async (): Promise<never> => { throw first; });
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true,
+        observeWorkspaceStartupFailure: receive, resolveActiveWorkspace: resolve,
+      }));
+      await lifetime.step('startup', async () => { await expect(f.start(raw)).rejects.toThrow(); });
+      expect(resolve).toHaveBeenCalledOnce(); expect(receive).not.toHaveBeenCalled();
+      expect(raw).toHaveBeenCalledWith(first, 'compositionStartup', []);
+      expect(f.createRuntimeSession).not.toHaveBeenCalled();
+    });
+  });
+
+  it.for(['iterator', 'accessor', 'sparse', 'oversized'] as const)('does not bypass build rejection through a %s failure graph', async (shape, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const rejected = new PreWorkspaceBuildAdmissionError('downgrade'), unexpectedRead = vi.fn();
+      const first = new AggregateError(shape === 'oversized' ? Array(33).fill(rejected) : [rejected], 'SYNTHETIC_BUILD_GRAPH_SHAPE');
+      if (shape === 'iterator') Object.defineProperty(first.errors, Symbol.iterator, { value: function* () { unexpectedRead(); } });
+      if (shape === 'accessor') Object.defineProperty(first, 'cause', { get() { unexpectedRead(); return rejected; } });
+      if (shape === 'sparse') delete first.errors[0];
+      const receive = vi.fn(), raw = vi.fn();
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true,
+        observeWorkspaceStartupFailure: receive, resolveActiveWorkspace: async () => { throw first; },
+      }));
+      await lifetime.step('startup', async () => { await expect(f.start(raw)).rejects.toThrow(); });
+      expect(receive).not.toHaveBeenCalled(); expect(unexpectedRead).not.toHaveBeenCalled();
+      expect(raw).toHaveBeenCalledWith(first, 'compositionStartup', []);
+      expect(f.createRuntimeSession).not.toHaveBeenCalled();
+    });
+  });
+
+  it('does not lend a successful workspace stage to a later backend failure', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const receive = vi.fn(), first = new Error('SYNTHETIC_BUSINESS_STARTUP_FAILURE'), raw = vi.fn();
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+        observeWorkspaceStartupFailure: receive, inspectBackendStartup: async () => { throw first; },
+      }));
+      await lifetime.step('startup', async () => { await expect(f.start(raw)).rejects.toThrow(); });
+      expect(f.events).toContain('backendStarted'); expect(receive).not.toHaveBeenCalled();
+      expect(raw.mock.calls.some(([cause]) => cause === first)).toBe(true);
+    });
+  });
+
+  it.for(['throw', 'rejection'] as const)('preserves the startup cause when reporting fails by %s', async (kind, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const first = new Error('SYNTHETIC_STARTUP_BEFORE_REPORT_FAILURE'), raw = vi.fn(), unhandled = vi.fn();
+      const receive = vi.fn(() => {
+        const failure = new Error('SYNTHETIC_OPTIONAL_REPORT_FAILURE');
+        if (kind === 'throw') throw failure;
+        return Promise.reject(failure);
+      });
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true,
+        resolveActiveWorkspace: async () => { throw first; }, observeWorkspaceStartupFailure: receive,
+      }));
+      process.on('unhandledRejection', unhandled);
+      try {
+        await lifetime.step('startup', async () => { await expect(f.start(raw)).rejects.toThrow(); });
+        await nextEventLoopTurn();
+        expect(receive).toHaveBeenCalledOnce(); expect(unhandled).not.toHaveBeenCalled();
+        expect(raw).toHaveBeenCalledWith(first, 'compositionStartup', []);
+      } finally { process.off('unhandledRejection', unhandled); }
+    });
+  });
+
+  it('keeps smoke startup failures outside the reporting producer', async context => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      const receive = vi.fn(), resolve = vi.fn(async (): Promise<never> => { throw new Error('SYNTHETIC_SMOKE_WORKSPACE_FAILURE'); });
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, smoke: true, skipRestore: true,
+        resolveActiveWorkspace: resolve, observeWorkspaceStartupFailure: receive,
+      }));
+      await lifetime.step('startup', async () => { await expect(f.start()).rejects.toThrow(); });
+      expect(resolve).toHaveBeenCalledOnce(); expect(receive).not.toHaveBeenCalled();
+    });
+  });
 });
 
 describe('backendless selector main composition', () => {
@@ -5068,6 +5294,7 @@ async function createFixture(
     resolveActiveWorkspace?: NonNullable<StartDesktopCompositionOptions['dependencies']>['resolveActiveWorkspace'];
     workspaceDeletionPublisher?: StartDesktopCompositionOptions['workspaceDeletionPublisher'];
     workspaceDeletionCommand?: StartDesktopCompositionOptions['workspaceDeletionCommand'];
+    observeWorkspaceStartupFailure?: StartDesktopCompositionOptions['observeWorkspaceStartupFailure'];
     createWorkspaceManagementCapability?: typeof createWorkspaceManagementCapability;
     stopForDelete?(operationId: string): Promise<void>;
   } = {},
@@ -5308,7 +5535,7 @@ async function createFixture(
   const stopForUpdate = vi.fn(async () => undefined);
   const createRuntimeSession = options.update
     ? vi.fn(() => 'e'.repeat(64)).mockReturnValueOnce('d'.repeat(64))
-    : () => 'd'.repeat(64);
+    : vi.fn(() => 'd'.repeat(64));
   const assertRegistryUnchanged = async () => {
     await expect(readFile(registryPath)).resolves.toEqual(registryBytes);
   };
@@ -5366,6 +5593,7 @@ async function createFixture(
     start: (observeStartupException?: StartDesktopCompositionOptions['observeStartupException'],
       reportSmokeStage: StartDesktopCompositionOptions['reportSmokeStage'] = async () => undefined) => startDesktopComposition({
       ...(observeStartupException === undefined ? {} : { observeStartupException }),
+      ...(options.observeWorkspaceStartupFailure === undefined ? {} : { observeWorkspaceStartupFailure: options.observeWorkspaceStartupFailure }),
       ...(options.workspaceDeletionPublisher === undefined ? {} : { workspaceDeletionPublisher: options.workspaceDeletionPublisher }),
       ...(options.workspaceDeletionCommand === undefined ? {} : { workspaceDeletionCommand: options.workspaceDeletionCommand }),
       assertSingleInstanceOwnership,

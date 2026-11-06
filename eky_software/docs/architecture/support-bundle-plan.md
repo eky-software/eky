@@ -158,7 +158,7 @@ valtuuksia. `observeProjectedEvent` toimittaa saman validoidun muuttumattoman
 tapahtuman vastaanottajalle ennen loggeria. Näyttö ja seuraava portti ovat
 [M1:n nykytilassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Valitsimen vientipyyntö käyttää haarassa alla kuvattua B3b-kaappausta;
-startupin erillistä raportointilupaa ei vielä ole kytketty.
+startupin erillisen raportointiluvan nykytila on B4-kohdassa alla.
 Tavallisen delete-komennon todettu loppukäsittely-/vapautusvirhe tuottaa
 nykyisen ensitapahtuman lisäksi saman katalogin `deleteCleanup`-tapahtuman
 samalla korrelaatiolla, enintään kerran. Se ei muuta heitettyä ensivirhettä,
@@ -232,10 +232,29 @@ käynnistys poistaa aiemmin vastaanotetunkin kuitin. Native-vienti kuluttaa
 epäonnistuneen käynnistyksen kuitin kerran. Quit ja relaunch mitätöivät luvan
 ennen mahdollista odotusta; `desktopBeforeQuit` tekee sen myös ilman
 lifecycle-kahvaa, eikä odota omaa vientidialogiaan. Vanha restore-recovery-
-dialogi säilyy ennen tätä vientipolkua. Oikea composition ei vielä lähetä
-kuittausta: tuottajan nykyinen build-portti, nimetyt virhevaiheet ja niiden
-todellinen yhteisketju ovat edelleen seuraava kytkentäportti. Kuluttajan
-kokeen hallittu tuottaja ei todista näitä tai paketoitua käynnistystä.
+dialogi säilyy ennen tätä vientipolkua. Kuluttajan hallittu tuottaja ei
+todista build-porttia, nimettyä virhevaihetta tai paketoitua käynnistystä.
+
+**B4:n tuottajaliitos haarassa:** composition rajaa kuittauksen alla
+nimettyihin workspace-kutsuihin. Cold-jatkon adapteri ilmoittaa vain
+nykyisen valinnan todellisen `buildAdmission`-tuloksen; palvelun sama
+muuttumaton operaatiotunniste rajaa projektiot alusta viimeisen sulku- ja
+vapautusyrityksen päättymiseen. Tavalliset nimetyt vaiheet alkavat vasta
+nykyisen `readBuildAdmission`-portin jälkeen. Onnistunut vaihe ei lainaa
+kuittausta seuraavalle virheelle. Uusi build-hylkäys myös sisäisessä
+syyketjussa estää kuittauksen; rajattu läpikäynti ei kutsu syyketjun
+accessoreita tai aggregate-taulukon iteraattoria. Epätuettu tai liian suuri
+ketju sulkee vain valinnaisen raportoinnin, ei muuta alkuperäistä virhettä.
+Kuittaus toimitetaan vasta nykyisen startup-sulun jälkeen eikä sisällä sen
+valtuutta. Saatavuus on varovaisesti `exitUnconfirmed`.
+
+Molemmat nykyisten operaatioprojektioiden kuluttajat hylkäävät
+`deleteCleanup`-vaiheen tapahtuman, jonka koodi ei ole
+`WORKSPACE_DELETE_CLEANUP_FAILED`; se ei saa vallata siivouspaikkaa tai
+muuttaa B1:n roolisääntöä. Myöhempi kelvollinen siivoustapahtuma säilyy
+vastaanotettavana. Puuttuva kelvollinen projektio on `unavailable`.
+Ajantasaiset kohde- ja yhteisketjutodisteet sekä avoimet portit ovat M1:ssä;
+lähdekytkentä tai hallittu jatkotyö ei yksin ole natiivi-/pakettihyväksyntä.
 
 **Ennen ensimmäistä ikkunaa.** `main/index.ts` omistaa yhden
 käynnistysyrityksen raportointieliniän. `desktopComposition` ei luovuta
