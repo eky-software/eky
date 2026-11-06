@@ -1024,7 +1024,11 @@ turvallista vastausta, mutta vastauksessa ei ole raakaa `cause`-ketjua.
 Sisältösopimuksen omistaa [tukipakettisuunnitelma](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus).
 V3:n valitsin-entry on haarassa sidottu todellisen hallintapalvelun
 pyyntökohtaiseen havaintokontekstiin ennen ensimmäistä native-odotusta.
-Startupin erillinen raportointilupa on vielä avoin. Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
+Startupin raportointiluvan kuluttaja on haarassa indexin ja before-quitin
+nykyisissä omistajissa. Sulku mitätöi sen heti myös ilman lifecycleä;
+onnistunut composition-kutsu poistaa aiemmankin kuitin. Tuottajan
+build-/vaihesidonta on vielä avoin: oikea composition ei lähetä kuittausta.
+Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
 poissaoloa tai packaged-ketjua. Vanha v2 säilyttää backend-permissioninsa;
 sen epäonnistuminen ei käynnistä v3:a fallbackina.
 

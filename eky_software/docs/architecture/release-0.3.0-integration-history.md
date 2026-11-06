@@ -5,6 +5,26 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.5:n B3b:n checkpoint 6.11.2026
+
+Seuraava edeltävä jatkamiskohta on siirretty M1:stä sellaisenaan.
+Sen seuraava pala on siirtohetken tila, ei uusi työjono.
+
+**Aktiivinen työ on W7.5 A/B:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+säilyvät. B3b:n v3-pyyntö kaappaa nykyisen hallintakontekstin ennen
+native-dialogeja; vanha pyyntö ei elvy komennon päätyttyä. Oikean
+palvelun/observerin havainto kulki nykyiseen kirjoittajaan ja viralliseen
+tarkastimeen; seitsemän kokonaisen tukivienti-/palvelutiedoston 265 testiä
+läpäisi. Uuden kaappausvirheen alkuperäinen viesti, pino ja syyketju löytyivät
+nykyisen neljän testin salaus/purku-sarjassa; julkinen tuloste säilyi turvallisena.
+Valitsimen main-kytkennän kolme kohdekontrollia läpäisivät: todellinen
+gzip-/tarkastinketju ja myöhäisen vastauksen esto kummankin native-dialogin
+sulussa; muut 399 main-tapausta eivät kuuluneet kohdeajoon. Myös tyypitys
+läpäisi. Rajattu riippumaton tuotantokytkennän katselmus ei löytänyt
+korjattavaa puutetta. V2:n sopimus ei muutu.
+Seuraava nimetty pala on [B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
+ei yleinen startup-fallback tai poistopainikkeen julkaisu.
+
 ## W7.5:n B3a:n checkpoint 6.11.2026
 
 Seuraava edeltävä jatkamiskohta on siirretty M1:stä sellaisenaan.

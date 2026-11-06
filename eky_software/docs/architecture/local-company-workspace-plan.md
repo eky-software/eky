@@ -2718,7 +2718,12 @@ on todennettu. Rajatussa riippumattomassa tuotantokytkennän katselmuksessa
 ei löydöstä. Koko main-regression portti on yhä hylätty yhden vanhan
 cold-forward-palautustapauksen aikakatkaisuun; M1 erottaa uuden lähteen
 401 läpäisyä tästä hylkäyksestä ja säilyttää aiemmat havainnot avoimina.
-B4:n erillinen startup-lupa on edelleen avoinna. Tarkka näyttö ja vanhat
+B4:n erillisen startup-luvan kuluttaja on haarassa: index ja before-quit
+käyttävät kertakäyttöistä raportointielinikää, eivät vanhaa startup-/lease-
+vartijaa. Oikea composition ei vielä toimita kuittausta; kokeen hallittu
+tuottaja ei todista build-porttia tai sallittua virhevaihetta. Nämä sekä
+todellinen composition -> native-vienti ovat edelleen avoinna.
+Tarkka näyttö ja vanhat
 hylkäykset säilyvät M1:ssä ja sen linkitetyssä historiassa.
 
 | Pala | Nykyiset omistajat ja rajattu muutos | Pieni näyttö ennen kytkentää |

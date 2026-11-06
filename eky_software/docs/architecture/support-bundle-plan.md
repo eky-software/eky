@@ -223,6 +223,20 @@ V2:n option-, backend-permission- ja datamuoto sekä native-entryn nykyinen
 kertakäyttöinen sopimus säilyvät. Julkinen poistotoiminto ja B4 eivät kuulu
 tämän pyyntöliitoksen näyttöön; ajantasaiset testit ovat M1:ssä.
 
+**B4:n raportointiluvan kuluttaja haarassa:** `DesktopWorkspaceStartupSupportReceipt`
+on main-only-kuittaus, ei build-hyväksyntä, prosessin poissaolotodiste tai
+muutosvaltuus. Index vertaa runtime-/build-identiteetin ja validoi vain B1:n
+rajatun datan; vieras tapahtuma ei kelpaa oikean otsakeidentiteetin alla.
+Kuittauksen vastaanotto päättyy composition-kutsun asettuessa, ja onnistunut
+käynnistys poistaa aiemmin vastaanotetunkin kuitin. Native-vienti kuluttaa
+epäonnistuneen käynnistyksen kuitin kerran. Quit ja relaunch mitätöivät luvan
+ennen mahdollista odotusta; `desktopBeforeQuit` tekee sen myös ilman
+lifecycle-kahvaa, eikä odota omaa vientidialogiaan. Vanha restore-recovery-
+dialogi säilyy ennen tätä vientipolkua. Oikea composition ei vielä lähetä
+kuittausta: tuottajan nykyinen build-portti, nimetyt virhevaiheet ja niiden
+todellinen yhteisketju ovat edelleen seuraava kytkentäportti. Kuluttajan
+kokeen hallittu tuottaja ei todista näitä tai paketoitua käynnistystä.
+
 **Ennen ensimmäistä ikkunaa.** `main/index.ts` omistaa yhden
 käynnistysyrityksen raportointieliniän. `desktopComposition` ei luovuta
 sen päättynyttä `assertStartupAuthority`-vartijaa myöhemmälle virhedialogille:

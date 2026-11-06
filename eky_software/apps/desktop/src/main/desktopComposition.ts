@@ -36,6 +36,7 @@ import {
   type SupportBundleCapability,
 } from '../supportBundle/supportBundleCapability.js';
 import { removeExpiredSupportBundleTemporaryFiles } from '../supportBundle/supportBundleFileStore.js';
+import type { SupportBundleDesktopAvailability, SupportBundleDesktopObservation } from '../supportBundle/supportBundleDesktopData.js';
 import {
   createInvoicePdfPreviewWindowController,
   type InvoicePdfPreviewWindowController,
@@ -276,6 +277,14 @@ export interface DesktopLifecycleHandle {
   shutdown(): Promise<void>;
 }
 
+// Main-only reporting data, never workspace mutation or startup authority.
+export interface DesktopWorkspaceStartupSupportReceipt {
+  readonly operationalIdentity: Readonly<DesktopOperationalIdentity>;
+  readonly operationalLogger: DesktopOperationalLogger;
+  readonly observation: SupportBundleDesktopObservation;
+  readonly backendState: SupportBundleDesktopAvailability['backend'];
+}
+
 export interface DesktopCompositionDependencies {
   createWorkspaceManagementCapability: typeof createWorkspaceManagementCapability;
   createRuntimeSession(): string;
@@ -304,6 +313,7 @@ export interface StartDesktopCompositionOptions {
   appVersion: string;
   applicationPath: string;
   buildInfo: Readonly<DesktopBuildInfo>;
+  observeWorkspaceStartupFailure?(receipt: Readonly<DesktopWorkspaceStartupSupportReceipt>): void;
   releaseInfo: Readonly<DesktopReleaseInfo> | undefined;
   dependencies?: Partial<DesktopCompositionDependencies>;
   quitApplication(): void;

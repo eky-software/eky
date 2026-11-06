@@ -46,19 +46,21 @@ läpäisi. Tämä ei ole muuttuneen W7.5-lähteen testi eikä yksin hyväksy
 alkuperäistä hylkäystä tai W7.5:tä.
 
 **Aktiivinen työ on W7.5 A/B:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
-säilyvät. B3b:n v3-pyyntö kaappaa nykyisen hallintakontekstin ennen
-native-dialogeja; vanha pyyntö ei elvy komennon päätyttyä. Oikean
-palvelun/observerin havainto kulki nykyiseen kirjoittajaan ja viralliseen
-tarkastimeen; seitsemän kokonaisen tukivienti-/palvelutiedoston 265 testiä
-läpäisi. Uuden kaappausvirheen alkuperäinen viesti, pino ja syyketju löytyivät
-nykyisen neljän testin salaus/purku-sarjassa; julkinen tuloste säilyi turvallisena.
-Valitsimen main-kytkennän kolme kohdekontrollia läpäisivät: todellinen
-gzip-/tarkastinketju ja myöhäisen vastauksen esto kummankin native-dialogin
-sulussa; muut 399 main-tapausta eivät kuuluneet kohdeajoon. Myös tyypitys
-läpäisi. Rajattu riippumaton tuotantokytkennän katselmus ei löytänyt
-korjattavaa puutetta. V2:n sopimus ei muutu.
-Seuraava nimetty pala on [B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
-ei yleinen startup-fallback tai poistopainikkeen julkaisu.
+säilyvät. [B3b:n pyyntökaappausnäyttö](release-0.3.0-integration-history.md#w75n-b3bn-checkpoint-6112026)
+on säilytetty historiassa. B4:n index-kuluttaja validoi main-only-kuittauksen
+ja omistaa erillisen kertakäyttöisen raportointiluvan. Sulku/relaunch estää
+myöhäisen dialogituloksen, onnistunut startup poistaa aiemman kuitin ja
+vanhat smoke/proof/recovery-polut säilyvät. Kuluttajan hallittu tuottaja
+ei todista oikeaa build-porttia tai nimetyn workspace-vaiheen virhettä.
+Pakotettu alkuperäinen kirjoitusvirhe löytyi nykyisen salaus/purku-ketjun
+puretuista tavuista viesteineen, pinoineen ja syyketjuineen; sisäinen testi
+jäi tarkoituksella punaiseksi ja julkinen tuloste turvalliseksi.
+Seuraava nimetty pala on [B4:n todellinen tuottajaliitos](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus)
+nykyiseen build- ja vaiheporttiin, ei yleinen startup-fallback tai
+poistopainikkeen julkaisu. Neljän kokonaisen kuluttaja-/sulkutiedoston
+62 testiä, desktopin tyypitys ja nykyinen neljän testin OpenPGP-regressio
+läpäisivät. Rajattu riippumaton kuluttajakatselmus ei löytänyt korjattavaa
+puutetta; tämä ei ole tuottajaliitoksen tai koko W7.5:n hyväksyntä.
 
 **Main-regression avoin portti:** edellisen 398 testin sarjan kolme
 replacement-aikakatkaisua ja rajattu erillisdiagnoosi säilyvät hylättyinä.

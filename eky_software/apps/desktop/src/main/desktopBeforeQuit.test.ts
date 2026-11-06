@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
 
 import { describe, expect, it, vi } from 'vitest';
 
@@ -6,6 +7,116 @@ import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
 import { terminateW6b2PackagedProofRuntime } from './w6b2PackagedProofTermination.js';
 
 describe('desktop before-quit handler', () => {
+  it('invalidates startup reporting synchronously before reading an absent lifecycle', async () => {
+    let reportingClosed = false;
+    const fixture = createFixture(async () => undefined, () => { reportingClosed = true; });
+    fixture.readLifecycle.mockImplementation(() => {
+      expect(reportingClosed).toBe(true);
+      return undefined;
+    });
+    const event = createEvent();
+    const finished = fixture.handleBeforeQuit(event);
+
+    expect(reportingClosed).toBe(true);
+    expect(fixture.invalidateStartupReporting).toHaveBeenCalledOnce();
+    expect(fixture.invalidateStartupReporting.mock.invocationCallOrder[0])
+      .toBeLessThan(fixture.readLifecycle.mock.invocationCallOrder[0]!);
+    await finished;
+    expect(event.preventDefault).not.toHaveBeenCalled();
+    expect(fixture.shutdown).not.toHaveBeenCalled();
+    expect(fixture.quitApplication).not.toHaveBeenCalled();
+  });
+
+  it('invalidates reporting for pending, handoff-deferred and settled quit requests', async () => {
+    const shutdown = createDeferredShutdown();
+    const fixture = createFixture(() => shutdown.promise, () => undefined);
+    const first = fixture.handleBeforeQuit(createEvent());
+    try {
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(1);
+      const pending = createEvent();
+      await fixture.handleBeforeQuit(pending);
+      expect(pending.preventDefault).toHaveBeenCalledOnce();
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(2);
+
+      fixture.isInstallerHandoffPending.mockReturnValue(true);
+      const handoff = createEvent();
+      await fixture.handleBeforeQuit(handoff);
+      expect(handoff.preventDefault).toHaveBeenCalledOnce();
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(3);
+      shutdown.resolve();
+      await first;
+      expect(fixture.quitApplication).not.toHaveBeenCalled();
+
+      const settledHandoff = createEvent();
+      await fixture.handleBeforeQuit(settledHandoff);
+      expect(settledHandoff.preventDefault).toHaveBeenCalledOnce();
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(4);
+
+      fixture.isInstallerHandoffPending.mockReturnValue(false);
+      const settled = createEvent();
+      await fixture.handleBeforeQuit(settled);
+      expect(settled.preventDefault).not.toHaveBeenCalled();
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(5);
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(fixture.quitApplication).not.toHaveBeenCalled();
+    } finally { shutdown.resolve(); await first; }
+  });
+
+  it('joins a reentrant invalidation without recursive hooks or duplicate shutdown', async () => {
+    const shutdown = createDeferredShutdown();
+    const reentrantEvent = createEvent();
+    const reentrantWork: Promise<void>[] = [];
+    const fixture = createFixture(() => shutdown.promise, () => {
+      reentrantWork.push(fixture.handleBeforeQuit(reentrantEvent));
+    });
+    const firstEvent = createEvent();
+    const first = fixture.handleBeforeQuit(firstEvent);
+    try {
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledOnce();
+      expect(firstEvent.preventDefault).toHaveBeenCalledOnce();
+      expect(reentrantEvent.preventDefault).toHaveBeenCalledOnce();
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(fixture.quitApplication).not.toHaveBeenCalled();
+      shutdown.resolve();
+      await first;
+      await Promise.all(reentrantWork);
+      expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(2);
+      expect(fixture.shutdown).toHaveBeenCalledOnce();
+      expect(fixture.quitApplication).toHaveBeenCalledOnce();
+      expect(fixture.finalQuitEvent.preventDefault).not.toHaveBeenCalled();
+    } finally { shutdown.resolve(); await first; await Promise.all(reentrantWork); }
+  });
+
+  it.each(['throw', 'rejection', 'pending'] as const)(
+    'does not await reporting invalidation or skip ordinary shutdown on %s', async outcome => {
+      const pendingHook = createDeferredShutdown();
+      const fixture = createFixture(async () => undefined, () => {
+        if (outcome === 'throw') throw new Error('synthetic reporting invalidation failure');
+        if (outcome === 'rejection') return Promise.reject(new Error('synthetic async reporting invalidation failure'));
+        return pendingHook.promise;
+      });
+      const unhandled = vi.fn();
+      process.on('unhandledRejection', unhandled);
+      const event = createEvent();
+      const turn = nextEventLoopTurn();
+      const finished = fixture.handleBeforeQuit(event);
+      try {
+        expect(await Promise.race([finished.then(() => 'quitFinished'), turn.then(() => 'turn')]))
+          .toBe('quitFinished');
+        await turn;
+        expect(unhandled).not.toHaveBeenCalled();
+        expect(event.preventDefault).toHaveBeenCalledOnce();
+        expect(fixture.invalidateStartupReporting).toHaveBeenCalledTimes(2);
+        expect(fixture.shutdown).toHaveBeenCalledOnce();
+        expect(fixture.quitApplication).toHaveBeenCalledOnce();
+        expect(fixture.finalQuitEvent.preventDefault).not.toHaveBeenCalled();
+      } finally {
+        pendingHook.resolve();
+        try { await finished; } finally { process.off('unhandledRejection', unhandled); }
+      }
+    },
+  );
+
   it('defers every quit while installer handoff is pending without latching shutdown', async () => {
     const fixture = createFixture(async () => undefined);
     fixture.isInstallerHandoffPending.mockReturnValue(true);
@@ -208,10 +319,10 @@ describe('desktop before-quit handler', () => {
       /await terminateW6b2PackagedProofRuntime\(\{\s*lifecycle: desktopLifecycle,\s*quitApplication\(\) \{\s*w6b2ProofShutdownCompleted = true;\s*app\.quit\(\);\s*\}/,
     );
     expect(source).toMatch(
-      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*readLifecycle: \(\) => desktopLifecycle,\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
+      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*invalidateStartupReporting,\s*readLifecycle: \(\) => desktopLifecycle,\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
     );
     expect(source).toMatch(
-      /app\.on\('before-quit', \(event\) => \{\s*if \(w6b2ProofShutdownCompleted\) return;\s*void handleBeforeQuit\(event\);\s*\}\);/,
+      /app\.on\('before-quit', \(event\) => \{\s*if \(w6b2ProofShutdownCompleted\) \{\s*invalidateStartupReporting\(\);\s*return;\s*\}\s*void handleBeforeQuit\(event\);\s*\}\);/,
     );
     expect(source).toMatch(
       /app\.on\('window-all-closed', \(\) => \{\s*if \(\s*!smokeConfiguration\.enabled &&\s*w6b2ProofConfiguration === undefined &&\s*!desktopLifecycle\?\.isInstallerHandoffPending\(\)/,
@@ -254,8 +365,9 @@ function createDeferredShutdown() {
   return { promise, resolve, reject };
 }
 
-function createFixture(shutdown: () => Promise<void>) {
+function createFixture(shutdown: () => Promise<void>, invalidateStartupReporting?: () => void) {
   const stop = vi.fn(shutdown);
+  const invalidate = vi.fn(invalidateStartupReporting);
   const isInstallerHandoffPending = vi.fn(() => false);
   const readLifecycle = vi.fn<() => { shutdown(): Promise<void>; deferQuitForInstallerHandoff?(): boolean } | undefined>(
     () => ({ shutdown: stop, deferQuitForInstallerHandoff: isInstallerHandoffPending }),
@@ -266,12 +378,14 @@ function createFixture(shutdown: () => Promise<void>) {
     void handleBeforeQuit(finalQuitEvent);
   });
   handleBeforeQuit = createDesktopBeforeQuitHandler({
+    ...(invalidateStartupReporting === undefined ? {} : { invalidateStartupReporting: invalidate }),
     readLifecycle,
     quitApplication,
   });
 
   return {
     handleBeforeQuit,
+    invalidateStartupReporting: invalidate,
     isInstallerHandoffPending,
     shutdown: stop,
     readLifecycle,
