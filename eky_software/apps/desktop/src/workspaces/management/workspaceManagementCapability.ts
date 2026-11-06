@@ -6,6 +6,7 @@ import type {
 
 import type { BackupPasswordWindowController } from '../../profileBackup/passwordWindow/backupPasswordWindow.js';
 import type { WorkspaceManagementService } from './workspaceManagementService.js';
+import type { WorkspaceDeletionCompletion } from './workspaceManagementService.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import type {
   WorkspaceDeletionPreparationLifetime,
@@ -19,6 +20,9 @@ import {
   importWorkspaceBackupAsNewIpcChannel,
   parseWorkspaceIdRequest,
   parseWorkspaceDeletionRequest,
+  parseWorkspaceDeletionOperationResult,
+  type WorkspaceDeletionRequest,
+  type WorkspaceDeletionOperationResult,
   parseWorkspaceLabelRequest,
   parseWorkspaceRenameRequest,
   parseWorkspaceStatusResult,
@@ -26,7 +30,14 @@ import {
   renameWorkspaceIpcChannel,
   switchWorkspaceIpcChannel,
   workspaceManagementIpcChannels,
+  workspaceManagementCapabilityProtocolVersion,
 } from './workspaceManagementCapabilityProtocol.js';
+import { hasExactDataKeys, isPlainDataRecord } from '../registry/workspaceRegistryValueShape.js';
+
+export interface WorkspaceDeletionResultRuntime {
+  readNextAction(): Extract<WorkspaceDeletionOperationResult, { status: 'cancelled' }>['nextAction'];
+  complete(completion: Readonly<WorkspaceDeletionCompletion>): Promise<void>;
+}
 
 interface WorkspaceManagementCapabilityOptions {
   readonly ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -40,7 +51,8 @@ interface WorkspaceManagementCapabilityOptions {
     | 'rename'
     | 'replaceActiveFromBackup'
     | 'switchTo'
-  > & Partial<Pick<WorkspaceManagementService, 'prepareDeletion'>>;
+  > & Partial<Pick<WorkspaceManagementService, 'prepareDeletion' | 'deleteWorkspace'>>;
+  readonly deletionRuntime?: Readonly<WorkspaceDeletionResultRuntime>;
   confirmActiveWorkspaceReplacement(workspaceLabel: string): Promise<boolean>;
   selectBackupSource(): Promise<string | null>;
   selectReplacementBackupSource(): Promise<string | null>;
@@ -48,11 +60,15 @@ interface WorkspaceManagementCapabilityOptions {
 }
 
 export interface WorkspaceManagementCapability {
-  // Main-only until W7.4 supplies the real journal/purge consumer.
+  // Main-only until W7.5 proves and registers the public deletion projection.
   prepareDeletion(
     event: IpcMainInvokeEvent,
     ...args: unknown[]
   ): Promise<WorkspaceDeletionPreparationOutcome>;
+  deleteWorkspace(
+    event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ): Promise<WorkspaceDeletionOperationResult>;
   closeAdmission(): void;
   dispose(): void;
   shutdown(): Promise<void>;
@@ -78,6 +94,10 @@ export function createWorkspaceManagementCapability(
     pendingWork: new Set(),
   };
   let shutdownTask: Promise<void> | undefined;
+  const deletionRuntime = options.deletionRuntime === undefined ? undefined : Object.freeze({
+    readNextAction: options.deletionRuntime.readNextAction.bind(options.deletionRuntime),
+    complete: options.deletionRuntime.complete.bind(options.deletionRuntime),
+  });
   for (const channel of workspaceManagementIpcChannels) {
     options.ipcMain.removeHandler(channel);
   }
@@ -260,61 +280,103 @@ export function createWorkspaceManagementCapability(
     documentEvents.off('destroyed', invalidateDocument);
     options.mainWindow.off('close', invalidateDocument);
   };
+  const runDeletionRequest = <Result>(
+    event: IpcMainInvokeEvent,
+    args: readonly unknown[],
+    execute: (request: Readonly<WorkspaceDeletionRequest>, lifetime: WorkspaceDeletionPreparationLifetime) => Promise<unknown>,
+    validate: (result: unknown, assertCurrent: () => void) => Result | Promise<Result>,
+  ): Promise<Result> => {
+    let privateFailure: { cause: unknown } | undefined;
+    const work = runCapability(options, state, event, args, 1, () =>
+      runMutation(state, 'delete', async () => {
+        const request = parseWorkspaceDeletionRequest(args[0]);
+        const epoch = state.documentEpoch;
+        let active = true;
+        const lifetime: WorkspaceDeletionPreparationLifetime = Object.freeze({
+          assertCurrent() {
+            if (
+              !active || state.disposed || state.documentEpoch !== epoch ||
+              options.mainWindow.isDestroyed() || options.mainWindow.webContents.isDestroyed() ||
+              event.sender !== options.mainWindow.webContents ||
+              event.senderFrame !== options.mainWindow.webContents.mainFrame ||
+              (state.admissionClosed && state.retainedDeletion !== lifetime)
+            ) {
+              active = false;
+              throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+            }
+          },
+          closeAdmissionForOwnStop() {
+            lifetime.assertCurrent();
+            state.retainedDeletion = lifetime;
+            sealAdmission();
+            lifetime.assertCurrent();
+          }
+        });
+        try {
+          lifetime.assertCurrent();
+          const outcome = await execute(request, lifetime);
+          lifetime.assertCurrent();
+          return await validate(outcome, lifetime.assertCurrent.bind(lifetime));
+        } finally {
+          active = false;
+          if (state.retainedDeletion === lifetime) delete state.retainedDeletion;
+        }
+      }).catch((cause: unknown) => {
+        privateFailure = { cause };
+        throw cause;
+      }),
+    );
+    // These entries stay in main; renderer handlers retain their safe-only errors.
+    return work.catch((error: unknown) => {
+      if (privateFailure !== undefined && error instanceof Error) {
+        throw new Error(error.message, { cause: privateFailure.cause });
+      }
+      throw error;
+    });
+  };
   return Object.freeze({
     closeAdmission,
     prepareDeletion(event: IpcMainInvokeEvent, ...args: unknown[]) {
-      let privateFailure: { cause: unknown } | undefined;
-      const work = runCapability(options, state, event, args, 1, () =>
-        runMutation(state, 'delete', async () => {
-          const request = parseWorkspaceDeletionRequest(args[0]);
-          const epoch = state.documentEpoch;
-          let active = true;
-          const lifetime: WorkspaceDeletionPreparationLifetime = Object.freeze({
-            assertCurrent() {
-              if (
-                !active || state.disposed || state.documentEpoch !== epoch ||
-                options.mainWindow.isDestroyed() || options.mainWindow.webContents.isDestroyed() ||
-                event.sender !== options.mainWindow.webContents ||
-                event.senderFrame !== options.mainWindow.webContents.mainFrame ||
-                (state.admissionClosed && state.retainedDeletion !== lifetime)
-              ) {
-                active = false;
-                throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
-              }
-            },
-            closeAdmissionForOwnStop() {
-              lifetime.assertCurrent();
-              state.retainedDeletion = lifetime;
-              sealAdmission();
-              lifetime.assertCurrent();
-            },
-          });
-          try {
-            lifetime.assertCurrent();
-            if (options.service.prepareDeletion === undefined) {
-              throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
-            }
-            const outcome = await options.service.prepareDeletion(request, lifetime);
-            lifetime.assertCurrent();
-            if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
-              throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
-            }
-            return outcome;
-          } finally {
-            active = false;
-            if (state.retainedDeletion === lifetime) delete state.retainedDeletion;
-          }
-        }).catch((cause: unknown) => {
-          privateFailure = { cause };
-          throw cause;
-        }),
-      );
-      // This entry stays in main; renderer handlers retain their safe-only errors.
-      return work.catch((error: unknown) => {
-        if (privateFailure !== undefined && error instanceof Error) {
-          throw new Error(error.message, { cause: privateFailure.cause });
+      return runDeletionRequest(event, args, async (request, lifetime) => {
+        if (options.service.prepareDeletion === undefined) {
+          throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
         }
-        throw error;
+        return options.service.prepareDeletion(request, lifetime);
+      }, outcome => {
+        if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
+          throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
+        }
+        return outcome;
+      });
+    },
+    deleteWorkspace(event: IpcMainInvokeEvent, ...args: unknown[]) {
+      return runDeletionRequest(event, args, async (request, lifetime) => {
+        if (options.service.deleteWorkspace === undefined || deletionRuntime === undefined) {
+          throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
+        }
+        const outcome = await options.service.deleteWorkspace(request, lifetime);
+        if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
+            outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
+          return outcome;
+        }
+        const completed = parseWorkspaceDeletionOperationResult(outcome);
+        if (completed.status !== 'completed') throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+        // Main completion outlives the reply document. Service fulfillment joins
+        // the durable command and lease release; the main owner rechecks runtime.
+        await deletionRuntime.complete(completed);
+        return completed;
+      }, (outcome, assertCurrent) => {
+        if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
+            outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
+          assertCurrent();
+          const nextAction = deletionRuntime!.readNextAction();
+          assertCurrent();
+          return parseWorkspaceDeletionOperationResult({ formatVersion: workspaceManagementCapabilityProtocolVersion,
+            status: 'cancelled', nextAction });
+        }
+        const parsed = parseWorkspaceDeletionOperationResult(outcome);
+        if (parsed.status !== 'completed') throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+        return parsed;
       });
     },
     dispose,

@@ -4,6 +4,7 @@ import {
   createWorkspaceOperationResult,
   parseWorkspaceIdRequest,
   parseWorkspaceDeletionRequest,
+  parseWorkspaceDeletionOperationResult,
   parseWorkspaceLabelRequest,
   parseWorkspaceRenameRequest,
   workspaceManagementCapabilityProtocolVersion,
@@ -98,5 +99,91 @@ describe('workspace management capability protocol', () => {
     expect(() => parseWorkspaceDeletionRequest(Object.assign(Object.create({ inherited: true }), {
       formatVersion: 1, workspaceId, typedLabel: 'Name', backupChoice: 'createBackup',
     }))).toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+  });
+});
+
+describe('workspace deletion operation result protocol', () => {
+  it.each(['continue', 'relaunching', 'restartRequired'] as const)(
+    'distinguishes cancelled deletion from its %s runtime follow-up', nextAction => {
+      const value = { formatVersion: 1, status: 'cancelled', nextAction };
+      const parsed = parseWorkspaceDeletionOperationResult(value);
+      expect(parsed).toEqual(value);
+      expect(parsed).not.toBe(value);
+      expect(Object.isFrozen(parsed)).toBe(true);
+      value.status = 'completed';
+      expect(parsed.status).toBe('cancelled');
+    },
+  );
+
+  it.each(['selector', 'reopenPrevious'] as const)(
+    'preserves only the validated %s completion destination', navigation => {
+      const parsed = parseWorkspaceDeletionOperationResult({ formatVersion: 1, status: 'completed', navigation });
+      expect(parsed).toEqual({ formatVersion: 1, status: 'completed', navigation });
+      expect(Object.isFrozen(parsed)).toBe(true);
+      expect(workspaceManagementIpcChannels.some(channel => channel.endsWith(':delete'))).toBe(false);
+    },
+  );
+
+  it.each(['continue', 'restartRequired'] as const)(
+    'requires an explicit no-effect failure with %s follow-up', nextAction => {
+      expect(parseWorkspaceDeletionOperationResult({ formatVersion: 1, status: 'failed',
+        errorCode: 'WORKSPACE_MANAGEMENT_BUSY', sideEffectState: 'none', nextAction })).toEqual({
+        formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_MANAGEMENT_BUSY', sideEffectState: 'none', nextAction,
+      });
+    },
+  );
+
+  it('does not turn uncertain completion into cancellation, no effect or automatic continuation', () => {
+    expect(parseWorkspaceDeletionOperationResult({ formatVersion: 1, status: 'recoveryRequired',
+      errorCode: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', sideEffectState: 'unknown', nextAction: 'restartRequired' })).toEqual({
+      formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN',
+      sideEffectState: 'unknown', nextAction: 'restartRequired',
+    });
+  });
+
+  it.each([
+    undefined, null, [], 'completed',
+    { formatVersion: 1, status: 'prepared' },
+    { formatVersion: 1, status: 'returnRequested' },
+    { formatVersion: 1, status: 'completed' },
+    { formatVersion: 1, status: 'cancelled' },
+    { formatVersion: 2, status: 'completed', navigation: 'selector' },
+    { formatVersion: 1, status: 'completed', navigation: 'openAnyWorkspace' },
+    { formatVersion: 1, status: 'completed', navigation: 'selector', nextAction: 'continue' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'retry' },
+    { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_DELETE_FAILED', nextAction: 'continue' },
+    { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'continue' },
+    { formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'none', nextAction: 'restartRequired' },
+    { formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'continue' },
+    { formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'relaunching' },
+    { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_MANAGEMENT_CREATE_FAILED', sideEffectState: 'none', nextAction: 'continue' },
+    { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_DELETE_FAILED: private detail', sideEffectState: 'none', nextAction: 'continue' },
+    { formatVersion: 1, status: 'completed', navigation: 'selector', workspaceId },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'continue', path: 'untrusted' },
+    { formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'restartRequired', cause: new Error('private') },
+  ])('rejects an ambiguous or unsafe deletion result at case %#', value => {
+    expect(() => parseWorkspaceDeletionOperationResult(value)).toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+  });
+
+  it.each(['formatVersion', 'status', 'navigation'] as const)(
+    'rejects a %s accessor without reading any getter', key => {
+      let reads = 0;
+      const value = { formatVersion: 1, status: 'completed', navigation: 'selector' };
+      Object.defineProperty(value, key, { enumerable: true, get() { reads += 1; return 'untrusted'; } });
+      expect(() => parseWorkspaceDeletionOperationResult(value)).toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+      expect(reads).toBe(0);
+    },
+  );
+
+  it('rejects inherited, hidden and symbol fields and snapshots a plain null-prototype value', () => {
+    const value = { formatVersion: 1, status: 'cancelled', nextAction: 'continue' };
+    expect(() => parseWorkspaceDeletionOperationResult(Object.assign(Object.create({ inherited: true }), value)))
+      .toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    const hidden = { ...value };
+    Object.defineProperty(hidden, 'private', { value: 'untrusted' });
+    expect(() => parseWorkspaceDeletionOperationResult(hidden)).toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    expect(() => parseWorkspaceDeletionOperationResult({ ...value, [Symbol('private')]: 'untrusted' }))
+      .toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    expect(parseWorkspaceDeletionOperationResult(Object.assign(Object.create(null), value))).toEqual(value);
   });
 });

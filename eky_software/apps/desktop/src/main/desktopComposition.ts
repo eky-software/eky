@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { bindWorkspaceDeletionContinuation, type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
+import { bindWorkspaceDeletionContinuation, createWorkspaceDeletionResultRuntime,
+  type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
 import { createWorkspaceDeletionMarkerBoundary } from './workspaceDeletionMarkerBoundary.js';
 import { recoverDesktopWorkspaceDeletion } from './recoverDesktopWorkspaceDeletion.js';
 import { writePackagedDiagnosticFixture } from './packagedDiagnosticFixture.js';
@@ -3772,6 +3773,27 @@ async function startDesktopCompositionRuntime({
     mainWindow,
     passwordWindow: backupPasswordWindowController,
     service: workspaceManagementComposition.service,
+    ...(deletionBinding === undefined ? {} : { deletionRuntime: createWorkspaceDeletionResultRuntime({
+      assertCurrent() {
+        if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+        options.assertSingleInstanceOwnership();
+        workspaceReservation.assertInstallationCurrent();
+        if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      },
+      assertMainCurrent: () => workspaceReservation.assertMainCurrent(),
+      assertOwned: () => workspaceReservation.assertMainOwned(),
+      assertRuntimeAbsent: () => activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime(),
+      readRuntimeState() {
+        const state = activeWorkspaceLifecycle.readState();
+        if (state === 'active' && !deletionCapabilityCloseStarted) {
+          backendHandle.assertRunning();
+          return 'available';
+        }
+        return state === 'stopped' ? 'stopped' : 'unavailable';
+      },
+      maintenanceState: workspaceMaintenanceLease,
+      runtimeRelaunch: workspaceRuntimeRelaunch,
+    }) }),
     confirmActiveWorkspaceReplacement(workspaceLabel) {
       return confirmActiveWorkspaceReplacement({
         mainWindow,

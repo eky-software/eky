@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate } from 'node:timers/promises';
 import type { IpcMainInvokeEvent } from 'electron';
 import { afterEach, describe, expect, it, onTestFinished, vi } from 'vitest';
 
@@ -286,10 +287,308 @@ describe('workspace deletion preparation request lifetime', () => {
   });
 });
 
+describe('workspace deletion main-only completion response', () => {
+  it('projects internal cancellation from the separate runtime follow-up owner', async () => {
+    const continuation = deletionContinuationFixture();
+    const f = fixture(async () => 'cancelled', undefined, undefined, continuation.port);
+    await expect(f.startDurable()).resolves.toEqual({ formatVersion: 1, status: 'cancelled', nextAction: 'continue' });
+    expect(f.runtime.readNextAction).toHaveBeenCalledOnce();
+    expect(f.runtime.complete).not.toHaveBeenCalled();
+    expect(continuation.captureAuthority).not.toHaveBeenCalled();
+    expect(continuation.resume).not.toHaveBeenCalled();
+    expect(f.maintenanceLease.readState()).toBe('idle');
+  });
+
+  it.each(['continue', 'relaunching', 'restartRequired'] as const)(
+    'does not infer %s from the internal cancellation receipt', async nextAction => {
+      const continuation = deletionContinuationFixture();
+      const f = fixture(async () => 'cancelled', undefined, undefined, continuation.port, {
+        readNextAction: () => nextAction,
+        async complete() { throw new Error('UNEXPECTED_COMPLETION_AFTER_CANCELLATION'); },
+      });
+      await expect(f.startDurable()).resolves.toEqual({ formatVersion: 1, status: 'cancelled', nextAction });
+      expect(f.runtime.readNextAction).toHaveBeenCalledOnce();
+      expect(f.runtime.complete).not.toHaveBeenCalled();
+      expect(continuation.resume).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a non-contract runtime action without leaking it or starting a relaunch', async () => {
+    const f = fixture(async () => 'cancelled', undefined, undefined, deletionContinuationFixture().port, {
+      readNextAction: () => 'synthetic-private-runtime-value' as never,
+      async complete() { throw new Error('UNEXPECTED_COMPLETION_AFTER_CANCELLATION'); },
+    });
+    await expect(f.startDurable()).rejects.toMatchObject({ message: 'WORKSPACE_MANAGEMENT_CAPABILITY_INVALID' });
+    expect(f.runtime.complete).not.toHaveBeenCalled();
+    expect(f.showSafeError).not.toHaveBeenCalled();
+  });
+
+  it('keeps main completion pending after service settlement and lease release', async () => {
+    const entered = gate();
+    const finish = gate();
+    const continuation = deletionContinuationFixture();
+    const f = fixture(undefined, undefined, undefined, continuation.port, {
+      readNextAction: () => 'restartRequired',
+      async complete(result) {
+        expect(result).toEqual(continuation.completion);
+        expect(f.maintenanceLease.readState()).toBe('idle');
+        entered.release(); await finish.promise;
+      },
+    });
+    const operation = observeSettlement(f.startDurable());
+    await entered.promise;
+    await expectUnsettled(operation);
+    const serviceClosing = observeSettlement(track(f.service.shutdown()));
+    await serviceClosing.result;
+    expect(serviceClosing.isSettled()).toBe(true);
+    const capabilityClosing = observeSettlement(track(f.capability.shutdown()));
+    await expectUnsettled(capabilityClosing);
+    finish.release();
+    await expect(operation.result).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    await capabilityClosing.result;
+    expect(continuation.recordRemoved).toHaveBeenCalledOnce();
+    expect(f.runtime.complete).toHaveBeenCalledOnce();
+  });
+
+  it('preserves a main completion failure instead of returning completed deletion', async () => {
+    const original = new Error('Synthetic original return failure');
+    const continuation = deletionContinuationFixture();
+    const f = fixture(undefined, undefined, undefined, continuation.port, {
+      readNextAction: () => 'restartRequired',
+      async complete() { throw original; },
+    });
+    await expect(f.startDurable()).rejects.toMatchObject({
+      message: 'WORKSPACE_MANAGEMENT_CAPABILITY_FAILED', cause: original,
+    });
+    expect(continuation.recordRemoved).toHaveBeenCalledOnce();
+    expect(f.maintenanceLease.readState()).toBe('idle');
+    expect(f.runtime.complete).toHaveBeenCalledOnce();
+  });
+
+  it('admits only one durable mutation while preparation remains held', async () => {
+    const entered = gate();
+    const finish = gate();
+    const continuation = deletionContinuationFixture();
+    const f = fixture(async () => {
+      entered.release();
+      await finish.promise;
+      return 'prepared';
+    }, undefined, undefined, continuation.port);
+    const first = f.startDurable();
+    const second = f.startDurable();
+    await expect(second).rejects.toThrow('WORKSPACE_MANAGEMENT_BUSY');
+    await entered.promise;
+    expect(f.prepare).toHaveBeenCalledOnce();
+    expect(continuation.resume).not.toHaveBeenCalled();
+    finish.release();
+    await expect(first).resolves.toEqual(continuation.completion);
+    expect(continuation.resume).toHaveBeenCalledOnce();
+    expect(f.maintenanceLease.readState()).toBe('idle');
+  });
+
+  it('uses the same own-stop lifetime without registering a renderer deletion channel', async () => {
+    const continuation = deletionContinuationFixture();
+    const f = fixture(async (_request, lifetime) => {
+      lifetime.closeAdmissionForOwnStop();
+      return 'prepared';
+    }, undefined, undefined, continuation.port);
+    expect([...f.handlers.keys()]).toEqual([...workspaceManagementIpcChannels]);
+    await expect(f.startDurable()).resolves.toEqual(continuation.completion);
+    expect(continuation.captureAuthority).toHaveBeenCalledOnce();
+    expect(continuation.recordRemoved).toHaveBeenCalledExactlyOnceWith(continuation.receipt);
+    expect(f.maintenanceLease.readState()).toBe('idle');
+    expect(f.handlers.size).toBe(0);
+    expect(f.showSafeError).not.toHaveBeenCalled();
+  });
+
+  it.each(['navigation', 'loading', 'rendererExit', 'windowClose', 'dispose', 'admissionClose'] as const)(
+    'discards a stale %s response without revoking the already handed-off command', async invalidation => {
+      const entered = gate();
+      const finish = gate();
+      const continuation = deletionContinuationFixture(async (_operationId, authority) => {
+        entered.release();
+        await finish.promise;
+        await authority.assertOwned();
+        authority.recordRemoved(continuation.receipt);
+        return continuation.completion;
+      });
+      const f = fixture(async (_request, lifetime) => {
+        lifetime.closeAdmissionForOwnStop();
+        return 'prepared';
+      }, undefined, undefined, continuation.port);
+      const operation = f.startDurable();
+      await entered.promise;
+      if (invalidation === 'navigation') f.webContents.emit('did-start-navigation', { isMainFrame: true });
+      else if (invalidation === 'loading') f.webContents.emit('did-start-loading');
+      else if (invalidation === 'rendererExit') f.webContents.emit('render-process-gone');
+      else if (invalidation === 'windowClose') f.mainWindow.emit('close');
+      else if (invalidation === 'dispose') f.capability.dispose();
+      else f.capability.closeAdmission();
+      finish.release();
+      await expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+      expect(continuation.recordRemoved).toHaveBeenCalledExactlyOnceWith(continuation.receipt);
+      expect(f.runtime.complete).toHaveBeenCalledExactlyOnceWith(continuation.completion);
+      expect(f.maintenanceLease.readState()).toBe('idle');
+      expect(f.events).toEqual([]);
+      expect(f.showSafeError).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a stale preparation before capturing the durable owner', async () => {
+    const entered = gate();
+    const finish = gate();
+    const continuation = deletionContinuationFixture();
+    const f = fixture(async (_request, lifetime) => {
+      lifetime.closeAdmissionForOwnStop();
+      entered.release();
+      await finish.promise;
+      return 'prepared';
+    }, undefined, undefined, continuation.port);
+    const operation = f.startDurable();
+    await entered.promise;
+    f.webContents.emit('did-start-loading');
+    finish.release();
+    await expect(operation).rejects.toThrow('WORKSPACE_DELETE_FAILED');
+    expect(continuation.captureAuthority).not.toHaveBeenCalled();
+    expect(continuation.resume).not.toHaveBeenCalled();
+    expect(f.maintenanceLease.readState()).toBe('idle');
+  });
+
+  it('waits for a held service command during an external capability and service shutdown', async () => {
+    const entered = gate();
+    const finish = gate();
+    const continuation = deletionContinuationFixture(async (_operationId, authority) => {
+      entered.release();
+      await finish.promise;
+      await authority.assertOwned();
+      authority.recordRemoved(continuation.receipt);
+      return continuation.completion;
+    });
+    const f = fixture(async (_request, lifetime) => {
+      lifetime.closeAdmissionForOwnStop();
+      return 'prepared';
+    }, undefined, undefined, continuation.port);
+    const operation = f.startDurable();
+    await entered.promise;
+    const capabilityClosing = observeSettlement(track(f.capability.shutdown()));
+    const serviceClosing = observeSettlement(track(f.service.shutdown()));
+    await expectUnsettled(capabilityClosing);
+    await expectUnsettled(serviceClosing);
+    expect(f.maintenanceLease.readState()).toBe('busy');
+    finish.release();
+    await expect(operation).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    await Promise.all([capabilityClosing.result, serviceClosing.result]);
+    expect(capabilityClosing.isSettled()).toBe(true);
+    expect(serviceClosing.isSettled()).toBe(true);
+    expect(continuation.recordRemoved).not.toHaveBeenCalled();
+    expect(f.maintenanceLease.readState()).toBe('idle');
+  });
+
+  it('detects premature capability shutdown even when service shutdown is still pending', async () => {
+    const entered = gate();
+    const finish = gate();
+    const continuation = deletionContinuationFixture(async (_operationId, authority) => {
+      entered.release();
+      await finish.promise;
+      await authority.assertOwned();
+      authority.recordRemoved(continuation.receipt);
+      return continuation.completion;
+    });
+    const f = fixture(async (_request, lifetime) => {
+      lifetime.closeAdmissionForOwnStop();
+      return 'prepared';
+    }, undefined, undefined, continuation.port);
+    const realShutdown = f.capability.shutdown.bind(f.capability);
+    const brokenCapability = { ...f.capability,
+      shutdown: () => Promise.all([]).then(() => undefined) };
+    const operation = f.startDurable();
+    try {
+      await entered.promise;
+      const capabilityClosing = observeSettlement(track(brokenCapability.shutdown()));
+      const serviceClosing = observeSettlement(track(f.service.shutdown()));
+      await expect(expectUnsettled(capabilityClosing)).rejects.toThrow();
+      expect(capabilityClosing.isSettled()).toBe(true);
+      await expectUnsettled(serviceClosing);
+      expect(f.maintenanceLease.readState()).toBe('busy');
+      finish.release();
+      await expect(operation).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      await Promise.all([capabilityClosing.result, serviceClosing.result]);
+      expect(continuation.recordRemoved).not.toHaveBeenCalled();
+      expect(f.maintenanceLease.readState()).toBe('idle');
+    } finally {
+      finish.release();
+      await Promise.allSettled([operation, track(realShutdown()), track(f.service.shutdown())]);
+    }
+  });
+
+  it.each(['sender', 'frame', 'extraArgument'] as const)('rejects an untrusted %s before the durable service', async variant => {
+    const continuation = deletionContinuationFixture();
+    const f = fixture(undefined, undefined, undefined, continuation.port);
+    const event = variant === 'sender' ? { ...f.event, sender: {} }
+      : variant === 'frame' ? { ...f.event, senderFrame: {} } : f.event;
+    await expect(f.capability.deleteWorkspace(event as IpcMainInvokeEvent, request,
+      ...(variant === 'extraArgument' ? ['extra'] : [])))
+      .rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    expect(f.prepare).not.toHaveBeenCalled();
+    expect(continuation.captureAuthority).not.toHaveBeenCalled();
+  });
+
+  it('retains the original durable exception only in the main-only failure chain', async () => {
+    const original = new Error('Synthetic original durable failure');
+    const continuation = deletionContinuationFixture(async () => { throw original; });
+    const f = fixture(undefined, undefined, undefined, continuation.port);
+    await expect(f.startDurable()).rejects.toMatchObject({ message: 'WORKSPACE_DELETE_FAILED',
+      cause: { code: 'WORKSPACE_DELETE_FAILED', cause: original } });
+    expect(JSON.stringify(f.events)).not.toMatch(/Synthetic|message|cause|stack|workspaceId|typedLabel/);
+    expect(f.maintenanceLease.readState()).toBe('idle');
+  });
+
+  it.each([
+    { formatVersion: 1, status: 'prepared' },
+    { formatVersion: 1, status: 'completed' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'continue' },
+    { formatVersion: 1, status: 'completed', navigation: 'selector', private: 'untrusted' },
+  ])('rejects a malformed internal service result at case %#', async value => {
+    const f = fixture();
+    vi.spyOn(f.service, 'deleteWorkspace').mockResolvedValueOnce(value as never);
+    await expect(f.startDurable()).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    expect(f.prepare).not.toHaveBeenCalled();
+  });
+});
+
+function observeSettlement<T>(result: Promise<T>) {
+  let settled = false;
+  void result.then(() => { settled = true; }, () => { settled = true; });
+  return { result, isSettled: () => settled };
+}
+
+async function expectUnsettled(work: { isSettled(): boolean }) {
+  await setImmediate();
+  expect(work.isSettled()).toBe(false);
+}
+
+function deletionContinuationFixture(resume?: NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume']) {
+  const completion = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: 'selector' as const });
+  const receipt = Object.freeze({ synthetic: 'removalReceipt' });
+  const recordRemoved = vi.fn((value: unknown) => { expect(value).toBe(receipt); return completion; });
+  const captureAuthority = vi.fn((_operationId: string, assertLease: () => void) => ({
+    assertCurrent: assertLease, async assertOwned() { assertLease(); }, recordRemoved,
+  }));
+  const command = vi.fn<NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume']>(
+    resume ?? (async (_operationId, authority) => {
+      await authority.assertOwned(); authority.recordRemoved(receipt); return completion;
+    }),
+  );
+  return { completion, receipt, recordRemoved, captureAuthority, resume: command,
+    port: { captureAuthority, resume: command } };
+}
+
 function fixture(
   prepare: Prepare = async () => 'prepared',
   guard = async () => {},
   observer?: WorkspaceManagementObserver,
+  continuation?: WorkspaceManagementServiceOptions['deletionContinuation'],
+  resultRuntime?: NonNullable<Parameters<typeof createWorkspaceManagementCapability>[0]['deletionRuntime']>,
 ) {
   const events: Readonly<WorkspaceManagementOperationEvent>[] = [];
   const command = vi.fn(prepare);
@@ -304,6 +603,7 @@ function fixture(
     operationGuard: { assertNoUnresolvedOperations: guard, async readRecoveryState() { return 'clear'; } },
     observer: { record: event => { events.push(event); observer?.record(event); } },
     deletionPreparation: { maintenanceLease, prepare: command },
+    ...(continuation === undefined ? {} : { deletionContinuation: continuation }),
   });
   const handlers = new Map<string, (event: unknown, ...args: unknown[]) => Promise<unknown>>();
   const mainFrame = {};
@@ -311,16 +611,22 @@ function fixture(
   const mainWindow = Object.assign(new EventEmitter(), { webContents, isDestroyed: () => false });
   const event = { sender: webContents, senderFrame: mainFrame } as unknown as IpcMainInvokeEvent;
   const showSafeError = vi.fn();
+  const runtime = {
+    readNextAction: vi.fn(resultRuntime?.readNextAction ?? (() => 'continue' as const)),
+    complete: vi.fn(resultRuntime?.complete ?? (async () => undefined)),
+  };
   const capability = createWorkspaceManagementCapability({
     ipcMain: { handle: (channel: string, handler: (event: unknown, ...args: unknown[]) => Promise<unknown>) => {
       handlers.set(channel, handler);
     }, removeHandler: (channel: string) => handlers.delete(channel) } as never,
     mainWindow: mainWindow as never, passwordWindow: { requestPassword: unexpected },
     confirmActiveWorkspaceReplacement: unexpected, selectBackupSource: unexpected,
-    selectReplacementBackupSource: unexpected, service, showSafeError,
+    selectReplacementBackupSource: unexpected, service, showSafeError, deletionRuntime: runtime,
   });
   const f = { capability, service, prepare: command, create, handlers, event, webContents,
-    mainWindow, showSafeError, events, start: () => track(capability.prepareDeletion(event, request)) };
+    mainWindow, showSafeError, events, maintenanceLease, runtime,
+    start: () => track(capability.prepareDeletion(event, request)),
+    startDurable: () => track(capability.deleteWorkspace(event, request)) };
   fixtures.push(f);
   return f;
 }

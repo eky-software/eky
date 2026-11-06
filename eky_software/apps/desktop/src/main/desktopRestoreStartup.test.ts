@@ -5908,6 +5908,148 @@ describe('W7.4 main deletion completion wiring', () => {
     });
 });
 
+describe('W7.5 main deletion result wiring', () => {
+  it.for([
+    { mode: 'active', outcome: 'completed' },
+    { mode: 'selector', outcome: 'completed' },
+    { mode: 'passive', outcome: 'completed' },
+    { mode: 'selector', outcome: 'replyLost' },
+    { mode: 'active', outcome: 'quitReentry' },
+    { mode: 'active', outcome: 'releaseFailure' },
+    { mode: 'active', outcome: 'cancelLive' },
+    { mode: 'selector', outcome: 'cancelLive' },
+    { mode: 'selector', outcome: 'cancelStopped' },
+    { mode: 'active', outcome: 'returnRequested' },
+  ] as const)('projects $mode / $outcome through the real main and capability owners', async ({ mode, outcome }, context) => {
+    const lifetime = beginTrackedStartupTest(context);
+    await lifetime.run(async () => {
+      let capability: WorkspaceManagementCapability | undefined;
+      let binding: WorkspaceDeletionJournal | undefined;
+      let lifecycle: Awaited<ReturnType<typeof startDesktopComposition>> | undefined;
+      let closing: Promise<void> | undefined;
+      const command: NonNullable<StartDesktopCompositionOptions['workspaceDeletionCommand']> = {
+        async publish(assertCurrent, assertSelected, target, publication) {
+          assertCurrent(); await assertSelected(); assertCurrent();
+          // Controlled receipt only: W7.4 owns the actual file/journal matrix.
+          binding = captureWorkspaceDeletionJournal({ formatVersion: 1, phase: 'authorized',
+            target: { formatVersion: deletionInventoryFormatVersion, operationId: publication.operationId,
+              workspaceId: target.workspaceId, lineageIdentity: { formatVersion: 1, profileId: target.profileId },
+              registryEntrySha256: target.registryEntrySha256 },
+            registryBeforeSha256: target.registrySha256, registryAfterSha256: 'b'.repeat(64),
+            previousActiveWorkspaceId: target.previousActiveWorkspaceId, backupDisposition: publication.backupDisposition,
+            inventory: { formatVersion: deletionInventoryFormatVersion, byteLength: 1, recordCount: 1, sha256: 'c'.repeat(64) },
+            inventoryFileIdentity: 'd'.repeat(64), operationRootIdentity: 'e'.repeat(64), operationParentIdentity: 'f'.repeat(64) });
+          return { journal: binding, workspaceRootIdentity: target.rootIdentity };
+        },
+        async resume(_id, authority) {
+          await authority.assertOwned();
+          authority.recordRemoved({ status: 'removed', journal: { ...binding!, phase: 'registryPublished' } });
+          if (outcome === 'replyLost') f.mainWindow.webContents.emit('did-start-loading');
+          return { formatVersion: 1, status: 'completed', navigation: mode === 'passive' ? 'reopenPrevious' : 'selector' };
+        },
+      };
+      const stopForDelete = vi.fn(async () => undefined);
+      const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
+        workspaceDeletionCommand: command, stopForDelete,
+        createWorkspaceManagementCapability(options) {
+          capability = createWorkspaceManagementCapability(options);
+          return capability;
+        },
+      }));
+      Object.assign(f.mainWindow, { isMinimized: () => false, isVisible: () => true,
+        restore: vi.fn(), show: vi.fn(), focus: vi.fn() });
+      Object.assign(f.mainWindow.webContents, { focus: vi.fn() });
+      f.assertSingleInstanceOwnership.mockImplementation(() => context.signal.throwIfAborted());
+      const original = (await f.registry.read())!;
+      const targetId = mode === 'passive' ? validateWorkspaceId('77777777-7777-4777-8777-777777777777') : workspaceId;
+      const registry = { ...original, formatVersion: 2 as const, activeWorkspaceId: mode === 'selector' ? null : workspaceId,
+        workspaces: mode === 'passive' ? [...original.workspaces, { ...original.workspaces[0]!, workspaceId: targetId,
+          workspaceLabel: 'Synthetic other company', lineageIdentity: { formatVersion: 1 as const, profileId: foreignProfileId } }]
+          : original.workspaces };
+      if (mode === 'passive') await mkdir(deriveWorkspaceRoot(f.root, targetId, 1).workspaceRoot, { recursive: true, mode: 0o700 });
+      await f.registry.write(registry);
+      const before = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+      electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+        ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+      vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'beginDeleteMaintenance').mockResolvedValue('busy');
+      vi.spyOn(ProfileSnapshotBrokerClient.prototype, 'assertDeleteMaintenance').mockResolvedValue('busy');
+      const releaseFailure = new Error('SYNTHETIC_RESULT_LEASE_RELEASE_FAILED');
+      if (outcome === 'releaseFailure') {
+        const acquire = InMemoryWorkspaceMaintenanceLease.prototype.acquire;
+        const capture = InMemoryWorkspaceMaintenanceLease.prototype.captureCurrentOwner;
+        const handles = new WeakMap<Awaited<ReturnType<typeof acquire>>, Awaited<ReturnType<typeof acquire>>>();
+        vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'acquire').mockImplementation(async function (this: InMemoryWorkspaceMaintenanceLease, purpose) {
+          const originalHandle = await acquire.call(this, purpose);
+          if (purpose !== 'delete') return originalHandle;
+          const wrapped = { async release() { await originalHandle.release(); throw releaseFailure; } };
+          handles.set(wrapped, originalHandle); return wrapped;
+        });
+        vi.spyOn(InMemoryWorkspaceMaintenanceLease.prototype, 'captureCurrentOwner').mockImplementation(function (this: InMemoryWorkspaceMaintenanceLease, purposes, expected) {
+          return capture.call(this, purposes, expected === undefined ? undefined : handles.get(expected) ?? expected);
+        });
+      }
+      let shutdownChecked = false;
+      let firstFailure: { error: unknown } | undefined;
+      try {
+        lifecycle = await lifetime.step('startup', () => f.start());
+        if (lifecycle === undefined || capability === undefined) throw new Error('MISSING_MAIN_DELETION_RESULT_OWNER');
+        if (outcome === 'quitReentry') f.relaunch.mockImplementation(() => { closing = lifecycle!.shutdown(); });
+        if (outcome === 'cancelLive') f.showMessageBox.mockResolvedValue({ response: 0, checkboxChecked: false });
+        else if (outcome === 'cancelStopped' || outcome === 'returnRequested') {
+          f.showMessageBox.mockResolvedValueOnce({ response: 1, checkboxChecked: false })
+            .mockResolvedValueOnce({ response: 0, checkboxChecked: false })
+            .mockResolvedValueOnce({ response: outcome === 'returnRequested' ? 1 : 0, checkboxChecked: false });
+        } else f.showMessageBox.mockResolvedValue({ response: 1, checkboxChecked: false });
+        const event = { sender: f.mainWindow.webContents, senderFrame: f.mainWindow.webContents.mainFrame } as unknown as IpcMainInvokeEvent;
+        const result = await lifetime.step('restoredContentCheck', () => capability!.deleteWorkspace(event, {
+          formatVersion: 1, workspaceId: targetId,
+          typedLabel: registry.workspaces.find(entry => entry.workspaceId === targetId)!.workspaceLabel,
+          backupChoice: 'explicitDataLoss',
+        }).then(value => ({ value }), error => ({ error })));
+        if (outcome === 'replyLost' || outcome === 'quitReentry') {
+          expect(result).toMatchObject({ error: { message: 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN' } });
+          expect(f.relaunch).toHaveBeenCalledOnce();
+        } else if (outcome === 'releaseFailure') {
+          if (!('error' in result)) throw new Error('MISSING_RELEASE_FAILURE');
+          expect(hasErrorCause(result.error, releaseFailure)).toBe(true);
+          expect(f.relaunch).not.toHaveBeenCalled();
+        } else if (outcome === 'cancelLive' || outcome === 'cancelStopped' || outcome === 'returnRequested') {
+          expect(result).toEqual({ value: { formatVersion: 1, status: 'cancelled',
+            nextAction: outcome === 'cancelLive' ? 'continue' : outcome === 'cancelStopped' ? 'restartRequired' : 'relaunching' } });
+          expect(binding).toBeUndefined();
+          expect(f.relaunch).toHaveBeenCalledTimes(outcome === 'returnRequested' ? 1 : 0);
+        } else {
+          expect(result).toEqual({ value: { formatVersion: 1, status: 'completed',
+            navigation: mode === 'passive' ? 'reopenPrevious' : 'selector' } });
+          expect(f.relaunch).toHaveBeenCalledOnce();
+        }
+        expect(stopForDelete).toHaveBeenCalledTimes(mode === 'selector' || outcome === 'cancelLive' ? 0 : 1);
+        // These modeled receipts must not be presented as real payload deletion.
+        expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(before);
+        expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
+        expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
+        expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+        closing ??= lifecycle.shutdown();
+        if (outcome === 'releaseFailure') {
+          await expect(closing).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');
+        } else await closing;
+        shutdownChecked = true;
+      } catch (error) { firstFailure = { error }; throw error; }
+      finally {
+        if (!shutdownChecked) {
+          try { await (closing ?? lifecycle?.shutdown()); }
+          catch (cleanupFailure) {
+            if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+              'SYNTHETIC_RESULT_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+            throw cleanupFailure;
+          }
+        }
+      }
+    });
+  });
+});
+
 describe('W7.3 main preparation wiring', () => {
   it.for(['active', 'selector'] as const)('connects the W7.3 preparation in the real %s main composition', async (mode, context) => {
     const lifetime = beginTrackedStartupTest(context);

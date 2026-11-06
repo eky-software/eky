@@ -1,5 +1,5 @@
 import { join } from 'node:path';
-import { bindWorkspaceDeletionContinuation } from './workspaceDeletionContinuation.js';
+import { bindWorkspaceDeletionContinuation, createWorkspaceDeletionResultRuntime } from './workspaceDeletionContinuation.js';
 import { BrowserWindow, ipcMain, session } from 'electron';
 
 import { createOperationalLogFailureCapability } from '../diagnostics/operationalLogFailureCapability.js';
@@ -185,6 +185,24 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
     };
     capability = input.dependencies.createWorkspaceManagementCapability({
       ipcMain, mainWindow: window, passwordWindow, service: management.service,
+      ...(deletionBinding === undefined ? {} : { deletionRuntime: createWorkspaceDeletionResultRuntime({
+        assertCurrent() {
+          assertCurrent();
+          if (shutdownTask !== undefined) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+        },
+        assertMainCurrent: () => reservation.assertMainCurrent(),
+        assertOwned: () => reservation.assertMainOwned(),
+        // The service has released the selector lifecycle's operation lease.
+        // Main still owns the physical reservation and no backend was created.
+        async assertRuntimeAbsent() {
+          if (lifecycle.readState() !== 'stopped') throw new Error('WORKSPACE_RUNTIME_STILL_ACTIVE');
+        },
+        readRuntimeState() {
+          const state = lifecycle.readState();
+          return state === 'ready' ? 'available' : state === 'stopped' ? 'stopped' : 'unavailable';
+        },
+        maintenanceState: maintenanceLease, runtimeRelaunch,
+      }) }),
       confirmActiveWorkspaceReplacement: rejectReplacement, selectReplacementBackupSource: rejectReplacement,
       async selectBackupSource() {
         const result = await input.dependencies.showOpenDialog(window, {

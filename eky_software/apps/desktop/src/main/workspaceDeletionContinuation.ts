@@ -9,6 +9,10 @@ import type { WorkspaceDeletionPreparationOptions } from '../workspaces/manageme
 import type { WorkspaceDeletionCompletion, WorkspaceDeletionRecoveryOwner,
   WorkspaceManagementServiceOptions } from '../workspaces/management/workspaceManagementService.js';
 import { WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
+import type { WorkspaceDeletionResultRuntime } from '../workspaces/management/workspaceManagementCapability.js';
+import { parseWorkspaceDeletionOperationResult } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
+import type { WorkspaceMaintenanceStateReader } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import type { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import type { WorkspaceId } from '../workspaces/registry/workspaceRegistryTypes.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistryStore.js';
@@ -24,6 +28,63 @@ export interface WorkspaceDeletionMainCommand {
     workspaceRootIdentity: string;
   }>>;
   resume: NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume'];
+}
+
+/** Reply follow-up only. It neither authorizes nor performs file deletion. */
+export function createWorkspaceDeletionResultRuntime(input: Readonly<{
+  assertCurrent(): void;
+  assertMainCurrent(): void;
+  assertOwned(): Promise<void>;
+  assertRuntimeAbsent(): Promise<void>;
+  readRuntimeState(): 'available' | 'stopped' | 'unavailable';
+  maintenanceState: WorkspaceMaintenanceStateReader;
+  runtimeRelaunch: Pick<DeferredWorkspaceRuntimeRelaunch, 'request' | 'complete' | 'isRequested' | 'hasDispatched'>;
+}>): Readonly<WorkspaceDeletionResultRuntime> {
+  const check = input.assertCurrent.bind(input), owned = input.assertOwned.bind(input);
+  const main = input.assertMainCurrent.bind(input);
+  const absent = input.assertRuntimeAbsent.bind(input), readState = input.readRuntimeState.bind(input);
+  const readMaintenance = input.maintenanceState.readState.bind(input.maintenanceState);
+  const request = input.runtimeRelaunch.request.bind(input.runtimeRelaunch);
+  const complete = input.runtimeRelaunch.complete.bind(input.runtimeRelaunch);
+  const requested = input.runtimeRelaunch.isRequested.bind(input.runtimeRelaunch);
+  const dispatched = input.runtimeRelaunch.hasDispatched.bind(input.runtimeRelaunch);
+  let spent = false;
+  const fail = (): never => { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); };
+  const assertCurrent = () => assertUpdateJournalAuthority(check);
+  const assertStoppedIdle = () => {
+    assertCurrent();
+    if (readState() !== 'stopped' || readMaintenance() !== 'idle') fail();
+    assertUpdateJournalAuthority(main);
+    assertCurrent();
+  };
+  return Object.freeze({
+    readNextAction() {
+      assertCurrent();
+      const state = readState(), pending = requested(), sent = dispatched();
+      const idle = readMaintenance() === 'idle';
+      if (state === 'stopped') assertUpdateJournalAuthority(main);
+      assertCurrent();
+      if (idle && state === 'available' && !pending && !sent) return 'continue';
+      if (idle && state === 'stopped' && sent) return 'relaunching';
+      return 'restartRequired';
+    },
+    async complete(value: Readonly<WorkspaceDeletionCompletion>) {
+      if (spent) fail();
+      spent = true;
+      if (parseWorkspaceDeletionOperationResult(value).status !== 'completed' || requested()) fail();
+      // Only the capability's fulfilled service call enters here: its command
+      // and release have settled. Do not borrow the now-expired delete lease.
+      assertStoppedIdle();
+      await absent();
+      assertStoppedIdle();
+      await owned();
+      assertStoppedIdle();
+      request();
+      // Never await application shutdown from its own admitted management work.
+      complete(assertStoppedIdle);
+      if (!dispatched()) fail();
+    },
+  });
 }
 
 export function bindWorkspaceDeletionContinuation(input: {

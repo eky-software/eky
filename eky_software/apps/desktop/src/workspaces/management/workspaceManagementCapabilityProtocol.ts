@@ -1,6 +1,10 @@
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { validateWorkspaceLabel } from '../registry/workspaceLabelValidation.js';
 import {
+  isWorkspaceDeletionFailureCode,
+  type WorkspaceDeletionFailureCode,
+} from '../../observability/workspaceManagementFailureContext.js';
+import {
   hasExactDataKeys,
   isPlainDataRecord,
 } from '../registry/workspaceRegistryValueShape.js';
@@ -54,6 +58,15 @@ export type WorkspaceOperationResult = Readonly<{
   formatVersion: 1;
   status: 'cancelled' | 'completed' | 'relaunching';
 }>;
+
+export type WorkspaceDeletionOperationResult = Readonly<
+  | { formatVersion: 1; status: 'cancelled'; nextAction: 'continue' | 'relaunching' | 'restartRequired' }
+  | { formatVersion: 1; status: 'completed'; navigation: 'selector' | 'reopenPrevious' }
+  | { formatVersion: 1; status: 'failed'; errorCode: WorkspaceDeletionFailureCode;
+      sideEffectState: 'none'; nextAction: 'continue' | 'restartRequired' }
+  | { formatVersion: 1; status: 'recoveryRequired'; errorCode: WorkspaceDeletionFailureCode;
+      sideEffectState: 'unknown'; nextAction: 'restartRequired' }
+>;
 
 export function createWorkspaceOperationResult(
   status: WorkspaceOperationResult['status'],
@@ -130,6 +143,48 @@ export function parseWorkspaceDeletionRequest(
       typedLabel: validateWorkspaceLabel(value.typedLabel),
       backupChoice: value.backupChoice,
     });
+  } catch {
+    return invalidCapabilityValue();
+  }
+}
+
+// This validates a projection, not deletion, recovery or runtime authority.
+export function parseWorkspaceDeletionOperationResult(
+  value: unknown,
+): WorkspaceDeletionOperationResult {
+  try {
+    if (!isPlainDataRecord(value)) return invalidCapabilityValue();
+    if (hasExactDataKeys(value, ['formatVersion', 'status', 'navigation'])) {
+      if (value.formatVersion !== workspaceManagementCapabilityProtocolVersion ||
+          value.status !== 'completed' ||
+          (value.navigation !== 'selector' && value.navigation !== 'reopenPrevious')) {
+        return invalidCapabilityValue();
+      }
+      return Object.freeze({ formatVersion: workspaceManagementCapabilityProtocolVersion,
+        status: 'completed', navigation: value.navigation });
+    }
+    if (hasExactDataKeys(value, ['formatVersion', 'status', 'nextAction'])) {
+      if (value.formatVersion !== workspaceManagementCapabilityProtocolVersion ||
+          value.status !== 'cancelled' ||
+          (value.nextAction !== 'continue' && value.nextAction !== 'relaunching' && value.nextAction !== 'restartRequired')) {
+        return invalidCapabilityValue();
+      }
+      return Object.freeze({ formatVersion: workspaceManagementCapabilityProtocolVersion,
+        status: 'cancelled', nextAction: value.nextAction });
+    }
+    if (!hasExactDataKeys(value, ['formatVersion', 'status', 'errorCode', 'sideEffectState', 'nextAction']) ||
+        value.formatVersion !== workspaceManagementCapabilityProtocolVersion ||
+        !isWorkspaceDeletionFailureCode(value.errorCode)) return invalidCapabilityValue();
+    if (value.status === 'failed' && value.sideEffectState === 'none' &&
+        (value.nextAction === 'continue' || value.nextAction === 'restartRequired')) {
+      return Object.freeze({ formatVersion: workspaceManagementCapabilityProtocolVersion,
+        status: 'failed', errorCode: value.errorCode, sideEffectState: 'none', nextAction: value.nextAction });
+    }
+    if (value.status === 'recoveryRequired' && value.sideEffectState === 'unknown' && value.nextAction === 'restartRequired') {
+      return Object.freeze({ formatVersion: workspaceManagementCapabilityProtocolVersion,
+        status: 'recoveryRequired', errorCode: value.errorCode, sideEffectState: 'unknown', nextAction: 'restartRequired' });
+    }
+    return invalidCapabilityValue();
   } catch {
     return invalidCapabilityValue();
   }

@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { captureWorkspaceDeletionJournal } from '../workspaces/deletion/workspaceDeletionJournalCodec.js';
 import { validateWorkspaceId } from '../workspaces/registry/workspaceIdValidation.js';
-import { bindWorkspaceDeletionContinuation, type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
+import { bindWorkspaceDeletionContinuation, createWorkspaceDeletionResultRuntime,
+  type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
+import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 
 const operationId = '11111111-1111-4111-8111-111111111111';
 const workspaceId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
@@ -98,6 +101,133 @@ describe('main-only deletion terminal binding', () => {
     expect(f.removed).toHaveBeenCalledOnce();
   });
 });
+
+describe('main-only deletion result runtime', () => {
+  const completed = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: 'selector' as const });
+
+  it.each(['available', 'stopped', 'unavailable'] as const)('observes %s without granting mutation or restart authority', state => {
+    const f = resultRuntimeFixture(state);
+    if (state === 'available') f.main.mockImplementation(() => { throw new Error('SYNTHETIC_BACKEND_OWNS_RESERVATION'); });
+    expect(f.runtime.readNextAction()).toBe(state === 'available' ? 'continue' : 'restartRequired');
+    expect(f.main).toHaveBeenCalledTimes(state === 'stopped' ? 1 : 0);
+    expect(f.owned).not.toHaveBeenCalled();
+    expect(f.absent).not.toHaveBeenCalled();
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('requires main ownership for a stopped runtime instead of relying on its state observation', async () => {
+    const f = resultRuntimeFixture();
+    const first = new Error('SYNTHETIC_STOPPED_MAIN_LOST');
+    f.main.mockImplementation(() => { throw first; });
+    expect(() => f.runtime.readNextAction()).toThrow(first);
+    await expect(f.runtime.complete(completed)).rejects.toBe(first);
+    expect(f.owned).not.toHaveBeenCalled();
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('does not report continuation while another maintenance operation is still held', async () => {
+    const f = resultRuntimeFixture('available');
+    const lease = await f.lease.acquire('backup');
+    try { expect(f.runtime.readNextAction()).toBe('restartRequired'); }
+    finally { await lease.release(); }
+  });
+
+  it('does not turn a requested or rejected relaunch into a dispatched return', () => {
+    const f = resultRuntimeFixture();
+    f.relaunchOwner.request();
+    expect(f.runtime.readNextAction()).toBe('restartRequired');
+    expect(() => f.relaunchOwner.complete(() => { throw new Error('SYNTHETIC_RETURN_REJECTED'); })).toThrow();
+    expect(f.runtime.readNextAction()).toBe('restartRequired');
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('requests return only after fresh absence and physical main ownership, once', async () => {
+    const f = resultRuntimeFixture();
+    await f.runtime.complete(completed);
+    expect(f.events).toEqual(['absent', 'owned', 'relaunch']);
+    expect(f.relaunchOwner.hasDispatched()).toBe(true);
+    expect(f.runtime.readNextAction()).toBe('relaunching');
+    await expect(f.runtime.complete(completed)).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    expect(f.relaunch).toHaveBeenCalledOnce();
+  });
+
+  it.each(['absence', 'ownership'] as const)('rejects main-owner loss during the awaited %s proof without retry', async stage => {
+    const f = resultRuntimeFixture();
+    let enter!: () => void, finish!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const held = new Promise<void>(resolve => { finish = resolve; });
+    (stage === 'absence' ? f.absent : f.owned).mockImplementationOnce(async () => { enter(); await held; });
+    const outcome = f.runtime.complete(completed).then(value => ({ value }), error => ({ error }));
+    try {
+      await entered;
+      expect(f.relaunch).not.toHaveBeenCalled();
+      f.state.current = false;
+      finish();
+      expect(await outcome).toMatchObject({ error: f.revoked });
+      f.state.current = true;
+      await expect(f.runtime.complete(completed)).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      expect(f.relaunch).not.toHaveBeenCalled();
+    } finally { finish(); await outcome; }
+  });
+
+  it('rechecks runtime state after ownership proof instead of using an earlier stopped observation', async () => {
+    const f = resultRuntimeFixture();
+    f.owned.mockImplementationOnce(async () => { f.state.runtime = 'unavailable'; });
+    await expect(f.runtime.complete(completed)).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('rejects a new lease observed after physical ownership was read', async () => {
+    const f = resultRuntimeFixture();
+    let lease: Awaited<ReturnType<typeof f.lease.acquire>> | undefined;
+    f.owned.mockImplementationOnce(async () => { lease = await f.lease.acquire('update'); });
+    try {
+      await expect(f.runtime.complete(completed)).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      expect(f.relaunch).not.toHaveBeenCalled();
+    } finally { await lease?.release(); }
+  });
+
+  it.each([
+    { formatVersion: 1, status: 'prepared' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'continue' },
+    { ...completed, extra: 'private' },
+  ])('rejects a non-completion value before physical work at case %#', async value => {
+    const f = resultRuntimeFixture();
+    await expect(f.runtime.complete(value as never)).rejects.toThrow();
+    expect(f.absent).not.toHaveBeenCalled();
+    expect(f.owned).not.toHaveBeenCalled();
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('retains the actual dispatch failure and never retries the same completion', async () => {
+    const first = new Error('SYNTHETIC_DISPATCH_FAILED');
+    const f = resultRuntimeFixture();
+    f.relaunch.mockImplementationOnce(() => { throw first; });
+    await expect(f.runtime.complete(completed)).rejects.toBe(first);
+    expect(f.runtime.readNextAction()).toBe('restartRequired');
+    await expect(f.runtime.complete(completed)).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    expect(f.relaunch).toHaveBeenCalledOnce();
+  });
+});
+
+function resultRuntimeFixture(runtime: 'available' | 'stopped' | 'unavailable' = 'stopped') {
+  const state = { current: true, runtime };
+  const revoked = new Error('SYNTHETIC_MAIN_REVOKED');
+  const events: string[] = [];
+  const lease = new InMemoryWorkspaceMaintenanceLease();
+  const absent = vi.fn(async () => { events.push('absent'); });
+  const owned = vi.fn(async () => { events.push('owned'); });
+  const main = vi.fn();
+  const relaunch = vi.fn(() => { events.push('relaunch'); });
+  const relaunchOwner = new DeferredWorkspaceRuntimeRelaunch(relaunch);
+  const result = createWorkspaceDeletionResultRuntime({
+    assertCurrent() { if (!state.current) throw revoked; },
+    assertMainCurrent: main,
+    assertOwned: owned, assertRuntimeAbsent: absent, readRuntimeState: () => state.runtime,
+    maintenanceState: lease, runtimeRelaunch: relaunchOwner,
+  });
+  return { runtime: result, state, revoked, lease, events, absent, owned, main, relaunch, relaunchOwner };
+}
 
 function fixture(activeWorkspaceId: typeof workspaceId | null = workspaceId) {
   let current = true;

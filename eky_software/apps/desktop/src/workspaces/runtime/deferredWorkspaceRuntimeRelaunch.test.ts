@@ -9,10 +9,12 @@ describe('deferred workspace runtime relaunch', () => {
 
     deferred.request();
     expect(relaunch).not.toHaveBeenCalled();
+    expect(deferred.hasDispatched()).toBe(false);
 
     deferred.complete();
     deferred.complete();
     expect(relaunch).toHaveBeenCalledTimes(1);
+    expect(deferred.hasDispatched()).toBe(true);
   });
 
   it('does not relaunch without a request', () => {
@@ -23,6 +25,7 @@ describe('deferred workspace runtime relaunch', () => {
 
     expect(relaunch).not.toHaveBeenCalled();
     expect(deferred.isRequested()).toBe(false);
+    expect(deferred.hasDispatched()).toBe(false);
   });
 
   it('burns a rejected authority before a later completion can retry', () => {
@@ -34,11 +37,14 @@ describe('deferred workspace runtime relaunch', () => {
     deferred.request();
     deferred.complete();
     expect(relaunch).not.toHaveBeenCalled();
+    expect(deferred.isRequested()).toBe(true);
+    expect(deferred.hasDispatched()).toBe(false);
   });
 
   it('checks authority and returns synchronously without a re-entry window', () => {
     const events: string[] = [];
     const deferred = new DeferredWorkspaceRuntimeRelaunch(() => {
+      expect(deferred.hasDispatched()).toBe(false);
       events.push('return'); deferred.complete();
     });
     deferred.request();
@@ -56,6 +62,7 @@ describe('deferred workspace runtime relaunch', () => {
     await Promise.resolve();
     deferred.complete();
     expect(relaunch).not.toHaveBeenCalled();
+    expect(deferred.hasDispatched()).toBe(false);
   });
 
   it('does not repeat a throwing relaunch callback', () => {
@@ -66,5 +73,7 @@ describe('deferred workspace runtime relaunch', () => {
     expect(() => deferred.complete()).toThrow(failure);
     deferred.complete();
     expect(relaunch).toHaveBeenCalledTimes(1);
+    expect(deferred.isRequested()).toBe(true);
+    expect(deferred.hasDispatched()).toBe(false);
   });
 });

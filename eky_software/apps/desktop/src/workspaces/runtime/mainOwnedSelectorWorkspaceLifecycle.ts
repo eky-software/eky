@@ -91,6 +91,11 @@ export class MainOwnedSelectorWorkspaceLifecycle
     this.requestRelaunch();
   }
 
+  // Observation only: the operation's expired lease cannot authorize a restart.
+  readState(): 'ready' | 'quiescing' | 'quiesced' | 'stopped' | 'stopFailed' {
+    return this.failure === undefined ? this.state : 'stopFailed';
+  }
+
   private async proveMainOwned(): Promise<void> {
     try {
       this.assertCurrent();
