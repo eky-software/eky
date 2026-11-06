@@ -2348,8 +2348,288 @@ W7.4:n sisäisen lopullisen poiston ja keskeytysjatkon loppuhyväksyntä on
 [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa täsmällisen hyväksytyn lähteen ja seuraavan W7.5-suunnittelun.
 Poiston IPC, preload, painike ja backenditon tukivienti pysyvät suljettuina.
+W7.5:n aktiivinen [toteutussuunnitelma](#w75-toteutussuunnitelma) on alla.
 Alla olevat aiemmat päivätyt tilat ovat historiaa, eivät nykyinen työjono;
 hyväksytyt turvasopimukset ja avoimet ensihavainnot säilyvät.
+
+### W7.5 toteutussuunnitelma
+
+**6.11.2026: suunnitelma ja toteutus A-E-paloina hyväksytty;
+A:n tulosparseri, main-only-pyyntöelinikä ja paluusovitus ovat työpuussa.
+Julkiset kanavat pysyvät suljettuina.**
+[M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) omistaa hyväksytyn
+lähtörevision ja etenemistilan. Tämä osio omistaa W7.5:n puuttuvan
+käyttäjäpolun; W7.0/W7.3/W7.4:n hyväksytyt turvallisuus- ja
+käyttäytymissopimukset säilyvät. Vanhoja tutkimuskierroksia ei nosteta
+aktiiviseksi työjonoksi. Jokaisen palan tulos päivitetään tähän ja M1:een,
+eikä suunnittelun tarkistusta merkitä toteutuksen testinäytöksi.
+
+#### Tavoite ja säilyvät rajat
+
+Avataan nykyinen lopullinen poisto hallitusti nykyiseen yrityshallintaan,
+näytetään sen todellinen lopputulos ja mahdollistetaan rajattu tekninen
+tukivienti ilman avointa yritystä. Uutta poistomoottoria, palautusketjua,
+lokilukijaa, yleistä tilapalvelua, testialustaa tai riippuvuutta ei lisätä.
+Tietokanta, backup-formaatit, nimet, vahvistukset, poiston inventaario,
+journalit, hyväksytyt tarkistusvastuut ja nykyiset aikarajat säilyvät.
+
+Jo hyväksytyt käyttäytymisvalinnat eivät ole uusia kysymyksiä:
+
+- Aktiivinen, passiivinen, viimeinen ja todistetusti omistettu vikatilainen
+  yritys voidaan poistaa. Vikatila ei yksin anna poistolupaa eikä sitä
+  varten avata yrityksen tietokantaa.
+- Kirjoitettu kohdenimi ja mainin viimeinen native-vahvistus vaaditaan.
+  Ilman tarkistettua kopiota vaaditaan lisäksi nimenomainen menetyshyväksyntä.
+  Käyttöliittymän valinta ei korvaa mitään mainin tarkistusta.
+- Yrityksen omat tiedot, salaisuus-slotit ja todistetut palautusjäännökset
+  poistuvat nykyisen ketjun mukaan. Muiden yritysten aineisto, käyttäjän
+  ulkoiset PDF-kopiot/backupit ja asennustason tekniset lokit säilyvät.
+- Aktiivisen tai viimeisen yrityksen poiston jälkeen päädytään valitsimeen
+  ilman automaattista yrityksen luontia tai toisen yrityksen avausta.
+  Passiivisen poiston paluu koskee vain aiempaa yritystä nykyisin tarkistuksin.
+- Ennen pysyvää aloitusta peruminen säilyttää tiedot ja valmiin backupin.
+  Suljetun runtimen paluu vaatii W7.3:n erillisen käyttäjävalinnan. Pysyvän
+  aloituksen jälkeen käyttöliittymä ei peru poistoa; ulkoinen sovellussulku
+  käyttää edelleen nykyistä turvallista keskeytys- ja kylmäjatkosopimusta.
+
+#### Lähteestä varmistettu lähtötila
+
+Desktop-polut ovat `apps/desktop/src/`-juuresta, web-polut
+`apps/web/src/`-juuresta, ellei taulukossa sanota muuta.
+
+| Vastuu | Nykyinen omistaja | W7.5:n puuttuva liitos |
+| --- | --- | --- |
+| Mainin poisto | `workspaces/management/workspaceManagementService.ts`, `main/workspaceDeletionContinuation.ts` | `deleteWorkspace` ja pysyvä jatko ovat olemassa. Julkinen capability ei vielä kutsu niitä; sisäistä `completed/navigation`-kuittia ei kuljeteta käyttöliittymään. |
+| Pyyntö ja sulku | `workspaces/management/workspaceManagementCapability.ts`, `workspaceManagementCapabilityProtocol.ts` | Tiukka parseri, main-only-pyyntöelinikä sekä runtimeen sidottu peruutus-/valmistumisprojektio ovat työpuussa. Julkinen poistokanava ja virhe-/epävarmuusprojektio puuttuvat. Sisäistä `prepared`-arvoa ei saa julkaista onnistuneena poistona. |
+| Renderer-raja | `preload/index.cts`; webin `app/desktopBridge.ts`, `app/desktopWorkspaceManagement.ts` | Nimetty metodi ja molempien päiden suljettu validointi. Ei raakaa IPC:tä, polkua, journalia, salasanaa tai rendererin valitsemaa palautus-/poistokohdetta. |
+| Yrityshallinnan UI | `features/workspaces/WorkspaceManagementDialog.tsx`, `WorkspaceList.tsx`, `WorkspaceOperationForm.tsx`, `useWorkspaceManagement.ts`, `workspaceSelectorState.ts`, `workspaceManagementOperation.ts` | Nykyinen lista, lomake ja reducer laajennetaan poistolle. Myöhäiset operaatiovastaukset sidotaan nykyiseen capabilityyn ja yritysvalintaan; pelkkä statuslukijan sukupolvisuoja ei riitä. |
+| Runtime-siirtymä | `main/desktopComposition.ts`, `main/desktopSelectorComposition.ts`, `workspaces/runtime/deferredWorkspaceRuntimeRelaunch.ts` | Main-only-paluusovitus yhdistää palvelutyön, varauksen vapautuksen ja nykyisen käynnistyspyynnön. Julkinen käyttäjäpolku ja todellisen paketin todennus puuttuvat. Oma sulku sulkee myös tavalliset capabilityt; niitä ei elvytetä vastauksen vuoksi. |
+| Tukivienti | `supportBundle/supportBundleCapability.ts`, `supportBundleArchive.ts`, `supportBundleFileStore.ts`; `apps/desktop/scripts/inspect-support-bundle.mjs` | Nykyinen täysi v2 tarvitsee backendin. Backenditön v3, todellinen sukupolvisidonta ja virallinen tarkastin puuttuvat. Pelkkä handlerin poistaminen ei katkaise jo odottavaa dialogikutsua. |
+| Varhainen virhe | `main/desktopComposition.ts`, `main/index.ts`, `main/earlyStartup.ts` | Cold-poiston hylkäys voi tapahtua ennen valitsimen luomista. Sitä ei voi ratkaista pelkällä valitsimen tukipainikkeella eikä kiertämällä startup-porttia. |
+
+#### Pyyntö, tulos ja elinikä
+
+Säilytetään nykyinen `WorkspaceDeletionRequest` v1: vain `workspaceId`,
+`typedLabel`, `backupChoice` ja formaattiversio. Main valitsee polut,
+lineagen, nykyisen rekisterin ja kaikki pysyvät valtuudet itse. Sama
+nimivertailu ja nykyiset W7.3:n native-/backup-dialogit käytetään kerran.
+Poiston typed confirmation ei lainaa W7.1:n väljempää nimien
+ristiriitavertailua. Luonti-, tuonti-, vaihto-, korvaus- ja rename-protokollat
+eivät muutu uuden tulostyypin vuoksi.
+
+Uudelle poistometodille määritellään oma suljettu v1-tulos nykyisessä
+protokollaomistajassa. A-pala lukitsee kenttäjoukot molempien päiden testeihin:
+
+| Tulos | Pakollinen merkitys |
+| --- | --- |
+| `cancelled` | Main todistaa peruutuksen ennen pysyvää aloitusta. Erikseen erotetaan vielä käytettävä runtime, jo pyydetty hallittu paluu ja suljettuna pysyvä runtime; UI ei päättele tilaa Promise-vastauksesta. |
+| `completed` | Palvelun koko nykyinen poisto sekä sen loppukäsittely onnistuivat. Mainin validoima `selector`/`reopenPrevious` ei ole rendererin uusi kohdevalinta. Rekisteristä puuttuminen tai pelkkä `recordRemoved` ei riitä. |
+| `failed` | Turvallinen suljetun katalogin syy; vaikutuksettomuus näytetään vain todistetussa ennen aloitusta hylätyssä tilanteessa. Myös jatkotoiminnon käytettävyys tulee mainin todellisesta tilasta. |
+| `recoveryRequired` | Aloitus, lopputulos tai sulku on epävarma tai jatko on kesken. Ei vihreää onnistumista, automaattista uutta poistopyyntöä tai väitettä tietojen palautumisesta. |
+
+Kuljetuksen katkeaminen ei ole mikään näistä todistetuista tuloksista:
+UI näyttää epävarmuuden, ei arvaa peruutusta tai lähetä uudelleen.
+Raaka `Error`, `cause`, journal, tiedostopolku tai yrityssisältö ei kulje
+tuloksessa. Nykyinen sisäinen ensivirhe säilyy ennen turvallista projektiota.
+
+Protokollaomistajan suljettu v1-tulos nimeää kentät näin:
+`cancelled` sisältää vain `formatVersion`, `status` ja
+`nextAction: continue | relaunching | restartRequired`; `completed` vain
+`formatVersion`, `status` ja `navigation: selector | reopenPrevious`.
+`failed` sisältää lisäksi turvallisen katalogin `errorCode`-arvon,
+`sideEffectState: none` ja `nextAction: continue | restartRequired`;
+`recoveryRequired` vastaavasti `sideEffectState: unknown` ja
+`nextAction: restartRequired`. Jälkimmäisten kenttäjoukko on siis
+`formatVersion`, `status`, `errorCode`, `sideEffectState`, `nextAction`.
+Parseri hylkää lisäkentät ja accessor-/prototyyppisyötteet ennen niiden
+arvojen lukua ja palauttaa uuden muuttumattoman projektion. Parserin
+hyväksyntä ei itsessään todista poistamista tai anna jatkotoimintolupaa.
+
+Ennen aloitusta nykyinen pyyntö on sidottu lähettäjään, main frameen,
+dokumenttisukupolveen, valittuun yritykseen ja huoltovaraukseen. Kaikki
+odotukset revalidoidaan. Oma hyväksytty poistosulku saa säilyttää vain tämän
+pyynnön, ei avata muita capabilityjä uudelleen. Pysyvän aloituksen jälkeen
+nykyinen W7.4-omistaja jatkaa riippumatta rendererin vastauskanavasta;
+ulkoisen sulun vartijat ja keskeytysjatko säilyvät. Navigoinnin tai ikkunan
+vaihdon vuoksi vanhentunut vastaus ei muuta uuden näkymän tilaa.
+
+Main tekee paluun vain validoidun lopputuloksen ja nykyisen
+lifecycle-omistajan kautta. Se ei pyydä uutta runtimea ennen vanhan työn,
+kirjoittajien ja prosessin todettua päättymistä. Vapautusvirhe ei muutu
+onnistuneeksi poistoksi. Jo suljettua capabilityä tai kulutettua valtuutta
+ei elvytetä vastausta tai paluuta varten. Uutta pysyvää onnistumisjournalia
+ei tehdä: uudessa käynnistyksessä luetaan todellinen nykytila, eikä
+kadonneesta vastauksesta rakenneta tekaistua historiallista onnistumista.
+
+#### Käyttöliittymän rajaus
+
+Poisto tulee nykyisen yrityslistan kohdekohtaiseen toimintaan, ei uuteen
+hallintasovellukseen. Nykyinen dialogi/pääsivun yhteinen lomake säilyttää
+fokuksen, näppäimistökäytön, suomenkieliset tekstit ja busy-estot.
+Uusi `WorkspaceDeletionForm.tsx` saman featuren sisällä on sallittu
+yhden vastuun erottelu; yleistä lomake- tai navigointikehystä ei tehdä.
+Tekstit kuuluvat `i18n/fi.ts`:ään ja tyylit omistavan komponentin viereen.
+
+Vahvistus näyttää täsmällisen kohdenimen, tarvittaessa jo käytetyn
+samannimisten yritysten turvallisen erottimen sekä poistuvan/säilyvän
+aineiston. Menetyshyväksyntää ei esivalita. Nykyinen backup-valmistelija
+tukee vain avoimen kohdeyrityksen kopiota; passiiviseen tai vikatilaiseen
+kohteeseen ei luvata toimimatonta backup-vaihtoehtoa. Terveen passiivisen
+yrityksen voi avata nykyisellä erillisellä vaihtopolulla ennen poistoyritystä.
+Vikatilainen kohde käyttää hyväksyttyä erillistä menetyshyväksyntää.
+
+Valitsimen nykyinen `recoveryRequired` ei ole yleinen poistolupa.
+Kohteen avaamiskelvottomuus ja koko asennuksen epävarma omistajuus erotetaan:
+edellinen ei yksin estä poistopyynnön valmistelua, jälkimmäinen estää
+vaarallisen jatkon. Nykyisiä mainin vartijoita ei ohiteta poistopainikkeen
+vuoksi. Jos tarvittava turvallinen kohdeprojektiotieto puuttuu, se täsmennetään
+A-palassa nykyisen statusomistajan kautta ennen UI-kytkentää.
+
+Käyttöliittymä näyttää odotuksen ilman keksittyä prosenttia tai
+vaihevaltuutta. Varsinaisen pyynnön aikana se ei lähetä rinnakkaisia
+muutoksia. Peruutus tapahtuu ennen aloitusta nykyisissä vahvistusdialogeissa;
+kesken poiston ei tarjota peru-toimintoa. Tavallinen selain ei tarjoa
+toimimatonta desktop-poistoa tai tukivientiä.
+
+#### Backenditon tuki ja virhepolku
+
+Formaatti-, sisältö-, kokoraja-, permission- ja elinikäsopimuksen omistaa
+[nykyinen tukipakettisuunnitelma](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus).
+Toteutetaan sen erillinen `desktopOnly` v3, ei osittaista täyttä v2-pakettia.
+Täysi v2, legacy-tarkastin ja niiden backend-permission säilyvät. Täyden
+viennin virhe ei saa vaihtaa vaivihkaa backendittömään vientiin.
+
+Valitsimessa käytetään nykyistä argumentitonta tukivienticapabilityä ja
+mainin native-vahvistusta/tallennusvalintaa. Formaattia, backendin tilaa tai
+pakettiin tulevaa tapahtumaa ei valitse renderer. Nykyinen observer saa
+toimittaa rajatun, validoidun tämän operaation ensivirheen ja erillisen
+siivousvirheen nykyiselle main-omistajalle ennen lokikirjoitusyritystä.
+Tämä ei ole uusi lokipuskuri tai historiapalvelu. Puuttuva havainto säilyy
+puuttuvana myös lokitusvian jälkeen; journalista ei rekonstruoida syytä.
+
+**A-palassa ratkaistava liitos:** ennen valitsinta hylätty startup pysyy
+hylättynä. Ehdotus on tarjota nykyisen turvallisen virhe-dialogin kautta
+vain sama rajattu mainin tukivientitoiminto ennen normaalia poistumista.
+Ei normaalia valitsinta, business-API:a, korjaavaa rekisterilukua tai uutta
+runtimea. Tämä entry ei lainaa kuvitteellista renderer-sessionia: sen
+kertakäyttöinen lupa kuuluu nykyiselle virhettä käsittelevälle mainille ja
+päättyy sulussa. Sama arkistointi/tallennusomistaja palvelee molempia entryjä;
+IPC-entry vaatii lisäksi oikean ikkunan ja framen. Tämä on uusi
+sisääntulon valtuusraja, jonka **omistaja hyväksyi 6.11.2026 toteutukseen
+ja kytkentään kokeiden ja katselmuksen läpäistyä**. Hyväksyntä koskee vain
+tässä kuvattua rajattua vientiä. Nykyisen IPC-entryn ikkuna-/frame-/
+hallintasessiosopimus säilyy; varhainen main-entry ei lainaa sen lupaa.
+
+A-kokeessa turvallinen `currentOperation`-havainto otetaan nykyiseltä
+operaatio-omistajalta ennen käynnistysvirheen yleistä koodimuunnosta.
+Nykyinen `onFailure(errorCode)` ei yksin säilytä W7:n alkuperäistä syytä;
+siitä ei rekonstruoida havaintoa. Puuttuva havainto on `unavailable`.
+Vienti edellyttää v3:n vaatimaa validoitua runtime-/build-identiteettiä.
+Jos buildin luottamusta ei ole todettu, nykyinen turvallinen
+virheilmoitus ja poistuminen säilyvät ilman vientiä. Varhaista sisääntuloa
+ei käytetä yleisenä startup- tai v2-virheiden fallbackina. Tarkka liitos,
+identiteetin hylkäys ja ennen ensimmäistä ikkunaakin epäonnistuva tapaus
+katselmoidaan A:ssa; epävarmaa startup- tai sulkurajaa ei ohiteta.
+
+#### Toteutuspalat ja näyttöportit
+
+| Pala | Rajattu työ ja tiedostot | Portti ennen seuraavaa palaa |
+| --- | --- | --- |
+| W7.5 A: kuljetus ja elinikä | Nykyiset capability/protocol/service-, continuation-, relaunch- ja main-omistajat yllä. Lukitse tuloksen kentät, vikatilan luettavuus, oma sulku, loppuvastaus/paluu sekä varhaisen tukiviennin omistajuus. Pienet synteettiset ketjukokeet nykyisiin lähitesteihin; julkinen kanava pysyy kiinni. | Navigointi ennen/jälkeen aloituksen, kuittauskatko, lease-release-virhe, pysyvä jatko ilman vastaajaa, vanha vastaus uuteen näkymään ja tukidialogin sukupolvimuutos. Myös main-I/O:n päättyminen todistetaan. Rajattu riippumaton sopimuskatselmus; epäselvää omistajuutta ei siirretä seuraavan palan arvattavaksi. |
+| W7.5 B: rajattu tukipaketti | Nykyinen `supportBundleCapability`, archive/file-store, virallinen tarkastin sekä main/selector- ja varhainen virhe-entry. Tarvittaessa vain nimetty `supportBundleDesktopData.ts` ja sen lähitesti suljetulle v3-projektiolle nykyisessä kansiossa. | Oikeat gzip-/checksum-tavut, v2/legacy ennallaan, tiukka v3, ei havaintoa != terve, nolla backend-/SQLite-/historialukua, dialogin peruutus ja vanhentuminen ennen tallennusta. Ensisyy ei peity keräys-/sulkuvirheeseen. |
+| W7.5 C: näkyvä käyttäjäpolku | Nykyiset workspace-web-omistajat, bridge/preload ja capability. Lisää tiukka delete-metodi, lomake, turvalliset tulokset ja rajattu tukitoiminto samaan valitsimeen. Ei erillistä poisto-HTTP-reittiä tai business-permissionia. | DOM-, reducer-, kuljetus- ja capabilitytestit sekä oikea renderer -> preload -> main -> nykyinen palvelu. Tarkista väärennetty sender/frame, lisäkentät, toisto, sama nimi eri kohteella, status-/capabilityvaihto sekä peruutus. Test-only sisäinen poistokutsu ei todista julkista entryä. |
+| W7.5 D: todellinen kokonaisketju | `apps/e2e/tests/electron/workspaceDeletionExecution.spec.ts`, `backendlessWorkspaceSelector.spec.ts`, nykyiset valmistelu-/selector-tapaukset ja paketoitu `workspaceDeletionRecovery.spec.ts`; nykyiset eristetyt fixturet ja desktopin smoke-omistajat. Täydennä vain uusien rajojen testit. | Aktiivinen, passiivinen, viimeinen ja vikatilainen kohde; backup/peruutus; oikea restart ja uusi session; julkisen pyynnön keskeytys ja cold-jatko; muiden yritysten ja ulkoisten tiedostojen säilyminen. Myös v2- ja backenditön v3-vienti oikeasta compositionista viralliseen tarkastimeen. |
+| W7.5 E: integraatio | Omistavat ohjeet, matriisi ja nykyinen ajokytkentä, eheä diffi ja puhdas paketti. | Kokonaisuuden riippumaton loppukatselmus, vaikutusalueen regressiot ja buildit, tarvittava nykyinen stress/soak, hardened Windows backup -> inspect -> restore -> restart -> compare sekä poisto/restart. Saman täsmä-PR-headin nykyiset portit/auditointi, normaali suojattu merge ja uuden mainin omat portit. |
+
+A-C voidaan valmistella pieninä katselmoitavina muutoksina, mutta
+keskeneräistä julkista poistoa ei julkaista erillisenä valmiina ominaisuutena.
+Mainin pitkä tiedosto vain kokoaa nykyiset portit; sinne ei siirretä
+DTO-parseria, UI-tilakonetta tai paketin sisältösääntöjä.
+
+##### W7.5 A:n ensimmäinen elinkaarinäyttö
+
+[Edeltävä palvelukoe ja sen näyttöraja](release-0.3.0-integration-history.md#w75-an-ensimmäinen-elinkaarinäyttö)
+säilyvät historiassa. Ne eivät yksin hyväksy nykyistä käyttäjäpolkua.
+
+##### W7.5 A:n tulos- ja vastauseliniän osanäyttö
+
+[Edeltävä parseri-/vastauselinikäkoe](release-0.3.0-integration-history.md#w75-an-tulos--ja-vastauseliniän-osanäyttö)
+säilyy historiassa. Nykyinen main-only-metodi käyttää samaa pyyntöelinikää,
+mutta peruutuksen jatkotoiminto luetaan nyt erilliseltä main-omistajalta.
+
+##### W7.5 A:n runtime- ja paluusopimus
+
+`createWorkspaceDeletionResultRuntime` kuuluu nykyiseen mainin
+`workspaceDeletionContinuation.ts`-omistajaan. Se ei anna tiedostomuutoksen
+valtuutta eikä suorita poistoa. Capability odottaa ensin nykyisen palvelun
+koko komennon ja varauksen vapautuksen; vasta sen onnistumisen jälkeen
+mainin paluusovitus tarkistaa nykyisen asennusomistajan, pysäytetyn runtimen,
+vapaan huoltovarauksen ja fyysisen main-varauksen ennen kertakäyttöistä
+paluupyyntöä. Vanhaa vapautettua delete-leasea ei lainata. Paluu ei odota
+sovelluksen sulkua omasta hallintapyynnöstään. Dokumentin katoaminen voi
+estää vastaamisen, muttei poista tämän main-jatkon elinikää; ulkoinen
+main-sulku tai omistajuuden menetys estää jatkon.
+
+Ennen omaa sulkua peruttu aktiivinen yritys käyttää edelleen elävän
+backendin omistusta: asennussukupolven ja `assertRunning`-tarkistuksen pitää
+onnistua. Silloin ei vaadita jo mainille palautettua varausta. Suljetun
+runtimen tila on vain havainto; paluu vaatii erikseen main-omistajuuden.
+`DeferredWorkspaceRuntimeRelaunch.hasDispatched` erottaa hyväksytyn
+synkronisen callbackin pelkästä pyynnöstä tai hylätystä valtuudesta.
+Peruutus näyttää `relaunching` vain tämän havainnon perusteella;
+muutoin suljettu/epävarma tila pysyy `restartRequired`-tilassa.
+
+Kolmentoista kokonaisen lähitiedoston vaikutussarja läpäisi 393 testiä.
+Koko nykyinen main-tiedosto läpäisi 396 testiä ilman ohituksia, mukaan
+lukien sen kymmenen uutta tulosketjua. Tyypitys läpäisi;
+rajattuun lähde- ja main-testikatselmukseen ei jäänyt löydöstä. Ensimmäinen
+main-koe havaitsi yllä korjatun elävän backendin omistajuustulkinnan.
+Näiden main-kokeiden poistokuluttaja ja kuitti ovat kontrolloituja, eivät
+uusi fyysisen poiston tai native-prosessin hyväksyntä. Sarjoja ei summata
+erilliseksi kokonaiskattavuudeksi. Virhe-/epävarmuustuloksen
+projektio, web-lukija ja varhaisen tukiviennin A-näyttö ovat seuraava työ.
+
+#### Testikattavuus ilman rinnakkaista testijärjestelmää
+
+W7.4:n journal-, 23 kohteen rooli-, fyysinen poisto-, metadata- ja
+prosessikatkotestit säilyvät. Niiden koko yhdistelmää ei kopioida kaikkiin
+UI-/tukivientitesteihin. Uudet luottamus- ja kilpailurajat testataan ensin
+omistajan vieressä pienellä fixturellä, sitten edustavalla oikealla ketjulla.
+Käyttöliittymän julkiseen kutsuun siirrettävä vanha E2E-tapaus saa korvata
+sisäisen kutsun vain, jos sen kaikki nykyiset tiedosto-, eristys-, sulku-
+ja restart-väittämät säilyvät; muuten vanha tapaus jää erikseen.
+
+Ennen pitkiä ajoja todistetaan pakotetun synteettisen alkuperäisvirheen
+kulku nykyiseen salattuun CI-pakettiin ja sen purku, erillisine
+siivousvirheineen. Tämä ei tarkoita raakavirhettä käyttäjän sanitoituun
+tukipakettiin. Uudet testit liitetään nykyiseen matriisiin, kanoniseen
+komentoon ja sen valintaregressioon; testimäärä tai `--list` ei ole näyttö.
+Nykyinen core-työnjako, Electron development-/packaged-jako, aikarajat,
+siivousvaatimukset ja ensihylkäysten säilytys pysyvät. Uutta CI-työtä,
+automaattista uusintasilmukkaa tai aikarajan nostoa ei suunnitella tähän.
+
+#### Dokumentit ja avoimet kohdat
+
+Toteutuksen mukana päivitetään vain muuttuvien sopimusten omistajat:
+tämä W7.5-osio, lyhyt M1, tukipakettisuunnitelma, ADR-0011:n toimitusraja,
+desktopin toteutussuunnitelman lifecycle-kytkentä, webin rakenneohje,
+Diagnosticsin/moduulimatriisin tukivastuu sekä E2E-matriisi ja -ympäristö.
+Tapahtumakatalogia muutetaan vain todellisen projektioeron vuoksi.
+Historiallinen hyväksyntänäyttö ja tuntemattomat virhesyyt säilyvät erillään.
+
+**Avoinna ennen kytkentää:** A:n tarkka lopputulos-/paluusopimus,
+varhaisen virhe-entryn toteutusnäyttö,
+tukiviennin nykyisen operaation havaintolähde
+sekä D:n paketoidun julkisen entryn ohjaus nykyisillä turva-asetuksilla.
+Nämä ovat nimetyt toteutusportit, eivät peruste aloittaa yleistä
+arkkitehtuuri- tai suorituskykyremonttia. Jos hardened-paketin painiketta
+ei voi ohjata nykyisillä hyväksytyillä välineillä, erotetaan development-
+käyttäjäpolku ja paketin nykyinen todiste sekä sovitaan puuttuva näyttö;
+suojausta tai testiruntimea ei väljennetä salaa.
+
+Omistajan jatkolupa aloittaa A:n rajatut kokeet ja toteutuksen. Julkisia
+tuotantokanavia ei avata ennen niiden omia näyttöportteja. W7.5 on valmis vasta palojen A-E
+todellisilla näytöillä; sen hyväksyntä ei vielä sulje koko 0.3.0:n M5:tä.
 
 **Alkuperäinen rajaus:** omistajan 2026-09-22 päätöksellä `0.3.0`-julkaisuun kuuluva
 vaadittu ominaisuus. M1:n valmistelussa keskustelun nimetyt

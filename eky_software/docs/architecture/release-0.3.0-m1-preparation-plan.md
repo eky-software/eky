@@ -24,13 +24,34 @@ Windowsin paketoidut palautus-/poistopolut on todennettu hyväksytyssä
 rajauksessa. Linuxin kaksi pakollista peräkkäistä 15 minuutin työtä,
 yhteisvara 30 minuuttia, säilyttävät kaikki testit ja tarkistukset.
 
-**Seuraava työ on W7.5:n suunnittelu:** näkyvän poistotoiminnon,
-turvallisen palautteen sekä backendittoman tukiviennin nykyisten
-[omistajien](local-company-workspace-plan.md#w7-workspace-deletion) tarkistus
-ja puuttuvan toteutussopimuksen täsmentäminen. Delete-IPC, preload,
-poistopainike ja backenditon tukivienti pysyvät siihen asti suljettuina.
-Tämä kirjaus ei aloita W7.5:n toteutusta tai hyväksy koko 0.3.0-julkaisua;
+**Nykyinen suunnittelupohja:** dokumenttijatkon [PR #328](https://github.com/eky-software/eky/pull/328#issuecomment-6679508727)
+on yhdistetty main-revisioon `9657fdc17a5457bfaec7c6aa5ebf1661a5130f85`.
+Myös tämän mainin oma [V2](https://github.com/eky-software/eky/actions/runs/42175719899)
+ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42176483388)
+läpäisivät. Tämä ei avaa hyväksyttyä W7.4:ää uudelleen.
+
+**Aktiivinen työ on W7.5 A:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
+toteutuscheckpoint on A:n virhe-/epävarmuustulos, web-lukija ja varhaisen
+tukiviennin koe, ei poistopainikkeen julkaisu. Nykyisen sisäisen paluu- ja
+pyyntöelinikäliitoksen osanäyttö on alla; julkinen/paketoitu ketju ja tuki
+ennen yritysvalinnan valmistumista ovat vielä todentamatta. Omistaja
+hyväksyi 6.11.2026 myös varhaisen native-tukiviennin toteutuksen ja
+kytkennän vasta kokeiden ja katselmuksen läpäistyä.
+Delete-IPC, preload, poistopainike ja backenditon tukivienti pysyvät
+suljettuina ensimmäisten kokeiden ja kytkentäporttien aikana. W7.5:tä
+toteutetaan saman Goalin rajattuina paloina; koko 0.3.0 ei ole hyväksytty;
 muut jäljellä olevat tehtävät ja M5 ovat [roadmapissa](release-0.3.0-plan.md).
+
+**A:n nykyinen osanäyttö:** tulosparseri, vastauselinikä ja main-only-
+paluusovitus ovat haarassa. Kolmentoista kokonaisen lähitiedoston 393 testiä,
+koko main-tiedoston 396 testiä ilman ohituksia, tyypitys ja rajattu
+katselmus läpäisivät nykyisillä rajoilla.
+[Näytön rajaus](local-company-workspace-plan.md#w75-an-runtime--ja-paluusopimus)
+ei ole uusi fyysisen poiston, julkisen IPC:n tai paketoidun sovelluksen
+hyväksyntä. Edeltävät päällekkäiset osanäytöt säilyvät
+[historiassa](release-0.3.0-integration-history.md#w75n-an-edeltävät-osanäytöt-6112026),
+eikä testimääriä summata.
 
 Vanhat ensihylkäykset, epäselvät alkuperäiset syyt ja varmentamattomat
 siivoustilat säilyvät [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-prmain-loppuhyväksyntä-6112026),

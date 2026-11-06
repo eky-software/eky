@@ -5,6 +5,67 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.5:n A:n edeltävät osanäytöt 6.11.2026
+
+Seuraavat kaksi osanäyttöä on siirretty W7.5-suunnitelmasta sellaisinaan.
+Niiden seuraava-pala-kirjaukset kuvaavat silloista työtilannetta.
+[Nykyinen A-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+ja M1 omistavat jatkon; päällekkäisiä testiajoja ei lasketa yhteen.
+
+### W7.5 A:n ensimmäinen elinkaarinäyttö
+
+`workspaceManagementDeletionShutdown.test.ts` käyttää samaa nykyistä
+`WorkspaceManagementService`- ja maintenance-lease-omistajaa. Sen yhdeksän
+aiempaa testiä säilyivät ja kymmenen uutta kontrollia läpäisi:
+requesterin katoaminen luovutuksen jälkeen, vanheneminen ennen luovutusta,
+lopputyön ja vapautuksen erillinen odotus, vapautusvirhe, alkuperäinen
+kuittausvirhe ennen siivousvirhettä, puuttuva lopputodiste tai ristiriitainen
+paluuohje, ulkoisen sulun odotus ja ennen aloitusta tehty peruutus sekä
+ennen aikojaan valmistuvan sulun tunnistava kielteinen kontrolli.
+Poiston valmistuminen ei automaattisesti pyydä uutta käynnistystä.
+
+Nykyisen capabilityn, pyyntöprotokollan ja valmistelueliniän kanssa ajettu
+neljän kokonaisen tiedoston regressiosarja läpäisi 101 testiä nykyisillä
+rajoilla. Desktopin tyypitys läpäisi. Luvut sisältävät samat 19 sulkutestiä,
+eivät erillistä lisäkattavuutta. Rajatun riippumattoman katselmuksen
+odotusväittämän tarkkuuspuute korjattiin ja sen kielteinen kontrolli
+läpäisi; muuttuneen osan jälkikatselmukseen ei jäänyt löydöstä.
+
+Jatko- ja poistokuitti ovat tässä kontrolloituja portteja: tämä ei ole
+oikean journalin, native-varauksen, IPC:n tai paketoidun poiston uusi
+hyväksyntä. Tuotantokoodia, kanavia tai aikarajoja ei muutettu. Seuraava
+A-pala lukitsee suljetun julkisen tuloksen ja runtime-/paluutiedon lähteen
+sekä todistaa capabilityn vastauseliniän; varhaisen tukiviennin koe on
+edelleen avoin.
+
+### W7.5 A:n tulos- ja vastauseliniän osanäyttö
+
+Nykyiseen protokollaan on lisätty yllä kuvattu tulosparseri ja nykyiseen
+capabilityyn main-only `deleteWorkspace`. Se käyttää valmistelun kanssa
+samaa pyyntöelinikää ja kutsuu nykyistä palvelua; poistolle ei vielä
+rekisteröidä IPC-kanavaa eikä preload-/UI-metodia. Sisäinen peruutuskuitti
+ei sisällä julkisen tuloksen `nextAction`-arvoa. Sitä ei päätellä kuitista.
+
+Seitsemän kokonaisen lähitiedoston vaikutusalueen sarja läpäisi 249 testiä
+nykyisillä rajoilla ja desktopin tyypitys läpäisi. Samassa luvussa ovat
+aiemmat sulku-, valmistelu- ja paluutestit, ei erillistä lisäkattavuutta.
+Uudet kontrollit erottavat oman sulun ja ulkoisen sulun, estävät rinnakkaisen
+muutoksen sekä ennen luovutusta vanhentuneen pyynnön. Luovutuksen jälkeinen
+dokumentin katoaminen ei peru palvelun pysyvää jatkoa, mutta vanhalle
+dokumentille ei palauteta tulosta. Capabilityn ja palvelun sulun odotukset
+todistetaan erikseen; kielteinen kontrolli tunnistaa ennenaikaisen
+capability-sulun palvelun yhä odottaessa. Virheellinen sisäinen tulos
+hylätään; alkuperäinen poikkeus säilyy vain mainin sisäisessä ketjussa.
+
+Rajatussa riippumattomassa katselmuksessa havaittu yhteisen odotusväittämän
+aukko korjattiin ja sen kielteinen kontrolli läpäisi. Jälkikatselmukseen
+ei jäänyt löydöstä. Jatkokomento ja poistokuitti ovat uusissa
+vastauselinikäkontrolleissa hallittuja portteja, eivät uusi journal-/native-/
+pakettitodiste. Todelliseen runtime-tilaan sidottu julkinen tulostuottaja,
+paluukäynnistys, webin tuloslukija ja varhaisen tukiviennin näyttö ovat
+vielä A:n jatkoa. Aiemman ensimmäisen palvelukokeen tuotantokoodin
+muuttumattomuus koskee vain sitä koetta, ei tätä parseri-/capability-palaa.
+
 ## W7.4:n PR/main-loppuhyväksyntä 6.11.2026
 
 W7.4 A-F hyväksyttiin [PR #327:n loppukirjauksessa](https://github.com/eky-software/eky/pull/327#issuecomment-6678341652).

@@ -973,6 +973,32 @@ ja scheduler säilyvät. Main-/marker-kohdekokeet eivät vielä hyväksy
 D:n todellista etenemisomistajaa tai paketoitua poistoa; ajantasainen näyttö
 on M1:n jatkamiskohdassa. Tavallisen sulun ja W7.3:n peruutuspaluun säännöt säilyvät.
 
+### W7.5:n poistotulos ja paluupyyntö
+
+Main-only-poistocapability odottaa nykyisen management-palvelun koko
+poistokomennon ja sen delete-varauksen vapautuksen. Onnistuneen tuloksen
+jälkeen nykyinen mainin `workspaceDeletionContinuation`-sovitus tarkistaa
+runtime-poissaolon, huoltovarauksen vapaan tilan ja mainin nykyisen fyysisen
+varauksen ennen nykyistä lykättyä paluupyyntöä. Se ei lainaa jo vapautettua
+operaatiovaltuutta eikä anna uutta poistolupaa. Pyyntö ei odota omasta
+capability-työstään sovelluksen sulkua; tavallinen quit-omistaja liittyy
+silti kaikkiin keskeneräisiin main-töihin ennen prosessin päättymistä.
+
+Vastausdokumentin vanheneminen estää vastauksen, ei palvelulle luovutetun
+poiston tai mainin turvallisesti varmennetun paluun valmistumista.
+Ulkoinen main-sulku estää paluupyynnön. Vapautuksen tai mainin jatkon
+epäonnistuminen ei tuota onnistunutta poistovastausta.
+
+Peruutuksen jatkotoiminto luetaan nykyisestä runtimesta, ei peruutuskuitista.
+Elävä aktiivinen backend säilyttää oman varauksensa ja sen `assertRunning`
+tarkistetaan; suljetussa tilassa vaaditaan erikseen main-omistajuus.
+Selector-lifecyclen `readState` on vain havainto, ei main-varauksen tai
+kulutetun delete-leasen elvytys. Lykätyn paluun `hasDispatched` tarkoittaa
+vain onnistuneesti palautunutta synkronista käynnistyscallbackia, ei uuden
+prosessin käynnistys-/terveystulosta. Julkinen kanava, preload ja UI pysyvät
+vielä suljettuina. Nykyisen [W7.5-sopimuksen](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+muut näyttö- ja pakettiportit säilyvät.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit

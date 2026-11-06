@@ -25,6 +25,19 @@ querya, `companyId`:tä tai runtime-sessionia.
 
 ## W7:n hyväksytty jatkosuunta
 
+W7.5:n kytkentäjärjestyksen ja avoimet elinkaariliitokset omistaa
+[nykyinen toteutussuunnitelma](local-company-workspace-plan.md#w75-toteutussuunnitelma).
+Alla oleva v3-sopimus on edelleen ehdotus/kokeella todennettu osa, ei
+toimitettu backenditön vienti. W7.5 suunnittelee myös ennen yritysvalitsimen
+valmistumista tapahtuvan virheen tukireitin ohittamatta startup-portteja.
+Omistaja hyväksyi 6.11.2026 myös W7.5-suunnitelman rajatun native-viennin
+ennen yritysvalinnan/pääikkunan valmistumista, vasta kokeiden ja katselmuksen
+jälkeen. Sen kertakäyttöinen valtuus kuuluu virhettä käsittelevälle mainille;
+alla oleva IPC-entryn ikkuna-/frame-/hallintasessiosuoja säilyy ennallaan.
+Runtime-/build-identiteetti on ensin validoitava. Ilman sitä nykyinen
+virheilmoitus ja poistuminen säilyvät, eikä yleistä startup-fallbackia avata.
+Havainto otetaan ennen turvallista koodimuunnosta; puuttuva jää puuttuvaksi.
+
 Omistaja hyväksyi 24.10.2026 yritysvalintaan rajatun desktop-tukipaketin
 nykyisen keräyksen pohjalta myös ilman business-backendia.
 [W7:n sopimus](local-company-workspace-plan.md#palaute-vastuut-ja-todennus)
