@@ -35,6 +35,23 @@ Riippumaton lähdekatselmus ja toteutetun deltan jatkokatselmus eivät
 löytäneet puutetta. Paikallinen valintanäyttö ei vielä hyväksy kummankaan hosted-työn kestoa
 tai koko integraatiota; uusi korjausrevisio vaatii omat normaalit porttinsa.
 
+Saman kierroksen ensimmäinen workspace-fault-consumer hylättiin
+`activeWorkspaceFirstStartFailure`-skenaarion aikakatkaisuun. MSI:n
+omistetun ikkunan havainnot osoittivat sovellusten sulkemisvahvistuksen
+odotuksen. Näkyvä sovellusnimi ei yksin todista prosessin identiteettiä
+tai varmasti ulkoista infrastruktuurivikaa; rajattu lähdetarkistus ei
+osoittanut korjattavaa EKY-vikaa. Pakollinen caller-result oli säilynyt
+ja nykyinen strict-lukija hyväksyi sen epäonnistumistuloksena.
+Julkaisuvaiheen exit 1 raportoi tätä aiempaa hylkäystä, ei itsenäistä
+osoitettua tulostiedoston kirjoitusvikaa. Omistetun prosessipuun ja
+tuoteprosessien poissaolo, semanttinen siivous ja fixturen poisto oli
+varmennettu. Consumerin kolme myöhempää skenaariota jäivät ajamatta.
+Toinen consumer läpäisi kaikki viisi, mutta ei korvaa ensimmäistä.
+Kaikki 69 säilyneen salatun tiedoston tavut ja ajosidonta varmennettiin;
+keräys oli yhden lähteen osalta rajattu, ei täydellinen jälki.
+Uusintaa tai asennusehtojen muutosta ei käytetty tämän havainnon
+sulkemiseen. Uuden revision normaalit portit säilyvät pakollisina.
+
 ## W7.4:n hyväksytty Linux core-CI-työnjako 6.11.2026
 
 Omistaja hyväksyi kaksi pakollista peräkkäistä 15 minuutin työtä,

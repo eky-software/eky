@@ -20,8 +20,13 @@ on avoinna. Nykyisen työnjaon korjauksen lähtöhead on
 [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42155202662)
 läpäisi, mutta [V2:n](https://github.com/eky-software/eky/actions/runs/42155202744)
 ensimmäinen core-työ katkaistiin 15 minuutissa kesken backendin testien.
-Toinen työ jäi oikein ajamatta. Muut jo läpäisseet portit eivät korvaa tätä
-estettä. Kuorma jaetaan samoihin kahteen 15 minuutin työhön: desktop ensin,
+Toinen työ jäi oikein ajamatta. Lisäksi ensimmäinen workspace-fault-ajo
+hylättiin MSI:n sulkemisvahvistuksen odotukseen; säilynyt strict-luettu
+epäonnistumistulos todistaa omistetun prosessipuun ja fixturen siivouksen.
+Toinen fault-ajo läpäisi kaikki viisi skenaariota, mutta ei korvaa ensimmäistä.
+Rajattu lähdekatselmus ei osoittanut korjattavaa EKY-vikaa tähän odotukseen;
+havainto jää avoimeksi. Muut läpäisseet portit eivät korvaa esteitä.
+Kuorma jaetaan samoihin kahteen 15 minuutin työhön: desktop ensin,
 muut paketit ja nykyiset jatkotarkistukset toisessa. Ajantasainen head
 ja hyväksyntä varmennetaan PR:stä; vanhoja ajoja ei siirretä uudelle SHA:lle.
 Myös ensimmäinen head `25bb186fc5dbd67805490dfb32c79e900952360e`,
