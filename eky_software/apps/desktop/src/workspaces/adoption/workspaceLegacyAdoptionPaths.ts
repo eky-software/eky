@@ -18,21 +18,23 @@ export interface WorkspaceLegacyAdoptionPaths {
   readonly finalRoot: string;
 }
 
+export function deriveWorkspaceLegacyRuntimePaths(userDataRoot: string) {
+  if (typeof userDataRoot !== 'string' || userDataRoot.includes('\0') || !isAbsolute(userDataRoot)) {
+    throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_INVALID');
+  }
+  const root = resolve(userDataRoot);
+  return Object.freeze({ userDataRoot: root, legacyRuntimeRoot: join(root, 'runtime') });
+}
+
 export function deriveWorkspaceLegacyAdoptionPaths(
   userDataRoot: string,
   operationId: string,
   workspaceId: WorkspaceId,
 ): Readonly<WorkspaceLegacyAdoptionPaths> {
   try {
-    if (
-      typeof userDataRoot !== 'string' ||
-      userDataRoot.includes('\0') ||
-      !isAbsolute(userDataRoot) ||
-      !operationIdPattern.test(operationId)
-    ) {
-      throw new Error('invalid');
-    }
-    const root = resolve(userDataRoot);
+    const legacy = deriveWorkspaceLegacyRuntimePaths(userDataRoot);
+    if (!operationIdPattern.test(operationId)) throw new Error('invalid');
+    const root = legacy.userDataRoot;
     const validatedWorkspaceId = validateWorkspaceId(workspaceId);
     const operationsRoot = join(root, 'workspace-operations');
     const operationRoot = join(operationsRoot, operationId);
@@ -50,7 +52,7 @@ export function deriveWorkspaceLegacyAdoptionPaths(
     }
     return Object.freeze({
       userDataRoot: root,
-      legacyRuntimeRoot: join(root, 'runtime'),
+      legacyRuntimeRoot: legacy.legacyRuntimeRoot,
       operationsRoot,
       operationRoot,
       candidateRoot,

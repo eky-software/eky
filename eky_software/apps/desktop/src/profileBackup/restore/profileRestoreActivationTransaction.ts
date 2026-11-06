@@ -9,7 +9,6 @@ import {
 } from 'node:fs/promises';
 import {
   dirname,
-  isAbsolute,
   join,
   resolve,
 } from 'node:path';
@@ -28,6 +27,12 @@ import type {
   ProfileRestoreJournalWriteAuthority,
 } from './profileRestoreActivationJournalStore.js';
 import { renameProfilePathWithRetry } from './profileRestoreFileMove.js';
+import {
+  assertProfileRestoreActivationPaths as validatePaths,
+  assertProfileRestoreOperationId as validateOperationId,
+  deriveProfileRestoreActivationOperationPaths,
+  type ProfileRestoreActivationPaths,
+} from './profileRestoreActivationPaths.js';
 import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
 import { readProfileRestoreForwardRecoverySlot } from './profileRestoreForwardRecoverySlot.js';
 import {
@@ -41,18 +46,12 @@ import {
   readProfileRestoreRollbackRecoverySlot,
   type ProfileRestoreOriginalRecoverySlot,
 } from './profileRestoreRollbackRecoverySlot.js';
+import { assertSynchronousProfileRestoreMutationAuthority as assertSynchronousRollbackRootAuthority,
+  type ProfileRestoreColdCleanupContext } from './profileRestoreMutationAuthority.js';
 
-const operationIdPattern =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+export { assertSynchronousProfileRestoreMutationAuthority as assertSynchronousRollbackRootAuthority } from './profileRestoreMutationAuthority.js';
+
 const terminalCleanupReadBatchSize = 4;
-
-interface ProfileRestoreActivationPaths {
-  activeDatabasePath: string;
-  activeDocumentsRoot: string;
-  failedRoot: string;
-  rollbackRoot: string;
-  stagingRoot: string;
-}
 
 interface ProfileRestoreActivationTransactionDependencies {
   afterPhasePersisted?(
@@ -74,11 +73,14 @@ export interface ProfileRestoreColdRollbackRoots {
 export interface ProfileRestoreColdRollbackMutationAuthority {
   assertContent(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
   beforeStagingMove(journal: Readonly<ProfileRestoreActivationJournal>): Promise<void>;
+  readonly assertReadOwnership?: () => Promise<void>;
+  readonly assertMutationCurrent?: () => void;
 }
 
 export interface ProfileRestoreTerminalMutationAuthority {
   readonly census: ProfileRestoreTerminalCleanupCensus;
   assertCurrent(journal: Readonly<ProfileRestoreActivationJournal>, removed: ReadonlySet<string>): Promise<void>;
+  readonly assertMutationCurrent?: () => void;
 }
 
 export interface ProfileRestoreRollbackRootRemovalAuthority {
@@ -86,13 +88,6 @@ export interface ProfileRestoreRollbackRootRemovalAuthority {
   assertCurrent(): void;
 }
 
-export function assertSynchronousRollbackRootAuthority(assertCurrent: () => void): void {
-  const result: unknown = assertCurrent();
-  if (result !== undefined) {
-    void Promise.resolve(result).catch(() => undefined);
-    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
-  }
-}
 
 export class ProfileRestoreActivationTransaction {
   private readonly paths: ProfileRestoreActivationPaths;
@@ -119,7 +114,11 @@ export class ProfileRestoreActivationTransaction {
     operationId: string,
     assertAuthority?: () => Promise<void>,
     capturePreparation?: (journal: Readonly<ProfileRestoreActivationJournal>) => void,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
+    if (assertMutationCurrent !== undefined && (typeof assertMutationCurrent !== 'function' || typeof assertAuthority !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
     validateOperationId(operationId);
     const assertAbsent = async () => {
       await assertAuthority?.();
@@ -145,7 +144,8 @@ export class ProfileRestoreActivationTransaction {
     );
 
     await assertAbsent();
-    await createPrivateDirectory(paths.rollbackOperationRoot);
+    await createPrivateDirectory(paths.rollbackOperationRoot,
+      assertMutationCurrent === undefined ? undefined : assertAbsent, assertMutationCurrent);
     await assertAbsent();
     const prepared = captureJournal({
       formatVersion: 1,
@@ -160,6 +160,7 @@ export class ProfileRestoreActivationTransaction {
       previous: undefined,
       assertAbsent: async () => { await assertAuthority?.(); },
       assertCurrent: journal => this.assertJournalMutation(journal, assertAuthority),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
   }
 
@@ -211,11 +212,30 @@ export class ProfileRestoreActivationTransaction {
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
     assertContent?: (journal: Readonly<ProfileRestoreActivationJournal>) => Promise<void>,
+    journalWriteContext?: ProfileRestoreColdCleanupContext,
+    assertLiveMutationCurrent?: () => void,
   ): Promise<ProfileRestoreActivationJournal> {
+    if (assertLiveMutationCurrent !== undefined && (typeof assertLiveMutationCurrent !== 'function' ||
+        expected === undefined || typeof assertRecoveryAuthority !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
     if ((assertRecoveryAuthority !== undefined && expected === undefined) ||
         (assertContent !== undefined && (expected === undefined || assertRecoveryAuthority === undefined))) {
       throw new Error('PROFILE_RESTORE_RECOVERY_REQUIRED');
     }
+    if (journalWriteContext !== undefined && (expected === undefined || typeof assertRecoveryAuthority !== 'function' ||
+        (assertContent === undefined ? typeof assertLiveMutationCurrent !== 'function' : typeof assertContent !== 'function') ||
+        journalWriteContext === null ||
+        typeof journalWriteContext.assertReadOwnership !== 'function' || typeof journalWriteContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    const assertRead = journalWriteContext?.assertReadOwnership.bind(journalWriteContext);
+    const mutation = journalWriteContext?.assertMutationCurrent.bind(journalWriteContext);
+    const assertMutationCurrent = mutation === undefined && assertLiveMutationCurrent === undefined ? undefined : () => {
+      if (mutation !== undefined) assertSynchronousRollbackRootAuthority(mutation);
+      if (assertLiveMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertLiveMutationCurrent);
+    };
+    const assertPayloadMutation = assertLiveMutationCurrent === undefined ? undefined : assertMutationCurrent;
     const captured = expected === undefined ? undefined : captureJournal(expected);
     let journal: ProfileRestoreActivationJournal;
     const assertCurrent = async () => {
@@ -224,6 +244,8 @@ export class ProfileRestoreActivationTransaction {
     };
     const assertMutation = async () => {
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      // With scoped combined ownership, no content work needs a second bracket.
+      if (assertRead !== undefined && assertContent === undefined) return;
       await assertContent?.(captureJournal(journal));
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
     };
@@ -233,24 +255,33 @@ export class ProfileRestoreActivationTransaction {
       await this.readForwardRecoverySources(journal);
       await this.assertJournalMutation(journal, assertRecoveryAuthority);
     };
+    const writeContext = assertRead === undefined ? undefined : Object.freeze({
+      assertReadCurrent: (current: Readonly<ProfileRestoreActivationJournal>) => this.assertJournalMutation(current, assertRead),
+      assertMutationCurrent: () => assertSynchronousRollbackRootAuthority(mutation!),
+    });
     const writeAuthority = (): ProfileRestoreJournalWriteAuthority => assertContent === undefined ? ({
       previous: captureJournal(journal),
-      assertCurrent: async (expectedJournal: Readonly<ProfileRestoreActivationJournal>) => {
-        await this.assertJournalMutation(expectedJournal, assertRecoveryAuthority);
-        await this.assertJournalMutation(expectedJournal, assertRecoveryAuthority);
-      },
+      ...(writeContext === undefined ? {} : { kind: 'combined' as const, writeContext }),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent: writeContext === undefined
+        ? assertMutationCurrent : () => assertSynchronousRollbackRootAuthority(assertLiveMutationCurrent!) }),
+      // The scoped writer validates its evolving slots after each external grant.
+      assertCurrent: writeContext === undefined
+        ? expectedJournal => this.assertJournalMutation(expectedJournal, assertRecoveryAuthority)
+        : assertRecoveryAuthority!,
     }) : ({
       kind: 'separateContent',
       previous: captureJournal(journal),
       assertCurrent: current => this.assertJournalMutation(current, assertRecoveryAuthority),
       assertContent,
+      ...(assertLiveMutationCurrent === undefined ? {} : { assertMutationCurrent: assertLiveMutationCurrent }),
+      ...(writeContext === undefined ? {} : { writeContext }),
     });
     try {
       await assertCurrent();
       journal = await this.requireJournal(captured, assertRecoveryAuthority === undefined ? undefined : async () => {
         await assertCurrent();
         if (captured !== undefined) await assertContent?.(captured);
-      });
+      }, assertMutationCurrent);
       await assertCurrent();
       if (captured !== undefined) assertJournalMatches(captured, journal);
     } catch (error) {
@@ -273,22 +304,22 @@ export class ProfileRestoreActivationTransaction {
       {
         completedPhase: 'currentDatabaseMoved',
         intentPhase: 'movingCurrentDatabase',
-        move: () => this.moveCurrentDatabase(journal, assertMutation, assertPreparation),
+        move: () => this.moveCurrentDatabase(journal, assertMutation, assertPreparation, assertPayloadMutation),
       },
       {
         completedPhase: 'currentDocumentsMoved',
         intentPhase: 'movingCurrentDocuments',
-        move: () => this.moveCurrentDocuments(journal, assertMutation, assertPreparation),
+        move: () => this.moveCurrentDocuments(journal, assertMutation, assertPreparation, assertPayloadMutation),
       },
       {
         completedPhase: 'stagedDatabaseActivated',
         intentPhase: 'activatingStagedDatabase',
-        move: () => this.activateStagedDatabase(journal, assertMutation, assertPreparation),
+        move: () => this.activateStagedDatabase(journal, assertMutation, assertPreparation, assertPayloadMutation),
       },
       {
         completedPhase: 'stagedDocumentsActivated',
         intentPhase: 'activatingStagedDocuments',
-        move: () => this.activateStagedDocuments(journal, assertMutation, assertPreparation),
+        move: () => this.activateStagedDocuments(journal, assertMutation, assertPreparation, assertPayloadMutation),
       },
     ];
 
@@ -399,13 +430,15 @@ export class ProfileRestoreActivationTransaction {
     assertRecoveryAuthority?: () => Promise<void>,
     terminalAuthority?: ProfileRestoreTerminalMutationAuthority,
   ): Promise<Readonly<ProfileRestoreActivationJournal>> {
+    terminalAuthority = captureTerminalAuthority(terminalAuthority);
+    const assertMutation = terminalAuthority?.assertMutationCurrent;
     const assertTerminal = terminalAuthority === undefined ? assertRecoveryAuthority : async () => {
       await this.assertTerminalMutation(expected!, new Set(), assertRecoveryAuthority, terminalAuthority);
       await this.assertTerminalCleanupCensus(terminalAuthority.census, new Set(), expected!);
       await this.assertTerminalMutation(expected!, new Set(), assertRecoveryAuthority, terminalAuthority);
     };
     if (terminalAuthority !== undefined && expected === undefined) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
-    const journal = await this.requireTerminalJournal(expected, assertTerminal);
+    const journal = await this.requireTerminalJournal(expected, assertTerminal, assertMutation);
     if (journal.phase === 'accepted') {
       return captureJournal(journal);
     }
@@ -423,7 +456,8 @@ export class ProfileRestoreActivationTransaction {
     };
     await assertPublication(journal);
     return captureJournal(await this.advanceJournal(
-      journal, 'accepted', { previous: captureJournal(journal), assertCurrent: assertPublication },
+      journal, 'accepted', { previous: captureJournal(journal), assertCurrent: assertPublication,
+        ...(assertMutation === undefined ? {} : { assertMutationCurrent: assertMutation }) },
     ));
   }
 
@@ -432,12 +466,13 @@ export class ProfileRestoreActivationTransaction {
     assertRecoveryAuthority?: () => Promise<void>,
     terminalAuthority?: ProfileRestoreTerminalMutationAuthority,
   ): Promise<void> {
+    terminalAuthority = captureTerminalAuthority(terminalAuthority);
     const assertTerminal = terminalAuthority === undefined ? assertRecoveryAuthority : async () => {
       await this.assertTerminalMutation(expected, new Set(), assertRecoveryAuthority, terminalAuthority);
       await this.assertTerminalCleanupCensus(terminalAuthority.census, new Set(), expected);
       await this.assertTerminalMutation(expected, new Set(), assertRecoveryAuthority, terminalAuthority);
     };
-    const journal = await this.requireTerminalJournal(expected, assertTerminal);
+    const journal = await this.requireTerminalJournal(expected, assertTerminal, terminalAuthority?.assertMutationCurrent);
     if (journal.phase !== 'accepted') throw new Error('PROFILE_RESTORE_ACCEPT_INVALID');
     await this.cleanupAccepted(journal, assertRecoveryAuthority, terminalAuthority);
   }
@@ -513,15 +548,40 @@ export class ProfileRestoreActivationTransaction {
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
     coldAuthority?: ProfileRestoreColdRollbackMutationAuthority,
+    assertLiveMutationCurrent?: () => void,
   ): Promise<ProfileRestoreActivationJournal> {
+    if (assertLiveMutationCurrent !== undefined && (typeof assertLiveMutationCurrent !== 'function' ||
+        expected === undefined || typeof assertRecoveryAuthority !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    if (coldAuthority !== undefined) {
+      if (coldAuthority === null) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      const { assertContent, beforeStagingMove, assertReadOwnership, assertMutationCurrent } = coldAuthority;
+      if (typeof assertContent !== 'function' || typeof beforeStagingMove !== 'function' ||
+          (assertReadOwnership !== undefined && typeof assertReadOwnership !== 'function') ||
+          (assertMutationCurrent !== undefined && (typeof assertMutationCurrent !== 'function' || assertReadOwnership === undefined))) {
+        throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      }
+      coldAuthority = Object.freeze({
+        assertContent: assertContent.bind(coldAuthority),
+        beforeStagingMove: beforeStagingMove.bind(coldAuthority),
+        ...(assertReadOwnership === undefined ? {} : { assertReadOwnership: assertReadOwnership.bind(coldAuthority) }),
+        ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent: assertMutationCurrent.bind(coldAuthority) }),
+      });
+    }
     if (coldAuthority !== undefined && (expected === undefined || assertRecoveryAuthority === undefined ||
         (expected.phase !== 'validationStarting' && expected.phase !== 'rollbackStarting' && expected.phase !== 'rolledBack'))) {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
     }
+    const coldMutation = coldAuthority?.assertMutationCurrent;
+    const assertMutationCurrent = assertLiveMutationCurrent === undefined ? undefined : () => {
+      if (coldMutation !== undefined) assertSynchronousRollbackRootAuthority(coldMutation);
+      if (assertLiveMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertLiveMutationCurrent);
+    };
     let journal = await this.requireTerminalJournal(expected, coldAuthority === undefined ? assertRecoveryAuthority : async () => {
       await assertRecoveryAuthority!();
       await coldAuthority.assertContent(expected!);
-    });
+    }, assertMutationCurrent);
     if (journal.phase === 'rolledBack') {
       await this.assertRollbackMutation(journal, assertRecoveryAuthority, coldAuthority);
       return journal;
@@ -540,24 +600,25 @@ export class ProfileRestoreActivationTransaction {
       journal = await this.advanceJournal(
         journal,
         'rollbackStarting',
-        coldAuthority === undefined ? this.journalMutationAuthority(journal, assertRecoveryAuthority)
-          : this.coldRollbackJournalAuthority(journal, assertRecoveryAuthority!, coldAuthority),
+        coldAuthority === undefined ? this.journalMutationAuthority(journal, assertRecoveryAuthority, assertMutationCurrent)
+          : this.coldRollbackJournalAuthority(journal, assertRecoveryAuthority!, coldAuthority, assertLiveMutationCurrent),
       );
     }
 
     await this.assertRollbackMutation(journal, assertRecoveryAuthority, coldAuthority);
     try {
       await this.restorePreviousProfile(journal, () => this.assertRollbackMutation(journal, assertRecoveryAuthority, coldAuthority),
-        coldAuthority === undefined ? undefined : () => coldAuthority.beforeStagingMove(journal));
+        coldAuthority === undefined ? undefined : () => coldAuthority.beforeStagingMove(journal), assertMutationCurrent);
       journal = await this.advanceJournal(journal, 'rolledBack', coldAuthority === undefined ? {
         previous: captureJournal(journal),
         assertCurrent: current => this.assertRollbackMutation(current, assertRecoveryAuthority, coldAuthority),
-      } : this.coldRollbackJournalAuthority(journal, assertRecoveryAuthority!, coldAuthority));
+        ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
+      } : this.coldRollbackJournalAuthority(journal, assertRecoveryAuthority!, coldAuthority, assertLiveMutationCurrent));
       return journal;
     } catch (error) {
       if (coldAuthority === undefined) {
         try {
-          journal = await this.advanceJournal(journal, 'failedSafe', this.journalMutationAuthority(journal, assertRecoveryAuthority));
+          journal = await this.advanceJournal(journal, 'failedSafe', this.journalMutationAuthority(journal, assertRecoveryAuthority, assertMutationCurrent));
         } catch {
           // The caller must stop all further writes even if journal persistence fails.
         }
@@ -570,31 +631,57 @@ export class ProfileRestoreActivationTransaction {
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
     beforeRollbackRootRemoval?: (journal: Readonly<ProfileRestoreActivationJournal>) => Promise<ProfileRestoreRollbackRootRemovalAuthority>,
+    coldCleanupContext?: ProfileRestoreColdCleanupContext,
+    assertLiveMutationCurrent?: () => void,
   ): Promise<void> {
-    const journal = await this.requireTerminalJournal(expected, assertRecoveryAuthority);
+    if (assertLiveMutationCurrent !== undefined && (typeof assertLiveMutationCurrent !== 'function' ||
+        expected === undefined || typeof assertRecoveryAuthority !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    if (coldCleanupContext !== undefined && (expected === undefined || typeof assertRecoveryAuthority !== 'function' ||
+        typeof beforeRollbackRootRemoval !== 'function' || coldCleanupContext === null ||
+        typeof coldCleanupContext.assertReadOwnership !== 'function' || typeof coldCleanupContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    const assertRead = coldCleanupContext?.assertReadOwnership.bind(coldCleanupContext) ?? assertRecoveryAuthority;
+    const assertColdMutation = coldCleanupContext?.assertMutationCurrent.bind(coldCleanupContext);
+    const assertLiveMutation = assertLiveMutationCurrent;
+    const assertMutation = assertLiveMutation === undefined ? assertColdMutation : () => {
+      if (assertColdMutation !== undefined) assertSynchronousRollbackRootAuthority(assertColdMutation);
+      assertSynchronousRollbackRootAuthority(assertLiveMutation);
+    };
+    // Repair remains a full-content mutation boundary, never a readonly probe.
+    const journal = await this.requireTerminalJournal(expected, assertRecoveryAuthority, assertMutation);
     if (journal.phase !== 'rolledBack') {
       throw new Error('PROFILE_RESTORE_ROLLBACK_INVALID');
     }
-    await this.assertRollbackMutation(journal, assertRecoveryAuthority);
+    await this.assertRollbackMutation(journal, assertRead);
     const root = this.operationPaths(journal.operationId).rollbackOperationRoot;
     await assertEmptyRollbackOperationStructure(root);
     for (const path of [join(root, 'data'), join(root, 'storage'), root]) {
-      await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-      await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      await this.assertRollbackMutation(journal, assertRead);
+      await this.assertJournalMutation(journal, assertRead);
       await assertEmptyRollbackOperationStructure(root);
       if (!(await inspectRecoverySlot(path, 'directory'))) continue;
+      if (coldCleanupContext !== undefined) {
+        await assertRecoveryAuthority!();
+        await this.assertJournalMutation(journal, assertRead);
+        await assertEmptyRollbackOperationStructure(root);
+      }
       if (path === root && beforeRollbackRootRemoval !== undefined) {
         const proof = await beforeRollbackRootRemoval(journal);
         const identity = proof.identity;
         const assertRootOwner = proof.assertCurrent.bind(proof);
-        await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-        await this.assertJournalMutation(journal, assertRecoveryAuthority);
+        if (coldCleanupContext !== undefined) await assertRecoveryAuthority!();
+        await this.assertRollbackMutation(journal, assertRead);
+        await this.assertJournalMutation(journal, assertRead);
         await assertEmptyRollbackOperationStructure(root);
         if (await readWorkspaceProcessReservationIdentity(root) !== identity) {
           throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
         }
         assertSynchronousRollbackRootAuthority(assertRootOwner);
       }
+      if (assertMutation !== undefined) assertSynchronousRollbackRootAuthority(assertMutation);
       try {
         // A late entry must stop cleanup, never be recursively removed.
         await fileSystem.rmdir(path);
@@ -603,10 +690,11 @@ export class ProfileRestoreActivationTransaction {
       }
     }
     await this.dependencies.journalStore.clear(journal, async () => {
-      await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-      await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      await this.assertRollbackMutation(journal, assertRead);
+      await this.assertJournalMutation(journal, assertRead);
+      if (coldCleanupContext !== undefined) await assertRecoveryAuthority!();
       await assertPathMissing(root);
-    });
+    }, assertMutation);
   }
 
   async readRollbackRecoverySources(expected: Readonly<ProfileRestoreActivationJournal>): Promise<Readonly<{
@@ -671,12 +759,23 @@ export class ProfileRestoreActivationTransaction {
     expected: Readonly<ProfileRestoreActivationJournal>,
     claimSources: (sources: ProfileRestoreColdRollbackRoots['sources']) => Promise<void>,
     assertRecoveryAuthority: () => Promise<void>,
+    preparationContext?: ProfileRestoreColdCleanupContext,
   ): Promise<ProfileRestoreColdRollbackRoots> {
+    if (preparationContext !== undefined && (preparationContext === null ||
+        typeof preparationContext.assertReadOwnership !== 'function' ||
+        typeof preparationContext.assertMutationCurrent !== 'function')) {
+      throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    }
+    const assertRead = preparationContext?.assertReadOwnership.bind(preparationContext);
+    const assertMutation = preparationContext?.assertMutationCurrent.bind(preparationContext);
+    const assertSelection = assertRecoveryAuthority;
     const journal = captureJournal(expected);
     const paths = this.operationPaths(journal.operationId);
     const assertCurrent = async () => {
-      await this.assertRollbackMutation(journal, assertRecoveryAuthority);
-      await this.assertJournalMutation(journal, assertRecoveryAuthority);
+      if (assertRead !== undefined) await assertSelection();
+      await this.assertRollbackMutation(journal, assertRead ?? assertSelection);
+      await this.assertJournalMutation(journal, assertRead ?? assertSelection);
+      if (assertRead !== undefined) await assertSelection();
     };
     await assertCurrent();
     const anchorPresent = await inspectRecoverySlot(paths.failedOperationRoot, 'directory');
@@ -695,9 +794,10 @@ export class ProfileRestoreActivationTransaction {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
     }
     if (!anchorPresent) {
-      await createPrivateDirectory(this.paths.failedRoot, assertCurrent);
+      await createPrivateDirectory(this.paths.failedRoot, assertCurrent, assertMutation);
       await assertCurrent();
       // Exclusive leaf creation rejects a root that appeared after the last census.
+      if (assertMutation !== undefined) assertSynchronousRollbackRootAuthority(assertMutation);
       await mkdir(paths.failedOperationRoot, { mode: 0o700 });
     }
     await assertCurrent();
@@ -710,6 +810,7 @@ export class ProfileRestoreActivationTransaction {
     journal: ProfileRestoreActivationJournal,
     assertAuthority?: () => Promise<void>,
     assertPreparation?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
     const rollbackPath = this.operationPaths(
       journal.operationId,
@@ -721,6 +822,7 @@ export class ProfileRestoreActivationTransaction {
       sourcePath: this.paths.activeDatabasePath,
       ...(assertAuthority === undefined ? {} : { assertAuthority }),
       ...(assertPreparation === undefined ? {} : { assertPreparation }),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
   }
 
@@ -728,6 +830,7 @@ export class ProfileRestoreActivationTransaction {
     journal: ProfileRestoreActivationJournal,
     assertAuthority?: () => Promise<void>,
     assertPreparation?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
     const rollbackPath = this.operationPaths(
       journal.operationId,
@@ -739,6 +842,7 @@ export class ProfileRestoreActivationTransaction {
       sourcePath: this.paths.activeDocumentsRoot,
       ...(assertAuthority === undefined ? {} : { assertAuthority }),
       ...(assertPreparation === undefined ? {} : { assertPreparation }),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
   }
 
@@ -746,6 +850,7 @@ export class ProfileRestoreActivationTransaction {
     journal: ProfileRestoreActivationJournal,
     assertAuthority?: () => Promise<void>,
     assertPreparation?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
     await moveRequiredSlot({
       destinationPath: this.paths.activeDatabasePath,
@@ -754,8 +859,10 @@ export class ProfileRestoreActivationTransaction {
         .stagedDatabasePath,
       ...(assertAuthority === undefined ? {} : { assertAuthority }),
       ...(assertPreparation === undefined ? {} : { assertPreparation }),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
     await assertAuthority?.();
+    if (assertMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertMutationCurrent);
     await chmod(this.paths.activeDatabasePath, 0o600);
   }
 
@@ -763,6 +870,7 @@ export class ProfileRestoreActivationTransaction {
     journal: ProfileRestoreActivationJournal,
     assertAuthority?: () => Promise<void>,
     assertPreparation?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
     await moveRequiredSlot({
       destinationPath: this.paths.activeDocumentsRoot,
@@ -771,8 +879,10 @@ export class ProfileRestoreActivationTransaction {
         .stagedDocumentsRoot,
       ...(assertAuthority === undefined ? {} : { assertAuthority }),
       ...(assertPreparation === undefined ? {} : { assertPreparation }),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
     await assertAuthority?.();
+    if (assertMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertMutationCurrent);
     await chmod(this.paths.activeDocumentsRoot, 0o700);
   }
 
@@ -780,9 +890,10 @@ export class ProfileRestoreActivationTransaction {
     journal: ProfileRestoreActivationJournal,
     assertAuthority: () => Promise<void>,
     beforeStagingMove?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<void> {
     const paths = this.operationPaths(journal.operationId);
-    await createPrivateDirectory(paths.failedOperationRoot, assertAuthority);
+    await createPrivateDirectory(paths.failedOperationRoot, assertAuthority, assertMutationCurrent);
 
     await rollbackSlot({
       activePath: this.paths.activeDocumentsRoot,
@@ -791,6 +902,7 @@ export class ProfileRestoreActivationTransaction {
       kind: 'directory',
       rollbackPath: paths.rollbackDocumentsRoot,
       assertAuthority,
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
     await rollbackSlot({
       activePath: this.paths.activeDatabasePath,
@@ -799,6 +911,7 @@ export class ProfileRestoreActivationTransaction {
       kind: 'file',
       rollbackPath: paths.rollbackDatabasePath,
       assertAuthority,
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     });
 
     if (await pathExists(paths.stagingOperationRoot)) {
@@ -822,6 +935,7 @@ export class ProfileRestoreActivationTransaction {
         kind: 'directory',
         sourcePath: paths.stagingOperationRoot,
         assertAuthority: assertStagingAuthority,
+        ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
       });
       await assertStagingAuthority();
     }
@@ -850,6 +964,9 @@ export class ProfileRestoreActivationTransaction {
         await assertProfileRestoreCleanupEntry(entry, removed);
         // The asynchronous identity reads must not outlive the deletion grant.
         await this.assertTerminalMutation(journal, removed, assertRecoveryAuthority, terminalAuthority);
+        if (terminalAuthority?.assertMutationCurrent !== undefined) {
+          assertSynchronousRollbackRootAuthority(terminalAuthority.assertMutationCurrent);
+        }
         try {
           if (entry.kind === 'file') await fileSystem.unlink(entry.path);
           else await fileSystem.rmdir(entry.path);
@@ -865,7 +982,7 @@ export class ProfileRestoreActivationTransaction {
       await this.assertTerminalMutation(journal, removed, assertRecoveryAuthority, terminalAuthority);
       await this.assertTerminalCleanupCensus(census, removed, journal);
       await this.assertTerminalMutation(journal, removed, assertRecoveryAuthority, terminalAuthority);
-    });
+    }, terminalAuthority?.assertMutationCurrent);
   }
 
   private async assertTerminalMutation(
@@ -882,6 +999,7 @@ export class ProfileRestoreActivationTransaction {
   private async requireTerminalJournal(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<ProfileRestoreActivationJournal> {
     if (expected === undefined && assertRecoveryAuthority !== undefined) {
       throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
@@ -890,7 +1008,7 @@ export class ProfileRestoreActivationTransaction {
       ? await this.dependencies.journalStore.peek()
       : captureJournal(expected);
     if (captured === undefined) throw new Error('PROFILE_RESTORE_JOURNAL_REQUIRED');
-    return this.requireJournal(captured, () => this.assertJournalMutation(captured, assertRecoveryAuthority));
+    return this.requireJournal(captured, () => this.assertJournalMutation(captured, assertRecoveryAuthority), assertMutationCurrent);
   }
 
   private async assertJournalMutation(
@@ -905,44 +1023,61 @@ export class ProfileRestoreActivationTransaction {
   private journalMutationAuthority(
     journal: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): ProfileRestoreJournalWriteAuthority {
     return {
       previous: captureJournal(journal),
       assertCurrent: current => this.assertJournalMutation(current, assertRecoveryAuthority),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
     };
   }
 
   private async assertRollbackMutation(
     journal: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority?: () => Promise<void>,
-    coldAuthority?: Pick<ProfileRestoreColdRollbackMutationAuthority, 'assertContent'>,
+    coldAuthority?: Partial<Pick<ProfileRestoreColdRollbackMutationAuthority, 'assertContent' | 'assertReadOwnership'>>,
   ): Promise<void> {
-    await this.assertJournalMutation(journal, assertRecoveryAuthority);
+    const assertRead = coldAuthority?.assertReadOwnership;
+    if (assertRead !== undefined) {
+      if (assertRecoveryAuthority === undefined) throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      await assertRecoveryAuthority();
+    }
+    await this.assertJournalMutation(journal, assertRead ?? assertRecoveryAuthority);
     await this.readRollbackRecoverySources(journal);
-    await coldAuthority?.assertContent(journal);
-    await this.assertJournalMutation(journal, assertRecoveryAuthority);
+    await coldAuthority?.assertContent?.(journal);
+    await this.assertJournalMutation(journal, assertRead ?? assertRecoveryAuthority);
+    if (assertRead !== undefined) await assertRecoveryAuthority!();
   }
 
   private coldRollbackJournalAuthority(
     journal: Readonly<ProfileRestoreActivationJournal>,
     assertRecoveryAuthority: () => Promise<void>,
     coldAuthority: ProfileRestoreColdRollbackMutationAuthority,
+    assertMutationCurrent?: () => void,
   ): ProfileRestoreJournalWriteAuthority {
     return {
       kind: 'separateContent',
       previous: captureJournal(journal),
-      assertCurrent: current => this.assertRollbackMutation(current, assertRecoveryAuthority),
+      assertCurrent: current => this.assertRollbackMutation(current, assertRecoveryAuthority,
+        coldAuthority.assertReadOwnership === undefined ? undefined : { assertReadOwnership: coldAuthority.assertReadOwnership }),
       assertContent: current => coldAuthority.assertContent(current),
+      ...(assertMutationCurrent === undefined ? {} : { assertMutationCurrent }),
+      ...(coldAuthority.assertMutationCurrent === undefined ? {} : { writeContext: Object.freeze({
+        assertReadCurrent: (current: Readonly<ProfileRestoreActivationJournal>) =>
+          this.assertRollbackMutation(current, coldAuthority.assertReadOwnership),
+        assertMutationCurrent: coldAuthority.assertMutationCurrent,
+      }) }),
     };
   }
 
   private async requireJournal(
     expected?: Readonly<ProfileRestoreActivationJournal>,
     assertAuthority?: () => Promise<void>,
+    assertMutationCurrent?: () => void,
   ): Promise<ProfileRestoreActivationJournal> {
     const journal = expected === undefined
       ? await this.dependencies.journalStore.read()
-      : await this.dependencies.journalStore.read(expected, assertAuthority);
+      : await this.dependencies.journalStore.read(expected, assertAuthority, assertMutationCurrent);
     if (journal === undefined) {
       throw new Error('PROFILE_RESTORE_JOURNAL_REQUIRED');
     }
@@ -972,59 +1107,7 @@ export class ProfileRestoreActivationTransaction {
   }
 
   private operationPaths(operationId: string) {
-    validateOperationId(operationId);
-    const stagingOperationRoot = join(
-      this.paths.stagingRoot,
-      operationId,
-    );
-    const rollbackOperationRoot = join(
-      this.paths.rollbackRoot,
-      operationId,
-    );
-    const failedOperationRoot = join(
-      this.paths.failedRoot,
-      operationId,
-    );
-    return {
-      failedActiveDatabasePath: join(
-        failedOperationRoot,
-        'active',
-        'data',
-        'eky.sqlite',
-      ),
-      failedActiveDocumentsRoot: join(
-        failedOperationRoot,
-        'active',
-        'storage',
-        'invoices',
-      ),
-      failedOperationRoot,
-      failedStagingRoot: join(failedOperationRoot, 'staging'),
-      failedStagedDatabasePath: join(failedOperationRoot, 'staging', 'profile.sqlite'),
-      failedStagedDocumentsRoot: join(failedOperationRoot, 'staging', 'activation', 'storage', 'invoices'),
-      rollbackDatabasePath: join(
-        rollbackOperationRoot,
-        'data',
-        'eky.sqlite',
-      ),
-      rollbackDocumentsRoot: join(
-        rollbackOperationRoot,
-        'storage',
-        'invoices',
-      ),
-      rollbackOperationRoot,
-      stagedDatabasePath: join(
-        stagingOperationRoot,
-        'profile.sqlite',
-      ),
-      stagedDocumentsRoot: join(
-        stagingOperationRoot,
-        'activation',
-        'storage',
-        'invoices',
-      ),
-      stagingOperationRoot,
-    };
+    return deriveProfileRestoreActivationOperationPaths(this.paths, operationId);
   }
 }
 
@@ -1093,6 +1176,7 @@ function isAtOrAfter(
 async function moveOptionalSlot(input: {
   assertAuthority?: () => Promise<void>;
   assertPreparation?: () => Promise<void>;
+  assertMutationCurrent?: () => void;
   destinationPath: string;
   expectedSource: boolean;
   kind: 'directory' | 'file';
@@ -1120,7 +1204,7 @@ async function moveOptionalSlot(input: {
     throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
   }
 
-  await createPrivateDirectory(dirname(input.destinationPath), input.assertPreparation ?? input.assertAuthority);
+  await createPrivateDirectory(dirname(input.destinationPath), input.assertPreparation ?? input.assertAuthority, input.assertMutationCurrent);
   await renameProfilePathWithRetry(input);
   await syncDirectories([
     dirname(input.sourcePath),
@@ -1131,6 +1215,7 @@ async function moveOptionalSlot(input: {
 async function moveRequiredSlot(input: {
   assertAuthority?: () => Promise<void>;
   assertPreparation?: () => Promise<void>;
+  assertMutationCurrent?: () => void;
   destinationPath: string;
   kind: 'directory' | 'file';
   sourcePath: string;
@@ -1151,7 +1236,7 @@ async function moveRequiredSlot(input: {
     throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
   }
 
-  await createPrivateDirectory(dirname(input.destinationPath), input.assertPreparation ?? input.assertAuthority);
+  await createPrivateDirectory(dirname(input.destinationPath), input.assertPreparation ?? input.assertAuthority, input.assertMutationCurrent);
   await renameProfilePathWithRetry(input);
   await syncDirectories([
     dirname(input.sourcePath),
@@ -1161,6 +1246,7 @@ async function moveRequiredSlot(input: {
 
 async function rollbackSlot(input: {
   assertAuthority: () => Promise<void>;
+  assertMutationCurrent?: () => void;
   activePath: string;
   failedPath: string;
   hadOriginal: boolean;
@@ -1189,6 +1275,7 @@ async function rollbackSlot(input: {
         kind: input.kind,
         sourcePath: input.activePath,
         assertAuthority: input.assertAuthority,
+        ...(input.assertMutationCurrent === undefined ? {} : { assertMutationCurrent: input.assertMutationCurrent }),
       });
     }
     return;
@@ -1206,14 +1293,16 @@ async function rollbackSlot(input: {
       kind: input.kind,
       sourcePath: input.activePath,
       assertAuthority: input.assertAuthority,
+      ...(input.assertMutationCurrent === undefined ? {} : { assertMutationCurrent: input.assertMutationCurrent }),
     });
   }
 
-  await createPrivateDirectory(dirname(input.activePath), input.assertAuthority);
+  await createPrivateDirectory(dirname(input.activePath), input.assertAuthority, input.assertMutationCurrent);
   await renameProfilePathWithRetry({
     destinationPath: input.activePath,
     sourcePath: input.rollbackPath,
     assertAuthority: input.assertAuthority,
+    ...(input.assertMutationCurrent === undefined ? {} : { assertMutationCurrent: input.assertMutationCurrent }),
   });
   await syncDirectories([
     dirname(input.rollbackPath),
@@ -1270,6 +1359,16 @@ async function assertPathMissing(path: string): Promise<void> {
   }
 }
 
+function captureTerminalAuthority(authority?: ProfileRestoreTerminalMutationAuthority): ProfileRestoreTerminalMutationAuthority | undefined {
+  if (authority === undefined) return undefined;
+  if (authority === null || typeof authority.assertCurrent !== 'function' ||
+      (authority.assertMutationCurrent !== undefined && typeof authority.assertMutationCurrent !== 'function')) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+  return Object.freeze({ census: authority.census, assertCurrent: authority.assertCurrent.bind(authority),
+    ...(authority.assertMutationCurrent === undefined ? {} : { assertMutationCurrent: authority.assertMutationCurrent.bind(authority) }) });
+}
+
 async function pathExists(path: string): Promise<boolean> {
   try {
     await lstat(path);
@@ -1282,10 +1381,12 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
-async function createPrivateDirectory(path: string, assertAuthority?: () => Promise<void>): Promise<void> {
+async function createPrivateDirectory(path: string, assertAuthority?: () => Promise<void>, assertMutationCurrent?: () => void): Promise<void> {
   await assertAuthority?.();
+  if (assertMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertMutationCurrent);
   await mkdir(path, { mode: 0o700, recursive: true });
   await assertAuthority?.();
+  if (assertMutationCurrent !== undefined) assertSynchronousRollbackRootAuthority(assertMutationCurrent);
   await chmod(path, 0o700);
   await assertAuthority?.();
   if (!(await inspectOptionalDirectory(path))) {
@@ -1304,28 +1405,6 @@ async function syncDirectories(paths: readonly string[]): Promise<void> {
     } finally {
       await directory.close();
     }
-  }
-}
-
-function validatePaths(paths: ProfileRestoreActivationPaths): void {
-  const values = Object.values(paths);
-  if (
-    values.some(
-      (path) =>
-        !isAbsolute(path) ||
-        path.includes('\0') ||
-        path.length > 4_096,
-    ) ||
-    new Set(values.map((path) => normalizedPath(path))).size !==
-      values.length
-  ) {
-    throw new Error('PROFILE_RESTORE_ACTIVATION_PATHS_INVALID');
-  }
-}
-
-function validateOperationId(operationId: string): void {
-  if (!operationIdPattern.test(operationId)) {
-    throw new Error('PROFILE_RESTORE_OPERATION_INVALID');
   }
 }
 

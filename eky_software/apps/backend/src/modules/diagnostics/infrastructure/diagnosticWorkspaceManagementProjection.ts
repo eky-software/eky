@@ -14,7 +14,17 @@ const failureOperations: Readonly<Record<string, string>> = {
   WORKSPACE_MANAGEMENT_SWITCH_FAILED: 'workspace.switch',
   WORKSPACE_MANAGEMENT_RENAME_FAILED: 'workspace.rename',
 };
-const operations = new Set([...Object.values(failureOperations), 'workspace.delete']);
+const operations = new Set([...Object.values(failureOperations), 'workspace.delete', 'workspace.deleteResume']);
+const deletionStages = new Set([
+  'admission', 'deletePreparation', 'deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup',
+]);
+const deletionCodes = new Set([
+  'WORKSPACE_MANAGEMENT_BUSY', 'WORKSPACE_MANAGEMENT_INVALID',
+  'WORKSPACE_DELETE_STALE_CONFIRMATION', 'WORKSPACE_DELETE_BACKUP_UNAVAILABLE',
+  'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_INVENTORY_INVALID',
+  'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED',
+  'WORKSPACE_DELETE_CLEANUP_FAILED', 'WORKSPACE_DELETE_FAILED',
+]);
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 export function isWorkspaceManagementSourcePayload(value: Record<string, unknown>): boolean {
@@ -24,14 +34,14 @@ export function isWorkspaceManagementSourcePayload(value: Record<string, unknown
     typeof value.durationMs !== 'number' || !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 ||
     typeof value.operationId !== 'string' || !operations.has(value.operationId) ||
     (value.sideEffectState !== 'none' && value.sideEffectState !== 'unknown')) return false;
-  if (value.operationId === 'workspace.delete') {
-    if (value.stage !== 'admission' && value.stage !== 'deletePreparation') return false;
-    if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') return value.retryable === true;
-    return value.retryable === false &&
-      (value.stage === 'admission' || value.sideEffectState === 'unknown') &&
-      (value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' ||
-        value.errorCode === 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' ||
-        value.errorCode === 'WORKSPACE_DELETE_FAILED');
+  if (value.operationId === 'workspace.delete' || value.operationId === 'workspace.deleteResume') {
+    if (typeof value.stage !== 'string' || !deletionStages.has(value.stage) ||
+      typeof value.errorCode !== 'string' || !deletionCodes.has(value.errorCode)) return false;
+    if (value.sideEffectState === 'none' &&
+      (value.operationId === 'workspace.deleteResume' ||
+        (value.stage !== 'admission' &&
+          !(value.stage === 'deletePreparation' && value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY')))) return false;
+    return value.retryable === (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY');
   }
   if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') {
     return (value.stage === 'admission' || value.stage === 'operation') && value.retryable === true;

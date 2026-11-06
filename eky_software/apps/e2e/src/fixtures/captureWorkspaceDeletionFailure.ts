@@ -2,8 +2,10 @@ import type { ElectronApplication, TestInfo } from '@playwright/test';
 
 import { createRunnerFailureSink, RUNNER_FAILURE_DELIVERY_TIMEOUT_MS } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import type { createWorkspaceDeletionProof } from '../../../desktop/e2e/workspaceDeletionProof.js';
+import type { createWorkspaceDeletionExecutionProof } from '../../../desktop/e2e/workspaceDeletionExecutionProof.js';
 
-type FailureSet = ReturnType<ReturnType<typeof createWorkspaceDeletionProof>['readFailures']>;
+type FailureSet = Partial<ReturnType<ReturnType<typeof createWorkspaceDeletionProof>['readFailures']> &
+  ReturnType<ReturnType<typeof createWorkspaceDeletionExecutionProof>['readFailures']>>;
 type EvidenceContext = Pick<TestInfo, 'title' | 'testId' | 'file' | 'line' | 'column' | 'retry' | 'repeatEachIndex' | 'annotations'>;
 
 export function shouldCaptureWorkspaceDeletionFailure(
@@ -25,8 +27,11 @@ export async function captureWorkspaceDeletionFailure(input: Readonly<{
       const read = input.application.evaluate(() => {
         const controller = (globalThis as unknown as { __EKY_ELECTRON_E2E__?: {
           workspaceDeletionProof?: { readFailures(): FailureSet };
+          workspaceDeletionExecutionProof?: { readFailures(): FailureSet };
         } }).__EKY_ELECTRON_E2E__;
-        return controller?.workspaceDeletionProof?.readFailures();
+        const preparation = controller?.workspaceDeletionProof?.readFailures();
+        const execution = controller?.workspaceDeletionExecutionProof?.readFailures();
+        return preparation === undefined ? execution : { ...preparation, ...execution };
       });
       let timer: ReturnType<typeof setTimeout> | undefined;
       const deadline = new Promise<never>((_resolve, reject) => {
@@ -36,12 +41,16 @@ export async function captureWorkspaceDeletionFailure(input: Readonly<{
       try { failures = await Promise.race([read, deadline]); }
       finally { clearTimeout(timer); }
       status = 'missing';
-      const observed = (['request', 'shutdown'] as const).flatMap(role =>
+      const observed = (['request', 'shutdown', 'execution'] as const).flatMap(role =>
         failures?.[role] === undefined ? [] : [{ role, projection: failures[role] }]);
-      if (observed.length !== 0) {
-        const partial = observed.some(({ projection }) => projection.incomplete || projection.chain.some(part => part.truncated));
-        for (const { role, projection } of observed) {
-          sink.record({ runner: 'playwright', phase: role === 'request' ? 'workspaceDeletionIpc' : 'workspaceDeletionShutdown',
+      const allObserved = [...observed, ...(failures?.executionRelated ?? []).map(projection =>
+        ({ role: 'executionRelated' as const, projection }))];
+      if (allObserved.length !== 0) {
+        const partial = allObserved.some(({ projection }) => projection.incomplete || projection.chain.some(part => part.truncated));
+        for (const { role, projection } of allObserved) {
+          const phase = { request: 'workspaceDeletionIpc', shutdown: 'workspaceDeletionShutdown',
+            execution: 'workspaceDeletionExecution', executionRelated: 'workspaceDeletionExecutionRelated' }[role];
+          sink.record({ runner: 'playwright', phase,
             error: undefined, projectedException: projection,
             testName: input.testInfo.title, testId: `${input.testInfo.testId}:${input.runtimeInstanceId}`,
             file: input.testInfo.file, line: input.testInfo.line, column: input.testInfo.column,

@@ -1,7 +1,8 @@
 import { EventEmitter } from 'node:events';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { WorkspaceManagementError } from './workspaceManagementError.js';
+import { mapWorkspaceManagementError, WorkspaceManagementError } from './workspaceManagementError.js';
+import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import { createWorkspaceManagementCapability } from './workspaceManagementCapability.js';
 import {
   createEmptyWorkspaceIpcChannel,
@@ -305,17 +306,18 @@ describe('workspace management capability', () => {
     });
   });
 
-  it('strips the internal first-cause and cleanup chain at the IPC boundary', async () => {
+  it.each(['importFailure', 'recoveryFailure'] as const)('strips the internal %s first-cause and cleanup chain at the IPC boundary', async kind => {
     const fixture = createFixture();
-    const internal = new WorkspaceManagementError(
+    const cause = new AggregateError([
+      new Error('synthetic private path/password detail'),
+      new Error('synthetic cleanup detail'),
+    ], 'synthetic internal failure');
+    const internal = kind === 'recoveryFailure'
+      ? mapWorkspaceManagementError(new WorkspaceManagementRecoveryRequiredError({ cause }), 'import')
+      : new WorkspaceManagementError(
       'WORKSPACE_MANAGEMENT_IMPORT_FAILED',
       'import',
-      {
-        cause: new AggregateError([
-          new Error('synthetic private path/password detail'),
-          new Error('synthetic cleanup detail'),
-        ], 'synthetic internal failure'),
-      },
+      { cause },
     );
     fixture.importBackupAsNew.mockRejectedValueOnce(internal);
 
@@ -327,7 +329,7 @@ describe('workspace management capability', () => {
     expect(result).toBeInstanceOf(Error);
     if (!(result instanceof Error)) throw new Error('Expected an IPC error');
     expect(result).not.toBe(internal);
-    expect(result.message).toBe('WORKSPACE_MANAGEMENT_IMPORT_FAILED');
+    expect(result.message).toBe(internal.code);
     expect(result.cause).toBeUndefined();
     expect(JSON.stringify(result)).not.toMatch(/path|password|detail|cause/);
     expect(fixture.showSafeError).not.toHaveBeenCalled();

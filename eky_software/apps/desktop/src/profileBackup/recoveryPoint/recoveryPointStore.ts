@@ -16,7 +16,8 @@ import {
   prepareBackupPayload,
   type BackupPayloadSourceEntry,
 } from '../container/prepareBackupPayload.js';
-import type { ProfileSnapshotInspectionPort } from '../profileSnapshotInspectionPort.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority,
+  type ProfileSnapshotInspectionPort } from '../profileSnapshotInspectionPort.js';
 import { encryptRecoveryPointPayload } from './encryptRecoveryPointPayload.js';
 import { inspectRecoveryPoint } from './inspectRecoveryPoint.js';
 import { materializeRecoveryPoint } from './materializeRecoveryPoint.js';
@@ -73,6 +74,7 @@ export class RecoveryPointStore {
   }
 
   async create(input: {
+    sourceOperationId?: string;
     entries: readonly BackupPayloadSourceEntry[];
     kind: RecoveryPointKind;
     manifest: Omit<BackupManifest, 'entries'>;
@@ -173,7 +175,13 @@ export class RecoveryPointStore {
         operationId: inspectionOperationId,
         quarantineRoot: this.dependencies.quarantineRoot,
         stagingRoot: this.dependencies.stagingRoot,
-        validator: this.dependencies.validator,
+        validator: input.sourceOperationId === undefined ? this.dependencies.validator : {
+          withInspectionOperation: this.dependencies.validator.withInspectionOperation.bind(this.dependencies.validator),
+          withProfileSnapshot: this.dependencies.validator.withProfileSnapshot.bind(this.dependencies.validator),
+          removeProfileSnapshot: this.dependencies.validator.removeProfileSnapshot.bind(this.dependencies.validator),
+          validateProfileSnapshot: (id, maintenanceId, cleanup) => this.dependencies.validator.validateProfileSnapshot(
+            id, maintenanceId, cleanup, input.sourceOperationId),
+        },
         ...(updateMaintenanceOperationId === undefined ? {} : { updateMaintenanceOperationId }),
       });
       if (
@@ -254,7 +262,9 @@ export class RecoveryPointStore {
     artifactId: string;
     expectedMigrationChainIdentity: string;
     operationId: string;
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority;
   }): Promise<StagedRecoveryPointRestore> {
+    const cleanupAuthority = captureProfileSnapshotCleanupAuthority(input.cleanupAuthority);
     if (
       !artifactIdPattern.test(input.artifactId) ||
       !artifactIdPattern.test(input.operationId) ||
@@ -266,6 +276,10 @@ export class RecoveryPointStore {
     const source = await this.findValidatedPreUpdatePoint(
       input.artifactId,
     );
+    if (cleanupAuthority !== undefined) {
+      await cleanupAuthority.assertOwned();
+      cleanupAuthority.assertCurrent();
+    }
     const materialized = await materializeRecoveryPoint({
       artifactId: input.artifactId,
       containerPath: source.containerPath,
@@ -276,6 +290,7 @@ export class RecoveryPointStore {
       quarantineRoot: this.dependencies.quarantineRoot,
       stagingRoot: this.dependencies.stagingRoot,
       validator: this.dependencies.validator,
+      ...(cleanupAuthority === undefined ? {} : { cleanupAuthority }),
     });
 
     if (
@@ -284,7 +299,13 @@ export class RecoveryPointStore {
       !materialized.profileMatchesActive
     ) {
       const error = new Error('RECOVERY_POINT_RESTORE_CONTENT_INVALID');
-      try { await this.dependencies.validator.removeProfileSnapshot(input.operationId); }
+      try {
+        if (cleanupAuthority !== undefined) {
+          await cleanupAuthority.assertOwned();
+          cleanupAuthority.assertCurrent();
+        }
+        await this.dependencies.validator.removeProfileSnapshot(input.operationId);
+      }
       catch { throw new RecoveryPointCleanupError(error); }
       throw error;
     }

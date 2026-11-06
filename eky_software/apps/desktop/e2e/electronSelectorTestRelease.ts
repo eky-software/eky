@@ -1,5 +1,5 @@
 import type { DesktopReleaseInfo } from '../src/release/desktopReleaseInfo.js';
-import { isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
+import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
 
 export const selectorRecoveryScenarioId = 'DESK-SELECTOR-RETURN-001';
 export const selectorCreateScenarioId = 'DESK-SELECTOR-CREATE-001';
@@ -7,7 +7,7 @@ export const selectorImportScenarioId = 'DESK-SELECTOR-IMPORT-001';
 
 export function usesSelectorTestBackend(scenarioId: string): boolean {
   return scenarioId === selectorCreateScenarioId || scenarioId === selectorImportScenarioId ||
-    isWorkspaceDeletionProofScenario(scenarioId);
+    isWorkspaceDeletionProofScenario(scenarioId) || isWorkspaceDeletionExecutionProofScenario(scenarioId);
 }
 
 // Synthetic identity matching the registry-only fixture. Production build

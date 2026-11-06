@@ -640,7 +640,7 @@ Backup ei muuta business dataa, laskun statusta tai toimitustapahtumia.
 
 ### W7.3:n poiston valmistelun vientisopimus
 
-**Lähdetoteutus, koko poistoketjun kytkentä kesken:** poiston backup-haara käyttää samaa
+**W7.3 hyväksytty; varsinainen poisto kuuluu W7.4:ään:** poiston backup-haara käyttää samaa
 portable-vientialgoritmia, containeria ja nykyisiä siivousomistajia. Tavallinen
 `create()` hankkii ja vapauttaa edelleen oman maintenance-suojansa. Poiston
 kutsuja omistaa erikseen nimetyn suojan snapshotista todelliseen sulkuun;
@@ -737,8 +737,9 @@ riippumatta. Absoluuttisen kohteen ja sen omistajuuden tarkistuksia ei ohiteta.
 Peruutus ei vaihda backup-valintaa menetyssuostumukseksi. Kukin vienti on
 kertakäyttöinen, ja myöhempi uudelleenluku käyttää vain valittua tiedostoa
 ja elävää vartijaa, ei salasanaa. Nykyinen tuotannon entrypoint ei vielä
-anna W7.4:n julkaisukuluttajaa. Oikean native-/prosessi-/pakettiketjun
-yhteistodennus säilyy W7.3:n avoimena porttina.
+anna W7.4:n julkaisukuluttajaa. W7.3:n oikean native-/prosessi-/pakettiketjun
+hyväksyntä on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+W7.4:n pysyvä julkaisu ja lopullinen poisto vaativat erillisen näyttönsä.
 
 ## Machine-local recovery point
 
@@ -807,6 +808,14 @@ Samanaikaiset desktopin `shutdown()`-kutsut odottavat samaa lopputulosta;
 keskeneräistä sulkua ei käsitellä jo valmistuneena. Sopimus todennetaan
 backend-kahvan regressioilla sekä todellisen desktop-compositionin ja
 marker-tiedoston yhteisellä testillä, ei pelkällä markerin yksikkötestillä.
+
+W7.4:n [viimeisen kirjoittajan raja](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä)
+estää aktiivisen yrityksen markerin kirjoittamisen sen lopullisen poiston
+jälkeen. Varmennettu poisto ja epävarma sulku ovat eri tuloksia; kummassakaan
+marker ei saa luoda poistettua juurta uudelleen. Rajattu main-kytkentä ja
+marker-kokeet on toteutettu; D:n todellisen etenemisomistajan ja paketin
+oma näyttö jäävät erillisiksi porteiksi. Marker-formaatti, muiden yritysten
+sulku ja tavallisen palautuspisteajastimen toiminta säilyvät.
 
 ## Päivitysten yhteensopivuus
 
@@ -1102,6 +1111,12 @@ busy tai epäselvä juuri säilyy. Vanha staging tarkistetaan uudelleen:
 journal, ikä tai muistista puuttuva receipt ei hyväksy sitä. Tämä ei
 anna W3:n journalittomalle plaintextille tai v1:lle cold-recovery-lupaa.
 
+W7.4:n erillinen [metadata-only-poissaoloportti](local-company-workspace-plan.md#w74n-täydellisen-inventaarion-omistajuusraja)
+saa todeta sidotun inspection-kopion puuttumisen neljästä nimetystä
+sijainnista kirjoittajien päätyttyä. Se siivoaa vain täsmälliset pysyvät
+sidontamerkinnät; se ei anna vanhan kopion payload-poistolupaa, korvaa
+luontikuittia tai muuta normaalia snapshot-/restore-cleanupia.
+
 Private snapshot-brokerin nykyinen versio on 13. Komennot
 `validateProfileSnapshot`, `validateActiveProfile` ja
 `prepareProfileRestoreActivation` sekä niiden vastaukset on poistettu
@@ -1248,6 +1263,13 @@ Saman tilin valtuussopimuksen ulkopuoliseen kirjoittajaan ei luvata
 käyttöjärjestelmätason atomisuutta.
 
 ## Aktivointi ja rollback
+
+Palautuksen `profileRestoreActivationPaths` omistaa nykyiset operaation
+staging-, rollback- ja failed-sijainnit. Transaktio sekä W7.4:n rajattu
+jäännöslukija käyttävät samaa johdettua layoutia ja nykyisiä tunniste-/juurirajoja.
+Polun johtaminen ei todista kansiota omistetuksi eikä anna siirto-, poisto-
+tai rollback-valtuutta. Fyysinen identiteetti, journal ja kutsujan elävä
+omistajuus varmennetaan edelleen niiden nykyisissä omistajissa.
 
 Kun staging-profiili on täysin validoitu:
 
@@ -1476,6 +1498,23 @@ Puuttuva valtuuskytkentä hylätään myös suorassa startup-kuluttajassa.
 Voimassaolo tarkistetaan uudelleen viimeisen journal-odotuksen jälkeen.
 Alkuperäiskannan poissaolon palauttava onnistunut tiedostorollback säilyttää
 journalin eikä anna lupaa vaihtaa yritysosoitinta tai käynnistää toista runtimea.
+
+W7.4:n uusi valintaa seuraava cold-kutsu erottaa sisäisen readonly-
+omistajuustarkistuksen koko valinnan ja sisällön tarkistuksesta. Täysi
+tarkistus ympäröi kokonaisen lukuvaiheen; fyysinen omistajuus, määräaika,
+journalivalinta ja luettelot tarkistetaan edelleen sen sisällä. Koko sisältö
+ja viimeinen tavujen/identiteettien sidonta säilyvät tiedostomuutoksen
+edessä. Valitsimeen paluun loppusiivous tarkistaa sisällön myös oman
+rollback-varauksen vapautuksen jälkeen, ja viimeinen synkroninen vartija
+estää uuden poiston menetetyllä valtuudella. Vanhojen kutsujien polku ja
+journalin nykyiset kirjoituskohdat säilyvät. Uuden cold-kirjoittajan
+paritettu konteksti erottaa sisäiset journal-/luetteloluvut täyden valinnan
+tarkistuksesta, joka säilyy jokaisen todellisen muutoksen edellä. Vaiheen
+täsmälliset slotit tarkistetaan sen jälkeen ja synkroninen vartija suojaa
+varsinaista muutosta. Sisältövalidointi, julkaisun kuittaus ja alkuperäisen
+I/O:n päättyminen säilyvät; vanhat kirjoittajat eivät saa uutta odotuskohtaa.
+Täsmällinen rajaus ja avoin
+integraationäyttö ovat [W7.4:n vaiheomistajasopimuksessa](local-company-workspace-plan.md#main-valinnan-ja-vaiheomistajien-yhteinen-toteutussopimus).
 
 Vaatimus koskee myös epäonnistunutta käynnistystä ennen backend-kahvan
 palauttamista. Puuttuva kahva ei osoita, ettei prosessia syntynyt.

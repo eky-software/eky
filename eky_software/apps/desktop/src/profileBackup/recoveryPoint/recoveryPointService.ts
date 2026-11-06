@@ -7,7 +7,8 @@ import {
   assertProfileBackupSourceReceipt,
   createProfileBackupSourceEntries,
 } from '../createProfileBackupSourceEntries.js';
-import type { ProfileSnapshotInspectionPort } from '../profileSnapshotInspectionPort.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority,
+  type ProfileSnapshotInspectionPort } from '../profileSnapshotInspectionPort.js';
 import type { ProfileSnapshotMigrationPolicy } from '../profileSnapshotBrokerProtocol.js';
 import type {
   RecoveryPointIndexEntry,
@@ -141,8 +142,9 @@ export class RecoveryPointService {
     return this.createNamedPoint('manual', 'exactCurrentManifest');
   }
 
-  createPreMigration(): Promise<RecoveryPointIndexEntry> {
-    return this.createNamedPoint('preUpdate', 'compatibleHistoricalPrefix');
+  createPreMigration(cleanupAuthority?: ProfileSnapshotCleanupAuthority): Promise<RecoveryPointIndexEntry> {
+    return this.createNamedPoint('preUpdate', 'compatibleHistoricalPrefix', undefined,
+      captureProfileSnapshotCleanupAuthority(cleanupAuthority));
   }
 
   createPreRestore(): Promise<RecoveryPointIndexEntry> {
@@ -184,6 +186,7 @@ export class RecoveryPointService {
     kind: 'manual' | 'preRestore' | 'preUpdate',
     migrationPolicy: ProfileSnapshotMigrationPolicy,
     updateOperationId?: string,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority,
   ): Promise<RecoveryPointIndexEntry> {
     const correlationId = updateOperationId ?? this.createOperationId();
     const startedAt = Date.now();
@@ -199,6 +202,7 @@ export class RecoveryPointService {
             correlationId,
             migrationPolicy,
             (snapshot) => this.persistSnapshot(snapshot, kind),
+            cleanupAuthority,
           )
         : this.withUpdateSnapshot(
             updateOperationId,
@@ -258,6 +262,7 @@ export class RecoveryPointService {
     );
     assertProfileBackupSourceReceipt(entries, snapshot.receipt);
     const point = await this.dependencies.store.create({
+      sourceOperationId: snapshot.operationId,
       entries,
       kind,
       manifest: {
@@ -293,8 +298,9 @@ export class RecoveryPointService {
     operationId: string,
     migrationPolicy: ProfileSnapshotMigrationPolicy,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority,
   ): Promise<T> {
-    return this.withSnapshot(operationId, migrationPolicy, useSnapshot);
+    return this.withSnapshot(operationId, migrationPolicy, useSnapshot, undefined, cleanupAuthority);
   }
 
   private withSnapshot<T>(
@@ -302,6 +308,7 @@ export class RecoveryPointService {
     migrationPolicy: ProfileSnapshotMigrationPolicy,
     useSnapshot: (snapshot: HealthySnapshot) => Promise<T>,
     updateOperationId?: string,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority,
   ): Promise<T> {
     if (!operationIdPattern.test(operationId)) {
       throw new Error('RECOVERY_POINT_OPERATION_INVALID');
@@ -316,6 +323,10 @@ export class RecoveryPointService {
       let cleanupUnverified = false;
       let result!: T;
       try {
+        if (cleanupAuthority !== undefined) {
+          await cleanupAuthority.assertOwned();
+          cleanupAuthority.assertCurrent();
+        }
         if (updateOperationId === undefined) {
           await client.beginMaintenance(operationId);
           maintenanceStarted = true;
@@ -323,7 +334,11 @@ export class RecoveryPointService {
           await client.assertUpdateMaintenance(updateOperationId);
         }
         snapshotAttempted = true;
-        await client.createProfileSnapshot(operationId, migrationPolicy);
+        if (cleanupAuthority === undefined) await client.createProfileSnapshot(operationId, migrationPolicy);
+        else {
+          cleanupAuthority.assertCurrent();
+          await client.createProfileSnapshot(operationId, migrationPolicy, cleanupAuthority);
+        }
         const validation =
           updateOperationId === undefined
             ? await client.validateProfileSnapshot(operationId)
@@ -340,10 +355,15 @@ export class RecoveryPointService {
         result = await client.withProfileSnapshot(
           operationId,
           async (receipt) => {
+            if (cleanupAuthority !== undefined) {
+              await cleanupAuthority.assertOwned();
+              cleanupAuthority.assertCurrent();
+            }
             if (updateOperationId !== undefined) {
               await client.assertUpdateMaintenance(updateOperationId);
             }
             return useSnapshot({
+              operationId,
               operationRoot: join(this.dependencies.stagingRoot, operationId),
               validation,
               receipt,
@@ -357,6 +377,10 @@ export class RecoveryPointService {
       // The current native owner, never a broker acknowledgement, authorizes removal.
       if (snapshotAttempted) {
         try {
+          if (cleanupAuthority !== undefined) {
+            await cleanupAuthority.assertOwned();
+            cleanupAuthority.assertCurrent();
+          }
           await client.removeProfileSnapshot(operationId);
         } catch (error) {
           cleanupUnverified = true;
@@ -367,7 +391,11 @@ export class RecoveryPointService {
         try {
           await client.endMaintenance(operationId);
         } catch (error) {
-          if (!failed) {
+          if (cleanupAuthority !== undefined && cleanupUnverified) {
+            firstFailure = new AggregateError(failed ? [firstFailure, cleanupFailure, error] : [cleanupFailure, error],
+              'RECOVERY_POINT_OPERATION_FAILED');
+            failed = true;
+          } else if (!failed) {
             failed = true;
             firstFailure = error;
           }
@@ -463,6 +491,7 @@ export class RecoveryPointService {
 }
 
 interface HealthySnapshot {
+  operationId: string;
   operationRoot: string;
   receipt: ProfileInspectionReceipt;
   validation: Awaited<

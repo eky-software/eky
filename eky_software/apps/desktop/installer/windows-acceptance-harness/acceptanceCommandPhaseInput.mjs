@@ -17,6 +17,7 @@ export async function readCommandPhaseJson(path) {
     before.size < 2n || before.size > BigInt(MAX_BYTES)) invalid();
   const same = (value) => ['dev', 'ino', 'size', 'nlink', 'mtimeNs', 'ctimeNs'].every((key) => value[key] === before[key]);
   const file = await open(path, 'r');
+  let failure, value;
   try {
     if (!same(await file.stat({ bigint: true }))) invalid();
     const bytes = Buffer.alloc(Number(before.size) + 1);
@@ -28,8 +29,15 @@ export async function readCommandPhaseJson(path) {
     }
     if (BigInt(size) !== before.size || !same(await file.stat({ bigint: true })) ||
       !same(await lstat(path, { bigint: true }))) invalid();
-    return parseStrictJsonObjectBytes(bytes.subarray(0, size), { maximumBytes: MAX_BYTES, errorCode: 'commandPhaseInputInvalid' });
-  } finally { await file.close(); }
+    value = parseStrictJsonObjectBytes(bytes.subarray(0, size), { maximumBytes: MAX_BYTES, errorCode: 'commandPhaseInputInvalid' });
+  } catch (error) { failure = { error }; }
+  try { await file.close(); }
+  catch (error) {
+    if (failure) throw new AggregateError([failure.error, error], 'commandPhaseInputInvalid', { cause: failure.error });
+    throw error;
+  }
+  if (failure) throw failure.error;
+  return value;
 }
 
 async function requireDirectory(path) {

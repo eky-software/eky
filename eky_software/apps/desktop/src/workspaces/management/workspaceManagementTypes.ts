@@ -1,5 +1,6 @@
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import type { WorkspaceCandidateFailureCause } from '../../runtime/workspaceCandidateMessages.js';
+import type { WorkspaceDeletionFailureStage } from '../../observability/workspaceManagementFailureContext.js';
 
 export type WorkspaceManagementAvailability =
   | 'ready'
@@ -32,7 +33,8 @@ export type WorkspaceManagementOperationKind =
   | 'replace'
   | 'switch'
   | 'rename'
-  | 'delete';
+  | 'delete'
+  | 'deleteResume';
 
 export interface WorkspaceDeletionPreparationLifetime {
   assertCurrent(): void;
@@ -55,7 +57,7 @@ export interface WorkspaceManagementOperationEvent {
   readonly outcome: 'succeeded' | 'failed';
   readonly retryable?: boolean;
   readonly sideEffectState?: 'none' | 'completed' | 'unknown';
-  readonly stage: 'admission' | 'operation' | 'lineageCheck' | 'status' | 'deletePreparation';
+  readonly stage: 'operation' | 'lineageCheck' | 'status' | WorkspaceDeletionFailureStage;
 }
 
 export interface WorkspaceManagementObserver {

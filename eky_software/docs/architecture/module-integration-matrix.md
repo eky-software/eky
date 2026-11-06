@@ -83,6 +83,32 @@ poistovaltuutta tai delete-kanavaa ennen W7.4:ää.
 ja [M1:n jatkamiskohta](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 erottavat lähdepalat hyväksytystä kokonaisuudesta.
 
+W7.4:n sisäinen palveluluovutus välittää saman operaation ja täsmällisen
+delete-leasen valmistelusta jatkolukijalle. Oikeiden journal-/inventaario-
+tavujen yhteiskoe ei yksin hyväksy fyysistä poistoa. Mainin rajattu
+lopputietosovitus ja markerin sulkuraja on kytketty. Mallinnettujen
+kuittaus-/sulkuvirhetapausten lisäksi mainin ja palvelun ketju on liitetty
+yhteiseen publish/resume-komentoon kohdetesteissä, jotka käyttävät
+todellisia tiedostotavuja ja identiteettejä. Niiden ohjattu natiiviprosessi
+ja käyttöjärjestelmälukko eivät korvaa prosessi- tai pakettitodistusta;
+normaalin avauksen ja managementin vartijat tunnistavat poistojournalin,
+mutta cold-jatkon hyväksyntä on vielä kesken. Työpuun oletuskäynnistys
+käyttää nyt nimettyä main-adapteria ennen korjaavia installation-lukuja;
+alkuperäisvalinta, delete-lease, metadatan handoff sekä työn ja sulun
+odotus pysyvät nykyisillä omistajilla. Cold-prosessin aikakatkaisu on avoin,
+eikä lähde- tai porttinäyttö korvaa onnistunutta prosessi-/pakettiketjua. Renderer-kanava pysyy
+suljettuna; [W7.4:n luovutussopimus](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä)
+omistaa tämän rajauksen ja jäljellä olevan näytön.
+
+Nykyisen packaged-smoken tyhjän valitsimen sisäinen varmennus käyttää samaa
+index-/main-käynnistystä ja sen cold-/build-/varausportteja ilman business-
+sessionia tai uutta poistokomentoa. Valitsimen lataus ja sulku odotetaan vain
+tässä token-rajatussa testivaiheessa; tavallinen lataus säilyy asynkronisena.
+Ajurin ohjelmallinen liitos lisää kaksi kiinteää varmennusprosessia vasta
+molempien restore-prosessien sulun jälkeen; nykyinen komentorivi ei muutu.
+Todellinen kohde-/OS-valmistelusovitin ja puhtaan paketin näyttö ovat vielä
+avoimia, eivät uusi renderer-capability tai W7.4:n hyväksyntä.
+
 W7.2:n keskeneräinen backenditon hallinta käyttää nykyistä workspace-
 hallintapalvelua ja IPC-kyvykkyyttä. Niiden pääsyn sulku ja aloitetun työn
 odotus ovat erillisiä; journalilukijan virhe ei jätä rinnakkaisia lukuja

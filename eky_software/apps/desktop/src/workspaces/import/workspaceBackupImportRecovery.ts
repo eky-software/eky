@@ -38,6 +38,8 @@ import type {
   WorkspaceBackupImportJournalStore,
   WorkspaceBackupImportJournal,
 } from './workspaceBackupImportTypes.js';
+import type { CaptureWorkspaceBackupImportColdOwner, ColdImportJournalPort, ColdImportRegistryPort } from './workspaceBackupImportColdOwner.js';
+import { WorkspaceBackupImportColdContext } from './workspaceBackupImportColdContext.js';
 
 interface SharedWorkspaceBackupImportRecoveryOptions {
   readonly backupCandidate: WorkspaceBackupCandidatePort;
@@ -59,6 +61,9 @@ export type WorkspaceBackupImportRecoveryOptions =
     | Readonly<{
         completionMode: 'beforeRuntimeStart';
         assertRecoveryAdmission(): Promise<void>;
+        captureColdOwner: CaptureWorkspaceBackupImportColdOwner;
+        importJournal: ColdImportJournalPort & WorkspaceBackupImportJournalStore;
+        registry: ColdImportRegistryPort & WorkspaceRegistryPort;
         activeWorkspaceLifecycle?: never;
       }>
   );
@@ -69,16 +74,25 @@ export type WorkspaceBackupImportRecoveryResult =
   | 'completedPublication';
 
 export class WorkspaceBackupImportRecovery {
+  private cold: WorkspaceBackupImportColdContext | undefined;
   constructor(
     private readonly options: Readonly<WorkspaceBackupImportRecoveryOptions>,
   ) {}
 
   async recover(): Promise<WorkspaceBackupImportRecoveryResult> {
     const lease = await this.acquireLease();
+    let failed = false;
+    this.cold = undefined;
     try {
+      this.cold = this.options.completionMode === 'beforeRuntimeStart' ? new WorkspaceBackupImportColdContext({
+        owner: this.options.captureColdOwner(lease), importJournal: this.options.importJournal,
+        registry: this.options.registry, rootStore: this.options.rootStore,
+        userDataRoot: this.options.userDataRoot, workspaceRuntimeAbsence: this.options.workspaceRuntimeAbsence,
+      }) : undefined;
       if (this.options.completionMode === 'beforeRuntimeStart') {
         await this.assertRuntimeAbsent();
         await this.options.assertRecoveryAdmission();
+        await this.cold!.initialize();
       } else {
         await this.recoverPlaintextQuarantine();
       }
@@ -108,7 +122,9 @@ export class WorkspaceBackupImportRecovery {
         await this.recoverPlaintextQuarantine();
       }
       const entry = findImportedWorkspaceEntry(registry, journal.workspaceId);
+      await this.cold?.assertPayloadCurrent();
       const presence = await this.options.rootStore.readPresence(paths);
+      await this.cold?.assertPayloadCurrent();
 
       if (presence.candidateExists && presence.finalExists) {
         return recoveryRequired();
@@ -135,13 +151,17 @@ export class WorkspaceBackupImportRecovery {
       if (this.options.completionMode === 'beforeRuntimeStart') {
         await this.assertColdContinuation(journal.previousActiveWorkspaceId, registry);
       }
-      await this.options.rootStore.discardCandidate(paths);
+      await this.cold?.assertPayloadCurrent();
+      if (this.cold) await this.options.rootStore.discardCandidate(paths, this.cold.mutationAuthority);
+      else await this.options.rootStore.discardCandidate(paths);
+      await this.cold?.assertPayloadCurrent();
       await this.completeRecovery(journal, registry, false);
-      await this.options.importJournal.discardBeforePublication(
-        journal.operationId,
-      );
+      if (this.cold) await this.cold.clearJournal(true);
+      else await this.options.importJournal.discardBeforePublication(journal.operationId);
       return 'discardedBeforePublication';
     } catch (error) {
+      failed = true;
+      this.cold?.recordFailure(error);
       if (this.options.completionMode === 'beforeRuntimeStart' &&
           error instanceof WorkspaceManagementRecoveryRequiredError) {
         throw error;
@@ -152,7 +172,11 @@ export class WorkspaceBackupImportRecovery {
         'recovery',
       );
     } finally {
-      await lease.release().catch((error) => {
+      if (this.cold !== undefined) {
+        const release = await this.cold.release(lease);
+        if (release.failed && !failed) throw mapWorkspaceBackupImportError(release.error, 'WORKSPACE_IMPORT_LIFECYCLE_FAILED', 'lease');
+      } else await lease.release().catch((error) => {
+        if (failed && this.options.completionMode === 'beforeRuntimeStart') return;
         throw mapWorkspaceBackupImportError(
           error,
           'WORKSPACE_IMPORT_LIFECYCLE_FAILED',
@@ -182,10 +206,14 @@ export class WorkspaceBackupImportRecovery {
     );
     assertImportWorkspaceIdAvailable(registry, journal.workspaceId);
     assertImportLineageAvailable(registry, journal.lineageIdentity);
+    await this.cold?.assertPayloadCurrent();
     await this.options.rootStore.inspectPublished(paths);
+    await this.cold?.assertPayloadCurrent();
     await this.validatePublishedWorkspace(journal, paths);
     await this.assertRuntimeAbsent();
-    await this.options.rootStore.cleanupPublishedOperation(paths);
+    if (this.cold) await this.options.rootStore.cleanupPublishedOperation(paths, this.cold.mutationAuthority);
+    else await this.options.rootStore.cleanupPublishedOperation(paths);
+    await this.cold?.assertPayloadCurrent();
 
     let current = journal;
     if (current.state === 'candidateValidated') {
@@ -203,13 +231,14 @@ export class WorkspaceBackupImportRecovery {
     if (this.options.completionMode === 'beforeRuntimeStart') {
       await assertColdWorkspaceRecoveryRegistryUnchanged({
         expectedRegistry: registrySnapshot,
-        registry: this.options.registry,
+        registry: this.cold ? { read: () => this.cold!.readRegistry() } : this.options.registry,
       });
     }
     await this.writeRegistry(expectedRegistry);
     current = await this.advance(current, 'registryPublished');
     await this.completeRecovery(current, expectedRegistry, true);
-    await this.options.importJournal.remove(current.operationId);
+    if (this.cold) await this.cold.clearJournal(false);
+    else await this.options.importJournal.remove(current.operationId);
   }
 
   private async completeFromPublishedRegistry(
@@ -232,16 +261,21 @@ export class WorkspaceBackupImportRecovery {
       return recoveryRequired();
     }
 
+    await this.cold?.assertPayloadCurrent();
     await this.options.rootStore.inspectPublished(paths);
+    await this.cold?.assertPayloadCurrent();
     await this.validatePublishedWorkspace(journal, paths);
     await this.assertRuntimeAbsent();
-    await this.options.rootStore.cleanupPublishedOperation(paths);
+    if (this.cold) await this.options.rootStore.cleanupPublishedOperation(paths, this.cold.mutationAuthority);
+    else await this.options.rootStore.cleanupPublishedOperation(paths);
+    await this.cold?.assertPayloadCurrent();
     let current = journal;
     if (current.state === 'rootPublished') {
       current = await this.advance(current, 'registryPublished');
     }
     await this.completeRecovery(current, registry, true);
-    await this.options.importJournal.remove(current.operationId);
+    if (this.cold) await this.cold.clearJournal(false);
+    else await this.options.importJournal.remove(current.operationId);
   }
 
   private async validatePublishedWorkspace(
@@ -251,17 +285,18 @@ export class WorkspaceBackupImportRecovery {
     if (journal.lineageIdentity === null) return recoveryRequired();
     let readiness;
     try {
+      await this.cold?.assertPayloadCurrent();
+      const validate = () => this.options.backupCandidate.validatePublished({
+        operationId: journal.operationId, workspaceId: journal.workspaceId, publishedRoot: paths.finalRoot,
+        databaseFilePath: paths.publishedDatabaseFilePath, artifactRoot: paths.publishedArtifactRoot,
+        expectedProfileId: journal.lineageIdentity!.profileId,
+      });
       readiness = validateWorkspaceBackupCandidateReadiness(
-        await this.options.backupCandidate.validatePublished({
-          operationId: journal.operationId,
-          workspaceId: journal.workspaceId,
-          publishedRoot: paths.finalRoot,
-          databaseFilePath: paths.publishedDatabaseFilePath,
-          artifactRoot: paths.publishedArtifactRoot,
-          expectedProfileId: journal.lineageIdentity.profileId,
-        }),
+        await (this.cold ? this.cold.work(validate) : validate()),
       );
+      await this.cold?.assertPayloadCurrent();
     } catch (error) {
+      this.cold?.recordFailure(error);
       throw mapWorkspaceBackupImportError(
         error,
         'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
@@ -295,9 +330,11 @@ export class WorkspaceBackupImportRecovery {
   }
 
   private recoverPlaintextQuarantine(): Promise<void> {
-    return this.options.plaintextQuarantine
-      .recoverStalePayloads()
+    const work = this.cold ? this.options.plaintextQuarantine.recoverStalePayloads(this.cold.mutationAuthority)
+      : this.options.plaintextQuarantine.recoverStalePayloads();
+    return work
       .catch((error) => {
+        this.cold?.recordFailure(error);
         throw mapWorkspaceBackupImportError(
           error,
           'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
@@ -307,6 +344,7 @@ export class WorkspaceBackupImportRecovery {
   }
 
   private readJournal() {
+    if (this.cold) return this.cold.readJournal();
     return this.options.importJournal.read().catch((error) => {
       throw mapWorkspaceBackupImportError(
         error,
@@ -317,6 +355,7 @@ export class WorkspaceBackupImportRecovery {
   }
 
   private readRegistry() {
+    if (this.cold) return this.cold.readRegistry();
     return this.options.registry.read().catch((error) => {
       throw mapWorkspaceBackupImportError(
         error,
@@ -328,8 +367,10 @@ export class WorkspaceBackupImportRecovery {
 
   private async writeRegistry(value: unknown): Promise<void> {
     try {
-      await this.options.registry.write(value);
+      if (this.cold) await this.cold.writeRegistry(value);
+      else await this.options.registry.write(value);
     } catch (error) {
+      if (this.cold && error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
       throw mapWorkspaceBackupImportError(
         error,
         'WORKSPACE_IMPORT_REGISTRY_FAILED',
@@ -344,8 +385,10 @@ export class WorkspaceBackupImportRecovery {
   ): Promise<Readonly<WorkspaceBackupImportJournal>> {
     const next = Object.freeze({ ...journal, state });
     try {
-      await this.options.importJournal.write(next);
+      if (this.cold) await this.cold.writeJournal(next);
+      else await this.options.importJournal.write(next);
     } catch (error) {
+      if (this.cold && error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
       throw mapWorkspaceBackupImportError(
         error,
         'WORKSPACE_IMPORT_JOURNAL_FAILED',
@@ -363,7 +406,7 @@ export class WorkspaceBackupImportRecovery {
     await assertColdWorkspaceRecoveryContinuation({
       expectedRegistry,
       expectedWorkspaceId,
-      registry: this.options.registry,
+      registry: this.cold ? { read: () => this.cold!.readRegistry() } : this.options.registry,
       userDataRoot: this.options.userDataRoot,
     });
     await this.assertRuntimeAbsent();

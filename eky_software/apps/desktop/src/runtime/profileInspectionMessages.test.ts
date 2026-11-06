@@ -8,11 +8,20 @@ import {
   createProfileInspectionCommand, createProfileInspectionStatus,
   parseProfileInspectionCommand, parseProfileInspectionReceipt, parseProfileInspectionStatus,
   parseProfileInspectionActiveContext, isProfileInspectionOperationId,
+  profileInspectionCopyDirectoryName, parseProfileInspectionCopyDirectoryName,
   profileInspectionMaximumMessageBytes, profileInspectionProtocolVersion,
   type ProfileInspectionCommand, type ProfileInspectionReceipt,
 } from './profileInspectionMessages.js';
 
 describe('profile inspection private messages', () => {
+  it('parses only the exact generation-bound copy leaf used by the existing runner', () => {
+    const generation = 'a0000000-0000-4000-8000-000000000001';
+    expect(parseProfileInspectionCopyDirectoryName(profileInspectionCopyDirectoryName(generation))).toBe(generation);
+    for (const name of [generation, `inspection-${generation}`, `profile-inspection-${generation.toUpperCase()}`,
+      `profile-inspection-${generation}/child`, `profile-inspection-${generation}\0`, 'profile-inspection-invalid']) {
+      expect(parseProfileInspectionCopyDirectoryName(name)).toBeUndefined();
+    }
+  });
   it('admits only a bounded immutable active context and an operation UUID', () => {
     const context = { activeProfileId: 'a'.repeat(64), activeProfileIsEmpty: true };
     const parsed = parseProfileInspectionActiveContext(context);

@@ -7,6 +7,7 @@ import {
   type ProfileInspectionActiveContext, type ProfileInspectionReceipt,
 } from '../runtime/profileInspectionMessages.js';
 import { ProfileInspectionProcessError } from '../runtime/profileInspectionProcess.js';
+import type { WorkspaceProcessReservationPreparation } from '../runtime/workspaceProcessReservation.js';
 import { runProfileSnapshotInspection } from './runProfileSnapshotInspection.js';
 
 const boundary = vi.hoisted(() => ({ run: vi.fn() }));
@@ -65,18 +66,20 @@ describe('snapshot inspection with trusted active context', () => {
 
   it('preserves the first process cause when copy cleanup fails after a confirmed exit', async () => {
     const f = fixture();
+    const observeException = vi.fn();
     boundary.run.mockImplementationOnce(async options => {
       throw new ProfileInspectionProcessError('PROFILE_SCHEMA_UNSUPPORTED',
         { processAbsent: true, reservationReclaimed: true, forced: false });
     });
     copy.discard.mockRejectedValue(new Error('synthetic cleanup detail'));
-    const error = await failure(f.start());
+    const error = await failure(f.start({ observeException }));
     expect(error).toMatchObject({ causeCode: 'PROFILE_SCHEMA_UNSUPPORTED',
       cleanup: { processAbsent: true, reservationReclaimed: false, forced: false } });
     expect(copy.discard).toHaveBeenCalledOnce();
     expect(f.invalidate).toHaveBeenCalledOnce();
     expect(f.readActiveContext).toHaveBeenCalledOnce();
     expect(String(error)).not.toContain('synthetic');
+    expect(observeException.mock.calls.length).toBe(0);
   });
 
   it('never discards the copy while process absence or reservation reclaim is uncertain', async () => {
@@ -527,6 +530,34 @@ describe('snapshot inspection with trusted active context', () => {
     expect(boundary.run).not.toHaveBeenCalled();
   });
 
+  it.each([false, true])('offers the original context failure only to the private observer (observer throws: %s)', async throws => {
+    const f = fixture();
+    const original = new Error('SYNTHETIC_INSPECTION_ORIGINAL', { cause: new Error('SYNTHETIC_INSPECTION_CAUSE') });
+    const observeException = vi.fn((_error: unknown) => { if (throws) throw new Error('synthetic observer failure'); });
+    f.readActiveContext.mockRejectedValueOnce(original);
+    const error = await failure(f.start({ observeException }));
+    expect(observeException.mock.calls.length).toBe(1);
+    expect(observeException.mock.calls[0]?.[0] === original).toBe(true);
+    expect(error).toMatchObject({ causeCode: 'unknown', cleanup: { processAbsent: true, reservationReclaimed: true } });
+    expect(error.cause === undefined).toBe(true);
+    expect(String(error).includes('SYNTHETIC')).toBe(false);
+    expect(boundary.run).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('keeps the observed original failure when ownership cleanup fails too', async () => {
+    const f = fixture(); const original = new Error('SYNTHETIC_INSPECTION_ORIGINAL');
+    const cleanup = new Error('SYNTHETIC_INSPECTION_CLEANUP'); const observeException = vi.fn();
+    f.readActiveContext.mockRejectedValueOnce(original);
+    f.assertMainOwned.mockResolvedValueOnce(undefined).mockRejectedValueOnce(cleanup);
+    const error = await failure(f.start({ observeException }));
+    expect(observeException.mock.calls.length).toBe(1);
+    expect(observeException.mock.calls[0]?.[0] === original).toBe(true);
+    expect(error).toMatchObject({ causeCode: 'unknown', cleanup: { reservationReclaimed: false } });
+    expect(f.invalidate).toHaveBeenCalledOnce();
+    expect(String(error).includes('SYNTHETIC')).toBe(false);
+  });
+
   it.each(['../escape', 'not-a-uuid'])('rejects an invalid operation %s before invoking dependencies', async invalid => {
     const f = fixture();
     expect(await failure(f.start({ operationId: invalid }))).toMatchObject({ causeCode: 'PROFILE_INSPECTION_PROTOCOL_INVALID' });
@@ -541,14 +572,16 @@ function fixture() {
   const assertMainOwned = vi.fn(async () => {});
   const assertAuthority = vi.fn(() => {});
   const invalidate = vi.fn(() => {});
-  const bind = vi.fn((generationId: string, _assertAuthority: () => void,
-    prepareMainOwned: (signal: AbortSignal) => Promise<void>) => ({
+  const bind = vi.fn((generationId: string, authority: () => void,
+    prepareMainOwned: WorkspaceProcessReservationPreparation) => ({
     descriptor: { generationId, identity: 'd'.repeat(64), userDataRoot: resolve('private-staging', operationId) },
-    prepare: async (signal: AbortSignal) => prepareMainOwned(signal), assertGrant: async () => {}, assertCurrent: () => {},
+    prepare: async (signal: AbortSignal) => prepareMainOwned(signal, authority, assertMainOwned),
+    assertGrant: async () => {}, assertCurrent: () => {},
     reclaimAfterExit: async () => {}, invalidate,
   }));
   const readActiveContext = vi.fn(async (_request: Parameters<Parameters<typeof runProfileSnapshotInspection>[0]['readActiveContext']>[0]) => context);
   const options: Parameters<typeof runProfileSnapshotInspection>[0] = {
+    target: { kind: 'unbound' },
     operationId, kind: 'inspect', runnerPath: resolve('private-runtime', 'profileInspectionRunner.js'),
     migrationPolicy: 'restoreCompatible',
     deployment: { backendRoot: resolve('private-backend'), migrationsDirectory: resolve('private-migrations'), nativeResourceRoot: resolve('private-native') },

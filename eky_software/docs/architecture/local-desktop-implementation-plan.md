@@ -637,6 +637,54 @@ asynkronisesti validoidun valitsintuloksen käyttöä. Myös backendin
 valmistelun jälkeen valtuus tarkistetaan ennen runtime-resurssien avausta.
 Vanha myöhäinen tulos ei anna uuden käynnistyksen valtuutta.
 
+`bind`in valinnainen `prepareMainOwned`-callback saa signaalin lisäksi saman
+`preparing`-vaiheen toistettavan synkronisen vartijan ja asynkronisen
+`assertPreparationOwned`-portin. Yhteinen callback-tyyppi sijaitsee nykyisen
+prosessivarauksen rajapinnassa. Vartija tarkistaa startupin, siirtosukupolven,
+peruutuksen ja saman hallussa olevan varauksen. Async-portti tekee fyysisen
+varausluvun ja toistaa vartijat ennen ja jälkeen sen.
+Yleinen main-omistajuusväite säilyy kiellettynä aktiivisen siirron aikana.
+Molemmat portit sulkeutuvat heti callbackin päätyttyä myös virheessä, ennen
+ulompaa viimeistä varauslukua tai vapautusta. Vanha vartija tai myöhäisen
+fyysisen luvun tulos ei valtuuta tai mitätöi seuraavaa sukupolvea.
+Kutsuja odottaa kaikki aloittamansa async-tarkistukset callbackissa;
+sen alkuperäinen tehtävä säilyy nykyisessä prepare-/sulkuseurannassa.
+Portti ei aloita uutta aikarajaa eikä korvaa backendin erillistä grantia,
+todettua poistumista tai exitin jälkeistä takaisinottoa.
+
+Mainin `bind`-tulos tarjoaa lisäksi toistettavan `assertGrantedCurrent`-
+havainnon vain saman myönnetyn siirron eliniäksi. Se ei kuluta uudelleen
+kertakäyttöistä grantia tai anna fyysistä main-omistajuutta; vanha kahva
+hylätään ennen seuraavan omistajan tarkistuksia. Backend-kahvan
+`assertRunning` käyttää nykyistä ready/granted-, stop-, exit- ja
+peruutustilaa myös ennen odottamattoman exitin callbackin rekisteröintiä.
+Havainnot eivät yksin ole terveystarkistus tai muutoksen valtuus. Adoption
+[vaihekohtainen sopimus](local-company-workspace-plan.md#w74-b-adoption-hyväksynnän-omistajuus)
+omistaa niiden tulevan hyväksyntäkytkennän; porttien toteutus ei todista sitä.
+Adoption tiedosto-omistajan valtuusportti tarkistaa valitun juuren ja sallitut
+merkinnät ennen valmistelua, julkaisua ja siivousta. Aloitettu hash-luku
+odotetaan sulkeutuneeksi, ja rinnakkaiset inventaariot päättyvät ennen virheen
+palautusta. Nämä alemmat portit eivät vielä sido saman startupin valintaa,
+elävää backendia ja metadatajulkaisuja yhdeksi hyväksyntäketjuksi; se tehdään
+edellä viitatun vaihekohtaisen sopimuksen mukaisessa main-kytkennässä.
+Adoption metadata- ja sidonta-adapterit säilyttävät alkuperäiset valinnat
+ja omien kirjoitusten kuitit samoilla tallentimilla. Saman ajon epävarmuus ei
+poistu myöhemmällä luvulla tai uuden valinnan onnistumisella. Myös viimeisen
+paluun valtuus tarkistetaan; ensivirhe ja erillinen sulkuvirhe säilyvät.
+Ulkoinen kirjoitusvartija ei lue keskeneräistä kirjoittajaa uudelleen.
+Adapterien tiedostotestit eivät vielä todista mainin todellista vaihevaltuutta
+tai koko startupin tuotantokytkentää.
+[Yhteiskytkennän tarkennus](local-company-workspace-plan.md#adoption-vartijoiden-yhteiskytkentä)
+nimeää readonly-tarkistusten syklittömän kutsugraafin, saman valinnan
+vaihekohtaiset näkymät ja alkuperäisten tehtävien sulun ennen vaiheen vaihtoa.
+Sopimus vaatii myös ennen runtimeen siirtymistä alkaneen adoption-työn
+ulomman varauksen sulkuehtoon. Metadata-/binding-/root-vaihenäkymät, readonly-
+vertaisvartijat ja säilyvät root-kuitit on nyt toteutettu. Sama valinta ja
+kuitit säilyvät eikä vanha näkymä uudistu vaiheen vaihtuessa. Yhteinen
+tiedostokoe käyttää kaikkia kolmea omistajaa nykyisten kontrollien rinnalla;
+se ei ole main-, backend- tai native-kytkennän näyttö. Elävän hyväksynnän
+nimetty cleanup-fasadi on vielä tämän kytkennän pakollinen toteutusportti.
+
 Desktopin tyyppitarkistus ja rajatut composition-/siivoustestit läpäisivät.
 Journal V2:n cold-admission ja recovery on kytketty ennen workspace-valintaa:
 readonly admission, nykyinen build-portti, tuore varaus sekä sama huoltolease
@@ -906,12 +954,24 @@ jälkeen havaittu virhe estää puhtaan sammutuksen merkinnän. Sen turvallinen
 `capabilities`-vaihe säilyy erillään markerin omasta kirjoitusvirheestä;
 myöhempi sulkukutsu ei muuta hylättyä tehtävää onnistumiseksi.
 
-Nämä omistajakohtaiset lähde- ja testikytkennät eivät vielä ole koko mainin
-poistovalmistelun tuotantokytkentä. Management-palvelun todelliset active-
-ja selector-kuluttajat sekä native-dialogit pitää edelleen yhdistää
-mainin sisäiseen täsmällisen kohteen ja kertakäyttöisen backupin valmisteluun.
+W7.3:n hyväksytty main-kytkentä yhdistää management-palvelun active- ja
+selector-kuluttajat sekä native-dialogit mainin sisäiseen täsmällisen kohteen
+ja kertakäyttöisen backupin valmisteluun. W7.4:n pysyvää poistokuluttajaa
+ja W7.5:n käyttäjäpolkua ei hyväksytä tämän sulkutodisteen perusteella.
 [W7.3:n toteutussopimus](local-company-workspace-plan.md#w73n-toteutussopimus)
 omistaa ajantasaisen näytön ja jäljellä olevat hyväksyntärajat.
+
+W7.4:n hyväksyttyyn poistoon liittyvän viimeisen marker-kirjoittajan
+poikkeus ja vastauskuittauksesta erillinen lopputieto omistetaan
+[valtuuden luovutuksessa](local-company-workspace-plan.md#w74n-valtuuden-luovutus-ja-elinikä).
+Vain täsmällisen aktiivisen kohteen varmennettu lopullinen poisto saa jättää
+sen markerin kirjoittamatta onnistuneessa sulussa; epävarmuus ei ole tämä
+todiste. Rajattu kytkentä käyttää mainin `workspaceDeletionContinuation`-
+sovitusta ja sen nykyistä lykättyä kirjoitusta rajaavaa
+`workspaceDeletionMarkerBoundary`-funktiota. Varsinainen marker-kirjoittaja
+ja scheduler säilyvät. Main-/marker-kohdekokeet eivät vielä hyväksy
+D:n todellista etenemisomistajaa tai paketoitua poistoa; ajantasainen näyttö
+on M1:n jatkamiskohdassa. Tavallisen sulun ja W7.3:n peruutuspaluun säännöt säilyvät.
 
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 

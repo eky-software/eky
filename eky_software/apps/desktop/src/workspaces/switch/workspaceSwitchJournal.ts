@@ -82,11 +82,12 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
   }
 
   // Inspection never repairs slots or grants a selector mutation authority.
-  inspectSlots(): Promise<ReadOnlyJournalSlots<WorkspaceSwitchJournal>> {
+  inspectSlots(assertAuthority?: () => void): Promise<ReadOnlyJournalSlots<WorkspaceSwitchJournal>> {
     return this.runExclusive(async () => {
       try {
-        const result = parseObservedSlots(await this.observeSlots());
+        const result = parseObservedSlots(await this.observeSlots(undefined, assertAuthority));
         if (result.failure !== undefined) throw result.failure;
+        assertSynchronousAuthority(assertAuthority);
         return result.slots;
       } catch (error) { throw mapStorageError(error); }
     });
@@ -110,13 +111,15 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
     });
   }
 
-  private async observeSlots(mode?: 'allowEmptyObservation'): Promise<ObservedSwitchSlots> {
+  private async observeSlots(mode?: 'allowEmptyObservation', assertAuthority?: () => void): Promise<ObservedSwitchSlots> {
     const slots: Record<CrashSafeFileSlot, ObservedSwitchSlots['current']> = {
       current: undefined, next: undefined, backup: undefined,
     };
     for (const slot of ['current', 'next', 'backup'] as const) {
+      assertSynchronousAuthority(assertAuthority);
       let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
       const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; }, mode);
+      assertSynchronousAuthority(assertAuthority);
       if (bytes !== undefined) slots[slot] = Object.freeze({ bytes, ...(identity === undefined ? {} : { identity }) });
     }
     return Object.freeze(slots);
@@ -233,6 +236,15 @@ export class WorkspaceSwitchJournalStore implements WorkspaceSwitchJournalPort {
     } finally {
       this.activeOperation = false;
     }
+  }
+}
+
+function assertSynchronousAuthority(assertAuthority: (() => void) | undefined): void {
+  if (assertAuthority === undefined) return;
+  const result: unknown = assertAuthority();
+  if (result !== undefined) {
+    void Promise.resolve(result).catch(() => undefined);
+    throw new WorkspaceSwitchError('WORKSPACE_SWITCH_INVALID');
   }
 }
 

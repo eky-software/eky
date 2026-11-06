@@ -7,7 +7,7 @@ import {
 } from '../../runtime/profileInspectionProcess.js';
 import type { ProfileInspectionDocumentBinding } from '../../runtime/profileInspectionDocumentBindings.js';
 import { readProfileInspectionDocumentBindings } from '../../runtime/profileInspectionDocumentBindingsFile.js';
-import { runOwnedProfileInspection, type OwnedProfileInspectionControl } from '../runOwnedProfileInspection.js';
+import { runOwnedProfileInspection, type OwnedProfileInspectionControl, type OwnedProfileInspectionTarget } from '../runOwnedProfileInspection.js';
 import type { ProfileSnapshotInspectionReservation } from '../runProfileSnapshotInspection.js';
 
 export interface ProfileRestoreOriginalInspectionResult {
@@ -19,6 +19,7 @@ export interface ProfileRestoreOriginalInspectionResult {
 /** Original content only; journal/census and fresh mutation authority belong to its caller. */
 export async function runProfileRestoreOriginalInspection(input: {
   readonly operationId: string;
+  readonly target: OwnedProfileInspectionTarget;
   readonly runnerPath: string;
   readonly deployment: ProfileInspectionDeployment;
   readonly reservation: ProfileSnapshotInspectionReservation;
@@ -27,6 +28,7 @@ export async function runProfileRestoreOriginalInspection(input: {
   readonly readSources: (input: { readonly deadline: number; readonly signal: AbortSignal }) => Promise<ProfileInspectionOriginalSources>;
   readonly signal: AbortSignal;
   readonly deadline?: number;
+  readonly observeException?: (error: unknown) => void;
 }): Promise<ProfileRestoreOriginalInspectionResult> {
   let identity: ProfileInspectionRequestIdentity | undefined;
   let documents: readonly ProfileInspectionDocumentBinding[] | undefined;

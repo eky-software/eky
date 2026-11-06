@@ -27,18 +27,79 @@ vi.mock('node:fs/promises', async importOriginal => {
   return { ...actual, lstat: vi.fn(actual.lstat), rm: vi.fn(actual.rm) };
 });
 
-afterEach(async () => {
+afterEach(context => {
   vi.restoreAllMocks();
   vi.mocked(lstat).mockReset();
   vi.mocked(rm).mockReset();
-  await Promise.all(
-    roots.splice(0).map((root) =>
-      rm(root, { force: true, recursive: true }),
-    ),
-  );
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') for (const root of owned) await rm(root, { force: true, recursive: true });
+  });
 });
 
 describe('profile restore activation journal store', () => {
+  it.each([1, 2, 3])('checks synchronous authority at journal-clear syscall %s and retains the later slots', async boundary => {
+    const f = await createFixture();
+    const journal = createJournal();
+    const bytes = `${JSON.stringify(journal)}\n`;
+    const paths = [`${f.filePath}.next`, `${f.filePath}.backup`, f.filePath];
+    for (const path of paths) await writeFile(path, bytes);
+    const first = new Error('SYNTHETIC_MUTATION_REVOKED');
+    let checks = 0;
+    const full = vi.fn(async () => {});
+    await expect(f.store.clear(journal, full, () => { if (++checks === boundary) throw first; })).rejects.toBe(first);
+    expect(full).toHaveBeenCalledTimes(boundary * 2);
+    for (const [index, path] of paths.entries()) {
+      if (index < boundary - 1) await expect(readFile(path)).rejects.toMatchObject({ code: 'ENOENT' });
+      else expect(await readFile(path, 'utf8')).toBe(bytes);
+    }
+  });
+
+  it.each(['currentNext', 'currentBackup', 'backup', 'next', 'backupNext'] as const)(
+    'retains evidence when final repair authority expires (%s)', async scenario => {
+      const f = await createFixture();
+      const journal = createJournal();
+      const bytes = `${JSON.stringify(journal)}\n`;
+      const paths = scenario === 'currentNext' ? [f.filePath, `${f.filePath}.next`]
+        : scenario === 'currentBackup' ? [f.filePath, `${f.filePath}.backup`]
+          : scenario === 'backupNext' ? [`${f.filePath}.backup`, `${f.filePath}.next`]
+            : [`${f.filePath}.${scenario}`];
+      for (const path of paths) await writeFile(path, bytes);
+      const first = new Error('SYNTHETIC_MUTATION_REVOKED');
+      let calls = 0; let allowed = true;
+      const boundary = scenario === 'backupNext' ? 2 : 1;
+      await expect(f.store.read(journal, async () => { if (++calls === boundary) allowed = false; },
+        () => { if (!allowed) throw first; })).rejects.toBe(first);
+      if (scenario === 'backupNext') {
+        expect(await readFile(f.filePath, 'utf8')).toBe(bytes);
+        expect(await readFile(`${f.filePath}.next`, 'utf8')).toBe(bytes);
+      } else for (const path of paths) expect(await readFile(path, 'utf8')).toBe(bytes);
+    },
+  );
+
+  it.each((['clear', 'read'] as const).flatMap(method => ['resolved', 'rejected', 'value'].map(result => ({ method, result }))))(
+    'rejects a $result mutation guard before the $method syscall', async ({ method, result }) => {
+    const f = await createFixture();
+    const journal = createJournal();
+    const bytes = `${JSON.stringify(journal)}\n`;
+    await writeFile(f.filePath, bytes); await writeFile(`${f.filePath}.next`, bytes);
+    const guard = () => result === 'resolved' ? Promise.resolve()
+      : result === 'rejected' ? Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')) : true;
+    await expect(f.store[method](journal, async () => {}, guard))
+      .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(await readFile(f.filePath, 'utf8')).toBe(bytes);
+    expect(await readFile(`${f.filePath}.next`, 'utf8')).toBe(bytes);
+    },
+  );
+
+  it.each(['clear', 'read'] as const)('rejects an incomplete scoped %s authority before mutation', async method => {
+    const f = await createFixture();
+    const journal = createJournal();
+    await writeFile(f.filePath, `${JSON.stringify(journal)}\n`);
+    await expect(f.store[method](journal, undefined, () => {})).rejects.toThrow('PROFILE_RESTORE_JOURNAL_INVALID');
+    expect(await f.store.peek()).toEqual(journal);
+  });
+
   it('creates the first journal under an explicit absence grant', async () => {
     const fixture = await createFixture();
     const journal = createJournal();

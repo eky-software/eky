@@ -14,11 +14,14 @@ import { createLegacyInvoiceProfile } from './createLegacyInvoiceProfile.js';
 /** Closed synthetic rootPublished input; only the packaged application performs recovery. */
 export async function prepareWorkspaceColdRecoveryPackagedSmoke(input: {
   readonly kind: 'creation' | 'import';
+  readonly bindImport?: boolean;
   readonly runRoot: string;
   readonly smokeToken: string;
 }) {
   if (process.env.EKY_E2E !== '1' || !/^[a-f0-9]{32}$/.test(input.smokeToken)
-    || (input.kind !== 'creation' && input.kind !== 'import')) {
+    || (input.kind !== 'creation' && input.kind !== 'import')
+    || (input.bindImport !== undefined && typeof input.bindImport !== 'boolean')
+    || (input.bindImport === true && input.kind !== 'import')) {
     throw new Error('WORKSPACE_COLD_PACKAGED_ADMISSION_FAILED');
   }
   const runBase = await realpath(join(tmpdir(), 'eky-e2e'));
@@ -37,7 +40,7 @@ export async function prepareWorkspaceColdRecoveryPackagedSmoke(input: {
   const userDataRoot = join(smokeRoot, 'user-data');
   await mkdir(userDataRoot, { mode: 0o700 });
   const prepared = await prepareWorkspaceColdRecoveryRegistry({
-    kind: input.kind, userDataRoot,
+    kind: input.kind, userDataRoot, ...(input.bindImport === undefined ? {} : { bindImport: input.bindImport }),
     async prepareProfile({ paths, role }) {
       await migrate(paths.databaseFilePath);
       const preservedPaths = role === 'target' ? [paths.databaseFilePath] : [];

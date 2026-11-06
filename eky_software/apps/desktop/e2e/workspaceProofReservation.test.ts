@@ -9,6 +9,7 @@ import { createWorkspaceFirstStartProofFactories, type WorkspaceFirstStartProofR
 import { runWorkspaceFirstStartMigrationProof } from './workspaceFirstStartMigrationProof.js';
 import { runWorkspaceActivationMigrationProof } from './workspaceActivationMigrationProof.js';
 import { provePublishedWorkspaceColdRecovery } from './workspacePublishedColdRecoveryProof.js';
+import { ProofActiveWorkspaceLifecycle, ProofRuntimeRelaunch } from './workspaceManagementCompositionProofRuntime.js';
 
 const hooks = vi.hoisted(() => ({
   acquire: vi.fn(),
@@ -42,6 +43,38 @@ vi.mock('../src/workspaces/runtime/electronWorkspaceCandidateRuntimeFactory.js',
 let root: string;
 let databaseDirectory: string;
 let owner: ReturnType<typeof createOwner>;
+
+describe('modeled proof deferred return', () => {
+  it('keeps the modeled runtime absent until the real deferred completion guard succeeds', async () => {
+    const lifecycle = new ProofActiveWorkspaceLifecycle(null);
+    const relaunch = new ProofRuntimeRelaunch();
+    relaunch.request(() => lifecycle.completeReturn(null));
+    await lifecycle.assertNoActiveWorkspaceRuntime();
+    expect(lifecycle.events).toEqual(['absent']);
+    const guard = vi.fn(); relaunch.complete(guard);
+    expect(guard).toHaveBeenCalledOnce();
+    expect(lifecycle.events).toEqual(['absent', 'running']);
+    relaunch.complete(guard);
+    expect(guard).toHaveBeenCalledOnce();
+  });
+
+  it('burns a failed return before its guard and does not run the modeled continuation', () => {
+    const relaunch = new ProofRuntimeRelaunch(); const resumed = vi.fn();
+    const primary = new Error('SYNTHETIC_RETURN_OWNER_EXPIRED');
+    relaunch.request(resumed);
+    expect(() => relaunch.complete(() => { throw primary; })).toThrow(primary);
+    relaunch.complete();
+    expect(resumed).not.toHaveBeenCalled();
+  });
+
+  it('retains separate requests for successive modeled operations without repeating a completed return', () => {
+    const relaunch = new ProofRuntimeRelaunch(); const first = vi.fn(); const second = vi.fn();
+    relaunch.request(first); relaunch.complete();
+    relaunch.request(second); relaunch.complete(); relaunch.complete();
+    expect(relaunch.requestCount).toBe(2);
+    expect(first).toHaveBeenCalledOnce(); expect(second).toHaveBeenCalledOnce();
+  });
+});
 
 beforeEach(async () => {
   vi.resetAllMocks();
@@ -130,10 +163,31 @@ describe('candidate proof reservation scopes', () => {
       const before = await readdir(root, { recursive: true });
       expect(() => previous.bindCandidate({ generationId: 'old', operationId: 'old' })).toThrow();
       await expect(previousScope!.createCurrentFixture()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => previousScope!.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(previousScope!.assertMainOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
       expect(await readdir(root, { recursive: true })).toEqual(before);
       expect(hooks.acquire).toHaveBeenLastCalledWith(expect.objectContaining({ userDataRoot: join(root, 'next') }));
     });
     expect(owner.close).toHaveBeenCalledTimes(2);
+  });
+
+  it('rechecks the current proof scope after its physical ownership read completes', async () => {
+    const factories = await prepare();
+    let finish!: () => void, entered!: () => void;
+    const gate = new Promise<void>(resolve => { finish = resolve; });
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    owner.assertMainOwned.mockImplementationOnce(async () => { entered(); await gate; });
+    const work = factories.withWorkspaceReservation(root, async scope => {
+      scope.assertCurrent();
+      await scope.assertMainOwned();
+      throw new Error('STALE_SCOPE_ACCEPTED');
+    });
+    const rejected = expect(work).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    try { await began; hooks.hasLock.mockReturnValue(false); }
+    finally { finish(); }
+    await rejected;
+    expect(owner.close).not.toHaveBeenCalled();
+    await expect(factories.cleanup()).rejects.toThrow();
   });
 
   it('uses the current Electron single-instance state for every grant', async () => {

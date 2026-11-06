@@ -3,6 +3,8 @@ import { randomBytes } from 'node:crypto';
 import { link, lstat, mkdir, mkdtemp, readFile, realpath, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve } from 'node:path';
+import { registerHooks } from 'node:module';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 import test from 'node:test';
 import { readLegacyCommandPhase } from './legacyCommandPhase.mjs';
 
@@ -79,3 +81,75 @@ for (const target of ['command', 'phase']) {
     assert.equal((await lstat(saved)).isDirectory(), true);
   });
 }
+
+async function controlledReader(t, controls = {}) {
+  const target = new URL('./acceptanceCommandPhaseInput.mjs', import.meta.url);
+  const key = `__ekyPhaseRead${randomBytes(16).toString('hex')}`;
+  target.searchParams.set('fixture', key);
+  const bytes = Buffer.from(controls.json ?? '{}'), calls = [];
+  const metadata = { dev: 1n, ino: 2n, size: BigInt(bytes.length), nlink: 1n, mtimeNs: 3n, ctimeNs: 3n,
+    isFile: () => true, isSymbolicLink: () => false };
+  globalThis[key] = {
+    lstat: async () => metadata,
+    realpath,
+    async open() {
+      return { stat: async () => metadata, async read(buffer, offset, length, position) {
+        calls.push('read');
+        if (Object.hasOwn(controls, 'readFailure')) throw controls.readFailure;
+        const count = Math.min(length, bytes.length - position);
+        bytes.copy(buffer, offset, position, position + count);
+        return { bytesRead: count };
+      }, async close() {
+        calls.push('close'); await controls.beforeClose?.();
+        if (Object.hasOwn(controls, 'closeFailure')) throw controls.closeFailure;
+      } };
+    },
+  };
+  const hooks = registerHooks({ resolve(specifier, context, nextResolve) {
+    if (context.parentURL === target.href && specifier === 'node:fs/promises') {
+      const source = ['lstat', 'open', 'realpath'].map(name =>
+        `export const ${name} = globalThis[${JSON.stringify(key)}][${JSON.stringify(name)}];`).join('\n');
+      return { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true };
+    }
+    return nextResolve(specifier, context);
+  } });
+  t.after(() => { hooks.deregister(); delete globalThis[key]; });
+  const module = await import(target.href);
+  return { calls, read: () => module.readCommandPhaseJson('synthetic-input.json') };
+}
+
+for (const first of [new Error('SYNTHETIC_PHASE_READ_FIRST'), undefined]) {
+test(`phase input preserves ${first === undefined ? 'undefined' : 'the first read error'} before a later close failure`, { timeout: 5_000 }, async t => {
+  const close = new Error('SYNTHETIC_PHASE_CLOSE_SECOND');
+  const f = await controlledReader(t, { readFailure: first, closeFailure: close });
+  await assert.rejects(f.read(), error => error instanceof AggregateError && error.cause === first &&
+    error.errors.length === 2 && error.errors[0] === first && error.errors[1] === close);
+  assert.equal(f.calls.at(-1), 'close');
+});
+}
+
+test('phase input retains invalid JSON as primary when close also fails', { timeout: 5_000 }, async t => {
+  const close = new Error('SYNTHETIC_PHASE_CLOSE_AFTER_PARSE');
+  const f = await controlledReader(t, { json: '[]', closeFailure: close });
+  await assert.rejects(f.read(), error => error instanceof AggregateError && error.cause === error.errors[0] &&
+    error.errors[0].message === 'commandPhaseInputInvalid' && error.errors[1] === close);
+});
+
+test('phase input does not return a successful parse if its handle close fails', { timeout: 5_000 }, async t => {
+  const close = new Error('SYNTHETIC_PHASE_CLOSE_ONLY');
+  const f = await controlledReader(t, { closeFailure: close });
+  await assert.rejects(f.read(), error => error === close);
+});
+
+test('phase input joins a held close before returning its original read failure', { timeout: 5_000 }, async t => {
+  const first = new Error('SYNTHETIC_PHASE_HELD_READ');
+  let enter, finish;
+  const entered = new Promise(resolve => { enter = resolve; }), held = new Promise(resolve => { finish = resolve; });
+  const f = await controlledReader(t, { readFailure: first, async beforeClose() { enter(); await held; } });
+  let settled = false;
+  const task = f.read().then(value => ({ value }), error => ({ error })).then(result => { settled = true; return result; });
+  await entered; await nextTurn();
+  try { assert.equal(settled, false); }
+  finally { finish(); await task; }
+  assert.equal((await task).error, first);
+});

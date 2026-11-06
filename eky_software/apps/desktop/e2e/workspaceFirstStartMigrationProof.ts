@@ -743,6 +743,7 @@ export function createTrackedBackendStarter(input: {
       input.tracker.activeHandles.delete(handle);
     };
     const handle: DesktopBackendHandle = {
+      assertRunning() { delegateHandle.assertRunning(); },
       onUnexpectedExit(callback) {
         delegateHandle.onUnexpectedExit(callback);
       },

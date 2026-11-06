@@ -3,18 +3,25 @@ import { isAbsolute, join, resolve } from 'node:path';
 import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
+  type CrashSafeByteSlotSelection,
+  type ObservedRecoveryAuthority,
+  type ObservedRecoverySelection,
 } from '../persistence/crashSafeByteSlotStore.js';
 import {
   createNodeCrashSafeFileSlotFileSystem,
   CrashSafeFileSlotError,
+  type CrashSafeFileSlotFileSystem,
+  type CrashSafeFileSlotIdentity,
 } from '../persistence/crashSafeFileSlot.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceTimestamp } from '../registry/workspaceTimestampValidation.js';
+import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
+import { captureWorkspaceRemnantBinding } from '../deletion/workspaceRemnantBindingCodec.js';
 import { WorkspaceLegacyAdoptionError } from './workspaceLegacyAdoptionError.js';
 import { assertNoDuplicateWorkspaceLegacyAdoptionJournalKeys } from './workspaceLegacyAdoptionJournalDuplicateKeys.js';
 
-const maximumJournalBytes = 4_096;
+export const maximumWorkspaceLegacyAdoptionJournalBytes = 4_096;
 export const workspaceLegacyAdoptionJournalFileName =
   'workspace-adoption-v1.json';
 const operationIdPattern =
@@ -71,16 +78,115 @@ export class WorkspaceLegacyAdoptionJournalStore
   implements WorkspaceLegacyAdoptionJournalPort
 {
   private readonly byteStore: CrashSafeByteSlotStore;
+  private readonly fileSystem: CrashSafeFileSlotFileSystem;
   private activeOperation = false;
 
-  constructor(userDataRoot: string) {
+  constructor(userDataRoot: string, fileSystem?: CrashSafeFileSlotFileSystem) {
     const paths = createWorkspaceLegacyAdoptionJournalPaths(userDataRoot);
-    this.byteStore = new CrashSafeByteSlotStore(
-      createNodeCrashSafeFileSlotFileSystem(
-        paths,
-        maximumJournalBytes,
-      ),
-    );
+    this.fileSystem = fileSystem ?? createNodeCrashSafeFileSlotFileSystem(paths, maximumWorkspaceLegacyAdoptionJournalBytes);
+    this.byteStore = new CrashSafeByteSlotStore(this.fileSystem);
+  }
+
+  inspectSlots(assertAuthority: () => void): Promise<ReadOnlyJournalSlots<WorkspaceLegacyAdoptionJournalV1>> {
+    return this.runExclusive(async () => {
+      const check = checkedAdoptionAuthority(assertAuthority);
+      const slots: Record<'current' | 'backup' | 'next', ReadOnlyJournalSlots<WorkspaceLegacyAdoptionJournalV1>['current']> = {
+        current: undefined, backup: undefined, next: undefined,
+      };
+      for (const slot of ['current', 'backup', 'next'] as const) {
+        check();
+        let identity: CrashSafeFileSlotIdentity | undefined;
+        const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
+        check();
+        if (bytes !== undefined) {
+          if (identity === undefined) invalid();
+          slots[slot] = Object.freeze({ bytes: Uint8Array.from(bytes), identity: Object.freeze({ ...identity }),
+            value: parseWorkspaceLegacyAdoptionJournalBytes(bytes) });
+        }
+      }
+      return Object.freeze(slots);
+    });
+  }
+
+  // Only deletion of the bound company's complete payload can retire a nonterminal adoption journal.
+  clearAfterDeletionPurged(bindingValue: unknown, selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority & {
+    assertDeletionPurged(): Promise<void>;
+  }): Promise<void> {
+    return this.runExclusive(async () => {
+      const { expectedSlots: slots, expectedIdentities: identities } = captureWorkspaceLegacyAdoptionDeletionSlots(bindingValue, selection);
+      const check = checkedAdoptionAuthority(selection.assertAuthority.bind(selection));
+      const external = selection.assertExternalSelection.bind(selection), purged = selection.assertDeletionPurged.bind(selection);
+      const uncertain = selection.onUncertain.bind(selection);
+      let failed = false;
+      let firstFailure: unknown;
+      const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+      const assertAuthority = () => { if (failed) throw firstFailure; try { check(); } catch (error) { throw retain(error); } };
+      const assertExternalSelection = async () => {
+        try { assertAuthority(); await external(); assertAuthority(); await purged(); assertAuthority(); await external(); assertAuthority(); }
+        catch (error) { throw retain(error); }
+      };
+      try {
+        await this.byteStore.clearSelected({ expectedSlots: slots, expectedIdentities: identities, assertAuthority, assertExternalSelection });
+        assertAuthority();
+      }
+      catch (error) {
+        const original = failed ? firstFailure : error;
+        try { const result: unknown = uncertain(original); if (result !== undefined) void Promise.resolve(result).catch(() => undefined); }
+        catch { /* Preserve the original cleanup failure. */ }
+        if (failed) throw firstFailure;
+        throw mapStorageError(error);
+      }
+    });
+  }
+
+  inspectRecoverySelection(assertAuthority: () => void) {
+    return this.runExclusive(async () => {
+      try {
+        const selection = await this.byteStore.inspectRecoverySelection(assertAuthority);
+        const value = selection.bytes === undefined ? undefined : parseWorkspaceLegacyAdoptionJournalBytes(selection.bytes);
+        return Object.freeze({ ...selection, value });
+      } catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  recoverObservedSelection(selection: ObservedRecoverySelection, authority: ObservedRecoveryAuthority) {
+    return this.runExclusive(async () => {
+      try {
+        if (selection.bytes === undefined) throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_INVALID');
+        parseWorkspaceLegacyAdoptionJournalBytes(selection.bytes);
+        const receipt = await this.byteStore.recoverObservedSelection(selection, authority);
+        return Object.freeze({ ...receipt, value: parseWorkspaceLegacyAdoptionJournalBytes(receipt.bytes) });
+      } catch (error) { throw mapStorageError(error); }
+    });
+  }
+
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority) {
+    return this.runSelected(selection, async () => {
+      const next = validateWorkspaceLegacyAdoptionJournal(value);
+      assertWorkspaceLegacyAdoptionTransition(this.selectedCurrent(selection), next);
+      return this.byteStore.replaceSelected(serializeWorkspaceLegacyAdoptionJournal(next), selection);
+    });
+  }
+
+  clearSelected(operationId: string, selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority): Promise<void> {
+    return this.runSelected(selection, async () => {
+      if (this.selectedCurrent(selection)?.operationId !== operationId) {
+        throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_INVALID');
+      }
+      await this.byteStore.clearSelected(selection);
+    });
+  }
+
+  // Only the recovery owner may supply the binding, absent-registry and
+  // payload-absence authority. Ordinary writes retain the terminal transition.
+  prepareRecoveredSelection(selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority) {
+    return this.runSelected(selection, async () => {
+      const current = this.selectedCurrent(selection);
+      if (current?.state !== 'recoveryRequired' || current.sourceKind !== 'legacy') {
+        throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_INVALID');
+      }
+      return this.byteStore.replaceSelected(serializeWorkspaceLegacyAdoptionJournal({ ...current, state: 'prepared' }), selection);
+    });
   }
 
   read(): Promise<Readonly<WorkspaceLegacyAdoptionJournalV1> | undefined> {
@@ -129,6 +235,28 @@ export class WorkspaceLegacyAdoptionJournalStore
     }
   }
 
+  private selectedCurrent(selection: CrashSafeByteSlotSelection) {
+    if (selection.expectedSlots.next !== undefined || selection.expectedSlots.backup !== undefined) {
+      throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_INVALID');
+    }
+    const bytes = selection.expectedSlots.current;
+    return bytes === undefined ? undefined : parseWorkspaceLegacyAdoptionJournalBytes(bytes);
+  }
+
+  private runSelected<Result>(selection: ObservedRecoveryAuthority, operation: () => Promise<Result>): Promise<Result> {
+    const onUncertain = selection.onUncertain.bind(selection);
+    return this.runExclusive(async () => {
+      try { return await operation(); }
+      catch (error) {
+        try {
+          const result: unknown = onUncertain(error);
+          if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+        } catch { /* Preserve the original failure. */ }
+        throw mapStorageError(error);
+      }
+    });
+  }
+
   private async runExclusive<Result>(
     operation: () => Promise<Result>,
   ): Promise<Result> {
@@ -144,6 +272,39 @@ export class WorkspaceLegacyAdoptionJournalStore
       this.activeOperation = false;
     }
   }
+}
+
+// Pure journal-state capture; callers still own current file, target and lifecycle proof.
+export function captureWorkspaceLegacyAdoptionDeletionSlots(
+  bindingValue: unknown, selection: Pick<CrashSafeByteSlotSelection, 'expectedSlots' | 'expectedIdentities'>,
+) {
+  const binding = captureWorkspaceRemnantBinding(bindingValue);
+  if (binding.owner !== 'workspaceLegacyAdoption') invalid();
+  const slots: Record<'current' | 'backup' | 'next', Uint8Array | undefined> = { current: undefined, backup: undefined, next: undefined };
+  const identities: Record<'current' | 'backup' | 'next', Readonly<CrashSafeFileSlotIdentity> | undefined> = {
+    current: undefined, backup: undefined, next: undefined,
+  };
+  let previous: Readonly<WorkspaceLegacyAdoptionJournalV1> | undefined;
+  let count = 0;
+  for (const slot of ['backup', 'current', 'next'] as const) {
+    const supplied = selection.expectedSlots[slot];
+    if (supplied === undefined) { if (selection.expectedIdentities[slot] !== undefined) invalid(); continue; }
+    if (!(supplied instanceof Uint8Array)) invalid();
+    const bytes = Uint8Array.from(supplied), journal = parseWorkspaceLegacyAdoptionJournalBytes(bytes);
+    const identity = selection.expectedIdentities?.[slot];
+    if (identity === undefined || journal.operationId !== binding.operationId || journal.workspaceId !== binding.workspaceId ||
+        journal.sourceKind !== 'legacy') invalid();
+    if (previous !== undefined) {
+      if (previous.state === 'recoveryRequired' && previous.sourceKind === 'legacy' && journal.state === 'prepared') {
+        assertWorkspaceLegacyAdoptionTransition({ ...previous, state: 'prepared' }, journal);
+      } else assertWorkspaceLegacyAdoptionTransition(previous, journal);
+    }
+    previous = journal;
+    slots[slot] = bytes; identities[slot] = Object.freeze({ ...identity });
+    count++;
+  }
+  if (count > 2) invalid();
+  return { expectedSlots: slots, expectedIdentities: identities };
 }
 
 export function validateWorkspaceLegacyAdoptionJournal(
@@ -201,7 +362,7 @@ export function parseWorkspaceLegacyAdoptionJournalBytes(
   bytes: Uint8Array,
 ): Readonly<WorkspaceLegacyAdoptionJournalV1> {
   try {
-    if (bytes.byteLength < 1 || bytes.byteLength > maximumJournalBytes) {
+    if (bytes.byteLength < 1 || bytes.byteLength > maximumWorkspaceLegacyAdoptionJournalBytes) {
       throw new Error('invalid');
     }
     const source = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
@@ -310,6 +471,13 @@ function isJournalState(
     value === 'registryPublished' ||
     value === 'recoveryRequired'
   );
+}
+
+function checkedAdoptionAuthority(assertCurrent: () => void): () => void {
+  return () => {
+    const result: unknown = assertCurrent();
+    if (result !== undefined) { void Promise.resolve(result).catch(() => undefined); invalid(); }
+  };
 }
 
 function invalid(): never {

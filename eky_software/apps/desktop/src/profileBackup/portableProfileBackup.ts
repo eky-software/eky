@@ -119,7 +119,7 @@ export class PortableProfileBackupService {
       let sourceIdentity: ProfileInspectionRequestIdentity | undefined;
       // The export has its own inspection ID but shares the caller's write fence.
       const exportValidator = owner === undefined ? undefined : {
-        validateProfileSnapshot: (id: string) => validateDeletion!(id, owner.operationId),
+        validateProfileSnapshot: (id: string) => validateDeletion!(id, owner.operationId, operationId),
         removeProfileSnapshot: client.removeProfileSnapshot.bind(client),
         withProfileSnapshotEvidence: withEvidence!,
       };
@@ -231,7 +231,10 @@ export class PortableProfileBackupService {
                     verifiedExport = true;
                   },
                 });
-            const inspected = exported?.summary ?? await inspectEncryptedProfileBackup({ ...inspectionInput, validator: client });
+            const inspected = exported?.summary ?? await inspectEncryptedProfileBackup({ ...inspectionInput, validator: {
+              validateProfileSnapshot: (id: string) => client.validateProfileSnapshot(id, undefined, undefined, operationId),
+              removeProfileSnapshot: client.removeProfileSnapshot.bind(client),
+            } });
             if (
               inspected.profileMatchStatus !== 'same' ||
               inspected.databaseHealth !== 'healthy' ||

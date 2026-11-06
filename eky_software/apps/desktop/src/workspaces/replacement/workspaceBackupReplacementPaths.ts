@@ -36,6 +36,26 @@ export function deriveWorkspaceBackupReplacementRuntimePaths(
   workspaceId: WorkspaceId,
 ): Readonly<WorkspaceBackupReplacementRuntimePaths> {
   try {
+    const shared = deriveWorkspaceBackupReplacementOperationsPaths(userDataRoot);
+    const workspace = deriveWorkspaceRoot(shared.userDataRoot, workspaceId, 1);
+    const paths = {
+      ...shared,
+      targetWorkspaceRoot: workspace.workspaceRoot,
+      activeDatabasePath: join(workspace.workspaceRoot, 'runtime', 'data', 'eky.sqlite'),
+      activeArtifactRoot: join(workspace.workspaceRoot, 'runtime', 'storage', 'invoices'),
+    };
+    if (!isContained(shared.userDataRoot, workspace.workspaceRoot) ||
+        !isContained(workspace.workspaceRoot, paths.activeDatabasePath) ||
+        !isContained(workspace.workspaceRoot, paths.activeArtifactRoot)) throw new Error('invalid');
+    return Object.freeze(paths);
+  } catch (error) {
+    if (error instanceof WorkspaceBackupReplacementError) throw error;
+    throw new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_INVALID', 'inputValidation');
+  }
+}
+
+export function deriveWorkspaceBackupReplacementOperationsPaths(userDataRoot: string) {
+  try {
     if (
       typeof userDataRoot !== 'string' ||
       userDataRoot.includes('\0') ||
@@ -44,7 +64,6 @@ export function deriveWorkspaceBackupReplacementRuntimePaths(
       throw new Error('invalid');
     }
     const root = resolve(userDataRoot);
-    const workspace = deriveWorkspaceRoot(root, workspaceId, 1);
     const operationsRoot = join(root, 'workspace-replacement-operations');
     const importRoot = join(operationsRoot, 'import');
     const activationRoot = join(operationsRoot, 'activation');
@@ -53,19 +72,6 @@ export function deriveWorkspaceBackupReplacementRuntimePaths(
     const activationFailedRoot = join(activationRoot, 'failed');
     const paths = {
       userDataRoot: root,
-      targetWorkspaceRoot: workspace.workspaceRoot,
-      activeDatabasePath: join(
-        workspace.workspaceRoot,
-        'runtime',
-        'data',
-        'eky.sqlite',
-      ),
-      activeArtifactRoot: join(
-        workspace.workspaceRoot,
-        'runtime',
-        'storage',
-        'invoices',
-      ),
       operationsRoot,
       importRoot,
       activationRoot,
@@ -86,11 +92,8 @@ export function deriveWorkspaceBackupReplacementRuntimePaths(
       activationFailedRoot,
     ];
     if (
-      !isContained(root, workspace.workspaceRoot) ||
       !isContained(root, operationsRoot) ||
-      operationPaths.some((path) => !isContained(operationsRoot, path)) ||
-      !isContained(workspace.workspaceRoot, paths.activeDatabasePath) ||
-      !isContained(workspace.workspaceRoot, paths.activeArtifactRoot)
+      operationPaths.some((path) => !isContained(operationsRoot, path))
     ) {
       throw new Error('invalid');
     }

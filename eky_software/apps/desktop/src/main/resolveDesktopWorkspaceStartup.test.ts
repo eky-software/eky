@@ -8,6 +8,17 @@ import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup
 import type { ResolveDesktopWorkspaceStartupOptions } from './resolveDesktopWorkspaceStartup.js';
 
 describe('desktop workspace startup boundary', () => {
+  it.each([false, true])('forwards the exact adoption owner with selector present: %s', async present => {
+    const resolveActiveWorkspace = vi.fn<ResolveDesktopWorkspaceStartupOptions['resolveActiveWorkspace']>(async () => createSelection());
+    const adoptionAuthority = { assertMutationCurrent: vi.fn(), assertCurrent: vi.fn(async () => {}), onUncertain: vi.fn() };
+    const selectorAuthority = { assertCurrent: vi.fn(), proveTerminal: vi.fn(async () => ({ assertCurrent: vi.fn() })) };
+    await resolveDesktopWorkspaceStartup({
+      assertStartupCurrent: vi.fn(), createRuntimeSession: () => 'synthetic-session', relaunchApplication: vi.fn(),
+      resolveActiveWorkspace, userDataRoot: 'synthetic-root', adoptionAuthority, ...(present ? { selectorAuthority } : {}),
+    });
+    expect(resolveActiveWorkspace.mock.calls[0]?.[1]?.adoptionAuthority).toBe(adoptionAuthority);
+  });
+
   it.each([false, true])('forwards only the supplied selector authority (present: %s)', async present => {
     const resolveActiveWorkspace = vi.fn<ResolveDesktopWorkspaceStartupOptions['resolveActiveWorkspace']>(async () => createSelection());
     const selectorAuthority = { assertCurrent: vi.fn(), proveTerminal: vi.fn(async () => ({ assertCurrent: vi.fn() })) };

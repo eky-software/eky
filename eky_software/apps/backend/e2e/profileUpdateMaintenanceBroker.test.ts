@@ -70,6 +70,8 @@ describe('update maintenance state, private broker and HTTP write boundary', () 
       .toEqual([fixture.operationId, fixture.operationId]);
     expect(inspectionBoundary.run.mock.calls.map(([input]) => input.migrationPolicy))
       .toEqual(['exactCurrentManifest', 'restoreCompatible']);
+    expect(inspectionBoundary.run.mock.calls.map(([input]) => input.target))
+      .toEqual([{ kind: 'unbound' }, { kind: 'unbound' }]);
     expect(Object.keys(fixture.snapshot).sort()).toEqual([
       'createProfileSnapshot', 'readProfileInspectionContext',
     ]);
@@ -556,6 +558,8 @@ async function createEncryptedPointFixture() {
     deployment: { backendRoot: join(root, 'backend'), migrationsDirectory: join(root, 'migrations'),
       nativeResourceRoot: join(root, 'native') },
     assertMainInstance() {},
+    // This legacy-profile fixture has no selected company workspace.
+    captureSourceTarget: () => ({ kind: 'unbound' }),
     async acquireReservation({ operationRoot }) {
       const owner = { assertMainOwned: vi.fn(async () => undefined),
         bind: vi.fn<OwnedProfileBackupInspectionReservation['bind']>(),

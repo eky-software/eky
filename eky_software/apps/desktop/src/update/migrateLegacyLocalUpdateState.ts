@@ -1,7 +1,8 @@
 import { isDeepStrictEqual } from 'node:util';
 
 import type { AcceptedBuildMetadataStore } from './acceptedBuildMetadataStore.js';
-import { readAcceptedApplicationBuild, type VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import type { VersionedAcceptedBuildMetadata } from './acceptedBuildMetadata.js';
+import { assertTerminalLocalUpdateJournal } from './terminalLocalUpdateJournal.js';
 import { assertUpdateJournalAuthority, type UpdateJournalStore } from './updateJournalStore.js';
 import type { UpdateJournal } from './updateJournal.js';
 import type { ReadOnlyJournalSlotRecord, ReadOnlyJournalSlots } from '../workspaces/persistence/readOnlyJournalSlots.js';
@@ -197,17 +198,7 @@ async function inspectSelectorSelection(context: SelectorLocalUpdateStateContext
     throw new Error('LOCAL_UPDATE_STATE_MIGRATION_CONFLICT');
   }
   const journal = selection.journal ?? selection.legacyJournal;
-  if (journal !== undefined) {
-    const application = readAcceptedApplicationBuild(metadata.value);
-    const state = journal.value.state;
-    const accepted = state === 'accepted';
-    if ((!accepted && state !== 'installerNotApplied' && state !== 'rolledBack') ||
-        application.appVersion !== (accepted ? journal.value.targetVersion : journal.value.currentVersion) ||
-        application.buildRevision !== (accepted ? journal.value.candidatePackageIdentity : journal.value.currentPackageIdentity).buildRevision ||
-        application.releaseChannel !== journal.value.releaseChannel) {
-      throw new Error('LOCAL_UPDATE_STATE_MIGRATION_CONFLICT');
-    }
-  }
+  assertTerminalLocalUpdateJournal(metadata.value, journal?.value);
   await context.assertBuildAdmission(metadata.value);
   await context.assertRecoveryAuthority();
   assertAuthority();

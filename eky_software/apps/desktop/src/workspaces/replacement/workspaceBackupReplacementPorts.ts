@@ -15,26 +15,6 @@ export interface WorkspacePreRestoreRecoveryPointPort {
   }): Promise<void>;
 }
 
-export interface WorkspaceReplacementRuntimeReadiness {
-  readonly artifactRootHealth: 'ready';
-  readonly backendOwnerCount: 1;
-  readonly databaseHealth: 'healthy';
-  readonly foreignKeyHealth: 'healthy';
-  readonly migrationChainIdentity: string;
-  readonly profileId: string;
-  readonly runtimeSessionState: 'rotated';
-  readonly sqliteOwnerCount: 1;
-  readonly workspaceId: WorkspaceId;
-}
-
-export interface WorkspaceReplacementRuntimeReadinessPort {
-  assertReady(input: {
-    readonly expectedMigrationChainIdentity?: string;
-    readonly expectedProfileId: string;
-    readonly workspaceId: WorkspaceId;
-  }): Promise<Readonly<WorkspaceReplacementRuntimeReadiness>>;
-}
-
 export interface WorkspaceReplacementRuntimeHandoffPort {
   requestRelaunch(): void;
 }
@@ -42,7 +22,7 @@ export interface WorkspaceReplacementRuntimeHandoffPort {
 export interface WorkspaceReplacementActivationAuthority {
   readonly journalStore: Pick<
     ProfileRestoreActivationJournalStore,
-    'read'
+    'read' | 'peek'
   >;
   readonly transaction: Pick<
     ProfileRestoreActivationTransaction,
@@ -67,14 +47,22 @@ export interface WorkspaceReplacementActivationAuthorityFactory {
 export interface WorkspaceBackupReplacementRootStore {
   prepareCandidate(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    authority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void>;
   removeImportStaging(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    authority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void>;
   inspectCandidate(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
   ): Promise<void>;
   discardBeforeActivation(
     paths: Readonly<WorkspaceBackupReplacementPaths>,
+    authority?: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void>;
+}
+
+export interface WorkspaceReplacementMutationAuthority {
+  assertCurrent(): Promise<void>;
+  assertMutationCurrent(): void;
 }

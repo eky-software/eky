@@ -1,4 +1,5 @@
 import { join } from 'node:path';
+import { bindWorkspaceDeletionContinuation } from './workspaceDeletionContinuation.js';
 import { BrowserWindow, ipcMain, session } from 'electron';
 
 import { createOperationalLogFailureCapability } from '../diagnostics/operationalLogFailureCapability.js';
@@ -22,6 +23,7 @@ import { createApplicationWindow, loadApplicationWindow } from './applicationWin
 import type { acquireDesktopWorkspaceReservation, DesktopCompositionDependencies, DesktopLifecycleHandle, StartDesktopCompositionOptions } from './desktopComposition.js';
 import { reportDesktopStarted } from './desktopStartupCompletion.js';
 import { restoreWindowInputFocus } from './windowInputFocus.js';
+import { packagedSelectorVerificationPhase } from './packagedSmoke.js';
 
 interface DesktopSelectorCompositionOptions {
   options: StartDesktopCompositionOptions;
@@ -110,8 +112,22 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
     const lifecycle = new MainOwnedSelectorWorkspaceLifecycle({
       assertSelectorCurrent: assertCurrent, reservation, maintenanceLease, runtimeRelaunch,
     });
+    const deletionBinding = options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({
+      command: options.workspaceDeletionCommand, activeWorkspaceId: null,
+      assertCurrent() {
+        assertCurrent();
+        if (shutdownTask !== undefined) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+        reservation.assertMainCurrent();
+        if (shutdownTask !== undefined) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      },
+      async assertOwned() { await lifecycle.assertNoActiveWorkspaceRuntime(); await reservation.assertMainOwned(); },
+      async sealActiveMarker() { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); },
+      recordActiveRemoved() { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); },
+    });
+    const deletionPublisher = deletionBinding?.publish ?? options.workspaceDeletionPublisher;
     management = await createWorkspaceManagementComposition({
-      ...(options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {
+      ...(deletionBinding === undefined ? {} : { deletionContinuation: deletionBinding.continuation }),
+      ...(deletionPublisher === undefined ? {} : { deletionPreparation: {
         runtimeGeneration: options.runtimeInstanceId,
         createRuntime: () => ({ kind: 'selector' as const, lifecycle }),
         assertMainReservation: () => reservation.assertMainOwned(),
@@ -120,9 +136,18 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
           if (mainWindow === undefined) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
           return mainWindow;
         }, showMessageBox: input.dependencies.showMessageBox }),
-        publish: options.workspaceDeletionPublisher,
+        publish: deletionPublisher,
       } }),
       mode: 'selector', assertCurrent,
+      importOwner: {
+        assertCurrent() {
+          assertCurrent();
+          if (shutdownTask !== undefined) throw new Error('WORKSPACE_IMPORT_RECOVERY_REQUIRED');
+        },
+        assertMainCurrent: () => reservation.assertMainCurrent(),
+        assertMainOwned: () => reservation.assertMainOwned(),
+        invalidate: () => reservation.invalidate(),
+      },
       operationalIdentity: input.operationalIdentity, operationalLogger: input.operationalLogger,
       activeWorkspaceLifecycle: lifecycle, appVersion: options.appVersion,
       buildRevision: options.buildInfo.buildRevision, localUpdateRuntimePaths: input.localUpdateRuntimePaths,
@@ -174,27 +199,33 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
     });
     assertCurrent();
     reportDesktopStarted({ identity: input.operationalIdentity, logger: input.operationalLogger, startedAt: input.startedAt });
-    // Publish the lifecycle before renderer loading settles, as on the business
-    // path. A load failure also drains owned work before requesting quit.
-    void loadApplicationWindow(window, 'selector').catch(async () => {
-      if (shutdownTask !== undefined) return;
-      try {
-        input.dependencies.showErrorBox('Eky ei käynnistynyt', 'Käyttöliittymää ei voitu ladata turvallisesti.');
-      } catch { /* Shutdown must still run if the native error dialog fails. */ }
-      try { await shutdown(); } catch { /* The shutdown owner records its failure. */ }
-      options.quitApplication();
-    });
+    if (options.smokeConfiguration.phase === packagedSelectorVerificationPhase) {
+      await loadApplicationWindow(window, 'selector');
+      await input.selection.assertCurrent();
+      await reservation.assertMainOwned();
+      assertCurrent();
+    } else {
+      // Normal startup returns its close owner before renderer loading settles.
+      void loadApplicationWindow(window, 'selector').catch(async () => {
+        if (shutdownTask !== undefined) return;
+        try {
+          input.dependencies.showErrorBox('Eky ei käynnistynyt', 'Käyttöliittymää ei voitu ladata turvallisesti.');
+        } catch { /* Shutdown must still run if the native error dialog fails. */ }
+        try { await shutdown(); } catch { /* The shutdown owner records its failure. */ }
+        options.quitApplication();
+      });
+    }
     return {
       applicationWindow: window, focusApplicationWindow: () => restoreWindowInputFocus(window),
       isInstallerHandoffPending: () => false, deferQuitForInstallerHandoff: () => false, shutdown,
     };
   } catch (error) {
-    let cleanupError: unknown;
-    try { await shutdown(); } catch (failure) { cleanupError = failure; }
+    const failures = [error];
+    try { await shutdown(); } catch (failure) { failures.push(failure); }
     if (mainWindow !== undefined && !mainWindow.isDestroyed()) {
-      try { mainWindow.destroy(); } catch (failure) { cleanupError ??= failure; }
+      try { mainWindow.destroy(); } catch (failure) { failures.push(failure); }
     }
-    if (cleanupError !== undefined) throw new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', { cause: { error, cleanupError } });
+    if (failures.length > 1) throw new AggregateError(failures, 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', { cause: error });
     throw error;
   }
 }

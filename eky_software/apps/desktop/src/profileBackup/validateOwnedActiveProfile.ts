@@ -7,11 +7,19 @@ import {
 } from '../runtime/profileInspectionMessages.js';
 import { waitForInspectionPhase } from './inspectOwnedEncryptedProfileBackup.js';
 import type { ProfileSnapshotInspectionClient } from './profileSnapshotInspectionClient.js';
+import { assertSynchronousProfileRestoreMutationAuthority } from './restore/profileRestoreMutationAuthority.js';
 
 export type OwnedActiveProfileValidation = Pick<ProfileInspectionReceipt,
   'artifactCount' | 'artifactTotalByteSize' | 'databaseHealth' | 'migrationChainIdentity' | 'profileId'>;
 
-/** Startup validation only; metadata grants no mutation, and failure requires runtime shutdown. */
+export interface OwnedActiveProfileContinuation {
+  readonly validation: Readonly<OwnedActiveProfileValidation>;
+  assertCurrent(): Promise<void>;
+  assertMutationCurrent(): void;
+  reportFirstFailure(cause: unknown): void;
+}
+
+/** Startup validation; an optional continuation borrows the same live snapshot, never metadata alone. */
 export async function validateOwnedActiveProfile(input: {
   readonly snapshotClient: Pick<ProfileSnapshotInspectionClient,
     'withInspectionOperation' | 'beginRestoreMaintenance' | 'assertRestoreMaintenance' |
@@ -23,11 +31,24 @@ export async function validateOwnedActiveProfile(input: {
   readonly assertBorrowedRestoreOwner?: () => void;
   readonly assertAuthority: () => void;
   readonly assertLineage: (profileId: string) => void;
+  readonly useValidatedProfile?: (authority: OwnedActiveProfileContinuation) => Promise<void>;
   readonly beforeUpdateRollbackMigrations?: {
     readonly expectedMigrationChainIdentity: string;
     assertCurrent(): Promise<void>;
   };
 }): Promise<Readonly<OwnedActiveProfileValidation>> {
+  if (input.useValidatedProfile !== undefined && typeof input.useValidatedProfile !== 'function') throw invalid();
+  const useValidatedProfile = input.useValidatedProfile?.bind(input);
+  const continuationOwner = useValidatedProfile === undefined ? undefined : input.assertAuthority.bind(input);
+  const continuationLineage = useValidatedProfile === undefined ? undefined : input.assertLineage.bind(input);
+  const assertRuntimeOwner = () => {
+    if (continuationOwner === undefined) input.assertAuthority();
+    else assertSynchronousProfileRestoreMutationAuthority(continuationOwner);
+  };
+  const assertLineage = (profileId: string) => {
+    if (continuationLineage === undefined) input.assertLineage(profileId);
+    else assertSynchronousProfileRestoreMutationAuthority(() => continuationLineage(profileId));
+  };
   const assertBorrowedRestoreOwner = input.assertBorrowedRestoreOwner;
   const rollback = input.beforeUpdateRollbackMigrations === undefined ? undefined
     : Object.freeze({ ...input.beforeUpdateRollbackMigrations });
@@ -39,15 +60,18 @@ export async function validateOwnedActiveProfile(input: {
     const policy = rollback === undefined ? 'exactCurrentManifest' : 'restoreCompatible';
     const cancellation = new AbortController();
     const deadline = performance.now() + profileInspectionWorkMilliseconds;
-    const timer = setTimeout(() => cancellation.abort(), profileInspectionWorkMilliseconds);
+    let closeContinuation: (() => void) | undefined;
+    let continuationStarted = false;
+    const timer = setTimeout(() => { closeContinuation?.(); cancellation.abort(); }, profileInspectionWorkMilliseconds);
     const pendingReads = new Set<Promise<unknown>>();
     const failures: unknown[] = [];
     let lease: Awaited<ReturnType<typeof input.maintenanceLease.acquire>> | undefined;
     let assertLease = () => {};
     let fenceAttempted = false;
     let validation: Readonly<OwnedActiveProfileValidation> | undefined;
+    let continuationFailure: { readonly cause: unknown } | undefined;
     const assertCurrent = () => {
-      input.assertAuthority();
+      assertRuntimeOwner();
       assertLease();
       if (cancellation.signal.aborted || performance.now() >= deadline) {
         throw new Error('PROFILE_INSPECTION_TIMEOUT');
@@ -72,9 +96,14 @@ export async function validateOwnedActiveProfile(input: {
     try {
       if (assertBorrowedRestoreOwner === undefined) {
         await read(async () => { lease = await input.maintenanceLease.acquire('restore'); });
-      } else { assertBorrowedRestoreOwner(); }
+      } else if (useValidatedProfile === undefined) { assertBorrowedRestoreOwner(); }
+      else assertSynchronousProfileRestoreMutationAuthority(assertBorrowedRestoreOwner);
       const assertCapturedOwner = input.maintenanceLease.captureCurrentOwner(['restore']);
-      assertLease = () => { assertBorrowedRestoreOwner?.(); assertCapturedOwner(); };
+      assertLease = () => {
+        if (useValidatedProfile === undefined) assertBorrowedRestoreOwner?.();
+        else if (assertBorrowedRestoreOwner !== undefined) assertSynchronousProfileRestoreMutationAuthority(assertBorrowedRestoreOwner);
+        assertCapturedOwner();
+      };
       assertCurrent();
       fenceAttempted = true;
       await read(() => input.snapshotClient.beginRestoreMaintenance(operationId));
@@ -90,18 +119,76 @@ export async function validateOwnedActiveProfile(input: {
             receipt.artifactTotalByteSize !== inspected.artifactTotalByteSize ||
             receipt.databaseHealth !== inspected.databaseHealth ||
             (rollback !== undefined && receipt.migrationChainIdentity !== rollback.expectedMigrationChainIdentity)) throw invalid();
-        input.assertLineage(receipt.profileId);
+        assertLineage(receipt.profileId);
         await read(() => input.snapshotClient.assertRestoreMaintenance(operationId));
         await read(assertSnapshotCurrent);
-        input.assertLineage(receipt.profileId);
+        assertLineage(receipt.profileId);
         validation = Object.freeze({ artifactCount: receipt.artifactCount,
           artifactTotalByteSize: receipt.artifactTotalByteSize, databaseHealth: receipt.databaseHealth,
           migrationChainIdentity: receipt.migrationChainIdentity, profileId: receipt.profileId });
+        if (useValidatedProfile !== undefined) {
+          if (continuationStarted) throw invalid();
+          continuationStarted = true;
+          let active = true;
+          let grants = 0;
+          closeContinuation = () => { active = false; };
+          const reportFirstFailure = (cause: unknown) => {
+            if (!active) return;
+            active = false;
+            continuationFailure ??= { cause };
+            cancellation.abort();
+          };
+          const assertContinuationCurrent = () => {
+            try {
+              if (!active) throw invalid();
+              assertCurrent();
+              assertLineage(receipt.profileId);
+            } catch (error) { reportFirstFailure(error); throw error; }
+          };
+          const assertMutationCurrent = () => {
+            try {
+              assertContinuationCurrent();
+              if (grants !== 0) throw invalid();
+            } catch (error) { reportFirstFailure(error); throw error; }
+          };
+          const authority: OwnedActiveProfileContinuation = Object.freeze({
+            validation, reportFirstFailure, assertMutationCurrent,
+            assertCurrent() {
+              const pending = (async () => {
+                try {
+                  assertContinuationCurrent();
+                  if (grants !== 0) throw invalid();
+                  grants++;
+                  try {
+                    // Track the whole grant, including the snapshot reader's eventual close.
+                    await read(async () => {
+                      assertContinuationCurrent();
+                      await input.snapshotClient.assertRestoreMaintenance(operationId);
+                      assertContinuationCurrent();
+                      await assertSnapshotCurrent();
+                      assertContinuationCurrent();
+                    });
+                  } finally { grants--; }
+                } catch (error) { reportFirstFailure(error); throw error; }
+              })();
+              // The caller must await the grant, but a dropped promise must not escape unobserved.
+              void pending.catch(() => {});
+              return pending;
+            },
+          });
+          try {
+            await read(() => useValidatedProfile(authority));
+            assertMutationCurrent();
+            if (grants !== 0) throw invalid();
+          } catch (error) { reportFirstFailure(error); throw error; }
+          finally { active = false; }
+        }
       }));
       assertCurrent();
-    } catch (error) { failures.push(error); }
+    } catch (error) { failures.push(continuationFailure === undefined ? error : continuationFailure.cause); }
     finally {
       clearTimeout(timer);
+      closeContinuation?.();
       cancellation.abort();
       const cleanup = new AbortController();
       const cleanupDeadline = performance.now() + 2 * profileInspectionShutdownMilliseconds;
@@ -145,18 +232,18 @@ export async function validateOwnedActiveProfile(input: {
       }
       if (failures.length === 0) {
         try {
-          input.assertAuthority(); assertLease();
+          assertRuntimeOwner(); assertLease();
           await close(() => rollback?.assertCurrent() ?? Promise.resolve());
-          input.assertAuthority(); assertLease();
+          assertRuntimeOwner(); assertLease();
           await close(() => input.snapshotClient.removeProfileSnapshot(operationId));
-          input.assertAuthority(); assertLease();
+          assertRuntimeOwner(); assertLease();
           await close(() => rollback?.assertCurrent() ?? Promise.resolve());
-          input.assertAuthority(); assertLease();
-          input.assertLineage(validation!.profileId);
+          assertRuntimeOwner(); assertLease();
+          assertLineage(validation!.profileId);
           // Releasing the fence is terminal; do not start another asynchronous C read afterward.
           await close(() => input.snapshotClient.endRestoreMaintenance(operationId));
-          input.assertAuthority(); assertLease();
-          input.assertLineage(validation!.profileId);
+          assertRuntimeOwner(); assertLease();
+          assertLineage(validation!.profileId);
         } catch (error) { failures.push(error); invalidate(); }
       }
       if (invalidation !== undefined) {

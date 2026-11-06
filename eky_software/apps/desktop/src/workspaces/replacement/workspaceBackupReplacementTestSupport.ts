@@ -1,11 +1,14 @@
 import { resolve } from 'node:path';
 
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import { ProfileRestoreStartupRecovery } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
 import type { LocalWorkspaceRegistryV1, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type { WorkspaceBackupCandidateReadiness } from '../import/workspaceBackupImportPorts.js';
-import { WorkspaceBackupReplacementCoordinator } from './workspaceBackupReplacementCoordinator.js';
+import { WorkspaceBackupReplacementCoordinator, type WorkspaceBackupReplacementCoordinatorOptions } from './workspaceBackupReplacementCoordinator.js';
+import { assertWorkspaceReplacementRegistryUnchanged } from './workspaceBackupReplacementRegistry.js';
 import type { WorkspaceBackupReplacementOperationId } from './workspaceBackupReplacementOperationId.js';
+import type { WorkspaceReplacementActivationAuthorityFactory } from './workspaceBackupReplacementPorts.js';
 
 export const TEST_REPLACEMENT_WORKSPACE_ID =
   '11111111-1111-4111-8111-111111111111' as WorkspaceId;
@@ -23,11 +26,12 @@ const TEST_REPLACEMENT_USER_DATA_ROOT = resolve(
 );
 
 export function createWorkspaceBackupReplacementFixture(options?: {
+  readonly activationAuthorityFactory?: WorkspaceReplacementActivationAuthorityFactory;
+  readonly createBinding?: WorkspaceBackupReplacementCoordinatorOptions['createBinding'];
   readonly activeWorkspaceId?: WorkspaceId | null;
   readonly duplicateLineage?: boolean;
   readonly lifecycleState?: 'ready' | 'recoveryRequired';
   readonly profileId?: string;
-  readonly useRuntimeHandoff?: boolean;
   readonly userDataRoot?: string;
 }) {
   const events: string[] = [];
@@ -106,7 +110,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     fail: false,
     async acquire(purpose: string) {
       events.push(`lease.acquire.${purpose}`);
-      if (this.fail) throw new Error('busy');
+      if (this.fail || this.held) throw new Error('busy');
       this.held = true;
       return {
         release: async () => {
@@ -211,7 +215,11 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       events.push('activationJournal.read');
       return this.journal;
     },
-    async prepare(operationId: string) {
+    async peek() {
+      events.push('activationJournal.peek');
+      return this.journal;
+    },
+    async prepare(operationId: string, _assertAuthority?: () => Promise<void>, capturePreparation?: (journal: Readonly<ProfileRestoreActivationJournal>) => void) {
       events.push('activation.prepare');
       this.journal = {
         formatVersion: 1,
@@ -221,9 +229,11 @@ export function createWorkspaceBackupReplacementFixture(options?: {
         phase: 'prepared',
         revision: 0,
       };
+      capturePreparation?.(this.journal);
       if (this.fail === 'prepare') throw new Error('private activation');
     },
     async advanceToValidation() {
+      if (this.journal?.phase === 'validationStarting') return this.journal;
       events.push('activation.replace');
       if (this.fail === 'replace') throw new Error('private activation');
       if (this.journal === undefined) throw new Error('missing');
@@ -235,7 +245,9 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       return this.journal;
     },
     async assertForwardRecoveryState() {
-      throw new Error('SYNTHETIC_LIVE_ACTIVATION_HAS_NO_COLD_AUTHORITY');
+      if (this.journal?.phase !== 'validationStarting' || lifecycle.runningOwners !== 0) {
+        throw new Error('SYNTHETIC_STARTUP_STATE_INVALID');
+      }
     },
     async readForwardRecoverySources() {
       throw new Error('SYNTHETIC_LIVE_ACTIVATION_HAS_NO_COLD_AUTHORITY');
@@ -246,12 +258,15 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       this.journal = undefined;
     },
     async commitAcceptance() {
+      events.push('activation.commitAcceptance');
       if (this.journal?.phase !== 'validationStarting') throw new Error('missing');
       this.journal = { ...this.journal, phase: 'accepted', revision: this.journal.revision + 1 };
       return this.journal;
     },
     async clearAccepted() {
+      events.push('activation.clearAccepted');
       if (this.journal?.phase !== 'accepted') throw new Error('missing');
+      if (this.fail === 'accept') throw new Error('private activation');
       this.journal = undefined;
     },
     async rollback() {
@@ -261,7 +276,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
       this.journal = {
         ...this.journal,
         phase: 'rolledBack',
-        revision: this.journal.revision + 1,
+        revision: this.journal.revision + 2,
       };
       return this.journal;
     },
@@ -307,7 +322,7 @@ export function createWorkspaceBackupReplacementFixture(options?: {
   };
 
   const coordinator = new WorkspaceBackupReplacementCoordinator({
-    activationAuthorityFactory: {
+    activationAuthorityFactory: options?.activationAuthorityFactory ?? {
       create() {
         events.push('activationFactory.create');
         return {
@@ -319,23 +334,75 @@ export function createWorkspaceBackupReplacementFixture(options?: {
     activeWorkspaceLifecycle: lifecycle,
     backupCandidate: candidate,
     backupContainer: container,
+    createBinding: options?.createBinding ?? (input => {
+      events.push('binding.capture');
+      let published = false;
+      const assertCurrent = () => {
+        if (!lease.held || !published || lifecycle.runningOwners !== 0 || lifecycle.sqliteOwners !== 0) {
+          throw new Error('SYNTHETIC_REPLACEMENT_BINDING_UNAVAILABLE');
+        }
+        assertWorkspaceReplacementRegistryUnchanged(input.target.registrySnapshot, registry.value);
+      };
+      return {
+        async publish() { events.push('binding.publish'); published = true; assertCurrent(); },
+        async assertPublished() { assertCurrent(); },
+        assertMutationCurrent: assertCurrent,
+      };
+    }),
     generateOperationId: () => TEST_REPLACEMENT_OPERATION_ID,
     maintenanceLease: lease,
     operationGuard: guard,
     preRestoreRecoveryPoint: preRestore,
     registry,
     rootStore,
-    ...(options?.useRuntimeHandoff === true ? { runtimeHandoff } : {}),
-    runtimeReadiness,
+    runtimeHandoff,
     userDataRoot: options?.userDataRoot ?? TEST_REPLACEMENT_USER_DATA_ROOT,
     workspaceRuntimeAbsence: runtimeAbsence,
   });
+
+  async function completeStartup() {
+    if (lease.held || runtimeHandoff.requests === 0 || lifecycle.runningOwners !== 0) {
+      throw new Error('SYNTHETIC_STARTUP_HANDOFF_INVALID');
+    }
+    const startupLease = await lease.acquire('restore');
+    const recovery = new ProfileRestoreStartupRecovery({
+      journalStore: activation,
+      transaction: activation,
+      async withRollbackAuthority(journal, use) {
+        const assertCurrent = async () => {
+          if (!lease.held || lifecycle.runningOwners !== 0 || activation.journal?.operationId !== journal.operationId) {
+            throw new Error('SYNTHETIC_ROLLBACK_AUTHORITY_INVALID');
+          }
+        };
+        await assertCurrent();
+        await use({ kind: 'rollback', journal, assertCurrent,
+          assertContent: assertCurrent, beforeStagingMove: assertCurrent });
+      },
+    });
+    try {
+      const mode = await recovery.prepareBeforeBackend();
+      await lifecycle.ensurePreviousWorkspaceRunning();
+      const validateActiveProfile = () => runtimeReadiness.assertReady({
+        expectedProfileId: targetProfileId,
+        workspaceId: TEST_REPLACEMENT_WORKSPACE_ID,
+      }).then(() => undefined);
+      if (mode === 'normal') await validateActiveProfile();
+      return await recovery.validateAfterBackend({
+        mode,
+        stopBackend: async () => { await lifecycle.stopAndProveHandlesClosed(); },
+        validateActiveProfile,
+      });
+    } finally {
+      await startupLease.release();
+    }
+  }
 
   return {
     activation,
     candidate,
     container,
     coordinator,
+    completeStartup,
     events,
     guard,
     lease,

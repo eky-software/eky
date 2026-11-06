@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as waitForReservationRelease } from 'node:timers/promises';
@@ -11,10 +11,13 @@ import {
   readWorkspaceProcessReservationIdentity,
   WorkspaceProcessReservationError,
   type WorkspaceProcessReservation,
+  type WorkspaceProcessReservationPreparation,
 } from '../runtime/workspaceProcessReservation.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { MainOwnedSelectorWorkspaceLifecycle } from '../workspaces/runtime/mainOwnedSelectorWorkspaceLifecycle.js';
+import { runOwnedProfileInspection } from '../profileBackup/runOwnedProfileInspection.js';
+import { resolveProfileInspectionCopyRoot } from '../runtime/profileInspectionMessages.js';
 import { acquireDesktopWorkspaceReservation } from './desktopComposition.js';
 
 vi.mock('electron', () => ({
@@ -55,7 +58,7 @@ function reservation() {
   return { loss, handle };
 }
 
-async function fixture(prepareMainOwned?: (signal: AbortSignal) => Promise<void>) {
+async function fixture(prepareMainOwned?: WorkspaceProcessReservationPreparation) {
   const initial = reservation();
   const reclaimed = reservation();
   acquire.mockResolvedValueOnce(initial.handle).mockResolvedValueOnce(reclaimed.handle);
@@ -149,6 +152,420 @@ describe('selector lifecycle with the desktop reservation owner', () => {
 });
 
 describe('desktop composition workspace reservation owner', () => {
+  it.for(['bound', 'unbound'] as const)(
+    'consumes the real inspection grant once after repeatable %s selection checks', async (kind, context) => {
+      const actual = await vi.importActual<typeof import('../runtime/workspaceProcessReservation.js')>(
+        '../runtime/workspaceProcessReservation.js',
+      );
+      acquire.mockImplementation(actual.acquireWorkspaceProcessReservation);
+      readIdentity.mockImplementation(actual.readWorkspaceProcessReservationIdentity);
+      const root = await mkdtemp(join(tmpdir(), 'eky-inspection-grant-'));
+      const reservationRoot = join(root, 'reservation');
+      await mkdir(reservationRoot);
+      const signal = new AbortController().signal;
+      const owner = await acquireDesktopWorkspaceReservation({
+        userDataRoot: reservationRoot, signal, assertSingleInstanceOwnership() {},
+      });
+      let child: WorkspaceProcessReservation | undefined;
+      const selection = vi.fn(async (assertCurrent: () => void) => {
+        assertCurrent(); await Promise.resolve(); assertCurrent();
+      });
+      let grants = 0;
+      let cleanupVerified = false;
+      let firstFailure: { error: unknown } | undefined;
+      context.onTestFinished(async () => {
+        if (context.task.result?.state === 'pass' && cleanupVerified) {
+          await rm(root, { recursive: true, force: true });
+        }
+      });
+      try {
+        await expect(runOwnedProfileInspection({
+          operationId: randomUUID(), signal, reservation: owner, assertAuthority() {},
+          target: kind === 'unbound' ? { kind } : {
+            kind, installationRoot: root, workspaceId: randomUUID(),
+            lineageIdentity: { formatVersion: 1, profileId: 'c'.repeat(64) },
+            assertSelectionCurrent: selection,
+          },
+          prepare: control => control.assertMainOwned(),
+          // Real Main and IPC ownership; only the child protocol and exit are modeled.
+          async inspect(_preparation, input) {
+            const transfer = input.reservationTransfer;
+            try {
+              await transfer.prepare(input.signal);
+              child = await actual.acquireWorkspaceProcessReservation({
+                userDataRoot: reservationRoot, expectedIdentity: transfer.descriptor.identity, signal,
+              });
+              await transfer.assertGrant(input.signal);
+              transfer.assertCurrent();
+              grants += 1;
+              await writeFile(join(resolveProfileInspectionCopyRoot(transfer.descriptor), 'profile.sqlite'),
+                'synthetic protocol payload', { flag: 'wx' });
+              return 'receipt';
+            } finally {
+              await child?.release(); child = undefined;
+              await transfer.reclaimAfterExit(signal);
+            }
+          },
+          accept: async () => 'accepted',
+        })).resolves.toBe('accepted');
+        expect(grants).toBe(1);
+        expect(selection.mock.calls.length > 0).toBe(kind === 'bound');
+        expect(await readdir(reservationRoot)).toEqual([]);
+        await owner.assertMainOwned();
+      } catch (error) {
+        firstFailure = { error };
+      } finally {
+        try { await child?.release(); }
+        catch (error) { firstFailure ??= { error }; }
+        try { await owner.close(); cleanupVerified = true; }
+        catch (error) { firstFailure ??= { error }; }
+      }
+      if (firstFailure !== undefined) throw firstFailure.error;
+    },
+  );
+
+  it('observes only the granted phase repeatedly without consuming or reclaiming it', async () => {
+    const f = await fixture();
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.transfer.prepare(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.transfer.assertGrant(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    f.transfer.assertCurrent();
+    const acquisitions = acquire.mock.calls.length;
+    const identityReads = readIdentity.mock.calls.length;
+    f.transfer.assertGrantedCurrent();
+    f.transfer.assertGrantedCurrent();
+    expect(acquire).toHaveBeenCalledTimes(acquisitions);
+    expect(readIdentity).toHaveBeenCalledTimes(identityReads);
+    expect(() => f.owner.assertMainCurrent()).toThrow();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.owner.assertMainOwned();
+    await f.handle.release();
+    await f.owner.close();
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+  });
+
+  it('rejects a stale granted observer without inspecting its old authority or harming the successor', async () => {
+    const f = await fixture();
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    const successor = f.owner.bind(randomUUID(), f.lease.captureCurrentOwner(['create']));
+    await successor.prepare(f.signal.signal);
+    await successor.assertGrant(f.signal.signal);
+    successor.assertCurrent();
+    f.assertAuthority.mockImplementation(() => { throw new Error('stale authority'); });
+    f.assertAuthority.mockClear();
+    const instanceChecks = f.assertSingleInstanceOwnership.mock.calls.length;
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    expect(f.assertAuthority).not.toHaveBeenCalled();
+    expect(f.assertSingleInstanceOwnership).toHaveBeenCalledTimes(instanceChecks);
+    successor.assertGrantedCurrent();
+    acquire.mockResolvedValueOnce(reservation().handle);
+    await successor.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('does not observe pending preparation or reclaim as a granted owner', async () => {
+    const entered = deferred();
+    const prepared = deferred();
+    const f = await fixture(async () => { entered.resolve(); await prepared.promise; });
+    const preparation = f.transfer.prepare(f.signal.signal);
+    await entered.promise;
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    prepared.resolve();
+    await preparation;
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    const acquired = deferred<WorkspaceProcessReservation>();
+    acquire.mockReturnValueOnce(acquired.promise);
+    const reclaim = f.transfer.reclaimAfterExit(f.signal.signal);
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    acquired.resolve(f.reclaimed.handle);
+    await reclaim;
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('rechecks the owner after a synchronous authority callback invalidates it', async () => {
+    const f = await fixture();
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    f.assertAuthority.mockImplementationOnce(() => f.transfer.invalidate());
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await expect(f.owner.close()).rejects.toThrow();
+  });
+
+  it.each(['abort', 'reclaim'] as const)('rejects synchronous authority-triggered %s', async mode => {
+    const f = await fixture();
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    let reclaim: Promise<void> | undefined;
+    f.assertAuthority.mockImplementationOnce(() => {
+      if (mode === 'abort') f.signal.abort();
+      else reclaim = f.transfer.reclaimAfterExit(new AbortController().signal);
+    });
+    expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    await (reclaim ?? f.transfer.reclaimAfterExit(new AbortController().signal));
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['signal', 'lease', 'instance', 'invalidated'] as const)(
+    'rejects a granted observation after losing %s', async mode => {
+      const f = await fixture();
+      await f.transfer.prepare(f.signal.signal);
+      await f.transfer.assertGrant(f.signal.signal);
+      f.transfer.assertCurrent();
+      if (mode === 'signal') f.signal.abort();
+      else if (mode === 'lease') await f.handle.release();
+      else if (mode === 'instance') f.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('lost'); });
+      else f.transfer.invalidate();
+      expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+      expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+      if (mode === 'instance' || mode === 'invalidated') {
+        await expect(f.owner.close()).rejects.toThrow();
+      } else {
+        await f.transfer.reclaimAfterExit(new AbortController().signal);
+        await f.owner.close();
+      }
+    },
+  );
+
+  it('lends a repeatable preparing guard without granting main ownership or a child grant', async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    let captured!: () => void;
+    f = await fixture(async (_signal, assertPreparationCurrent) => {
+      captured = assertPreparationCurrent;
+      expect(() => f.owner.assertMainCurrent()).toThrow();
+      await expect(f.owner.assertMainOwned()).rejects.toThrow();
+      expect(assertPreparationCurrent()).toBeUndefined();
+      await Promise.resolve();
+      expect(assertPreparationCurrent()).toBeUndefined();
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+    });
+    await f.transfer.prepare(f.signal.signal);
+    expect(() => captured()).toThrow();
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('checks physical preparation ownership repeatedly without releasing or granting the reservation', async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    f = await fixture(async (_signal, _assertCurrent, assertOwned) => {
+      expect(assertOwned).toBeTypeOf('function');
+      const checks = f.initial.handle.assertOwned.mock.calls.length;
+      await assertOwned();
+      await assertOwned();
+      expect(f.initial.handle.assertOwned).toHaveBeenCalledTimes(checks + 2);
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+      await expect(f.owner.assertMainOwned()).rejects.toThrow();
+      expect(() => f.transfer.assertGrantedCurrent()).toThrow();
+    });
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['cancelled', 'leaseLost', 'instanceLost', 'invalidated', 'physicalLoss'] as const)(
+    'rejects physical preparation ownership after %s during the read', async mode => {
+      const entered = deferred();
+      const read = deferred();
+      let f!: Awaited<ReturnType<typeof fixture>>;
+      f = await fixture(async (_signal, _assertCurrent, assertOwned) => {
+        f.initial.handle.assertOwned.mockImplementationOnce(() => { entered.resolve(); return read.promise; });
+        await assertOwned();
+      });
+      const preparation = f.transfer.prepare(f.signal.signal);
+      const rejected = expect(preparation).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await entered.promise;
+      if (mode === 'cancelled') f.signal.abort();
+      else if (mode === 'leaseLost') await f.handle.release();
+      else if (mode === 'instanceLost') f.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('lost'); });
+      else if (mode === 'invalidated') f.owner.invalidate();
+      else f.initial.loss.abort();
+      read.resolve();
+      await rejected;
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+      await expect(f.owner.close()).rejects.toThrow();
+    },
+  );
+
+  it('retains the reservation when the physical preparation read rejects', async () => {
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    f = await fixture(async (_signal, _assertCurrent, assertOwned) => {
+      f.initial.handle.assertOwned.mockRejectedValueOnce(new Error('synthetic physical read failure'));
+      await assertOwned();
+    });
+    await expect(f.transfer.prepare(f.signal.signal)).rejects.toMatchObject({ reason: 'lost' });
+    expect(f.initial.handle.release).not.toHaveBeenCalled();
+    await expect(f.owner.assertMainOwned()).rejects.toThrow();
+    await expect(f.owner.close()).rejects.toThrow();
+  });
+
+  it('seals both preparation guards as soon as the callback finishes', async () => {
+    const entered = deferred();
+    const read = deferred();
+    let assertCurrent!: () => void;
+    let assertOwned!: () => Promise<void>;
+    let f!: Awaited<ReturnType<typeof fixture>>;
+    f = await fixture(async (_signal, current, owned) => {
+      assertCurrent = current;
+      assertOwned = owned;
+      f.initial.handle.assertOwned.mockImplementationOnce(() => { entered.resolve(); return read.promise; });
+    });
+    const preparation = f.transfer.prepare(f.signal.signal);
+    await entered.promise;
+    f.assertAuthority.mockImplementationOnce(() => { throw new Error('expired callback authority'); });
+    const calls = f.assertAuthority.mock.calls.length;
+    expect(() => assertCurrent()).toThrow();
+    await expect(assertOwned()).rejects.toThrow();
+    expect(f.assertAuthority).toHaveBeenCalledTimes(calls);
+    f.assertAuthority.mockReset().mockImplementation(f.lease.captureCurrentOwner(['create']));
+    read.resolve();
+    await preparation;
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('rejects stale preparation guards without reading old authority or harming a successor', async () => {
+    let assertCurrent!: () => void;
+    let assertOwned!: () => Promise<void>;
+    const f = await fixture(async (_signal, current, owned) => { assertCurrent = current; assertOwned = owned; });
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.assertGrant(f.signal.signal);
+    f.transfer.assertCurrent();
+    f.assertAuthority.mockImplementation(() => { throw new Error('stale authority'); });
+    const calls = f.assertAuthority.mock.calls.length;
+    expect(() => assertCurrent()).toThrow();
+    await expect(assertOwned()).rejects.toThrow();
+    expect(f.assertAuthority).toHaveBeenCalledTimes(calls);
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    const next = f.owner.bind(randomUUID(), f.lease.captureCurrentOwner(['create']));
+    await next.prepare(f.signal.signal);
+    await next.assertGrant(f.signal.signal);
+    next.assertCurrent();
+    expect(() => assertCurrent()).toThrow();
+    await expect(assertOwned()).rejects.toThrow();
+    expect(f.assertAuthority).toHaveBeenCalledTimes(calls);
+    next.assertGrantedCurrent();
+    acquire.mockResolvedValueOnce(reservation().handle);
+    await next.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['resolved', 'rejected'] as const)(
+    'rejects a late %s physical preparation read without invalidating its successor', async outcome => {
+      const entered = deferred();
+      const read = deferred();
+      let oldCheck!: Promise<unknown>;
+      let f!: Awaited<ReturnType<typeof fixture>>;
+      f = await fixture(async (_signal, _assertCurrent, assertOwned) => {
+        f.initial.handle.assertOwned.mockImplementationOnce(() => { entered.resolve(); return read.promise; });
+        // Deliberately retain a borrowed read beyond its allowed callback lifetime.
+        oldCheck = assertOwned().then(() => 'unexpectedSuccess', error => error);
+      });
+      await f.transfer.prepare(f.signal.signal);
+      await entered.promise;
+      await f.transfer.reclaimAfterExit(f.signal.signal);
+      const next = f.owner.bind(randomUUID(), f.lease.captureCurrentOwner(['create']));
+      await next.prepare(f.signal.signal);
+      await next.assertGrant(f.signal.signal);
+      next.assertCurrent();
+      f.assertAuthority.mockImplementation(() => { throw new Error('stale authority'); });
+      const calls = f.assertAuthority.mock.calls.length;
+      if (outcome === 'resolved') read.resolve();
+      else read.reject(new Error('synthetic late physical read failure'));
+      expect(await oldCheck).toMatchObject({ reason: 'lost' });
+      expect(f.assertAuthority).toHaveBeenCalledTimes(calls);
+      next.assertGrantedCurrent();
+      acquire.mockResolvedValueOnce(reservation().handle);
+      await next.reclaimAfterExit(f.signal.signal);
+      await f.handle.release();
+      await f.owner.close();
+    },
+  );
+
+  it.each(['cancelled', 'leaseLost', 'instanceLost', 'invalidated'] as const)(
+    'seals the preparation guard after %s without releasing the held reservation', async mode => {
+      const entered = deferred();
+      const finish = deferred();
+      let captured!: () => void;
+      const f = await fixture(async (_signal, assertPreparationCurrent) => {
+        captured = assertPreparationCurrent;
+        assertPreparationCurrent();
+        entered.resolve();
+        await finish.promise;
+        assertPreparationCurrent();
+      });
+      const preparation = f.transfer.prepare(f.signal.signal);
+      const failure = expect(preparation).rejects.toThrow();
+      await entered.promise;
+      if (mode === 'cancelled') f.signal.abort();
+      else if (mode === 'leaseLost') await f.handle.release();
+      else if (mode === 'instanceLost') f.assertSingleInstanceOwnership.mockImplementation(() => { throw new Error('lost'); });
+      else f.owner.invalidate();
+      expect(() => captured()).toThrow();
+      finish.resolve();
+      await failure;
+      expect(() => captured()).toThrow();
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+      await expect(f.owner.close()).rejects.toThrow();
+    },
+  );
+
+  it('does not let a sealed preparation guard invalidate or authorize a later generation', async () => {
+    let captured!: () => void;
+    const f = await fixture(async (_signal, assertPreparationCurrent) => { captured = assertPreparationCurrent; });
+    await f.transfer.prepare(f.signal.signal);
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    const next = f.owner.bind(randomUUID(), f.assertAuthority);
+    expect(() => captured()).toThrow();
+    await next.prepare(f.signal.signal);
+    await next.assertGrant(f.signal.signal);
+    next.assertCurrent();
+    acquire.mockResolvedValueOnce(reservation().handle);
+    await next.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it('seals the borrowed guard when its preparation callback rejects', async () => {
+    let captured!: () => void;
+    let capturedOwned!: () => Promise<void>;
+    const original = new Error('synthetic preparation failure');
+    const f = await fixture(async (_signal, assertPreparationCurrent, assertPreparationOwned) => {
+      captured = assertPreparationCurrent;
+      capturedOwned = assertPreparationOwned;
+      assertPreparationCurrent();
+      throw original;
+    });
+    await expect(f.transfer.prepare(f.signal.signal)).rejects.toBe(original);
+    expect(() => captured()).toThrow();
+    await expect(capturedOwned()).rejects.toThrow();
+    expect(f.initial.handle.release).not.toHaveBeenCalled();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    await f.handle.release();
+    await f.owner.close();
+  });
+
   it('keeps installation validity repeatable without granting main ownership or consuming a child grant', async () => {
     const f = await fixture();
     const assertRepeatable = () => {
@@ -507,8 +924,16 @@ describe('desktop composition workspace reservation owner', () => {
     let child: WorkspaceProcessReservation | undefined;
     try {
       await expect(actual.acquireWorkspaceProcessReservation({ userDataRoot: root, signal })).rejects.toThrow();
-      const transfer = owner.bind(randomUUID(), () => {});
+      let preparationOwned!: () => Promise<void>;
+      const transfer = owner.bind(randomUUID(), () => {}, async (_signal, assertCurrent, assertOwned) => {
+        preparationOwned = assertOwned;
+        assertCurrent();
+        await assertOwned();
+        await expect(actual.acquireWorkspaceProcessReservation({ userDataRoot: root, signal })).rejects.toThrow();
+        await assertOwned();
+      });
       await transfer.prepare(signal);
+      await expect(preparationOwned()).rejects.toThrow();
       child = await actual.acquireWorkspaceProcessReservation({
         userDataRoot: root, expectedIdentity: transfer.descriptor.identity, signal,
       });

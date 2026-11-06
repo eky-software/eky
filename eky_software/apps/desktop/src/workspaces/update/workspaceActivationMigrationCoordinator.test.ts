@@ -5,13 +5,16 @@ import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import type { ProfileRestoreActivationTransaction } from '../../profileBackup/restore/profileRestoreActivationTransaction.js';
+import type { ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { InMemoryWorkspaceMaintenanceLease, type WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../replacement/workspaceBackupReplacementOperationId.js';
 import { deriveWorkspaceBackupReplacementPaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../replacement/workspaceBackupReplacementRootStore.js';
-import { WorkspaceActivationMigrationCoordinator, type WorkspaceActivationMigrationRecoveryReceipt } from './workspaceActivationMigrationCoordinator.js';
+import { WorkspaceActivationMigrationCoordinator, type WorkspaceActivationMigrationCoordinatorOptions,
+  type WorkspaceActivationMigrationRecoveryReceipt } from './workspaceActivationMigrationCoordinator.js';
 import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
 import type { WorkspaceActivationMigrationProof } from './workspaceActivationMigrationGuard.js';
 
@@ -33,13 +36,135 @@ const testUserDataRoot = resolve(
 );
 const cleanupRoots: string[] = [];
 
-afterEach(async () => {
+afterEach(async ({ task }) => {
+  if (task.result?.state !== 'pass') { cleanupRoots.splice(0); return; }
   for (const root of cleanupRoots.splice(0)) {
     await rm(root, { force: true, recursive: true });
   }
 });
 
 describe('WorkspaceActivationMigrationCoordinator', () => {
+  it('captures the complete binding before the first leased read and keeps captured callbacks', async () => {
+    const f = createFixture();
+    const entered = gate();
+    const reading = gate();
+    const readback = f.binding.assertPublished;
+    const readOwner = f.binding.assertReadOwnership;
+    f.activation.journalStore.peek.mockImplementationOnce(async () => {
+      entered.resolve(); await reading.promise; return undefined;
+    });
+    const task = f.coordinator.migrateAndActivate(f.input);
+    try {
+      await Promise.race([entered.promise, task.then(() => { throw new Error('READ_NOT_REACHED'); })]);
+      expect(f.createBinding).toHaveBeenCalledOnce();
+      expect(f.createBinding.mock.calls[0]?.[0].proof).toBe(f.input.proof);
+      expect(f.createBinding.mock.calls[0]?.[0].lease).toEqual({ release: expect.any(Function) });
+      f.binding.assertPublished = vi.fn(async () => { throw new Error('LATE_CALLBACK'); });
+      f.binding.assertReadOwnership = vi.fn(async () => { throw new Error('LATE_READ_OWNER'); });
+    } finally { reading.resolve(); await task; }
+    expect(readback).toHaveBeenCalled();
+    expect(f.binding.assertPublished).not.toHaveBeenCalled();
+    expect(f.activation.transaction.prepare).toHaveBeenCalledWith(operationId,
+      expect.any(Function), expect.any(Function), expect.any(Function));
+    expect(f.activation.transaction.advanceToValidation).toHaveBeenCalledWith(createActivationJournal(operationId, 'prepared'),
+      expect.any(Function), undefined, expect.objectContaining({
+        assertReadOwnership: expect.any(Function), assertMutationCurrent: expect.any(Function),
+      }), expect.any(Function));
+    const context = f.activation.transaction.advanceToValidation.mock.calls[0]![3]!;
+    await expect(context.assertReadOwnership()).rejects.toThrow('WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED');
+    expect(readOwner).not.toHaveBeenCalled();
+    expect(f.binding.assertReadOwnership).not.toHaveBeenCalled();
+  });
+
+  it('uses the captured read owner and seals continuation on its failure', async () => {
+    const f = createFixture();
+    const primary = new Error('SYNTHETIC_READ_OWNER_LOST');
+    const original = f.binding.assertReadOwnership;
+    original.mockRejectedValueOnce(primary);
+    f.activation.transaction.advanceToValidation.mockImplementationOnce(async (_journal, _full, _content, context) => {
+      f.binding.assertReadOwnership = vi.fn(async () => {});
+      await context!.assertReadOwnership();
+      return createActivationJournal(operationId, 'validationStarting');
+    });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({ cause: primary });
+    expect(original).toHaveBeenCalledOnce();
+    expect(f.binding.assertReadOwnership).not.toHaveBeenCalled();
+    expect(f.blockContinuation).toHaveBeenCalledOnce();
+    expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('joins a failed publication and retains first, notification and release failures', async () => {
+    const f = createFixture({ failLeaseRelease: true });
+    const primary = new Error('SYNTHETIC_PUBLICATION_FAILED');
+    const notification = new Error('SYNTHETIC_BLOCK_FAILED');
+    const entered = gate();
+    const publishing = gate();
+    f.binding.publishBeforeSnapshot.mockImplementationOnce(async () => {
+      entered.resolve(); await publishing.promise; throw primary;
+    });
+    f.blockContinuation.mockImplementationOnce(() => { throw notification; });
+    const task = f.coordinator.migrateAndActivate(f.input).catch((error: unknown) => error);
+    try {
+      await Promise.race([entered.promise, task.then(() => { throw new Error('PUBLICATION_NOT_REACHED'); })]);
+      expect(f.events).not.toContain('lease.release');
+    } finally { publishing.resolve(); await task; }
+    expect(await task).toMatchObject({ cause: { errors: [
+      { cause: { errors: [primary, notification] } }, { message: 'release-failed' },
+    ] } });
+    expect(f.stopTargetStartupRuntime).not.toHaveBeenCalled();
+    expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(f.requestRelaunch).not.toHaveBeenCalled();
+  });
+
+  it('rejects an incomplete binding before reading or publishing', async () => {
+    const f = createFixture();
+    f.createBinding.mockReturnValueOnce({ publishBeforeSnapshot: f.binding.publishBeforeSnapshot } as never);
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+    });
+    expect(f.activation.journalStore.peek).not.toHaveBeenCalled();
+    expect(f.binding.publishBeforeSnapshot).not.toHaveBeenCalled();
+    expect(f.blockContinuation).toHaveBeenCalledOnce();
+    expect(f.events.at(-1)).toBe('lease.release');
+  });
+
+  it('does not reuse or mark the old selection after non-null source handoff and relaunch failure', async () => {
+    const f = createFixture({ failCandidateMigration: true });
+    const relaunch = new Error('SYNTHETIC_RELAUNCH_FAILED');
+    let readbacksAtHandoff = 0;
+    f.sourceRecovery.recoverFromFailure.mockImplementationOnce(async () => {
+      readbacksAtHandoff = f.binding.assertPublished.mock.calls.length;
+      return 'relaunchRequired';
+    });
+    f.requestRelaunch.mockImplementationOnce(() => { throw relaunch; });
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      cause: { errors: [{ message: 'migration-failed' }, relaunch] },
+    });
+    expect(f.binding.assertPublished).toHaveBeenCalledTimes(readbacksAtHandoff);
+    expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(f.blockContinuation).toHaveBeenCalledOnce();
+  });
+
+  it('retains the migration, relaunch and continuation-block failures after source handoff', async () => {
+    const f = createFixture({ failCandidateMigration: true });
+    const relaunch = new Error('SYNTHETIC_RELAUNCH_FAILED');
+    const notification = new Error('SYNTHETIC_BLOCK_FAILED');
+    f.requestRelaunch.mockImplementationOnce(() => { throw relaunch; });
+    f.blockContinuation.mockImplementationOnce(() => { throw notification; });
+
+    await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
+      code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
+      cause: { errors: [
+        { errors: [{ message: 'migration-failed' }, relaunch] }, notification,
+      ] },
+    });
+    expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(f.sourceRecovery.recoverFromFailure).toHaveBeenCalledOnce();
+    expect(f.requestRelaunch).toHaveBeenCalledOnce();
+    expect(f.blockContinuation).toHaveBeenCalledOnce();
+  });
+
   it('migrates only the private candidate before the activation swap', async () => {
     const fixture = createFixture();
 
@@ -49,8 +174,7 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
 
     expect(fixture.events).toEqual([
       'lease.acquire',
-      'guard.reprove',
-      'activation.read',
+      'activation.peek',
       'recovery.createAndStage',
       'runtime.stop',
       'runtime.absent',
@@ -59,7 +183,6 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
       'candidate.validate',
       'recovery.removeStaging',
       'candidate.inspect',
-      'guard.reprove',
       'activation.prepare',
       'activation.advance',
       'lease.release',
@@ -192,7 +315,8 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
       code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
     });
 
-    expect(fixture.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
+    expect(fixture.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
+    expect(fixture.blockContinuation).toHaveBeenCalledOnce();
     expect(fixture.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
     expect(fixture.requestRelaunch).not.toHaveBeenCalled();
   });
@@ -207,7 +331,7 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     });
 
     expect(fixture.stopTargetStartupRuntime).toHaveBeenCalledOnce();
-    expect(fixture.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
+    expect(fixture.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
     expect(fixture.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
   });
 
@@ -220,7 +344,7 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
       code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
     });
 
-    expect(fixture.sourceRecovery.requireRecovery).toHaveBeenCalledOnce();
+    expect(fixture.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
     expect(fixture.requestRelaunch).not.toHaveBeenCalled();
   });
 
@@ -272,10 +396,10 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     } });
     const result = f.coordinator.migrateAndActivate(f.input);
     try {
-      await started;
+      await Promise.race([started, result.then(() => { throw new Error('RELEASE_NOT_REACHED'); })]);
       expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
       expect(f.requestRelaunch).not.toHaveBeenCalled();
-    } finally { release(); }
+    } finally { release?.(); await result; }
     await expect(result).resolves.toBe('relaunchRequired');
   });
 
@@ -337,7 +461,7 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
   });
 
   it('carries the exact frozen rollback writer receipt after lease release without another journal read', async () => {
-    const written = { ...createActivationJournal(operationId, 'rolledBack'), revision: 3 };
+    const written = { ...createActivationJournal(operationId, 'rolledBack'), revision: 2 };
     const f = createFixture({ selector: true, failActivationAdvance: true,
       onRelease() { written.revision = 99; written.hadActiveDocuments = false; } });
     f.activation.transaction.rollback.mockImplementationOnce(async selected => {
@@ -347,10 +471,11 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     });
     await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
     const receipt = f.sourceRecovery.recoverFromFailure.mock.calls[0]?.[0];
-    expect(receipt).toEqual({ kind: 'rolledBack', journal: { ...createActivationJournal(operationId, 'rolledBack'), revision: 3 } });
+    expect(receipt).toEqual({ kind: 'rolledBack', journal: { ...createActivationJournal(operationId, 'rolledBack'), revision: 2 } });
     expect(Object.isFrozen(receipt)).toBe(true);
     if (receipt?.kind === 'rolledBack') expect(Object.isFrozen(receipt.journal)).toBe(true);
-    expect(f.activation.journalStore.read).toHaveBeenCalledTimes(2);
+    expect(f.activation.journalStore.read).toHaveBeenCalledTimes(1);
+    expect(f.activation.journalStore.peek).toHaveBeenCalledTimes(2);
     expect(f.events.indexOf('source.recover')).toBeGreaterThan(f.events.indexOf('lease.release'));
   });
 
@@ -358,7 +483,7 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     'refuses a conflicting rollback %s receipt without source recovery', async mismatch => {
       const f = createFixture({ selector: true, failActivationAdvance: true });
       f.activation.transaction.rollback.mockResolvedValueOnce({
-        ...createActivationJournal(operationId, 'rolledBack'), revision: mismatch === 'revision' ? 4 : 3,
+        ...createActivationJournal(operationId, 'rolledBack'), revision: mismatch === 'revision' ? 4 : 2,
         ...(mismatch === 'operation' ? { operationId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' } : {}),
         ...(mismatch === 'phase' ? { phase: 'rollbackStarting' as const } : {}),
         ...(mismatch === 'database' ? { hadActiveDatabase: false } : {}),
@@ -376,11 +501,12 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
   it.each(['rollbackStarting', 'rolledBack'] as const)('carries a resumed %s writer receipt at its exact revision', async phase => {
     const f = createFixture({ selector: true, failActivationAdvance: true });
     const selected = { ...createActivationJournal(operationId, phase), revision: 7 };
-    f.activation.journalStore.read.mockResolvedValueOnce(undefined).mockResolvedValueOnce(selected);
+    f.activation.journalStore.peek.mockResolvedValueOnce(undefined).mockResolvedValueOnce(selected);
+    f.activation.journalStore.read.mockResolvedValueOnce(selected);
     const written = { ...selected, phase: 'rolledBack' as const, revision: phase === 'rolledBack' ? 7 : 8 };
     f.activation.transaction.rollback.mockResolvedValueOnce(written);
     await expect(f.coordinator.migrateAndActivate(f.input)).resolves.toBe('relaunchRequired');
-    expect(f.activation.transaction.rollback).toHaveBeenCalledExactlyOnceWith(selected);
+    expect(f.activation.transaction.rollback).toHaveBeenCalledExactlyOnceWith(selected, expect.any(Function), undefined, expect.any(Function));
     expect(f.sourceRecovery.recoverFromFailure).toHaveBeenCalledExactlyOnceWith({ kind: 'rolledBack', journal: written });
   });
 
@@ -397,9 +523,11 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
 
   it('preserves a journal that never contained an original database', async () => {
     const f = createFixture({ selector: true, failActivationAdvance: true });
-    f.activation.journalStore.read.mockResolvedValueOnce(undefined).mockResolvedValueOnce({
+    const selected = {
       ...createActivationJournal(operationId, 'prepared'), hadActiveDatabase: false,
-    });
+    };
+    f.activation.journalStore.peek.mockResolvedValueOnce(undefined).mockResolvedValueOnce(selected);
+    f.activation.journalStore.read.mockResolvedValueOnce(selected);
     await expect(f.coordinator.migrateAndActivate(f.input)).rejects.toMatchObject({
       code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED',
     });
@@ -415,22 +543,22 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
       cause: { errors: [
         expect.objectContaining({ message: 'swap-failed' }),
         expect.objectContaining({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' }),
-        expect.objectContaining({ code: 'WORKSPACE_ACTIVATION_MIGRATION_RECOVERY_REQUIRED' }),
       ] },
     });
-    expect(f.events.slice(f.events.indexOf('selector.expired') + 1)).toEqual(['guard.reprove', 'guard.reprove']);
+    expect(f.events.slice(f.events.indexOf('selector.expired') + 1)).toEqual(['guard.reprove', 'continuation.block', 'lease.release']);
     expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
     expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
     expect(f.requestRelaunch).not.toHaveBeenCalled();
   });
 
   it.each([
-    { expireAt: 'lease.acquire' }, { expireAt: 'activation.read' },
+    { expireAt: 'lease.acquire' }, { expireAt: 'activation.peek' },
     { expireAt: 'recovery.createAndStage' }, { expireAt: 'candidate.prepareRoot' },
     { expireAt: 'candidate.migrate' }, { expireAt: 'candidate.validate' },
     { expireAt: 'recovery.removeStaging' }, { expireAt: 'candidate.inspect' },
     { expireAt: 'activation.prepare' }, { expireAt: 'activation.advance' },
-    { expireAt: 'activation.read', expireOccurrence: 2, failCandidateMigration: true },
+    { expireAt: 'activation.peek', expireOccurrence: 2, failCandidateMigration: true },
+    { expireAt: 'activation.read', failActivationAdvance: true },
     { expireAt: 'candidate.discard', failCandidateMigration: true },
     { expireAt: 'activation.rollback', failActivationAdvance: true },
     { expireAt: 'recovery.removeStaging', failCandidateMigration: true },
@@ -442,7 +570,7 @@ describe('WorkspaceActivationMigrationCoordinator', () => {
     const expiry = f.events.indexOf('selector.expired');
     expect(expiry).toBeGreaterThan(-1);
     expect(f.events.slice(expiry + 1).every(event =>
-      ['guard.reprove', 'runtime.stop', 'runtime.absent'].includes(event))).toBe(true);
+      ['guard.reprove', 'runtime.stop', 'runtime.absent', 'continuation.block', 'lease.release'].includes(event))).toBe(true);
     expect(f.sourceRecovery.recoverFromFailure).not.toHaveBeenCalled();
     expect(f.sourceRecovery.requireRecovery).not.toHaveBeenCalled();
     expect(f.requestRelaunch).not.toHaveBeenCalled();
@@ -504,6 +632,18 @@ function createFixture(options: FixtureOptions = {}) {
     targetWorkspaceId,
   });
   const requestRelaunch = vi.fn(() => record('runtime.relaunch'));
+  const blockContinuation = vi.fn(() => record('continuation.block'));
+  let published = false;
+  let stopped = false;
+  const binding = {
+    publishBeforeSnapshot: vi.fn(async () => { published = true; }),
+    assertPublished: vi.fn(async () => { if (!published) throw new Error('BINDING_NOT_PUBLISHED'); }),
+    assertReadOwnership: vi.fn(async () => { if (!published) throw new Error('BINDING_NOT_PUBLISHED'); }),
+    enterStopped: vi.fn(async () => { stopped = true; }),
+    assertMutationCurrent: vi.fn(() => { if (!stopped) throw new Error('TARGET_NOT_STOPPED'); }),
+    assertSnapshotCleanupCurrent: vi.fn(() => { if (!published) throw new Error('BINDING_NOT_PUBLISHED'); }),
+  };
+  const createBinding = vi.fn<WorkspaceActivationMigrationCoordinatorOptions['createBinding']>(() => binding);
   const stopTargetStartupRuntime = vi.fn(async () => {
     record('runtime.stop');
     if (options.failRuntimeStop) throw new Error('stop-failed');
@@ -520,7 +660,8 @@ function createFixture(options: FixtureOptions = {}) {
   };
   const activation = {
     journalStore: {
-      read: vi.fn(async () => {
+      peek: vi.fn(async () => { record('activation.peek'); return activationJournal; }),
+      read: vi.fn<ProfileRestoreActivationJournalStore['read']>(async () => {
         record('activation.read');
         return activationJournal;
       }),
@@ -533,7 +674,7 @@ function createFixture(options: FixtureOptions = {}) {
         throw new Error('SYNTHETIC_MIGRATION_HAS_NO_COLD_AUTHORITY');
       }),
       accept: vi.fn(async () => undefined),
-      advanceToValidation: vi.fn(async () => {
+      advanceToValidation: vi.fn<ProfileRestoreActivationTransaction['advanceToValidation']>(async () => {
         record('activation.advance');
         if (options.failActivationAdvance) {
           throw new Error('swap-failed');
@@ -545,16 +686,17 @@ function createFixture(options: FixtureOptions = {}) {
         return activationJournal;
       }),
       clearRolledBack: vi.fn(async () => undefined),
-      prepare: vi.fn(async () => {
+      prepare: vi.fn<ProfileRestoreActivationTransaction['prepare']>(async (_operationId, _assertCurrent, capture) => {
         record('activation.prepare');
         activationJournal = createActivationJournal(
           operationId,
           'prepared',
         );
+        capture?.(activationJournal);
       }),
       commitAcceptance: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTANCE_PUBLICATION'); }),
       clearAccepted: vi.fn(async () => { throw new Error('UNEXPECTED_ACCEPTED_CLEANUP'); }),
-      rollback: vi.fn(async (selected?: Readonly<ProfileRestoreActivationJournal>) => {
+      rollback: vi.fn<ProfileRestoreActivationTransaction['rollback']>(async selected => {
         record('activation.rollback');
         activationJournal = createActivationJournal(
           operationId,
@@ -582,6 +724,8 @@ function createFixture(options: FixtureOptions = {}) {
     assertNoActiveWorkspaceRuntime: vi.fn(async () => { record('runtime.absent'); }),
   };
   const coordinator = new WorkspaceActivationMigrationCoordinator({
+    createBinding,
+    blockContinuation,
     activationAuthorityFactory: {
       create: () => activation,
     },
@@ -654,6 +798,9 @@ function createFixture(options: FixtureOptions = {}) {
 
   return {
     activation,
+    binding,
+    createBinding,
+    blockContinuation,
     coordinator,
     events,
     input: {
@@ -696,6 +843,12 @@ function createActivationJournal(
     hadActiveDocuments: true,
     operationId: journalOperationId,
     phase,
-    revision: 1,
+    revision: phase === 'prepared' ? 0 : 1,
   };
+}
+
+function gate() {
+  let resolve!: () => void;
+  const promise = new Promise<void>(complete => { resolve = complete; });
+  return { promise, resolve };
 }

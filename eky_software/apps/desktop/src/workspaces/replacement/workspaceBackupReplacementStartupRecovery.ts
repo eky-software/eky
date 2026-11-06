@@ -1,5 +1,6 @@
 import type { ProfileRecoveryOperationalObserver } from '../../profileBackup/profileRecoveryOperationalObserver.js';
-import { ProfileRestoreStartupRecovery, type ProfileRestoreTerminalAcceptance, type ProfileRestoreRollbackAcceptance } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
+import { ProfileRestoreStartupRecovery, type ProfileRestoreTerminalAcceptance, type ProfileRestoreRollbackAcceptance,
+  type ProfileRestoreRolledBackCleanup } from '../../profileBackup/restore/profileRestoreStartupRecovery.js';
 import { createProfileRestoreWorkspaceReplacementActivationAuthority } from './workspaceBackupReplacementActivationFactory.js';
 import type { WorkspaceBackupReplacementRuntimePaths } from './workspaceBackupReplacementPaths.js';
 
@@ -8,6 +9,7 @@ export function createWorkspaceBackupReplacementStartupRecovery(input: {
   readonly paths: Readonly<WorkspaceBackupReplacementRuntimePaths>;
   readonly withTerminalAuthority?: ProfileRestoreTerminalAcceptance;
   readonly withRollbackAuthority?: ProfileRestoreRollbackAcceptance;
+  readonly withRolledBackCleanupAuthority?: ProfileRestoreRolledBackCleanup;
 }) {
   const activation =
     createProfileRestoreWorkspaceReplacementActivationAuthority(input.paths);
@@ -22,6 +24,9 @@ export function createWorkspaceBackupReplacementStartupRecovery(input: {
       transaction: activation.transaction,
       ...(input.withTerminalAuthority === undefined ? {} : { withTerminalAuthority: input.withTerminalAuthority }),
       ...(input.withRollbackAuthority === undefined ? {} : { withRollbackAuthority: input.withRollbackAuthority }),
+      ...(input.withRolledBackCleanupAuthority === undefined ? {} : {
+        withRolledBackCleanupAuthority: input.withRolledBackCleanupAuthority,
+      }),
     }),
   });
 }

@@ -26,11 +26,15 @@ import { createFirstStartProofAdmission, createFirstStartProofObserver } from '.
 import { WorkspaceFirstStartLoadExperiment, type FirstStartLoadExperimentMode } from './workspaceFirstStartLoadExperiment.js';
 import { assertProofSingleInstanceOwnership } from './workspaceManagementCompositionProofRuntime.js';
 import { shutdownBeforeWorkspaceProof } from './workspaceProofInitialShutdown.js';
+import { projectExceptionChain } from '../src/main/startupExceptionEvidence.js';
+import type { WorkspaceAdoptionAcceptanceProofReply } from './workspaceAdoptionAcceptanceProof.js';
+import type { WorkspaceOriginalInspectionProofReply } from './workspaceOriginalInspectionProof.js';
 import { readSelectorTestRelease, usesSelectorTestBackend } from './electronSelectorTestRelease.js';
 import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSession.js';
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
 import { createWorkspaceDeletionProof } from './workspaceDeletionProof.js';
-import { isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
+import { createWorkspaceDeletionExecutionProof } from './workspaceDeletionExecutionProof.js';
+import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -84,6 +88,11 @@ const deletionProof = isWorkspaceDeletionProofScenario(config.scenarioId)
   : undefined;
 const selectorBackend = usesSelectorTestBackend(config.scenarioId)
   ? observeSelectorTestBackend(startDesktopBackend) : undefined;
+const deletionExecutionProof = isWorkspaceDeletionExecutionProofScenario(config.scenarioId)
+  ? createWorkspaceDeletionExecutionProof({ scenarioId: config.scenarioId, userDataRoot: config.paths.userDataPath,
+    sessionSecret: config.backend.sessionSecret, assertMainCurrent: assertProofSingleInstanceOwnership,
+    backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning() })
+  : undefined;
 app.once('browser-window-created', () => {
   startupObservation.record('firstWindowCreated');
 });
@@ -94,6 +103,8 @@ const createRuntimeSession = createElectronE2eRuntimeSessionFactory(config.backe
 let secretReplyHold: ReturnType<typeof createElectronSecretReplyHold> | undefined;
 let secretShutdownProof: Promise<void> | undefined;
 let secretShutdownState: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
+let adoptionProofRequested = false;
+let originalInspectionProofRequested = false;
 
 function requireSecretReplyHold() {
   if (secretReplyHold === undefined) throw new Error('ELECTRON_SECRET_REPLY_PROOF_UNAVAILABLE');
@@ -163,6 +174,7 @@ if (hasSingleInstanceLock) {
     async onFailure(errorCode) {
       await startupException?.waitForDelivery();
       deletionProof?.closeChannel();
+      deletionExecutionProof?.close();
       startupObservation.record('startupFailed');
       nativeAdapters.recordStartupFailure(errorCode, backendController.getStartupFailure());
       nativeAdapters.showErrorBox(
@@ -185,8 +197,8 @@ if (hasSingleInstanceLock) {
           schemaVersion: 1,
         },
         dependencies: {
-          ...(deletionProof === undefined ? {} : {
-            createWorkspaceManagementCapability: deletionProof.createCapability,
+          ...(deletionProof === undefined && deletionExecutionProof === undefined ? {} : {
+            createWorkspaceManagementCapability: deletionExecutionProof?.createCapability ?? deletionProof!.createCapability,
           }),
           createRuntimeSession: () => {
             runtimeSessionCount += 1;
@@ -255,8 +267,10 @@ if (hasSingleInstanceLock) {
         },
         userDataPath: config.paths.userDataPath,
         ...(deletionProof === undefined ? {} : { workspaceDeletionPublisher: deletionProof.publish }),
+        ...(deletionExecutionProof === undefined ? {} : { workspaceDeletionCommand: deletionExecutionProof.command }),
       });
       deletionProof?.register();
+      deletionExecutionProof?.ready();
       startupObservation.record('compositionCompleted');
     },
     async waitUntilReady() {
@@ -282,12 +296,18 @@ const handleBeforeQuit = createDesktopBeforeQuitHandler({
 });
 app.on('before-quit', (event) => {
   deletionProof?.closeChannel();
+  deletionExecutionProof?.close();
   void handleBeforeQuit(event);
 });
 app.on('window-all-closed', () => app.quit());
 
 Object.assign(globalThis, {
   __EKY_ELECTRON_E2E__: Object.freeze({
+    workspaceDeletionExecutionProof: deletionExecutionProof === undefined ? undefined : Object.freeze({
+      execute: deletionExecutionProof.execute,
+      snapshot: deletionExecutionProof.snapshot,
+      readFailures: deletionExecutionProof.readFailures,
+    }),
     workspaceDeletionProof: deletionProof === undefined ? undefined : Object.freeze({
       arm: deletionProof.arm,
       release: deletionProof.release,
@@ -415,6 +435,62 @@ Object.assign(globalThis, {
         resourcesPath: config.paths.resourcesPath,
         userDataRoot: config.paths.userDataPath,
       });
+    },
+    async runWorkspaceAdoptionAcceptanceProof(): Promise<WorkspaceAdoptionAcceptanceProofReply> {
+      if (config.scenarioId !== 'DESK-WORKSPACE-ADOPTION-001' || adoptionProofRequested) {
+        throw new Error('WORKSPACE_ADOPTION_PROOF_NOT_ADMITTED');
+      }
+      adoptionProofRequested = true;
+      let first: ReturnType<typeof projectExceptionChain> | undefined;
+      let failedRuntimeInstanceId = config.runtimeInstanceId;
+      const observeFailure = (error: unknown, secrets: readonly string[] = [], runtimeInstanceId = config.runtimeInstanceId) => {
+        if (first !== undefined) return;
+        first = projectExceptionChain(error, [config.backend.sessionSecret, ...secrets]);
+        failedRuntimeInstanceId = runtimeInstanceId;
+      };
+      try {
+        if (lifecycle === undefined) throw new Error('WORKSPACE_ADOPTION_PROOF_LIFECYCLE_MISSING');
+        await shutdownBeforeWorkspaceProof(lifecycle);
+        if (backendController.isRunning()) throw new Error('WORKSPACE_ADOPTION_PROOF_BACKEND_RUNNING');
+        const { runWorkspaceAdoptionAcceptanceProof } = await import('./workspaceAdoptionAcceptanceProof.js');
+        const result = await runWorkspaceAdoptionAcceptanceProof({
+          applicationPath: config.paths.applicationPath, appVersion: e2eAppVersion,
+          resourcesPath: config.paths.resourcesPath, runtimeSessionSecret: config.backend.sessionSecret,
+          userDataRoot: config.paths.userDataPath, startBackend: startDesktopBackend, observeFailure,
+        });
+        return { status: 'completed', result };
+      } catch (error) {
+        observeFailure(error);
+        return { status: 'failed', runtimeInstanceId: failedRuntimeInstanceId, exception: first! };
+      }
+    },
+    async runWorkspaceOriginalInspectionProof(): Promise<WorkspaceOriginalInspectionProofReply> {
+      if (config.scenarioId !== 'DESK-WORKSPACE-ORIGINAL-001' || originalInspectionProofRequested) {
+        throw new Error('WORKSPACE_ORIGINAL_PROOF_NOT_ADMITTED');
+      }
+      originalInspectionProofRequested = true;
+      let first: ReturnType<typeof projectExceptionChain> | undefined;
+      let failedRuntimeInstanceId = config.runtimeInstanceId;
+      const observeFailure = (error: unknown, secrets: readonly string[] = [], runtimeInstanceId = config.runtimeInstanceId) => {
+        if (first !== undefined) return;
+        first = projectExceptionChain(error, [config.backend.sessionSecret, ...secrets]);
+        failedRuntimeInstanceId = runtimeInstanceId;
+      };
+      try {
+        if (lifecycle === undefined) throw new Error('WORKSPACE_ORIGINAL_PROOF_LIFECYCLE_MISSING');
+        await shutdownBeforeWorkspaceProof(lifecycle);
+        if (backendController.isRunning()) throw new Error('WORKSPACE_ORIGINAL_PROOF_BACKEND_RUNNING');
+        const { runWorkspaceOriginalInspectionProof } = await import('./workspaceOriginalInspectionProof.js');
+        const result = await runWorkspaceOriginalInspectionProof({
+          applicationPath: config.paths.applicationPath, appVersion: e2eAppVersion,
+          resourcesPath: config.paths.resourcesPath, runtimeSessionSecret: config.backend.sessionSecret,
+          userDataRoot: config.paths.userDataPath, startBackend: startDesktopBackend, observeFailure,
+        });
+        return { status: 'completed', result };
+      } catch (error) {
+        observeFailure(error);
+        return { status: 'failed', runtimeInstanceId: failedRuntimeInstanceId, exception: first! };
+      }
     },
     scenarioId: config.scenarioId,
     secondInstanceCount: () => secondInstanceCount,

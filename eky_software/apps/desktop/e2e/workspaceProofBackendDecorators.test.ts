@@ -11,6 +11,19 @@ vi.mock('electron', () => ({ app: {}, BrowserWindow: class {}, ipcMain: {},
 const operationId = '11111111-1111-4111-8111-111111111111';
 const variants = ['selector', 'firstStart', 'activation'] as const;
 
+it.for(variants)('forwards repeated running checks and the original owner rejection in %s', async variant => {
+  const f = fixture(variant);
+  const handle = await f.start();
+  handle.assertRunning();
+  handle.assertRunning();
+  expect(f.assertRunning).toHaveBeenCalledTimes(2);
+  const original = new Error('SYNTHETIC_BACKEND_NOT_RUNNING');
+  f.assertRunning.mockImplementationOnce(() => { throw original; });
+  expect(() => handle.assertRunning()).toThrow(original);
+  expect(f.ordinaryStop).not.toHaveBeenCalled();
+  await handle.stop();
+});
+
 it.for(variants)('forwards the exact delete operation and awaits its owner in %s', async variant => {
   const f = fixture(variant);
   const handle = await f.start();
@@ -42,8 +55,9 @@ function fixture(variant: typeof variants[number]) {
   const pending = new Promise<void>(resolve => { release = resolve; });
   const stopForDelete = vi.fn(async (_operationId: string) => pending);
   const ordinaryStop = vi.fn(async () => 'exited' as const);
+  const assertRunning = vi.fn();
   const delegate = vi.fn(async (): Promise<DesktopBackendHandle> => ({
-    port: 12345, onUnexpectedExit() {}, stop: ordinaryStop, stopForDelete,
+    assertRunning, port: 12345, onUnexpectedExit() {}, stop: ordinaryStop, stopForDelete,
     async stopForUpdate() {}, async stopForRestore() {},
   }));
   const tracker = { activeHandles: new Set<DesktopBackendHandle>(), startCount: 0,
@@ -53,6 +67,6 @@ function fixture(variant: typeof variants[number]) {
   const start = variant === 'selector' ? observer.startBackend
     : (variant === 'firstStart' ? createFirstStartStarter : createActivationStarter)({ delegate, tracker });
   const options = { config: { databaseFilePath: 'synthetic-unopened-database' } } as StartDesktopBackendOptions;
-  return { start: () => start(options), release, stopForDelete, ordinaryStop,
+  return { start: () => start(options), release, stopForDelete, ordinaryStop, assertRunning,
     isRunning: () => variant === 'selector' ? observer.snapshot().running : tracker.activeHandles.size !== 0 };
 }

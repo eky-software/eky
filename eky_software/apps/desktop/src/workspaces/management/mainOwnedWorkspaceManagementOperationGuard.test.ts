@@ -30,10 +30,12 @@ import {
 
 const temporaryRoots: string[] = [];
 
-afterEach(async () => {
+afterEach(async context => {
   vi.restoreAllMocks();
+  const roots = temporaryRoots.splice(0);
+  if (context.task.result?.state !== 'pass' || context.signal.aborted) return;
   await Promise.all(
-    temporaryRoots.splice(0).map((root) =>
+    roots.map((root) =>
       rm(root, { force: true, recursive: true }),
     ),
   );
@@ -80,9 +82,21 @@ describe('main-owned workspace management operation guard', () => {
     ).resolves.toBeUndefined();
   });
 
+  it.each(['currentPath', 'backupPath', 'nextPath'] as const)(
+    'blocks an unparsed deletion %s without changing its bytes', async slot => {
+      const fixture = await createFixture();
+      const path = fixture.paths.deletionJournal[slot];
+      await writeFile(path, 'unparsed deletion evidence');
+      await expect(fixture.guard.readRecoveryState()).resolves.toBe('recoveryRequired');
+      await expect(fixture.guard.assertNoUnresolvedOperations()).rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+      expect(await readFile(path, 'utf8')).toBe('unparsed deletion evidence');
+    },
+  );
+
   it.each([
     'adoptionJournal',
     'creationJournal',
+    'deletionJournal',
     'importJournal',
     'profileRestoreJournal',
     'replacementJournal',
@@ -236,6 +250,7 @@ function createGuardPaths(
     creationJournal: createReadOnlyJournalSlotPaths(
       join(root, 'creation.json'),
     ),
+    deletionJournal: createReadOnlyJournalSlotPaths(join(root, 'deletion.json')),
     directSetupRecovery: createReadOnlyJournalSlotPaths(
       join(root, 'direct-setup.json'),
     ),

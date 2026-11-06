@@ -5,6 +5,7 @@ import {
   link,
   mkdir,
   mkdtemp,
+  open,
   readFile,
   readdir,
   rename,
@@ -22,12 +23,15 @@ import {
   profileRestoreActivationJournalFileName,
   ProfileRestoreActivationJournalStore,
 } from './profileRestoreActivationJournalStore.js';
-import { ProfileRestoreActivationTransaction, type ProfileRestoreRollbackRootRemovalAuthority } from './profileRestoreActivationTransaction.js';
+import { ProfileRestoreActivationTransaction, type ProfileRestoreRollbackRootRemovalAuthority,
+  type ProfileRestoreColdRollbackMutationAuthority } from './profileRestoreActivationTransaction.js';
 import { ProfileRestoreStartupRecovery } from './profileRestoreStartupRecovery.js';
 import { ProfileRestoreActivationService } from './profileRestoreActivationService.js';
 import { PreparedProfileRestoreOwner } from './preparedProfileRestoreOwner.js';
 import { withProfileRestoreColdRollbackAuthority } from './prepareProfileRestoreColdRollbackRecovery.js';
+import { prepareProfileRestoreColdForwardRecovery } from './prepareProfileRestoreColdForwardRecovery.js';
 import { readWorkspaceProcessReservationIdentity } from '../../runtime/workspaceProcessReservation.js';
+import { profileInspectionWorkMilliseconds } from '../../runtime/profileInspectionMessages.js';
 import * as processReservations from '../../runtime/workspaceProcessReservation.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../workspaces/maintenance/workspaceMaintenanceLease.js';
 import * as fileMoves from './profileRestoreFileMove.js';
@@ -49,22 +53,359 @@ const roots: string[] = [];
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, mkdir: vi.fn(actual.mkdir), chmod: vi.fn(actual.chmod), rename: vi.fn(actual.rename) };
+  return { ...actual, mkdir: vi.fn(actual.mkdir), chmod: vi.fn(actual.chmod), rename: vi.fn(actual.rename), open: vi.fn(actual.open), rm: vi.fn(actual.rm) };
 });
 
-afterEach(async () => {
+afterEach(context => {
   vi.restoreAllMocks();
   vi.mocked(mkdir).mockReset();
   vi.mocked(chmod).mockReset();
   vi.mocked(rename).mockReset();
-  await Promise.all(
-    roots.splice(0).map((root) =>
-      rm(root, { force: true, recursive: true }),
-    ),
-  );
+  vi.mocked(open).mockReset();
+  vi.mocked(rm).mockReset();
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') for (const root of owned) await rm(root, { force: true, recursive: true });
+  });
 });
 
 describe('profile restore activation transaction', () => {
+  for (const flow of ['forward', 'rollback'] as const) {
+    it.each(['current', 'next', 'backup'] as const)(`guards ${flow} repair of %s before any live mutation`, async slot => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = flow === 'forward' ? (await f.journalStore.peek())! : await f.transaction.advanceToValidation();
+      const path = join(dirname(dirname(f.activeDatabasePath)), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      if (slot === 'current') await writeFile(`${path}.next`, await readFile(path));
+      else await rename(path, `${path}.${slot}`);
+      const before = await captureEvidence(f); const mutations = mutationCounts();
+      const guard = vi.fn(() => { throw new Error('SYNTHETIC_LIVE_REPAIR_REVOKED'); });
+      await expect(flow === 'forward'
+        ? f.transaction.advanceToValidation(selected, async () => {}, undefined, undefined, guard)
+        : f.transaction.rollback(selected, async () => {}, undefined, guard)).rejects.toThrow();
+      expect(guard).toHaveBeenCalledOnce(); expect(mutationCounts()).toEqual(mutations);
+      expect(await captureEvidence(f)).toEqual(before);
+    });
+  }
+
+  for (const flow of ['prepare', 'forward', 'rollback'] as const) {
+    it.each(['resolved', 'rejected', 'pending'] as const)(`rejects %s asynchronous live guard for ${flow}`, async state => {
+      const f = await createFixture();
+      if (flow !== 'prepare') await f.transaction.prepare(operationId);
+      const selected = flow === 'rollback' ? await f.transaction.advanceToValidation() : await f.journalStore.peek();
+      const before = await captureEvidence(f); const mutations = mutationCounts();
+      const guard = () => state === 'pending' ? new Promise<void>(() => {})
+        : state === 'resolved' ? Promise.resolve() : Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD'));
+      await expect(flow === 'prepare' ? f.transaction.prepare(operationId, async () => {}, undefined, guard)
+        : flow === 'forward' ? f.transaction.advanceToValidation(selected, async () => {}, undefined, undefined, guard)
+          : f.transaction.rollback(selected, async () => {}, undefined, guard)).rejects.toThrow();
+      expect(mutationCounts()).toEqual(mutations); expect(await captureEvidence(f)).toEqual(before);
+    });
+  }
+
+  it.each(['cold', 'live'] as const)('requires both forward journal guards without bypassing the %s owner', async failed => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+    const cold = vi.fn(() => { if (failed === 'cold') throw new Error('SYNTHETIC_COLD_REVOKED'); });
+    const live = vi.fn(() => { if (failed === 'live') throw new Error('SYNTHETIC_LIVE_REVOKED'); });
+    await expect(f.transaction.advanceToValidation(selected, async () => {}, async () => {},
+      { async assertReadOwnership() {}, assertMutationCurrent: cold }, live)).rejects.toThrow();
+    expect(cold).toHaveBeenCalledOnce(); expect(live).toHaveBeenCalledTimes(failed === 'live' ? 1 : 0);
+    expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it.each([1, 2])('guards initial rollback directory mutation %s before journal creation', async boundary => {
+    const f = await createFixture(); let calls = 0;
+    let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+    const first = new Error('SYNTHETIC_PREPARATION_OWNER_REVOKED');
+    const guard = () => { if (++calls === boundary) throw first; };
+    await expect(f.transaction.prepare(operationId, async () => { retained = await captureEvidence(f); }, undefined, guard)).rejects.toBe(first);
+    expect(calls).toBe(boundary); expect(await f.journalStore.peek()).toBeUndefined();
+    expect(await captureEvidence(f)).toEqual(retained);
+  });
+
+  const liveForwardCuts = [
+    ['movingCurrentDatabase', 3], ['movingCurrentDocuments', 3],
+    ['activatingStagedDatabase', 4], ['activatingStagedDocuments', 4],
+  ] as const;
+  for (const { phase, count, scoped } of liveForwardCuts.flatMap(([phase, count]) =>
+    [false, true].map(scoped => ({ phase, count, scoped })))) {
+    it.each(Array.from({ length: count }, (_, index) => index + 1))(
+      `retains exact live forward evidence at ${phase} payload mutation %s (scoped: ${scoped})`, async boundary => {
+        const f = await createFixture(); await f.transaction.prepare(operationId);
+        const selected = (await f.journalStore.peek())!;
+        let armed = false; let calls = 0; let revoked = false;
+        let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+        let mutations: number[] | undefined;
+        const first = new Error('SYNTHETIC_FORWARD_OWNER_REVOKED');
+        const transaction = new ProfileRestoreActivationTransaction({ journalStore: f.journalStore,
+          paths: { activeDatabasePath: f.activeDatabasePath, activeDocumentsRoot: f.activeDocumentsRoot,
+            failedRoot: f.failedRoot, rollbackRoot: f.rollbackRoot, stagingRoot: f.stagingRoot },
+          afterPhasePersisted(current) { armed = current === phase; },
+        });
+        const guard = () => {
+          if (revoked) throw first;
+          if (armed && ++calls === boundary) {
+            revoked = true; mutations = mutationCounts(); throw first;
+          }
+        };
+        await expect(transaction.advanceToValidation(selected, async () => {
+          if (armed && !revoked) retained = await captureEvidence(f);
+        }, undefined, scoped ? { async assertReadOwnership() {}, assertMutationCurrent() {} } : undefined, guard)).rejects.toThrow();
+        expect(revoked).toBe(true); expect(calls).toBe(boundary);
+        expect(mutationCounts()).toEqual(mutations);
+        expect(await captureEvidence(f)).toEqual(retained);
+        expect((await f.journalStore.peek())?.phase).toBe(phase);
+      },
+    );
+  }
+
+  it.each(Array.from({ length: 17 }, (_, index) => index + 1))(
+    'retains live rollback evidence after owner revocation at payload mutation %s', async boundary => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = await f.transaction.advanceToValidation();
+      let armed = false; let calls = 0; let revoked = false;
+      let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+      let mutations: number[] | undefined;
+      const first = new Error('SYNTHETIC_ROLLBACK_OWNER_REVOKED');
+      const transaction = new ProfileRestoreActivationTransaction({ journalStore: f.journalStore,
+        paths: { activeDatabasePath: f.activeDatabasePath, activeDocumentsRoot: f.activeDocumentsRoot,
+          failedRoot: f.failedRoot, rollbackRoot: f.rollbackRoot, stagingRoot: f.stagingRoot },
+        afterPhasePersisted(current) { armed = current === 'rollbackStarting'; },
+      });
+      const guard = () => {
+        if (revoked) throw first;
+        if (armed && ++calls === boundary) { revoked = true; mutations = mutationCounts(); throw first; }
+      };
+      await expect(transaction.rollback(selected, async () => {
+        if (armed && !revoked) retained = await captureEvidence(f);
+      }, undefined, guard)).rejects.toMatchObject({ message: 'PROFILE_RESTORE_ROLLBACK_FAILED', cause: first });
+      expect(revoked).toBe(true); expect(calls).toBe(boundary);
+      expect(mutationCounts()).toEqual(mutations);
+      expect(await captureEvidence(f)).toEqual(retained);
+      expect((await f.journalStore.peek())?.phase).toBe('rollbackStarting');
+    },
+  );
+
+  it('completes guarded preparation, forward activation and rollback with the same original file content', async () => {
+    const f = await createFixture(); const guard = vi.fn(); const authority = vi.fn(async () => {});
+    await f.transaction.prepare(operationId, authority, undefined, guard);
+    const selected = (await f.journalStore.peek())!;
+    const next = await f.transaction.advanceToValidation(selected, authority, undefined, undefined, guard);
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+    expect((await f.transaction.rollback(next, authority, undefined, guard)).phase).toBe('rolledBack');
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(guard).toHaveBeenCalled(); expect(authority).toHaveBeenCalled();
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])('retains evidence at live rolled-back mutation boundary %s', async boundary => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId);
+    await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const root = join(f.rollbackRoot, operationId);
+    const first = new Error('SYNTHETIC_LIVE_CLEANUP_REVOKED');
+    const guard = vi.fn(() => { if (guard.mock.calls.length === boundary) throw first; });
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, undefined, undefined, guard)).rejects.toThrow();
+    expect(guard).toHaveBeenCalledTimes(boundary);
+    expect(await f.journalStore.peek()).toEqual(selected);
+    if (boundary <= 3) expect(await readdir(root)).toEqual(
+      boundary === 1 ? ['data', 'storage'] : boundary === 2 ? ['storage'] : []);
+    else await expect(readdir(root)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+  });
+
+  it.each(['pending', 'rejected', 'resolved'] as const)('rejects a %s asynchronous live cleanup guard', async state => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId); await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const before = await captureEvidence(f);
+    const guard = () => state === 'pending' ? new Promise<void>(() => {})
+      : state === 'rejected' ? Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')) : Promise.resolve();
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, undefined, undefined, guard))
+      .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it.each(['current', 'backup', 'next'] as const)('guards repair of the rolled-back %s slot before live cleanup', async slot => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId); await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const journalPath = join(dirname(dirname(f.activeDatabasePath)), 'profile-restore-state', profileRestoreActivationJournalFileName);
+    if (slot === 'current') await writeFile(`${journalPath}.next`, await readFile(journalPath));
+    else await rename(journalPath, `${journalPath}.${slot}`);
+    const before = await captureEvidence(f);
+    const guard = vi.fn(() => { throw new Error('SYNTHETIC_REPAIR_REVOKED'); });
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, undefined, undefined, guard)).rejects.toThrow();
+    expect(guard).toHaveBeenCalledOnce(); expect(await captureEvidence(f)).toEqual(before);
+    expect(await f.journalStore.peek()).toEqual(selected);
+  });
+
+  it.each(['cold', 'live'] as const)('composes both cleanup guards without bypassing %s', async failingGuard => {
+    const f = await createFixture();
+    await f.transaction.prepare(operationId); await f.transaction.advanceToValidation();
+    const selected = await f.transaction.rollback();
+    const before = await captureEvidence(f);
+    const cold = vi.fn(() => { if (failingGuard === 'cold') throw new Error('COLD_OWNER_REVOKED'); });
+    const live = vi.fn(() => { if (failingGuard === 'live') throw new Error('LIVE_OWNER_REVOKED'); });
+    const root = vi.fn(async () => ({ identity: 'unused', assertCurrent() {} }));
+    await expect(f.transaction.clearRolledBack(selected, async () => {}, root,
+      { async assertReadOwnership() {}, assertMutationCurrent: cold }, live)).rejects.toThrow();
+    expect(cold).toHaveBeenCalledOnce(); expect(live).toHaveBeenCalledTimes(failingGuard === 'live' ? 1 : 0);
+    expect(root).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it.each(['completed', 'changedCensus', 'expiredMutation'] as const)(
+    'forwards the paired journal context with the rollback census (%s)', async outcome => {
+      const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+      const read = vi.fn(async () => {}); const full = vi.fn(async () => {});
+      const census = vi.spyOn(f.transaction, 'readRollbackRecoverySources');
+      const content = vi.fn(async (journal: Readonly<ProfileRestoreActivationJournal>) => {
+        await f.transaction.readRollbackRecoverySources(journal);
+      });
+      let mutations = 0; let scopedReads = 0;
+      let retained: Awaited<ReturnType<typeof captureEvidence>> | undefined;
+      const originalWrite = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (authority === undefined || !('kind' in authority) || authority.kind !== 'separateContent' ||
+            authority.writeContext === undefined) throw new Error('missing paired write context');
+        const context = authority.writeContext;
+        await originalWrite(journal, { ...authority, writeContext: {
+          async assertReadCurrent(current) {
+            scopedReads++;
+            if (outcome === 'changedCensus' && scopedReads === 1) {
+              await writeFile(join(f.failedRoot, operationId, 'foreign-evidence'), 'retain foreign bytes');
+              retained = await captureEvidence(f);
+            }
+            const before = census.mock.calls.length; const metadataBefore = full.mock.calls.length;
+            await context.assertReadCurrent(current);
+            expect(census.mock.calls.length).toBeGreaterThan(before);
+            expect(full).toHaveBeenCalledTimes(metadataBefore);
+          },
+          assertMutationCurrent: context.assertMutationCurrent,
+        } });
+      });
+      const work = f.transaction.rollback(selected, full, { assertContent: content, async beforeStagingMove() {},
+        assertReadOwnership: read, assertMutationCurrent() {
+          mutations++;
+          if (outcome === 'expiredMutation') throw new Error('SYNTHETIC_MUTATION_REVOKED');
+        } });
+      if (outcome === 'completed') {
+        await expect(work).resolves.toMatchObject({ phase: 'rolledBack' });
+        expect(mutations).toBe(8);
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+      } else {
+        await expect(work).rejects.toThrow('PROFILE_RESTORE_ROLLBACK_FAILED');
+        if (retained !== undefined) expect(await captureEvidence(f)).toEqual(retained);
+        expect(await f.journalStore.peek()).toEqual(selected);
+        expect(mutations).toBe(outcome === 'expiredMutation' ? 1 : 0);
+      }
+      expect(scopedReads).toBeGreaterThan(0); expect(read).toHaveBeenCalled();
+    },
+  );
+
+  it.each([false, true])('brackets rollback readonly checks without changing journal checkpoints (scoped: %s)', async scoped => {
+    const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+    const full = vi.fn(async () => {}); const read = vi.fn(async () => {});
+    const content = vi.fn(async (journal: Readonly<ProfileRestoreActivationJournal>) => {
+      await f.transaction.readRollbackRecoverySources(journal);
+    });
+    const write = f.journalStore.write.bind(f.journalStore);
+    let callbacks = 0;
+    vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+      if (authority === undefined || !('kind' in authority) || authority.kind !== 'separateContent') throw new Error('missing cold authority');
+      const current = authority.assertCurrent.bind(authority);
+      await write(journal, { ...authority, async assertCurrent(expected) {
+        const before = full.mock.calls.length; const contentBefore = content.mock.calls.length;
+        await current(expected); callbacks++;
+        expect(full.mock.calls.length - before).toBe(scoped ? 2 : 4);
+        expect(content).toHaveBeenCalledTimes(contentBefore);
+      } });
+    });
+    await f.transaction.rollback(selected, full, { assertContent: content, async beforeStagingMove() {},
+      ...(scoped ? { assertReadOwnership: read } : {}) });
+    expect(callbacks).toBeGreaterThan(8);
+    expect(content).toHaveBeenCalled(); expect(read.mock.calls.length > 0).toBe(scoped);
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(await f.journalStore.peek()).toMatchObject({ phase: 'rolledBack' });
+  });
+
+  it.each(['before', 'after', 'journalFirst', 'journalLast', 'census', 'content', 'owner'] as const)(
+    'preserves evidence when a scoped rollback preflight fails at %s', async failure => {
+      const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+      const evidence = await captureEvidence(f); const first = new Error(`synthetic ${failure} rejection`);
+      let changed = false; let fullCalls = 0; let reads = 0;
+      const full = vi.fn(async () => {
+        fullCalls++;
+        if (changed || (failure === 'before' && fullCalls === 1) || (failure === 'after' && fullCalls === 2)) throw first;
+      });
+      const read = vi.fn(async () => { if (failure === 'owner') throw first; });
+      const peek = f.journalStore.peek.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'peek').mockImplementation(async () => {
+        const journal = await peek(); reads++;
+        if ((failure === 'journalFirst' && reads === 1) || (failure === 'journalLast' && reads === 4)) changed = true;
+        return journal;
+      });
+      const census = f.transaction.readRollbackRecoverySources.bind(f.transaction);
+      const censusSpy = vi.spyOn(f.transaction, 'readRollbackRecoverySources').mockImplementation(async journal => {
+        const result = await census(journal); if (failure === 'census') changed = true; return result;
+      });
+      const content = vi.fn(async () => { if (failure === 'content') throw first; });
+      const preflight = f.transaction as unknown as { assertRollbackMutation(
+        journal: Readonly<ProfileRestoreActivationJournal>, full: () => Promise<void>,
+        content: { assertContent(): Promise<void>; assertReadOwnership(): Promise<void> },
+      ): Promise<void> };
+      await expect(preflight.assertRollbackMutation(selected, full, { assertContent: content, assertReadOwnership: read }))
+        .rejects.toBe(first);
+      if (failure === 'before') { expect(read).not.toHaveBeenCalled(); expect(censusSpy).not.toHaveBeenCalled(); }
+      if (failure === 'journalLast') expect(reads).toBe(4);
+      expect(await captureEvidence(f)).toEqual(evidence); expect(await peek()).toEqual(selected);
+    },
+  );
+
+  it('rejects a malformed readonly rollback port before repairing a journal', async () => {
+    const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+    const repair = vi.spyOn(f.journalStore, 'read');
+    const evidence = await captureEvidence(f);
+    await expect(f.transaction.rollback(selected, async () => {}, { async assertContent() {}, async beforeStagingMove() {},
+      assertReadOwnership: null as unknown as () => Promise<void> })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(repair).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(evidence);
+  });
+
+  it.each(['addReadPort', 'replaceCallbacks', 'removeContent'] as const)(
+    'pins the original rollback callbacks and missing read port before %s', async change => {
+      const f = await createFixture(); const selected = await beginInterruptedRollback(f);
+      const content = vi.fn(async () => {}); const move = vi.fn(async () => {});
+      const foreign = vi.fn(async () => {});
+      const authority: ProfileRestoreColdRollbackMutationAuthority = { assertContent: content, beforeStagingMove: move };
+      let changed = false;
+      const full = vi.fn(async () => {
+        if (changed) return;
+        changed = true;
+        if (change === 'addReadPort') Object.assign(authority, { assertReadOwnership: foreign });
+        if (change === 'replaceCallbacks') { authority.assertContent = foreign; authority.beforeStagingMove = foreign; }
+        if (change === 'removeContent') Reflect.deleteProperty(authority, 'assertContent');
+      });
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, current) => {
+        if (current === undefined || !('kind' in current) || current.kind !== 'separateContent') throw new Error('missing cold authority');
+        const check = current.assertCurrent.bind(current);
+        await write(journal, { ...current, async assertCurrent(expected) {
+          const before = full.mock.calls.length; await check(expected);
+          expect(full.mock.calls.length - before).toBe(4);
+        } });
+      });
+      await expect(f.transaction.rollback(selected, full, authority)).resolves.toMatchObject({ phase: 'rolledBack' });
+      expect(content).toHaveBeenCalled(); expect(move).toHaveBeenCalledOnce(); expect(foreign).not.toHaveBeenCalled();
+      expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+      expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+    },
+  );
+
   it.each(['ordinary', 'cold'] as const)(
     'uses separate journal content authority only for %s content-bearing recovery', async mode => {
       const f = await createFixture();
@@ -121,6 +462,69 @@ describe('profile restore activation transaction', () => {
       expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
       expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
       expect(await readFile(f.stagedPdfPath, 'utf8')).toBe('new pdf');
+    },
+  );
+
+  it.each(['completed', 'ownerBefore', 'journalChanged', 'ownerAfter'] as const)(
+    'uses one paired journal read per combined forward check (%s)', async outcome => {
+      const f = await createFixture();
+      await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!;
+      const before = await captureEvidence(f);
+      const journalPath = join(dirname(dirname(f.activeDatabasePath)),
+        'profile-restore-state', profileRestoreActivationJournalFileName);
+      const foreign = { ...selected, operationId: '22222222-2222-4222-8222-222222222222' };
+      const order: string[] = [];
+      let inspecting = false;
+      let current = true;
+      let inspected = false;
+      const peek = f.journalStore.peek.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'peek').mockImplementation(async () => {
+        const value = await peek();
+        if (!inspecting) return value;
+        order.push('journal');
+        if (outcome === 'ownerAfter') current = false;
+        if (outcome === 'journalChanged') {
+          await writeFile(journalPath, JSON.stringify(foreign));
+          return peek();
+        }
+        return value;
+      });
+      const assertOwner = async () => {
+        if (inspecting) order.push('owner');
+        if (!current) throw new Error('SYNTHETIC_FORWARD_OWNER_REVOKED');
+      };
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (journal.phase === 'movingCurrentDatabase') {
+          if (authority?.previous === undefined) throw new Error('SYNTHETIC_PREDECESSOR_REQUIRED');
+          inspected = true;
+          inspecting = true;
+          if (outcome === 'ownerBefore') current = false;
+          try { await authority.assertCurrent(selected); }
+          finally { inspecting = false; }
+        }
+        await write(journal, authority);
+      });
+      const work = f.transaction.advanceToValidation(selected, assertOwner, undefined, undefined, () => {
+        if (!current) throw new Error('SYNTHETIC_FORWARD_OWNER_REVOKED');
+      });
+      if (outcome === 'completed') {
+        await expect(work).resolves.toMatchObject({ phase: 'validationStarting' });
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      } else {
+        await expect(work).rejects.toThrow(outcome === 'journalChanged'
+          ? 'PROFILE_RESTORE_ACTIVATION_STATE_INVALID' : 'SYNTHETIC_FORWARD_OWNER_REVOKED');
+        expect(await peek()).toEqual(outcome === 'journalChanged' ? foreign : selected);
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('old database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('old pdf');
+        expect(await readFile(f.stagedPdfPath, 'utf8')).toBe('new pdf');
+        if (outcome !== 'journalChanged') expect(await captureEvidence(f)).toEqual(before);
+      }
+      expect(inspected).toBe(true);
+      expect(order).toEqual(outcome === 'ownerBefore' ? ['owner']
+        : outcome === 'journalChanged' ? ['owner', 'journal'] : ['owner', 'journal', 'owner']);
     },
   );
 
@@ -404,6 +808,53 @@ describe('profile restore activation transaction', () => {
     await expect(boundary.assertTerminalMutation(selected, new Set(), undefined, {
       census, async assertCurrent() { if (!current) throw new Error('PROFILE_INSPECTION_TIMEOUT'); },
     })).rejects.toThrow('PROFILE_INSPECTION_TIMEOUT');
+  });
+
+  it.each(['repair', 'publication', 'leaf', 'journalRemoval'] as const)(
+    'requires the pinned synchronous live guard at %s', async boundary => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      let selected = await f.transaction.advanceToValidation();
+      if (boundary !== 'publication') selected = await f.transaction.commitAcceptance(selected);
+      const census = await f.transaction.readTerminalCleanupCensus(selected);
+      const before = await captureEvidence(f);
+      const journalPath = join(dirname(dirname(f.activeDatabasePath)), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const first = new Error('SYNTHETIC_LIVE_MUTATION_REVOKED'); let revoked = boundary === 'repair' || boundary === 'leaf';
+      if (boundary === 'repair') await writeFile(`${journalPath}.backup`, 'retained side slot');
+      if (boundary === 'publication') {
+        const write = f.journalStore.write.bind(f.journalStore);
+        vi.spyOn(f.journalStore, 'write').mockImplementation(async (...args) => { revoked = true; await write(...args); });
+      }
+      if (boundary === 'journalRemoval') {
+        const clear = f.journalStore.clear.bind(f.journalStore);
+        vi.spyOn(f.journalStore, 'clear').mockImplementation(async (...args) => { revoked = true; await clear(...args); });
+      }
+      const mutation = vi.fn(() => { if (revoked) throw first; });
+      const authority = { census, assertMutationCurrent: mutation, async assertCurrent() {} };
+      const outcome = boundary === 'publication' ? f.transaction.commitAcceptance(selected, undefined, authority)
+        : f.transaction.clearAccepted(selected, undefined, authority);
+      const failure = await outcome.catch(error => error);
+      expect(failure === first || failure.cause === first).toBe(true);
+      expect(mutation).toHaveBeenCalled(); expect(await f.journalStore.peek()).toEqual(selected);
+      if (boundary === 'repair') expect(await readFile(`${journalPath}.backup`, 'utf8')).toBe('retained side slot');
+      if (boundary !== 'journalRemoval') expect(await captureEvidence(f)).toEqual(before);
+      else {
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      }
+    },
+  );
+
+  it('pins the live terminal mutation guard before awaiting a replaceable callback', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation();
+    const census = await f.transaction.readTerminalCleanupCensus(selected);
+    const foreign = vi.fn(() => { throw new Error('FOREIGN_GUARD'); }); const mutation = vi.fn();
+    const authority = { census, assertMutationCurrent: mutation, async assertCurrent() {
+      authority.assertCurrent = foreign; authority.assertMutationCurrent = foreign;
+    } };
+    const accepted = await f.transaction.commitAcceptance(selected, undefined, authority);
+    expect(accepted.phase).toBe('accepted'); expect(mutation).toHaveBeenCalledTimes(8);
+    expect(foreign).not.toHaveBeenCalled();
   });
 
   it('does not delete a captured leaf when terminal authority expires during the final journal read', async () => {
@@ -722,6 +1173,104 @@ describe('profile restore activation transaction', () => {
     await expect(resumed.validateAfterBackend({ mode: resumedMode, stopBackend: vi.fn(), validateActiveProfile: vi.fn(async () => {}) })).resolves.toBe('ready');
     expect(await f.journalStore.peek()).toBeUndefined();
     expect(rollback).not.toHaveBeenCalled();
+  });
+
+  it('brackets anchor readonly work without dropping journal or census reads', async () => {
+    const counts: { full: number; reads: number; census: number }[] = [];
+    for (const scoped of [false, true]) {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = await f.transaction.advanceToValidation();
+      const full = vi.fn(async () => {}); const read = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+      const peek = vi.spyOn(f.journalStore, 'peek');
+      const census = vi.spyOn(f.transaction, 'readRollbackRecoverySources');
+      await f.transaction.prepareColdRollbackAnchor(selected, async () => {}, full,
+        scoped ? { assertReadOwnership: read, assertMutationCurrent: mutation } : undefined);
+      counts.push({ full: full.mock.calls.length, reads: peek.mock.calls.length, census: census.mock.calls.length });
+      expect(mutation).toHaveBeenCalledTimes(scoped ? 3 : 0);
+      expect(read.mock.calls.length).toBe(scoped ? counts[0]!.full : 0);
+      expect(await f.journalStore.peek()).toEqual(selected);
+    }
+    expect(counts[1]!.full * 3).toBe(counts[0]!.full);
+    expect(counts[1]!.reads).toBe(counts[0]!.reads); expect(counts[1]!.census).toBe(counts[0]!.census);
+  });
+
+  it.each([1, 5])('rejects changed metadata in anchor readonly component %s', async readBoundary => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    let current = true;
+    const full = vi.fn(async () => { if (!current) throw new Error('SYNTHETIC_CHANGED_SELECTION'); });
+    const read = vi.fn(async () => { if (read.mock.calls.length === readBoundary) current = false; });
+    const claim = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    await expect(f.transaction.prepareColdRollbackAnchor(selected, claim, full,
+      { assertReadOwnership: read, assertMutationCurrent: mutation })).rejects.toThrow('SYNTHETIC_CHANGED_SELECTION');
+    expect(full).toHaveBeenCalledTimes(2); expect(claim).not.toHaveBeenCalled(); expect(mutation).not.toHaveBeenCalled();
+    expect(await captureEvidence(f)).toEqual(before);
+    await expect(readdir(join(f.failedRoot, operationId))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([false, true])('awaits the complete anchor postcheck before claiming sources (reject: %s)', async reject => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    let enter!: () => void; let release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; }); const finish = new Promise<void>(resolve => { release = resolve; });
+    const first = new Error('SYNTHETIC_POSTCHECK_FAILURE');
+    const full = vi.fn(async () => { if (full.mock.calls.length === 2) { enter(); await finish; if (reject) throw first; } });
+    const claim = vi.fn(async () => {}); let completed = false;
+    const outcome = f.transaction.prepareColdRollbackAnchor(selected, claim, full,
+      { async assertReadOwnership() {}, assertMutationCurrent() {} }).then(value => value, error => error)
+      .finally(() => { completed = true; });
+    try {
+      await Promise.race([entered, outcome.then(() => { throw new Error('POSTCHECK_NOT_ENTERED'); })]);
+      expect(completed).toBe(false); expect(claim).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(before);
+    } finally { release(); await outcome; }
+    if (reject) { expect(await outcome).toBe(first); expect(claim).not.toHaveBeenCalled(); }
+    else expect(claim).toHaveBeenCalledOnce();
+  });
+
+  it.each([1, 2, 3])('checks the last anchor mutation guard at syscall %s', async boundary => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    const mutation = vi.fn(() => { if (mutation.mock.calls.length === boundary) throw new Error('SYNTHETIC_ANCHOR_REVOKED'); });
+    const makeDirectory = vi.mocked(mkdir); const changeMode = vi.mocked(chmod);
+    makeDirectory.mockClear(); changeMode.mockClear();
+    await expect(f.transaction.prepareColdRollbackAnchor(selected, async () => {}, async () => {},
+      { async assertReadOwnership() {}, assertMutationCurrent: mutation })).rejects.toThrow('SYNTHETIC_ANCHOR_REVOKED');
+    expect(mutation).toHaveBeenCalledTimes(boundary);
+    expect(makeDirectory).toHaveBeenCalledTimes(boundary === 1 ? 0 : 1);
+    expect(changeMode).toHaveBeenCalledTimes(boundary === 3 ? 1 : 0);
+    expect(await captureEvidence(f)).toEqual(before); expect(await f.journalStore.peek()).toEqual(selected);
+    await expect(readdir(join(f.failedRoot, operationId))).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.each([null, {}, { assertReadOwnership: async () => {} }, { assertMutationCurrent() {} }])(
+    'rejects an incomplete anchor preparation context', async context => {
+      const f = await createFixture(); const full = vi.fn(async () => {}); const claim = vi.fn(async () => {});
+      await f.transaction.prepare(operationId); const selected = await f.transaction.advanceToValidation();
+      await expect(f.transaction.prepareColdRollbackAnchor(selected, claim, full, context as never))
+        .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      expect(full).not.toHaveBeenCalled(); expect(claim).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['pending', 'rejected', 'resolved'] as const)('rejects a %s async anchor mutation guard', async state => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation(); const before = await captureEvidence(f);
+    await expect(f.transaction.prepareColdRollbackAnchor(selected, async () => {}, async () => {}, {
+      async assertReadOwnership() {}, assertMutationCurrent: () => state === 'pending' ? new Promise<void>(() => {})
+        : state === 'rejected' ? Promise.reject(new Error('SYNTHETIC_ASYNC_GUARD')) : Promise.resolve(),
+    })).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(await captureEvidence(f)).toEqual(before);
+  });
+
+  it('pins anchor context callbacks before its first awaited selection', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = await f.transaction.advanceToValidation();
+    const read = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    const foreign = vi.fn(() => { throw new Error('SYNTHETIC_CHANGED_CALLBACK'); });
+    const context = { assertReadOwnership: read, assertMutationCurrent: mutation };
+    const full = vi.fn(async () => { context.assertReadOwnership = foreign; context.assertMutationCurrent = foreign; });
+    await f.transaction.prepareColdRollbackAnchor(selected, async () => {}, full, context);
+    expect(read).toHaveBeenCalled(); expect(mutation).toHaveBeenCalledTimes(3); expect(foreign).not.toHaveBeenCalled();
   });
 
   it('prepares an exclusive stationary cold anchor only after source ownership is proven', async () => {
@@ -1114,6 +1663,55 @@ describe('profile restore activation transaction', () => {
     expect(await readFile(fixture.activeDatabasePath, 'utf8')).toBe('old database');
   });
 
+  it('keeps full content checks at cleanup boundaries without repeating them in readonly journal probes', async () => {
+    const legacy = await createColdSelectorReturnFixture();
+    await legacy.complete();
+    const scoped = await createColdSelectorReturnFixture(true);
+    await scoped.complete();
+    expect(scoped.assertContent.mock.calls.length).toBeGreaterThan(8);
+    expect(scoped.assertContent.mock.calls.length).toBeLessThan(legacy.assertContent.mock.calls.length);
+    expect(scoped.beforeRead).toHaveBeenCalled();
+    expect(scoped.beforeMutation).toHaveBeenCalledTimes(6);
+    expect(await scoped.base.journalStore.peek()).toBeUndefined();
+    expect(await readFile(scoped.base.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(scoped.base.activePdfPath, 'utf8')).toBe('old pdf');
+    expect(scoped.lease.readState()).toBe('idle');
+  });
+
+  it.each(['content', 'selection', 'owner'] as const)('rejects changed %s during a cheap cleanup read before deletion', async fault => {
+    const f = await createColdSelectorReturnFixture(true);
+    const first = new Error('SYNTHETIC_CLEANUP_SELECTION_CHANGED');
+    let changed = false;
+    f.beforeRead.mockImplementationOnce(async () => {
+      changed = true;
+      if (fault === 'content') await writeFile(f.base.activeDatabasePath, 'changed original');
+    });
+    if (fault === 'selection') f.selection.assertOperationSelection.mockImplementation(async guard => {
+      guard(); if (changed) throw first;
+    });
+    if (fault === 'owner') f.assertAuthority.mockImplementation(() => { if (changed) throw first; });
+    await expect(f.complete()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(changed).toBe(true);
+    expect(f.beforeMutation).not.toHaveBeenCalled();
+    expect(await readdir(f.rollbackOperationRoot)).toEqual(['data', 'storage']);
+    expect(await f.base.journalStore.peek()).toEqual(f.selected);
+    expect(await readFile(f.base.activePdfPath, 'utf8')).toBe('old pdf');
+  });
+
+  it.each([1, 2, 3, 4, 5, 6])('retains evidence when the final cleanup guard rejects mutation %s', async boundary => {
+    const f = await createColdSelectorReturnFixture(true);
+    const first = new Error('SYNTHETIC_CLEANUP_REVOKED');
+    f.beforeMutation.mockImplementation(() => { if (f.beforeMutation.mock.calls.length === boundary) throw first; });
+    await expect(f.complete()).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(f.beforeMutation).toHaveBeenCalledTimes(boundary);
+    expect(await f.base.journalStore.peek()).toEqual(f.selected);
+    if (boundary <= 3) expect(await readdir(f.rollbackOperationRoot)).toEqual(
+      boundary === 1 ? ['data', 'storage'] : boundary === 2 ? ['storage'] : []);
+    else await expect(readdir(f.rollbackOperationRoot)).rejects.toMatchObject({ code: 'ENOENT' });
+    expect(await readFile(f.base.activeDatabasePath, 'utf8')).toBe('old database');
+    expect(await readFile(f.base.activePdfPath, 'utf8')).toBe('old pdf');
+  });
+
   it.each([false, true])('finishes cold selector return with a real rollback root (already removed: %s)', async removed => {
     const f = await createColdSelectorReturnFixture();
     if (removed) await rm(f.rollbackOperationRoot, { recursive: true });
@@ -1129,9 +1727,9 @@ describe('profile restore activation transaction', () => {
     expect(f.recovery.readAcceptanceState()).toBe('notStarted');
   });
 
-  it.each(['replacement', 'emptyReplacement', 'content', 'closeFailure'] as const)(
-    'preserves the journal when rollback-root release encounters %s', async fault => {
-      const f = await createColdSelectorReturnFixture();
+  it.each([false, true].flatMap(scoped => ['replacement', 'emptyReplacement', 'content', 'closeFailure'].map(fault => ({ scoped, fault }))))(
+    'preserves the journal when rollback-root release encounters $fault (scoped: $scoped)', async ({ scoped, fault }) => {
+      const f = await createColdSelectorReturnFixture(scoped);
       const retained = join(f.base.rollbackRoot, 'preserved-original');
       f.beforeClose.mockImplementation(async root => {
         if (root !== f.rollbackOperationRoot) return;
@@ -1170,8 +1768,8 @@ describe('profile restore activation transaction', () => {
     await expect(f.recovery.prepareBeforeBackend()).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
   });
 
-  it('preserves the rollback root when authority expires during its final identity read', async () => {
-    const f = await createColdSelectorReturnFixture();
+  it.each([false, true])('preserves the rollback root when authority expires during its final identity read (scoped: %s)', async scoped => {
+    const f = await createColdSelectorReturnFixture(scoped);
     const readIdentity = processReservations.readWorkspaceProcessReservationIdentity;
     let released = false; let reads = 0; let expired = false;
     f.beforeClose.mockImplementation(async root => { if (root === f.rollbackOperationRoot) released = true; });
@@ -1493,6 +2091,45 @@ describe('profile restore activation transaction', () => {
     },
   );
 
+  for (const revoked of ['external', 'context', 'live'] as const) {
+    it.each([1, 2, 3, 4, 5, 6, 7, 8])(`retains mapped combined evidence when ${revoked} authority fails before mutation %s`, async boundary => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const previousBytes = await readFile(path, 'utf8');
+      const first = new Error('SYNTHETIC_MAPPED_COMBINED_REVOKED');
+      let insideWrite = false; let externalCalls = 0; let contextCalls = 0; let liveCalls = 0;
+      let nextBytes: string | undefined; let cutCounts: number[] | undefined;
+      const cut = () => { cutCounts = mutationCounts(); throw first; };
+      const external = async () => {
+        if (insideWrite && ++externalCalls === (boundary === 8 ? 12 : boundary) && revoked === 'external') cut();
+      };
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        nextBytes = `${JSON.stringify(journal)}\n`;
+        insideWrite = true;
+        try { await write(journal, authority); }
+        finally { insideWrite = false; }
+      });
+      await expect(f.transaction.advanceToValidation(selected, external, undefined, {
+        async assertReadOwnership() {}, assertMutationCurrent() {
+          if (insideWrite && ++contextCalls === boundary && revoked === 'context') cut();
+        },
+      }, () => {
+        if (insideWrite && ++liveCalls === boundary && revoked === 'live') cut();
+      })).rejects.toMatchObject({ cause: first });
+      expect(cutCounts).toBeDefined(); expect(mutationCounts()).toEqual(cutCounts);
+      expect(await captureEvidence(f)).toEqual(before); expect(nextBytes).toBeDefined();
+      const expected = boundary <= 3 ? [previousBytes, undefined, undefined]
+        : boundary === 4 ? [previousBytes, '', undefined]
+          : boundary <= 6 ? [previousBytes, nextBytes, undefined]
+            : boundary === 7 ? [undefined, nextBytes, previousBytes] : [nextBytes, undefined, previousBytes];
+      const observed = await Promise.all(['', '.next', '.backup'].map(suffix =>
+        readFile(`${path}${suffix}`, 'utf8').catch(allowMissing)));
+      expect(observed).toEqual(expected);
+    });
+  }
+
   it.each([
     { operationId: '33333333-3333-4333-8333-333333333333' },
     { revision: 99 }, { phase: 'accepted' as const },
@@ -1555,6 +2192,358 @@ describe('profile restore activation transaction', () => {
     expect(error.cause.errors[1]).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED', cause: primary });
     expect(await fixture.journalStore.peek()).toMatchObject({ phase: 'currentDatabaseMoved' });
   });
+
+  it('leaves exact combined journal selection with its writer and checks external authority once per grant', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!;
+    const full = vi.fn(async () => {}); const peek = vi.spyOn(f.journalStore, 'peek');
+    const write = f.journalStore.write.bind(f.journalStore);
+    let writes = 0; let grants = 0;
+    vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+      if (authority === undefined || !('kind' in authority) || authority.kind !== 'combined' ||
+          authority.writeContext === undefined) throw new Error('MISSING_COMBINED_CONTEXT');
+      writes++;
+      const current = authority.assertCurrent.bind(authority);
+      await write(journal, { ...authority, async assertCurrent(expected) {
+        const beforeFull = full.mock.calls.length; const beforePeek = peek.mock.calls.length;
+        await current(expected);
+        expect(full.mock.calls.length - beforeFull).toBe(1);
+        expect(peek.mock.calls.length - beforePeek).toBe(0);
+        grants++;
+      } });
+    });
+    await expect(f.transaction.advanceToValidation(selected, full, undefined, {
+      async assertReadOwnership() {}, assertMutationCurrent() {},
+    }, () => {})).resolves.toMatchObject({ phase: 'validationStarting', revision: 9 });
+    expect(writes).toBe(9); expect(grants).toBe(108);
+    expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+    expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+  });
+
+  it.each([
+    { boundary: 8, slot: 'current' }, { boundary: 9, slot: 'backup' },
+    { boundary: 11, slot: 'next' }, { boundary: 12, slot: 'authority' },
+  ] as const)('retains combined publication evidence after $slot changes at acknowledgement $boundary', async ({ boundary, slot }) => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+    const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+    const foreign = JSON.stringify({ ...selected, operationId: '33333333-3333-4333-8333-333333333333' });
+    const first = new Error('SYNTHETIC_COMBINED_ACKNOWLEDGEMENT_REVOKED');
+    const write = f.journalStore.write.bind(f.journalStore);
+    const retained: Record<string, string | undefined> = {};
+    let injected = false;
+    vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+      if (authority === undefined || !('kind' in authority) || authority.kind !== 'combined' ||
+          authority.writeContext === undefined) throw new Error('MISSING_COMBINED_CONTEXT');
+      let calls = 0; const current = authority.assertCurrent.bind(authority);
+      await write(journal, { ...authority, async assertCurrent(expected) {
+        await current(expected);
+        if (++calls !== boundary) return;
+        if (slot !== 'authority') await writeFile(slot === 'current' ? path : `${path}.${slot}`, foreign);
+        for (const suffix of ['', '.next', '.backup']) {
+          retained[suffix] = await readFile(`${path}${suffix}`, 'utf8').catch(error => {
+            if ((error as NodeJS.ErrnoException).code === 'ENOENT') return undefined;
+            throw error;
+          });
+        }
+        injected = true;
+        if (slot === 'authority') throw first;
+      } });
+    });
+    const result = f.transaction.advanceToValidation(selected, async () => {}, undefined, {
+      async assertReadOwnership() {}, assertMutationCurrent() {},
+    }, () => {});
+    if (slot === 'authority') await expect(result).rejects.toMatchObject({ cause: first });
+    else await expect(result).rejects.toThrow('PROFILE_RESTORE_JOURNAL_UNAVAILABLE');
+    expect(injected).toBe(true); expect(await captureEvidence(f)).toEqual(before);
+    expect(Object.keys(retained).sort()).toEqual(['', '.backup', '.next']);
+    if (slot !== 'authority') expect(retained[slot === 'current' ? '' : `.${slot}`]).toBe(foreign);
+    for (const [suffix, bytes] of Object.entries(retained)) {
+      if (bytes === undefined) await expect(readFile(`${path}${suffix}`)).rejects.toMatchObject({ code: 'ENOENT' });
+      else expect(await readFile(`${path}${suffix}`, 'utf8')).toBe(bytes);
+    }
+  });
+
+  it.each(['completed', 'changedJournal', 'changedSelection', 'expiredMutation'] as const)(
+    'keeps forward journal transitions under their exact paired authority (%s)', async outcome => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const journalPath = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const full = vi.fn(async () => {}); const read = vi.fn(async () => {});
+      let mutations = 0; let scopedReads = 0; const revisions = new Set<number>(); const contents = new Set<number>();
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (authority === undefined || !('kind' in authority) || authority.kind !== 'separateContent' ||
+            authority.writeContext === undefined) throw new Error('missing forward write context');
+        const context = authority.writeContext;
+        await write(journal, { ...authority, writeContext: {
+          async assertReadCurrent(current) {
+            scopedReads++; revisions.add(current.revision);
+            if (outcome === 'changedJournal' && scopedReads === 1) {
+              await writeFile(journalPath, JSON.stringify({ ...selected, operationId: '33333333-3333-4333-8333-333333333333' }));
+            }
+            const checks = full.mock.calls.length;
+            await context.assertReadCurrent(current);
+            expect(await f.journalStore.peek()).toEqual(current);
+            expect(full).toHaveBeenCalledTimes(checks);
+          },
+          assertMutationCurrent: context.assertMutationCurrent,
+        } });
+      });
+      if (outcome === 'changedSelection') full.mockImplementation(async () => {
+        if (scopedReads > 0) throw new Error('SYNTHETIC_SELECTION_CHANGED');
+      });
+      const work = f.transaction.advanceToValidation(selected, full, async journal => {
+        expect(await f.journalStore.peek()).toEqual(journal);
+        contents.add(journal.revision);
+        await f.transaction.readForwardRecoverySources(journal);
+      }, { assertReadOwnership: read, assertMutationCurrent() {
+        if (++mutations === 1 && outcome === 'expiredMutation') throw new Error('SYNTHETIC_MUTATION_REVOKED');
+      } });
+      if (outcome === 'completed') {
+        await expect(work).resolves.toMatchObject({ phase: 'validationStarting', revision: 9 });
+        expect([...revisions].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8]);
+        expect([...contents].sort((a, b) => a - b)).toEqual([0, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+        expect(mutations).toBe(9 * 8);
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+        expect(await readFile(join(f.rollbackRoot, operationId, 'data', 'eky.sqlite'), 'utf8')).toBe('old database');
+      } else {
+        await expect(work).rejects.toThrow();
+        expect(await captureEvidence(f)).toEqual(before);
+        expect(mutations).toBe(outcome === 'expiredMutation' ? 1 : 0);
+        expect(await f.journalStore.peek()).toEqual(outcome === 'changedJournal'
+          ? { ...selected, operationId: '33333333-3333-4333-8333-333333333333' } : selected);
+      }
+      expect(scopedReads).toBeGreaterThan(0); expect(read).toHaveBeenCalled();
+    },
+  );
+
+  it.each(['transaction', 'recovery'].flatMap(owner => ['current', 'backup', 'next'].map(slot => ({ owner, slot }))))(
+    'guards forward $owner repair of the $slot slot without losing evidence', async ({ owner, slot }) => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!;
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      if (slot === 'current') await writeFile(`${path}.next`, await readFile(path));
+      else await rename(path, `${path}.${slot}`);
+      const slots = () => Promise.all(['', '.backup', '.next'].map(suffix => readFile(`${path}${suffix}`, 'utf8').catch(allowMissing)));
+      const before = await slots(); const content = await captureEvidence(f);
+      const guard = vi.fn(() => { throw new Error('SYNTHETIC_FORWARD_REPAIR_REVOKED'); });
+      const journalWriteContext = { async assertReadOwnership() {}, assertMutationCurrent: guard };
+      const recovery = new ProfileRestoreStartupRecovery({ journalStore: f.journalStore, transaction: f.transaction });
+      await expect(owner === 'transaction'
+        ? f.transaction.advanceToValidation(selected, async () => {}, async () => {}, journalWriteContext)
+        : recovery.prepareBeforeBackend({ journal: selected, async assertCurrent() {}, async assertContent() {}, journalWriteContext }))
+        .rejects.toThrow();
+      expect(guard).toHaveBeenCalledOnce(); expect(await slots()).toEqual(before);
+      expect(await captureEvidence(f)).toEqual(content);
+    },
+  );
+
+  it('retains the cold forward owner until original journal close settles beyond expiry', async () => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+    const nextPath = join(dirname(f.stagingRoot), 'profile-restore-state', `${profileRestoreActivationJournalFileName}.next`);
+    let enter!: () => void; let release!: () => void; let end!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const finish = new Promise<void>(resolve => { release = resolve; });
+    const ended = new Promise<void>(resolve => { end = resolve; });
+    let closeEntered = false; let closed = false; let expire!: () => void;
+    const handleMutations: ReturnType<typeof vi.fn>[] = [];
+    const mutationCounts = () => ({
+      mkdir: vi.mocked(mkdir).mock.calls.length,
+      chmod: vi.mocked(chmod).mock.calls.length,
+      rename: vi.mocked(rename).mock.calls.length,
+      rm: vi.mocked(rm).mock.calls.length,
+      writeOpen: vi.mocked(open).mock.calls.filter(([, flags]) => flags !== 'r').length,
+      handles: handleMutations.map(mutation => mutation.mock.calls.length),
+    });
+    let countsAtClose: ReturnType<typeof mutationCounts> | undefined;
+    const setTimer = globalThis.setTimeout;
+    vi.spyOn(globalThis, 'setTimeout').mockImplementation((callback, timeout, ...args) => {
+      if (typeof timeout === 'number' && timeout <= profileInspectionWorkMilliseconds) expire = () => callback(...args);
+      return setTimer(callback, timeout, ...args);
+    });
+    vi.mocked(open).mockImplementation(async (...args) => {
+      const handle = await fileSystem.open(...args);
+      if (args[0] === nextPath && args[1] === 'wx') {
+        handleMutations.push(vi.spyOn(handle, 'write'), vi.spyOn(handle, 'writeFile'), vi.spyOn(handle, 'sync'));
+        const close = handle.close.bind(handle);
+        handle.close = async () => {
+          countsAtClose = mutationCounts(); closeEntered = true; enter(); await finish;
+          await close(); closed = true;
+        };
+      }
+      return handle;
+    });
+    const lease = new InMemoryWorkspaceMaintenanceLease();
+    const reservation = { async assertMainOwned() {}, assertMainCurrent() {},
+      invalidate: vi.fn(), close: vi.fn(async () => {}), bind: vi.fn() };
+    const retained = vi.fn();
+    const recovery = new ProfileRestoreStartupRecovery({ journalStore: f.journalStore, transaction: f.transaction });
+    const original = recovery.prepareBeforeBackend.bind(recovery);
+    vi.spyOn(recovery, 'prepareBeforeBackend').mockImplementation(async (...args) => {
+      try { return await original(...args); } finally { end(); }
+    });
+    const result = prepareProfileRestoreColdForwardRecovery({ journal: selected, stagingRoot: f.stagingRoot,
+      journalStore: f.journalStore, maintenanceLease: lease, async assertMainOwned() {}, assertAuthority() {},
+      async acquireReservation() { return reservation; }, recovery,
+      async assertContent({ journal }) { await f.transaction.readForwardRecoverySources(journal); },
+      operationSelection: { deadline: performance.now() + profileInspectionWorkMilliseconds,
+        async assertOperationSelection(guard) { guard(); }, onUnsettledWork: retained },
+    }).catch(error => error);
+    try {
+      await Promise.race([entered, result.then(() => { throw new Error('FORWARD_CLOSE_NOT_ENTERED'); })]);
+      expect(expire).toBeTypeOf('function'); expire();
+      expect(await result).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+      expect(closed).toBe(false); expect(lease.readState()).toBe('busy');
+      expect(reservation.close).not.toHaveBeenCalled(); expect(retained).toHaveBeenCalledOnce();
+      expect(await f.journalStore.peek()).toEqual(selected); expect(await captureEvidence(f)).toEqual(before);
+    } finally { release(); if (closeEntered) await ended; await result; }
+    expect(closed).toBe(true); expect(lease.readState()).toBe('busy');
+    expect(countsAtClose).toBeDefined(); expect(mutationCounts()).toEqual(countsAtClose);
+    expect(reservation.close).not.toHaveBeenCalled(); expect(reservation.invalidate).toHaveBeenCalledOnce();
+    expect(await f.journalStore.peek()).toEqual(selected); expect(await captureEvidence(f)).toEqual(before);
+    expect(JSON.parse(await readFile(nextPath, 'utf8'))).toMatchObject({ phase: 'movingCurrentDatabase', revision: 1 });
+  });
+
+  it.each(['separateContent', 'combined'] as const)('pins paired %s forward callbacks before a full ownership await', async kind => {
+    const f = await createFixture(); await f.transaction.prepare(operationId);
+    const selected = (await f.journalStore.peek())!;
+    const foreign = vi.fn(() => { throw new Error('SYNTHETIC_FOREIGN_OWNER'); });
+    const read = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    const context = { assertReadOwnership: read, assertMutationCurrent: mutation };
+    await expect(f.transaction.advanceToValidation(selected, async () => {
+      Object.assign(context, { assertReadOwnership: foreign, assertMutationCurrent: foreign });
+    }, kind === 'combined' ? undefined : async () => {}, context,
+    kind === 'combined' ? () => {} : undefined)).resolves.toMatchObject({ phase: 'validationStarting' });
+    expect(read).toHaveBeenCalled();
+    if (kind === 'separateContent') expect(mutation).toHaveBeenCalledTimes(72);
+    else expect(mutation.mock.calls.length).toBeGreaterThanOrEqual(72);
+    expect(foreign).not.toHaveBeenCalled();
+  });
+
+  it.each(['completed', 'changedJournal', 'changedSelection', 'expiredMutation'] as const)(
+    'uses the combined forward context without substituting content (%s)', async outcome => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const foreign = { ...selected, operationId: '33333333-3333-4333-8333-333333333333' };
+      let scopedReads = 0; let mutations = 0;
+      const full = vi.fn(async () => {
+        if (outcome === 'changedSelection' && scopedReads > 0) throw new Error('SYNTHETIC_COMBINED_SELECTION_CHANGED');
+      });
+      const write = f.journalStore.write.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'write').mockImplementation(async (journal, authority) => {
+        if (authority === undefined || !('kind' in authority) || authority.kind !== 'combined' ||
+            authority.writeContext === undefined || authority.assertContent !== undefined) throw new Error('MISSING_COMBINED_CONTEXT');
+        const context = authority.writeContext;
+        await write(journal, { ...authority, writeContext: {
+          async assertReadCurrent(current) {
+            scopedReads++;
+            if (outcome === 'changedJournal' && scopedReads === 1) await writeFile(path, JSON.stringify(foreign));
+            const checks = full.mock.calls.length;
+            await context.assertReadCurrent(current);
+            expect(full).toHaveBeenCalledTimes(checks);
+          }, assertMutationCurrent: context.assertMutationCurrent,
+        } });
+      });
+      const result = f.transaction.advanceToValidation(selected, full, undefined, {
+        async assertReadOwnership() {}, assertMutationCurrent() {
+          if (scopedReads > 0 && ++mutations === 1 && outcome === 'expiredMutation') throw new Error('SYNTHETIC_COMBINED_MUTATION_REVOKED');
+        },
+      }, () => {});
+      if (outcome === 'completed') {
+        await expect(result).resolves.toMatchObject({ phase: 'validationStarting', revision: 9 });
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      } else {
+        const cause = outcome === 'changedJournal' ? 'PROFILE_RESTORE_ACTIVATION_STATE_INVALID'
+          : outcome === 'changedSelection' ? 'SYNTHETIC_COMBINED_SELECTION_CHANGED' : 'SYNTHETIC_COMBINED_MUTATION_REVOKED';
+        await expect(result).rejects.toMatchObject({ cause: { message: cause } });
+        expect(await captureEvidence(f)).toEqual(before);
+        expect(await f.journalStore.peek()).toEqual(outcome === 'changedJournal' ? foreign : selected);
+      }
+      expect(scopedReads).toBeGreaterThan(0);
+    },
+  );
+
+  it.each([null, {}, { async assertReadOwnership() {} }, { assertMutationCurrent() {} }])(
+    'rejects an incomplete forward write context before repairing reads', async context => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const read = vi.spyOn(f.journalStore, 'read');
+      await expect(f.transaction.advanceToValidation(selected, async () => {}, async () => {}, context as never))
+        .rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+      expect(read).not.toHaveBeenCalled(); expect(await captureEvidence(f)).toEqual(before);
+    },
+  );
+
+  it.each([
+    { mode: 'scopedCombined', outcome: 'completed' },
+    { mode: 'scopedCombined', outcome: 'ownerBefore' },
+    { mode: 'scopedCombined', outcome: 'journalChanged' },
+    { mode: 'scopedCombined', outcome: 'ownerAfter' },
+    { mode: 'unscopedCombined', outcome: 'completed' },
+    { mode: 'scopedSeparateContent', outcome: 'completed' },
+  ] as const)(
+    'preserves the selected forward payload check sequence ($mode, $outcome)', async ({ mode, outcome }) => {
+      const f = await createFixture(); await f.transaction.prepare(operationId);
+      const selected = (await f.journalStore.peek())!; const before = await captureEvidence(f);
+      const path = join(dirname(f.stagingRoot), 'profile-restore-state', profileRestoreActivationJournalFileName);
+      const first = new Error('SYNTHETIC_SCOPED_PAYLOAD_OWNER_REVOKED');
+      const foreign = { ...selected, operationId: '33333333-3333-4333-8333-333333333333' };
+      const orders: string[][] = []; let order: string[] | undefined; let valid = true;
+      const peek = f.journalStore.peek.bind(f.journalStore);
+      vi.spyOn(f.journalStore, 'peek').mockImplementation(async () => {
+        if (order === undefined) return peek();
+        order.push('journal');
+        if (outcome === 'journalChanged') await writeFile(path, JSON.stringify(foreign));
+        const observed = await peek();
+        if (outcome === 'ownerAfter') valid = false;
+        return observed;
+      });
+      const move = fileMoves.renameProfilePathWithRetry;
+      vi.spyOn(fileMoves, 'renameProfilePathWithRetry').mockImplementation(async options => {
+        order = []; orders.push(order);
+        if (outcome === 'ownerBefore') valid = false;
+        try { return await move(options); }
+        finally { order = undefined; }
+      });
+      vi.mocked(rename).mockImplementation(async (...args) => {
+        order?.push('mutation'); return fileSystem.rename(...args);
+      });
+      const result = f.transaction.advanceToValidation(selected, async () => {
+        order?.push('owner'); if (!valid) throw first;
+      }, mode === 'scopedSeparateContent' ? async () => { order?.push('content'); } : undefined,
+      mode === 'unscopedCombined' ? undefined : {
+        async assertReadOwnership() {}, assertMutationCurrent() { order?.push('context-sync'); },
+      }, () => {
+        order?.push('live-sync');
+        if (!valid) throw first;
+      });
+      if (outcome === 'completed') {
+        await expect(result).resolves.toMatchObject({ phase: 'validationStarting' });
+        expect(orders).toHaveLength(4);
+        const expected = ['owner', 'journal', 'owner'];
+        if (mode === 'scopedSeparateContent') expected.push('content');
+        if (mode !== 'scopedCombined') expected.push('owner', 'journal', 'owner');
+        if (mode !== 'unscopedCombined') expected.push('context-sync');
+        expected.push('live-sync', 'mutation');
+        expect(orders).toEqual(Array.from({ length: 4 }, () => expected));
+        expect(await readFile(f.activeDatabasePath, 'utf8')).toBe('new database');
+        expect(await readFile(f.activePdfPath, 'utf8')).toBe('new pdf');
+      } else {
+        if (outcome === 'journalChanged') await expect(result).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+        else await expect(result).rejects.toBe(first);
+        expect(orders).toHaveLength(1);
+        expect(orders[0]).toEqual(outcome === 'ownerBefore' ? ['owner']
+          : outcome === 'journalChanged' ? ['owner', 'journal'] : ['owner', 'journal', 'owner']);
+        expect(await captureEvidence(f)).toEqual(before);
+        expect(await peek()).toMatchObject(outcome === 'journalChanged' ? foreign : { phase: 'movingCurrentDatabase' });
+      }
+    },
+  );
 
   it('uses freshly selected content before each forward journal and move mutation', async () => {
     const fixture = await createFixture();
@@ -2202,7 +3191,7 @@ async function beginInterruptedRollback(fixture: Awaited<ReturnType<typeof creat
   return selected;
 }
 
-async function createColdSelectorReturnFixture() {
+async function createColdSelectorReturnFixture(scoped = false) {
   const base = await createFixture();
   const selected = await base.transaction.rollback(await beginInterruptedRollback(base));
   const transaction = base.createTransaction();
@@ -2213,17 +3202,21 @@ async function createColdSelectorReturnFixture() {
   const assertAuthority = vi.fn(() => {});
   const beforeClose = vi.fn(async (_root: string) => {});
   const rootProof = vi.fn((proof: ProfileRestoreRollbackRootRemovalAuthority) => proof);
+  const beforeRead = vi.fn(async () => {});
+  const beforeMutation = vi.fn(() => {});
+  const selection = { deadline: performance.now() + profileInspectionWorkMilliseconds,
+    assertOperationSelection: vi.fn(async (guard: () => void) => { guard(); }), onUnsettledWork: vi.fn() };
+  const assertContent = vi.fn(async (context: import('./prepareProfileRestoreColdForwardRecovery.js').ProfileRestoreColdContentContext) => {
+    await context.assertCurrent();
+    if (await readFile(base.activeDatabasePath, 'utf8') !== 'old database' ||
+        await readFile(base.activePdfPath, 'utf8') !== 'old pdf') throw new Error('synthetic original content mismatch');
+    await context.assertCurrent();
+  });
   const complete = () => withProfileRestoreColdRollbackAuthority({
     journal: selected, journalStore: base.journalStore, transaction, maintenanceLease: lease,
     assertAuthority, async assertMainOwned() {},
-    async assertContent(context) {
-      await context.assertCurrent();
-      if (await readFile(base.activeDatabasePath, 'utf8') !== 'old database' ||
-          await readFile(base.activePdfPath, 'utf8') !== 'old pdf') {
-        throw new Error('synthetic original content mismatch');
-      }
-      await context.assertCurrent();
-    },
+    ...(scoped ? { operationSelection: selection } : {}),
+    assertContent,
     async acquireReservation(root, identity) {
       let active = true;
       const assertCurrent = () => { if (!active) throw new Error('synthetic closed claim'); };
@@ -2242,10 +3235,15 @@ async function createColdSelectorReturnFixture() {
     expect(await recovery.prepareBeforeBackend(admission)).toBe('validateRolledBackProfile');
     const releaseRoot = admission.beforeRollbackRootRemoval!.bind(admission);
     await recovery.completeRolledBackBeforeSelectorReturn({ ...admission,
+      ...(admission.coldCleanupContext === undefined ? {} : { coldCleanupContext: {
+        async assertReadOwnership() { await beforeRead(); await admission.coldCleanupContext!.assertReadOwnership(); },
+        assertMutationCurrent() { beforeMutation(); admission.coldCleanupContext!.assertMutationCurrent(); },
+      } }),
       async beforeRollbackRootRemoval(journal) { return rootProof(await releaseRoot(journal)); },
     });
   });
-  return { base, selected, recovery, lease, rollbackOperationRoot, closed, beforeClose, rootProof, assertAuthority, complete };
+  return { base, selected, recovery, lease, rollbackOperationRoot, closed, beforeClose, rootProof, assertAuthority, complete,
+    beforeRead, beforeMutation, selection, assertContent };
 }
 
 async function simulateRollbackMoves(fixture: Awaited<ReturnType<typeof createFixture>>, count: number) {
@@ -2310,6 +3308,11 @@ function createActivationFixture(transaction: ProfileRestoreActivationTransactio
     stagingService: { claimPreparedRestore: id => owner.claim(id) },
   });
   return { service, owner, profileSnapshotClient, stopBusinessRuntime, relaunchApplication, assertAuthority };
+}
+
+function mutationCounts(): number[] {
+  return [mkdir, chmod, rename, rm].map(method => vi.mocked(method).mock.calls.length)
+    .concat(vi.mocked(open).mock.calls.filter(([, flags]) => flags === 'wx').length);
 }
 
 async function createFixture(

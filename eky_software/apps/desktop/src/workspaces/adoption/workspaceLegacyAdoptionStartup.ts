@@ -13,6 +13,7 @@ import { validateWorkspaceTimestamp } from '../registry/workspaceTimestampValida
 import { generateWorkspaceId } from '../registry/workspaceIdGeneration.js';
 import { WorkspaceLegacyAdoptionError } from './workspaceLegacyAdoptionError.js';
 import {
+  assertWorkspaceLegacyAdoptionTransition,
   type WorkspaceLegacyAdoptionJournalPort,
   type WorkspaceLegacyAdoptionJournalV1,
 } from './workspaceLegacyAdoptionJournal.js';
@@ -24,13 +25,22 @@ import type { WorkspaceLegacyAdoptionRootPort } from './workspaceLegacyAdoptionR
 
 const defaultWorkspaceLabel = 'Oma yritys';
 
+export interface WorkspaceLegacyAdoptionAcceptancePorts {
+  readonly journal: WorkspaceLegacyAdoptionJournalPort;
+  readonly registry: WorkspaceRegistryPort;
+  publishBinding(profileId: string): Promise<void>;
+  readonly cleanup: Pick<WorkspaceLegacyAdoptionRootPort, 'discardCandidate'>;
+}
+
 export interface WorkspaceLegacyAdoptionStartupSelection {
   readonly mode: 'adoption';
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
   assertCanAccept(profileId: string): void;
-  accept(profileId: string): Promise<void>;
-  recoverFromFailure(): Promise<'notRecovered'>;
+  accept(profileId: string, ports: WorkspaceLegacyAdoptionAcceptancePorts): Promise<void>;
+  recoverFromFailure(ports: {
+    readonly journal: WorkspaceLegacyAdoptionJournalPort;
+  }): Promise<'notRecovered'>;
 }
 
 export interface ResolveWorkspaceLegacyAdoptionStartupOptions {
@@ -40,6 +50,7 @@ export interface ResolveWorkspaceLegacyAdoptionStartupOptions {
   readonly now?: () => Date;
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceLegacyAdoptionRootPort;
+  readonly selectedSourceKind?: WorkspaceLegacyAdoptionJournalV1['sourceKind'];
   readonly userDataRoot: string;
 }
 
@@ -64,15 +75,23 @@ export async function resolveWorkspaceLegacyAdoptionStartup(
       workspaceId,
     );
     await options.rootStore.assertNoUntrackedWorkspaceRoots(paths);
+    const sourceKind = await options.rootStore.detectSourceKind(paths);
+    if (options.selectedSourceKind !== undefined && sourceKind !== options.selectedSourceKind) {
+      throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    }
     journal = Object.freeze({
       formatVersion: 1,
       operationId,
       workspaceId,
-      sourceKind: await options.rootStore.detectSourceKind(paths),
+      sourceKind,
       state: 'prepared',
       createdAt: validateWorkspaceTimestamp(now().toISOString()),
     });
     await options.journal.write(journal);
+  }
+
+  if (options.selectedSourceKind !== undefined && journal.sourceKind !== options.selectedSourceKind) {
+    throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
   }
 
   if (journal.state === 'recoveryRequired') {
@@ -111,12 +130,34 @@ export async function resolveWorkspaceLegacyAdoptionStartup(
     assertCanAccept(profileId: string) {
       validateWorkspaceLineage({ formatVersion: 1, profileId });
     },
-    async accept(profileId: string) {
+    async accept(profileId: string, ports: WorkspaceLegacyAdoptionAcceptancePorts) {
       const lineageIdentity = validateWorkspaceLineage({
         formatVersion: 1,
         profileId,
       });
-      let currentRegistry = await options.registry.read();
+      const selectedJournal = await readMatchingJournal(ports.journal, activeJournal);
+      if (
+        selectedJournal.state !== 'rootPublished' &&
+        selectedJournal.state !== 'registryPublished'
+      ) {
+        throw new WorkspaceLegacyAdoptionError(
+          'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
+        );
+      }
+      let currentRegistry = await ports.registry.read();
+      if (currentRegistry !== undefined) {
+        const existing = requirePublishedRegistry(
+          currentRegistry,
+          activeJournal.workspaceId,
+        );
+        if (existing.lineageIdentity.profileId !== lineageIdentity.profileId) {
+          await markRecoveryRequired(ports.journal, activeJournal);
+          throw new WorkspaceLegacyAdoptionError(
+            'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
+          );
+        }
+      }
+      await ports.publishBinding(profileId);
       if (currentRegistry === undefined) {
         currentRegistry = appendReadyWorkspaceEntry(
           readWorkspaceRegistry(undefined),
@@ -127,36 +168,20 @@ export async function resolveWorkspaceLegacyAdoptionStartup(
             createdAt: activeJournal.createdAt,
           }),
         );
-        await options.registry.write(currentRegistry);
-      } else {
-        const existing = requirePublishedRegistry(
-          currentRegistry,
-          activeJournal.workspaceId,
-        );
-        if (existing.lineageIdentity.profileId !== lineageIdentity.profileId) {
-          await markRecoveryRequired(options.journal, activeJournal);
-          throw new WorkspaceLegacyAdoptionError(
-            'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
-          );
-        }
+        await ports.registry.write(currentRegistry);
       }
-      const currentJournal = await options.journal.read();
-      if (currentJournal?.operationId !== activeJournal.operationId) {
-        throw new WorkspaceLegacyAdoptionError(
-          'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
-        );
-      }
+      const currentJournal = await readMatchingJournal(ports.journal, activeJournal);
       if (currentJournal.state !== 'registryPublished') {
-        await options.journal.write({
+        await ports.journal.write({
           ...currentJournal,
           state: 'registryPublished',
         });
       }
-      await options.rootStore.discardCandidate(paths);
-      await options.journal.clear(activeJournal.operationId);
+      await ports.cleanup.discardCandidate(paths);
+      await ports.journal.clear(activeJournal.operationId);
     },
-    async recoverFromFailure() {
-      await markRecoveryRequired(options.journal, activeJournal);
+    async recoverFromFailure(ports: { readonly journal: WorkspaceLegacyAdoptionJournalPort }) {
+      await markRecoveryRequired(ports.journal, activeJournal);
       return 'notRecovered' as const;
     },
   });
@@ -228,15 +253,30 @@ async function markRecoveryRequired(
   journalPort: WorkspaceLegacyAdoptionJournalPort,
   journal: Readonly<WorkspaceLegacyAdoptionJournalV1>,
 ): Promise<void> {
+  const current = await readMatchingJournal(journalPort, journal);
+  if (current.state !== 'recoveryRequired') {
+    await journalPort.write({ ...current, state: 'recoveryRequired' });
+  }
+}
+
+async function readMatchingJournal(
+  journalPort: WorkspaceLegacyAdoptionJournalPort,
+  journal: Readonly<WorkspaceLegacyAdoptionJournalV1>,
+): Promise<Readonly<WorkspaceLegacyAdoptionJournalV1>> {
   const current = await journalPort.read();
-  if (current?.operationId !== journal.operationId) {
+  if (current === undefined) {
     throw new WorkspaceLegacyAdoptionError(
       'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
     );
   }
-  if (current.state !== 'recoveryRequired') {
-    await journalPort.write({ ...current, state: 'recoveryRequired' });
+  try {
+    assertWorkspaceLegacyAdoptionTransition(journal, current);
+  } catch {
+    throw new WorkspaceLegacyAdoptionError(
+      'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
+    );
   }
+  return current;
 }
 
 async function recoveryRequired(

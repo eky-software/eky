@@ -461,24 +461,34 @@ omistaa [G-P1](release-0.3.0-m1-preparation-plan.md#g-p1-hyväksytty-projektiora
 
 `workspaceManagement.operationFailed` on desktop/workspaceManagement,
 error/failure. Sen pakolliset kentät ovat UUID-korrelaatio, ei-negatiivinen
-kokonaislukukesto, suljettu looginen `workspace.create|import|replace|switch|rename|delete`
+kokonaislukukesto, suljettu looginen `workspace.create|import|replace|switch|rename|delete|deleteResume`
 -operationId, vaihe, virhekoodi, boolean-retryable ja `none|unknown`-sivuvaikutus.
 Koodi/toiminto/vaihe/retryable-yhdistelmät omistaa
 [G-P2:n suljettu taulukko](release-0.3.0-m1-preparation-plan.md#g-p2-hyväksytty-workspace-virheen-omistajuus).
 `operationId` ei ole työtilan tai yrityksen tunniste. Status-pollingia ja
 onnistumisia ei lisätä tähän julkiseen perheeseen.
 
-W7.3:n valmisteluraja lisää vain `workspace.delete`-operaation ja vaiheet
-`admission|deletePreparation`. Sen suljetut syyt ovat
-`WORKSPACE_MANAGEMENT_BUSY` (`retryable: true`),
-`WORKSPACE_MANAGEMENT_INVALID`, `WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN` ja
-`WORKSPACE_DELETE_FAILED` (muissa `retryable: false`). `none` sallitaan
-vain ennen komennon alkua (`admission`) tai busy-estossa ennen vaikutuksia;
-muun aloitetun valmistelun sivuvaikutus on `unknown`. Vaihe ei itsessään
-todista vaikutuksettomuutta. Muiden operaatioiden vaihe- ja syyrajat säilyvät.
-`deleteResume`, myöhemmät poistovaiheet ja muut W7.0:n poistosyyt eivät kuulu
-tähän toteutuspalaan. Valmistuminen, peruutus tai prepared-kuitti eivät
-todista poistoa eivätkä lisää onnistumistapahtumaa.
+W7.4:n suljettu sopimus kattaa `workspace.delete`- ja
+`workspace.deleteResume`-operaatiot sekä vaiheet `admission`,
+`deletePreparation`, `deleteAuthorization`, `deletePurge`, `deleteRegistry`
+ja `deleteCleanup`. Syyjoukon omistaa desktopin
+`workspaceManagementFailureContext.ts`: managementin `BUSY` ja `INVALID`
+sekä W7.0:n kahdeksan nimettyä `WORKSPACE_DELETE_*`-syytä.
+Vain `WORKSPACE_MANAGEMENT_BUSY` on `retryable: true`; muissa arvo on false.
+`none` sallitaan live-admissionissa vain todistetulle vaikutuksettomuudelle
+sekä historiallisessa preparation-busy-estossa ennen vaikutuksia.
+Julkaisuyritys, myöhemmät poistovaiheet ja kaikki journalista jatkaminen
+ovat `unknown`, myös resume-admissionin busy. Vaihe ei todista juurisyytä
+tai vaikutuksettomuutta. Muiden operaatioiden vaihe- ja syyrajat säilyvät.
+
+Erillinen loppusiivousvirhe on samalla korrelaatiolla toinen
+`workspaceManagement.operationFailed`, jonka vaihe on `deleteCleanup`.
+Kumpikin kirjoitus on erikseen best effort; ensivirheen kirjoitusvirhe ei
+estä lisävirheen yritystä. W7.3:n vanhat tapahtumat säilyvät luettavina.
+Valmistuminen, peruutus tai prepared-kuitti eivät todista poistoa eivätkä
+lisää onnistumistapahtumaa. Tapahtuman hyväksytty skeema ei yksin todista
+W7.4:n cold-kuluttajan, vaihe-emission tai mainin kytkentää; toteutuksen
+osanäyttö ja avoimet portit ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 [W7.0:n omistava sopimus](local-company-workspace-plan.md#w70n-poistopyyntö--ja-vahvistussopimus)
 ja [W7.3:n toimitusraja](local-company-workspace-plan.md#w73n-toteutussopimus)
 säilyttävät varsinaisen poiston jatkoehdot. Nykyinen salattu ensivirheen

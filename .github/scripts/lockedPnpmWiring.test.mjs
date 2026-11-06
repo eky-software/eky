@@ -6,7 +6,7 @@ import { runInNewContext } from 'node:vm';
 const read = name => readFileSync(new URL(name, import.meta.url), 'utf8');
 const preparation = '        working-directory: .\n        run: node .github/scripts/prepareLockedPnpm.mjs';
 const expectedJobs = {
-  'ci.yml': 5,
+  'ci.yml': 7,
   'dependency-security.yml': 1,
   'windows-acceptance-v2-clean.yml': 2,
   'windows-acceptance-v2-upgrade.yml': 2,

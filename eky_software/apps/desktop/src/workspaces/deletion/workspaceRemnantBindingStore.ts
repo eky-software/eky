@@ -1,0 +1,343 @@
+import { CrashSafeByteSlotStore, type CrashSafeByteSlotSelection, type CrashSafeByteSlotReadSelection } from '../persistence/crashSafeByteSlotStore.js';
+import { createNodeCrashSafeFileSlotFileSystem, sameCrashSafeFileSlotIdentity, type CrashSafeFileSlot, type CrashSafeFileSlotFileSystem,
+  type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
+import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
+import { checkedDeletionAuthority, deletionDigest, invalidDeletionData } from './workspaceDeletionDataValidation.js';
+import { captureDeletionInventoryHeader } from './workspaceDeletionInventoryCodec.js';
+import { readDeletionInventoryDirectoryIdentity } from './workspaceDeletionInventoryFile.js';
+import { createWorkspaceDeletionJournalPaths } from './workspaceDeletionJournalStore.js';
+import { captureWorkspaceRemnantBinding, captureWorkspaceRemnantBindingKey, maximumWorkspaceRemnantBindingBytes,
+  parseWorkspaceRemnantBinding, serializeWorkspaceRemnantBinding, workspaceRemnantBindingKey, workspaceRemnantBindingSha256,
+  workspaceRemnantBindingInvalidCode as invalidCode,
+  type WorkspaceRemnantBindingV1 } from './workspaceRemnantBindingCodec.js';
+import { createWorkspaceRemnantBindingPaths } from './workspaceRemnantBindingPaths.js';
+import { inspectWorkspaceRemnantBindingDirectory } from './workspaceRemnantBindingDirectory.js';
+
+export interface WorkspaceRemnantBindingAuthority {
+  assertAuthority(): void;
+  // The owner checks its exact target/lineage and the live installation reservation.
+  assertExternalSelection(): Promise<void>;
+}
+
+export interface WorkspaceRemnantBindingCleanup extends WorkspaceRemnantBindingAuthority {
+  readonly mode: 'owner' | 'deletionPurged';
+  // Optional for existing owners; live import must pass its publication receipt.
+  readonly expectedCurrentIdentity?: Readonly<CrashSafeFileSlotIdentity>;
+  // Cold owners pin all observed bytes/identities, not a pre-crash write receipt.
+  readonly expectedOwnerSlots?: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>;
+  readonly bindingSha256: string;
+  // All roots and all writers, not just the journal or current inspection copy.
+  assertPayloadsAbsent(): Promise<void>;
+  // For deletionPurged, assertExternalSelection also proves the selected purged journal,
+  // complete committed inventory and exact after-registry; this method only removes metadata.
+}
+
+interface CommittedCleanup extends WorkspaceRemnantBindingCleanup {
+  readonly expectedDeletionSlots?: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>;
+}
+
+export class WorkspaceRemnantBindingStore {
+  private readonly key: ReturnType<typeof captureWorkspaceRemnantBindingKey>;
+  private readonly fileSystem: CrashSafeFileSlotFileSystem;
+  private readonly byteStore: CrashSafeByteSlotStore;
+  private activeOperation = false;
+
+  constructor(private readonly userDataRoot: string, key: unknown, fileSystem?: CrashSafeFileSlotFileSystem,
+    private readonly readDirectoryIdentity = readDeletionInventoryDirectoryIdentity) {
+    this.key = captureWorkspaceRemnantBindingKey(key);
+    const paths = createWorkspaceRemnantBindingPaths(userDataRoot, this.key);
+    this.fileSystem = fileSystem ?? createNodeCrashSafeFileSlotFileSystem(
+      paths, maximumWorkspaceRemnantBindingBytes);
+    this.byteStore = new CrashSafeByteSlotStore(this.fileSystem);
+  }
+
+  inspect(authority: WorkspaceRemnantBindingAuthority) {
+    return this.exclusive(async () => {
+      const selected = await this.observe(authority);
+      const records = Object.values(selected.slots).filter(value => value !== undefined);
+      if (records.length === 0) return Object.freeze({ mode: 'absent' as const, slots: selected.slots });
+      if (selected.slots.current === undefined) return invalidDeletionData(invalidCode);
+      const value = selected.slots.current.value;
+      this.assertSameValues(selected.slots, value);
+      return Object.freeze({ mode: 'published' as const, value, bindingSha256: workspaceRemnantBindingSha256(value), slots: selected.slots });
+    });
+  }
+
+  publish(value: unknown, authority: WorkspaceRemnantBindingAuthority) {
+    return this.exclusive(async () => {
+      const binding = this.captureBinding(value);
+      const selected = await this.observe(authority);
+      if (Object.values(selected.slots).some(record => record !== undefined)) return invalidDeletionData(invalidCode);
+      await createNodeCrashSafeFileSlotFileSystem(createWorkspaceDeletionJournalPaths(this.userDataRoot), 1)
+        .prepareDirectory({ assertAuthority: selected.guard.assertAuthority, beforeMutation: selected.guard.assertExternalSelection });
+      const identity = await this.byteStore.replaceSelected(serializeWorkspaceRemnantBinding(binding), selected.guard);
+      return Object.freeze({ value: binding, bindingSha256: workspaceRemnantBindingSha256(binding), identity });
+    });
+  }
+
+  clearAfterPayloadsAbsent(value: unknown, proof: WorkspaceRemnantBindingCleanup) {
+    return this.exclusive(async () => {
+      const expected = this.captureBinding(value);
+      const mode = proof.mode;
+      if ((mode !== 'owner' && mode !== 'deletionPurged') ||
+          deletionDigest(proof.bindingSha256, invalidCode) !== workspaceRemnantBindingSha256(expected)) {
+        return invalidDeletionData(invalidCode);
+      }
+      const suppliedIdentity = proof.expectedCurrentIdentity;
+      if (suppliedIdentity !== undefined && (mode !== 'owner' || suppliedIdentity === null || typeof suppliedIdentity !== 'object')) {
+        return invalidDeletionData(invalidCode);
+      }
+      const expectedIdentity = suppliedIdentity === undefined ? undefined : Object.freeze({ ...suppliedIdentity });
+      if (expectedIdentity !== undefined && (expectedIdentity.ino === 0 || expectedIdentity.size < 1 ||
+          ![expectedIdentity.dev, expectedIdentity.ino, expectedIdentity.size, expectedIdentity.mtimeMs, expectedIdentity.ctimeMs].every(Number.isFinite))) {
+        return invalidDeletionData(invalidCode);
+      }
+      const suppliedSlots = proof.expectedOwnerSlots;
+      const expectedSlots = suppliedSlots === undefined ? undefined : captureOwnerSlots(suppliedSlots, mode);
+      const external = proof.assertExternalSelection.bind(proof);
+      const absent = proof.assertPayloadsAbsent.bind(proof);
+      const assertAuthority = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
+      const authority = { assertAuthority, assertExternalSelection: async () => {
+        assertAuthority();
+        await external();
+        assertAuthority();
+        await absent();
+        assertAuthority();
+        await external();
+        assertAuthority();
+      } };
+      const selected = await this.observe(authority);
+      if (expectedSlots !== undefined) for (const slot of ['current', 'next', 'backup'] as const) {
+        const before = expectedSlots[slot], after = selected.slots[slot];
+        if (before === undefined ? after !== undefined : after === undefined || after.identity === undefined ||
+          !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
+          !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) return invalidDeletionData(invalidCode);
+      }
+      if (expectedIdentity !== undefined && (selected.slots.current?.identity === undefined ||
+          !sameCrashSafeFileSlotIdentity(expectedIdentity, selected.slots.current.identity))) return invalidDeletionData(invalidCode);
+      this.assertSameValues(selected.slots, expected);
+      if (mode === 'owner' && selected.slots.current === undefined &&
+          (selected.slots.next !== undefined || selected.slots.backup !== undefined)) return invalidDeletionData(invalidCode);
+      await this.clearObservedSlots(selected);
+    });
+  }
+
+  // Deletion-only resume: a committed digest identifies surviving slots without inventing a lost operation ID.
+  clearCommittedAfterPayloadsAbsent(targetValue: unknown, proof: CommittedCleanup,
+    readSelection?: CrashSafeByteSlotReadSelection) {
+    if (readSelection === undefined) {
+      return this.exclusive(() => this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected)));
+    }
+    if (readSelection === null || typeof readSelection !== 'object') return invalidDeletionData(invalidCode);
+    const captured = readSelection.assertBeforeSlotRead;
+    if (typeof captured !== 'function') return invalidDeletionData(invalidCode);
+    const beforeRead = captured.bind(readSelection);
+    return this.exclusive(async () => {
+      let active = true, readFailed = false;
+      let firstReadFailure: unknown;
+      const assertReadCurrent = () => {
+        if (readFailed) throw firstReadFailure;
+        if (!active) return invalidDeletionData(invalidCode);
+      };
+      const scoped = { async assertBeforeSlotRead() {
+        assertReadCurrent();
+        try { await beforeRead(); assertReadCurrent(); }
+        catch (error) {
+          if (!readFailed) { readFailed = true; firstReadFailure = error; }
+          throw firstReadFailure;
+        }
+      } };
+      try {
+        return await this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected, scoped));
+      } catch (error) {
+        // Native removal may normalize a failed prefix; retain its known original.
+        if (readFailed && error !== firstReadFailure) {
+          throw new AggregateError([firstReadFailure, error], invalidCode, { cause: firstReadFailure });
+        }
+        throw error;
+      } finally { active = false; }
+    });
+  }
+
+  // Read-only cleanup evidence, including side-only or absent metadata; never an ordinary published binding.
+  inspectCommittedAfterPayloadsAbsent(targetValue: unknown, proof: CommittedCleanup) {
+    return this.exclusive(() => this.withCommittedCleanup(targetValue, proof, async selected => selected.slots));
+  }
+
+  // Observation only: the caller still needs fresh payload-absence proof before any retirement.
+  inspectCommittedDeletionSlots(targetValue: unknown, proof: WorkspaceRemnantBindingAuthority & {
+    readonly bindingSha256: string; readonly expectedDeletionSlots?: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>;
+  }) {
+    return this.exclusive(async () => {
+      const assertSelectedSlots = this.captureCommittedInspection(targetValue, proof);
+      const check = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
+      const external = proof.assertExternalSelection.bind(proof);
+      let failed = false;
+      let firstFailure: unknown;
+      const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+      const assertAuthority = () => {
+        if (failed) throw firstFailure;
+        try { check(); } catch (error) { throw retain(error); }
+      };
+      const assertExternalSelection = async () => {
+        try { assertAuthority(); await external(); assertAuthority(); } catch (error) { throw retain(error); }
+      };
+      try {
+        const selected = await this.observe({ assertAuthority, assertExternalSelection });
+        assertSelectedSlots(selected.slots); assertAuthority(); return selected.slots;
+      } catch (error) { if (failed) throw firstFailure; throw error; }
+    });
+  }
+
+  private captureCommittedInspection(targetValue: unknown, proof: {
+    readonly bindingSha256: string; readonly expectedDeletionSlots?: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>;
+  }) {
+    const target = captureDeletionInventoryHeader(targetValue);
+    const digest = deletionDigest(proof.bindingSha256, invalidCode);
+    const expectedSlots = proof.expectedDeletionSlots === undefined ? undefined : captureBindingSlotBytes(proof.expectedDeletionSlots);
+    return (slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>) => {
+      if (expectedSlots !== undefined) for (const slot of ['current', 'next', 'backup'] as const) {
+        const before = expectedSlots[slot], after = slots[slot];
+        if (before === undefined ? after !== undefined : after === undefined || after.identity === undefined ||
+            !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
+            !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) return invalidDeletionData(invalidCode);
+      }
+      for (const record of Object.values(slots)) {
+        if (record !== undefined && (record.value.workspaceId !== target.workspaceId ||
+            record.value.lineageIdentity.profileId !== target.lineageIdentity.profileId ||
+            workspaceRemnantBindingSha256(record.value) !== digest)) return invalidDeletionData(invalidCode);
+      }
+    };
+  }
+
+  private async withCommittedCleanup<Result>(targetValue: unknown, proof: CommittedCleanup,
+    work: (selected: Awaited<ReturnType<WorkspaceRemnantBindingStore['observe']>>) => Promise<Result>): Promise<Result> {
+    const assertSelectedSlots = this.captureCommittedInspection(targetValue, proof);
+    if (proof.mode !== 'deletionPurged' || proof.expectedCurrentIdentity !== undefined || proof.expectedOwnerSlots !== undefined) {
+      return invalidDeletionData(invalidCode);
+    }
+    const check = checkedDeletionAuthority(proof.assertAuthority.bind(proof), invalidCode);
+    const external = proof.assertExternalSelection.bind(proof), absent = proof.assertPayloadsAbsent.bind(proof);
+    let failed = false;
+    let firstFailure: unknown;
+    const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+    const assertAuthority = () => {
+      if (failed) throw firstFailure;
+      try { check(); } catch (error) { throw retain(error); }
+    };
+    const assertExternalSelection = async () => {
+      try {
+        assertAuthority(); await external(); assertAuthority();
+        await absent(); assertAuthority(); await external(); assertAuthority();
+      } catch (error) { throw retain(error); }
+    };
+    try {
+      const selected = await this.observe({ assertAuthority, assertExternalSelection });
+      assertSelectedSlots(selected.slots);
+      const result = await work(selected);
+      assertAuthority();
+      return result;
+    } catch (error) { if (failed) throw firstFailure; throw error; }
+  }
+
+  private async clearObservedSlots(selected: {
+    slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>; guard: CrashSafeByteSlotSelection;
+  }, readSelection?: CrashSafeByteSlotReadSelection): Promise<void> {
+    const authority = { assertAuthority: selected.guard.assertAuthority, assertExternalSelection: selected.guard.assertExternalSelection };
+    if (Object.values(selected.slots).every(record => record === undefined)) {
+      const before = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, authority.assertAuthority, this.readDirectoryIdentity);
+      if (!before.present) {
+        const fresh = await this.observe(authority);
+        const after = await inspectWorkspaceRemnantBindingDirectory(this.userDataRoot, this.key, authority.assertAuthority, this.readDirectoryIdentity);
+        if (Object.values(fresh.slots).some(record => record !== undefined) || after.present ||
+            after.ancestorPath !== before.ancestorPath || after.ancestorIdentity !== before.ancestorIdentity) return invalidDeletionData(invalidCode);
+        await authority.assertExternalSelection();
+        return;
+      }
+    }
+    if (readSelection === undefined) await this.byteStore.clearSelected(selected.guard);
+    else await this.byteStore.clearSelected(selected.guard, readSelection);
+  }
+
+  private captureBinding(value: unknown) {
+    const binding = captureWorkspaceRemnantBinding(value);
+    if (JSON.stringify(workspaceRemnantBindingKey(binding)) !== JSON.stringify(this.key)) return invalidDeletionData(invalidCode);
+    return binding;
+  }
+
+  private assertSameValues(slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>, expected: WorkspaceRemnantBindingV1) {
+    const bytes = serializeWorkspaceRemnantBinding(expected);
+    if (Object.values(slots).some(record => record !== undefined && !serializeWorkspaceRemnantBinding(record.value).equals(bytes))) {
+      invalidDeletionData(invalidCode);
+    }
+  }
+
+  private async observe(authority: WorkspaceRemnantBindingAuthority) {
+    const assertAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
+    const external = authority.assertExternalSelection.bind(authority);
+    const assertExternalSelection = async () => { assertAuthority(); await external(); assertAuthority(); };
+    await assertExternalSelection();
+    const slots: Record<CrashSafeFileSlot, ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>['current']> = {
+      current: undefined, next: undefined, backup: undefined,
+    };
+    for (const slot of ['current', 'next', 'backup'] as const) {
+      assertAuthority();
+      let identity: CrashSafeFileSlotIdentity | undefined;
+      const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
+      assertAuthority();
+      if (bytes === undefined) continue;
+      if (identity === undefined) return invalidDeletionData(invalidCode);
+      slots[slot] = Object.freeze({ bytes: Uint8Array.from(bytes), value: this.captureBinding(parseWorkspaceRemnantBinding(bytes)),
+        identity: Object.freeze({ ...identity }) });
+    }
+    await assertExternalSelection();
+    const guard: CrashSafeByteSlotSelection = { assertAuthority, assertExternalSelection,
+      expectedSlots: { current: slots.current?.bytes, next: slots.next?.bytes, backup: slots.backup?.bytes },
+      expectedIdentities: { current: slots.current?.identity, next: slots.next?.identity, backup: slots.backup?.identity } };
+    return Object.freeze({ slots: Object.freeze(slots), guard });
+  }
+
+  private async exclusive<T>(work: () => Promise<T>): Promise<T> {
+    if (this.activeOperation) return invalidDeletionData(invalidCode);
+    this.activeOperation = true;
+    try { return await work(); } finally { this.activeOperation = false; }
+  }
+}
+
+export type WorkspaceRemnantBindingSelection = Awaited<ReturnType<WorkspaceRemnantBindingStore['inspect']>>;
+
+export function assertSameWorkspaceRemnantBindingSelection(
+  expected: WorkspaceRemnantBindingSelection, actual: WorkspaceRemnantBindingSelection,
+): void {
+  if (actual.mode !== expected.mode || (expected.mode === 'published' &&
+      (actual.mode !== 'published' || actual.bindingSha256 !== expected.bindingSha256))) return invalidDeletionData(invalidCode);
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const before = expected.slots[slot], after = actual.slots[slot];
+    if (before === undefined ? after !== undefined : after === undefined || before.identity === undefined ||
+        after.identity === undefined || !sameCrashSafeFileSlotIdentity(before.identity, after.identity) ||
+        !Buffer.from(before.bytes).equals(Buffer.from(after.bytes))) return invalidDeletionData(invalidCode);
+  }
+}
+
+function captureOwnerSlots(slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>, mode: WorkspaceRemnantBindingCleanup['mode']) {
+  if (mode !== 'owner' || slots === null || typeof slots !== 'object' || slots.current === undefined) return invalidDeletionData(invalidCode);
+  return captureBindingSlotBytes(slots);
+}
+
+function captureBindingSlotBytes(slots: ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>) {
+  if (slots === null || typeof slots !== 'object') return invalidDeletionData(invalidCode);
+  const result: Record<CrashSafeFileSlot, Readonly<{ bytes: Uint8Array; identity: Readonly<CrashSafeFileSlotIdentity> }> | undefined> = {
+    current: undefined, next: undefined, backup: undefined,
+  };
+  for (const slot of ['current', 'next', 'backup'] as const) {
+    const record = slots[slot];
+    if (record === undefined) continue;
+    if (record === null || typeof record !== 'object') return invalidDeletionData(invalidCode);
+    const identity = record.identity;
+    if (!(record.bytes instanceof Uint8Array) || record.bytes.byteLength < 1 || record.bytes.byteLength > maximumWorkspaceRemnantBindingBytes ||
+      identity === undefined || identity === null || typeof identity !== 'object' || identity.ino === 0 || identity.size !== record.bytes.byteLength ||
+      ![identity.dev, identity.ino, identity.size, identity.mtimeMs, identity.ctimeMs].every(Number.isFinite)) return invalidDeletionData(invalidCode);
+    result[slot] = Object.freeze({ bytes: Uint8Array.from(record.bytes), identity: Object.freeze({ ...identity }) });
+  }
+  return Object.freeze(result);
+}

@@ -13,17 +13,25 @@ import {
 } from './inspectOwnedEncryptedProfileBackup.js';
 import type { ProfileSnapshotBrokerClient } from './profileSnapshotBrokerClient.js';
 import type { ProfileSnapshotMigrationPolicy } from './profileSnapshotBrokerProtocol.js';
-import type { ProfileDeletionSnapshotEvidencePort, ProfileRestoreSnapshotInspectionPort, ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority,
+  type ProfileDeletionSnapshotEvidencePort, type ProfileRestoreSnapshotInspectionPort, type ProfileSnapshotInspectionPort } from './profileSnapshotInspectionPort.js';
 import { runProfileSnapshotInspection } from './runProfileSnapshotInspection.js';
+import { captureOwnedProfileInspectionTarget, type OwnedProfileInspectionTarget } from './runOwnedProfileInspection.js';
 
 interface OwnedSnapshot {
+  readonly target: OwnedProfileInspectionTarget;
+  readonly sourceOperationId?: string;
+  readonly sourceConsumer?: symbol;
   readonly migrationPolicy: ProfileInspectionMigrationPolicy;
+  readonly cleanup?: Readonly<{ source: ProfileSnapshotCleanupAuthority; authority: Readonly<ProfileSnapshotCleanupAuthority> }>;
+  cleanupFailure?: { error: unknown };
   owner?: OwnedProfileBackupInspectionReservation;
   receipt?: ProfileInspectionReceipt;
   inspectionIdentity?: ProfileInspectionRequestIdentity;
   authority?: () => void;
   settled: boolean;
   inUse: boolean;
+  consumer?: symbol;
   removing: boolean;
   recoveryRetained: boolean;
 }
@@ -42,6 +50,8 @@ interface ProfileSnapshotInspectionDependencies {
   readonly runnerPath: string;
   readonly deployment: ProfileInspectionDeployment;
   readonly assertMainInstance: () => void;
+  readonly captureSourceTarget: () => OwnedProfileInspectionTarget;
+  readonly observeException?: (error: unknown) => void;
   readonly acquireReservation: (input: {
     readonly operationRoot: string;
     readonly signal: AbortSignal;
@@ -63,6 +73,18 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
     if (!isAbsolute(dependencies.stagingRoot)) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
   }
 
+  private captureSourceTarget(): OwnedProfileInspectionTarget {
+    const selected = captureOwnedProfileInspectionTarget(this.dependencies.captureSourceTarget());
+    const assertChannel = this.dependencies.broker.captureInspectionAuthority();
+    return selected.kind === 'unbound' ? selected : captureOwnedProfileInspectionTarget({ ...selected,
+      async assertSelectionCurrent(assertPhaseCurrent) {
+        assertPhaseCurrent(); assertChannel();
+        await selected.assertSelectionCurrent(assertPhaseCurrent);
+        assertPhaseCurrent(); assertChannel();
+      },
+    });
+  }
+
   beginMaintenance(operationId: string) { this.assertAdmission(); return this.dependencies.broker.beginMaintenance(operationId); }
   endMaintenance(operationId: string) { return this.dependencies.broker.endMaintenance(operationId); }
   assertUpdateMaintenance(operationId: string) { this.assertAdmission(); return this.dependencies.broker.assertUpdateMaintenance(operationId); }
@@ -71,13 +93,14 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
   endRestoreMaintenance(operationId: string) { return this.dependencies.broker.endRestoreMaintenance(operationId); }
   invalidateRestoreMaintenance(operationId: string) { return this.dependencies.broker.invalidateRestoreMaintenance(operationId); }
 
-  async createProfileSnapshot(operationId: string, policy: ProfileSnapshotMigrationPolicy) {
+  async createProfileSnapshot(operationId: string, policy: ProfileSnapshotMigrationPolicy,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority) {
     this.assertAdmission();
     this.assertOperationId(operationId);
     if (policy !== 'exactCurrentManifest' && policy !== 'compatibleHistoricalPrefix') {
       throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
     }
-    return this.createSnapshot(operationId, policy, policy);
+    return this.createSnapshot(operationId, policy, policy, cleanupAuthority);
   }
 
   /** Only an exact restore fence may select the approved metadata-less legacy policy. */
@@ -93,15 +116,22 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
   }
 
   private async createSnapshot(operationId: string, policy: ProfileSnapshotMigrationPolicy,
-    inspectionPolicy: ProfileInspectionMigrationPolicy) {
+    inspectionPolicy: ProfileInspectionMigrationPolicy, cleanupAuthority?: ProfileSnapshotCleanupAuthority) {
     if (this.roots.has(operationId)) throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
-    const record: OwnedSnapshot = { migrationPolicy: inspectionPolicy, settled: false, inUse: false, removing: false, recoveryRetained: false };
+    const cleanup = cleanupAuthority === undefined ? undefined : Object.freeze({
+      source: cleanupAuthority, authority: captureProfileSnapshotCleanupAuthority(cleanupAuthority),
+    });
+    const target = this.captureSourceTarget();
+    const record: OwnedSnapshot = { target, migrationPolicy: inspectionPolicy, ...(cleanup === undefined ? {} : { cleanup }),
+      settled: false, inUse: false, removing: false, recoveryRetained: false };
     this.roots.set(operationId, record);
     // An absent/late response is not evidence that the backend writer stopped.
     try {
+      this.assertCleanupCurrent(record);
       const result = await this.dependencies.broker.createProfileSnapshot(operationId, policy);
       this.assertAdmission();
       record.settled = true;
+      this.assertCleanupCurrent(record);
       return result;
     } catch (error) {
       this.invalidate(record);
@@ -109,13 +139,14 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
     }
   }
 
-  validateProfileSnapshot(operationId: string, updateMaintenanceOperationId?: string) {
-    return this.inspect(operationId, 'inspect', updateMaintenanceOperationId).then(result => result.validation);
+  validateProfileSnapshot(operationId: string, updateMaintenanceOperationId?: string,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority, sourceOperationId?: string) {
+    return this.inspect(operationId, 'inspect', updateMaintenanceOperationId, undefined, cleanupAuthority, sourceOperationId).then(result => result.validation);
   }
 
-  validateDeletionProfileSnapshot(operationId: string, deleteMaintenanceOperationId: string) {
+  validateDeletionProfileSnapshot(operationId: string, deleteMaintenanceOperationId: string, sourceOperationId?: string) {
     this.assertOperationId(deleteMaintenanceOperationId);
-    return this.inspect(operationId, 'inspect', undefined, deleteMaintenanceOperationId).then(result => result.validation);
+    return this.inspect(operationId, 'inspect', undefined, deleteMaintenanceOperationId, undefined, sourceOperationId).then(result => result.validation);
   }
 
   prepareProfileRestoreSnapshot(operationId: string) {
@@ -185,17 +216,19 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
     const receipt = record.receipt;
     const inspectionIdentity = record.inspectionIdentity;
     const authority = record.authority;
+    const consumer = Symbol();
     let consumerActive = true;
     const assertCurrent = async (requireAdmission = true) => {
       await this.assertOwned(record);
       if (requireAdmission) this.assertAdmission();
-      if (!consumerActive || !record.inUse || record.receipt !== receipt || record.authority !== authority ||
+      if (!consumerActive || !record.inUse || record.consumer !== consumer || record.receipt !== receipt || record.authority !== authority ||
           record.inspectionIdentity !== inspectionIdentity) {
         throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
       }
       authority();
     };
     record.inUse = true;
+    record.consumer = consumer;
     const task = Promise.resolve().then(async () => {
       await assertCurrent();
       const value = await use(receipt, () => assertCurrent());
@@ -205,7 +238,7 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
     });
     this.work.add(task);
     try { return await task; }
-    finally { consumerActive = false; record.inUse = false; this.work.delete(task); }
+    finally { consumerActive = false; record.inUse = false; delete record.consumer; this.work.delete(task); }
   }
 
   /** Main-only evidence uses the same reserved consumer lifetime as snapshot reads. */
@@ -235,13 +268,22 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
 
   private async releaseOwnedRoot(operationId: string, deadline: number): Promise<void> {
     const record = this.requireRoot(operationId);
+    if (record.cleanupFailure !== undefined) throw record.cleanupFailure.error;
     if (record.inUse || record.removing || this.inspecting) throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
     record.removing = true;
     try {
       await this.assertOwned(record, deadline);
+      if (record.cleanup !== undefined) {
+        this.assertCleanupCurrent(record);
+        await boundedShutdown(this.assertCleanupOwned(record), deadline);
+        await this.assertOwned(record, deadline);
+        this.assertCleanupCurrent(record);
+      }
       await boundedShutdown(record.owner!.close(), deadline);
+      this.assertCleanupCurrent(record);
       this.roots.delete(operationId);
     } catch (error) {
+      if (record.cleanup !== undefined) record.cleanupFailure ??= { error };
       this.invalidate(record);
       throw error;
     }
@@ -281,15 +323,61 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
   }
 
   private inspect(operationId: string, kind: 'inspect' | 'prepareRestoreActivation',
-    updateMaintenanceOperationId?: string, deleteMaintenanceOperationId?: string) {
+    updateMaintenanceOperationId?: string, deleteMaintenanceOperationId?: string,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority, sourceOperationId?: string) {
     this.assertAdmission();
     this.assertOperationId(operationId);
+    const existing = this.roots.get(operationId);
+    if (existing !== undefined && cleanupAuthority !== undefined && cleanupAuthority !== existing.cleanup?.source) {
+      // Rejection closes this logical consumer, not a child that must still exit/reclaim.
+      existing.cleanupFailure ??= { error: new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED') };
+      throw existing.cleanupFailure.error;
+    }
     if (this.inspecting) throw new Error('PROFILE_PROTECTION_OPERATION_BUSY');
-    const record: OwnedSnapshot = this.roots.get(operationId) ?? {
-      migrationPolicy: 'restoreCompatible', settled: true, inUse: false, removing: false, recoveryRetained: false,
+    const cleanup = existing !== undefined || cleanupAuthority === undefined ? undefined : Object.freeze({
+      source: cleanupAuthority, authority: captureProfileSnapshotCleanupAuthority(cleanupAuthority),
+    });
+    if (existing?.sourceOperationId !== undefined && existing.sourceOperationId !== sourceOperationId) {
+      throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+    }
+    let sourceConsumer: symbol | undefined;
+    let target: OwnedProfileInspectionTarget = { kind: 'unbound' };
+    if (sourceOperationId !== undefined) {
+      this.assertOperationId(sourceOperationId);
+      if (existing !== undefined && existing.sourceOperationId !== sourceOperationId) throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
+      const source = this.requireRoot(sourceOperationId);
+      if (sourceOperationId === operationId || !source.inUse || !source.settled || source.removing || source.authority === undefined ||
+          source.consumer === undefined || (existing !== undefined && existing.sourceConsumer !== source.consumer)) {
+        throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+      }
+      const selected = source.target;
+      const authority = source.authority;
+      const consumer = source.consumer;
+      sourceConsumer = consumer;
+      if (selected.kind === 'bound') target = captureOwnedProfileInspectionTarget({ ...selected,
+        async assertSelectionCurrent(assertPhaseCurrent) {
+          const assertSource = () => {
+            assertPhaseCurrent();
+            if (!source.inUse || source.consumer !== consumer || !source.settled || source.removing || source.authority !== authority) {
+              throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+            }
+            authority();
+          };
+          assertSource();
+          await selected.assertSelectionCurrent(assertSource);
+          assertSource();
+        },
+      });
+    }
+    const record: OwnedSnapshot = existing ?? { target,
+      ...(sourceOperationId === undefined ? {} : { sourceOperationId }),
+      ...(sourceConsumer === undefined ? {} : { sourceConsumer }),
+      migrationPolicy: 'restoreCompatible', ...(cleanup === undefined ? {} : { cleanup }),
+      settled: true, inUse: false, removing: false, recoveryRetained: false,
     };
     if (!record.settled || record.inUse || record.removing || record.recoveryRetained) throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
     this.roots.set(operationId, record);
+    this.assertCleanupCurrent(record);
     this.inspecting = true;
     const task = this.runInspection(record, operationId, kind, updateMaintenanceOperationId, deleteMaintenanceOperationId);
     this.inspectionTask = task;
@@ -333,6 +421,8 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
       delete record.authority;
       record.settled = false;
       const result = await runProfileSnapshotInspection({
+        ...(this.dependencies.observeException === undefined ? {} : { observeException: this.dependencies.observeException }),
+        target: kind === 'prepareRestoreActivation' ? this.captureSourceTarget() : record.target,
         operationId, kind, deadline, reservation: record.owner, signal: cancellation.signal,
         migrationPolicy: record.migrationPolicy,
         runnerPath: this.dependencies.runnerPath, deployment: this.dependencies.deployment,
@@ -343,6 +433,7 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
       });
       record.settled = true;
       assertCurrent();
+      this.assertCleanupCurrent(record);
       if (result.identity === undefined || result.identity.operationId !== operationId) {
         throw new Error('PROFILE_INSPECTION_PROTOCOL_INVALID');
       }
@@ -377,13 +468,25 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
       this.uncertain = true;
       throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
     }
+    if (record.cleanupFailure !== undefined) throw record.cleanupFailure.error;
     if (record.inUse || record.removing || record.recoveryRetained || this.inspecting) throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
     record.removing = true;
     try {
       await this.assertOwned(record, deadline);
-      await finishOwnedCleanup(record.owner!, join(this.dependencies.stagingRoot, operationId), deadline);
+      if (record.cleanup === undefined) {
+        await finishOwnedCleanup(record.owner!, join(this.dependencies.stagingRoot, operationId), deadline);
+      } else {
+        await finishOwnedCleanup(record.owner!, join(this.dependencies.stagingRoot, operationId), deadline, {
+          assertOwned: () => this.assertCleanupOwned(record),
+          assertCurrent: () => this.assertCleanupCurrent(record),
+        });
+      }
       this.roots.delete(operationId);
-    } catch (error) { this.invalidate(record); throw error; }
+    } catch (error) {
+      if (record.cleanup !== undefined) record.cleanupFailure ??= { error };
+      this.invalidate(record);
+      throw error;
+    }
   }
 
   private requireRoot(operationId: string): OwnedSnapshot {
@@ -395,6 +498,7 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
 
   private async assertOwned(record: OwnedSnapshot,
     deadline = performance.now() + profileInspectionShutdownMilliseconds): Promise<void> {
+    if (record.cleanupFailure !== undefined) throw record.cleanupFailure.error;
     if (!record.settled || record.owner === undefined || this.uncertain) throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
     try {
       this.dependencies.assertMainInstance();
@@ -402,6 +506,26 @@ export class ProfileSnapshotInspectionClient implements ProfileSnapshotInspectio
       this.dependencies.assertMainInstance();
       if (!record.settled || this.uncertain) throw new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
     } catch (error) { this.invalidate(record); throw error; }
+  }
+
+  private assertCleanupCurrent(record: OwnedSnapshot): void {
+    if (record.cleanupFailure !== undefined) throw record.cleanupFailure.error;
+    try { record.cleanup?.authority.assertCurrent(); }
+    catch (error) { record.cleanupFailure = { error }; throw error; }
+  }
+
+  private assertCleanupOwned(record: OwnedSnapshot): Promise<void> {
+    this.assertCleanupCurrent(record);
+    let task: Promise<void>;
+    try { task = record.cleanup!.authority.assertOwned(); }
+    catch (error) { record.cleanupFailure = { error }; throw error; }
+    // Track the original authority read beyond a bounded cleanup wait.
+    this.work.add(task);
+    void task.then(() => this.work.delete(task), error => {
+      record.cleanupFailure ??= { error };
+      this.work.delete(task);
+    });
+    return task;
   }
 
   private invalidate(record: OwnedSnapshot) {

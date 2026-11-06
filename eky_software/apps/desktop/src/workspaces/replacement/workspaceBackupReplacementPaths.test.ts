@@ -8,6 +8,7 @@ import { generateWorkspaceBackupReplacementOperationId } from './workspaceBackup
 import {
   deriveWorkspaceBackupReplacementPaths,
   deriveWorkspaceBackupReplacementRuntimePaths,
+  deriveWorkspaceBackupReplacementOperationsPaths,
 } from './workspaceBackupReplacementPaths.js';
 
 describe('workspace backup replacement paths', () => {
@@ -30,6 +31,14 @@ describe('workspace backup replacement paths', () => {
     );
     expect(paths.activeDatabasePath).toContain(workspaceId);
     expect(paths.activeArtifactRoot).toContain(workspaceId);
+    const shared = deriveWorkspaceBackupReplacementOperationsPaths(userDataRoot);
+    expect(paths).toMatchObject(shared);
+    expect(deriveWorkspaceBackupReplacementRuntimePaths(userDataRoot, generateWorkspaceId())).toMatchObject(shared);
+    expect(Object.keys(shared)).not.toContain('targetWorkspaceRoot');
+    expect(shared.importRoot).toBe(join(userDataRoot, 'workspace-replacement-operations', 'import'));
+    expect(shared.activationStagingRoot).toBe(join(userDataRoot, 'workspace-replacement-operations', 'activation', 'staging'));
+    expect(shared.activationRollbackRoot).toBe(join(userDataRoot, 'workspace-replacement-operations', 'activation', 'rollback'));
+    expect(shared.activationFailedRoot).toBe(join(userDataRoot, 'workspace-replacement-operations', 'activation', 'failed'));
   });
 
   it('keeps operation-specific candidate paths under runtime-owned roots', () => {
@@ -55,6 +64,7 @@ describe('workspace backup replacement paths', () => {
   });
 
   it('fails closed for a relative runtime root', () => {
+    expect(() => deriveWorkspaceBackupReplacementOperationsPaths('relative-root')).toThrow('WORKSPACE_REPLACEMENT_INVALID');
     expect(() =>
       deriveWorkspaceBackupReplacementRuntimePaths(
         'relative-root',

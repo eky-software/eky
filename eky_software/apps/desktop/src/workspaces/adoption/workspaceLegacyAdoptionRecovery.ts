@@ -14,6 +14,10 @@ export type WorkspaceLegacyAdoptionRecoveryOutcome =
   | 'relaunchRequired';
 
 export interface RecoverWorkspaceLegacyAdoptionOptions {
+  readonly boundRecovery?: Readonly<{
+    assertCurrent(): Promise<void>;
+    prepareRecoveredSelection(): Promise<void>;
+  }>;
   readonly journal: WorkspaceLegacyAdoptionJournalPort;
   readonly registry: WorkspaceRegistryPort;
   readonly rootStore: WorkspaceLegacyAdoptionRootPort;
@@ -23,12 +27,17 @@ export interface RecoverWorkspaceLegacyAdoptionOptions {
 export async function recoverWorkspaceLegacyAdoption(
   options: Readonly<RecoverWorkspaceLegacyAdoptionOptions>,
 ): Promise<WorkspaceLegacyAdoptionRecoveryOutcome> {
+  const boundRecovery = options.boundRecovery;
+  const assertBoundCurrent = boundRecovery?.assertCurrent.bind(boundRecovery);
+  const prepareRecoveredSelection = boundRecovery?.prepareRecoveredSelection.bind(boundRecovery);
   try {
+    await assertBoundCurrent?.();
     const journal = await options.journal.read();
     if (journal?.state !== 'recoveryRequired') return 'nothingToRecover';
     if (journal.sourceKind !== 'legacy') return recoveryRequired();
 
     const registry = await options.registry.read();
+    await assertBoundCurrent?.();
     assertWorkspaceUnpublished(registry, journal);
     const paths = deriveWorkspaceLegacyAdoptionPaths(
       options.userDataRoot,
@@ -47,6 +56,7 @@ export async function recoverWorkspaceLegacyAdoption(
     }
 
     const presence = await options.rootStore.readPresence(paths);
+    await assertBoundCurrent?.();
     if (presence.candidateExists && presence.finalExists) {
       return recoveryRequired();
     }
@@ -72,13 +82,13 @@ export async function recoverWorkspaceLegacyAdoption(
       return recoveryRequired();
     }
 
-    const [currentJournal, currentRegistry] = await Promise.all([
-      options.journal.read(),
-      options.registry.read(),
-    ]);
+    const currentJournal = await options.journal.read();
+    const currentRegistry = await options.registry.read();
+    await assertBoundCurrent?.();
     assertJournalUnchanged(currentJournal, journal);
     assertWorkspaceUnpublished(currentRegistry, journal);
-    await options.journal.clear(journal.operationId);
+    if (prepareRecoveredSelection === undefined) await options.journal.clear(journal.operationId);
+    else await prepareRecoveredSelection();
     return 'relaunchRequired';
   } catch (error) {
     throw mapRecoveryError(error);
@@ -121,9 +131,8 @@ function recoveryRequired(): never {
 }
 
 function mapRecoveryError(error: unknown): WorkspaceLegacyAdoptionError {
-  return error instanceof WorkspaceLegacyAdoptionError
-    ? error
-    : new WorkspaceLegacyAdoptionError(
-        'WORKSPACE_ADOPTION_RECOVERY_REQUIRED',
-      );
+  if (error instanceof WorkspaceLegacyAdoptionError) return error;
+  const failure = new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+  failure.cause = error;
+  return failure;
 }

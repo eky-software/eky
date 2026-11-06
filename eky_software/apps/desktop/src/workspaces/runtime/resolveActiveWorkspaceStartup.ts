@@ -1,15 +1,17 @@
 import { join } from 'node:path';
 
 import { createWorkspaceLegacyAdoptionJournalPaths, WorkspaceLegacyAdoptionJournalStore } from '../adoption/workspaceLegacyAdoptionJournal.js';
-import { recoverWorkspaceLegacyAdoption } from '../adoption/workspaceLegacyAdoptionRecovery.js';
-import { NodeWorkspaceLegacyAdoptionRootStore } from '../adoption/workspaceLegacyAdoptionRootStore.js';
-import { resolveWorkspaceLegacyAdoptionStartup } from '../adoption/workspaceLegacyAdoptionStartup.js';
+import { resolveGuardedWorkspaceLegacyAdoption } from '../adoption/resolveGuardedWorkspaceLegacyAdoption.js';
+import { WorkspaceLegacyAdoptionError } from '../adoption/workspaceLegacyAdoptionError.js';
+import type { WorkspaceLegacyAdoptionAcceptanceAuthority, WorkspaceLegacyAdoptionContext,
+  WorkspaceLegacyAdoptionPreparationAuthority, WorkspaceLegacyAdoptionRecoveryAuthority } from '../adoption/workspaceLegacyAdoptionPhaseAuthority.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
 import { inspectWorkspaceRoot } from '../registry/inspectWorkspaceRoot.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
-import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
+import type { WorkspaceId, WorkspaceLineageIdentityV1 } from '../registry/workspaceRegistryTypes.js';
+import { validateWorkspaceLineage } from '../registry/workspaceLineageValidation.js';
 import { WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import { WorkspaceSwitchError } from '../switch/workspaceSwitchError.js';
 import { resolveWorkspaceSwitchStartup } from '../switch/workspaceSwitchStartup.js';
@@ -17,6 +19,8 @@ import type { WorkspaceSwitchFailureRecoveryOutcome } from '../switch/workspaceS
 import type { WorkspaceSwitchStartupContext } from '../switch/workspaceSwitchStartup.js';
 import type { WorkspaceSelectorActivationAuthority } from '../update/workspaceActivationMigrationGuard.js';
 import { hasAnyJournalSlot } from '../persistence/readOnlyJournalSlots.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
+import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import {
   resolveWorkspaceSelectorSwitchStartup,
   type WorkspaceSelectorStartupSelection,
@@ -60,6 +64,7 @@ export interface ActiveWorkspaceSwitchContext
 }
 
 export interface ActiveWorkspaceStartupOptions {
+  readonly adoptionAuthority?: WorkspaceLegacyAdoptionPreparationAuthority;
   readonly selectorAuthority?: WorkspaceSelectorSwitchStartupAuthority;
   readonly reportProgress?: (
     progress: Readonly<ActiveWorkspaceStartupProgress>,
@@ -68,15 +73,18 @@ export interface ActiveWorkspaceStartupOptions {
 
 export interface ActiveWorkspaceStartupSelection {
   readonly mode: ActiveWorkspaceStartupMode;
+  readonly adoptionContext?: Readonly<WorkspaceLegacyAdoptionContext>;
   readonly selectorActivationAuthority?: WorkspaceSelectorActivationAuthority;
   readonly switchContext?: Readonly<ActiveWorkspaceSwitchContext>;
   readonly workspaceId: WorkspaceId;
   readonly workspaceRoot: string;
+  // A registered observation, not a replacement for fresh selection authority.
+  readonly registeredLineageIdentity?: Readonly<WorkspaceLineageIdentityV1>;
   assertCanAccept(profileId: string): void;
-  accept(profileId: string): Promise<void>;
+  accept(profileId: string, adoptionAuthority?: WorkspaceLegacyAdoptionAcceptanceAuthority): Promise<void>;
   rejectInvalidTarget?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
   requireRecovery?(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
-  recoverFromFailure(): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
+  recoverFromFailure(adoptionAuthority?: WorkspaceLegacyAdoptionRecoveryAuthority): Promise<WorkspaceSwitchFailureRecoveryOutcome>;
 }
 
 export function resolveActiveWorkspaceStartup(
@@ -91,6 +99,9 @@ export async function resolveActiveWorkspaceStartup(
   userDataRoot: string,
   options: Readonly<ActiveWorkspaceStartupOptions> = {},
 ): Promise<Readonly<ActiveWorkspaceStartupSelection> | WorkspaceSelectorStartupSelection> {
+  if (await hasAnyJournalSlot(createWorkspaceDeletionJournalPaths(userDataRoot))) {
+    throw new WorkspaceManagementRecoveryRequiredError();
+  }
   reportProgress(options, 'registryStateRead', 'started');
   const registry = new WorkspaceRegistryStore({
     installationRoot: userDataRoot,
@@ -146,40 +157,23 @@ export async function resolveActiveWorkspaceStartup(
       selectorActivationAuthority: selected.selectorActivationAuthority,
       switchContext: Object.freeze({ ...selected.context, targetProfileId: selected.workspace.lineageIdentity.profileId }),
       workspaceId: selected.workspace.workspaceId, workspaceRoot: paths.workspaceRoot,
+      registeredLineageIdentity: validateWorkspaceLineage(selected.workspace.lineageIdentity),
       assertCanAccept: selected.assertCanAccept, accept: selected.accept,
       rejectInvalidTarget: selected.rejectInvalidTarget, requireRecovery: selected.requireRecovery,
       recoverFromFailure: selected.recoverFromFailure,
     });
   }
-  const adoptionJournalValue = await adoptionJournal.read();
+  if (registryValue === undefined || adoptionPending) {
+    const authority = options.adoptionAuthority;
+    if (authority === undefined) throw new WorkspaceLegacyAdoptionError('WORKSPACE_ADOPTION_RECOVERY_REQUIRED');
+    const result = await resolveGuardedWorkspaceLegacyAdoption({
+      authority, journal: adoptionJournal, registry, registryValue, adoptionPending, userDataRoot,
+      reportProgress: (phase, state) => reportProgress(options, phase, state),
+    });
+    if (result.status === 'relaunchRequired') throw new ActiveWorkspaceStartupRelaunchRequiredError();
+    return result.selection;
+  }
   reportProgress(options, 'registryStateRead', 'completed');
-
-  const adoptionRootStore = new NodeWorkspaceLegacyAdoptionRootStore();
-  if (adoptionJournalValue?.state === 'recoveryRequired') {
-    reportProgress(options, 'legacyAdoptionRecovery', 'started');
-    const recovery = await recoverWorkspaceLegacyAdoption({
-      journal: adoptionJournal,
-      registry,
-      rootStore: adoptionRootStore,
-      userDataRoot,
-    });
-    reportProgress(options, 'legacyAdoptionRecovery', 'completed');
-    if (recovery === 'relaunchRequired') {
-      throw new ActiveWorkspaceStartupRelaunchRequiredError();
-    }
-  }
-
-  if (registryValue === undefined || adoptionJournalValue !== undefined) {
-    reportProgress(options, 'legacyAdoption', 'started');
-    const selection = await resolveWorkspaceLegacyAdoptionStartup({
-      journal: adoptionJournal,
-      registry,
-      rootStore: adoptionRootStore,
-      userDataRoot,
-    });
-    reportProgress(options, 'legacyAdoption', 'completed');
-    return selection;
-  }
 
   reportProgress(options, 'switchRecovery', 'started');
   const inspectedRegistry: WorkspaceRegistryPort = {
@@ -224,6 +218,7 @@ export async function resolveActiveWorkspaceStartup(
         }),
     workspaceId: switchSelection.workspace.workspaceId,
     workspaceRoot: paths.workspaceRoot,
+    registeredLineageIdentity: validateWorkspaceLineage(switchSelection.workspace.lineageIdentity),
     assertCanAccept: (profileId: string) =>
       switchSelection.assertCanAccept(profileId),
     accept: (profileId: string) => switchSelection.accept(profileId),

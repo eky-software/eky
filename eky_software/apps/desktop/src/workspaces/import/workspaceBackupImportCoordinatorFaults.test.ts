@@ -79,7 +79,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
   );
 
   it.each(['before', 'after'] as const)(
-    'recovers safely when every journal transition fails %s persistence',
+    'retains evidence and blocks return when a journal write fails %s persistence',
     async (timing) => {
       for (const state of journalStates) {
         const fixture = createWorkspaceBackupImportCoordinatorFixture();
@@ -96,7 +96,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
         expect(fixture.root.finalExists, `${timing}:${state}`).toBe(
           publicationStarted,
         );
-        expect(fixture.root.candidateExists, `${timing}:${state}`).toBe(false);
+        expect(fixture.root.candidateExists, `${timing}:${state}`).toBe(!publicationStarted && state !== 'prepared');
         expect(
           fixture.registry.value?.activeWorkspaceId,
           `${timing}:${state}`,
@@ -104,20 +104,22 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
         expect(fixture.registry.writes, `${timing}:${state}`).toHaveLength(
           state === 'registryPublished' ? 1 : 0,
         );
-        if (publicationStarted) {
+        if (timing === 'after' || state !== 'prepared') {
           expect(fixture.journal.current, `${timing}:${state}`).toBeDefined();
         } else {
           expect(fixture.journal.current, `${timing}:${state}`).toBeUndefined();
         }
-        expect(fixture.lifecycle.ensureCalls, `${timing}:${state}`).toBe(1);
+        expect(fixture.lifecycle.ensureCalls, `${timing}:${state}`).toBe(0);
         expect(
           fixture.lifecycle.runningRuntimeOwners,
           `${timing}:${state}`,
-        ).toBe(1);
+        ).toBe(0);
         expect(
           fixture.lifecycle.openDatabaseHandleOwners,
           `${timing}:${state}`,
-        ).toBe(1);
+        ).toBe(0);
+        expect(fixture.events).toContain('owner.uncertain');
+        expect(fixture.events).not.toContain('root.discardCandidate');
         expect(
           fixture.lifecycle.maxRunningRuntimeOwners,
           `${timing}:${state}`,
@@ -175,7 +177,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
       expect(fixture.root.candidateExists).toBe(false);
       expect(fixture.journal.current?.state).toBe(expectedJournalState);
       expect(fixture.registry.writes).toHaveLength(0);
-      expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.runningRuntimeOwners).toBe(0);
       expect(fixture.lease.held).toBe(false);
     },
   );
@@ -204,7 +206,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
       expect(fixture.registry.value?.activeWorkspaceId).toBe(
         TEST_IMPORT_PREVIOUS_WORKSPACE_ID,
       );
-      expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+      expect(fixture.lifecycle.runningRuntimeOwners).toBe(0);
       expect(fixture.lease.held).toBe(false);
     },
   );
@@ -240,7 +242,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
     expect(fixture.root.finalExists).toBe(true);
     expect(fixture.registry.value?.workspaces).toHaveLength(2);
     expect(fixture.journal.current?.state).toBe('registryPublished');
-    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(0);
     expect(fixture.lease.held).toBe(false);
   });
 
@@ -261,7 +263,7 @@ describe('WorkspaceBackupImportCoordinator fault boundaries', () => {
     expect(fixture.root.candidateExists).toBe(true);
     expect(fixture.journal.current?.state).toBe('candidateRootCreated');
     expect(fixture.registry.writes).toHaveLength(0);
-    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(0);
     expect(fixture.lease.held).toBe(false);
   });
 

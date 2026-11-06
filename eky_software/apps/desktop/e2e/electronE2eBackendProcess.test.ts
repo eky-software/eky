@@ -57,6 +57,8 @@ describe('Electron development backend ownership boundary', () => {
     }, [undefined, undefined, undefined]);
     f.child.emit('message', { type: 'ready', port: 12345 });
     const handle = await f.started;
+    handle.assertRunning();
+    handle.assertRunning();
     await expect(handle.stopForUpdate('11111111-1111-4111-8111-111111111111'))
       .rejects.toThrow('ELECTRON_E2E_BACKEND_UPDATE_SHUTDOWN_UNSUPPORTED');
     await expect(handle.stopForRestore('11111111-1111-4111-8111-111111111111'))
@@ -66,13 +68,29 @@ describe('Electron development backend ownership boundary', () => {
     expect(f.child.postMessage).toHaveBeenCalledTimes(2);
     expect(f.child.kill).not.toHaveBeenCalled();
     const stopping = handle.stop();
+    expect(() => handle.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
     expect(f.child.postMessage).toHaveBeenLastCalledWith({ type: 'shutdown' });
     expect(f.transfer.reclaimAfterExit).not.toHaveBeenCalled();
     f.child.emit('exit', 0);
     await expect(stopping).resolves.toBe('exited');
+    expect(() => handle.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
     expect(f.transfer.reclaimAfterExit).toHaveBeenCalledOnce();
     expect(f.transfer.invalidate).not.toHaveBeenCalled();
     expect(f.controller.isRunning()).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('retains exit before handle continuation and callback registration', async () => {
+    const f = fixture();
+    await f.prepare();
+    await f.grant();
+    f.child.emit('message', { type: 'ready', port: 12345 });
+    f.child.emit('exit', 1);
+    const handle = await f.started;
+    const callback = vi.fn();
+    handle.onUnexpectedExit(callback);
+    expect(callback).not.toHaveBeenCalled();
+    expect(() => handle.assertRunning()).toThrow('BACKEND_PROCESS_RESERVATION_FAILED');
     expect(vi.getTimerCount()).toBe(0);
   });
 

@@ -12,18 +12,23 @@ import { readSupportBundleBackendData } from './supportBundleBackendData.js';
 describe('readSupportBundleBackendData', () => {
   it('revalidates every management failure combination using the real source validator', () => {
     const cases = Object.values(workspaceManagementOperationIds)
-      .filter(operationId => operationId !== workspaceManagementOperationIds.delete).flatMap(operationId => [
+      .filter(operationId => operationId !== workspaceManagementOperationIds.delete &&
+        operationId !== workspaceManagementOperationIds.deleteResume).flatMap(operationId => [
       { operationId, errorCode: `WORKSPACE_MANAGEMENT_${operationId.slice('workspace.'.length).toUpperCase()}_FAILED`, stage: 'operation' as const, retryable: false },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_INVALID', stage: 'operation' as const, retryable: false },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', stage: 'operation' as const, retryable: false },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'operation' as const, retryable: true },
       { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'admission' as const, retryable: true },
     ]);
-    const deletionCases = (['admission', 'deletePreparation'] as const).flatMap(stage => [
-      { operationId: workspaceManagementOperationIds.delete, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage, retryable: true },
-      ...['WORKSPACE_MANAGEMENT_INVALID', 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_FAILED']
-        .map(errorCode => ({ operationId: workspaceManagementOperationIds.delete, errorCode, stage, retryable: false })),
-    ]);
+    const deletionCases = (['workspace.delete', 'workspace.deleteResume'] as const).flatMap(operationId =>
+      (['admission', 'deletePreparation', 'deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'] as const).flatMap(stage => [
+        { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage, retryable: true },
+        ...['WORKSPACE_MANAGEMENT_INVALID', 'WORKSPACE_DELETE_STALE_CONFIRMATION',
+          'WORKSPACE_DELETE_BACKUP_UNAVAILABLE', 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN',
+          'WORKSPACE_DELETE_INVENTORY_INVALID', 'WORKSPACE_DELETE_JOURNAL_CONFLICT',
+          'WORKSPACE_DELETE_IO_FAILED', 'WORKSPACE_DELETE_CLEANUP_FAILED', 'WORKSPACE_DELETE_FAILED']
+          .map(errorCode => ({ operationId, errorCode, stage, retryable: false })),
+      ]));
     const lineage = { operationId: 'workspace.replace' as const, errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck' as const, retryable: false };
     const read = (value: unknown) => readSupportBundleBackendData({ ...createValidData(), diagnosticEvents: [value] }).diagnosticEvents;
     const labelConflicts = [
@@ -41,7 +46,9 @@ describe('readSupportBundleBackendData', () => {
       const { eventId, timestamp, schemaVersion: _schemaVersion, ...fields } = source;
       const event = { ...fields, id: `desktop:${eventId}`, occurredAt: timestamp };
       expect(read(event)).toEqual([event]);
-      if (entry.operationId === 'workspace.delete' && entry.stage === 'deletePreparation' && !entry.retryable) {
+      const deletion = entry.operationId === 'workspace.delete' || entry.operationId === 'workspace.deleteResume';
+      if (deletion && (entry.operationId === 'workspace.deleteResume' ||
+        (entry.stage !== 'admission' && !(entry.stage === 'deletePreparation' && entry.retryable)))) {
         expect(() => read({ ...event, sideEffectState: 'none' })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
       } else {
         expect(read({ ...event, sideEffectState: 'none' })).toEqual([{ ...event, sideEffectState: 'none' }]);
@@ -58,27 +65,25 @@ describe('readSupportBundleBackendData', () => {
         { rawError: 'synthetic-private' }, { path: '/synthetic/private' },
         { workspaceLabel: 'Synthetic' }, { workspaceId: 'synthetic-workspace-id' },
         { message: 'synthetic-private' }, { errorCode: 'WORKSPACE_LABEL_EXISTS' },
-        { operationId: 'workspace.deleteResume' }, { stage: 'deleteAuthorization' },
-        { stage: 'deletePurge' }, { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
+        { operationId: 'workspace.deleteAll' }, { stage: 'deleteUnknown' },
         { eventName: 'workspaceManagement.operationCompleted' },
         { inventory: [] }, { lineageIdentity: 'synthetic-lineage' }, { cause: {} }, { stack: 'synthetic-private' },
-        ...(entry.operationId === 'workspace.delete'
+        ...(deletion
           ? [{ stage: 'operation' }, { stage: 'lineageCheck' },
             ...['WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'WORKSPACE_MANAGEMENT_DELETE_FAILED',
               ...cases.map(old => old.errorCode).filter(code => code.endsWith('_FAILED')),
               'WORKSPACE_CREATION_LABEL_EXISTS', 'WORKSPACE_IMPORT_LABEL_EXISTS', 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH',
-              'WORKSPACE_MANAGEMENT_LABEL_EXISTS', 'WORKSPACE_DELETE_STALE_CONFIRMATION',
-              'WORKSPACE_DELETE_BACKUP_UNAVAILABLE', 'WORKSPACE_DELETE_INVENTORY_INVALID',
-              'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED', 'WORKSPACE_DELETE_CLEANUP_FAILED']
+              'WORKSPACE_MANAGEMENT_LABEL_EXISTS', 'WORKSPACE_DELETE_UNKNOWN', 'WORKSPACE_REMNANT_BINDING_INVALID']
               .map(errorCode => ({ errorCode }))]
-          : [{ stage: 'deletePreparation' },
+          : [{ stage: 'deletePreparation' }, { stage: 'deleteAuthorization' }, { stage: 'deletePurge' },
+            { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
             { errorCode: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' }, { errorCode: 'WORKSPACE_DELETE_FAILED' }]),
         ...(entry.errorCode.endsWith('_LABEL_EXISTS')
           ? [{ stage: 'admission' }, { stage: 'lineageCheck' },
             ...Object.values(workspaceManagementOperationIds).filter(operationId => entry.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
               ? !['workspace.create', 'workspace.import', 'workspace.rename'].includes(operationId) : operationId !== entry.operationId)
               .map(operationId => ({ operationId }))] : []),
-        ...((entry.errorCode.endsWith('_FAILED') && entry.operationId !== 'workspace.delete') || entry.stage === 'lineageCheck'
+        ...((entry.errorCode.endsWith('_FAILED') && !deletion) || entry.stage === 'lineageCheck'
           ? [{ operationId: entry.operationId === 'workspace.create' ? 'workspace.replace' : 'workspace.create' }, { stage: 'admission' }] : []),
       ]) expect(() => read({ ...event, ...change })).toThrow('SUPPORT_BUNDLE_BACKEND_DATA_INVALID');
     }

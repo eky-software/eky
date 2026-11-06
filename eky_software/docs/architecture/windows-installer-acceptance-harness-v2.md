@@ -52,6 +52,23 @@ erillisinä vastuina. Required checkit ovat `V2 acceptance` ja
 asetukset varmennetaan, eikä vanhaa vihreää ajoa käytetä uuden revision
 hyväksyntänä.
 
+Core-CI:n Windows-E2E-sijoitus käyttää kahta erillistä 35 minuutin työtä.
+`electronCritical` valitsee `e2e-electron-windows-critical` / `Windows
+Electron critical E2E` -työn ja sen nykyiset 72 development-tapausta.
+`packageSmoke` valitsee `e2e-packaged-windows-smoke` / `Windows packaged
+smoke and recovery` -työn: yksi pilot-build, tavallinen smoke,
+pakettiruntimen valmistelu, nykyisen supervisorin build ja kaikki viisi
+pakettitapausta samassa työssä. Alkuperäinen manifestipin ja loppuvarmennus
+eivät ylitä työrajaa eikä sarja paketoi uudelleen. Koonti vaatii molemmat
+valitut työt ja kaikki viisi pakettivaihetta, myös supervisor-buildin.
+`electron_diagnostic` valitsee molemmat työt, mutta ei korvaa V2-koontia.
+Yhteenlaskettu enimmäisvara kasvaa 35:stä 70 runner-minuuttiin; valmistelu
+on työkohtainen. Testi-, Playwright-, cleanup- ja retry-rajat säilyvät.
+Salattu keräys käyttää erillisiä `core-electron-0`- ja `core-packaged-0`-
+sidontoja; natiivikäännöksen raakalokipoikkeus ei laajene pakettityöhön.
+Jaon täysi ajonäyttö ja cleanup-hyväksyntä ovat avoimia; aiempia hylkäyksiä
+tai puuttuvia sulkutodisteita ei suljeta tällä CI-sijoituksen muutoksella.
+
 Workspace-asentimen sulkemispyynnön tiedostokäyttäjät havaitaan nykyisen
 valinnaisen MSI-kyselyn kautta. Lähdeinventaarion hyväksytyt tiedostot
 rajataan samaan ajoon ennen Restart Manager -kyselyä; PID ja creation
@@ -112,11 +129,12 @@ on päivitettävä riippuvuusohjeen mukaisesti.
 
 ### Sovellusosan pakettibudjetti
 
-Omistajan 26.10.2026 hyväksymä W7.2:n rajaus nostaa sovellusosan
-tiedostomäärän 400:sta 448:aan sekä kokonaiskoon 2,75:stä 3,25 MiB:iin
-(3 407 872 tavua). Vain täsmällinen `resources/app.asar` saa saman
-laajemman 3,25 MiB:n tiedostokokorajan. Aiempi K:n 12.10.2026 hyväksytty
-rajaus oli 400 tiedostoa ja 2,75 MiB.
+Omistajan 5.11.2026 hyväksymä W7.4:n rajaus nostaa sovellusosan
+tiedostomäärän 448:sta 544:ään sekä kokonaiskoon 3,25:stä 4,25 MiB:iin
+(4 456 448 tavua). Vain täsmällinen `resources/app.asar` saa saman
+laajemman 4,25 MiB:n tiedostokokorajan. Aiemmat hyväksytyt rajaukset
+olivat W7.2:n 26.10.2026 448 tiedostoa / 3,25 MiB ja K:n 12.10.2026
+400 tiedostoa / 2,75 MiB.
 Muiden tiedostojen, vaiheiden ja artifactien rajat, sallitut sisällöt ja
 eheysvaatimukset säilyvät. Raja-arvo- ja ylitysregressiot sekä puhtaan
 revision uusi paketti-inventaario vaaditaan. Jaeltavaa artifactia ei rakenneta

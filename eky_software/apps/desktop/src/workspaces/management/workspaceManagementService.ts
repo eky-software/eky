@@ -41,6 +41,10 @@ import type {
 } from './workspaceManagementTypes.js';
 import type { WorkspaceLabelRenameResult } from './workspaceLabelRename.js';
 import type { WorkspaceRuntimeRelaunchCompletion } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
+import { captureWorkspaceDeletionJournal, sameWorkspaceDeletionJournalBinding,
+  type WorkspaceDeletionJournal } from '../deletion/workspaceDeletionJournalCodec.js';
+import { workspaceDeletionFailureStages,
+  type WorkspaceDeletionFailureStage } from '../../observability/workspaceManagementFailureContext.js';
 
 export interface EmptyWorkspaceCreationCommand {
   create(
@@ -71,6 +75,52 @@ export interface WorkspaceLabelRenameCommand {
   ): Promise<Readonly<WorkspaceLabelRenameResult>>;
 }
 
+export interface WorkspaceDeletionContinuationAuthority {
+  assertCurrent(): void;
+  assertOwned(): Promise<void>;
+}
+
+export interface WorkspaceDeletionContinuationOwner extends WorkspaceDeletionContinuationAuthority {
+  recordRemoved(receipt: unknown): WorkspaceDeletionCompletion;
+}
+
+export interface WorkspaceDeletionWorkAuthority extends WorkspaceDeletionContinuationAuthority {
+  recordRemoved(receipt: unknown): void;
+}
+
+export interface WorkspaceDeletionCompletion {
+  readonly formatVersion: 1;
+  readonly status: 'completed';
+  readonly navigation: 'selector' | 'reopenPrevious';
+}
+
+export interface WorkspaceDeletionRecoverySelection {
+  readonly journal: WorkspaceDeletionJournal;
+  assertSelected(): Promise<void>;
+  revoke(): void;
+}
+
+export interface WorkspaceDeletionRecoveryOwner extends WorkspaceDeletionContinuationOwner {
+  // Settles the owner's original reads and revokes its phase authorities.
+  close(): Promise<void>;
+}
+
+export type WorkspaceDeletionExecutionStage = Exclude<WorkspaceDeletionFailureStage, 'admission' | 'deletePreparation'>;
+
+export interface WorkspaceDeletionRecoveryOptions {
+  readonly selection: WorkspaceDeletionRecoverySelection;
+  readonly maintenanceLease: Pick<InMemoryWorkspaceMaintenanceLease, 'acquire' | 'captureCurrentOwner'>;
+  captureSelection(assertLease: () => void): Promise<WorkspaceDeletionRecoverySelection | undefined>;
+  captureAuthority(journal: WorkspaceDeletionJournal, assertLease: () => void): Promise<WorkspaceDeletionRecoveryOwner>;
+  resumeSelected(journal: WorkspaceDeletionJournal, authority: WorkspaceDeletionWorkAuthority,
+    observeStage: (stage: WorkspaceDeletionExecutionStage) => void): Promise<WorkspaceDeletionCompletion>;
+  assertCurrent(): void;
+  isStopping(): boolean;
+  onUncertain(cause: unknown): void;
+  readonly observer?: WorkspaceManagementObserver;
+  readonly now?: () => number;
+}
+
 export interface WorkspaceManagementServiceOptions {
   readonly createEmpty: EmptyWorkspaceCreationCommand;
   readonly importBackup: WorkspaceBackupImportCommand;
@@ -89,7 +139,12 @@ export interface WorkspaceManagementServiceOptions {
       request: Readonly<WorkspaceDeletionRequest>,
       lifetime: WorkspaceDeletionPreparationLifetime,
       assertLease: () => void,
+      operationId: string,
     ): Promise<WorkspaceDeletionPreparationOutcome>;
+  };
+  readonly deletionContinuation?: {
+    captureAuthority(operationId: string, assertLease: () => void): WorkspaceDeletionContinuationOwner;
+    resume(operationId: string, authority: WorkspaceDeletionWorkAuthority): Promise<WorkspaceDeletionCompletion>;
   };
 }
 
@@ -103,12 +158,127 @@ export class WorkspaceManagementService {
   private admissionClosed = false;
   private readonly pendingWork = new Set<Promise<void>>();
   private shutdownTask: Promise<void> | undefined;
+  private shutdownRequested = false;
+  private readonly deletionCompletionFailures: unknown[] = [];
   private readonly now: () => number;
 
   constructor(
     private readonly options: Readonly<WorkspaceManagementServiceOptions>,
   ) {
     this.now = options.now ?? Date.now;
+  }
+
+  // Main-only cold entry, deliberately separate from ordinary unresolved admission.
+  static async recoverDeletionBeforeRuntime(input: Readonly<WorkspaceDeletionRecoveryOptions>): Promise<WorkspaceDeletionCompletion> {
+    const check = input.assertCurrent.bind(input), stopping = input.isStopping.bind(input);
+    const uncertain = input.onUncertain.bind(input), now = input.now ?? Date.now;
+    const acquire = input.maintenanceLease.acquire.bind(input.maintenanceLease);
+    const captureLease = input.maintenanceLease.captureCurrentOwner.bind(input.maintenanceLease);
+    const captureSelection = input.captureSelection.bind(input), captureAuthority = input.captureAuthority.bind(input);
+    const resume = input.resumeSelected.bind(input), observer = input.observer;
+    const assertInitial = input.selection.assertSelected.bind(input.selection);
+    const releases = [input.selection.revoke.bind(input.selection)];
+    const correlationId = randomUUID(), failures: unknown[] = [];
+    let startedAt: number | undefined;
+    let active = true, observing = true, primaryFailed = false, cleanupReported = false;
+    let authorityFailure: { cause: unknown } | undefined;
+    let stage: WorkspaceDeletionFailureStage = 'admission';
+    let lease: WorkspaceMaintenanceLeaseHandle | undefined, assertLease: (() => void) | undefined;
+    let owner: WorkspaceDeletionRecoveryOwner | undefined, result: WorkspaceDeletionCompletion | undefined;
+    let closeOwner: (() => Promise<void>) | undefined;
+    const fail = (): never => { throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'deleteResume'); };
+    const assertCurrent = () => {
+      if (authorityFailure !== undefined) throw authorityFailure.cause;
+      try {
+        if (!active || stopping()) fail();
+        assertUpdateJournalAuthority(check);
+        if (assertLease !== undefined) assertUpdateJournalAuthority(assertLease);
+        if (!active || stopping()) fail();
+        assertUpdateJournalAuthority(check);
+      } catch (cause) {
+        active = false; authorityFailure ??= { cause }; throw authorityFailure.cause;
+      }
+    };
+    const revokeSelections = () => {
+      const errors: unknown[] = [];
+      for (const revoke of releases.splice(0)) {
+        try { revoke(); } catch (cause) { errors.push(cause); }
+      }
+      if (errors.length !== 0) {
+        try { assertUpdateJournalAuthority(() => uncertain(errors[0])); }
+        catch (cause) { errors.push(cause); }
+      }
+      if (errors.length !== 0) throw errors.length === 1 ? errors[0]
+        : new AggregateError(errors, 'WORKSPACE_DELETION_SELECTION_CLOSE_FAILED', { cause: errors[0] });
+    };
+    const record = (errorCode: string, failureStage: WorkspaceDeletionFailureStage) => {
+      if (startedAt === undefined) return;
+      try {
+        WorkspaceManagementService.recordObservation(observer, {
+          correlationId, durationMs: Math.max(0, now() - startedAt), operationKind: 'deleteResume',
+          errorCode, outcome: 'failed', retryable: errorCode === 'WORKSPACE_MANAGEMENT_BUSY',
+          sideEffectState: 'unknown', stage: failureStage,
+        });
+      } catch { /* Optional timing must not replace the first failure or prevent close. */ }
+    };
+    try {
+      try {
+        startedAt = now();
+        // The initial receipt remains authoritative through fresh lease-bound capture.
+        const journal = captureWorkspaceDeletionJournal(input.selection.journal);
+        assertCurrent(); await assertInitial(); assertCurrent();
+        lease = await acquire('delete'); assertCurrent();
+        assertLease = captureLease(['delete'], lease); assertCurrent();
+        await assertInitial(); assertCurrent();
+        const fresh = await captureSelection(assertCurrent);
+        if (fresh === undefined) {
+          assertCurrent();
+          throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'deleteResume');
+        }
+        const assertFresh = fresh.assertSelected.bind(fresh);
+        releases.push(fresh.revoke.bind(fresh));
+        assertCurrent();
+        const selectedJournal = captureWorkspaceDeletionJournal(fresh.journal);
+        if (journal.phase !== selectedJournal.phase || !sameWorkspaceDeletionJournalBinding(journal, selectedJournal)) {
+          throw new WorkspaceManagementError('WORKSPACE_DELETE_JOURNAL_CONFLICT', 'deleteResume');
+        }
+        await assertFresh(); assertCurrent(); await assertInitial(); assertCurrent();
+        owner = await captureAuthority(journal, assertCurrent);
+        closeOwner = owner.close.bind(owner);
+        const continuationOwner = Object.freeze({ assertCurrent: owner.assertCurrent.bind(owner),
+          assertOwned: owner.assertOwned.bind(owner), recordRemoved: owner.recordRemoved.bind(owner) });
+        assertCurrent(); await continuationOwner.assertOwned(); assertCurrent();
+        await assertFresh(); assertCurrent(); await assertInitial(); assertCurrent();
+        revokeSelections(); assertCurrent();
+        stage = 'deleteAuthorization';
+        result = await WorkspaceManagementService.continueDeletion(journal.target.operationId, continuationOwner,
+          assertCurrent, stopping, (_operationId, authority) => resume(journal, authority, value => {
+            if (observing && workspaceDeletionFailureStages.some(allowed =>
+              allowed !== 'admission' && allowed !== 'deletePreparation' && allowed === value)) stage = value;
+          }));
+      } catch (cause) {
+        active = false; observing = false; authorityFailure ??= { cause };
+        primaryFailed = true; failures.push(cause);
+        record(mapWorkspaceManagementError(cause, 'deleteResume').code, stage);
+      } finally {
+        active = false; observing = false;
+        await WorkspaceManagementService.completeDeletion({ assertRelaunch: fail, async release() {
+          // A failed close does not authorize releasing a possibly live owner.
+          await closeOwner?.();
+          await lease?.release();
+        } }, revokeSelections, failures, cause => {
+          try { assertUpdateJournalAuthority(() => uncertain(cause)); }
+          catch (notificationFailure) { failures.push(notificationFailure); }
+          if (!cleanupReported) { cleanupReported = true; record('WORKSPACE_DELETE_CLEANUP_FAILED', 'deleteCleanup'); }
+        });
+      }
+      if (failures.length !== 0) {
+        const first = primaryFailed ? failures[0]
+          : new WorkspaceManagementError('WORKSPACE_DELETE_CLEANUP_FAILED', 'deleteResume', { cause: failures[0] });
+        throw WorkspaceManagementService.mapOperationFailure(first, 'deleteResume', failures);
+      }
+      return result!;
+    } finally { active = false; observing = false; }
   }
 
   getStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
@@ -120,9 +290,15 @@ export class WorkspaceManagementService {
   }
 
   shutdown(): Promise<void> {
+    this.shutdownRequested = true;
     this.closeAdmission();
     // Settlement is not successful mutation, native exit or cleanup authority.
-    this.shutdownTask ??= Promise.all([...this.pendingWork]).then(() => undefined);
+    this.shutdownTask ??= Promise.all([...this.pendingWork]).then(() => {
+      if (this.deletionCompletionFailures.length !== 0) {
+        throw new AggregateError([...this.deletionCompletionFailures],
+          'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', { cause: this.deletionCompletionFailures[0] });
+      }
+    });
     return this.shutdownTask;
   }
 
@@ -209,6 +385,26 @@ export class WorkspaceManagementService {
     requestInput: unknown,
     lifetime: WorkspaceDeletionPreparationLifetime,
   ): Promise<WorkspaceDeletionPreparationOutcome> {
+    return this.runDeletion(requestInput, lifetime, false);
+  }
+
+  // Main-only. No IPC or production composition enables the final command yet.
+  deleteWorkspace(
+    requestInput: unknown,
+    lifetime: WorkspaceDeletionPreparationLifetime,
+  ): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>> {
+    return this.runDeletion(requestInput, lifetime, true);
+  }
+
+  private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
+    durable: false): Promise<WorkspaceDeletionPreparationOutcome>;
+  private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
+    durable: true): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>;
+  private runDeletion(
+    requestInput: unknown,
+    lifetime: WorkspaceDeletionPreparationLifetime,
+    durable: boolean,
+  ) {
     let request: Readonly<WorkspaceDeletionRequest>;
     try {
       request = parseWorkspaceDeletionRequest(requestInput);
@@ -223,21 +419,34 @@ export class WorkspaceManagementService {
     return this.run('delete', async () => {
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       const preparation = this.options.deletionPreparation;
-      if (preparation === undefined) {
+      const continuation = this.options.deletionContinuation;
+      if (preparation === undefined || (durable && continuation === undefined)) {
         throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
       }
+      const captureAuthority = durable ? continuation!.captureAuthority.bind(continuation) : undefined;
+      const resume = durable ? continuation!.resume.bind(continuation) : undefined;
+      const operationId = randomUUID();
       lease = await preparation.maintenanceLease.acquire('delete');
       this.assertAdmissionOpen('delete');
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
-      assertLease = preparation.maintenanceLease.captureCurrentOwner(['delete']);
-      const outcome = await preparation.prepare(request, lifetime, assertLease);
+      assertLease = preparation.maintenanceLease.captureCurrentOwner(['delete'], lease);
+      const capturedLease = assertLease;
+      const outcome = await preparation.prepare(request, lifetime, capturedLease, operationId);
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       assertUpdateJournalAuthority(assertLease);
       if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
         throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
       }
       returnRequested = outcome === 'returnRequested';
-      return outcome;
+      if (!durable) return outcome;
+      if (outcome !== 'prepared') return Object.freeze({ formatVersion: 1 as const, status: 'cancelled' as const });
+      const captured = captureAuthority!(operationId, capturedLease);
+      const owner = Object.freeze({ assertCurrent: captured.assertCurrent.bind(captured),
+        assertOwned: captured.assertOwned.bind(captured), recordRemoved: captured.recordRemoved.bind(captured) });
+      assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      assertUpdateJournalAuthority(capturedLease);
+      return WorkspaceManagementService.continueDeletion(operationId, owner, capturedLease,
+        () => this.shutdownRequested, resume!);
     }, {
       assertRelaunch: () => {
         if (!returnRequested || assertLease === undefined) {
@@ -253,8 +462,66 @@ export class WorkspaceManagementService {
     });
   }
 
+  // Live and pre-runtime entries share the same durable lifetime and receipt
+  // checks; neither a requester nor a later lease can revive this authority.
+  private static async continueDeletion(
+    operationId: string,
+    owner: WorkspaceDeletionContinuationOwner,
+    assertLease: () => void,
+    isStopping: () => boolean,
+    resume: NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume'],
+  ): Promise<WorkspaceDeletionCompletion> {
+    const assertMain = owner.assertCurrent.bind(owner), assertOwned = owner.assertOwned.bind(owner);
+    const recordRemoved = owner.recordRemoved.bind(owner);
+    let current = true, removed: WorkspaceDeletionCompletion | undefined;
+    const assertCurrent = () => {
+      try {
+        if (!current || isStopping()) throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
+        assertUpdateJournalAuthority(assertLease);
+        assertUpdateJournalAuthority(assertMain);
+        if (!current || isStopping()) throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
+        assertUpdateJournalAuthority(assertLease);
+      } catch (cause) { current = false; throw cause; }
+    };
+    const assertMutationCurrent = () => {
+      assertCurrent();
+      if (removed !== undefined) throw new Error('WORKSPACE_DELETION_ALREADY_REMOVED');
+    };
+    const authority = Object.freeze({ assertCurrent: assertMutationCurrent, async assertOwned() {
+      assertMutationCurrent();
+      try { await assertOwned(); }
+      catch (cause) { current = false; throw cause; }
+      assertMutationCurrent();
+    }, recordRemoved(receipt: unknown) {
+      assertMutationCurrent(); removed = Object.freeze({ ...recordRemoved(receipt) });
+    } });
+    try {
+      await authority.assertOwned(); assertCurrent();
+      const result = await resume(operationId, authority);
+      assertCurrent();
+      if (removed === undefined || result.formatVersion !== 1 || result.status !== 'completed' ||
+          (result.navigation !== 'selector' && result.navigation !== 'reopenPrevious') || result.navigation !== removed.navigation) {
+        throw new Error('WORKSPACE_DELETION_RESULT_INVALID');
+      }
+      return Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: result.navigation });
+    } finally { current = false; }
+  }
+
+  private static async completeDeletion(
+    completion: DeletionPreparationCompletion,
+    complete: () => void,
+    failures: unknown[],
+    onFailure: (cause: unknown) => void,
+  ): Promise<void> {
+    const release = completion.release.bind(completion);
+    try { complete(); }
+    catch (cause) { failures.push(cause); onFailure(cause); }
+    try { await release(); }
+    catch (cause) { failures.push(cause); onFailure(cause); }
+  }
+
   private run<T>(
-    operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
+    operationKind: Exclude<WorkspaceManagementOperationKind, 'status' | 'deleteResume'>,
     operation: () => Promise<T>,
     deletionCompletion?: DeletionPreparationCompletion,
   ): Promise<T> {
@@ -262,7 +529,7 @@ export class WorkspaceManagementService {
   }
 
   private async runAdmitted<T>(
-    operationKind: Exclude<WorkspaceManagementOperationKind, 'status'>,
+    operationKind: Exclude<WorkspaceManagementOperationKind, 'status' | 'deleteResume'>,
     operation: () => Promise<T>,
     deletionCompletion?: DeletionPreparationCompletion,
   ): Promise<T> {
@@ -299,17 +566,13 @@ export class WorkspaceManagementService {
         failures.push(cause);
       }
       // Completion borrows the exact lease; pending work includes its release.
-      try {
-        this.options.runtimeRelaunchCompletion?.complete(deletionCompletion?.assertRelaunch);
-      } catch (cause) {
-        failures.push(cause);
-        this.closeAdmission();
-      }
-      try {
-        if (deletionCompletion !== undefined) await deletionCompletion.release();
-      } catch (cause) {
-        failures.push(cause);
-        this.closeAdmission();
+      if (deletionCompletion !== undefined) {
+        await WorkspaceManagementService.completeDeletion(deletionCompletion,
+          () => this.options.runtimeRelaunchCompletion?.complete(deletionCompletion.assertRelaunch), failures,
+          cause => { this.deletionCompletionFailures.push(cause); this.closeAdmission(); });
+      } else {
+        try { this.options.runtimeRelaunchCompletion?.complete(undefined); }
+        catch (cause) { failures.push(cause); this.closeAdmission(); }
       }
       if (failures.length !== 0) throw failures[0];
       if (operationKind !== 'delete') {
@@ -327,12 +590,7 @@ export class WorkspaceManagementService {
       const classification = operationStarted && operationKind !== 'delete'
         ? classifyWorkspaceManagementFailure(error, operationKind)
         : { lineageMismatch: false };
-      const primary = mapWorkspaceManagementError(error, operationKind);
-      const mapped = failures.length > 1
-        ? new WorkspaceManagementError(primary.code, operationKind, {
-            cause: new AggregateError(failures, 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', { cause: error }),
-          })
-        : primary;
+      const mapped = WorkspaceManagementService.mapOperationFailure(error, operationKind, failures);
       const cleanupCauseCode = operationStarted ? readWorkspaceCandidateCleanupCause(error) : undefined;
       this.record({
         ...((operationKind === 'import' || operationKind === 'replace')
@@ -396,8 +654,22 @@ export class WorkspaceManagementService {
   private record(
     event: Parameters<WorkspaceManagementObserver['record']>[0],
   ): void {
+    WorkspaceManagementService.recordObservation(this.options.observer, event);
+  }
+
+  private static mapOperationFailure(error: unknown, operationKind: WorkspaceManagementOperationKind,
+    failures: readonly unknown[]): WorkspaceManagementError {
+    const primary = mapWorkspaceManagementError(error, operationKind);
+    return failures.length > 1 ? new WorkspaceManagementError(primary.code, operationKind, {
+      cause: new AggregateError(failures, 'WORKSPACE_MANAGEMENT_COMPLETION_FAILED', { cause: error }),
+    }) : primary;
+  }
+
+  private static recordObservation(observer: WorkspaceManagementObserver | undefined,
+    event: Parameters<WorkspaceManagementObserver['record']>[0]): void {
     try {
-      this.options.observer?.record(event);
+      const result: unknown = observer?.record(event);
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
     } catch {
       // Observability is intentionally non-authoritative.
     }

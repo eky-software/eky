@@ -60,6 +60,8 @@ Tavoite on vähentää päällekkäistä työtä, ei turvallisuutta tai tarkistu
   täysimittaista analyysia pelkkää odottamista tai muuttumatonta tilatietoa
   varten. Käytä CI:ssä [yhtä seurantavastuuta](#ci-ajon-seuranta-ja-virhetodisteet)
   ja olemassa olevia keräystyökaluja.
+  Omistajan mallirajaus koskee myös delegointia: älä kierrä oletusmallia
+  teettämällä työtä vahvemmalla aliagentilla ilman hyväksyttyä poikkeusta.
 - Kokoa toteutus ja katselmointi rajatuksi toiminnalliseksi checkpointiksi,
   älä automaattisesti omaksi kierrokseksi jokaista apufunktiota varten.
   Rajaa jatkokatselmus muuttuneeseen osaan ja sen vaikutuksiin; älä teetä
@@ -74,18 +76,43 @@ seurantajärjestelmää.
 ### Mallin ja päättelytason valinta
 
 Anna uuden tehtävän aloitusviestissä mallia ja päättelytasoa koskeva lyhyt
-suositus sekä syy. Nykyisen mallin pitäminen voi olla paras valinta.
-Arvioi tehtävän rajaus, epäselvyys, vastuurajat ja virheen seuraukset:
-tavallinen ohjaus tai kirjaus tarvitsee yleensä vähemmän päättelyä kuin
-usean vastuun suunnittelu tai vaikea turvallisuus-, data- tai elinkaarivirhe.
-Laatu ja vaadittu näyttö ratkaisevat; pienin tokenikulutus ei ole tavoite
-niiden kustannuksella.
+suositus sekä syy. Lähtökohta on omistajan vahvistama oletusmalli rajatussa
+suunnittelussa, toteutuksessa, vianrajauksessa ja todennuksessa. Vaikea aihe,
+usea vastuuraja tai punainen testi ei yksin edellytä mallinvaihtoa.
+Jäsennä työ nykyisten omistajien mukaisiksi paloiksi: tavoite, säilyvät
+invariantit, rajatut tiedostot, tarvittava näyttö ja valmistumisehto.
+Testit, riippumaton katselmus ja hyväksyntäportit säilyvät mallista riippumatta.
+
+Suurempi suunnittelu ja Goalin lopun koodikatselmus ovat erillisiä,
+ennalta nimettyjä vahvemman mallin työvaiheita omistajan paikallisen
+mallijaon mukaan. Suunnittelu tuottaa oletusmallille toteutuskelpoisen
+sopimuksen: tavoite ja rajaukset, nykyiset omistajat, säilyvät turvarajat,
+muutettavat tiedostot, avoimet päätökset, toteutuspalat sekä niitä
+todentavat testit ja valmistumisehdot. Jo hyväksyttyä suunnittelua ei
+aloiteta uudelleen pelkän mallijaon muutoksen vuoksi.
+
+Loppukatselmus tehdään toteutuksen jälkeen mutta ennen Goalin valmiiksi
+merkitsemistä ja lähtökohtaisesti ennen mergeä. Arvioi toteutunut diffi,
+vaikutusalueen nykyinen koodi, sopimuksen täyttyminen, turvallisuus,
+ylläpidettävyys, regressiot ja puuttuva näyttö. Tuota rajattu havaintolista
+ja tarvittavat korjaus-/testiohjeet oletusmallille; löydökset korjataan ja
+muuttunut osa tarkistetaan ennen hyväksyntää. Katselmus ei korvaa
+työnaikaisia riippumattomia katselmuksia, testejä tai PR/main-portteja eikä
+oikeuta laajaan sivurefaktorointiin. Jo hyväksyttyä kokonaisuutta ei
+katselmoida toistuvasti ilman muuttunutta vaikutusaluetta.
+
+Muuhun vahvemman mallin poikkeukseen kokoa ensin jo saadusta näytöstä
+täsmällinen avoin kysymys, vastuurajat ja vaihtoehdot. Tavallinen toteutus,
+testiajot ja CI/Git-työ pysyvät oletusmallilla. Älä käynnistä samaa
+kokonaistutkimusta uudelleen tai jatka tuloksettomia koesilmukoita.
+Puuttuva omistajapäätös kysytään omistajalta; mallinvaihto ei korvaa sitä.
 
 Erota malli ja päättelytaso toisistaan ja suositus todellisesta asetuksesta.
 Suosittele vain käytettävissä olevia vaihtoehtoja, älä väitä nähneesi tai
 muuttaneesi asetusta ilman vahvistusta. Konekohtaiset mallitoiveet säilyvät
 paikallisissa ohjeissa, eivät tässä yhteisessä dokumentissa. Tarkista
-juuri-`AGENTS.md`:n osoittama paikallinen vähimmäistaso myös delegoinnissa.
+juuri-`AGENTS.md`:n osoittama paikallinen oletus, vaihtokynnys ja vähimmäistaso
+myös delegoinnissa.
 Omistaja säätää keskustelun mallin suosituksen perusteella; suositus tai
 ohjetiedoston muutos ei itsessään muuta ajonaikaista malliasetusta.
 

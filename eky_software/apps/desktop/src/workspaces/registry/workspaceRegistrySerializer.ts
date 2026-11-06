@@ -1,10 +1,16 @@
+import { createHash } from 'node:crypto';
 import { workspaceRegistryInvalid } from './workspaceRegistryError.js';
 import {
   WORKSPACE_REGISTRY_MAX_BYTES,
   parseWorkspaceRegistryBytes,
 } from './workspaceRegistryBytes.js';
-import type { LocalWorkspaceRegistry } from './workspaceRegistryTypes.js';
+import type { LocalWorkspaceRegistry, LocalWorkspaceRegistryEntryV1 } from './workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from './workspaceRegistryValidation.js';
+
+export function workspaceRegistryEntrySha256(entry: Readonly<LocalWorkspaceRegistryEntryV1>): string {
+  const captured = validateWorkspaceRegistry({ formatVersion: 2, activeWorkspaceId: null, workspaces: [entry] }).workspaces[0]!;
+  return createHash('sha256').update(JSON.stringify(captured)).digest('hex');
+}
 
 export function serializeWorkspaceRegistry(
   value: unknown,

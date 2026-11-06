@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { randomBytes } from 'node:crypto';
-import { readFile, rm, writeFile } from 'node:fs/promises';
+import { appendFile, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -8,27 +8,54 @@ import { fileURLToPath } from 'node:url';
 import {
   createPackagedSmokeFailureMessage,
   createPackagedSmokeTimeoutMessage,
+  packagedSelectorVerificationPhase,
+  packagedSelectorVerificationSwitch,
   readPackagedSmokeResult,
   resolvePackagedSmokeTempPath,
   writePackagedSmokeResult,
 } from '../dist/main/packagedSmoke.js';
 import { readDesktopElectronVersion } from './read-desktop-electron-version.mjs';
 import { preparePackagedReleaseCandidateSmoke } from './packaged-release-candidate.mjs';
-import { observeSmokeOutput, prepareSmokeExceptionEvidence } from './packagedSmokeFailureEvidence.mjs';
+import { capturePackagedSmokePhaseOutput, observeSmokeOutput, prepareSmokeExceptionEvidence } from './packagedSmokeFailureEvidence.mjs';
+import { packagedSmokeTimeoutMilliseconds as smokeTimeoutMilliseconds } from './packagedSmokeLimits.mjs';
+import { inspectPackagedPilotSeries, packagedSeriesManifestVariable, requirePackagedSeriesPin } from './packagedPilotSeries.mjs';
 
 const scriptDirectory = dirname(fileURLToPath(import.meta.url));
 const executablePath = resolve(
   scriptDirectory,
   '../out/Eky-win32-x64/Eky.exe',
 );
-const smokeTimeoutMilliseconds = 120_000;
-export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPreparation, workspaceRecoveryPreparation } = {}) {
-  if (legacyPreparation !== undefined && workspaceRecoveryPreparation !== undefined) {
+export { smokeTimeoutMilliseconds as packagedSmokeTimeoutMilliseconds };
+export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPreparation, workspaceRecoveryPreparation,
+  workspaceDeletionPreparation, workspaceDeletionExecution,
+  seriesManifestSha256 = process.env[packagedSeriesManifestVariable] } = {}) {
+  if (releaseCandidateSmoke && seriesManifestSha256 !== undefined) throw new Error('PACKAGED_SMOKE_PREPARATION_CONFLICT');
+  if ([legacyPreparation, workspaceRecoveryPreparation, workspaceDeletionPreparation].filter(value => value !== undefined).length > 1) {
     throw new Error('PACKAGED_SMOKE_PREPARATION_CONFLICT');
+  }
+  let deletion;
+  if (workspaceDeletionPreparation !== undefined) {
+    const names = ['prepareAfterRestoredExit', 'verifyAfterRecoveryExit', 'verifyAfterRestartExit'];
+    if (workspaceDeletionPreparation === null ||
+        names.some(name => typeof workspaceDeletionPreparation[name] !== 'function')) {
+      throw new Error('PACKAGED_SMOKE_PREPARATION_INVALID');
+    }
+    deletion = Object.freeze(Object.fromEntries(names.map(name =>
+      [name, workspaceDeletionPreparation[name].bind(workspaceDeletionPreparation)])));
+  }
+  let execution;
+  if (workspaceDeletionExecution !== undefined) {
+    const value = workspaceDeletionExecution, keys = ['smokeToken', 'runPhase'];
+    if (deletion === undefined || value === null || typeof value !== 'object' ||
+        !Object.isFrozen(value) || Reflect.ownKeys(value).length !== keys.length ||
+        keys.some(key => !Object.hasOwn(Object.getOwnPropertyDescriptor(value, key) ?? {}, 'value')) ||
+        typeof value.smokeToken !== 'string' || !/^[a-f0-9]{32}$/u.test(value.smokeToken) ||
+        typeof value.runPhase !== 'function') throw new Error('PACKAGED_SMOKE_PREPARATION_INVALID');
+    execution = Object.freeze({ smokeToken: value.smokeToken, runPhase: value.runPhase.bind(value) });
   }
   const preparation = legacyPreparation ?? workspaceRecoveryPreparation;
   const childEnvironment = { ...process.env };
-  const smokeToken = randomBytes(16).toString('hex');
+  const smokeToken = execution?.smokeToken ?? randomBytes(16).toString('hex');
   const smokeRootDirectory = resolve(
     resolvePackagedSmokeTempPath(tmpdir()),
     'eky-desktop-smoke',
@@ -48,17 +75,8 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
   childEnvironment.ELECTRON_ENABLE_SECURITY_WARNINGS = 'true';
   childEnvironment.EKY_DESKTOP_SMOKE_TOKEN = smokeToken;
 
-  async function readSmokeResult() {
-    try {
-      return readPackagedSmokeResult(
-        JSON.parse(await readFile(smokeResultPath, 'utf8')),
-      );
-    } catch {
-      return undefined;
-    }
-  }
-
   try {
+    if (seriesManifestSha256 !== undefined) await inspectPackagedPilotSeries(seriesManifestSha256);
     await preparation?.prepare({ smokeToken, smokeRootDirectory });
     if (releaseCandidateSmoke) {
       await preparePackagedReleaseCandidateSmoke({
@@ -86,15 +104,25 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
     } catch {
       exceptionDelivery = 'unavailable';
       console.error('PACKAGED_SMOKE_PRIVATE_EVIDENCE_UNAVAILABLE');
+      if (execution !== undefined) throw new Error('PACKAGED_SMOKE_PRIVATE_EVIDENCE_UNAVAILABLE');
     }
     const scenarioSwitches = legacyPreparation === undefined ? [] : ['--desktop-smoke-legacy-invoice'];
-    await runSmokePhase(['--desktop-smoke', ...scenarioSwitches], 'restoreRestart');
+    await runSmokePhase(['--desktop-smoke', ...scenarioSwitches], 'restoreRestart', 'initial');
     await preparation?.afterRestoreExit({ smokeToken, smokeRootDirectory });
     await runSmokePhase(
       ['--desktop-smoke', '--desktop-smoke-restored', ...scenarioSwitches],
       'shutdown',
+      'restoredProfile',
     );
     await preparation?.verifySourcePreserved();
+    if (deletion !== undefined) {
+      const context = Object.freeze({ smokeToken, smokeRootDirectory });
+      await deletion.prepareAfterRestoredExit(context);
+      await runSelectorVerificationPhase('selectorRecovery');
+      await deletion.verifyAfterRecoveryExit(context);
+      await runSelectorVerificationPhase('selectorRestart');
+      await deletion.verifyAfterRestartExit(context);
+    }
     console.log('Packaged Windows smoke check passed.');
     smokeSucceeded = true;
   } catch (error) {
@@ -109,7 +137,7 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
     } catch { console.error('PACKAGED_SMOKE_PRIVATE_EVIDENCE_UNAVAILABLE'); }
     throw error;
   } finally {
-    if (smokeSucceeded) await rm(smokeRootDirectory, {
+    if (smokeSucceeded && execution === undefined) await rm(smokeRootDirectory, {
       force: true,
       maxRetries: 20,
       recursive: true,
@@ -117,94 +145,139 @@ export async function runPackagedSmoke({ releaseCandidateSmoke = false, legacyPr
     });
   }
 
-  async function runSmokePhase(argumentsList, expectedStage) {
-    await new Promise((resolveSmoke, rejectSmoke) => {
-      const processHandle = spawn(
-        executablePath,
-        [...argumentsList, ...(exceptionEvidence?.arguments ?? [])],
-        {
-          env: childEnvironment,
-          shell: false,
-          stdio: ['ignore', 'pipe', 'pipe'],
-        },
-      );
-      phaseOutputs.push(observeSmokeOutput(processHandle, expectedStage));
-      let firstError;
-      let exitObserved = false;
-      let outputClosed = false;
-      let resultChecked = false;
-      let settled = false;
-      let smokeResult;
-      const finish = () => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        if (firstError) rejectSmoke(firstError);
-        else resolveSmoke();
-      };
-      const finishAfterClose = () => {
-        if (outputClosed && resultChecked) finish();
-      };
-      // The original phase deadline also bounds stdio drain and result inspection.
-      const timer = setTimeout(() => {
-        if (settled) return;
-        firstError ??= new Error(createPackagedSmokeTimeoutMessage(smokeResult));
-        try {
-          if (!exitObserved) processHandle.kill();
-        } catch {
-          // Termination failure must not replace the first error; cleanup stays unverified.
-        }
-        finish();
-      }, smokeTimeoutMilliseconds);
-
-      processHandle.once('error', error => {
-        if (settled) return;
-        try { exceptionEvidence?.capture(error, 'packagedRunner'); } catch { /* Optional private evidence. */ }
-        firstError ??= new Error('Packaged desktop smoke process could not be started.');
-        resultChecked = true;
-        finishAfterClose();
-      });
-      processHandle.once('exit', async (code) => {
-        exitObserved = true;
-        if (settled) return;
-        // Reserve the observed exit failure before any asynchronous result read.
-        const exitError = code !== 0
-          ? new Error(createPackagedSmokeFailureMessage(undefined, code)) : undefined;
-        firstError ??= exitError;
-        smokeResult = await readSmokeResult();
-        if (settled) return;
-        let failureMessage;
-        if (smokeResult === undefined) {
-          failureMessage = `Packaged desktop smoke check did not produce a result (code ${String(code)}).`;
-        } else if (
-          code !== 0 ||
-          smokeResult.stage !== expectedStage ||
-          (expectedStage === 'shutdown' &&
-            (smokeResult.status !== 'ok' ||
-              smokeResult.electronVersion !== expectedElectronVersion)) ||
-          (expectedStage === 'restoreRestart' &&
-            smokeResult.status !== 'started')
-        ) {
-          failureMessage = createPackagedSmokeFailureMessage(smokeResult, code);
-        }
-        if (failureMessage !== undefined) {
-          if (firstError === undefined) firstError = new Error(failureMessage);
-          else if (firstError === exitError) firstError.message = failureMessage;
-        }
-        resultChecked = true;
-        finishAfterClose();
-      });
-      processHandle.once('close', () => {
-        outputClosed = true;
-        finishAfterClose();
-      });
-    });
+  async function runSelectorVerificationPhase(phase) {
+    // A previous selector's ok result must never authorize this new process.
+    await writePackagedSmokeResult({ enabled: true, phase: packagedSelectorVerificationPhase,
+      root: smokeRootDirectory, userDataPath: resolve(smokeRootDirectory, 'user-data') },
+    { stage: 'startup', status: 'started' });
+    await runSmokePhase(['--desktop-smoke', `--${packagedSelectorVerificationSwitch}`], 'shutdown', phase);
   }
+
+  async function runSmokePhase(argumentsList, expectedStage, phase) {
+    if (execution !== undefined) {
+      const output = await execution.runPhase(Object.freeze({ phase,
+        environment: Object.freeze({ ...childEnvironment }), startupException: exceptionEvidence !== undefined }));
+      const retained = capturePackagedSmokePhaseOutput(output, expectedStage);
+      if (retained.stdout.partial) throw new Error('PACKAGED_SMOKE_JOB_UNVERIFIED');
+      phaseOutputs.push(() => retained);
+      return;
+    }
+    await runPackagedSmokePhase({ argumentsList, expectedStage, smokeResultPath,
+      expectedElectronVersion, childEnvironment, phaseOutputs, exceptionEvidence });
+  }
+}
+
+// Shared by the ordinary driver and the named Job worker; this does not prove tree absence.
+export async function runPackagedSmokePhase({ argumentsList, expectedStage, smokeResultPath,
+  expectedElectronVersion, childEnvironment, phaseOutputs, exceptionEvidence, observeResultReadFailure }) {
+  async function readSmokeResult(priorFailure) {
+    try { return readPackagedSmokeResult(JSON.parse(await readFile(smokeResultPath, 'utf8'))); }
+    catch (error) {
+      try { observeResultReadFailure?.(error, priorFailure); } catch { /* Evidence cannot change phase settlement. */ }
+      return undefined;
+    }
+  }
+  await new Promise((resolveSmoke, rejectSmoke) => {
+    const processHandle = spawn(
+      executablePath,
+      [...argumentsList, ...(exceptionEvidence?.arguments ?? [])],
+      {
+        env: childEnvironment,
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+      },
+    );
+    phaseOutputs.push(observeSmokeOutput(processHandle, expectedStage));
+    let firstError;
+    let exitObserved = false;
+    let outputClosed = false;
+    let resultChecked = false;
+    let settled = false;
+    let smokeResult;
+    const finish = () => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (firstError) rejectSmoke(firstError);
+      else resolveSmoke();
+    };
+    const finishAfterClose = () => {
+      if (outputClosed && resultChecked) finish();
+    };
+    // The original phase deadline also bounds stdio drain and result inspection.
+    const timer = setTimeout(() => {
+      if (settled) return;
+      firstError ??= new Error(createPackagedSmokeTimeoutMessage(smokeResult));
+      try {
+        if (!exitObserved) processHandle.kill();
+      } catch {
+        // Termination failure must not replace the first error; cleanup stays unverified.
+      }
+      finish();
+    }, smokeTimeoutMilliseconds);
+
+    processHandle.once('error', error => {
+      if (settled) return;
+      try { exceptionEvidence?.capture(error, 'packagedRunner'); } catch { /* Optional private evidence. */ }
+      firstError ??= new Error('Packaged desktop smoke process could not be started.');
+      resultChecked = true;
+      finishAfterClose();
+    });
+    processHandle.once('exit', async (code) => {
+      exitObserved = true;
+      if (settled) return;
+      // Reserve the observed exit failure before any asynchronous result read.
+      const exitError = code !== 0
+        ? new Error(createPackagedSmokeFailureMessage(undefined, code)) : undefined;
+      firstError ??= exitError;
+      smokeResult = await readSmokeResult(firstError);
+      if (settled) return;
+      let failureMessage;
+      if (smokeResult === undefined) {
+        failureMessage = `Packaged desktop smoke check did not produce a result (code ${String(code)}).`;
+      } else if (
+        code !== 0 ||
+        smokeResult.stage !== expectedStage ||
+        (expectedStage === 'shutdown' &&
+          (smokeResult.status !== 'ok' ||
+            smokeResult.electronVersion !== expectedElectronVersion)) ||
+        (expectedStage === 'restoreRestart' &&
+          smokeResult.status !== 'started')
+      ) {
+        failureMessage = createPackagedSmokeFailureMessage(smokeResult, code);
+      }
+      if (failureMessage !== undefined) {
+        if (firstError === undefined) firstError = new Error(failureMessage);
+        else if (firstError === exitError) firstError.message = failureMessage;
+      }
+      resultChecked = true;
+      finishAfterClose();
+    });
+    processHandle.once('close', () => {
+      outputClosed = true;
+      finishAfterClose();
+    });
+  });
+}
+
+export async function startPackagedPilotSeries({ environment = process.env,
+  inspect = inspectPackagedPilotSeries, smoke = runPackagedSmoke, writeEnvironment = appendFile } = {}) {
+  if (environment.CI !== 'true' || environment[packagedSeriesManifestVariable] !== undefined ||
+      typeof environment.GITHUB_ENV !== 'string' || environment.GITHUB_ENV.length === 0) {
+    throw new Error('PACKAGED_PILOT_SERIES_INVALID');
+  }
+  const selected = await inspect();
+  await smoke({ seriesManifestSha256: selected.pin });
+  await inspect(selected.pin);
+  await writeEnvironment(environment.GITHUB_ENV,
+    `${packagedSeriesManifestVariable}=${requirePackagedSeriesPin({ [packagedSeriesManifestVariable]: selected.pin })}\n`);
 }
 
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   const scriptArguments = process.argv.slice(2);
-  if (scriptArguments.some(argument => argument !== '--release-candidate') ||
+  if (scriptArguments.some(argument => !['--release-candidate', '--pilot-series-start'].includes(argument)) ||
       scriptArguments.length > 1) throw new Error('Unsupported packaged smoke argument.');
-  await runPackagedSmoke({ releaseCandidateSmoke: scriptArguments.includes('--release-candidate') });
+  if (scriptArguments.includes('--pilot-series-start')) {
+    await startPackagedPilotSeries();
+  } else await runPackagedSmoke({ releaseCandidateSmoke: scriptArguments.includes('--release-candidate') });
 }

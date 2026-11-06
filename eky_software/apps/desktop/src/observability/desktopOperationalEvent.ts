@@ -1,5 +1,5 @@
 import { profileInspectionFailureCauses } from '../runtime/profileInspectionFailure.js';
-import type { WorkspaceManagementOperationId } from './workspaceManagementFailureContext.js';
+import type { WorkspaceDeletionFailureStage, WorkspaceManagementOperationId } from './workspaceManagementFailureContext.js';
 
 export const restoreAcceptanceFailureCodes: readonly string[] = Object.freeze([
   ...profileInspectionFailureCauses, 'PROFILE_RESTORE_RECOVERY_REQUIRED',
@@ -79,7 +79,7 @@ export interface DesktopOperationalEventPayloadMap {
     operationId: WorkspaceManagementOperationId;
     retryable: boolean;
     sideEffectState: 'none' | 'unknown';
-    stage: 'admission' | 'operation' | 'lineageCheck' | 'deletePreparation';
+    stage: 'operation' | 'lineageCheck' | WorkspaceDeletionFailureStage;
   };
   'desktop.starting': Record<never, never>;
   'desktop.started': { durationMs?: number };

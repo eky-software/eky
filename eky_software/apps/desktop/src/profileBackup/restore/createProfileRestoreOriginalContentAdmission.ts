@@ -17,10 +17,12 @@ import type { ProfileRestoreActivationJournalStore } from './profileRestoreActiv
 import type { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
 import type { ProfileRestoreColdContentContext } from './prepareProfileRestoreColdForwardRecovery.js';
 import { runProfileRestoreOriginalInspection, type ProfileRestoreOriginalInspectionResult } from './runProfileRestoreOriginalInspection.js';
+import { captureOwnedProfileInspectionTarget, type OwnedProfileInspectionTarget } from '../runOwnedProfileInspection.js';
 
 /** Original content stays bound across rollback moves; target/forward receipts cannot grant it. */
 export function createProfileRestoreOriginalContentAdmission(input: {
   readonly operationId: string;
+  readonly target: OwnedProfileInspectionTarget;
   readonly workspaceRoot: string;
   readonly failedRoot: string;
   readonly layout: ProfileInspectionOriginalSources['layout'];
@@ -30,13 +32,17 @@ export function createProfileRestoreOriginalContentAdmission(input: {
   readonly transaction: Pick<ProfileRestoreActivationTransaction, 'readRollbackRecoverySources'>;
   readonly assertLineage: (profileId: string) => void;
   readonly inspect?: typeof runProfileRestoreOriginalInspection;
+  readonly observeException?: (error: unknown) => void;
 }) {
+  const target = captureOwnedProfileInspectionTarget(input.target);
   let initial: ProfileRestoreOriginalInspectionResult | undefined;
   let selected: ProfileRestoreOriginalInspectionResult | undefined;
   return async (context: ProfileRestoreColdContentContext): Promise<void> => {
     const journal = captureProfileRestoreActivationJournal(context.journal);
     if (journal.operationId !== input.operationId || (journal.phase !== 'validationStarting' &&
         journal.phase !== 'rollbackStarting' && journal.phase !== 'rolledBack')) throw invalid();
+    const assertReadCurrent = (context.assertReadOwnership ?? context.assertCurrent).bind(context);
+    if (context.assertReadOwnership !== undefined) await context.assertCurrent();
     const read = async <T>(task: () => Promise<T>): Promise<T> => {
       context.assertAuthority();
       context.reservation.assertMainCurrent();
@@ -50,21 +56,29 @@ export function createProfileRestoreOriginalContentAdmission(input: {
       } finally { if (!settled) context.reservation.invalidate(); }
     };
     const readSources = async () => {
-      await context.assertCurrent();
+      await assertReadCurrent();
       assertProfileRestoreActivationJournalMatches(journal, await read(() => input.journalStore.peek()));
       const slots = await read(() => input.transaction.readRollbackRecoverySources(journal));
-      await context.assertCurrent();
+      await assertReadCurrent();
       const sources = parseProfileInspectionOriginalSources({ workspaceRoot: input.workspaceRoot, layout: input.layout, ...slots });
       if (sources === undefined) throw invalid();
+      return sources;
+    };
+    const readInspectionSources = async () => {
+      if (context.assertReadOwnership !== undefined) await context.assertCurrent();
+      const sources = await readSources();
+      if (context.assertReadOwnership !== undefined) await context.assertCurrent();
       return sources;
     };
     let sources = await readSources();
     if (selected === undefined || selected.status.result.databaseSlot !== sources.databaseSlot ||
         selected.status.result.documentsSlot !== sources.documentsSlot) {
       const returned = await (input.inspect ?? runProfileRestoreOriginalInspection)({
+        target,
+        ...(input.observeException === undefined ? {} : { observeException: input.observeException }),
         operationId: input.operationId, runnerPath: input.runnerPath, deployment: input.deployment,
         reservation: context.reservation, assertAuthority: context.assertAuthority,
-        assertLineage: input.assertLineage, readSources, signal: context.signal, deadline: context.deadline,
+        assertLineage: input.assertLineage, readSources: readInspectionSources, signal: context.signal, deadline: context.deadline,
       });
       const status = parseProfileInspectionStatus(returned.status);
       if (status?.type !== 'originalCompleted' || status.operationId !== input.operationId || status.result.layout !== input.layout ||
@@ -93,7 +107,7 @@ export function createProfileRestoreOriginalContentAdmission(input: {
     if (receipt.databaseSlot !== sources.databaseSlot || receipt.documentsSlot !== sources.documentsSlot) throw invalid();
     const assertLineage = () => { if (receipt.databaseSlot !== 'absent') input.assertLineage(receipt.profileId); };
     assertLineage();
-    await context.assertCurrent();
+    await assertReadCurrent();
     assertLineage();
     await read(() => assertProfileRestoreOriginalSourceBytes({
       operationRoot: join(input.failedRoot, input.operationId), sources, result: selected!,

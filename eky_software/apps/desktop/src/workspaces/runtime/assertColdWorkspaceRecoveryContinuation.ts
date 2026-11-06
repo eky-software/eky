@@ -11,7 +11,7 @@ import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidati
 export async function assertColdWorkspaceRecoveryContinuation(options: {
   readonly expectedRegistry: Readonly<LocalWorkspaceRegistry>;
   readonly expectedWorkspaceId: WorkspaceId | null;
-  readonly registry: WorkspaceRegistryPort;
+  readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
   readonly userDataRoot: string;
 }): Promise<void> {
   const expected = validateWorkspaceRegistry(options.expectedRegistry);
@@ -51,7 +51,7 @@ export async function assertColdWorkspaceRecoveryContinuation(options: {
 
 export async function assertColdWorkspaceRecoveryRegistryUnchanged(options: {
   readonly expectedRegistry: Readonly<LocalWorkspaceRegistry> | undefined;
-  readonly registry: WorkspaceRegistryPort;
+  readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
 }): Promise<void> {
   const actual = await options.registry.read();
   if (options.expectedRegistry === undefined || actual === undefined) {

@@ -5,7 +5,8 @@ import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBac
 import type { WorkspaceBackupImportOperationId } from '../import/workspaceBackupImportTypes.js';
 import type { WorkspaceActivationMigrationStagingPort } from './workspaceActivationMigrationRecoveryPoint.js';
 import { WorkspaceActivationMigrationError } from './workspaceActivationMigrationError.js';
-import type { ProfileSnapshotInspectionPort } from '../../profileBackup/profileSnapshotInspectionPort.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority,
+  type ProfileSnapshotInspectionPort } from '../../profileBackup/profileSnapshotInspectionPort.js';
 
 export class NodeWorkspaceActivationMigrationStaging
   implements WorkspaceActivationMigrationStagingPort
@@ -34,16 +35,18 @@ export class NodeWorkspaceActivationMigrationStaging
         throw new Error('invalid');
       }
       await assertSafeTree(expected);
-    } catch {
+    } catch (cause) {
       throw new WorkspaceActivationMigrationError(
-        'WORKSPACE_ACTIVATION_MIGRATION_FAILED',
+        'WORKSPACE_ACTIVATION_MIGRATION_FAILED', { cause },
       );
     }
   }
 
   async removeOperationRoot(
     operationId: WorkspaceBackupImportOperationId,
+    cleanupAuthority?: ProfileSnapshotCleanupAuthority,
   ): Promise<void> {
+    const authority = captureProfileSnapshotCleanupAuthority(cleanupAuthority);
     const operationRoot = this.operationRoot(operationId);
     try {
       const metadata = await lstat(operationRoot).catch((error: unknown) => {
@@ -51,11 +54,15 @@ export class NodeWorkspaceActivationMigrationStaging
         throw error;
       });
       if (metadata !== undefined) await assertSafeTree(operationRoot);
+      if (authority !== undefined) {
+        await authority.assertOwned();
+        authority.assertCurrent();
+      }
       // The inspector still owns this root after materialization, even after backend exit.
       await this.snapshotOwner.removeProfileSnapshot(operationId);
-    } catch {
+    } catch (cause) {
       throw new WorkspaceActivationMigrationError(
-        'WORKSPACE_ACTIVATION_MIGRATION_FAILED',
+        'WORKSPACE_ACTIVATION_MIGRATION_FAILED', { cause },
       );
     }
   }

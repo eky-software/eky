@@ -245,8 +245,11 @@ it('does not extend hard lifetime when a valid cached page is repeatedly read', 
     .rejects.toMatchObject({ code: 'diagnostic_browse_stale' });
 });
 
-it.each([1, 2])('rejects same-length source mutation during content pass %i', async pass => {
-  const { path, reader } = await fixture([event('one', 1)]);
+it.each([1, 2].flatMap(pass => [
+  { pass, continued: false, title: `rejects same-length source mutation during content pass ${pass}` },
+  { pass, continued: true, title: `rejects same-length source mutation during content pass ${pass} after a bounded scanning result` },
+]))('$title', async ({ pass, continued }) => {
+  const { path, reader } = await fixture([event('one', 1)], continued ? { stepMetadata: 7 } : undefined);
   const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
   let reads = 0;
   vi.mocked(open).mockImplementation(async (...args) => {
@@ -261,8 +264,15 @@ it.each([1, 2])('rejects same-length source mutation during content pass %i', as
     });
     return handle;
   });
-  await expect(reader.browseDiagnosticEvents({ limit: 1 }, 'synthetic-actor'))
+  let scanningObserved = false;
+  const browsing = reader.browseDiagnosticEvents({ limit: 1 }, 'synthetic-actor').then(page => {
+    scanningObserved = page.state === 'scanning';
+    return finish(reader, page);
+  });
+  await expect(browsing)
     .rejects.toMatchObject({ code: 'diagnostic_browse_stale' });
+  expect(reads).toBeGreaterThanOrEqual(pass);
+  if (continued) expect(scanningObserved).toBe(true);
 });
 
 it('reports the original source failure before returning a safe unavailable result', async () => {

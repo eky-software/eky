@@ -32,14 +32,30 @@ export interface WorkspaceProcessReservation {
   release(): Promise<void>;
 }
 
+/** Borrowed only while the same main-owned preparation callback is active. */
+export type WorkspaceProcessReservationPreparation = (
+  signal: AbortSignal,
+  assertPreparationCurrent: () => void,
+  assertPreparationOwned: () => Promise<void>,
+) => Promise<void>;
+
 /** Main binds this port to one current authority and one child generation. */
 export interface WorkspaceProcessReservationTransfer {
   readonly descriptor: WorkspaceProcessReservationDescriptor;
   prepare(signal: AbortSignal): Promise<void>;
   assertGrant(signal: AbortSignal): Promise<void>;
+  /** Consumes the authorized child grant once at send; not a repeatable read guard. */
   assertCurrent(): void;
   reclaimAfterExit(signal: AbortSignal): Promise<void>;
   invalidate(): void;
+}
+
+/** Stable encoding only; a directory identity is not reservation or mutation authority. */
+export function createWorkspaceProcessReservationIdentity(directory: Readonly<{ dev: bigint; ino: bigint }>): string {
+  if (typeof directory.dev !== 'bigint' || typeof directory.ino !== 'bigint' || directory.dev < 0n || directory.ino <= 0n) {
+    throw new WorkspaceProcessReservationError('invalidRoot');
+  }
+  return createHash('sha256').update(`${RESERVATION_NAMESPACE}:${directory.dev}:${directory.ino}`).digest('hex');
 }
 
 export async function readWorkspaceProcessReservationIdentity(userDataRoot: string): Promise<string> {
@@ -65,8 +81,7 @@ export async function readWorkspaceProcessReservationIdentity(userDataRoot: stri
       || before.dev !== after.dev || before.ino !== after.ino) {
       throw new WorkspaceProcessReservationError('identityChanged');
     }
-    return createHash('sha256')
-      .update(`${RESERVATION_NAMESPACE}:${before.dev}:${before.ino}`).digest('hex');
+    return createWorkspaceProcessReservationIdentity(before);
   } catch (error) {
     if (error instanceof WorkspaceProcessReservationError) throw error;
     throw new WorkspaceProcessReservationError('rootUnavailable');

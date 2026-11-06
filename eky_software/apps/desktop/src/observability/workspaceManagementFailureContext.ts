@@ -1,10 +1,32 @@
 export const workspaceManagementOperationIds = Object.freeze({
   create: 'workspace.create', import: 'workspace.import', replace: 'workspace.replace',
   switch: 'workspace.switch', rename: 'workspace.rename', delete: 'workspace.delete',
+  deleteResume: 'workspace.deleteResume',
 } as const);
 
 export type WorkspaceManagementOperationId =
   (typeof workspaceManagementOperationIds)[keyof typeof workspaceManagementOperationIds];
+
+export const workspaceDeletionFailureStages = Object.freeze([
+  'admission', 'deletePreparation', 'deleteAuthorization',
+  'deletePurge', 'deleteRegistry', 'deleteCleanup',
+] as const);
+
+export type WorkspaceDeletionFailureStage = (typeof workspaceDeletionFailureStages)[number];
+
+export const workspaceDeletionFailureCodes = Object.freeze([
+  'WORKSPACE_MANAGEMENT_BUSY', 'WORKSPACE_MANAGEMENT_INVALID',
+  'WORKSPACE_DELETE_STALE_CONFIRMATION', 'WORKSPACE_DELETE_BACKUP_UNAVAILABLE',
+  'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_INVENTORY_INVALID',
+  'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED',
+  'WORKSPACE_DELETE_CLEANUP_FAILED', 'WORKSPACE_DELETE_FAILED',
+] as const);
+
+export type WorkspaceDeletionFailureCode = (typeof workspaceDeletionFailureCodes)[number];
+
+export function isWorkspaceDeletionFailureCode(value: unknown): value is WorkspaceDeletionFailureCode {
+  return workspaceDeletionFailureCodes.some(code => code === value);
+}
 
 const failureOperationIds: Readonly<Record<string, WorkspaceManagementOperationId>> = {
   WORKSPACE_CREATION_LABEL_EXISTS: 'workspace.create',
@@ -22,14 +44,15 @@ export function isWorkspaceManagementFailureContext(value: Record<string, unknow
     typeof value.durationMs !== 'number' || !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 ||
     !Object.values(workspaceManagementOperationIds).some(id => id === value.operationId) ||
     (value.sideEffectState !== 'none' && value.sideEffectState !== 'unknown')) return false;
-  if (value.operationId === workspaceManagementOperationIds.delete) {
-    if (value.stage !== 'admission' && value.stage !== 'deletePreparation') return false;
-    if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') return value.retryable === true;
-    return value.retryable === false &&
-      (value.stage === 'admission' || value.sideEffectState === 'unknown') &&
-      (value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' ||
-        value.errorCode === 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' ||
-        value.errorCode === 'WORKSPACE_DELETE_FAILED');
+  if (value.operationId === workspaceManagementOperationIds.delete ||
+    value.operationId === workspaceManagementOperationIds.deleteResume) {
+    if (!workspaceDeletionFailureStages.some(stage => stage === value.stage) ||
+      !isWorkspaceDeletionFailureCode(value.errorCode)) return false;
+    if (value.sideEffectState === 'none' &&
+      (value.operationId === workspaceManagementOperationIds.deleteResume ||
+        (value.stage !== 'admission' &&
+          !(value.stage === 'deletePreparation' && value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY')))) return false;
+    return value.retryable === (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY');
   }
   if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') {
     return (value.stage === 'admission' || value.stage === 'operation') && value.retryable === true;

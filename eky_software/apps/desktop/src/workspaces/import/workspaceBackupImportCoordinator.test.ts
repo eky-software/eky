@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createReadyWorkspaceEntry } from '../registry/workspaceRegistryMutations.js';
 import type {
@@ -25,14 +25,6 @@ import {
   createTestImportReadiness,
   createTestImportRegistry,
 } from './workspaceBackupImportTestSupport.js';
-
-const cleanupRoots: string[] = [];
-
-afterEach(async () => {
-  for (const root of cleanupRoots.splice(0)) {
-    await rm(root, { force: true, recursive: true });
-  }
-});
 
 describe('WorkspaceBackupImportCoordinator', () => {
   it('publishes into a v2 selector without assigning its active workspace', async () => {
@@ -69,9 +61,11 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(fixture.lifecycle.ensureCalls).toBe(0);
   });
 
-  it('preserves the source and journal when an unresolved inspection root blocks cleanup', async () => {
+  it('preserves the source and journal when an unresolved inspection root blocks cleanup', async context => {
     const root = await mkdtemp(join(tmpdir(), 'eky-import-preservation-'));
-    cleanupRoots.push(root);
+    context.onTestFinished(async () => {
+      if (context.task.result?.state === 'pass') await rm(root, { force: true, recursive: true });
+    });
     const paths = deriveWorkspaceBackupImportPaths(
       root,
       TEST_IMPORT_OPERATION_ID,
@@ -114,10 +108,8 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(fixture.events).not.toContain('root.removeImportStaging');
     expect(fixture.events).not.toContain('root.publishCandidate');
     expect(fixture.events).not.toContain('journal.discard');
-    // Known runtime absence still permits the existing source-runtime recovery.
-    expect(fixture.lifecycle.ensureCalls).toBe(1);
-    const restartIndex = fixture.events.indexOf('lifecycle.ensure');
-    expect(fixture.events[restartIndex - 1]).toBe('runtimeAbsence.assert');
+    expect(fixture.lifecycle.ensureCalls).toBe(0);
+    expect(fixture.events).toContain('owner.uncertain');
     await expect(readFile(sourcePath, 'utf8')).resolves.toBe(
       'original staged snapshot',
     );
@@ -137,38 +129,38 @@ describe('WorkspaceBackupImportCoordinator', () => {
       workspaceLabel: 'Tuotu yritys',
     });
 
-    expect(fixture.events).toEqual([
+    expect(fixture.events.filter(event => !['runtimeAbsence.assert', 'registry.inspect', 'journal.inspect', 'root.assertOperationAbsent'].includes(event))).toEqual([
       'lease.acquire.import',
-      'journal.read',
+      'owner.capture',
       'quarantine.recoverStalePayloads',
       'backup.inspect',
-      'registry.read',
       'lifecycle.quiesce',
       'lifecycle.stop',
-      'runtimeAbsence.assert',
       'journal.write.prepared',
+      'binding.publish',
       'root.createCandidate',
       'journal.write.candidateRootCreated',
       'backup.stage',
       'journal.write.backupStaged',
       'candidate.migrate',
-      'runtimeAbsence.assert',
       'journal.write.candidateMigrated',
       'candidate.validate',
-      'runtimeAbsence.assert',
       'journal.write.candidateValidated',
       'root.removeImportStaging',
       'root.inspectCandidate',
-      'registry.read',
       'root.publishCandidate',
       'journal.write.rootPublished',
       'root.cleanupPublishedOperation',
       'registry.write',
       'journal.write.registryPublished',
       'lifecycle.ensure',
+      'binding.clear',
       'journal.remove',
       'lease.release',
+      'owner.terminal',
     ]);
+    expect(fixture.events.slice(0, 3)).toEqual(['lease.acquire.import', 'owner.capture', 'journal.inspect']);
+    expect(fixture.events).toContain('registry.inspect');
     expect(fixture.journal.states).toEqual([
       'prepared',
       'candidateRootCreated',
@@ -230,10 +222,11 @@ describe('WorkspaceBackupImportCoordinator', () => {
 
     expect(fixture.events).toEqual([
       'lease.acquire.import',
-      'journal.read',
+      'owner.capture',
+      'journal.inspect',
       'quarantine.recoverStalePayloads',
       'backup.inspect',
-      'registry.read',
+      'registry.inspect',
       'lease.release',
     ]);
     expect(fixture.lifecycle.ensureCalls).toBe(0);
@@ -275,13 +268,13 @@ describe('WorkspaceBackupImportCoordinator', () => {
       ] };
     });
 
-    await expectImportError(fixture.coordinator.import(importInput), 'WORKSPACE_IMPORT_LABEL_EXISTS', 'registryPublish');
+    await expectImportError(fixture.coordinator.import(importInput), 'WORKSPACE_IMPORT_RECOVERY_REQUIRED', 'recovery');
     expect(fixture.registry.value?.workspaces).toHaveLength(2);
     expect(fixture.registry.writes).toHaveLength(0);
     expect(fixture.events).not.toContain('root.publishCandidate');
-    expect(fixture.root.candidateExists).toBe(false);
-    expect(fixture.journal.current).toBeUndefined();
-    expect(fixture.lifecycle.ensureCalls).toBe(1);
+    expect(fixture.root.candidateExists).toBe(true);
+    expect(fixture.journal.current?.state).toBe('candidateValidated');
+    expect(fixture.lifecycle.ensureCalls).toBe(0);
   });
 
   it('does not clean plaintext or read a backup while an unresolved journal exists', async () => {
@@ -296,7 +289,8 @@ describe('WorkspaceBackupImportCoordinator', () => {
 
     expect(fixture.events).toEqual([
       'lease.acquire.import',
-      'journal.read',
+      'owner.capture',
+      'journal.inspect',
       'lease.release',
     ]);
   });
@@ -327,8 +321,10 @@ describe('WorkspaceBackupImportCoordinator', () => {
 
     expect(fixture.events).toEqual([
       'lease.acquire.import',
-      'journal.read',
+      'owner.capture',
+      'journal.inspect',
       'quarantine.recoverStalePayloads',
+      'owner.uncertain',
       'lease.release',
     ]);
     expect(fixture.lifecycle.ensureCalls).toBe(0);
@@ -398,23 +394,20 @@ describe('WorkspaceBackupImportCoordinator', () => {
   it('rechecks lineage immediately before root publication', async () => {
     const fixture = createFixture();
     const initial = fixture.registry.value!;
-    let reads = 0;
-    fixture.registry.read = async () => {
-      fixture.events.push('registry.read');
-      reads += 1;
-      return reads < 2 ? initial : createRegistryWithDuplicateLineage();
-    };
+    const inspect = fixture.root.inspectCandidate.bind(fixture.root);
+    fixture.root.inspectCandidate = async () => { await inspect(); fixture.registry.value = createRegistryWithDuplicateLineage(); };
 
     await expectImportError(
       fixture.coordinator.import(importInput),
-      'WORKSPACE_IMPORT_LINEAGE_EXISTS',
-      'lineageCheck',
+      'WORKSPACE_IMPORT_RECOVERY_REQUIRED',
+      'recovery',
     );
 
     expect(fixture.root.finalExists).toBe(false);
-    expect(fixture.root.candidateExists).toBe(false);
+    expect(fixture.root.candidateExists).toBe(true);
     expect(fixture.registry.writes).toHaveLength(0);
-    expect(fixture.journal.current).toBeUndefined();
+    expect(fixture.journal.current?.state).toBe('candidateValidated');
+    expect(initial).not.toEqual(fixture.registry.value);
   });
 
   it('leaves a durable recovery point when root publication may have occurred', async () => {
@@ -430,7 +423,7 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(fixture.root.finalExists).toBe(true);
     expect(fixture.journal.current?.state).toBe('candidateValidated');
     expect(fixture.registry.writes).toHaveLength(0);
-    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(0);
   });
 
   it('publishes the first workspace as active without starting its runtime', async () => {
@@ -447,7 +440,7 @@ describe('WorkspaceBackupImportCoordinator', () => {
     expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(0);
   });
 
-  it('restores the previous runtime when runtime absence cannot be proven', async () => {
+  it('retains the stopped runtime boundary when runtime absence cannot be proven', async () => {
     const fixture = createFixture();
     fixture.runtimeAbsence.state = 'unknown';
 
@@ -458,8 +451,8 @@ describe('WorkspaceBackupImportCoordinator', () => {
     );
 
     expect(fixture.journal.current).toBeUndefined();
-    expect(fixture.lifecycle.runningRuntimeOwners).toBe(1);
-    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(1);
+    expect(fixture.lifecycle.runningRuntimeOwners).toBe(0);
+    expect(fixture.lifecycle.openDatabaseHandleOwners).toBe(0);
   });
 
   it('requires recovery before a second import when an import journal exists', async () => {

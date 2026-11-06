@@ -1,10 +1,12 @@
 import { rename } from 'node:fs/promises';
+import { assertSynchronousProfileRestoreMutationAuthority } from './profileRestoreMutationAuthority.js';
 
 const windowsRetryDelaysMilliseconds = [25, 50, 100, 200, 400, 800] as const;
 const retryableWindowsErrorCodes = new Set(['EACCES', 'EBUSY', 'EPERM']);
 
 interface RenameProfilePathOptions {
   assertAuthority?(): Promise<void>;
+  assertMutationCurrent?(): void;
   destinationPath: string;
   platform?: NodeJS.Platform;
   renamePath?(sourcePath: string, destinationPath: string): Promise<void>;
@@ -18,13 +20,22 @@ export async function renameProfilePathWithRetry(
   const platform = options.platform ?? process.platform;
   const renamePath = options.renamePath ?? rename;
   const wait = options.wait ?? waitForDelay;
+  const suppliedMutation = options.assertMutationCurrent;
+  if (suppliedMutation !== undefined &&
+      (typeof suppliedMutation !== 'function' || typeof options.assertAuthority !== 'function')) {
+    throw new Error('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+  }
+  const assertMutationCurrent = suppliedMutation?.bind(options);
+  const assertAuthority = assertMutationCurrent === undefined ? undefined : options.assertAuthority!.bind(options);
 
   for (
     let attempt = 0;
     attempt <= windowsRetryDelaysMilliseconds.length;
     attempt += 1
   ) {
-    await options.assertAuthority?.();
+    if (assertAuthority === undefined) await options.assertAuthority?.();
+    else await assertAuthority();
+    if (assertMutationCurrent !== undefined) assertSynchronousProfileRestoreMutationAuthority(assertMutationCurrent);
     try {
       await renamePath(options.sourcePath, options.destinationPath);
       return;

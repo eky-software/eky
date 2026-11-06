@@ -30,11 +30,16 @@ describe('desktop operational event contracts', () => {
     { operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'operation', retryable: true },
     { operationId: workspaceManagementOperationIds[operation], errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage: 'admission', retryable: true },
   ]);
-  const deletionFailures = (['admission', 'deletePreparation'] as const).flatMap<ManagementFailureCase>(stage => [
-    { operationId: workspaceManagementOperationIds.delete, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage, retryable: true },
-    ...['WORKSPACE_MANAGEMENT_INVALID', 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_FAILED']
-      .map<ManagementFailureCase>(errorCode => ({ operationId: workspaceManagementOperationIds.delete, errorCode, stage, retryable: false })),
-  ]);
+  const deletionFailures = (['workspace.delete', 'workspace.deleteResume'] as const).flatMap(operationId =>
+    (['admission', 'deletePreparation', 'deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'] as const)
+      .flatMap<ManagementFailureCase>(stage => [
+        { operationId, errorCode: 'WORKSPACE_MANAGEMENT_BUSY', stage, retryable: true },
+        ...['WORKSPACE_MANAGEMENT_INVALID', 'WORKSPACE_DELETE_STALE_CONFIRMATION',
+          'WORKSPACE_DELETE_BACKUP_UNAVAILABLE', 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN',
+          'WORKSPACE_DELETE_INVENTORY_INVALID', 'WORKSPACE_DELETE_JOURNAL_CONFLICT',
+          'WORKSPACE_DELETE_IO_FAILED', 'WORKSPACE_DELETE_CLEANUP_FAILED', 'WORKSPACE_DELETE_FAILED']
+          .map<ManagementFailureCase>(errorCode => ({ operationId, errorCode, stage, retryable: false })),
+      ]));
 
   const namedFailures: ManagementFailureCase[] = [
     { operationId: workspaceManagementOperationIds.replace, errorCode: 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH', stage: 'lineageCheck', retryable: false },
@@ -53,7 +58,9 @@ describe('desktop operational event contracts', () => {
       }, options);
       expect(validateDesktopOperationalEvent(event)).toEqual(event);
       const none = { ...event, sideEffectState: 'none' };
-      if (entry.operationId === 'workspace.delete' && entry.stage === 'deletePreparation' && !entry.retryable) {
+      const deletion = entry.operationId === 'workspace.delete' || entry.operationId === 'workspace.deleteResume';
+      if (deletion && (entry.operationId === 'workspace.deleteResume' ||
+        (entry.stage !== 'admission' && !(entry.stage === 'deletePreparation' && entry.retryable)))) {
         expect(() => validateDesktopOperationalEvent(none)).toThrow(DesktopOperationalEventValidationError);
       } else {
         expect(validateDesktopOperationalEvent(none)).toMatchObject({ sideEffectState: 'none' });
@@ -63,8 +70,7 @@ describe('desktop operational event contracts', () => {
         { eventName: 'workspaceManagement.operationCompleted' },
         { eventName: 'workspaceManagement.operationPrepared' },
         { eventName: 'workspaceManagement.operationCancelled' },
-        { operationId: 'workspace.deleteResume' }, { stage: 'deleteAuthorization' },
-        { stage: 'deletePurge' }, { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
+        { operationId: 'workspace.deleteAll' }, { stage: 'deleteUnknown' },
         { correlationId: undefined }, { durationMs: undefined }, { operationId: undefined },
         { correlationId: 'synthetic-not-a-uuid' }, { durationMs: -1 }, { durationMs: 1.5 },
         { durationMs: Number.MAX_SAFE_INTEGER + 1 }, { errorCode: undefined },
@@ -74,23 +80,22 @@ describe('desktop operational event contracts', () => {
         { workspaceId: 'synthetic-workspace' }, { workspaceLabel: 'Synthetic' },
         { lineageIdentity: 'synthetic-lineage' }, { inventory: [] }, { path: '/synthetic/private' },
         { fingerprint: 'synthetic-private' }, { companyId: 'synthetic-company' },
-        ...(entry.operationId === 'workspace.delete'
+        ...(deletion
           ? [{ stage: 'operation' }, { stage: 'lineageCheck' },
             ...['WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'WORKSPACE_MANAGEMENT_DELETE_FAILED',
               ...existingOperations.map(operation => `WORKSPACE_MANAGEMENT_${operation.toUpperCase()}_FAILED`),
               'WORKSPACE_CREATION_LABEL_EXISTS', 'WORKSPACE_IMPORT_LABEL_EXISTS', 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH',
-              'WORKSPACE_MANAGEMENT_LABEL_EXISTS', 'WORKSPACE_DELETE_STALE_CONFIRMATION',
-              'WORKSPACE_DELETE_BACKUP_UNAVAILABLE', 'WORKSPACE_DELETE_INVENTORY_INVALID',
-              'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED', 'WORKSPACE_DELETE_CLEANUP_FAILED']
+              'WORKSPACE_MANAGEMENT_LABEL_EXISTS', 'WORKSPACE_DELETE_UNKNOWN', 'WORKSPACE_REMNANT_BINDING_INVALID']
               .map(errorCode => ({ errorCode }))]
-          : [{ stage: 'deletePreparation' },
+          : [{ stage: 'deletePreparation' }, { stage: 'deleteAuthorization' }, { stage: 'deletePurge' },
+            { stage: 'deleteRegistry' }, { stage: 'deleteCleanup' },
             { errorCode: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' }, { errorCode: 'WORKSPACE_DELETE_FAILED' }]),
         ...(entry.errorCode.endsWith('_LABEL_EXISTS')
           ? [{ stage: 'admission' }, { stage: 'lineageCheck' },
             ...Object.values(workspaceManagementOperationIds).filter(operationId => entry.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS'
               ? !['workspace.create', 'workspace.import', 'workspace.rename'].includes(operationId)
               : operationId !== entry.operationId).map(operationId => ({ operationId }))] : []),
-        ...((entry.errorCode.endsWith('_FAILED') && entry.operationId !== 'workspace.delete') || entry.stage === 'lineageCheck'
+        ...((entry.errorCode.endsWith('_FAILED') && !deletion) || entry.stage === 'lineageCheck'
           ? [{ operationId: entry.operationId === 'workspace.create' ? 'workspace.replace' : 'workspace.create' }, { stage: 'admission' }] : []),
       ]) expect(() => validateDesktopOperationalEvent({ ...event, ...change })).toThrow(DesktopOperationalEventValidationError);
     },

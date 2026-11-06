@@ -20,8 +20,10 @@ const roots: string[] = [];
 const slotNames = ['currentPath', 'nextPath', 'backupPath'] as const;
 const recoveryRequired = 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED';
 
-afterEach(async () => {
-  for (const root of roots.splice(0)) {
+afterEach(async context => {
+  const owned = roots.splice(0);
+  if (context.task.result?.state !== 'pass' || context.signal.aborted) return;
+  for (const root of owned) {
     await rm(root, { force: true, recursive: true });
   }
 });
@@ -33,6 +35,7 @@ async function createFixture() {
   const options: WorkspaceColdRecoveryAdmissionOptions = {
     adoptionJournal: slots('adoption.json'),
     creationJournal: slots('creation.json'),
+    deletionJournal: slots('deletion.json'),
     directSetupRecovery: slots('setup.json'),
     firstStartMigrationJournal: slots('first-start.json'),
     importJournal: slots('import.json'),
@@ -46,6 +49,13 @@ async function createFixture() {
 }
 
 describe('cold workspace recovery admission', () => {
+  it.each(slotNames)('does not classify a deletion-only %s as an ordinary clear startup', async slot => {
+    const { options, read } = await createFixture();
+    await writeFile(options.deletionJournal[slot], 'unparsed deletion evidence');
+    await expect(read()).rejects.toThrow(recoveryRequired);
+    expect(await readFile(options.deletionJournal[slot], 'utf8')).toBe('unparsed deletion evidence');
+  });
+
   it('leaves other startup recovery owners alone when there is no create or import slot', async () => {
     const { options, read } = await createFixture();
     await writeFile(options.firstStartMigrationJournal.nextPath, 'other recovery');
@@ -90,7 +100,7 @@ describe('cold workspace recovery admission', () => {
     );
 
     const competingOwners = [
-      'adoptionJournal', 'firstStartMigrationJournal', 'replacementJournal', 'switchJournal',
+      'adoptionJournal', 'deletionJournal', 'firstStartMigrationJournal', 'replacementJournal', 'switchJournal',
       'legacyProfile', 'activeProfile', 'passiveProfile',
     ] as const;
     it.each(competingOwners.flatMap((owner) => slotNames.map((slot) => ({ owner, slot }))))(

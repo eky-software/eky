@@ -117,23 +117,32 @@ E2E-perheet ovat:
 
 - eristetyn system security E2E -joukon
 - Chromiumin kriittiset web-käyttäjäpolut yhdellä workerilla
-- Windows-paketoinnin, packaged smoken ja kriittiset Electron development
-  -käyttäjäpolut yhdellä workerilla.
+- kriittiset Electron development -käyttäjäpolut yhdellä workerilla työssä
+  `Windows Electron critical E2E`
+- yhden Windows pilot -paketoinnin, tavallisen smoken ja viisi pakettitapausta
+  työssä `Windows packaged smoke and recovery`. Smoke, sarjan valmistelu,
+  supervisor-build ja sarja pysyvät samassa työssä alkuperäisen manifestipinin
+  ja loppuvarmennuksen kanssa; sarja ei rakenna pakettia uudelleen.
 
-Playwright-jobit käyttävät yhtä CI-retryä lisätodisteen keräämiseen ja
+Tavalliset Playwright-jobit käyttävät yhtä CI-retryä lisätodisteen keräämiseen ja
 `failOnFlakyTests`-asetusta, joten retryllä vasta läpäisevä testi epäonnistaa
 jobin. Se kuluttaa [yhteisen uusintakäytännön](../ai/testing-rules.md#enintään-yksi-uusinta)
 yhden uusinnan. Trace ei korvaa [testityypin omaa virhetodistetta](../ai/e2e-test-authoring-guide.md#kun-testi-epäonnistuu).
 Raskaita E2E-jobeja ei ajeta erikseen jokaisessa `antsa`-pushissa.
+Pakettisarjan nykyinen nollan retryn asetus säilyy.
 
 Nykyisessä V2-kytkennässä `ci-cadence-contracts.yml` omistaa laukaisun ja
 vakaan `V2 acceptance` -koonnin. `ci.yml` on sen reusable core, ei toinen
 suoraan PR:stä käynnistyvä testiketju. Sen erillinen `electron_diagnostic`
--käsikäynnistys käyttää vain nykyistä Electron-jobia ja erillistä
-käynnistyshavainnon kytkentätestiä; se ei tuota kokonaiskoontia tai korvaa
+-käsikäynnistys valitsee molemmat Windows-E2E-työt sekä development-työn
+erillisen käynnistyshavainnon kytkentätestin; se ei tuota kokonaiskoontia tai korvaa
 normaalia hyväksyntää. Koonti vaatii kaikki valitut perheet,
 toistot ja pakolliset vaiheet; odottamaton skip, puuttuva tulos tai peruutus
 ei kelpaa onnistumiseksi. Riippuvuusturva säilyy erillisenä työnkulkuna.
+Riskisuunnitelman `electronCritical` ja `packageSmoke` valitsevat eri työt,
+kumpikin 35 minuutin kokonaisrajalla. Yhteenlaskettu enimmäisvara on nyt
+70 runner-minuuttia aiemman 35:n sijaan; testien ja cleanupin omat rajat
+eivät muutu. Toteutuneen kokonaisajon hyväksyntä vaatii uuden revision näytön.
 
 CI-kytkennän ja required-check-sopimuksen omistava ohje on
 [Windows-hyväksyntäharness](windows-installer-acceptance-harness-v2.md).
@@ -141,6 +150,12 @@ Repositorion todellinen ruleset varmistetaan GitHubista ennen asetusten
 muutosta; paikallinen dokumentaatio ei muuta GitHub-asetuksia.
 Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa
 GitHubissa täsmällisiin check-nimiin.
+
+Linuxin desktop-testit ovat ensimmäisessä ja muiden pakettien testit sekä
+tyypitys-/build-/tarkistusprosessivaiheet toisessa pakollisessa työssä.
+Työt ovat peräkkäisiä, kumpikin 15 minuuttia, yhteisvara 30 minuuttia.
+Molemmat vaaditaan koontiin; tarkka valmistelu-, sisältö- ja
+virheaineistosopimus on [core-testauksen ohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).
 
 `pnpm test:e2e:stress` on manuaalinen, eikä kuulu jokaiseen pull requestiin.
 System/web-työkuorma ja ensimmäiset vertailuarvot on dokumentoitu tiedostossa

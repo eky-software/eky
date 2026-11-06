@@ -12,6 +12,7 @@ import {
   createReadyWorkspaceEntry,
   findWorkspaceEntry,
   readWorkspaceRegistry,
+  removeWorkspaceEntry,
   selectActiveWorkspace,
   selectSourceAndRequireTargetRecovery,
   WorkspaceRegistryMutationError,
@@ -24,6 +25,41 @@ const secondWorkspaceId =
   '22222222-2222-4222-8222-222222222222' as WorkspaceId;
 
 describe('workspace registry mutations', () => {
+  it.each([firstWorkspaceId, secondWorkspaceId, null])('removes only the selected entry and preserves the %s active pointer', activeWorkspaceId => {
+    const first = createEntry(firstWorkspaceId, 'a'.repeat(64));
+    const second = createEntry(secondWorkspaceId, 'b'.repeat(64));
+    const before = Object.freeze({ formatVersion: 2 as const, activeWorkspaceId,
+      workspaces: Object.freeze([first, second]) });
+    const after = removeWorkspaceEntry({ registry: before, expectedActiveWorkspaceId: activeWorkspaceId,
+      targetWorkspaceId: firstWorkspaceId });
+    expect(after).toEqual({ formatVersion: 2, activeWorkspaceId: activeWorkspaceId === firstWorkspaceId ? null : activeWorkspaceId,
+      workspaces: [second] });
+    expect(after.workspaces[0]).toBe(second);
+    expect(before.workspaces).toEqual([first, second]);
+    expect(Object.isFrozen(after)).toBe(true);
+    expect(Object.isFrozen(after.workspaces)).toBe(true);
+  });
+
+  it.each(['ready', 'recoveryRequired'] as const)('removes the last %s entry without selecting or creating another company', lifecycleState => {
+    const first = Object.freeze({ ...createEntry(firstWorkspaceId, 'a'.repeat(64)), lifecycleState });
+    const before = Object.freeze({ formatVersion: 2 as const, activeWorkspaceId: null, workspaces: Object.freeze([first]) });
+    expect(removeWorkspaceEntry({ registry: before, expectedActiveWorkspaceId: null, targetWorkspaceId: firstWorkspaceId }))
+      .toEqual({ formatVersion: 2, activeWorkspaceId: null, workspaces: [] });
+    expect(before.workspaces).toEqual([first]);
+  });
+
+  it('rejects v1, a changed active pointer and a missing deletion target', () => {
+    const first = createEntry(firstWorkspaceId, 'a'.repeat(64));
+    const v1 = createRegistry(firstWorkspaceId, [first]);
+    expect(() => removeWorkspaceEntry({ registry: v1, expectedActiveWorkspaceId: firstWorkspaceId, targetWorkspaceId: firstWorkspaceId }))
+      .toThrow('WORKSPACE_REGISTRY_INVALID');
+    const v2 = { ...v1, formatVersion: 2 as const };
+    expectMutationFailure(() => removeWorkspaceEntry({ registry: v2, expectedActiveWorkspaceId: null,
+      targetWorkspaceId: firstWorkspaceId }), 'activeWorkspaceChanged');
+    expectMutationFailure(() => removeWorkspaceEntry({ registry: v2, expectedActiveWorkspaceId: firstWorkspaceId,
+      targetWorkspaceId: secondWorkspaceId }), 'workspaceNotFound');
+  });
+
   it('creates an empty registry and makes its first ready entry active', () => {
     const empty = readWorkspaceRegistry(undefined);
     const entry = createEntry(firstWorkspaceId, 'a'.repeat(64));

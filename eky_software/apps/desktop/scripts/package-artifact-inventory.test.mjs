@@ -412,7 +412,7 @@ test('rejects Eky-owned source maps but includes vendor maps in the inventory', 
 test('enforces the application-stage file count boundary', async () => {
   const root = await createStageFixture('dist/file-000.js', 'safe');
   await Promise.all(
-    Array.from({ length: 447 }, (_, index) =>
+    Array.from({ length: 543 }, (_, index) =>
       writeFixture(
         root,
         `dist/file-${String(index + 1).padStart(3, '0')}.js`,
@@ -425,9 +425,9 @@ test('enforces the application-stage file count boundary', async () => {
     root,
     stage: 'applicationStage',
   });
-  assert.equal(inventory.fileCount, 448);
+  assert.equal(inventory.fileCount, 544);
 
-  await writeFixture(root, 'dist/file-448.js', 'safe');
+  await writeFixture(root, 'dist/file-544.js', 'safe');
   await assert.rejects(
     inspectPackageArtifactInventory({ root, stage: 'applicationStage' }),
     /FILE_COUNT/,
@@ -493,22 +493,22 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
 
   const totalSizeRoot = await createStageFixture(
     'node_modules/vendor/first.bin',
-    Buffer.alloc(1_703_936),
+    Buffer.alloc(2_228_224),
   );
   await writeFixture(
     totalSizeRoot,
     'node_modules/vendor/second.bin',
-    Buffer.alloc(1_703_936),
+    Buffer.alloc(2_228_224),
   );
   const atTotalSizeLimit = await inspectPackageArtifactInventory({
     root: totalSizeRoot,
     stage: 'applicationStage',
   });
-  assert.equal(atTotalSizeLimit.totalByteSize, 3_407_872);
+  assert.equal(atTotalSizeLimit.totalByteSize, 4_456_448);
   await writeFixture(
     totalSizeRoot,
     'node_modules/vendor/second.bin',
-    Buffer.alloc(1_703_937),
+    Buffer.alloc(2_228_225),
   );
   await assert.rejects(
     inspectPackageArtifactInventory({
@@ -520,7 +520,7 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
 
   const packagedAppRoot = await createStageFixture(
     'resources/app.asar',
-    Buffer.alloc(3_407_872),
+    Buffer.alloc(4_456_448),
   );
   await assert.doesNotReject(
     inspectPackageArtifactInventory({
@@ -531,7 +531,7 @@ test('enforces stage-specific path, depth, file and total byte boundaries', asyn
   await writeFixture(
     packagedAppRoot,
     'resources/app.asar',
-    Buffer.alloc(3_407_873),
+    Buffer.alloc(4_456_449),
   );
   await assert.rejects(
     inspectPackageArtifactInventory({

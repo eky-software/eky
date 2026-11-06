@@ -118,6 +118,61 @@ tiedostolajia, kirjoitinta tai keräysrajaa ei lisätä. Erillinen
 [OpenPGP-regressio](../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs)
 vertaa puretun paketin alkuperäiset tavut ja molempien syiden testisidonnan;
 kontrolloitu main-lukuraja ei yksin todista oikeaa Electron- tai hosted-ajoa.
+Sama koe kattaa W7.4:n nimetyn cold-palvelusisääntulon turvallisen
+virhemuunnoksen: alkuperäinen synteettinen poikkeus ja sen syyketju säilyvät
+puretussa paketissa myös erillisen sulkuvirheen rinnalla. Koe käyttää
+nykyistä reporter-sinkiä ja samoja tavu-/sidontavertailuja ilman uutta
+aineistolajia. Palvelun valinta-/sulkuportit ovat tässä ohjattuja; koe ei
+todista mainin fyysistä varausta, onnistunutta poistoa tai hosted-toimitusta.
+Sama salauskoe käyttää tarkistimen oikeaa main-puolen virhemuunnosrajaa
+synteettisessä Vitest-kuluttajassa. Valinnainen `observeException` tarjoaa
+ensimmäisen poikkeuksen ennen turvallista `ProfileInspectionProcessError`-
+muunnosta. Nykyinen Main-kytkentä lainaa käynnistyksen opt-in-havaitsijaa
+vain ennen yritysruntimen hyväksyntää; hyväksytty runtime tai tavallinen
+tuotantoprofiili ei saa tällä käynnistyskeräystä. Havaitsijan poikkeus ei
+muuta sulkua, eikä siivousvirhe korvaa ensisyytä. Lapsen jo turvalliseksi
+koodiksi muuttamaa poikkeusta ei palauteta tai päätellä jälkikäteen.
+Koe todistaa erikseen aidon assertion-hylkäyksen, alkuperäisen virheketjun
+puretut tavut ja julkisen tulosteen rajauksen. Se ei ole native-lapsen
+alkuperäisen poikkeuksen tai hosted-artifactin toimituksen todiste.
+Nykyinen koe kattaa myös `DESK-WORKSPACE-ORIGINAL-001`-testin main-lukurajan:
+lukija toimittaa saman rajatun projektion nykyiselle
+runner-sinkille; sen oma virhe ei korvaa testihylkäystä, ja osittainen
+lähde säilyy osittaisena myös onnistuneen toimituksen jälkeen.
+Testiapuri säilyttää viimeisimmän runtime-sukupolven myös mahdolliselle
+shutdown- tai jälkitarkistusvirheelle. Tämä sidonta on katselmoitu lähteestä;
+onnistuva native-koe ei yksin todista näiden virhehaarojen käyttäytymistä.
+
+Sama OpenPGP-koe ajaa W7.4:n yhteisen poistokomennon oikeassa Node-lapsessa
+ja pakottaa ensimmäisen virheen ennen `purged`-vaiheen julkaisua.
+Lapsi tarjoaa alkuperäisen viestin, pinon ja syyketjun nykyiselle
+runner-liitännälle ennen suljettua IPC-virhetulosta. Purussa verrataan
+alkuperäiset raporttitavut, testisidonta ja syyketju; julkinen tuloste ei
+saa sisältää niitä. Keräys käsittelee vain nykyiset runner-raportit,
+ei epäonnistumisen vuoksi säilytettyä profiilia tai tietokantaa. Tämä
+on tiedostokomennon ja raportoinnin näyttö, ei Electronin, tuotannon
+cold-admissionin tai GitHub-artifactin toimituksen hyväksyntä.
+
+Saman kokeen nykyinen execution-projektio saa alkuperäisen virheen oikealta
+poissaololukijalta: synteettinen `lstat`-vastaus hylätään ennen omistajuuden
+menetystä. Purku varmentaa tämän viestin, pinon ja syyketjun sekä erilliset
+sisarussyyt; myöhempi valtuusvirhe ei korvaa niitä. Ohjattu lukuvastaus ei
+todista natiivikahvan sulkua tai käyttöjärjestelmän I/O:n keskeyttämistä.
+
+Sama koe kattaa fyysisen journalin täyden sisältötarkistuksen alkuperäisen
+syyn ennen natiivin yleiskoodimuunnosta. Erillinen synteettinen tapaus ajaa
+nykyisen executorin ja journalitallentimen, tarkistaa säilyneet journal-,
+inventaarioluettelo- ja rekisteritavut ja tarjoaa havaitun poikkeuksen
+nykyiselle runner-sinkille. Purku vertaa viestin, pinon ja syyketjun lisäksi
+alkuperäiset raportti- ja toimituskuittitavut sekä tiivisteet. Koe ei lisää
+aineistolajia eikä todista koko poiston valmistumista tai hosted-toimitusta.
+
+Julkaisun testifixturen tekninen tunniste käyttää synteettistä UUID-arvoa,
+ei ympäristön tunnettuun salaisuuteen helposti osuvaa sanallista juurinimeä.
+Erillinen törmäyskontrolli ja koko salauskoe todentavat nimetyn synteettisen
+peittosalaisuuden käsittelyn. Tunnisteen tarkka yksikäsitteinen vertailu ja
+peittyneen tunnisteen hylkäys säilyvät; salaisuuksien peittoa ei kevennetä.
+
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 

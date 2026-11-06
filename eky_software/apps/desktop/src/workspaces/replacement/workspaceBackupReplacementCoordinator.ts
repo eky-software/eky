@@ -1,10 +1,12 @@
-import type { ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import { captureProfileRestoreActivationJournal, type ProfileRestoreActivationJournal } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import { assertSynchronousProfileRestoreMutationAuthority } from '../../profileBackup/restore/profileRestoreMutationAuthority.js';
 import type { WorkspaceRegistryPort } from '../registry/workspaceRegistryPort.js';
 import type { WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { ActiveWorkspaceLifecyclePort } from '../runtime/activeWorkspaceLifecyclePort.js';
 import type { WorkspaceRuntimeAbsencePort } from '../runtime/workspaceRuntimeAbsencePort.js';
-import type { WorkspaceMaintenanceLease } from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceMaintenanceLease, WorkspaceMaintenanceLeaseHandle } from '../maintenance/workspaceMaintenanceLease.js';
+import type { WorkspaceBackupReplacementBinding } from './workspaceBackupReplacementBinding.js';
 import type {
   WorkspaceBackupCandidatePort,
   WorkspaceBackupContainerPort,
@@ -32,8 +34,7 @@ import type {
   WorkspaceReplacementActivationAuthorityFactory,
   WorkspaceReplacementOperationGuardPort,
   WorkspaceReplacementRuntimeHandoffPort,
-  WorkspaceReplacementRuntimeReadiness,
-  WorkspaceReplacementRuntimeReadinessPort,
+  WorkspaceReplacementMutationAuthority,
 } from './workspaceBackupReplacementPorts.js';
 import {
   assertWorkspaceReplacementLineage,
@@ -50,14 +51,18 @@ export interface WorkspaceBackupReplacementCoordinatorOptions {
   readonly activeWorkspaceLifecycle: ActiveWorkspaceLifecyclePort;
   readonly backupCandidate: WorkspaceBackupCandidatePort;
   readonly backupContainer: WorkspaceBackupContainerPort;
+  createBinding(input: {
+    readonly lease: WorkspaceMaintenanceLeaseHandle;
+    readonly operationId: WorkspaceBackupReplacementOperationId;
+    readonly target: Readonly<WorkspaceReplacementTarget>;
+  }): Pick<WorkspaceBackupReplacementBinding, 'publish' | 'assertPublished' | 'assertMutationCurrent'>;
   readonly generateOperationId?: () => WorkspaceBackupReplacementOperationId;
   readonly maintenanceLease: WorkspaceMaintenanceLease;
   readonly operationGuard: WorkspaceReplacementOperationGuardPort;
   readonly preRestoreRecoveryPoint: WorkspacePreRestoreRecoveryPointPort;
   readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
   readonly rootStore: WorkspaceBackupReplacementRootStore;
-  readonly runtimeHandoff?: WorkspaceReplacementRuntimeHandoffPort;
-  readonly runtimeReadiness: WorkspaceReplacementRuntimeReadinessPort;
+  readonly runtimeHandoff: WorkspaceReplacementRuntimeHandoffPort;
   readonly userDataRoot: string;
   readonly workspaceRuntimeAbsence: WorkspaceRuntimeAbsencePort;
 }
@@ -79,6 +84,7 @@ interface ReplacementFailureContext {
   readonly paths: ReturnType<typeof deriveWorkspaceBackupReplacementPaths>;
   readonly target: Readonly<WorkspaceReplacementTarget>;
   readonly writesQuiesced: boolean;
+  readonly bindingAuthority?: Readonly<WorkspaceReplacementMutationAuthority>;
 }
 
 export class WorkspaceBackupReplacementCoordinator {
@@ -118,7 +124,26 @@ export class WorkspaceBackupReplacementCoordinator {
     const lease = await this.acquireLease();
     let writesQuiesced = false;
     let operationFailure: WorkspaceBackupReplacementError | undefined;
+    let publicationAttempted = false;
+    let publicationCompleted = false;
+    let bindingUncertain = false;
+    let bindingAuthority: Readonly<WorkspaceReplacementMutationAuthority> | undefined;
     try {
+      // Capture the exact acquired lease before any further I/O or await.
+      const binding = this.options.createBinding({ lease, operationId, target: initialTarget });
+      const publish = binding.publish.bind(binding);
+      const readback = binding.assertPublished.bind(binding);
+      const finalGuard = binding.assertMutationCurrent.bind(binding);
+      bindingAuthority = Object.freeze({
+        async assertCurrent() {
+          try { await readback(); }
+          catch (error) { bindingUncertain = true; throw error; }
+        },
+        assertMutationCurrent() {
+          try { assertSynchronousProfileRestoreMutationAuthority(finalGuard); }
+          catch (error) { bindingUncertain = true; throw error; }
+        },
+      });
       await this.assertNoUnresolvedOperations();
       await this.assertActivationIdle(authority);
       const leaseRegistry = await this.readRegistry('registryRevalidation');
@@ -137,7 +162,11 @@ export class WorkspaceBackupReplacementCoordinator {
       await this.createPreRestore(operationId, targetWorkspaceId);
       await this.stopRuntime(targetWorkspaceId);
       await this.assertRuntimeAbsent();
-      await this.prepareCandidate(paths);
+      publicationAttempted = true;
+      await publish();
+      await bindingAuthority.assertCurrent();
+      publicationCompleted = true;
+      await this.prepareCandidate(paths, bindingAuthority);
 
       const staged = await this.stageBackup({
         containerPath: input.containerPath,
@@ -148,6 +177,7 @@ export class WorkspaceBackupReplacementCoordinator {
         importStagingRoot: paths.importStagingRoot,
       });
       assertSamePreflight(preflight, staged);
+      await bindingAuthority.assertCurrent();
 
       const importOperationId =
         validateWorkspaceBackupImportOperationId(operationId);
@@ -163,6 +193,7 @@ export class WorkspaceBackupReplacementCoordinator {
           preflight.migrationChainIdentity,
       });
       validateWorkspaceBackupMigrationResult(migration);
+      await bindingAuthority.assertCurrent();
       if (migration.profileId !== preflight.profileId) {
         throw new WorkspaceBackupReplacementError(
           'WORKSPACE_REPLACEMENT_VALIDATION_FAILED',
@@ -179,6 +210,7 @@ export class WorkspaceBackupReplacementCoordinator {
         artifactRoot: paths.candidateArtifactRoot,
         expectedProfileId: preflight.profileId,
       });
+      await bindingAuthority.assertCurrent();
       if (
         readiness.lineageIdentity.profileId !== preflight.profileId ||
         readiness.migrationChainIdentity !== migration.migrationChainIdentity
@@ -188,49 +220,14 @@ export class WorkspaceBackupReplacementCoordinator {
           'candidateValidation',
         );
       }
-      await this.removeImportStaging(paths);
+      await this.removeImportStaging(paths, bindingAuthority);
       await this.inspectCandidate(paths);
-
-      const activationRegistry = await this.readRegistry(
-        'registryRevalidation',
-      );
-      assertWorkspaceReplacementRegistryUnchanged(
-        initialTarget.registrySnapshot,
-        activationRegistry,
-      );
-      validateWorkspaceReplacementTarget(
-        activationRegistry,
-        targetWorkspaceId,
-      );
-
-      await this.prepareActivation(authority, operationId);
-      await this.replaceActiveRoot(authority);
-      if (this.options.runtimeHandoff !== undefined) {
-        this.options.runtimeHandoff.requestRelaunch();
-        return Object.freeze({
-          migrationChainIdentity: migration.migrationChainIdentity,
-          profileId: preflight.profileId,
-          workspaceId: targetWorkspaceId,
-        });
-      }
-      await this.ensureRuntimeRunning(targetWorkspaceId);
-      await this.validateRunningRuntime({
-        workspaceId: targetWorkspaceId,
-        expectedProfileId: preflight.profileId,
-        expectedMigrationChainIdentity: migration.migrationChainIdentity,
-      });
-
-      const commitRegistry = await this.readRegistry('registryRevalidation');
-      assertWorkspaceReplacementRegistryUnchanged(
-        initialTarget.registrySnapshot,
-        commitRegistry,
-      );
-      validateWorkspaceReplacementTarget(
-        commitRegistry,
-        targetWorkspaceId,
-      );
-      await this.acceptActivation(authority);
-
+      await bindingAuthority.assertCurrent();
+      const prepared = await this.prepareActivation(authority, operationId, bindingAuthority);
+      await this.replaceActiveRoot(authority, prepared, bindingAuthority);
+      await bindingAuthority.assertCurrent();
+      bindingAuthority.assertMutationCurrent();
+      this.options.runtimeHandoff.requestRelaunch();
       return Object.freeze({
         migrationChainIdentity: migration.migrationChainIdentity,
         profileId: preflight.profileId,
@@ -243,6 +240,7 @@ export class WorkspaceBackupReplacementCoordinator {
         'rollback',
       );
       operationFailure = primaryFailure;
+      if (publicationAttempted && (!publicationCompleted || bindingUncertain)) throw operationFailure;
       try {
         await this.recoverFailure({
           authority,
@@ -250,6 +248,7 @@ export class WorkspaceBackupReplacementCoordinator {
           paths,
           target: initialTarget,
           writesQuiesced,
+          ...(publicationCompleted ? { bindingAuthority: bindingAuthority! } : {}),
         });
       } catch (recoveryError) {
         const recoveryFailure = mapWorkspaceBackupReplacementError(
@@ -297,7 +296,10 @@ export class WorkspaceBackupReplacementCoordinator {
   private async recoverFailure(
     context: Readonly<ReplacementFailureContext>,
   ): Promise<void> {
-    const journal = await this.readActivationJournal(context.authority);
+    const binding = context.bindingAuthority;
+    if (binding !== undefined) await binding.assertCurrent();
+    let journal = await this.readActivationJournal(context.authority);
+    if (binding !== undefined) await binding.assertCurrent();
     if (
       journal !== undefined &&
       journal.operationId !== context.operationId
@@ -315,33 +317,33 @@ export class WorkspaceBackupReplacementCoordinator {
       await this.quiesceRuntime(context.target.entry.workspaceId);
       await this.stopRuntime(context.target.entry.workspaceId);
       await this.assertRuntimeAbsent();
-      await context.authority.transaction.rollback();
-      if (this.options.runtimeHandoff !== undefined) {
-        this.options.runtimeHandoff.requestRelaunch();
-        return;
-      }
-      await this.ensureRuntimeRunning(context.target.entry.workspaceId);
-      await this.validateRunningRuntime({
-        workspaceId: context.target.entry.workspaceId,
-        expectedProfileId:
-          context.target.entry.lineageIdentity.profileId,
-      });
-      await context.authority.transaction.clearRolledBack();
+      if (binding !== undefined) {
+        const selected = captureProfileRestoreActivationJournal(journal);
+        await binding.assertCurrent();
+        journal = await context.authority.journalStore.read(selected, binding.assertCurrent, binding.assertMutationCurrent);
+        if (journal === undefined) throw new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED', 'rollback');
+        await context.authority.transaction.rollback(selected, binding.assertCurrent, undefined, binding.assertMutationCurrent);
+        await binding.assertCurrent();
+        binding.assertMutationCurrent();
+      } else await context.authority.transaction.rollback();
+      this.options.runtimeHandoff.requestRelaunch();
       return;
     }
 
-    await this.options.rootStore.discardBeforeActivation(context.paths);
+    const absentJournalAuthority = binding === undefined ? undefined : Object.freeze({
+      assertMutationCurrent: binding.assertMutationCurrent,
+      assertCurrent: async () => {
+        await binding.assertCurrent();
+        if (await this.readActivationJournal(context.authority) !== undefined) {
+          throw new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED', 'rollback');
+        }
+        await binding.assertCurrent();
+      },
+    });
+    await this.options.rootStore.discardBeforeActivation(context.paths, absentJournalAuthority);
     if (context.writesQuiesced) {
-      if (this.options.runtimeHandoff !== undefined) {
-        this.options.runtimeHandoff.requestRelaunch();
-        return;
-      }
-      await this.ensureRuntimeRunning(context.target.entry.workspaceId);
-      await this.validateRunningRuntime({
-        workspaceId: context.target.entry.workspaceId,
-        expectedProfileId:
-          context.target.entry.lineageIdentity.profileId,
-      });
+      if (binding !== undefined) { await binding.assertCurrent(); binding.assertMutationCurrent(); }
+      this.options.runtimeHandoff.requestRelaunch();
     }
   }
 
@@ -371,7 +373,7 @@ export class WorkspaceBackupReplacementCoordinator {
   private readActivationJournal(
     authority: Readonly<WorkspaceReplacementActivationAuthority>,
   ): Promise<ProfileRestoreActivationJournal | undefined> {
-    return authority.journalStore.read().catch((error) => {
+    return authority.journalStore.peek().catch((error) => {
       throw mapWorkspaceBackupReplacementError(
         error,
         'WORKSPACE_REPLACEMENT_OPERATION_UNRESOLVED',
@@ -515,8 +517,9 @@ export class WorkspaceBackupReplacementCoordinator {
 
   private prepareCandidate(
     paths: ReturnType<typeof deriveWorkspaceBackupReplacementPaths>,
+    binding: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void> {
-    return this.options.rootStore.prepareCandidate(paths).catch((error) => {
+    return this.options.rootStore.prepareCandidate(paths, binding).catch((error) => {
       throw mapWorkspaceBackupReplacementError(
         error,
         'WORKSPACE_REPLACEMENT_STORAGE_FAILED',
@@ -527,8 +530,9 @@ export class WorkspaceBackupReplacementCoordinator {
 
   private removeImportStaging(
     paths: ReturnType<typeof deriveWorkspaceBackupReplacementPaths>,
+    binding: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<void> {
-    return this.options.rootStore.removeImportStaging(paths).catch((error) => {
+    return this.options.rootStore.removeImportStaging(paths, binding).catch((error) => {
       throw mapWorkspaceBackupReplacementError(
         error,
         'WORKSPACE_REPLACEMENT_STORAGE_FAILED',
@@ -549,89 +553,36 @@ export class WorkspaceBackupReplacementCoordinator {
     });
   }
 
-  private prepareActivation(
+  private async prepareActivation(
     authority: Readonly<WorkspaceReplacementActivationAuthority>,
     operationId: WorkspaceBackupReplacementOperationId,
-  ): Promise<void> {
-    return authority.transaction.prepare(operationId).catch((error) => {
+    binding: Readonly<WorkspaceReplacementMutationAuthority>,
+  ): Promise<Readonly<ProfileRestoreActivationJournal>> {
+    let prepared: Readonly<ProfileRestoreActivationJournal> | undefined;
+    await authority.transaction.prepare(operationId, binding.assertCurrent,
+      journal => { prepared = captureProfileRestoreActivationJournal(journal); }, binding.assertMutationCurrent).catch((error) => {
       throw mapWorkspaceBackupReplacementError(
         error,
         'WORKSPACE_REPLACEMENT_ACTIVATION_FAILED',
         'activationPrepare',
       );
     });
+    if (prepared === undefined) throw new WorkspaceBackupReplacementError('WORKSPACE_REPLACEMENT_ACTIVATION_FAILED', 'activationPrepare');
+    return prepared;
   }
 
   private replaceActiveRoot(
     authority: Readonly<WorkspaceReplacementActivationAuthority>,
+    prepared: Readonly<ProfileRestoreActivationJournal>,
+    binding: Readonly<WorkspaceReplacementMutationAuthority>,
   ): Promise<unknown> {
-    return authority.transaction.advanceToValidation().catch((error) => {
+    return authority.transaction.advanceToValidation(prepared, binding.assertCurrent, undefined, undefined, binding.assertMutationCurrent).catch((error) => {
       throw mapWorkspaceBackupReplacementError(
         error,
         'WORKSPACE_REPLACEMENT_ACTIVATION_FAILED',
         'activationReplace',
       );
     });
-  }
-
-  private acceptActivation(
-    authority: Readonly<WorkspaceReplacementActivationAuthority>,
-  ): Promise<void> {
-    return authority.transaction.accept().catch((error) => {
-      throw mapWorkspaceBackupReplacementError(
-        error,
-        'WORKSPACE_REPLACEMENT_ACTIVATION_FAILED',
-        'activationReplace',
-      );
-    });
-  }
-
-  private ensureRuntimeRunning(workspaceId: WorkspaceId): Promise<void> {
-    return this.options.activeWorkspaceLifecycle
-      .ensurePreviousWorkspaceRunning(workspaceId)
-      .catch((error) => {
-        throw mapWorkspaceBackupReplacementError(
-          error,
-          'WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED',
-          'activeRuntimeRestart',
-        );
-      });
-  }
-
-  private async validateRunningRuntime(input: {
-    readonly expectedMigrationChainIdentity?: string;
-    readonly expectedProfileId: string;
-    readonly workspaceId: WorkspaceId;
-  }): Promise<void> {
-    let result: Readonly<WorkspaceReplacementRuntimeReadiness>;
-    try {
-      result = await this.options.runtimeReadiness.assertReady(input);
-    } catch (error) {
-      throw mapWorkspaceBackupReplacementError(
-        error,
-        'WORKSPACE_REPLACEMENT_VALIDATION_FAILED',
-        'activeRuntimeValidation',
-      );
-    }
-    if (
-      result.workspaceId !== input.workspaceId ||
-      result.profileId !== input.expectedProfileId ||
-      (input.expectedMigrationChainIdentity !== undefined &&
-        result.migrationChainIdentity !==
-          input.expectedMigrationChainIdentity) ||
-      result.artifactRootHealth !== 'ready' ||
-      result.backendOwnerCount !== 1 ||
-      result.databaseHealth !== 'healthy' ||
-      result.foreignKeyHealth !== 'healthy' ||
-      result.runtimeSessionState !== 'rotated' ||
-      result.sqliteOwnerCount !== 1 ||
-      !sha256Pattern.test(result.migrationChainIdentity)
-    ) {
-      throw new WorkspaceBackupReplacementError(
-        'WORKSPACE_REPLACEMENT_VALIDATION_FAILED',
-        'activeRuntimeValidation',
-      );
-    }
   }
 
   private createOperationId(): WorkspaceBackupReplacementOperationId {

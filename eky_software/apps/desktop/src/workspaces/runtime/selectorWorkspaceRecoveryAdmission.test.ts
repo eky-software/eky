@@ -8,6 +8,7 @@ import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js'
 import { createDirectSetupMigrationRecovery } from '../../update/directSetupMigrationRecovery.js';
 import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
 import { createWorkspaceCreationJournalPaths, WORKSPACE_CREATION_JOURNAL_FILE_NAME } from '../creation/workspaceCreationJournalPaths.js';
 import { createWorkspaceBackupImportJournalPaths, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../import/workspaceBackupImportJournalPaths.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
@@ -15,7 +16,7 @@ import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidati
 import { deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceSwitchJournalPaths } from '../switch/workspaceSwitchJournal.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
-import { assertNoSelectorWorkspaceRecoveryFromRoot } from './workspaceColdRecoveryAdmissionComposition.js';
+import { assertNoSelectorWorkspaceRecoveryFromRoot, assertSelectorReturnRecoveryConflictsFromRoot } from './workspaceColdRecoveryAdmissionComposition.js';
 
 const time = '2026-10-25T12:00:00.000Z';
 const registry = validateWorkspaceRegistry({ formatVersion: 2, activeWorkspaceId: null,
@@ -35,6 +36,7 @@ async function fixture(context: TestContext) {
   const journals = {
     adoption: createWorkspaceLegacyAdoptionJournalPaths(root).currentPath,
     creation: createWorkspaceCreationJournalPaths(root, join(root, WORKSPACE_CREATION_JOURNAL_FILE_NAME)).currentPath,
+    deletion: createWorkspaceDeletionJournalPaths(root).currentPath,
     import: createWorkspaceBackupImportJournalPaths(root, join(root, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME)).currentPath,
     switch: createWorkspaceSwitchJournalPaths(root).currentPath,
     migration: createWorkspaceFirstStartMigrationJournalPaths(root).currentPath,
@@ -60,7 +62,7 @@ async function put(path: string, content: string) {
 }
 
 describe('selector recovery conflict census', () => {
-  const cases = ['adoption', 'creation', 'import', 'switch', 'migration', 'legacyRestore',
+  const cases = ['adoption', 'creation', 'deletion', 'import', 'switch', 'migration', 'legacyRestore',
     'readyRestore', 'recoveryRestore', 'readyReplacement', 'recoveryReplacement'] as const;
   it.for(cases.flatMap(kind => ['', '.next', '.backup'].map(slot => ({ kind, slot }))))(
     'preserves $kind$slot and refuses selector mutation', async ({ kind, slot }, context) => {
@@ -72,6 +74,17 @@ describe('selector recovery conflict census', () => {
       expect(await readdir(dirname(path))).toEqual([path.slice(dirname(path).length + 1)]);
     },
   );
+
+  it.for(['', '.next', '.backup'])('blocks selector return across a deletion%s without repairing either owner', async (slot, context) => {
+    const f = await fixture(context);
+    const path = `${f.journals.deletion}${slot}`;
+    await put(path, 'retained deletion evidence');
+    await put(f.journals.switch, 'own selected return transition');
+    await expect(assertSelectorReturnRecoveryConflictsFromRoot(f.root, registry))
+      .rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(await readFile(path, 'utf8')).toBe('retained deletion evidence');
+    expect(await readFile(f.journals.switch, 'utf8')).toBe('own selected return transition');
+  });
 
   it('leaves missing directories absent and does not treat an update terminal as a workspace conflict', async context => {
     const f = await fixture(context);

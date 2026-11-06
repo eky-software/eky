@@ -24,6 +24,8 @@ import {
   runElectronWorkspaceManagementCompositionProof,
   runElectronWorkspaceMigrationInventoryProof,
   runElectronWorkspaceStartupRecoveryProof,
+  runElectronWorkspaceAdoptionAcceptanceProof,
+  runElectronWorkspaceOriginalInspectionProof,
 } from '../../src/electron/electronMainCapabilities.js';
 import { createElectronE2eRuntime } from '../../src/environment/createElectronE2eRuntime.js';
 import { assertElectronLaunchPlatform } from '../../src/environment/assertElectronLaunchPrerequisites.js';
@@ -250,6 +252,35 @@ test('DESK-WORKSPACE-STARTUP-001 @critical @recovery rejects an unaccepted build
   });
   expect(processMetricsAfter.totalWorkingSetSizeKilobytes).toBeGreaterThan(0);
   expect(processMetricsAfter.backendIsRunning).toBe(true);
+});
+
+test('DESK-WORKSPACE-ADOPTION-001 @critical @recovery accepts legacy bytes through the real main and backend owners', async ({
+  e2eElectron,
+}, testInfo) => {
+  const proof = await runElectronWorkspaceAdoptionAcceptanceProof(e2eElectron.electronApp, testInfo);
+  expect(proof).toEqual({
+    registryAbsentBeforeBackend: true,
+    bindingMatchesAcceptedProfile: true,
+    journalCleared: true,
+    sourceBytesPreserved: true,
+    businessAndPdfPreservedAfterRestart: true,
+    backendExitAndReservationReleased: true,
+    backendStarts: 2,
+  });
+});
+
+test('DESK-WORKSPACE-ORIGINAL-001 @critical @recovery @security recovers original bytes through the real main inspection and restart', async ({
+  e2eElectron,
+}, testInfo) => {
+  const proof = await runElectronWorkspaceOriginalInspectionProof(e2eElectron.electronApp, testInfo);
+  expect(proof).toEqual({
+    originalRecoveredBeforeBackend: true,
+    inspectionMetadataCleared: true,
+    journalCleared: true,
+    businessAndPdfPreservedAfterRestart: true,
+    backendExitAndReservationReleased: true,
+    backendStarts: 2,
+  });
 });
 
 test('DESK-PDF-001 @critical opens one isolated invoice PDF preview', async ({

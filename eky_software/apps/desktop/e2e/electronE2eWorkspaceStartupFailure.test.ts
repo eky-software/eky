@@ -65,6 +65,31 @@ describe('Electron E2E workspace authority forwarding', () => {
     await expect(resolveElectronE2eWorkspaceStartup('synthetic-root')).resolves.toBe(result);
   });
 
+  it.each([false, true])('retains the exact adoption owner with selector authority: %s', async selector => {
+    const adoptionAuthority: NonNullable<ActiveWorkspaceStartupOptions['adoptionAuthority']> = {
+      assertMutationCurrent: vi.fn(), assertCurrent: vi.fn(), onUncertain: vi.fn(),
+    };
+    const selectorAuthority: NonNullable<ActiveWorkspaceStartupOptions['selectorAuthority']> = {
+      assertCurrent: vi.fn(), admitSelection: vi.fn(), proveTerminal: vi.fn(),
+    };
+    const result = { mode: 'adoption' };
+    resolveStartup.mockImplementationOnce(async (_root: string, options: ActiveWorkspaceStartupOptions) => {
+      expect(options.adoptionAuthority).toBe(adoptionAuthority);
+      return result;
+    });
+    await expect(resolveElectronE2eWorkspaceStartup('synthetic-root', {
+      adoptionAuthority, ...(selector ? { selectorAuthority } : {}),
+    })).resolves.toBe(result);
+  });
+
+  it('preserves the original failure privately without exposing it in the safe message', async () => {
+    const original = new Error('synthetic private original failure');
+    resolveStartup.mockRejectedValueOnce(original);
+    await expect(resolveElectronE2eWorkspaceStartup('synthetic-root')).rejects.toMatchObject({
+      message: 'DESKTOP_SMOKE_E2E_WORKSPACE_RESOLUTION_FAILED', cause: original,
+    });
+  });
+
   it('retains phase failure classification and clears a completed phase', async () => {
     for (const complete of [false, true]) {
       resolveStartup.mockImplementationOnce(async (_root: string, options: ActiveWorkspaceStartupOptions) => {

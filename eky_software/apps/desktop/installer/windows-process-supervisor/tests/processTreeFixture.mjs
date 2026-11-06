@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { constants } from 'node:fs';
 import { access, mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { basename, dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
 const MODES = new Set([
@@ -16,6 +16,10 @@ const MODES = new Set([
   'spawnGrandchildAndHold',
   'spawnGrandchildOnReleaseAndHold',
   'spawnGrandchildThenExitOnRelease',
+  'workspaceReservationRelease',
+  'workspaceReservationFailure',
+  'workspaceReservationDeadline',
+  'packagedPreparationFailure',
 ]);
 const ROLES = new Set(['grandchild', 'root', 'sentinel']);
 
@@ -169,12 +173,64 @@ async function main() {
       throw error;
     }
   });
+  let workspaceReservation;
+  if (input.mode === 'packagedPreparationFailure') {
+    if (input.role !== 'root' || process.env.EKY_E2E !== '1') throw new Error('FIXTURE_ARGUMENT_INVALID');
+    const { tmpdir } = await import('node:os');
+    const { resolvePackagedSmokeTempPath } = await import('../../../dist/main/packagedSmoke.js');
+    const { createPackagedWorkspaceDeletionPreparation } = await import('../../../scripts/packagedWorkspaceDeletionPreparation.mjs');
+    const { createRunnerFailureSink } = await import('../../../../../test-reporters/runnerFailureEvidence.mjs');
+    const smokeToken = input.runNonce.slice(0, 32);
+    const context = Object.freeze({ smokeToken,
+      smokeRootDirectory: join(resolvePackagedSmokeTempPath(tmpdir()), 'eky-desktop-smoke', smokeToken) });
+    const preparation = createPackagedWorkspaceDeletionPreparation({ signal: new AbortController().signal,
+      async assertPreviousPhaseStopped(selected, phase) {
+        if (selected !== context || phase !== 'new') throw new Error('FIXTURE_ARGUMENT_INVALID');
+        if (process.env.EKY_PREPARATION_FIXTURE_GUARD_FAILURE === '1') {
+          throw new Error('SYNTHETIC_PREPARATION_GUARD_FIRST', { cause: new Error('SYNTHETIC_PREPARATION_GUARD_CAUSE') });
+        }
+      } });
+    let failure;
+    try { await preparation.prepareAfterRestoredExit(context); } catch (error) { failure = { error }; }
+    const sink = createRunnerFailureSink({ tempRoot: process.env.RUNNER_TEMP });
+    if (failure !== undefined) sink.record({ runner: 'node', phase: 'packagedPreparationOriginal', attempt: 0,
+      testId: input.scenario, error: failure.error });
+    await sink.flush();
+    if (!(failure?.error instanceof Error) || failure.error.message !== 'PACKAGED_DELETION_PREPARATION_INVALID') {
+      throw new Error('FIXTURE_EXPECTED_PREPARATION_FAILURE_MISSING', { cause: failure?.error });
+    }
+    await writeJsonAtomic(join(input.runRoot, 'preparation-failure.private.json'), {
+      schemaVersion: 1, runNonce: input.runNonce, errorCode: failure.error.message,
+    });
+    // The existing failure branch exits without releasing the real preparation's exclusion.
+    workspaceReservation = preparation;
+  } else if (input.mode.startsWith('workspaceReservation')) {
+    if (input.role !== 'root') throw new Error('FIXTURE_ARGUMENT_INVALID');
+    const { acquireWorkspaceProcessReservation } = await import(pathToFileURL(
+      join(dirname(input.runRoot), 'reservation-runtime', 'workspaceProcessReservation.js')).href);
+    workspaceReservation = await acquireWorkspaceProcessReservation({
+      userDataRoot: input.runRoot, signal: new AbortController().signal,
+    });
+    await workspaceReservation.assertOwned();
+  }
   await writeJsonAtomic(join(input.runRoot, input.role + '.ready.json'), {
     schemaVersion: 1,
     runNonce: input.runNonce,
     role: input.role,
     processId: process.pid,
   });
+
+  if (workspaceReservation !== undefined) {
+    await waitForRelease(input.runRoot, input.role);
+    if (input.mode === 'workspaceReservationRelease') {
+      await workspaceReservation.release();
+      await writeWorkerResult(input, 'completed', 'fixtureCompleted', null);
+      return;
+    }
+    await writeWorkerResult(input, 'failed', 'fixtureFailed', 'fixtureNonZero');
+    // Deliberate worker failure, not graceful release or successful profile cleanup.
+    process.exit(23);
+  }
 
   if (input.mode === 'exitZero') {
     await writeWorkerResult(

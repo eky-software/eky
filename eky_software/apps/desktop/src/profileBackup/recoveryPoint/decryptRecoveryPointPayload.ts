@@ -5,6 +5,8 @@ import type { FileHandle } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { backupStreamChunkBytes } from '../container/backupContainerLimits.js';
+import { captureProfileSnapshotCleanupGuard } from '../profileSnapshotInspectionPort.js';
+import { RecoveryPointCleanupError } from './recoveryPointOperationError.js';
 import {
   decodeRecoveryPointContainerHeader,
   expectedRecoveryPointContainerByteLength,
@@ -18,7 +20,9 @@ export async function decryptRecoveryPointPayload(input: {
   containerPath: string;
   dataKey: Buffer;
   quarantinePath: string;
+  assertCleanupCurrent?: () => void;
 }): Promise<RecoveryPointContainerHeader> {
+  const assertCleanupCurrent = captureProfileSnapshotCleanupGuard(input.assertCleanupCurrent);
   if (input.dataKey.byteLength !== recoveryPointDataKeyLength) {
     throw new Error('RECOVERY_POINT_KEY_INVALID');
   }
@@ -41,6 +45,7 @@ export async function decryptRecoveryPointPayload(input: {
   const key = Buffer.from(input.dataKey);
   let destination: FileHandle | undefined;
   let destinationCreated = false;
+  let failure: { error: unknown } | undefined;
 
   try {
     const sourceMetadata = await source.stat({ bigint: true });
@@ -132,21 +137,56 @@ export async function decryptRecoveryPointPayload(input: {
       await source.stat({ bigint: true }),
     );
     await destination.sync();
-    await destination.close();
-    destination = undefined;
+    if (assertCleanupCurrent === undefined) {
+      await destination.close();
+      destination = undefined;
+    } else {
+      const closing = destination;
+      destination = undefined;
+      try {
+        await closing.close();
+      } catch (closeError) {
+        throw new RecoveryPointCleanupError(closeError);
+      }
+    }
     await fileSystem.chmod(input.quarantinePath, 0o400);
     return header;
   } catch (error) {
+    if (assertCleanupCurrent !== undefined) {
+      failure = { error };
+      try {
+        await destination?.close();
+      } catch (closeError) {
+        failure = { error: new RecoveryPointCleanupError(new AggregateError(
+          [error, closeError], 'RECOVERY_POINT_WRITE_FAILED')) };
+      }
+      throw failure.error;
+    }
     await destination?.close().catch(() => undefined);
     if (destinationCreated) {
-      await fileSystem
-        .rm(input.quarantinePath, { force: true })
-        .catch(() => undefined);
+      try {
+        await fileSystem.rm(input.quarantinePath, { force: true });
+      } catch { /* Retain the failed operation and its original cause. */ }
     }
     throw error;
   } finally {
     key.fill(0);
-    await source.close();
+    if (assertCleanupCurrent === undefined) {
+      await source.close();
+    } else {
+      try {
+        await source.close();
+      } catch (closeError) {
+        throw new RecoveryPointCleanupError(failure === undefined ? closeError : new AggregateError(
+          [failure.error, closeError], 'RECOVERY_POINT_READ_FAILED'));
+      }
+      if (failure !== undefined && destinationCreated && !(failure.error instanceof RecoveryPointCleanupError)) {
+        try {
+          assertCleanupCurrent();
+          await fileSystem.rm(input.quarantinePath, { force: true });
+        } catch { /* Retain the failed operation and its original cause. */ }
+      }
+    }
   }
 }
 

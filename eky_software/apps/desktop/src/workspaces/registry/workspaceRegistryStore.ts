@@ -14,6 +14,8 @@ import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
   type CrashSafeByteSlotSelection,
+  type ObservedRecoveryAuthority,
+  type ObservedRecoverySelection,
 } from '../persistence/crashSafeByteSlotStore.js';
 import { CrashSafeFileSlotError, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
@@ -64,7 +66,7 @@ export class WorkspaceRegistryStore {
     });
   }
 
-  inspectSlots(): Promise<ReadOnlyJournalSlots<LocalWorkspaceRegistry>> {
+  inspectSlots(assertAuthority?: () => void): Promise<ReadOnlyJournalSlots<LocalWorkspaceRegistry>> {
     return this.runExclusive(async () => {
       try {
         const result: Record<'current' | 'next' | 'backup',
@@ -72,16 +74,41 @@ export class WorkspaceRegistryStore {
           current: undefined, next: undefined, backup: undefined,
         };
         for (const slot of ['current', 'next', 'backup'] as const) {
+          assertSynchronousAuthority(assertAuthority);
           let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
           const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
+          assertSynchronousAuthority(assertAuthority);
           if (bytes !== undefined) {
             result[slot] = Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes), ...(identity === undefined ? {} : { identity }) });
           }
         }
+        assertSynchronousAuthority(assertAuthority);
         return Object.freeze(result);
       } catch (error) {
         throw this.mapStoreError(error);
       }
+    });
+  }
+
+  inspectRecoverySelection(assertAuthority: () => void) {
+    return this.runExclusive(async () => {
+      try {
+        const selection = await this.byteStore.inspectRecoverySelection(assertAuthority);
+        const value = selection.bytes === undefined ? undefined : parseWorkspaceRegistryBytes(selection.bytes);
+        assertSynchronousAuthority(assertAuthority);
+        return Object.freeze({ ...selection, value });
+      } catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  recoverObservedSelection(selection: ObservedRecoverySelection, authority: ObservedRecoveryAuthority) {
+    return this.runExclusive(async () => {
+      try {
+        if (selection.bytes === undefined) throw new WorkspaceRegistryValidationError();
+        parseWorkspaceRegistryBytes(selection.bytes);
+        const receipt = await this.byteStore.recoverObservedSelection(selection, authority);
+        return Object.freeze({ ...receipt, value: parseWorkspaceRegistryBytes(receipt.bytes) });
+      } catch (error) { throw this.mapStoreError(error); }
     });
   }
 
@@ -101,7 +128,8 @@ export class WorkspaceRegistryStore {
     });
   }
 
-  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+  writeSelected(value: unknown, selection: CrashSafeByteSlotSelection & Partial<Pick<ObservedRecoveryAuthority, 'onUncertain'>>): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    const onUncertain = selection.onUncertain?.bind(selection);
     return this.runExclusive(async () => {
       const registry = validateWorkspaceRegistry(value);
       try {
@@ -111,7 +139,13 @@ export class WorkspaceRegistryStore {
           }
         }
         return await this.byteStore.replaceSelected(serializeWorkspaceRegistry(registry), selection);
-      } catch (error) { throw this.mapStoreError(error); }
+      } catch (error) {
+        try {
+          const result: unknown = onUncertain?.(error);
+          if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+        } catch { /* Preserve the original failure before safe mapping. */ }
+        throw this.mapStoreError(error);
+      }
     });
   }
 
@@ -172,5 +206,14 @@ export class WorkspaceRegistryStore {
       return new WorkspaceRegistryValidationError();
     }
     return new WorkspaceRegistryStoreError(WORKSPACE_REGISTRY_UNAVAILABLE);
+  }
+}
+
+function assertSynchronousAuthority(assertAuthority: (() => void) | undefined): void {
+  if (assertAuthority === undefined) return;
+  const result: unknown = assertAuthority();
+  if (result !== undefined) {
+    void Promise.resolve(result).catch(() => undefined);
+    throw new WorkspaceRegistryValidationError();
   }
 }

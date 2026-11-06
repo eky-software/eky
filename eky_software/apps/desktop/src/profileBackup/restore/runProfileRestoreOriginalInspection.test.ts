@@ -4,7 +4,7 @@ import {
   profileInspectionWorkMilliseconds, type OriginalProfileInspectionReceipt, type ProfileInspectionOriginalSources,
 } from '../../runtime/profileInspectionMessages.js';
 import { ProfileInspectionProcessError, type OriginalProfileInspectionResult } from '../../runtime/profileInspectionProcess.js';
-import type { WorkspaceProcessReservationTransfer } from '../../runtime/workspaceProcessReservation.js';
+import type { WorkspaceProcessReservationPreparation, WorkspaceProcessReservationTransfer } from '../../runtime/workspaceProcessReservation.js';
 import { runProfileRestoreOriginalInspection } from './runProfileRestoreOriginalInspection.js';
 
 type ProcessOptions = Parameters<typeof import('../../runtime/profileInspectionProcess.js')['runColdOriginalProfileInspectionProcess']>[0];
@@ -196,12 +196,13 @@ function fixture() {
   const readSources = vi.fn(async (_input: { deadline: number; signal: AbortSignal }): Promise<ProfileInspectionOriginalSources> => sources);
   const assertLineage = vi.fn((_profileId: string) => {});
   const reservation = { assertMainOwned, invalidate,
-    bind(generationId: string, authority: () => void, prepare: (signal: AbortSignal) => Promise<void>): WorkspaceProcessReservationTransfer {
+    bind(generationId: string, authority: () => void, prepare: WorkspaceProcessReservationPreparation): WorkspaceProcessReservationTransfer {
       authority();
       return { descriptor: { generationId, identity: 'b'.repeat(64), userDataRoot: resolve('synthetic-failed', operationId) },
-        prepare, assertGrant: async () => {}, assertCurrent: () => {}, reclaimAfterExit: async () => {}, invalidate };
+        prepare: signal => prepare(signal, authority, assertMainOwned),
+        assertGrant: async () => {}, assertCurrent: () => {}, reclaimAfterExit: async () => {}, invalidate };
     } };
-  const start = () => runProfileRestoreOriginalInspection({ operationId, reservation, assertAuthority, readSources, assertLineage,
+  const start = () => runProfileRestoreOriginalInspection({ operationId, target: { kind: 'unbound' }, reservation, assertAuthority, readSources, assertLineage,
     signal: cancellation.signal, runnerPath: resolve('synthetic-runner.js'), deployment: { backendRoot: resolve('backend'),
       migrationsDirectory: resolve('backend/migrations'), nativeResourceRoot: resolve('native') } });
   return { start, cancellation, assertAuthority, assertMainOwned, invalidate, readSources, assertLineage };

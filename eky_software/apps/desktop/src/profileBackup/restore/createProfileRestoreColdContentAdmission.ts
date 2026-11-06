@@ -11,10 +11,12 @@ import type { ProfileRestoreActivationJournalStore } from './profileRestoreActiv
 import type { ProfileRestoreActivationTransaction } from './profileRestoreActivationTransaction.js';
 import type { ProfileRestoreColdContentContext } from './prepareProfileRestoreColdForwardRecovery.js';
 import { runProfileRestoreColdInspection, type ProfileRestoreColdInspectionResult } from './runProfileRestoreColdInspection.js';
+import { captureOwnedProfileInspectionTarget, type OwnedProfileInspectionTarget } from '../runOwnedProfileInspection.js';
 
 /** One forward operation's immutable content; fresh census and bytes still gate every mutation. */
 export function createProfileRestoreColdContentAdmission(input: {
   readonly operationId: string;
+  readonly target: OwnedProfileInspectionTarget;
   readonly workspaceRoot: string;
   readonly stagingRoot: string;
   readonly runnerPath: string;
@@ -23,12 +25,16 @@ export function createProfileRestoreColdContentAdmission(input: {
   readonly transaction: Pick<ProfileRestoreActivationTransaction, 'readForwardRecoverySources'>;
   readonly assertLineage: (profileId: string) => void;
   readonly inspect?: typeof runProfileRestoreColdInspection;
+  readonly observeException?: (error: unknown) => void;
 }) {
+  const target = captureOwnedProfileInspectionTarget(input.target);
   let initial: ProfileRestoreColdInspectionResult | undefined;
   let selected: ProfileRestoreColdInspectionResult | undefined;
   return async (context: ProfileRestoreColdContentContext): Promise<void> => {
     const journal = captureProfileRestoreActivationJournal(context.journal);
     if (journal.operationId !== input.operationId) throw invalid();
+    const assertReadCurrent = (context.assertReadOwnership ?? context.assertCurrent).bind(context);
+    if (context.assertReadOwnership !== undefined) await context.assertCurrent();
     const read = async <T>(task: () => Promise<T>): Promise<T> => {
       context.assertAuthority();
       context.reservation.assertMainCurrent();
@@ -45,21 +51,29 @@ export function createProfileRestoreColdContentAdmission(input: {
       }
     };
     const readSources = async () => {
-      await context.assertCurrent();
+      await assertReadCurrent();
       assertProfileRestoreActivationJournalMatches(journal, await read(() => input.journalStore.peek()));
       const slots = await read(() => input.transaction.readForwardRecoverySources(journal));
-      await context.assertCurrent();
+      await assertReadCurrent();
       const sources = parseProfileInspectionColdSources({ workspaceRoot: input.workspaceRoot, ...slots });
       if (sources === undefined) throw invalid();
+      return sources;
+    };
+    const readInspectionSources = async () => {
+      if (context.assertReadOwnership !== undefined) await context.assertCurrent();
+      const sources = await readSources();
+      if (context.assertReadOwnership !== undefined) await context.assertCurrent();
       return sources;
     };
     let sources = await readSources();
     if (selected === undefined || selected.receipt.databaseSlot !== sources.databaseSlot ||
         selected.receipt.documentsSlot !== sources.documentsSlot) {
       const result = await (input.inspect ?? runProfileRestoreColdInspection)({
+        target,
+        ...(input.observeException === undefined ? {} : { observeException: input.observeException }),
         operationId: input.operationId, runnerPath: input.runnerPath, deployment: input.deployment,
         reservation: context.reservation, assertAuthority: context.assertAuthority,
-        assertLineage: input.assertLineage, readSources, signal: context.signal, deadline: context.deadline,
+        assertLineage: input.assertLineage, readSources: readInspectionSources, signal: context.signal, deadline: context.deadline,
       });
       if (initial !== undefined) assertProfileRestoreContentMatches(initial, result);
       initial ??= result;
@@ -68,7 +82,7 @@ export function createProfileRestoreColdContentAdmission(input: {
     sources = await readSources();
     if (selected.receipt.databaseSlot !== sources.databaseSlot || selected.receipt.documentsSlot !== sources.documentsSlot) throw invalid();
     input.assertLineage(selected.receipt.profileId);
-    await context.assertCurrent();
+    await assertReadCurrent();
     input.assertLineage(selected.receipt.profileId);
     await read(() => assertProfileRestoreColdSourceBytes({
       operationRoot: join(input.stagingRoot, input.operationId), sources, result: selected!,

@@ -30,6 +30,7 @@ interface ProfileInspectionProcessOptions {
   readonly deadline: number;
   readonly assertAuthority: () => void;
   readonly signal: AbortSignal;
+  readonly observeException?: (error: unknown) => void;
 }
 
 type Preparation = Extract<ProfileInspectionCommand, { type: 'prepare' }>;
@@ -90,6 +91,12 @@ function runInspectionProcess<T extends ProfileInspectionReceipt | ColdProfileIn
     let cleanupDeadline = 0;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let transferInvalidated = false;
+    const observeException = options.observeException;
+    const recordFailure = (error: unknown, cause: ProfileInspectionFailureCause | 'unknown') => {
+      if (firstCause !== undefined) return;
+      firstCause = cause;
+      try { observeException?.(error); } catch { /* Optional private test evidence. */ }
+    };
 
     const invalidate = () => {
       if (transferInvalidated) return;
@@ -110,7 +117,12 @@ function runInspectionProcess<T extends ProfileInspectionReceipt | ColdProfileIn
         try {
           const settled = await withinDeadline(Promise.allSettled([preparation, authorization]).then(() => {}), cleanupDeadline);
           if ((exitCode !== undefined || !forkAttempted) && settled && !transferInvalidated) {
-            reclaimed = await withinDeadline(options.reservationTransfer.reclaimAfterExit(cancellation.signal), cleanupDeadline);
+            const reclaim = Promise.resolve().then(() => options.reservationTransfer.reclaimAfterExit(cancellation.signal))
+              .catch(error => {
+                recordFailure(error, readProfileInspectionFailureCause(error) ?? 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED');
+                throw error;
+              });
+            reclaimed = await withinDeadline(reclaim, cleanupDeadline);
           }
           if (!reclaimed) {
             firstCause ??= 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED';
@@ -128,7 +140,7 @@ function runInspectionProcess<T extends ProfileInspectionReceipt | ColdProfileIn
             reject(reclaimed);
           }
         } catch (error) {
-          firstCause ??= readProfileInspectionFailureCause(error) ?? 'PROFILE_INSPECTION_PROTOCOL_INVALID';
+          recordFailure(error, readProfileInspectionFailureCause(error) ?? 'PROFILE_INSPECTION_PROTOCOL_INVALID');
           if (!reclaimed) invalidate();
           phase = 'finished';
           reject(reclaimed);
@@ -157,11 +169,11 @@ function runInspectionProcess<T extends ProfileInspectionReceipt | ColdProfileIn
         try { child!.kill(); } catch { /* Kill failure never establishes absence. */ }
       }, profileInspectionShutdownMilliseconds);
       try { child.postMessage(createProfileInspectionCommand({ ...requestIdentity(prepared), type: 'shutdown' })); }
-      catch { firstCause ??= 'PROFILE_INSPECTION_PROTOCOL_INVALID'; }
+      catch (error) { recordFailure(error, 'PROFILE_INSPECTION_PROTOCOL_INVALID'); }
     };
-    const fail = (error: unknown) => {
+    const fail = (error: unknown, cause: ProfileInspectionFailureCause | 'unknown' = readProfileInspectionFailureCause(error) ?? 'unknown') => {
       if (phase === 'finished') return;
-      firstCause ??= readProfileInspectionFailureCause(error) ?? 'unknown';
+      recordFailure(error, cause);
       close();
     };
     const aborted = () => fail(new Error('PROFILE_INSPECTION_TIMEOUT'));
@@ -245,7 +257,7 @@ function runInspectionProcess<T extends ProfileInspectionReceipt | ColdProfileIn
         execArgv: [`--max-old-space-size=${profileInspectionV8HeapMiB}`],
       });
       child.on('message', message);
-      child.once('error', () => fail(new Error('PROFILE_INSPECTION_PROTOCOL_INVALID')));
+      child.once('error', error => fail(error, 'PROFILE_INSPECTION_PROTOCOL_INVALID'));
       child.once('exit', code => {
         exitCode = code;
         if (code !== 0 || result === undefined || !terminalSeen) firstCause ??= 'PROFILE_INSPECTION_PROTOCOL_INVALID';

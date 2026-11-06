@@ -282,6 +282,14 @@ failure-kentät tarkistetaan myös tukipaketin vastaanottorajalla
 Minimoitu incident-yhteenveto ei sisällä vaihetta, kestoa tai korrelaatiota.
 Formaatti, säilytysajat ja kokorajat eivät muutu.
 
+Työtilan poiston ja journalista jatkamisen
+`workspaceManagement.operationFailed` säilyttää katalogin suljetut
+loogiset toiminnot, vaiheet ja syykoodit sekä erillisen cleanup-tapahtuman
+samalla korrelaatiolla. Mainin nykyinen vastaanottaja validoi ne uudelleen;
+incident-projektio on edelleen minimoitu. Tämä täyden tukipaketin
+lukijasopimus ei toteuta yllä ehdotettua backenditonta v3-vientiä eikä
+yksin todista cold-kuluttajan kytkentää.
+
 Workspace-tuonnin ja korvauksen `workspaceBackup.operationFailed` sekä
 `workspaceBackup.cleanupFailed` käyttävät samaa rajattua teknistä
 projektiota ilman recovery point -kindiä. Näille sallitaan vain suljettu

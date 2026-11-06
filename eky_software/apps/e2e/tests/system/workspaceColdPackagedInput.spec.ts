@@ -15,8 +15,10 @@ import { prepareWorkspaceColdRecoveryPackagedSmoke } from '../../src/data/prepar
 import { createE2eRunRoot } from '../../src/environment/createE2eRunRoot.js';
 import { removeE2eRunRoot } from '../../src/environment/removeE2eRunRoot.js';
 
-for (const kind of ['creation', 'import'] as const) {
-  test(`SYS-WORKSPACE-COLD-PACKAGED-${kind.toUpperCase()}-001 @critical @recovery validates input and rejects incomplete or changed recovery`, async () => {
+for (const scenario of ['creation', 'import', 'boundImport'] as const) {
+  const kind = scenario === 'creation' ? 'creation' : 'import';
+  const name = scenario === 'boundImport' ? 'BOUND-IMPORT' : kind.toUpperCase();
+  test(`SYS-WORKSPACE-COLD-PACKAGED-${name}-001 @critical @recovery validates input and rejects incomplete or changed recovery`, async () => {
     const runRoot = createE2eRunRoot();
     const smokeToken = randomBytes(16).toString('hex');
     const previous = process.env.EKY_E2E;
@@ -24,7 +26,7 @@ for (const kind of ['creation', 'import'] as const) {
     let passed = false;
     let prepared: Awaited<ReturnType<typeof prepareWorkspaceColdRecoveryPackagedSmoke>> | undefined;
     try {
-      prepared = await prepareWorkspaceColdRecoveryPackagedSmoke({ kind, runRoot, smokeToken });
+      prepared = await prepareWorkspaceColdRecoveryPackagedSmoke({ kind, runRoot, smokeToken, bindImport: scenario === 'boundImport' });
       const journal = readFileSync(prepared.journalPaths.currentPath);
       await expect(prepared.verifyRecovered()).rejects.toThrow('WORKSPACE_COLD_PACKAGED_JOURNAL_REMAINS');
       await expect(prepareWorkspaceColdRecoveryPackagedSmoke({ kind, runRoot, smokeToken })).rejects.toMatchObject({ code: 'EEXIST' });
@@ -38,6 +40,19 @@ for (const kind of ['creation', 'import'] as const) {
       const registry = new WorkspaceRegistryStore({ installationRoot: prepared.userDataRoot,
         filePath: join(prepared.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME) });
       await registry.write(prepared.expectedRegistry);
+      if (prepared.bindingPaths !== undefined) {
+        await expect(prepared.verifyRecovered()).rejects.toThrow('WORKSPACE_COLD_PACKAGED_BINDING_REMAINS');
+        const bindingBytes = readFileSync(prepared.bindingPaths.currentPath);
+        // Simulate metadata postconditions only; actual retirement is a packaged gate.
+        const held = await acquireWorkspaceProcessReservation({ userDataRoot: prepared.userDataRoot, signal: AbortSignal.timeout(5_000) });
+        try { await unlink(prepared.bindingPaths.currentPath); }
+        finally { await held.release(); }
+        for (const slot of ['nextPath', 'backupPath'] as const) {
+          writeFileSync(prepared.bindingPaths[slot], bindingBytes);
+          await expect(prepared.verifyRecovered()).rejects.toThrow();
+          await unlink(prepared.bindingPaths[slot]);
+        }
+      }
       await prepared.verifyRecovered();
       writeFileSync(prepared.journalPaths.nextPath, journal);
       await expect(prepared.verifyRecovered()).rejects.toThrow('WORKSPACE_COLD_PACKAGED_JOURNAL_REMAINS');
@@ -74,6 +89,12 @@ test('SYS-WORKSPACE-COLD-PACKAGED-ADMISSION-001 @critical @security rejects an i
     for (const token of ['', '../escape', 'A'.repeat(32)]) {
       await expect(prepareWorkspaceColdRecoveryPackagedSmoke({ ...input, smokeToken: token })).rejects.toThrow('WORKSPACE_COLD_PACKAGED_ADMISSION_FAILED');
     }
+    for (const bindImport of ['yes', 1, null]) {
+      await expect(prepareWorkspaceColdRecoveryPackagedSmoke({ ...input, kind: 'import', bindImport: bindImport as never }))
+        .rejects.toThrow('WORKSPACE_COLD_PACKAGED_ADMISSION_FAILED');
+    }
+    await expect(prepareWorkspaceColdRecoveryPackagedSmoke({ ...input, bindImport: true }))
+      .rejects.toThrow('WORKSPACE_COLD_PACKAGED_ADMISSION_FAILED');
     await expect(prepareWorkspaceColdRecoveryPackagedSmoke({ ...input, runRoot: tmpdir() })).rejects.toThrow('WORKSPACE_COLD_PACKAGED_ROOT_INVALID');
     expect(existsSync(join(realpathSync(tmpdir()), 'eky-desktop-smoke', smokeToken))).toBe(false);
     expect(readdirSync(runRoot)).toEqual([]);

@@ -126,22 +126,25 @@ async function fixture(options: Options = {}) {
     return receipt;
   });
   const client = new ProfileSnapshotInspectionClient({
+    captureSourceTarget: () => ({ kind: 'unbound' }),
     stagingRoot, runnerPath: join(root, 'synthetic-runner.js'),
     deployment: { backendRoot: join(root, 'backend'), migrationsDirectory: join(root, 'migrations'), nativeResourceRoot: join(root, 'native') },
     assertMainInstance() {},
     async acquireReservation({ operationRoot }): Promise<OwnedProfileBackupInspectionReservation> {
       let invalidated = false;
       let closed = false;
+      const assertMainOwned = async () => {
+        if (invalidated || closed) throw new Error('SYNTHETIC_RESERVATION_LOST');
+        await fs.lstat(operationRoot);
+      };
       return {
-        async assertMainOwned() {
-          if (invalidated || closed) throw new Error('SYNTHETIC_RESERVATION_LOST');
-          await fs.lstat(operationRoot);
-        },
+        assertMainOwned,
         invalidate() { invalidated = true; },
         bind(generationId, assertAuthority, prepareMainOwned) {
           return {
             descriptor: { generationId, identity: 'd'.repeat(64), userDataRoot: operationRoot },
-            prepare: prepareMainOwned, assertCurrent: assertAuthority,
+            prepare: signal => prepareMainOwned(signal, assertAuthority, assertMainOwned),
+            assertCurrent: assertAuthority,
             async assertGrant() { assertAuthority(); }, async reclaimAfterExit() {},
             invalidate() { invalidated = true; },
           };

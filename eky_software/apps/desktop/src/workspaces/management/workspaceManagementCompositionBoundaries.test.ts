@@ -93,7 +93,7 @@ describe('workspace management composition boundaries', () => {
         workspaceComposition,
         'maintenanceLease: options.maintenanceLease,',
       ),
-    ).toBe(8); // Delete preparation also borrows this same installation owner.
+    ).toBe(10); // Import/replacement bindings and delete preparation borrow the installation owner.
     expect(workspaceComposition).toContain("completionMode: 'beforeRuntimeStart' as const");
     expect(workspaceComposition).toContain('assertRecoveryAdmission: options.assertRecoveryAdmission,');
     expect(workspaceComposition).toContain('workspaceRuntimeAbsence: options.workspaceRuntimeAbsence,');
@@ -101,8 +101,10 @@ describe('workspace management composition boundaries', () => {
       'maintenanceState: options.maintenanceLease,',
     );
     expect(workspaceComposition).toContain(
-      'runtimeRelaunchCompletion: deletion === undefined ? options.runtimeRelaunch : {',
+      'runtimeRelaunchCompletion: {',
     );
+    expect(workspaceComposition).not.toContain('runtimeRelaunchCompletion: deletion === undefined ?');
+    expect(workspaceComposition).toContain('options.runtimeRelaunch.complete(() => {\n            if (assertImport !== undefined) assertUpdateJournalAuthority(assertImport);\n            assertReplacementAvailable();');
     expect(workspaceComposition).toContain('options.runtimeRelaunch.complete(() => {');
     expect(workspaceComposition).toContain('if (assertCurrent !== undefined) assertUpdateJournalAuthority(assertCurrent);');
     expect(workspaceComposition).toContain('if (assertReturn !== undefined) assertUpdateJournalAuthority(assertReturn);');
@@ -121,9 +123,12 @@ describe('workspace management composition boundaries', () => {
   it('keeps both production preparation hooks dormant without the real journal consumer', async () => {
     for (const file of ['desktopComposition.ts', 'desktopSelectorComposition.ts']) {
       const source = await readFile(join(desktopSourceRoot, 'main', file), 'utf8');
-      expect(source).toContain('options.workspaceDeletionPublisher === undefined ? {} : { deletionPreparation: {');
+      expect(source).toContain('options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({');
+      expect(source).toContain('const deletionPublisher = deletionBinding?.publish ?? options.workspaceDeletionPublisher;');
+      expect(source).toContain('deletionBinding === undefined ? {} : { deletionContinuation: deletionBinding.continuation }');
+      expect(source).toContain('deletionPublisher === undefined ? {} : { deletionPreparation: {');
       expect(source).toContain('runtimeGeneration: options.runtimeInstanceId,');
-      expect(source).toContain('publish: options.workspaceDeletionPublisher,');
+      expect(source).toContain('publish: deletionPublisher,');
       expect(source).toContain('...createWorkspaceDeletionConfirmations(');
       expect(source).not.toMatch(/ipcMain\.handle\([^\n]*[Dd]elet/u);
     }

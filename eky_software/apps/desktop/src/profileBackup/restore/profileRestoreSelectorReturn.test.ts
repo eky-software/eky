@@ -24,7 +24,7 @@ describe('rolled-back selector return', () => {
     const f = await fixture();
     await f.recovery.completeRolledBackBeforeSelectorReturn(f.admission);
     expect(f.assertContent).toHaveBeenCalledTimes(2);
-    expect(f.clear).toHaveBeenCalledExactlyOnceWith(f.selected, expect.any(Function), expect.any(Function));
+    expect(f.clear).toHaveBeenCalledExactlyOnceWith(f.selected, expect.any(Function), expect.any(Function), undefined);
     expect(f.recovery.readAcceptanceState()).toBe('notStarted');
     expect(f.read).toHaveBeenCalledOnce();
     expect(f.peek).toHaveBeenCalledOnce();
@@ -110,6 +110,51 @@ describe('rolled-back selector return', () => {
     await expect(f.recovery.completeRolledBackBeforeSelectorReturn(f.admission)).rejects.toMatchObject({ cause: first });
     expect(f.clear).not.toHaveBeenCalled();
   });
+
+  it.each(['success', 'failure'] as const)('closes scoped cleanup authority after %s', async outcome => {
+    const f = await fixture();
+    const first = new Error('synthetic cleanup failure');
+    const read = vi.fn(async () => {}); const mutation = vi.fn(() => {});
+    let captured!: NonNullable<ProfileRestoreColdRollbackAdmission['coldCleanupContext']>;
+    f.clear.mockImplementationOnce(async (_journal, guard, _release, context) => {
+      captured = context!;
+      await captured.assertReadOwnership(); captured.assertMutationCurrent();
+      if (outcome === 'failure') throw first;
+      await guard!();
+      f.peek.mockResolvedValue(undefined);
+    });
+    const work = f.recovery.completeRolledBackBeforeSelectorReturn({ ...f.admission,
+      coldCleanupContext: { assertReadOwnership: read, assertMutationCurrent: mutation } });
+    if (outcome === 'success') await expect(work).resolves.toBeUndefined();
+    else await expect(work).rejects.toMatchObject({ cause: first });
+    await expect(captured.assertReadOwnership()).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
+    expect(() => captured.assertMutationCurrent()).toThrow('PROFILE_RESTORE_DECISION_INVALID');
+    expect(read).toHaveBeenCalledOnce(); expect(mutation).toHaveBeenCalledOnce();
+  });
+
+  it('rejects authority lost during a scoped cleanup read before any following mutation', async () => {
+    const f = await fixture(); const mutation = vi.fn(() => {});
+    f.clear.mockImplementationOnce(async (_journal, _guard, _release, context) => {
+      await context!.assertReadOwnership(); context!.assertMutationCurrent();
+    });
+    await expect(f.recovery.completeRolledBackBeforeSelectorReturn({ ...f.admission,
+      coldCleanupContext: { assertMutationCurrent: mutation, async assertReadOwnership() {
+        await expect(f.recovery.prepareBeforeBackend()).rejects.toThrow('PROFILE_RESTORE_DECISION_INVALID');
+      } },
+    })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(mutation).not.toHaveBeenCalled(); expect(f.stored()).toEqual(f.selected);
+  });
+
+  it.each([null, {}, { assertReadOwnership: async () => {} }, { assertMutationCurrent() {} }])(
+    'rejects incomplete scoped cleanup authority before cleanup: %j', async context => {
+      const f = await fixture();
+      await expect(f.recovery.completeRolledBackBeforeSelectorReturn({ ...f.admission,
+        coldCleanupContext: context as NonNullable<ProfileRestoreColdRollbackAdmission['coldCleanupContext']>,
+      })).rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+      expect(f.clear).not.toHaveBeenCalled(); expect(f.assertContent).not.toHaveBeenCalled();
+      expect(f.stored()).toEqual(f.selected);
+    },
+  );
 
   it.each(['prepare', 'validate', 'accept', 'rollback', 'selectorReturn'] as const)(
     'seals a competing %s call even when its rejection is caught', async action => {

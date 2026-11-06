@@ -64,6 +64,7 @@ export interface DesktopBackendStartupControl {
 }
 
 export interface DesktopBackendHandle {
+  assertRunning(): void;
   onUnexpectedExit(callback: () => void): void;
   port: number;
   stop(): Promise<BackendShutdownOutcome>;
@@ -445,6 +446,12 @@ export function startDesktopBackend(
         ),
       );
       resolveStart({
+        assertRunning() {
+          if (phase !== 'ready' || handoff !== 'granted' || stopping ||
+              observedExitCode !== undefined || transferInvalidated || startupCancellation.signal.aborted) {
+            throw new Error('BACKEND_PROCESS_RESERVATION_FAILED');
+          }
+        },
         onUnexpectedExit(callback) {
           unexpectedExitCallback = callback;
         },

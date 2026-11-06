@@ -50,6 +50,8 @@ export interface WorkspaceFirstStartProofBusinessSnapshot {
 export interface WorkspaceFirstStartProofReservationScope {
   readonly current: ElectronWorkspaceCandidateRuntimeFactory;
   readonly historical: ElectronWorkspaceCandidateRuntimeFactory;
+  assertCurrent(): void;
+  assertMainOwned(): Promise<void>;
   createCurrentFixture(): Promise<Readonly<WorkspaceFirstStartProofFixture>>;
 }
 
@@ -140,6 +142,10 @@ export async function createWorkspaceFirstStartProofFactories(input: {
         return await use(Object.freeze({
           current,
           historical,
+          assertCurrent: assertScope,
+          async assertMainOwned() {
+            assertScope(); await owner.assertMainOwned(); assertScope();
+          },
           async createCurrentFixture() {
             assertScope();
             await owner.assertMainOwned();

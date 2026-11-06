@@ -12,6 +12,9 @@ import { validateWorkspaceCreationOperationId } from '../src/workspaces/creation
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../src/workspaces/import/workspaceBackupImportJournalPaths.js';
 import { serializeWorkspaceBackupImportJournal } from '../src/workspaces/import/workspaceBackupImportJournalSerializer.js';
 import { WorkspaceBackupImportJournalStore } from '../src/workspaces/import/workspaceBackupImportJournalStore.js';
+import { WorkspaceRemnantBindingStore } from '../src/workspaces/deletion/workspaceRemnantBindingStore.js';
+import { captureWorkspaceRemnantBinding, workspaceRemnantBindingKey } from '../src/workspaces/deletion/workspaceRemnantBindingCodec.js';
+import { InMemoryWorkspaceMaintenanceLease } from '../src/workspaces/maintenance/workspaceMaintenanceLease.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import { deriveWorkspaceRoot } from '../src/workspaces/registry/deriveWorkspaceRoot.js';
@@ -40,8 +43,9 @@ export async function provePublishedWorkspaceColdRecovery(
     appVersion: input.appVersion, buildRevision: revision, resourcesPath: input.resourcesPath,
   });
   try {
-    for (const kind of ['creation', 'import'] as const) {
-      const root = join(input.userDataRoot, kind === 'creation' ? 'c' : 'i');
+    for (const scenario of ['creation', 'import', 'boundImport'] as const) {
+      const kind = scenario === 'creation' ? 'creation' : 'import';
+      const root = join(input.userDataRoot, scenario === 'creation' ? 'c' : scenario === 'import' ? 'i' : 'b');
       await mkdir(root, { recursive: true, mode: 0o700 });
       const registry = new WorkspaceRegistryStore({
         installationRoot: root, filePath: join(root, WORKSPACE_REGISTRY_FILE_NAME),
@@ -74,6 +78,27 @@ export async function provePublishedWorkspaceColdRecovery(
         requireProof(hasWorkspaceLabelConflict(initialRegistry.workspaces, value.workspaceLabel), 'FIXTURE_NAME_CONFLICT');
         await writeFile(journalPath, bytes, { mode: 0o600 });
         requireProof((await journal.read())?.state === 'rootPublished', 'FIXTURE_JOURNAL');
+        const binding = scenario === 'boundImport' ? captureWorkspaceRemnantBinding({
+          formatVersion: 1, owner: 'workspaceImport', operationId: value.operationId,
+          workspaceId: value.workspaceId, lineageIdentity: value.lineageIdentity,
+        }) : undefined;
+        if (binding !== undefined) {
+          const maintenance = new InMemoryWorkspaceMaintenanceLease();
+          const held = await maintenance.acquire('import');
+          const assertLease = maintenance.captureCurrentOwner(['import'], held);
+          const assertAuthority = () => { scope.assertCurrent(); assertLease(); };
+          try {
+            const store = new WorkspaceRemnantBindingStore(root, workspaceRemnantBindingKey(binding));
+            const authority = {
+              assertAuthority, async assertExternalSelection() {
+                assertAuthority(); await scope.assertMainOwned(); assertAuthority();
+              },
+            };
+            await store.publish(binding, authority);
+            const observed = await store.inspect(authority);
+            requireProof(observed.mode === 'published' && isDeepStrictEqual(observed.value, binding), 'FIXTURE_BINDING');
+          } finally { await held.release(); }
+        }
         const expectedRegistry = {
           ...initialRegistry,
           workspaces: [...initialRegistry.workspaces, {
@@ -81,16 +106,22 @@ export async function provePublishedWorkspaceColdRecovery(
             createdAt: value.createdAt, layoutVersion: 1, lifecycleState: 'ready', lineageIdentity: value.lineageIdentity,
           }],
         };
-        return { paths, before, expectedRegistry };
+        return { paths, before, expectedRegistry, binding };
       });
       for (const phase of ['RECOVERED_REGISTRY', 'RESTART_IDEMPOTENCE'] as const) {
         await runColdStartupToBusinessBoundary({ ...input, userDataRoot: root });
         // Acquire before store reads, which may repair slots, not just before deletion.
-        await factories.withWorkspaceReservation(root, async () => {
+        await factories.withWorkspaceReservation(root, async scope => {
           requireProof((await journal.read()) === undefined
             && isDeepStrictEqual(await registry.read(), fixture.expectedRegistry), phase);
           const after = await Promise.all(fixture.paths.map(path => readFile(path)));
           requireProof(fixture.before.every((bytes, index) => bytes.equals(after[index]!)), 'ARTIFACT_PRESERVATION');
+          if (fixture.binding !== undefined) {
+            const observed = await new WorkspaceRemnantBindingStore(root, workspaceRemnantBindingKey(fixture.binding)).inspect({
+              assertAuthority: scope.assertCurrent, assertExternalSelection: scope.assertMainOwned,
+            });
+            requireProof(observed.mode === 'absent', 'BINDING_RETIREMENT');
+          }
         });
       }
     }
@@ -155,6 +186,6 @@ async function runColdStartupToBusinessBoundary(input: Readonly<WorkspaceStartup
 }
 
 function requireProof(condition: boolean, stage: 'FIXTURE_JOURNAL' | 'FIXTURE_NAME_CONFLICT' | 'RECOVERED_REGISTRY'
-  | 'RESTART_IDEMPOTENCE' | 'ARTIFACT_PRESERVATION' | 'PROCESS_CLEANUP' | 'BUSINESS_BOUNDARY'): asserts condition {
+  | 'RESTART_IDEMPOTENCE' | 'ARTIFACT_PRESERVATION' | 'PROCESS_CLEANUP' | 'BUSINESS_BOUNDARY' | 'FIXTURE_BINDING' | 'BINDING_RETIREMENT'): asserts condition {
   if (!condition) throw new Error(`WORKSPACE_PUBLISHED_COLD_RECOVERY_PROOF_${stage}_FAILED`);
 }

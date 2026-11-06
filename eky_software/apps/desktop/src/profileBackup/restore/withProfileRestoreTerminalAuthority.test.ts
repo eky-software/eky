@@ -15,13 +15,291 @@ import { withProfileRestoreTerminalAuthority } from './withProfileRestoreTermina
 import * as cleanupCensus from './profileRestoreTerminalCleanupCensus.js';
 
 const roots: string[] = [];
-afterEach(async () => {
+afterEach(context => {
   vi.restoreAllMocks();
   vi.useRealTimers();
-  for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') for (const root of owned) await rm(root, { recursive: true, force: true });
+  });
 });
 
 describe('live restore terminal authority', () => {
+  it.each([false, true])('retains ordinary acceptance under a selected live owner (accepted: %s)', async accepted => {
+    const f = await fixture(accepted); const selection = selectedOwner();
+    let captured: ProfileRestoreTerminalMutationAuthority | undefined;
+    const use = f.use.getMockImplementation()!;
+    f.use.mockImplementation(async authority => { captured = authority; await use(authority); });
+    await withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use);
+    expect(await f.journalStore.peek()).toBeUndefined(); expect(f.lease.readState()).toBe('idle');
+    expect(selection.assertOperationSelection).toHaveBeenCalled(); expect(selection.onUnsettledWork).not.toHaveBeenCalled();
+    expect(captured!.assertMutationCurrent).toThrow();
+    await expect(captured!.assertCurrent(f.selected, new Set())).rejects.toThrow();
+    expect(f.end).toHaveBeenCalledOnce(); expect(f.invalidated).not.toHaveBeenCalled();
+  });
+
+  it('rejects changed selection before starting the fence', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const first = new Error('SYNTHETIC_SELECTION_CHANGED');
+    selection.assertOperationSelection.mockRejectedValue(first);
+    await expect(withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use))
+      .rejects.toMatchObject({ cause: first });
+    expect(f.begin).not.toHaveBeenCalled(); expect(f.use).not.toHaveBeenCalled();
+    expect(await f.journalStore.peek()).toEqual(f.selected);
+    expect(f.lease.readState()).toBe('idle'); expect(selection.onUnsettledWork).not.toHaveBeenCalled();
+  });
+
+  it('releases a settled failed terminal owner only after verified close, permitting stopped-backend rollback', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const first = new Error('SYNTHETIC_PREPARATION_FAILURE');
+    vi.spyOn(f.input.transaction, 'readTerminalCleanupCensus').mockRejectedValue(first);
+    await expect(withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use))
+      .rejects.toMatchObject({ cause: first });
+    expect(f.invalidated).toHaveBeenCalledOnce(); expect(f.end).not.toHaveBeenCalled();
+    expect(f.lease.readState()).toBe('idle'); expect(selection.onUnsettledWork).not.toHaveBeenCalled();
+    expect(await f.journalStore.peek()).toEqual(f.selected);
+  });
+
+  it('closes a claim arriving within the drain budget without invalidating its native close authority', async () => {
+    const f = await fixture(); const selection = selectedOwner();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    const acquire = f.input.acquireReservation;
+    let owner: Awaited<ReturnType<typeof acquire>> | undefined;
+    let invalidated = false;
+    f.input.acquireReservation = async (...args) => {
+      owner = await acquire(...args);
+      vi.spyOn(owner, 'invalidate').mockImplementation(() => { invalidated = true; });
+      vi.spyOn(owner, 'close').mockImplementation(async () => {
+        if (invalidated) throw new Error('SYNTHETIC_INVALIDATED_NATIVE_CLAIM');
+      });
+      entered.resolve();
+      try { await finish.promise; return owner; } finally { exited.resolve(); }
+    };
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await Promise.race([entered.promise, outcome.then(() => { throw new Error('CLAIM_NOT_ENTERED'); })]);
+      await vi.advanceTimersByTimeAsync(profileInspectionWorkMilliseconds);
+      expect(f.invalidated).toHaveBeenCalledOnce(); expect(owner!.close).not.toHaveBeenCalled();
+      finish.resolve(); await exited.promise;
+      expect(await outcome).toMatchObject({ cause: { message: 'PROFILE_INSPECTION_TIMEOUT' } });
+      expect(owner!.invalidate).not.toHaveBeenCalled(); expect(owner!.close).toHaveBeenCalledOnce();
+      expect(selection.onUnsettledWork).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('idle');
+      expect(f.use).not.toHaveBeenCalled(); expect(f.end).not.toHaveBeenCalled();
+      expect(await f.journalStore.peek()).toEqual(f.selected);
+    } finally { finish.resolve(); await outcome; }
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('retains the owner when claim closure remains pending after a settled failure', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const first = new Error('SYNTHETIC_SETTLED_FAILURE');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    f.use.mockImplementation(async () => {
+      f.claims[1]!.close.mockImplementation(async () => {
+        entered.resolve(); try { await finish.promise; } finally { exited.resolve(); }
+      });
+      throw first;
+    });
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await Promise.race([entered.promise, outcome.then(() => { throw new Error('CLOSE_NOT_ENTERED'); })]);
+      expect(f.invalidated).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      expect((await outcome).cause.errors[0]).toBe(first);
+      expect(selection.onUnsettledWork).toHaveBeenCalledExactlyOnceWith(first);
+      expect(f.lease.readState()).toBe('busy'); expect(f.end).not.toHaveBeenCalled();
+    } finally { finish.resolve(); await exited.promise; await outcome; }
+    expect(f.lease.readState()).toBe('busy'); expect(selection.onUnsettledWork).toHaveBeenCalledOnce();
+  });
+
+  it.each(['selection', 'claim', 'use'] as const)('retains original %s work and ownership beyond the existing close budget', async stage => {
+    const f = await fixture(); const selection = selectedOwner();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    let captured: ProfileRestoreTerminalMutationAuthority | undefined;
+    let lateOwner: Awaited<ReturnType<typeof f.input.acquireReservation>> | undefined;
+    const acquire = f.input.acquireReservation;
+    if (stage === 'selection') selection.assertOperationSelection.mockImplementation(async guard => {
+      entered.resolve(); try { await finish.promise; guard(); } finally { exited.resolve(); }
+    });
+    if (stage === 'claim') f.input.acquireReservation = async (...args) => {
+      lateOwner = await acquire(...args); entered.resolve();
+      try { await finish.promise; return lateOwner; } finally { exited.resolve(); }
+    };
+    if (stage === 'use') f.use.mockImplementation(async authority => {
+      captured = authority; entered.resolve();
+      try { await finish.promise; authority.assertMutationCurrent!(); } finally { exited.resolve(); }
+    });
+    const before = await readFile(f.database, 'utf8');
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await Promise.race([entered.promise, outcome.then(() => { throw new Error('WORK_NOT_ENTERED'); })]);
+      await vi.advanceTimersByTimeAsync(profileInspectionWorkMilliseconds);
+      if (stage !== 'selection') expect(f.invalidated).toHaveBeenCalledOnce();
+      expect(captured?.assertMutationCurrent ?? (() => { throw new Error('NO_AUTHORITY'); })).toThrow();
+      await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      expect(await outcome).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+      expect(selection.onUnsettledWork).toHaveBeenCalledOnce(); expect(f.lease.readState()).toBe('busy');
+      for (const claim of f.claims) expect(claim.close).not.toHaveBeenCalled();
+      expect(f.remove).not.toHaveBeenCalled(); expect(f.end).not.toHaveBeenCalled();
+      expect(await f.journalStore.peek()).toEqual(f.selected); expect(await readFile(f.database, 'utf8')).toBe(before);
+    } finally {
+      finish.resolve(); await exited.promise; await outcome;
+      for (let index = 0; index < 20; index++) await Promise.resolve();
+    }
+    expect(f.lease.readState()).toBe('busy'); expect(selection.onUnsettledWork).toHaveBeenCalledOnce();
+    if (lateOwner !== undefined) expect(lateOwner.invalidate).toHaveBeenCalled();
+    expect(f.end).not.toHaveBeenCalled(); expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['drop', 'overlap', 'mutate'] as const)('rejects a %s while the original live grant is pending', async mode => {
+    const f = await fixture(); const selection = selectedOwner();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    let grant: Promise<void> | undefined;
+    f.use.mockImplementation(async authority => {
+      selection.assertOperationSelection.mockImplementation(async guard => {
+        entered.resolve(); try { await finish.promise; guard(); } finally { exited.resolve(); }
+      });
+      grant = authority.assertCurrent(f.selected, new Set());
+      await entered.promise;
+      if (mode === 'overlap') await authority.assertCurrent(f.selected, new Set()).catch(() => {});
+      if (mode === 'mutate') { try { authority.assertMutationCurrent!(); } catch { /* The failure must remain sticky. */ } }
+    });
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await Promise.race([entered.promise, outcome.then(() => { throw new Error('GRANT_NOT_ENTERED'); })]);
+      for (let index = 0; index < 30; index++) await Promise.resolve();
+      expect(f.invalidated).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      expect(await outcome).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+      expect(f.lease.readState()).toBe('busy'); expect(f.end).not.toHaveBeenCalled();
+      expect(await f.journalStore.peek()).toEqual(f.selected);
+    } finally { finish.resolve(); await exited.promise; await grant?.catch(() => {}); await outcome; }
+  });
+
+  it('preserves the first selection failure while an already started use settles later', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const first = new Error('SYNTHETIC_FIRST_SELECTION');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    f.use.mockImplementation(async authority => {
+      selection.assertOperationSelection.mockRejectedValue(first);
+      await authority.assertCurrent(f.selected, new Set()).catch(() => {});
+      entered.resolve(); try { await finish.promise; } finally { exited.resolve(); }
+    });
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await entered.promise; await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      expect(await outcome).toMatchObject({ cause: { errors: [first,
+        expect.objectContaining({ message: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' }),
+        expect.objectContaining({ message: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' }),
+      ] } });
+      expect(selection.onUnsettledWork).toHaveBeenCalledExactlyOnceWith(first);
+      expect(f.remove).not.toHaveBeenCalled(); expect(f.end).not.toHaveBeenCalled();
+    } finally { finish.resolve(); await exited.promise; await outcome; }
+  });
+
+  it('pins live selection, owner and lineage callbacks before awaiting preparation', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const foreign = vi.fn(() => { throw new Error('FOREIGN_CALLBACK'); });
+    const input = { ...f.input, operationSelection: selection };
+    const acquire = f.lease.acquire.bind(f.lease);
+    vi.spyOn(f.lease, 'acquire').mockImplementation(async purpose => {
+      input.operationSelection = { assertOperationSelection: foreign, onUnsettledWork: foreign };
+      input.assertAuthority = foreign; input.assertLineage = foreign;
+      return acquire(purpose);
+    });
+    await withProfileRestoreTerminalAuthority(input, f.use);
+    expect(foreign).not.toHaveBeenCalled(); expect(await f.journalStore.peek()).toBeUndefined();
+  });
+
+  it('fails closed when final cleanup crosses its budget before the timer callback runs', async () => {
+    const f = await fixture(); const selection = selectedOwner();
+    const now = performance.now.bind(performance);
+    f.end.mockImplementation(async () => {
+      const expired = now() + profileInspectionShutdownMilliseconds + 1;
+      vi.spyOn(performance, 'now').mockReturnValue(expired);
+      return 'normal';
+    });
+    await expect(withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use))
+      .rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(selection.onUnsettledWork).toHaveBeenCalledOnce(); expect(f.lease.readState()).toBe('busy');
+    expect(f.invalidated).toHaveBeenCalledOnce();
+  });
+
+  it('reports retained ownership when the final lease release rejects', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const first = new Error('SYNTHETIC_LEASE_RELEASE_FAILURE');
+    const acquire = f.lease.acquire.bind(f.lease);
+    vi.spyOn(f.lease, 'acquire').mockImplementation(async purpose => {
+      const lease = await acquire(purpose);
+      return { ...lease, async release() { throw first; } };
+    });
+    await expect(withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use))
+      .rejects.toMatchObject({ cause: first });
+    expect(f.lease.readState()).toBe('busy'); expect(selection.onUnsettledWork).toHaveBeenCalledExactlyOnceWith(first);
+    expect(f.end).toHaveBeenCalledOnce(); expect(await f.journalStore.peek()).toBeUndefined();
+  });
+
+  it.each(['unused', 'duplicate'] as const)('rejects a swallowed %s snapshot callback violation', async mode => {
+    const f = await fixture(); const selection = selectedOwner();
+    const withSnapshot = f.snapshotClient.withProfileSnapshot;
+    f.snapshotClient.withProfileSnapshot = (async (id, use) => withSnapshot(id, async (receipt, guard) => {
+      if (mode === 'unused') return;
+      await use(receipt, guard);
+      await use(receipt, guard).catch(() => {});
+    })) as typeof withSnapshot;
+    await expect(withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use))
+      .rejects.toThrow('PROFILE_RESTORE_RECOVERY_REQUIRED');
+    expect(f.use).toHaveBeenCalledTimes(mode === 'unused' ? 0 : 1);
+    expect(f.claims).toHaveLength(mode === 'unused' ? 0 : 2);
+    expect(f.end).not.toHaveBeenCalled(); expect(f.remove).not.toHaveBeenCalled();
+    expect(await readFile(f.database, 'utf8')).toBe('new database');
+  });
+
+  it('tracks the original snapshot callback after an early owner return', async () => {
+    const f = await fixture(); const selection = selectedOwner();
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    const withSnapshot = f.snapshotClient.withProfileSnapshot;
+    let original: Promise<unknown> | undefined; let workEntered = false;
+    f.snapshotClient.withProfileSnapshot = (async (id, use) => withSnapshot(id, async (receipt, guard) => {
+      original = use(receipt, guard); await entered.promise;
+    })) as typeof withSnapshot;
+    f.use.mockImplementation(async authority => {
+      workEntered = true; entered.resolve();
+      try { await finish.promise; authority.assertMutationCurrent!(); } finally { exited.resolve(); }
+    });
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await Promise.race([entered.promise, outcome.then(() => { throw new Error('USE_NOT_ENTERED'); })]);
+      for (let index = 0; index < 30; index++) await Promise.resolve();
+      expect(f.invalidated).toHaveBeenCalledOnce();
+      await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      expect(await outcome).toMatchObject({ message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+      expect(selection.onUnsettledWork).toHaveBeenCalledOnce(); expect(f.lease.readState()).toBe('busy');
+      for (const claim of f.claims) expect(claim.close).not.toHaveBeenCalled();
+      expect(await f.journalStore.peek()).toEqual(f.selected);
+    } finally { finish.resolve(); if (workEntered) await exited.promise; await original?.catch(() => {}); await outcome; }
+  });
+
+  it('latches an owner guard failure before the original metadata reader finishes', async () => {
+    const f = await fixture(); const selection = selectedOwner(); const first = new Error('SYNTHETIC_OWNER_LOST');
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const entered = deferred<void>(); const finish = deferred<void>(); const exited = deferred<void>();
+    let workEntered = false;
+    selection.assertOperationSelection.mockImplementation(async guard => {
+      workEntered = true; f.input.assertAuthority.mockImplementation(() => { throw first; });
+      try { guard(); } finally { entered.resolve(); await finish.promise; exited.resolve(); }
+    });
+    const outcome = withProfileRestoreTerminalAuthority({ ...f.input, operationSelection: selection }, f.use).catch(error => error);
+    try {
+      await Promise.race([entered.promise, outcome.then(() => { throw new Error('READ_NOT_ENTERED'); })]);
+      await vi.advanceTimersByTimeAsync(profileInspectionShutdownMilliseconds);
+      expect((await outcome).cause.errors[0]).toBe(first);
+      expect(selection.onUnsettledWork).toHaveBeenCalledExactlyOnceWith(first);
+      expect(f.lease.readState()).toBe('busy'); expect(f.use).not.toHaveBeenCalled();
+      expect(await f.journalStore.peek()).toEqual(f.selected);
+    } finally { finish.resolve(); if (workEntered) await exited.promise; await outcome; }
+  });
+
   it.each([false, true])('binds a C prefix to its exact original chain before cleanup (accepted: %s)', async accepted => {
     const f = await fixture(accepted, true);
     const assertCurrent = vi.fn(async () => {});
@@ -380,6 +658,11 @@ async function fixture(accepted = false, beforeUpdateRollbackMigrations = false)
   });
   return { input, selected, root, transaction, journalStore, database, staging, rollback, profileId, events, lease, claims,
     begin, fence, stationary, invalidated, end, remove, use, snapshotClient, snapshotId: () => snapshotId };
+}
+
+function selectedOwner() {
+  return { assertOperationSelection: vi.fn(async (guard: () => void) => { guard(); }),
+    onUnsettledWork: vi.fn((_cause: unknown) => {}) };
 }
 
 function deferred<T>() {

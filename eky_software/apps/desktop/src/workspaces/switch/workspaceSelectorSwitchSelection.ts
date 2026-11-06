@@ -73,6 +73,10 @@ export function captureWorkspaceSelectorSwitchSelection(selection: WorkspaceSele
       assertAuthority();
       assertSameSlots(journalSlots, actual);
     },
+    assertRegistrySelection(actual: ReadOnlyJournalSlots<LocalWorkspaceRegistry>) {
+      assertAuthority();
+      assertSameSlots(registrySlots, actual);
+    },
   };
 }
 

@@ -10,6 +10,7 @@ import { dirname, join } from 'node:path';
 
 import { createDatabaseConnection } from '../../../backend/src/database/connection/createDatabaseConnection.js';
 import { runMigrations } from '../../../backend/src/database/migration/runMigrations.js';
+import { assertProfileRestoreActivationJournalMatches } from '../../../desktop/src/profileBackup/restore/profileRestoreActivationJournal.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../../../desktop/src/workspaces/maintenance/workspaceMaintenanceLease.js';
 import { WorkspaceBackupPlaintextQuarantine } from '../../../desktop/src/workspaces/import/workspaceBackupPlaintextQuarantine.js';
 import { PrivateWorkspaceBackupCandidateAdapter } from '../../../desktop/src/workspaces/import/privateWorkspaceBackupCandidateAdapter.js';
@@ -26,10 +27,15 @@ import { validateWorkspaceId } from '../../../desktop/src/workspaces/registry/wo
 import type { ActiveWorkspaceLifecyclePort } from '../../../desktop/src/workspaces/runtime/activeWorkspaceLifecyclePort.js';
 import { ProfileRestoreWorkspaceReplacementActivationFactory } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementActivationFactory.js';
 import { WorkspaceBackupReplacementCoordinator } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementCoordinator.js';
+import { WorkspaceBackupReplacementBinding } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementBinding.js';
 import { WorkspaceBackupReplacementError } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementError.js';
 import { validateWorkspaceBackupReplacementOperationId } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementOperationId.js';
-import { deriveWorkspaceBackupReplacementPaths } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementPaths.js';
+import {
+  deriveWorkspaceBackupReplacementPaths,
+  deriveWorkspaceBackupReplacementRuntimePaths,
+} from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementPaths.js';
 import { NodeWorkspaceBackupReplacementRootStore } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementRootStore.js';
+import { createWorkspaceBackupReplacementStartupRecovery } from '../../../desktop/src/workspaces/replacement/workspaceBackupReplacementStartupRecovery.js';
 import {
   expect,
   test,
@@ -112,17 +118,17 @@ test('WORKSPACE-REPLACE-001 @critical @recovery replaces the active exact-lineag
   );
   const backupHashBefore = await sha256File(backupPath);
 
-  await expect(
-    fixture.coordinator.replace({
-      containerPath: backupPath,
-      password: backupPassword,
-      targetWorkspaceId,
-    }),
-  ).resolves.toEqual({
+  const replacement = await fixture.coordinator.replace({
+    containerPath: backupPath,
+    password: backupPassword,
+    targetWorkspaceId,
+  });
+  expect(replacement).toEqual({
     migrationChainIdentity: expect.stringMatching(/^[0-9a-f]{64}$/u),
     profileId: backupIdentity.profileId,
     workspaceId: targetWorkspaceId,
   });
+  await fixture.completeStartup(replacement.migrationChainIdentity);
 
   expect(customerNumberExists(fixture.paths.activeDatabasePath, postBackupCustomerNumber)).toBe(
     false,
@@ -155,8 +161,11 @@ test('WORKSPACE-REPLACE-001 @critical @recovery replaces the active exact-lineag
     'preRestore.created',
     'runtime.stopped',
     'runtime.absent',
+    'runtime.relaunchRequested',
+    'startup.ownerAcquired',
     'runtime.started',
     'runtime.validated',
+    'startup.ownerReleased',
   ]);
   await expect(readFile(fixture.paths.activationJournalPath)).rejects.toMatchObject({
     code: 'ENOENT',
@@ -194,16 +203,16 @@ test('WORKSPACE-REPLACE-002 @critical @recovery forward-migrates an authenticate
     root: join(e2eBackend.runRoot, 'historical-replacement-user-data'),
   });
 
-  await expect(
-    fixture.coordinator.replace({
-      containerPath: historical.backupPath,
-      password: backupPassword,
-      targetWorkspaceId,
-    }),
-  ).resolves.toMatchObject({
+  const replacement = await fixture.coordinator.replace({
+    containerPath: historical.backupPath,
+    password: backupPassword,
+    targetWorkspaceId,
+  });
+  expect(replacement).toMatchObject({
     profileId: historical.profileId,
     workspaceId: targetWorkspaceId,
   });
+  await fixture.completeStartup(replacement.migrationChainIdentity);
 
   const currentMigrationCount = readWorkspaceBackupMigrationCount(
     fixture.paths.activeDatabasePath,
@@ -217,6 +226,9 @@ test('WORKSPACE-REPLACE-002 @critical @recovery forward-migrates an authenticate
   expect(await sha256File(historical.backupPath)).toBe(sourceBackupHash);
   expect(fixture.lifecycle.backendOwners).toBe(1);
   expect(fixture.lifecycle.sqliteOwners).toBe(1);
+  expect(fixture.lifecycle.maximumBackendOwners).toBe(1);
+  expect(fixture.lifecycle.maximumSqliteOwners).toBe(1);
+  expect(fixture.lifecycle.sessionRotations).toBe(1);
 });
 
 test('WORKSPACE-REPLACE-003 @security rejects wrong-password and tampered containers before quiescing or changing the active workspace', async ({
@@ -272,6 +284,9 @@ test('WORKSPACE-REPLACE-003 @security rejects wrong-password and tampered contai
   );
 
   expect(fixture.lifecycle.events).toEqual([]);
+  expect(fixture.lifecycle.relaunchRequests).toBe(0);
+  expect(fixture.lifecycle.sessionRotations).toBe(0);
+  expect(fixture.maintenanceLease.readState()).toBe('idle');
   expect(await sha256File(fixture.paths.activeDatabasePath)).toBe(
     activeHashBefore,
   );
@@ -384,6 +399,12 @@ async function createReplacementSystemFixture(
   const plaintextQuarantine = new WorkspaceBackupPlaintextQuarantine({
     userDataRoot: input.root,
   });
+  const maintenanceLease = new InMemoryWorkspaceMaintenanceLease();
+  let replacementUncertain = false;
+  const assertMainCurrent = () => {
+    if (replacementUncertain) throw new Error('SYNTHETIC_REPLACEMENT_OWNER_UNCERTAIN');
+  };
+  let assertReplacementOwner: (() => void) | undefined;
   const coordinator = new WorkspaceBackupReplacementCoordinator({
     activationAuthorityFactory:
       new ProfileRestoreWorkspaceReplacementActivationFactory(),
@@ -394,8 +415,26 @@ async function createReplacementSystemFixture(
     backupContainer: new WorkspaceBackupContainerAdapter({
       plaintextQuarantine,
     }),
+    createBinding: ({ lease, operationId: boundOperationId, target }) => new WorkspaceBackupReplacementBinding({
+      userDataRoot: input.root,
+      operationId: boundOperationId,
+      target,
+      lease,
+      maintenanceLease,
+      registry,
+      // Main is modeled here; the registry, receipt, lease and payload are real.
+      mainOwner: { assertCurrent: assertMainCurrent, async assertOwned() { assertMainCurrent(); } },
+      runtimeAbsence: {
+        async assertNoActiveWorkspaceRuntime() {
+          if (lifecycle.backendOwners !== 0 || lifecycle.sqliteOwners !== 0) {
+            throw new Error('SYNTHETIC_RUNTIME_STILL_PRESENT');
+          }
+        },
+      },
+      onUncertain: () => { replacementUncertain = true; },
+    }),
     generateOperationId: () => operationId,
-    maintenanceLease: new InMemoryWorkspaceMaintenanceLease(),
+    maintenanceLease,
     operationGuard: {
       assertNoUnresolvedOperations: async () => undefined,
     },
@@ -412,29 +451,15 @@ async function createReplacementSystemFixture(
     },
     registry,
     rootStore: new NodeWorkspaceBackupReplacementRootStore(),
-    runtimeReadiness: {
-      assertReady: async ({ expectedProfileId, workspaceId }) => {
-        expect(workspaceId).toBe(targetWorkspaceId);
-        const readiness = await inspectWorkspaceCandidateReadiness({
-          artifactRoot: paths.activeArtifactRoot,
-          databaseFilePath: paths.activeDatabasePath,
-          expectedProfileId,
-        });
-        if (lifecycle.backendOwners !== 1 || lifecycle.sqliteOwners !== 1) {
-          throw new Error('SYNTHETIC_RUNTIME_OWNER_MISMATCH');
-        }
-        lifecycle.events.push('runtime.validated');
-        return {
-          artifactRootHealth: 'ready',
-          backendOwnerCount: 1,
-          databaseHealth: readiness.databaseHealth,
-          foreignKeyHealth: readiness.foreignKeyHealth,
-          migrationChainIdentity: readiness.migrationChainIdentity,
-          profileId: readiness.lineageIdentity.profileId,
-          runtimeSessionState: 'rotated',
-          sqliteOwnerCount: 1,
-          workspaceId,
-        };
+    runtimeHandoff: {
+      requestRelaunch: () => {
+        assertMainCurrent();
+        assertReplacementOwner = maintenanceLease.captureCurrentOwner(['replace']);
+        assertReplacementOwner();
+        expect(lifecycle.backendOwners).toBe(0);
+        expect(lifecycle.sqliteOwners).toBe(0);
+        lifecycle.relaunchRequests += 1;
+        lifecycle.events.push('runtime.relaunchRequested');
       },
     },
     userDataRoot: input.root,
@@ -456,8 +481,133 @@ async function createReplacementSystemFixture(
   return {
     captureUnrelatedState: async () =>
       Promise.all(unrelatedPaths.map((path) => sha256File(path))),
+    completeStartup: async (expectedMigrationChainIdentity: string) => {
+      assertMainCurrent();
+      expect(lifecycle.relaunchRequests).toBe(1);
+      expect(lifecycle.backendOwners).toBe(0);
+      expect(lifecycle.sqliteOwners).toBe(0);
+      expect(lifecycle.sessionRotations).toBe(0);
+      expect(maintenanceLease.readState()).toBe('idle');
+      if (assertReplacementOwner === undefined) {
+        throw new Error('SYNTHETIC_HANDOFF_MISSING');
+      }
+      expect(assertReplacementOwner).toThrow('WORKSPACE_MAINTENANCE_BUSY');
+
+      // These are modeled owners, not Electron process/reservation evidence.
+      const startupLease = await maintenanceLease.acquire('restore');
+      const assertStartupOwner = maintenanceLease.captureCurrentOwner(
+        ['restore'], startupLease,
+      );
+      lifecycle.events.push('startup.ownerAcquired');
+      try {
+        expect(assertReplacementOwner).toThrow('WORKSPACE_MAINTENANCE_BUSY');
+        const assertTargetCurrent = async () => {
+          assertStartupOwner();
+          expect(await registry.read()).toEqual(registryValue);
+          assertStartupOwner();
+        };
+        const assertLiveOwner = () => {
+          assertStartupOwner();
+          expect(lifecycle.backendOwners).toBe(1);
+          expect(lifecycle.sqliteOwners).toBe(1);
+          expect(lifecycle.sessionRotations).toBe(1);
+        };
+        const inspectActiveProfile = async () => {
+          await assertTargetCurrent();
+          const readiness = await inspectWorkspaceCandidateReadiness({
+            artifactRoot: paths.activeArtifactRoot,
+            databaseFilePath: paths.activeDatabasePath,
+            expectedProfileId: input.expectedProfileId,
+          });
+          await assertTargetCurrent();
+          expect(readiness).toMatchObject({
+            artifactRootHealth: 'ready',
+            databaseHealth: 'healthy',
+            foreignKeyHealth: 'healthy',
+            lineageIdentity: { profileId: input.expectedProfileId },
+            migrationChainIdentity: expectedMigrationChainIdentity,
+          });
+          return readiness;
+        };
+        const startup = createWorkspaceBackupReplacementStartupRecovery({
+          paths: deriveWorkspaceBackupReplacementRuntimePaths(
+            input.root, targetWorkspaceId,
+          ),
+          withTerminalAuthority: async (journal, use): Promise<void> => {
+            assertLiveOwner();
+            await inspectActiveProfile();
+            const census = await startup.activation.transaction.readTerminalCleanupCensus(journal);
+            assertLiveOwner();
+            await use({
+              census,
+              assertCurrent: async (current) => {
+                assertLiveOwner();
+                await assertTargetCurrent();
+                assertProfileRestoreActivationJournalMatches(
+                  current.phase === 'accepted'
+                    ? {
+                        ...journal,
+                        phase: 'accepted',
+                        revision: journal.revision + 1,
+                      }
+                    : journal,
+                  current,
+                );
+                assertLiveOwner();
+              },
+            });
+            assertLiveOwner();
+          },
+        });
+        await assertTargetCurrent();
+        const selected = await startup.journalStore.peek();
+        expect(selected).toMatchObject({ operationId, phase: 'validationStarting' });
+        if (selected === undefined) throw new Error('SYNTHETIC_HANDOFF_JOURNAL_MISSING');
+        const mode = await startup.recovery.prepareBeforeBackend({
+          journal: selected,
+          assertCurrent: async () => {
+            await assertTargetCurrent();
+            expect(lifecycle.backendOwners).toBe(0);
+            expect(lifecycle.sqliteOwners).toBe(0);
+          },
+          assertContent: async (journal) => {
+            assertProfileRestoreActivationJournalMatches(selected, journal);
+            await inspectActiveProfile();
+          },
+        });
+        expect(mode).toBe('validateRestoredProfile');
+        assertStartupOwner();
+        await lifecycle.start(targetWorkspaceId);
+        const outcome = await startup.recovery.validateAfterBackend({
+          mode,
+          stopBackend: async () => {
+            assertStartupOwner();
+            await lifecycle.port.stopAndProveHandlesClosed(targetWorkspaceId);
+          },
+          validateActiveProfile: async () => {
+            assertLiveOwner();
+            await inspectActiveProfile();
+            assertLiveOwner();
+            lifecycle.events.push('runtime.validated');
+          },
+        });
+        expect(outcome).toBe('ready');
+        expect(startup.recovery.readAcceptanceState()).toBe('committed');
+        await expect(startup.journalStore.peek()).resolves.toBeUndefined();
+        await expect(readdir(paths.importRoot)).resolves.toEqual([]);
+        await expect(readdir(paths.activationStagingRoot)).resolves.toEqual([]);
+        await expect(readdir(paths.activationRollbackRoot)).resolves.toEqual([]);
+        assertLiveOwner();
+      } finally {
+        await startupLease.release();
+        lifecycle.events.push('startup.ownerReleased');
+      }
+      expect(maintenanceLease.readState()).toBe('idle');
+      expect(assertStartupOwner).toThrow('WORKSPACE_MAINTENANCE_BUSY');
+    },
     coordinator,
     lifecycle,
+    maintenanceLease,
     paths,
     preRestoreDatabasePath,
     registryPath,
@@ -470,6 +620,7 @@ function createReplacementLifecycle() {
     events: [] as string[],
     maximumBackendOwners: 1,
     maximumSqliteOwners: 1,
+    relaunchRequests: 0,
     sessionRotations: 0,
     sqliteOwners: 1,
   };
@@ -490,26 +641,29 @@ function createReplacementLifecycle() {
       state.events.push('runtime.stopped');
       return { handlesClosed: true };
     },
-    ensurePreviousWorkspaceRunning: async (workspaceId) => {
-      assertTarget(workspaceId);
-      if (state.backendOwners !== 0 || state.sqliteOwners !== 0) {
-        throw new Error('SYNTHETIC_DUPLICATE_OWNER');
-      }
-      state.backendOwners = 1;
-      state.sqliteOwners = 1;
-      state.maximumBackendOwners = Math.max(
-        state.maximumBackendOwners,
-        state.backendOwners,
-      );
-      state.maximumSqliteOwners = Math.max(
-        state.maximumSqliteOwners,
-        state.sqliteOwners,
-      );
-      state.sessionRotations += 1;
-      state.events.push('runtime.started');
+    ensurePreviousWorkspaceRunning: async () => {
+      throw new Error('SYNTHETIC_COORDINATOR_RESTART_FORBIDDEN');
     },
   };
-  return Object.assign(state, { port });
+  const start = async (workspaceId: WorkspaceId) => {
+    assertTarget(workspaceId);
+    if (state.backendOwners !== 0 || state.sqliteOwners !== 0) {
+      throw new Error('SYNTHETIC_DUPLICATE_OWNER');
+    }
+    state.backendOwners = 1;
+    state.sqliteOwners = 1;
+    state.maximumBackendOwners = Math.max(
+      state.maximumBackendOwners,
+      state.backendOwners,
+    );
+    state.maximumSqliteOwners = Math.max(
+      state.maximumSqliteOwners,
+      state.sqliteOwners,
+    );
+    state.sessionRotations += 1;
+    state.events.push('runtime.started');
+  };
+  return Object.assign(state, { port, start });
 }
 
 async function copyPrivateTree(sourceRoot: string, targetRoot: string) {

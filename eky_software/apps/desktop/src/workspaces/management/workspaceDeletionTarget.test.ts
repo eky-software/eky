@@ -3,9 +3,11 @@ import { promises as fs } from 'node:fs';
 import { join } from 'node:path';
 import { expect, it, vi } from 'vitest';
 import { fixture, processBoundary, sourceId, profileId } from '../../profileBackup/portableDeletionBackupTestSupport.js';
+import * as workspaceRootIdentity from '../../runtime/workspaceProcessReservation.js';
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
 import { deriveWorkspaceRoot } from '../registry/deriveWorkspaceRoot.js';
+import * as workspaceRootInspection from '../registry/inspectWorkspaceRoot.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import type { LocalWorkspaceRegistryV2 } from '../registry/workspaceRegistryTypes.js';
 import { captureDeletionTarget } from './workspaceDeletionTarget.js';
@@ -176,6 +178,86 @@ it('identifies a recovery-required target without opening its business runtime',
     lifecycleState: 'recoveryRequired', previousActiveWorkspaceId: null });
   await expect(selected.assertCurrent()).resolves.toBeUndefined();
   expect(processBoundary.run).not.toHaveBeenCalled();
+});
+
+it('keeps native root checks between two full registry reads and reads no registry on the root-only path', async () => {
+  const events: string[] = [];
+  const read = WorkspaceRegistryStore.prototype.inspectSlots;
+  const inspect = workspaceRootInspection.inspectWorkspaceRoot;
+  const identity = workspaceRootIdentity.readWorkspaceProcessReservationIdentity;
+  const registryRead = vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots').mockImplementation(async function (this: WorkspaceRegistryStore, ...args) {
+    events.push('registry'); return read.apply(this, args);
+  });
+  vi.spyOn(workspaceRootInspection, 'inspectWorkspaceRoot').mockImplementation(async paths => {
+    events.push('root'); return inspect(paths);
+  });
+  vi.spyOn(workspaceRootIdentity, 'readWorkspaceProcessReservationIdentity').mockImplementation(async root => {
+    events.push('identity'); return identity(root);
+  });
+  const f = await targetFixture();
+  events.length = 0; registryRead.mockClear();
+  await expect(f.selection.assertRootCurrent()).resolves.toBeUndefined();
+  expect(events).toEqual(['root', 'identity']);
+  expect(registryRead).not.toHaveBeenCalled();
+  events.length = 0;
+  await expect(f.selection.assertCurrent()).resolves.toBeUndefined();
+  expect(events).toEqual(['registry', 'root', 'identity', 'registry']);
+  expect(registryRead).toHaveBeenCalledTimes(2);
+
+  await fs.writeFile(`${f.registryPath}.next`, await fs.readFile(f.registryPath), { mode: 0o600, flag: 'wx' });
+  registryRead.mockClear(); events.length = 0;
+  await expect(f.selection.assertRootCurrent()).resolves.toBeUndefined();
+  expect(registryRead).not.toHaveBeenCalled();
+  expect(events).toEqual(['root', 'identity']);
+  await expect(f.selection.assertCurrent()).rejects.toThrow('WORKSPACE_DELETE_STALE_CONFIRMATION');
+  expect(processBoundary.run).not.toHaveBeenCalled();
+});
+
+it.each(['assertRootCurrent', 'assertCurrent'] as const)(
+  'never repins a replaced then restored root after %s rejects', async method => {
+    const f = await targetFixture();
+    const originalIdentity = f.selection.target.rootIdentity;
+    await fs.rename(f.companyRoot, `${f.companyRoot}.retained-original`);
+    await fs.mkdir(f.companyRoot, { mode: 0o700 });
+    await expect(f.selection[method]()).rejects.toThrow('WORKSPACE_DELETE_STALE_CONFIRMATION');
+    await fs.rename(f.companyRoot, `${f.companyRoot}.retained-replacement`);
+    await fs.rename(`${f.companyRoot}.retained-original`, f.companyRoot);
+    const inspect = vi.spyOn(workspaceRootInspection, 'inspectWorkspaceRoot');
+    const read = vi.spyOn(f.registry, 'inspectSlots');
+    expect(f.selection.target.rootIdentity).toBe(originalIdentity);
+    expect(f.selection.assertValid).toThrow('WORKSPACE_DELETE_STALE_CONFIRMATION');
+    await expect(f.selection.assertRootCurrent()).rejects.toThrow('WORKSPACE_DELETE_STALE_CONFIRMATION');
+    await expect(f.selection.assertCurrent()).rejects.toThrow('WORKSPACE_DELETE_STALE_CONFIRMATION');
+    expect(inspect).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled();
+    expect(await fs.readFile(f.companySentinel, 'utf8')).toBe('synthetic company remains');
+    expect(processBoundary.run).not.toHaveBeenCalled();
+  },
+);
+
+it('checks caller authority after the factored root promise settles', async () => {
+  const f = await targetFixture();
+  let armed = false, rootRead = false, scheduled = false;
+  const identity = workspaceRootIdentity.readWorkspaceProcessReservationIdentity;
+  vi.spyOn(workspaceRootIdentity, 'readWorkspaceProcessReservationIdentity').mockImplementation(async path => {
+    const result = await identity(path); rootRead = true; return result;
+  });
+  const selected = await captureDeletionTarget({ ...f.targetInput, assertAuthority() {
+    f.targetInput.assertAuthority();
+    if (armed && rootRead && !scheduled) { scheduled = true; queueMicrotask(f.revoke); }
+  } });
+  const read = WorkspaceRegistryStore.prototype.inspectSlots;
+  const calls = vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots').mockImplementation(function (this: WorkspaceRegistryStore, ...args) {
+    return read.apply(this, args);
+  });
+  // The receipt pins its reader at capture, so install the spy before capturing it.
+  const guarded = await captureDeletionTarget({ ...f.targetInput, assertAuthority() {
+    f.targetInput.assertAuthority();
+    if (armed && rootRead && !scheduled) { scheduled = true; queueMicrotask(f.revoke); }
+  } });
+  rootRead = false; calls.mockClear(); armed = true;
+  await expect(guarded.assertCurrent()).rejects.toThrow('SYNTHETIC_DOCUMENT_REVOKED');
+  expect(scheduled).toBe(true); expect(calls).toHaveBeenCalledTimes(1);
+  expect(selected.target.rootIdentity).toBe(guarded.target.rootIdentity);
 });
 
 async function targetFixture(activeWorkspaceId: typeof workspaceId | null = workspaceId) {

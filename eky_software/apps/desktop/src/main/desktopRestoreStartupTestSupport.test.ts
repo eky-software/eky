@@ -21,6 +21,43 @@ beforeEach(context => {
 afterEach(() => vi.restoreAllMocks());
 
 describe('restore startup test evidence ownership', () => {
+  it.for(['prepare', 'run'] as const)('joins completion to the active %s invocation', async (method, context) => {
+    const completion = captureCompletion(context);
+    const release = vi.fn();
+    const lifetime = createRestoreStartupTestLifetime(completion.context, release);
+    const root = await createRoot();
+    const entered = createGate();
+    const gate = createGate();
+    const outcome = lifetime[method](async () => {
+      lifetime.roots.push(root);
+      entered.resolve();
+      await gate.promise;
+    }).catch((error: unknown) => error);
+    let completionSettled = false;
+    let finishing: Promise<void> | undefined;
+    try {
+      await entered.promise;
+      lifetime.releaseWhenSettled();
+      completion.abort();
+      finishing = completion.finish('fail').then(() => { completionSettled = true; });
+      await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
+      expect(completionSettled).toBe(false);
+      expect(release).not.toHaveBeenCalled();
+      expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
+      gate.resolve();
+      expect(await outcome).toBe(completion.context.signal.reason);
+      await finishing;
+      expect(completionSettled).toBe(true);
+      lifetime.assertSharedStateReleased();
+      expect(release).toHaveBeenCalledTimes(1);
+      await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
+    } finally {
+      gate.resolve();
+      await outcome;
+      await finishing;
+    }
+  });
+
   it.for([false, true])('cleans only settled successful work (separate preparation: %s)', async (separatePreparation, context) => {
     const completion = captureCompletion(context);
     const release = vi.fn();
@@ -94,17 +131,19 @@ describe('restore startup test evidence ownership', () => {
       await lifetime.step('startupRollback', nextStep);
     });
     const outcome = pending.then(() => undefined, (error: unknown) => error);
+    let finishing: Promise<void> | undefined;
     try {
       await entered.promise;
       await expect(lifetime.run(nextStep)).rejects.toThrow('DESKTOP_RESTORE_TEST_INVALID_WORK_ORDER');
       lifetime.releaseWhenSettled();
       completion.abort();
-      await completion.finish('fail');
+      finishing = completion.finish('fail');
       expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
       expect(release).not.toHaveBeenCalled();
       await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
       gate.resolve();
       expect(await outcome).toBe(reject ? original : completion.context.signal.reason);
+      await finishing;
       expect(nextStep).not.toHaveBeenCalled();
       lifetime.assertSharedStateReleased();
       expect(release).toHaveBeenCalledTimes(1);
@@ -124,6 +163,7 @@ describe('restore startup test evidence ownership', () => {
     } finally {
       gate.resolve();
       await outcome;
+      await finishing;
     }
   });
 
@@ -136,14 +176,16 @@ describe('restore startup test evidence ownership', () => {
     const gate = createGate();
     const pending = lifetime.run(async () => { await lifetime.step('startupRollback', () => gate.promise); });
     const outcome = pending.then(() => undefined, (error: unknown) => error);
+    let finishing: Promise<void> | undefined;
     try {
       lifetime.releaseWhenSettled();
       completion.abort();
-      await completion.finish('fail');
+      finishing = completion.finish('fail');
       expect(release).not.toHaveBeenCalled();
       expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
       gate.resolve();
       expect(await outcome).toBe(completion.context.signal.reason);
+      await finishing;
       expect(release).toHaveBeenCalledTimes(1);
       lifetime.assertSharedStateReleased();
       await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
@@ -153,6 +195,7 @@ describe('restore startup test evidence ownership', () => {
     } finally {
       gate.resolve();
       await outcome;
+      await finishing;
     }
   });
 
@@ -176,10 +219,11 @@ describe('restore startup test evidence ownership', () => {
       } finally { await handle?.shutdown(); }
     });
     const outcome = pending.then(() => undefined, (error: unknown) => error);
+    let finishing: Promise<void> | undefined;
     try {
       completion.abort();
       lifetime.releaseWhenSettled();
-      await completion.finish('fail');
+      finishing = completion.finish('fail');
       startup.resolve();
       await closeEntered.promise;
       expect(shutdown).toHaveBeenCalledTimes(1);
@@ -187,6 +231,7 @@ describe('restore startup test evidence ownership', () => {
       expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
       closing.resolve();
       expect(await outcome).toBe(completion.context.signal.reason);
+      await finishing;
       lifetime.assertSharedStateReleased();
       expect(release).toHaveBeenCalledTimes(1);
       await expect(readFile(join(root, 'evidence'), 'utf8')).resolves.toBe('original');
@@ -194,6 +239,7 @@ describe('restore startup test evidence ownership', () => {
       startup.resolve();
       closing.resolve();
       await outcome;
+      await finishing;
     }
   });
 
@@ -247,12 +293,14 @@ describe('restore startup test evidence ownership', () => {
     const root = await createRoot();
     const pending = lifetime.run(async () => { lifetime.roots.push(root); await gate.promise; });
     const outcome = pending.then(() => undefined, (error: unknown) => error);
+    let finishing: Promise<void> | undefined;
     try {
       lifetime.releaseWhenSettled();
       completion.abort();
-      await completion.finish('fail');
+      finishing = completion.finish('fail');
       gate.resolve();
       expect(await outcome).toBe(completion.context.signal.reason);
+      await finishing;
       expect(() => lifetime.assertSharedStateReleased()).toThrow('DESKTOP_RESTORE_TEST_PREVIOUS_WORK_UNSETTLED');
       // The real late path has no second afterEach; its first report must suffice.
       expect(JSON.parse(vi.mocked(console.error).mock.calls.at(-1)![0] as string)).toMatchObject({
@@ -265,6 +313,7 @@ describe('restore startup test evidence ownership', () => {
     } finally {
       gate.resolve();
       await outcome;
+      await finishing;
     }
   });
 

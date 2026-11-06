@@ -6,6 +6,7 @@ import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePa
 import { parseDirectSetupMigrationRecovery } from '../../update/directSetupMigrationRecovery.js';
 import { maximumDirectSetupMigrationRecoveryBytes } from '../../update/directSetupMigrationRecoveryStore.js';
 import { createWorkspaceLegacyAdoptionJournalPaths } from '../adoption/workspaceLegacyAdoptionJournal.js';
+import { createWorkspaceDeletionJournalPaths } from '../deletion/workspaceDeletionJournalStore.js';
 import {
   parseWorkspaceCreationJournalBytes,
   WORKSPACE_CREATION_JOURNAL_MAX_BYTES,
@@ -22,6 +23,7 @@ import {
   createWorkspaceBackupImportJournalPaths,
   WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME,
 } from '../import/workspaceBackupImportJournalPaths.js';
+import { inspectWorkspaceBackupImportBindingAdmission } from '../import/workspaceBackupImportBindingAdmission.js';
 import { createReadOnlyJournalSlotPaths } from '../management/mainOwnedWorkspaceManagementOperationGuard.js';
 import { WorkspaceManagementRecoveryRequiredError } from '../management/workspaceManagementOperationGuard.js';
 import { CrashSafeByteSlotStore } from '../persistence/crashSafeByteSlotStore.js';
@@ -41,8 +43,14 @@ import { createWorkspaceSwitchJournalPaths } from '../switch/workspaceSwitchJour
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
 import {
   readWorkspaceColdRecoveryAdmission,
+  readWorkspaceColdRecoveryOwnerPresence,
+  assertWorkspaceColdRecoveryConflictsAbsent,
   type WorkspaceColdRecoveryAdmission,
 } from './workspaceColdRecoveryAdmission.js';
+import type { WorkspaceBackupImportJournal } from '../import/workspaceBackupImportTypes.js';
+import { validateWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalValidation.js';
+
+export { captureColdWorkspaceDeletionAdmissionFromRoot } from './workspaceDeletionColdAdmission.js';
 
 export async function assertColdWorkspaceRecoveryAdmissionFromRoot(
   userDataRoot: string,
@@ -89,6 +97,7 @@ async function assertSelectorWorkspaceRecoveryFromRoot(
     const updatePaths = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot, legacyRuntimeRoot });
     const pending = [
       createWorkspaceLegacyAdoptionJournalPaths(userDataRoot),
+      createWorkspaceDeletionJournalPaths(userDataRoot),
       createWorkspaceCreationJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_CREATION_JOURNAL_FILE_NAME)),
       createWorkspaceBackupImportJournalPaths(userDataRoot, join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME)),
       createWorkspaceFirstStartMigrationJournalPaths(userDataRoot),
@@ -118,7 +127,7 @@ async function assertSelectorWorkspaceRecoveryFromRoot(
     await assertSwitchSelection?.();
   } catch (error) {
     if (error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
-    throw new WorkspaceManagementRecoveryRequiredError();
+    throw new WorkspaceManagementRecoveryRequiredError({ cause: error });
   }
 }
 
@@ -134,9 +143,9 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
     const importPaths = createWorkspaceBackupImportJournalPaths(
       userDataRoot, join(userDataRoot, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME),
     );
-    const [creation, importBackup] = await Promise.all([
-      hasAnyJournalSlot(creationPaths), hasAnyJournalSlot(importPaths),
-    ]);
+    const [creation, importBackup, deletion] = await readWorkspaceColdRecoveryOwnerPresence(
+      creationPaths, importPaths, createWorkspaceDeletionJournalPaths(userDataRoot));
+    if (deletion) throw new WorkspaceManagementRecoveryRequiredError();
     if (!creation && !importBackup) return 'none';
     if (creation && importBackup) throw new WorkspaceManagementRecoveryRequiredError();
 
@@ -150,6 +159,7 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
     if (journal === undefined || journal.formatVersion !== 2) {
       throw new WorkspaceManagementRecoveryRequiredError();
     }
+    if (!creation) await inspectWorkspaceBackupImportBindingAdmission(userDataRoot, journal);
 
     const root = creationPaths.directoryPath;
     const registryPaths = createWorkspaceRegistryPaths(
@@ -160,44 +170,55 @@ export async function readColdWorkspaceRecoveryAdmissionFromRoot(
     ).inspect(parseWorkspaceRegistryBytes))?.value;
     // The journal does not record the registry version or its other entries.
     if (registry === undefined) throw new WorkspaceManagementRecoveryRequiredError();
-    const workspaceIds = new Set<WorkspaceId>([
-      journal.workspaceId,
-      ...registry.workspaces.map((entry) => entry.workspaceId),
-    ]);
-    if (journal.previousActiveWorkspaceId !== null) {
-      workspaceIds.add(journal.previousActiveWorkspaceId);
-    }
-    const legacyRuntimeRoot = createDesktopProfilePaths(root).runtimeRoot;
-    const profileRuntimeRoots = [legacyRuntimeRoot, ...[...workspaceIds].map((id) =>
-      createDesktopProfilePaths(deriveWorkspaceRoot(root, id, 1).workspaceRoot).runtimeRoot,
-    )];
-    const updatePaths = createLocalUpdateRuntimePaths({
-      userDataPath: root, legacyRuntimeRoot,
-    });
-    const replacementPaths = deriveWorkspaceBackupReplacementRuntimePaths(
-      root, journal.workspaceId,
-    );
     const admission = await readWorkspaceColdRecoveryAdmission({
-      adoptionJournal: createWorkspaceLegacyAdoptionJournalPaths(root),
+      ...coldRecoveryConflictPaths(root, journal, registry),
       creationJournal: creationPaths,
-      directSetupRecovery: createReadOnlyJournalSlotPaths(updatePaths.directSetupMigrationRecoveryPath),
-      firstStartMigrationJournal: createWorkspaceFirstStartMigrationJournalPaths(root),
       importJournal: importPaths,
-      legacyUpdateJournal: createReadOnlyJournalSlotPaths(updatePaths.legacyJournalPath),
-      profileRestoreJournals: profileRuntimeRoots.map((runtimeRoot) =>
-        createReadOnlyJournalSlotPaths(
-          createProfileSnapshotRuntimePaths(runtimeRoot).restoreActivationJournalPath,
-        ),
-      ),
-      replacementJournal: createReadOnlyJournalSlotPaths(replacementPaths.activationJournalPath),
-      switchJournal: createWorkspaceSwitchJournalPaths(root),
-      updateJournal: createReadOnlyJournalSlotPaths(updatePaths.journalPath),
     });
     if (admission !== (creation ? 'creation' : 'import')) {
       throw new WorkspaceManagementRecoveryRequiredError();
     }
     return admission;
-  } catch {
-    throw new WorkspaceManagementRecoveryRequiredError();
+  } catch (cause) {
+    if (cause instanceof WorkspaceManagementRecoveryRequiredError) throw cause;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause });
   }
+}
+
+export async function assertColdImportRecoveryConflictsFromRoot(
+  root: string, suppliedJournal: Readonly<WorkspaceBackupImportJournal>, suppliedRegistry: Readonly<LocalWorkspaceRegistry>,
+): Promise<void> {
+  try {
+    const journal = validateWorkspaceBackupImportJournal(suppliedJournal);
+    const registry = validateWorkspaceRegistry(suppliedRegistry);
+    if (journal.formatVersion !== 2 || await hasAnyJournalSlot(createWorkspaceCreationJournalPaths(
+      root, join(root, WORKSPACE_CREATION_JOURNAL_FILE_NAME)))) throw new WorkspaceManagementRecoveryRequiredError();
+    await assertWorkspaceColdRecoveryConflictsAbsent(coldRecoveryConflictPaths(root, journal, registry));
+  } catch (cause) {
+    if (cause instanceof WorkspaceManagementRecoveryRequiredError) throw cause;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause });
+  }
+}
+
+function coldRecoveryConflictPaths(root: string, journal: Readonly<{ workspaceId: WorkspaceId; previousActiveWorkspaceId: WorkspaceId | null }>,
+  registry: Readonly<LocalWorkspaceRegistry>) {
+  const workspaceIds = new Set<WorkspaceId>([journal.workspaceId, ...registry.workspaces.map(entry => entry.workspaceId)]);
+  if (journal.previousActiveWorkspaceId !== null) workspaceIds.add(journal.previousActiveWorkspaceId);
+  const legacyRuntimeRoot = createDesktopProfilePaths(root).runtimeRoot;
+  const runtimeRoots = [legacyRuntimeRoot, ...[...workspaceIds].map(id =>
+    createDesktopProfilePaths(deriveWorkspaceRoot(root, id, 1).workspaceRoot).runtimeRoot)];
+  const update = createLocalUpdateRuntimePaths({ userDataPath: root, legacyRuntimeRoot });
+  const replacement = deriveWorkspaceBackupReplacementRuntimePaths(root, journal.workspaceId);
+  return {
+    adoptionJournal: createWorkspaceLegacyAdoptionJournalPaths(root),
+    deletionJournal: createWorkspaceDeletionJournalPaths(root),
+    directSetupRecovery: createReadOnlyJournalSlotPaths(update.directSetupMigrationRecoveryPath),
+    firstStartMigrationJournal: createWorkspaceFirstStartMigrationJournalPaths(root),
+    legacyUpdateJournal: createReadOnlyJournalSlotPaths(update.legacyJournalPath),
+    profileRestoreJournals: runtimeRoots.map(runtimeRoot => createReadOnlyJournalSlotPaths(
+      createProfileSnapshotRuntimePaths(runtimeRoot).restoreActivationJournalPath)),
+    replacementJournal: createReadOnlyJournalSlotPaths(replacement.activationJournalPath),
+    switchJournal: createWorkspaceSwitchJournalPaths(root),
+    updateJournal: createReadOnlyJournalSlotPaths(update.journalPath),
+  };
 }

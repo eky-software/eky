@@ -11,6 +11,7 @@ import {
   runProfileSnapshotInspection, type ProfileSnapshotInspectionReservation,
 } from './runProfileSnapshotInspection.js';
 import { stageValidatedProfileBackup } from './stageValidatedProfileBackup.js';
+import { captureProfileSnapshotCleanupAuthority, type ProfileSnapshotCleanupAuthority } from './profileSnapshotInspectionPort.js';
 
 type InspectionInput = Parameters<typeof runProfileSnapshotInspection>[0];
 
@@ -95,6 +96,7 @@ export async function inspectOwnedEncryptedProfileBackup(input: {
           mayClean = true;
           try {
             const inspected = await runProfileSnapshotInspection({
+              target: { kind: 'unbound' },
               migrationPolicy: 'restoreCompatible',
               operationId, kind: 'inspect', deadline, reservation: owner,
               runnerPath: input.runnerPath, deployment: input.deployment,
@@ -151,7 +153,9 @@ export async function inspectOwnedEncryptedProfileBackup(input: {
 
 export async function finishOwnedCleanup(
   owner: OwnedProfileBackupInspectionReservation, operationRoot: string, deadline: number,
+  cleanupAuthority?: ProfileSnapshotCleanupAuthority,
 ): Promise<void> {
+  const authority = cleanupAuthority === undefined ? undefined : captureProfileSnapshotCleanupAuthority(cleanupAuthority);
   const cancellation = new AbortController();
   const signal = cancellation.signal;
   const timer = setTimeout(() => cancellation.abort(), Math.max(0, Math.ceil(deadline - performance.now())));
@@ -162,10 +166,20 @@ export async function finishOwnedCleanup(
     assertCurrent();
     await waitForInspectionPhase(owner.assertMainOwned(), signal);
     assertCurrent();
+    if (authority !== undefined) {
+      authority.assertCurrent();
+      await waitForInspectionPhase(authority.assertOwned(), signal);
+      assertCurrent();
+      await waitForInspectionPhase(owner.assertMainOwned(), signal);
+      assertCurrent();
+      authority.assertCurrent();
+    }
     await waitForInspectionPhase(fileSystem.rm(operationRoot, { force: true, recursive: true }), signal);
     assertCurrent();
+    authority?.assertCurrent();
     await waitForInspectionPhase(owner.close(), signal);
     assertCurrent();
+    authority?.assertCurrent();
   } finally {
     clearTimeout(timer);
     cancellation.abort();
