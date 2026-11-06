@@ -2485,6 +2485,15 @@ vaarallisen jatkon. Nykyisiä mainin vartijoita ei ohiteta poistopainikkeen
 vuoksi. Jos tarvittava turvallinen kohdeprojektiotieto puuttuu, se täsmennetään
 A-palassa nykyisen statusomistajan kautta ennen UI-kytkentää.
 
+**C:n pääsyrajan avoin yhteisketju 6.11.2026:** entryn oma `availability`
+ei ole sama asia kuin yleinen `operationState`. Nykyinen lähdeluenta ja
+alemmat W7.4-sidontatestit eivät vielä todista valitsimen yleisen
+palautusluennan, palvelun admission-vartijan ja saman kohteen
+alkuperäisjournalin väistymisen yhteistä hyväksyntää. Tämä raja katselmoidaan
+ennen julkisen poiston kytkentää; UI ei saa päätellä poistolupaa vikatilasta
+tai ohittaa yleistä vartijaa. Lähdeluennan raja ei ole todennettu kaikkien
+vikakohteiden regressio eikä muuta jo hyväksyttyjä poistoperiaatteita.
+
 Käyttöliittymä näyttää odotuksen ilman keksittyä prosenttia tai
 vaihevaltuutta. Varsinaisen pyynnön aikana se ei lähetä rinnakkaisia
 muutoksia. Peruutus tapahtuu ennen aloitusta nykyisissä vahvistusdialogeissa;

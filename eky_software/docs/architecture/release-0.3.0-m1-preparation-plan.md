@@ -67,6 +67,18 @@ Katselmuksen rajattuihin korjauksiin ei jäänyt löydöstä. Seuraavaksi A/B:n
 jäljellä olevat integraatioportit ja C:n julkinen käyttäjäpolku;
 koko W7.5 ei ole hyväksytty.
 
+**Ennen C:n julkista kytkentää:** yritysentryn `availability` ja asennuksen
+`operationState` erottavat kohteen avaamisvian yleisestä palautuslukosta.
+Rajattu lähdeluenta ei kuitenkaan vielä todista valitsin -> julkinen poisto
+-> saman kohteen keskeneräisen palautusjournalin väistyminen -yhteisketjua.
+Nykyisen startupin yleinen palautusluenta ja palvelun `runAdmitted`-vartija
+edeltävät W7.4:n alempaa alkuperäisjournalin kohdesidontaa. Pelkkä alempi
+sidontatesti ei todista ylemmän pääsyn turvallista hyväksymistä.
+Seuraava portti on tämän yhden omistajuusrajan rajattu katselmus nykyisen
+[C-sopimuksen](local-company-workspace-plan.md#käyttöliittymän-rajaus) mukaan;
+yleistä ohitusta tai uutta status-/käynnistysvaltuutta ei ole toteutettu.
+Tämä ei ole näyttö kaikkien vikatilaisten kohteiden poistamisen estymisestä.
+
 **Main-regression avoin portti:** edellisen 398 testin sarjan kolme
 replacement-aikakatkaisua ja rajattu erillisdiagnoosi säilyvät hylättyinä.
 Työt ja testiresurssien siivous päättyivät, aineistot säilyivät. Lähdetarkistus
