@@ -142,6 +142,117 @@ entry-kokeet eivät vielä todista todellisen mainin hallintasukupolvea,
 build-luottamuksen myöntämiskohtaa tai käyttöliittymää edeltävää vientiä.
 Kytkentä näihin omistajiin odottaa omaa näyttöporttia.
 
+### W7.5:n nykyisen operaation ja varhaisen viennin omistajuus
+
+**6.11.2026: toteutussopimus ennen B3/B4-kokeita, ei ajonaikainen näyttö.**
+Tämä täsmentää hyväksyttyä native-entryä, ei avaa yleistä startup-fallbackia.
+Toteutuspalat ja portit ovat [W7.5-suunnitelmassa](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus).
+V2:n sisältö, permission ja kutsusopimus sekä B1:n v3-formaatti säilyvät.
+
+**Valitsimen sukupolvi.** Nykyinen `WorkspaceManagementService` omistaa
+sisäisen, vain lukuun tarkoitetun operaatiokontekstin: sukupolven,
+korrelaation ja operaatiolajin. Sukupolvi vaihtuu ennen hyväksytyn
+muuttavan komennon ensimmäistä odotusta; myös pääsyn sulkeminen ja shutdown
+mitätöivät aiemman vientipyynnön. `status` tai rinnakkaisena hylätty
+`BUSY`-pyyntö ei korvaa käynnissä olevan komennon havaintoa. Uusi komento,
+myös onnistuva tai peruttu, syrjäyttää aiemman komennon virhetiedon.
+Samaa sukupolvea ei palauteta tilan palatessa `idle`-tilaan.
+
+Palvelun lukuportti palauttaa muuttumattoman kontekstin ja synkronisen
+tuoreusvartijan vasta komennon, loppukäsittelyn ja varauksen vapautusyrityksen
+päätyttyä. Se ei myönnä muutos-, sulku- tai uudelleenkäynnistysvaltuutta.
+`closeAdmission` ei yksin tarkoita shutdownia: pääsyn sulkemisen jälkeen
+asettunut virhe voidaan lukea **uudella** vientipyynnöllä, jos mainin
+nykyiset omistajuusvartijat sallivat sen. Vanha pyyntö ei elvy.
+Pääsyn sulku vaihtaa viennin sukupolven, ei keskeneräisen komennon
+korrelaatiota; sen myöhempi ensivirhe-/siivoushavainto säilytetään saman
+komennon loppuun asti.
+Epävarma vapautus ei ole onnistunut vapautus tai backendin poistumistodiste.
+Palvelun shutdown, compositionin vaihto tai mainin sulku estää uudenkin
+viennin. Vain statusluvun onnistuminen ei muodosta raportointivaltuutta.
+
+**Kaksi turvallista havaintoa.** `workspaceManagementComposition` sitoo
+nykyisen `workspaceBackupOperationalObserver`-projektion yllä olevaan
+kontekstiin. Observer muodostaa nykyisen katalogin tapahtuman kerran ja
+tarjoaa sen erilliselle synkroniselle vastaanottajalle ennen lokikirjoitusta.
+Vastaanottajan ja loggerin virheet eristetään toisistaan ja ensisyystä.
+Composition säilyttää enintään nykyisen operaation ensimmäisen turvallisen
+virheen ja erillisen siivousvirheen; ei raakaa poikkeusta tai historiapuskuria.
+Runtime, korrelaatio, operaatiolaji ja tapahtumarooli tarkistetaan.
+Myöhäinen, vieras tai toistettu havainto ei korvaa ensimmäistä. Havaintojen
+vastaanotto päättyy komennon lopussa ennen uuden raportointikontekstin
+luovutusta. Puuttuva tai virheellinen projektio on `unavailable`, ei arvaus.
+Observer ei omista sukupolvea, vientilupaa tai palvelun tilasiirtymää.
+
+`supportBundleCapability` ottaa uuden v3-pyynnön kontekstin talteen
+**ennen ensimmäistä native-vahvistuksen odotusta**, ei factoryn luonnissa
+eikä vasta tallennusvalinnan jälkeen. B2:n injektoitu yleinen tilavartija
+ei yksin todista tätä. Kontekstin talteenotto ei lue havaintosisältöä;
+peruutus ei lataa sitä. Havainto ladataan synkronisesti vain saman talteen
+otetun kontekstin kautta vahvistuksen ja kohdevalinnan jälkeen. Nykyiset
+sender-, frame-, dokumentti- ja dispose-vartijat sekä mainin tuoreusvartija
+tarkistetaan edelleen kaikkien odotusten jälkeen ja ennen kirjoitusta.
+Vanha `idle -> busy -> idle` -pyyntö hylätään, vaikka ikkuna olisi sama.
+
+**Ennen ensimmäistä ikkunaa.** `main/index.ts` omistaa yhden
+käynnistysyrityksen raportointieliniän. `desktopComposition` ei luovuta
+sen päättynyttä `assertStartupAuthority`-vartijaa myöhemmälle virhedialogille:
+nykyinen startup päättyy ja sulkee/mitätöi varauksen ennen
+`earlyStartup.onFailure(errorCode)`-kutsua. Virhekoodi ei ole vientilupa.
+
+Composition saa toimittaa indexille muuttumattoman, turvallisen
+virhekuittauksen vain nimetyn pre-business workspace-vaiheen hylkäyksestä:
+poiston cold-jatko, create/import-kylmäpalautus, nykyinen ensimmäisen avauksen
+palautus, työtilan ratkaisu/adoption tai yritysvalitsimen koostaminen.
+Kuittaus sidotaan samaan käynnistysyritykseen ja nykyiseen buildiin; sen
+vaihekohtainen keräys suljetaan onnistumisessa, eikä sitä lainata seuraavan
+tai yleisen startup-vaiheen virheelle. Business-runtimen, proof-/smoke-ajon,
+update-recovery-dialogin ja tavallisen v2-viennin nykyiset polut säilyvät.
+
+Kuittaus edellyttää jo olemassa olevan build-portin onnistumista:
+poiston cold-polussa `captureColdWorkspaceDeletionAdmissionFromRoot`-tuloksen
+`buildAdmission`, muissa nimetyissä poluissa mainin nykyinen
+`readBuildAdmission`. Pelkkä `readDesktopBuildInfo`/release-metadatan
+muotovalidointi ei riitä. Ennen tätä porttia sattuva virhe, uusi
+build-hylkäys tai epäselvä kuittauksen sidonta säilyttää nykyisen turvallisen
+ilmoituksen ja poistumisen ilman vientiä. Vienti ei tee uutta build-/journal-
+lukua tai siirrä cold-palautuksen järjestystä. Kehitystila on nykyisen
+runtime-portin eksplisiittinen tulos, ei puuttuvan pilot-metadatan oletus.
+Paketin identiteetti on suorittava build, ei hyväksyntämetadatan vanhempi build.
+
+Nykyinen cold-omistaja rajaa oman observerinsa vain tähän kutsuun ja sitoo
+sen korrelaation palvelun operaation alussa; myöhäiset tapahtumat hylätään
+kutsun loppukäsittelyn jälkeen. Index vastaanottaa vain B1:n turvallisen
+projektion, ei Erroria, journalia, polkuja tai workspace-tunnisteita.
+Puuttuva havainto voidaan ilmoittaa puuttuvaksi, jos itse build- ja
+käynnistysyrityssidonta on todistettu. `notRunning` vaatii nykyiseltä
+omistajalta erillisen todetun poissaolon; muuten `exitUnconfirmed`.
+Puuttuva lifecycle-kahva tai valmistunut Promise ei ole poistumistodiste.
+
+Varhainen vientityö lainaa saman compositionin nykyistä operationalLoggeria
+main-only-porttina; loggerin viite ei kuulu paketin dataan tai IPC:hen.
+Uutta loggeria tai historiahakua ei tehdä. Kuittauksen toimituksen tai
+vientilokin virhe ei korvaa alkuperäistä startup-virhettä. Jos kuittausta
+ei voida sitoa luotettavasti, nykyinen virheilmoitus ja poistuminen säilyvät.
+
+Index luovuttaa B2:n kerran käytettävälle native-exportille vain raportoinnin
+luvan: sama käynnistysyritys/build, single-instance-omistajuus ja ei sulkua
+tai relaunchia. Lupa ei palauta fyysistä workspace-varausta eikä salli
+yrityksen avaamista, siivoamista tai muuta tiedostomuutosta kuin nykyisen
+tukipakettikirjoittajan omat väliaikais-/kohdetiedostot. Sekä peruuttaminen,
+onnistuminen että virhe kuluttavat sen. Uutta yritystä ei tehdä automaattisesti.
+
+`desktopBeforeQuit` mitätöi tämän raportointiluvan synkronisesti myös silloin,
+kun `desktopLifecycle` puuttuu. Relaunch ja single-instance-omistajuuden
+menetys mitätöivät sen samoin. Vienti ei odota omaa before-quit-ketjua;
+before-quit ei odota omaan startupin virhekäsittelyyn sisältyvää dialogia.
+Native-dialogin peruuntumista ei oleteta: sen myöhäinen tulos käsitellään,
+mutta mitätöity lupa estää havainnon latauksen, tiedostokirjoituksen ja
+vanhan virhedialogin. Nykyinen kirjoittaja on synkroninen; sen eteen ei
+lisätä odotusta eikä sen valmistumista päätellä disposesta. Normaalisti
+`earlyStartup` odottaa virhekäsittelyn päättymisen ja poistuu edelleen
+virhekoodilla. Epäonnistunut käynnistys ei muutu onnistumiseksi tukiviennillä.
+
 Main valitsee polun luotetusta runtime-/selector-tilasta, ei rendererin
 parametrista. Nykyinen argumentiton `createSupportBundle()` ja mainin
 native-vahvistus/Save-dialogi säilyvät. Vain nykyinen sallittu ikkuna,

@@ -30,10 +30,25 @@ Myös tämän mainin oma [V2](https://github.com/eky-software/eky/actions/runs/4
 ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42176483388)
 läpäisivät. Tämä ei avaa hyväksyttyä W7.4:ää uudelleen.
 
+**Uudempi tarkistus on hylätty:** saman main-revision määräajoin ajettu
+[V2 42195653452](https://github.com/eky-software/eky/actions/runs/42195653452)
+hylkäsi workspace-työn salatun aineiston sopimuskokeen ja jälkimmäisen
+core-työn pakettitestivaiheen; myös koonti hylättiin. Molempien
+ensivirhepaketit on säilytetty ja lähde-/tarkistussummasidonta varmennettu.
+Sisältöä ei vielä ole purettu eikä syytä tai siivoustilaa ratkaistu.
+Saman mainin [uusi auditointi](https://github.com/eky-software/eky/actions/runs/42196766347)
+läpäisi. Aiempi hyväksyntä säilyy historiana, ei uuden hylkäyksen ohituksena.
+Ei uusintaa tai koodikorjausta tämän lähdekatselmuksen perusteella.
+
 **Aktiivinen työ on W7.5 A/B:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
-toteutuscheckpoint on A:n varhaisen tukiviennin koe ja B:n rajattu
-tukipaketti, ei poistopainikkeen julkaisu. Nykyisen sisäisen paluu- ja
+toteutuscheckpoint on [B3/B4:n omistajuuskokeet](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus):
+ensin todellinen sukupolvi ja havaintolähde, sitten varhainen native-vienti,
+ei poistopainikkeen julkaisu. Rajattu omistajuussopimus on kirjattu ja
+riippumaton katselmus läpäisi, mutta toteutus- ja ajonaikainen näyttö ovat
+tekemättä. Uuden main-hylkäyksen säilynyt aineisto tutkitaan erillään
+tästä toteutuksesta ennen integraatiovalmiuden toteamista.
+Nykyisen sisäisen paluu- ja
 pyyntöelinikäliitoksen osanäyttö on alla; julkinen/paketoitu ketju ja tuki
 ennen yritysvalinnan valmistumista ovat vielä todentamatta. Omistaja
 hyväksyi 6.11.2026 myös varhaisen native-tukiviennin toteutuksen ja

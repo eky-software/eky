@@ -2700,6 +2700,44 @@ main-tiedoston kaikki 398 regressiota läpäisivät ilman ohituksia yhteisen
 vientityön muutoksen jälkeen. Sen Electron-/backend-rajat ovat edelleen
 kontrolloituja; tämä ei ole uusien v3-entryjen native-todiste.
 
+##### W7.5 B3/B4:n omistajuussopimus
+
+**6.11.2026: rajattu lähdekatselmus ja toteutussopimus.**
+[Tukipakettisuunnitelma](support-bundle-plan.md#w75n-nykyisen-operaation-ja-varhaisen-viennin-omistajuus)
+omistaa tarkan sukupolvi-, havainto-, build- ja native-lupasopimuksen.
+Tämä jatkaa B2:ta; kyse ei ole jo todennetusta main-kytkennästä.
+Sovelluslähdettä tai aikarajoja ei muutettu sopimuksen suunnittelussa.
+Rajattu riippumaton lähde-/sopimuskatselmus ei löytänyt korjattavaa puutetta.
+Se ei todista alla olevia toteutusportteja; erityisesti admission-sulun
+jälkeinen virhehavainto ja erillisen raportointiluvan sulku on vielä
+todennettava oikeiden nykyisten omistajien kautta.
+
+| Pala | Nykyiset omistajat ja rajattu muutos | Pieni näyttö ennen kytkentää |
+| --- | --- | --- |
+| B3a: palvelun sukupolvi ja havainto | `workspaceManagementService.ts`/`workspaceManagementTypes.ts`: sisäinen vain luku -konteksti ja sen päättyminen. `workspaceBackupOperationalObserver.ts`: sama turvallinen projektio ennen loggeria. `workspaceManagementComposition.ts`: nykyisen operaation enintään kaksi projektioroolia. Ei tukipakettiformaattia palveluun tai lokihistoriaa. | Todellinen palvelukomento odotuksineen ja vapautuksineen; uuden komennon alku, oma admission-sulku vs shutdown, `BUSY`/status, onnistuminen/peruutus, myöhäinen/vieras tapahtuma, loggerin ja vastaanottajan virheet. Raportointikonteksti ei anna jatkotoimintolupaa. |
+| B3b: valitsimen vientipyyntö | `supportBundleCapability.ts`: v3:n pyyntökohtainen kontekstikaappaus ennen ensimmäistä odotusta; v2:n ulkoinen sopimus säilyy. `desktopSelectorComposition.ts`: todellinen palvelu-/main-sukupolvi, nykyinen rajattu support-capability, dispose sulussa. | Sama ikkuna ja `idle -> busy -> idle` ei elvytä pyyntöä. Molempien dialogien katkot, uusi vienti vain uudelle nykytilalle, aidot gzip-/kohdetavut ja virallinen tarkastin; nolla backend-/SQLite-/historialukua. Todellinen observer -> composition -> export -ketju, ei pelkkä injektoitu vartija. |
+| B4: varhainen native-vienti | `recoverDesktopWorkspaceDeletion.ts` ja `desktopComposition.ts`: vaiheeseen sidottu turvallinen kuittaus nykyisen build-portin jälkeen. `main/index.ts`: kertakäyttöinen raportointielinikä ja nykyiset native-dialogit. `desktopBeforeQuit.ts`: synkroninen mitätöinti myös ilman lifecycleä. `earlyStartup.ts`: nykyinen turvallinen virhe/poistumissopimus säilyy, ei uutta yleistä startup-manageria. | Oikea composition-hylkäys ennen ikkunaa -> native-entry -> nykyinen kirjoittaja -> tarkastin. Build-todiste puuttuu/hylätään, väärä yritys tai build, päättynyt startup-vartija, quit/relaunch dialogissa, myöhäinen vastaus ja alkuperäisen virheen säilyminen. Pelkkä metadata tai kuittauksen olemassaolo ei anna lupaa. |
+
+Kaikki kolme palaa tarvitsevat omat lähitestit, nykyisen tyypityksen ja
+rajatun katselmuksen. B4:n myöntämiskohdan testi käyttää todellista
+build-admission-polkua, ei testiä varten annettua `trusted: true` -arvoa.
+Hylätyn/puuttuvan buildin tapaus ei saa näyttää vientivalintaa tai kirjoittaa.
+Todettu backendin poissaolo ja `exitUnconfirmed` testataan erikseen;
+kumpikaan tukipaketti ei hyväksy business-startupia.
+
+Jokaisessa kappaleessa säilyvät normaalit create/import/restore/delete-
+ja sulkuregressiot. V3:n peruutus ei lue havaintoa, vanhentunut pyyntö ei
+kirjoita eikä avaa uutta virheilmoitusta. Omistajan virhe säilyy ennen
+turvallista yleiskoodia; erillinen cleanup-virhe ei korvaa sitä. Nykyinen
+yksityinen synteettinen virhekeräys ja OpenPGP-purku todentavat alkuperäisen
+syyn, eivät lisää raakavirhettä käyttäjän v3-pakettiin.
+
+Nämä pienet kokeet eivät korvaa D:n oikeaa Electron-/pakettiketjua.
+Julkinen delete-IPC/preload/painike pysyy C:n portin takana. Ennen pitkää
+CI:tä todistetaan nykyinen salaus/purku ja ennen mergeä koko W7.5:n
+katselmus sekä täsmällisen revision PR/main-portit. Uusi main-hylkäys
+käsitellään nykyisen ensivirhesäännön mukaan, ei vanhan hyväksynnän nojalla.
+
 #### Testikattavuus ilman rinnakkaista testijärjestelmää
 
 W7.4:n journal-, 23 kohteen rooli-, fyysinen poisto-, metadata- ja
@@ -2728,9 +2766,8 @@ Diagnosticsin/moduulimatriisin tukivastuu sekä E2E-matriisi ja -ympäristö.
 Tapahtumakatalogia muutetaan vain todellisen projektioeron vuoksi.
 Historiallinen hyväksyntänäyttö ja tuntemattomat virhesyyt säilyvät erillään.
 
-**Avoinna ennen kytkentää:** A:n tarkka lopputulos-/paluusopimus,
-varhaisen virhe-entryn toteutusnäyttö,
-tukiviennin nykyisen operaation havaintolähde
+**Avoinna ennen kytkentää:** A:n julkisen lopputulos-/paluuketjun näyttö,
+varhaisen virhe-entryn sekä B3/B4:n sukupolvi-/havaintosopimuksen toteutusnäyttö
 sekä D:n paketoidun julkisen entryn ohjaus nykyisillä turva-asetuksilla.
 Nämä ovat nimetyt toteutusportit, eivät peruste aloittaa yleistä
 arkkitehtuuri- tai suorituskykyremonttia. Jos hardened-paketin painiketta
