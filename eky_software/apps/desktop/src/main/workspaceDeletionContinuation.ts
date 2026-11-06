@@ -7,10 +7,10 @@ import { captureWorkspaceDeletionJournal, sameWorkspaceDeletionJournalBinding,
   type WorkspaceDeletionJournal } from '../workspaces/deletion/workspaceDeletionJournalCodec.js';
 import type { WorkspaceDeletionPreparationOptions } from '../workspaces/management/workspaceDeletionPreparation.js';
 import type { WorkspaceDeletionCompletion, WorkspaceDeletionRecoveryOwner,
-  WorkspaceManagementServiceOptions } from '../workspaces/management/workspaceManagementService.js';
-import { WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
+  WorkspaceDeletionFailureOutcome, WorkspaceManagementServiceOptions } from '../workspaces/management/workspaceManagementService.js';
+import { mapWorkspaceManagementError, WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
 import type { WorkspaceDeletionResultRuntime } from '../workspaces/management/workspaceManagementCapability.js';
-import { parseWorkspaceDeletionOperationResult } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
+import { parseWorkspaceDeletionOperationResult, workspaceManagementCapabilityProtocolVersion } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
 import type { WorkspaceMaintenanceStateReader } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import type { WorkspaceId } from '../workspaces/registry/workspaceRegistryTypes.js';
@@ -57,16 +57,34 @@ export function createWorkspaceDeletionResultRuntime(input: Readonly<{
     assertUpdateJournalAuthority(main);
     assertCurrent();
   };
+  const readNextAction: WorkspaceDeletionResultRuntime['readNextAction'] = () => {
+    assertCurrent();
+    const state = readState(), pending = requested(), sent = dispatched();
+    const idle = readMaintenance() === 'idle';
+    if (state === 'stopped') assertUpdateJournalAuthority(main);
+    assertCurrent();
+    if (idle && state === 'available' && !pending && !sent) return 'continue';
+    if (idle && state === 'stopped' && sent) return 'relaunching';
+    return 'restartRequired';
+  };
   return Object.freeze({
-    readNextAction() {
-      assertCurrent();
-      const state = readState(), pending = requested(), sent = dispatched();
-      const idle = readMaintenance() === 'idle';
-      if (state === 'stopped') assertUpdateJournalAuthority(main);
-      assertCurrent();
-      if (idle && state === 'available' && !pending && !sent) return 'continue';
-      if (idle && state === 'stopped' && sent) return 'relaunching';
-      return 'restartRequired';
+    readNextAction,
+    projectFailure(outcome: Readonly<WorkspaceDeletionFailureOutcome>) {
+      const failure = mapWorkspaceManagementError(outcome.cause, 'delete');
+      if (outcome.sideEffectState !== 'none') return parseWorkspaceDeletionOperationResult({
+        formatVersion: workspaceManagementCapabilityProtocolVersion, status: 'recoveryRequired', errorCode: failure.code,
+        sideEffectState: 'unknown', nextAction: 'restartRequired',
+      });
+      let nextAction: 'continue' | 'restartRequired';
+      const mayContinue = failure.code === 'WORKSPACE_MANAGEMENT_BUSY' || failure.code === 'WORKSPACE_MANAGEMENT_INVALID';
+      try { nextAction = mayContinue && readNextAction() === 'continue' ? 'continue' : 'restartRequired'; }
+      catch (stateFailure) {
+        throw new WorkspaceManagementError(failure.code, 'delete', { cause: new AggregateError(
+          [outcome.cause, stateFailure], 'WORKSPACE_DELETE_RESULT_UNCERTAIN', { cause: outcome.cause },
+        ) });
+      }
+      return parseWorkspaceDeletionOperationResult({ formatVersion: workspaceManagementCapabilityProtocolVersion, status: 'failed',
+        errorCode: failure.code, sideEffectState: 'none', nextAction });
     },
     async complete(value: Readonly<WorkspaceDeletionCompletion>) {
       if (spent) fail();

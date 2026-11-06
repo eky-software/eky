@@ -5,6 +5,7 @@ import { bindWorkspaceDeletionContinuation, createWorkspaceDeletionResultRuntime
   type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
+import { WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
 
 const operationId = '11111111-1111-4111-8111-111111111111';
 const workspaceId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
@@ -104,6 +105,55 @@ describe('main-only deletion terminal binding', () => {
 
 describe('main-only deletion result runtime', () => {
   const completed = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: 'selector' as const });
+
+  it.each(['available', 'stopped', 'unavailable'] as const)('projects a proven no-effect failure against the actual %s runtime', state => {
+    const f = resultRuntimeFixture(state);
+    const original = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+    expect(f.runtime.projectFailure({ cause: original, sideEffectState: 'none' })).toEqual({
+      formatVersion: 1, status: 'failed', errorCode: original.code, sideEffectState: 'none',
+      nextAction: state === 'available' ? 'continue' : 'restartRequired',
+    });
+    expect(f.absent).not.toHaveBeenCalled(); expect(f.owned).not.toHaveBeenCalled();
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('never reports no effect for unknown work or infers a safe code from a raw message', () => {
+    const f = resultRuntimeFixture('available');
+    const original = new Error('WORKSPACE_MANAGEMENT_BUSY synthetic original private detail');
+    f.state.current = false;
+    const result = f.runtime.projectFailure({ cause: original, sideEffectState: 'unknown' });
+    expect(result).toEqual({ formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED',
+      sideEffectState: 'unknown', nextAction: 'restartRequired' });
+    expect(JSON.stringify(result)).not.toMatch(/synthetic|private|cause|message|stack/);
+    expect(f.absent).not.toHaveBeenCalled(); expect(f.owned).not.toHaveBeenCalled();
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('does not turn an unresolved ownership guard into a usable runtime because deletion had no effect', () => {
+    const f = resultRuntimeFixture('available');
+    const original = new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
+    expect(f.runtime.projectFailure({ cause: original, sideEffectState: 'none' })).toEqual({
+      formatVersion: 1, status: 'failed', errorCode: original.code,
+      sideEffectState: 'none', nextAction: 'restartRequired',
+    });
+    expect(f.absent).not.toHaveBeenCalled(); expect(f.owned).not.toHaveBeenCalled();
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the original error before a separate current-state failure', () => {
+    const f = resultRuntimeFixture('available');
+    const original = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+    f.state.current = false;
+    let failure: unknown;
+    try { f.runtime.projectFailure({ cause: original, sideEffectState: 'none' }); }
+    catch (error) { failure = error; }
+    expect(failure).toMatchObject({ code: original.code, operationKind: 'delete' });
+    const causes = (failure as Error).cause as AggregateError;
+    expect(causes.cause).toBe(original);
+    expect(causes.errors[0]).toBe(original);
+    expect(causes.errors[1]).toBe(f.revoked);
+    expect(f.relaunch).not.toHaveBeenCalled();
+  });
 
   it.each(['available', 'stopped', 'unavailable'] as const)('observes %s without granting mutation or restart authority', state => {
     const f = resultRuntimeFixture(state);

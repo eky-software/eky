@@ -9,10 +9,12 @@ import { DeferredWorkspaceRuntimeRelaunch } from '../runtime/deferredWorkspaceRu
 import {
   WorkspaceManagementService,
   type WorkspaceDeletionCompletion,
+  type WorkspaceDeletionFailureOutcomeHandler,
   type WorkspaceDeletionWorkAuthority,
   type WorkspaceManagementServiceOptions,
 } from './workspaceManagementService.js';
 import type { WorkspaceDeletionPreparationOutcome } from './workspaceManagementTypes.js';
+import { WorkspaceManagementError } from './workspaceManagementError.js';
 
 describe('workspace deletion service-owned shutdown settlement', () => {
   it.each(['completion', 'release'] as const)(
@@ -378,7 +380,167 @@ describe('workspace deletion durable result lifetime', () => {
   });
 });
 
+describe('main-only deletion failure outcome', () => {
+  it('reports malformed input without entering the admitted command and preserves the exact rejection', async () => {
+    const f = durableFixture();
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    try {
+      const failure = await f.startDurable(report, {}).catch(error => error);
+      expect(failure).toMatchObject({ code: 'WORKSPACE_MANAGEMENT_INVALID' });
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure, sideEffectState: 'none' });
+      expect(report.mock.calls[0]![0].cause).toBe(failure);
+      expect(Object.isFrozen(report.mock.calls[0]![0])).toBe(true);
+      expect(Object.keys(report.mock.calls[0]![0])).toEqual(['cause', 'sideEffectState']);
+      expect(f.acquire).not.toHaveBeenCalled();
+      expect(f.resume).not.toHaveBeenCalled();
+    } finally { await f.service.shutdown(); }
+  });
+
+  it.each(['admission', 'preparation'] as const)('classifies the actual %s boundary rather than the same error code', async phase => {
+    const first = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+    const fail = async (): Promise<never> => { throw first; };
+    const f = durableFixture(phase === 'admission' ? { admission: fail } : { prepare: fail });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    try {
+      const failure = await f.startDurable(report).catch(error => error);
+      expect(failure).toBe(first);
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure,
+        sideEffectState: phase === 'admission' ? 'none' : 'unknown' });
+      expect(f.acquire).toHaveBeenCalledTimes(phase === 'admission' ? 0 : 1);
+      expect(f.resume).not.toHaveBeenCalled();
+    } finally { await f.service.shutdown(); }
+  });
+
+  it('does not turn recordRemoved or released ownership into a successful outcome after acknowledgement loss', async () => {
+    const first = new Error('SYNTHETIC_ACKNOWLEDGEMENT_LOST');
+    const f = durableFixture({ async resume(_id, authority) {
+      authority.recordRemoved(f.receipt); throw first;
+    } });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    try {
+      const failure = await f.startDurable(report).catch(error => error);
+      expect(failure).toMatchObject({ code: 'WORKSPACE_DELETE_FAILED', cause: first });
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure, sideEffectState: 'unknown' });
+      expect(f.recordRemoved).toHaveBeenCalledOnce();
+      expect(f.lease.readState()).toBe('idle');
+    } finally { await f.service.shutdown(); }
+  });
+
+  it.each([false, true])('reports final release failure without losing the first cause (earlier failure: %s)', async earlier => {
+    const first = new Error('SYNTHETIC_INITIAL_DELETE_FAILURE');
+    const cleanup = new Error('SYNTHETIC_OUTCOME_RELEASE_FAILURE');
+    const f = durableFixture({ ...(earlier ? { async prepare(): Promise<never> { throw first; } } : {}),
+      release() { throw cleanup; } });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    try {
+      const failure = await f.startDurable(report).catch(error => error);
+      expect(failure).toMatchObject({ code: 'WORKSPACE_DELETE_FAILED' });
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure, sideEffectState: 'unknown' });
+      expect(report.mock.calls[0]![0].cause).toBe(failure);
+      if (earlier) expectCompletionFailure(failure.cause, [first, cleanup]);
+      else expect(failure.cause).toBe(cleanup);
+      expect(f.lease.readState()).toBe('idle');
+    } finally {
+      await f.service.shutdown().then(() => { throw new Error('MISSING_CLOSE_FAILURE'); },
+        error => expectCompletionFailure(error, [cleanup]));
+    }
+  });
+
+  it('keeps a late completion failure uncertain even when admission prevented command entry', async () => {
+    const first = new Error('SYNTHETIC_ADMISSION_FAILURE');
+    const cleanup = new Error('SYNTHETIC_LATE_COMPLETION_FAILURE');
+    const events: unknown[] = [];
+    const f = durableFixture({ async admission() { throw first; }, complete() { throw cleanup; },
+      observer: { record(event) { events.push(event); } } });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    try {
+      const failure = await f.startDurable(report).catch(error => error);
+      expectCompletionFailure(failure.cause, [first, cleanup]);
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure, sideEffectState: 'unknown' });
+      expect(events).toEqual([expect.objectContaining({ sideEffectState: 'unknown', stage: 'admission' })]);
+      expect(f.acquire).not.toHaveBeenCalled();
+    } finally {
+      await f.service.shutdown().then(() => { throw new Error('MISSING_CLOSE_FAILURE'); },
+        error => expectCompletionFailure(error, [cleanup]));
+    }
+  });
+
+  it('does not report a settled outcome while the original release is still held', async () => {
+    const first = new Error('SYNTHETIC_PREPARATION_FAILURE');
+    const finish = deferred();
+    const f = durableFixture({ async prepare() { throw first; }, async release() { await finish.promise; } });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    const work = observe(f.startDurable(report));
+    try {
+      await waitForRelease(f, work.result);
+      await expectStillPending(work);
+      expect(report).not.toHaveBeenCalled();
+      finish.resolve();
+      const failure = await work.result.catch(error => error);
+      expect(failure).toMatchObject({ cause: first });
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: failure, sideEffectState: 'unknown' });
+      expect(f.lease.readState()).toBe('idle');
+    } finally { finish.resolve(); await Promise.allSettled([work.result, f.service.shutdown()]); }
+  });
+
+  it('binds a concurrent busy rejection only to the unstarted second request', async () => {
+    const entered = deferred();
+    const finish = deferred();
+    const f = durableFixture({ async prepare() { entered.resolve(); await finish.promise; return 'cancelled'; } });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    const first = f.startDurable();
+    try {
+      await entered.promise;
+      const second = await f.startDurable(report).catch(error => error);
+      expect(second).toMatchObject({ code: 'WORKSPACE_MANAGEMENT_BUSY' });
+      expect(report).toHaveBeenCalledExactlyOnceWith({ cause: second, sideEffectState: 'none' });
+      expect(f.acquire).toHaveBeenCalledOnce();
+      expect(f.lease.readState()).toBe('busy');
+      finish.resolve();
+      await expect(first).resolves.toMatchObject({ status: 'cancelled' });
+      expect(report).toHaveBeenCalledOnce();
+    } finally { finish.resolve(); await Promise.allSettled([first, f.service.shutdown()]); }
+  });
+
+  it.each(['throw', 'reject'] as const)('retains the original rejection when the outcome receiver can %s', async mode => {
+    const first = new Error('SYNTHETIC_ORIGINAL_FAILURE');
+    const receiverFailure = new Error('SYNTHETIC_RECEIVER_FAILURE');
+    const f = durableFixture({ async prepare() { throw first; },
+      observer: { record() { throw new Error('SYNTHETIC_LOGGING_FAILURE'); } } });
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>(mode === 'throw'
+      ? () => { throw receiverFailure; } : async () => { throw receiverFailure; });
+    try {
+      await expect(f.startDurable(report)).rejects.toMatchObject({ code: 'WORKSPACE_DELETE_FAILED', cause: first });
+      await setImmediate();
+      expect(report).toHaveBeenCalledOnce();
+      expect(f.lease.readState()).toBe('idle');
+    } finally { await f.service.shutdown(); }
+  });
+
+  it.each(['completed', 'cancelled'] as const)('does not invent a failure report for %s', async outcome => {
+    const f = durableFixture(outcome === 'cancelled' ? { async prepare() { return 'cancelled'; } } : {});
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    try {
+      await expect(f.startDurable(report)).resolves.toMatchObject({ status: outcome });
+      expect(report).not.toHaveBeenCalled();
+    } finally { await f.service.shutdown(); }
+  });
+
+  it('leaves the proof unavailable when this runtime was already closed before admission', async () => {
+    const f = durableFixture();
+    const report = vi.fn<WorkspaceDeletionFailureOutcomeHandler>();
+    f.service.closeAdmission();
+    try {
+      await expect(f.startDurable(report)).rejects.toMatchObject({ code: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
+      expect(report).not.toHaveBeenCalled();
+      expect(f.acquire).not.toHaveBeenCalled();
+    } finally { await f.service.shutdown(); }
+  });
+});
+
 function fixture(options: {
+  admission?(): Promise<void>;
+  observer?: WorkspaceManagementServiceOptions['observer'];
   prepare?(): Promise<WorkspaceDeletionPreparationOutcome>;
   complete?(): void;
   release?(): void | Promise<void>;
@@ -409,7 +571,8 @@ function fixture(options: {
     renameWorkspace: { rename: unexpected }, switchWorkspace: { switchTo: unexpected },
     maintenanceState: lease,
     registry: { async read() { return { formatVersion: 2, activeWorkspaceId: null, workspaces: [] }; } },
-    operationGuard: { async assertNoUnresolvedOperations() {}, async readRecoveryState() { return 'clear'; } },
+    operationGuard: { assertNoUnresolvedOperations: options.admission ?? (async () => {}), async readRecoveryState() { return 'clear'; } },
+    ...(options.observer === undefined ? {} : { observer: options.observer }),
     runtimeRelaunchCompletion: { complete },
     ...(options.continuation === undefined ? {} : { deletionContinuation: options.continuation }),
     deletionPreparation: {
@@ -440,11 +603,15 @@ function fixture(options: {
     service, lease, acquire, complete, release, releaseEntered, relaunch, revocationFailure,
     revokeRequest() { current = false; },
     start: () => service.prepareDeletion(request, lifetime),
-    startDurable: () => service.deleteWorkspace(request, lifetime),
+    startDurable: (onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler, input: unknown = request) =>
+      service.deleteWorkspace(input, lifetime, onFailureOutcome),
   };
 }
 
 function durableFixture(options: {
+  admission?(): Promise<void>;
+  observer?: WorkspaceManagementServiceOptions['observer'];
+  complete?(): void;
   prepare?(): Promise<WorkspaceDeletionPreparationOutcome>;
   release?(): void | Promise<void>;
   resume?: NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume'];

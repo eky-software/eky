@@ -57,6 +57,12 @@ virheen, ei business-fallbackia. Tavallinen selain- ja business-tila säilyvät.
 Desktopin täsmällinen valitsin-URL ohjaa vain esitystä; käyttöoikeus,
 protokollan business-esto ja operaation elinikä kuuluvat mainille.
 Tämä ei lisää routeria tai liiketoimintasääntöjä webiin.
+W7.5:n `desktopWorkspaceManagement` validoi mainin suljetun poistotuloksen
+uudelleen webin vastaanottorajalla. Se käyttää vain nimettyä tulossopimusta
+ja turvallista syykatalogia, ei desktopin runtime-/tiedosto-omistajien
+importteja. Uusi muuttumaton projektio ei anna poistolupaa eikä päättele
+kadonneesta vastauksesta onnistumista, peruutusta tai automaattista uusintaa.
+Julkisen metodin ja käyttöliittymän kytkentä vaatii edelleen W7.5:n omat portit.
 [Workspace-sopimus](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 omistaa sulun ja avauksen rajat; [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 erottaa paikallisen osatodennuksen varsinaisesta integraatiohyväksynnästä.

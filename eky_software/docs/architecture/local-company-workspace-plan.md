@@ -2355,7 +2355,7 @@ hyväksytyt turvasopimukset ja avoimet ensihavainnot säilyvät.
 ### W7.5 toteutussuunnitelma
 
 **6.11.2026: suunnitelma ja toteutus A-E-paloina hyväksytty;
-A:n tulosparseri, main-only-pyyntöelinikä ja paluusovitus ovat työpuussa.
+A:n tulosparserit, main-only-pyyntöelinikä, paluu- ja virhesovitus ovat työpuussa.
 Julkiset kanavat pysyvät suljettuina.**
 [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä) omistaa hyväksytyn
 lähtörevision ja etenemistilan. Tämä osio omistaa W7.5:n puuttuvan
@@ -2400,7 +2400,7 @@ Desktop-polut ovat `apps/desktop/src/`-juuresta, web-polut
 | Vastuu | Nykyinen omistaja | W7.5:n puuttuva liitos |
 | --- | --- | --- |
 | Mainin poisto | `workspaces/management/workspaceManagementService.ts`, `main/workspaceDeletionContinuation.ts` | `deleteWorkspace` ja pysyvä jatko ovat olemassa. Julkinen capability ei vielä kutsu niitä; sisäistä `completed/navigation`-kuittia ei kuljeteta käyttöliittymään. |
-| Pyyntö ja sulku | `workspaces/management/workspaceManagementCapability.ts`, `workspaceManagementCapabilityProtocol.ts` | Tiukka parseri, main-only-pyyntöelinikä sekä runtimeen sidottu peruutus-/valmistumisprojektio ovat työpuussa. Julkinen poistokanava ja virhe-/epävarmuusprojektio puuttuvat. Sisäistä `prepared`-arvoa ei saa julkaista onnistuneena poistona. |
+| Pyyntö ja sulku | `workspaces/management/workspaceManagementCapability.ts`, `workspaceManagementCapabilityProtocol.ts` | Tiukka parseri, main-only-pyyntöelinikä sekä runtimeen sidotut peruutus-, valmistumis- ja virheprojektiot ovat työpuussa. Julkinen poistokanava puuttuu. Sisäistä `prepared`-arvoa ei saa julkaista onnistuneena poistona. |
 | Renderer-raja | `preload/index.cts`; webin `app/desktopBridge.ts`, `app/desktopWorkspaceManagement.ts` | Nimetty metodi ja molempien päiden suljettu validointi. Ei raakaa IPC:tä, polkua, journalia, salasanaa tai rendererin valitsemaa palautus-/poistokohdetta. |
 | Yrityshallinnan UI | `features/workspaces/WorkspaceManagementDialog.tsx`, `WorkspaceList.tsx`, `WorkspaceOperationForm.tsx`, `useWorkspaceManagement.ts`, `workspaceSelectorState.ts`, `workspaceManagementOperation.ts` | Nykyinen lista, lomake ja reducer laajennetaan poistolle. Myöhäiset operaatiovastaukset sidotaan nykyiseen capabilityyn ja yritysvalintaan; pelkkä statuslukijan sukupolvisuoja ei riitä. |
 | Runtime-siirtymä | `main/desktopComposition.ts`, `main/desktopSelectorComposition.ts`, `workspaces/runtime/deferredWorkspaceRuntimeRelaunch.ts` | Main-only-paluusovitus yhdistää palvelutyön, varauksen vapautuksen ja nykyisen käynnistyspyynnön. Julkinen käyttäjäpolku ja todellisen paketin todennus puuttuvat. Oma sulku sulkee myös tavalliset capabilityt; niitä ei elvytetä vastauksen vuoksi. |
@@ -2579,15 +2579,45 @@ synkronisen callbackin pelkästä pyynnöstä tai hylätystä valtuudesta.
 Peruutus näyttää `relaunching` vain tämän havainnon perusteella;
 muutoin suljettu/epävarma tila pysyy `restartRequired`-tilassa.
 
-Kolmentoista kokonaisen lähitiedoston vaikutussarja läpäisi 393 testiä.
-Koko nykyinen main-tiedosto läpäisi 396 testiä ilman ohituksia, mukaan
-lukien sen kymmenen uutta tulosketjua. Tyypitys läpäisi;
-rajattuun lähde- ja main-testikatselmukseen ei jäänyt löydöstä. Ensimmäinen
-main-koe havaitsi yllä korjatun elävän backendin omistajuustulkinnan.
-Näiden main-kokeiden poistokuluttaja ja kuitti ovat kontrolloituja, eivät
-uusi fyysisen poiston tai native-prosessin hyväksyntä. Sarjoja ei summata
-erilliseksi kokonaiskattavuudeksi. Virhe-/epävarmuustuloksen
-projektio, web-lukija ja varhaisen tukiviennin A-näyttö ovat seuraava työ.
+[Edeltävä main-kytkennän osanäyttö](release-0.3.0-integration-history.md#w75-an-runtime--ja-paluusovituksen-osanäyttö)
+säilyy historiassa. Seuraava virhesopimus täydentää samaa omistajuutta,
+ei korvaa W7.4:n fyysistä poistoketjua.
+
+##### W7.5 A:n virhetulos ja vastaanottoraja
+
+Nykyinen palvelu voi toimittaa main-only-kutsujalle yhden muuttumattoman
+virhetodisteen vasta oman loppukäsittelynsä ja varauksen vapautuksen jälkeen.
+Todiste sitoo täsmälleen saman alkuperäisen poikkeuksen vaikutustilaan:
+`none` vain ennen operaation aloitusta, kun erillistä loppuvirhettä ei ole;
+muuten `unknown`. Vanhojen kutsujien kahden argumentin sopimus säilyy.
+Lokikirjoituksen onnistuminen tai sama syykoodi ei ole vaikutuksettomuuden
+todiste. Havaitsijan virhe ei korvaa alkuperäistä poikkeusta.
+
+Capability hyväksyy vain yhden tähän kutsuun kuuluvan täsmällisen
+datatodisteen. Puuttuva, myöhäinen, toisen poikkeuksen tai toistettu
+todiste pysyy epävarmana. Palvelun onnistumisen jälkeen sattuva mainin
+jatkovirhe ei voi lainata vanhaa todistetta. Main saa alkuperäisen syyn
+ennen suljettua projektiota. `continue` vaatii todistetun vaikutuksettomuuden,
+`BUSY`- tai `INVALID`-syyn ja nykyisen elävän runtimen. Epävarma omistajuus
+ei muutu jatkoluvaksi vaikutuksettomankaan pyynnön vuoksi. Projektorin
+erillinen virhe säilytetään alkuperäisen jälkeen, ei sen tilalla.
+
+Webin nykyinen `desktopWorkspaceManagement`-omistaja validoi saman suljetun
+tuloksen itsenäisesti vastaanottorajalla ja luo uuden muuttumattoman
+projektion. Se ei importoi desktopin tiedosto-/runtime-omistajia eikä anna
+poistovaltuutta. Julkista delete-metodia ei vielä julkaista.
+
+Neljäntoista kokonaisen desktop-lähitiedoston 472 testiä, koko main-tiedoston
+396 testiä ilman ohituksia sekä desktopin tyypitys läpäisivät nykyisillä
+rajoilla. Main-kokeet todentavat myös alkuperäisen vapautusvirheen ennen
+turvallista vastausta. Uusien tulosketjujen kuluttaja ja poistokuitti ovat
+kontrolloituja; tämä ei ole uusi native-/pakettihyväksyntä. Päällekkäisiä
+sarjoja ei summata. Webin kahden kokonaisen vastaanottorajatiedoston 157
+testiä ja tyypitys läpäisivät. Rajattu katselmus havaitsi accessor-testien
+puuttuvan varianttipeiton; jokaisen neljän tulosvariantin kaikki kentät
+tarkistetaan nyt getterin kutsumattomuuteen asti. Jälkikatselmukseen ei
+jäänyt löydöstä. Varhaisen tukiviennin
+omistajuus- ja kytkentänäyttö on edelleen avoin.
 
 #### Testikattavuus ilman rinnakkaista testijärjestelmää
 

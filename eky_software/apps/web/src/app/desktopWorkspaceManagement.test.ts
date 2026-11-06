@@ -4,6 +4,7 @@ import type { EkyDesktopApi } from './desktopBridge.js';
 import {
   getDesktopWorkspaceManagement,
   isWorkspaceLabelExistsError,
+  readWorkspaceDeletionResult,
 } from './desktopWorkspaceManagement.js';
 
 const activeWorkspaceId = '11111111-1111-4111-8111-111111111111';
@@ -366,6 +367,112 @@ describe('isWorkspaceLabelExistsError', () => {
     new Error('Unknown failure'),
   ])('rejects an unrecognized error %#', (error) => {
     expect(isWorkspaceLabelExistsError(error)).toBe(false);
+  });
+});
+
+describe('workspace deletion result reader', () => {
+  const completed = { formatVersion: 1, status: 'completed', navigation: 'selector' };
+  const failed = {
+    formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_MANAGEMENT_BUSY',
+    sideEffectState: 'none', nextAction: 'continue',
+  };
+  const recovery = {
+    formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED',
+    sideEffectState: 'unknown', nextAction: 'restartRequired',
+  };
+
+  it.each([
+    completed,
+    { ...completed, navigation: 'reopenPrevious' },
+    ...['continue', 'relaunching', 'restartRequired'].map((nextAction) => ({
+      formatVersion: 1, status: 'cancelled', nextAction,
+    })),
+    failed,
+    { ...failed, nextAction: 'restartRequired' },
+    recovery,
+  ])('copies and freezes a valid result %#', (source) => {
+    const input = { ...source };
+    const projected = readWorkspaceDeletionResult(input);
+    expect(projected).toEqual(input);
+    expect(projected).not.toBe(input);
+    expect(Object.isFrozen(projected)).toBe(true);
+    input.formatVersion = 2;
+    expect(projected.formatVersion).toBe(1);
+  });
+
+  it.each([
+    'WORKSPACE_MANAGEMENT_BUSY',
+    'WORKSPACE_MANAGEMENT_INVALID',
+    'WORKSPACE_DELETE_STALE_CONFIRMATION',
+    'WORKSPACE_DELETE_BACKUP_UNAVAILABLE',
+    'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN',
+    'WORKSPACE_DELETE_INVENTORY_INVALID',
+    'WORKSPACE_DELETE_JOURNAL_CONFLICT',
+    'WORKSPACE_DELETE_IO_FAILED',
+    'WORKSPACE_DELETE_CLEANUP_FAILED',
+    'WORKSPACE_DELETE_FAILED',
+  ])('accepts only the safe catalog value %s in either failure shape', (errorCode) => {
+    for (const input of [failed, recovery]) {
+      expect(readWorkspaceDeletionResult({ ...input, errorCode })).toEqual({ ...input, errorCode });
+    }
+  });
+
+  it.each([
+    undefined, null, [], true, 'completed', new Error('private original cause'),
+    { ...completed, formatVersion: 2 },
+    { ...completed, status: 'prepared' },
+    { ...completed, status: 'recordRemoved' },
+    { ...completed, navigation: 'anotherWorkspace' },
+    { ...completed, nextAction: 'continue' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'retry' },
+    { ...failed, sideEffectState: 'unknown' },
+    { ...failed, nextAction: 'relaunching' },
+    { ...failed, errorCode: 'WORKSPACE_MANAGEMENT_FORBIDDEN' },
+    { ...failed, errorCode: 'WORKSPACE_DELETE_FAILED private detail' },
+    { ...failed, errorCode: null },
+    { ...failed, errorCode: { code: 'WORKSPACE_DELETE_FAILED' } },
+    { ...recovery, sideEffectState: 'none' },
+    { ...recovery, nextAction: 'continue' },
+    { ...recovery, nextAction: 'relaunching' },
+    { ...recovery, status: 'completed' },
+    { ...recovery, cause: 'private original cause' },
+    { ...completed, databasePath: 'C:\\private\\workspace.sqlite' },
+    { ...completed, workspaceId: activeWorkspaceId },
+    { ...completed, operationId: 'private-operation' },
+    Object.assign(Object.create({ inherited: true }), completed),
+    Object.defineProperty({ ...completed }, 'privateField', { value: 'private' }),
+    { ...completed, [Symbol('private')]: true },
+    new Proxy({}, { getPrototypeOf() { throw new Error('private proxy failure'); } }),
+  ])('rejects an invalid or overbroad projection %# without disclosing it', (input) => {
+    expect(() => readWorkspaceDeletionResult(input)).toThrow('Invalid workspace deletion result.');
+    try {
+      readWorkspaceDeletionResult(input);
+    } catch (error) {
+      expect(error).toBeInstanceOf(Error);
+      expect((error as Error).message).toBe('Invalid workspace deletion result.');
+      expect((error as Error).cause).toBeUndefined();
+    }
+  });
+
+  it.each([
+    completed,
+    { formatVersion: 1, status: 'cancelled', nextAction: 'continue' },
+    failed,
+    recovery,
+  ].flatMap((input) => Object.keys(input).map((field) => [input, field] as const)))(
+    'rejects accessors in result %# before reading them', (source, field) => {
+      const get = vi.fn(() => { throw new Error('private accessor cause'); });
+      const input = Object.defineProperty({ ...source }, field, { get });
+      expect(() => readWorkspaceDeletionResult(input)).toThrow('Invalid workspace deletion result.');
+      expect(get).not.toHaveBeenCalled();
+    },
+  );
+
+  it('accepts null-prototype data but never exposes a public delete command', () => {
+    expect(readWorkspaceDeletionResult(Object.assign(Object.create(null), recovery))).toEqual(recovery);
+    const capability = getDesktopWorkspaceManagement({ ekyDesktop: createDesktopApi() });
+    expect(capability).not.toHaveProperty('deleteWorkspace');
+    expect(getDesktopWorkspaceManagement({} as Pick<Window, 'ekyDesktop'>)).toBeUndefined();
   });
 });
 

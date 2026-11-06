@@ -32,8 +32,8 @@ läpäisivät. Tämä ei avaa hyväksyttyä W7.4:ää uudelleen.
 
 **Aktiivinen työ on W7.5 A:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
-toteutuscheckpoint on A:n virhe-/epävarmuustulos, web-lukija ja varhaisen
-tukiviennin koe, ei poistopainikkeen julkaisu. Nykyisen sisäisen paluu- ja
+toteutuscheckpoint on A:n varhaisen tukiviennin koe ja B:n rajattu
+tukipaketti, ei poistopainikkeen julkaisu. Nykyisen sisäisen paluu- ja
 pyyntöelinikäliitoksen osanäyttö on alla; julkinen/paketoitu ketju ja tuki
 ennen yritysvalinnan valmistumista ovat vielä todentamatta. Omistaja
 hyväksyi 6.11.2026 myös varhaisen native-tukiviennin toteutuksen ja
@@ -43,11 +43,12 @@ suljettuina ensimmäisten kokeiden ja kytkentäporttien aikana. W7.5:tä
 toteutetaan saman Goalin rajattuina paloina; koko 0.3.0 ei ole hyväksytty;
 muut jäljellä olevat tehtävät ja M5 ovat [roadmapissa](release-0.3.0-plan.md).
 
-**A:n nykyinen osanäyttö:** tulosparseri, vastauselinikä ja main-only-
-paluusovitus ovat haarassa. Kolmentoista kokonaisen lähitiedoston 393 testiä,
-koko main-tiedoston 396 testiä ilman ohituksia, tyypitys ja rajattu
-katselmus läpäisivät nykyisillä rajoilla.
-[Näytön rajaus](local-company-workspace-plan.md#w75-an-runtime--ja-paluusopimus)
+**A:n nykyinen osanäyttö:** tulosparserit, vastauselinikä sekä main-only-
+paluu- ja virhesovitus ovat haarassa. Neljäntoista kokonaisen desktop-
+lähitiedoston 472 testiä, koko main-tiedoston 396 testiä ilman ohituksia,
+webin kahden vastaanottorajatiedoston 157 testiä ja molempien tyypitys
+läpäisivät nykyisillä rajoilla. Rajatun katselmuksen accessor-peittoaukko
+korjattiin. [Näytön rajaus](local-company-workspace-plan.md#w75-an-virhetulos-ja-vastaanottoraja)
 ei ole uusi fyysisen poiston, julkisen IPC:n tai paketoidun sovelluksen
 hyväksyntä. Edeltävät päällekkäiset osanäytöt säilyvät
 [historiassa](release-0.3.0-integration-history.md#w75n-an-edeltävät-osanäytöt-6112026),

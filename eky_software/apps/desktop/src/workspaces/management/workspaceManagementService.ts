@@ -94,6 +94,15 @@ export interface WorkspaceDeletionCompletion {
   readonly navigation: 'selector' | 'reopenPrevious';
 }
 
+// Main-only outcome of this exact rejected call, never a serialized event.
+export interface WorkspaceDeletionFailureOutcome {
+  readonly cause: unknown;
+  readonly sideEffectState: 'none' | 'unknown';
+}
+
+export type WorkspaceDeletionFailureOutcomeHandler =
+  (outcome: Readonly<WorkspaceDeletionFailureOutcome>) => void;
+
 export interface WorkspaceDeletionRecoverySelection {
   readonly journal: WorkspaceDeletionJournal;
   assertSelected(): Promise<void>;
@@ -151,6 +160,7 @@ export interface WorkspaceManagementServiceOptions {
 interface DeletionPreparationCompletion {
   assertRelaunch(): void;
   release(): Promise<void>;
+  readonly onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler;
 }
 
 export class WorkspaceManagementService {
@@ -392,26 +402,30 @@ export class WorkspaceManagementService {
   deleteWorkspace(
     requestInput: unknown,
     lifetime: WorkspaceDeletionPreparationLifetime,
+    onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler,
   ): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>> {
-    return this.runDeletion(requestInput, lifetime, true);
+    return this.runDeletion(requestInput, lifetime, true, onFailureOutcome);
   }
 
   private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
     durable: false): Promise<WorkspaceDeletionPreparationOutcome>;
   private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
-    durable: true): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>;
+    durable: true, onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>;
   private runDeletion(
     requestInput: unknown,
     lifetime: WorkspaceDeletionPreparationLifetime,
     durable: boolean,
+    onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler,
   ) {
     let request: Readonly<WorkspaceDeletionRequest>;
     try {
       request = parseWorkspaceDeletionRequest(requestInput);
     } catch (cause) {
-      return Promise.reject(new WorkspaceManagementError(
+      const failure = new WorkspaceManagementError(
         'WORKSPACE_MANAGEMENT_INVALID', 'delete', { cause },
-      ));
+      );
+      WorkspaceManagementService.reportDeletionFailure(onFailureOutcome, failure, 'none');
+      return Promise.reject(failure);
     }
     let lease: WorkspaceMaintenanceLeaseHandle | undefined;
     let assertLease: (() => void) | undefined;
@@ -448,6 +462,7 @@ export class WorkspaceManagementService {
       return WorkspaceManagementService.continueDeletion(operationId, owner, capturedLease,
         () => this.shutdownRequested, resume!);
     }, {
+      ...(onFailureOutcome === undefined ? {} : { onFailureOutcome }),
       assertRelaunch: () => {
         if (!returnRequested || assertLease === undefined) {
           throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
@@ -540,6 +555,7 @@ export class WorkspaceManagementService {
         'WORKSPACE_MANAGEMENT_BUSY',
         operationKind,
       );
+      WorkspaceManagementService.reportDeletionFailure(deletionCompletion?.onFailureOutcome, busyError, 'none');
       this.record({
         correlationId,
         durationMs: Math.max(0, this.now() - startedAt),
@@ -591,6 +607,8 @@ export class WorkspaceManagementService {
         ? classifyWorkspaceManagementFailure(error, operationKind)
         : { lineageMismatch: false };
       const mapped = WorkspaceManagementService.mapOperationFailure(error, operationKind, failures);
+      const deletionSideEffectState = !operationStarted && failures.length === 1 ? 'none' : 'unknown';
+      WorkspaceManagementService.reportDeletionFailure(deletionCompletion?.onFailureOutcome, mapped, deletionSideEffectState);
       const cleanupCauseCode = operationStarted ? readWorkspaceCandidateCleanupCause(error) : undefined;
       this.record({
         ...((operationKind === 'import' || operationKind === 'replace')
@@ -608,7 +626,7 @@ export class WorkspaceManagementService {
         retryable: !this.admissionClosed && mapped.code === 'WORKSPACE_MANAGEMENT_BUSY',
         sideEffectState:
           (operationKind === 'delete'
-            ? !operationStarted
+            ? deletionSideEffectState === 'none'
             : mapped.code === 'WORKSPACE_MANAGEMENT_INVALID' ||
               mapped.code === 'WORKSPACE_MANAGEMENT_BUSY')
             ? 'none'
@@ -672,6 +690,16 @@ export class WorkspaceManagementService {
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
     } catch {
       // Observability is intentionally non-authoritative.
+    }
+  }
+
+  private static reportDeletionFailure(handler: WorkspaceDeletionFailureOutcomeHandler | undefined,
+    cause: unknown, sideEffectState: WorkspaceDeletionFailureOutcome['sideEffectState']): void {
+    try {
+      const result: unknown = handler?.(Object.freeze({ cause, sideEffectState }));
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // The original rejection, not a failed callback, remains authoritative.
     }
   }
 }

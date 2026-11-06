@@ -5924,6 +5924,7 @@ describe('W7.5 main deletion result wiring', () => {
     const lifetime = beginTrackedStartupTest(context);
     await lifetime.run(async () => {
       let capability: WorkspaceManagementCapability | undefined;
+      const failureCauses: unknown[] = [];
       let binding: WorkspaceDeletionJournal | undefined;
       let lifecycle: Awaited<ReturnType<typeof startDesktopComposition>> | undefined;
       let closing: Promise<void> | undefined;
@@ -5953,7 +5954,15 @@ describe('W7.5 main deletion result wiring', () => {
         ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
         workspaceDeletionCommand: command, stopForDelete,
         createWorkspaceManagementCapability(options) {
-          capability = createWorkspaceManagementCapability(options);
+          const resultRuntime = options.deletionRuntime;
+          if (resultRuntime === undefined) throw new Error('MISSING_MAIN_DELETION_RESULT_RUNTIME');
+          capability = createWorkspaceManagementCapability({ ...options, deletionRuntime: {
+            ...resultRuntime,
+            projectFailure(failure) {
+              failureCauses.push(failure.cause);
+              return resultRuntime.projectFailure(failure);
+            },
+          } });
           return capability;
         },
       }));
@@ -6011,8 +6020,10 @@ describe('W7.5 main deletion result wiring', () => {
           expect(result).toMatchObject({ error: { message: 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN' } });
           expect(f.relaunch).toHaveBeenCalledOnce();
         } else if (outcome === 'releaseFailure') {
-          if (!('error' in result)) throw new Error('MISSING_RELEASE_FAILURE');
-          expect(hasErrorCause(result.error, releaseFailure)).toBe(true);
+          expect(result).toEqual({ value: { formatVersion: 1, status: 'recoveryRequired',
+            errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'restartRequired' } });
+          expect(failureCauses).toHaveLength(1);
+          expect(hasErrorCause(failureCauses[0], releaseFailure)).toBe(true);
           expect(f.relaunch).not.toHaveBeenCalled();
         } else if (outcome === 'cancelLive' || outcome === 'cancelStopped' || outcome === 'returnRequested') {
           expect(result).toEqual({ value: { formatVersion: 1, status: 'cancelled',
@@ -6030,6 +6041,7 @@ describe('W7.5 main deletion result wiring', () => {
         expect(await readFile(f.databasePath, 'utf8')).toBe(f.originalBytes);
         expect(await readFile(f.pdfPath, 'utf8')).toBe('%PDF-1.7 original pdf');
         expect(electronBoundary.handle.mock.calls.some(([channel]) => /delete/i.test(String(channel)))).toBe(false);
+        expect(JSON.stringify(result)).not.toMatch(/SYNTHETIC|cause|stack|password|workspaceId/);
         closing ??= lifecycle.shutdown();
         if (outcome === 'releaseFailure') {
           await expect(closing).rejects.toThrow('DESKTOP_SHUTDOWN_FAILED');

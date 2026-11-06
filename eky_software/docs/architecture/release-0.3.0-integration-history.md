@@ -7,7 +7,7 @@ eivät nykyinen työjono tai uusi valtuus.
 
 ## W7.5:n A:n edeltävät osanäytöt 6.11.2026
 
-Seuraavat kaksi osanäyttöä on siirretty W7.5-suunnitelmasta sellaisinaan.
+Seuraavat osanäytöt on siirretty W7.5-suunnitelmasta sellaisinaan.
 Niiden seuraava-pala-kirjaukset kuvaavat silloista työtilannetta.
 [Nykyinen A-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 ja M1 omistavat jatkon; päällekkäisiä testiajoja ei lasketa yhteen.
@@ -65,6 +65,21 @@ pakettitodiste. Todelliseen runtime-tilaan sidottu julkinen tulostuottaja,
 paluukäynnistys, webin tuloslukija ja varhaisen tukiviennin näyttö ovat
 vielä A:n jatkoa. Aiemman ensimmäisen palvelukokeen tuotantokoodin
 muuttumattomuus koskee vain sitä koetta, ei tätä parseri-/capability-palaa.
+
+### W7.5 A:n runtime- ja paluusovituksen osanäyttö
+
+Seuraava osanäyttö on siirretty W7.5-suunnitelmasta sellaisenaan.
+Sen seuraava-työ-kirjaus on historiaa, ei nykyinen tehtäväjono.
+
+Kolmentoista kokonaisen lähitiedoston vaikutussarja läpäisi 393 testiä.
+Koko nykyinen main-tiedosto läpäisi 396 testiä ilman ohituksia, mukaan
+lukien sen kymmenen uutta tulosketjua. Tyypitys läpäisi;
+rajattuun lähde- ja main-testikatselmukseen ei jäänyt löydöstä. Ensimmäinen
+main-koe havaitsi yllä korjatun elävän backendin omistajuustulkinnan.
+Näiden main-kokeiden poistokuluttaja ja kuitti ovat kontrolloituja, eivät
+uusi fyysisen poiston tai native-prosessin hyväksyntä. Sarjoja ei summata
+erilliseksi kokonaiskattavuudeksi. Virhe-/epävarmuustuloksen
+projektio, web-lukija ja varhaisen tukiviennin A-näyttö ovat seuraava työ.
 
 ## W7.4:n PR/main-loppuhyväksyntä 6.11.2026
 

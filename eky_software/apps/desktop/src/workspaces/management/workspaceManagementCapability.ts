@@ -6,8 +6,8 @@ import type {
 
 import type { BackupPasswordWindowController } from '../../profileBackup/passwordWindow/backupPasswordWindow.js';
 import type { WorkspaceManagementService } from './workspaceManagementService.js';
-import type { WorkspaceDeletionCompletion } from './workspaceManagementService.js';
-import { WorkspaceManagementError } from './workspaceManagementError.js';
+import type { WorkspaceDeletionCompletion, WorkspaceDeletionFailureOutcome } from './workspaceManagementService.js';
+import { mapWorkspaceManagementError, WorkspaceManagementError } from './workspaceManagementError.js';
 import type {
   WorkspaceDeletionPreparationLifetime,
   WorkspaceDeletionPreparationOutcome,
@@ -37,6 +37,7 @@ import { hasExactDataKeys, isPlainDataRecord } from '../registry/workspaceRegist
 export interface WorkspaceDeletionResultRuntime {
   readNextAction(): Extract<WorkspaceDeletionOperationResult, { status: 'cancelled' }>['nextAction'];
   complete(completion: Readonly<WorkspaceDeletionCompletion>): Promise<void>;
+  projectFailure(outcome: Readonly<WorkspaceDeletionFailureOutcome>): WorkspaceDeletionOperationResult;
 }
 
 interface WorkspaceManagementCapabilityOptions {
@@ -97,6 +98,7 @@ export function createWorkspaceManagementCapability(
   const deletionRuntime = options.deletionRuntime === undefined ? undefined : Object.freeze({
     readNextAction: options.deletionRuntime.readNextAction.bind(options.deletionRuntime),
     complete: options.deletionRuntime.complete.bind(options.deletionRuntime),
+    projectFailure: options.deletionRuntime.projectFailure.bind(options.deletionRuntime),
   });
   for (const channel of workspaceManagementIpcChannels) {
     options.ipcMain.removeHandler(channel);
@@ -354,17 +356,52 @@ export function createWorkspaceManagementCapability(
         if (options.service.deleteWorkspace === undefined || deletionRuntime === undefined) {
           throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
         }
-        const outcome = await options.service.deleteWorkspace(request, lifetime);
-        if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
-            outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
-          return outcome;
+        let reports = 0;
+        let acceptingProof = true;
+        let proof: Readonly<WorkspaceDeletionFailureOutcome> | undefined;
+        try {
+          const outcome = await options.service.deleteWorkspace(request, lifetime, value => {
+            if (!acceptingProof) return;
+            reports += 1;
+            if (reports === 1 && isPlainDataRecord(value) && hasExactDataKeys(value, ['cause', 'sideEffectState']) &&
+                (value.sideEffectState === 'none' || value.sideEffectState === 'unknown')) {
+              proof = Object.freeze({ cause: value.cause, sideEffectState: value.sideEffectState });
+            }
+          });
+          acceptingProof = false;
+          proof = undefined;
+          if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
+              outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
+            return outcome;
+          }
+          const completed = parseWorkspaceDeletionOperationResult(outcome);
+          if (completed.status !== 'completed') throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+          // Main completion outlives the reply document. Service fulfillment joins
+          // the durable command and lease release; the main owner rechecks runtime.
+          await deletionRuntime.complete(completed);
+          return completed;
+        } catch (cause) {
+          // Only one report bound to this exact rejection proves no effect.
+          const sideEffectState = acceptingProof && reports === 1 && proof !== undefined &&
+            proof.cause === cause && proof.sideEffectState === 'none' ? 'none' : 'unknown';
+          acceptingProof = false;
+          proof = undefined;
+          try {
+            const projected = parseWorkspaceDeletionOperationResult(
+              deletionRuntime.projectFailure(Object.freeze({ cause, sideEffectState })),
+            );
+            if ((projected.status !== 'failed' && projected.status !== 'recoveryRequired') ||
+                (sideEffectState === 'unknown' && projected.status !== 'recoveryRequired')) {
+              throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+            }
+            return projected;
+          } catch (projectionFailure) {
+            const first = mapWorkspaceManagementError(cause, 'delete');
+            throw new WorkspaceManagementError(first.code, 'delete', { cause: new AggregateError(
+              [cause, projectionFailure], 'WORKSPACE_DELETE_RESULT_UNCERTAIN', { cause },
+            ) });
+          }
         }
-        const completed = parseWorkspaceDeletionOperationResult(outcome);
-        if (completed.status !== 'completed') throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
-        // Main completion outlives the reply document. Service fulfillment joins
-        // the durable command and lease release; the main owner rechecks runtime.
-        await deletionRuntime.complete(completed);
-        return completed;
       }, (outcome, assertCurrent) => {
         if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
             outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
@@ -375,7 +412,6 @@ export function createWorkspaceManagementCapability(
             status: 'cancelled', nextAction });
         }
         const parsed = parseWorkspaceDeletionOperationResult(outcome);
-        if (parsed.status !== 'completed') throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
         return parsed;
       });
     },

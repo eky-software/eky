@@ -989,6 +989,16 @@ poiston tai mainin turvallisesti varmennetun paluun valmistumista.
 Ulkoinen main-sulku estää paluupyynnön. Vapautuksen tai mainin jatkon
 epäonnistuminen ei tuota onnistunutta poistovastausta.
 
+Palvelun main-only-virhetodiste sitoo alkuperäisen poikkeuksen
+vaikutustilaan vasta loppukäsittelyn jälkeen. Capability hyväksyy vain
+yhden tämän kutsun täsmällisen todistuksen; puuttuva, ristiriitainen tai
+myöhäinen todiste ei oikeuta `none`-väitteeseen. Mainin virheprojektori
+saa alkuperäisen syyn ennen turvallista tulosta. Palvelun onnistumisen
+jälkeinen paluu-/vapautusvirhe ei lainaa aiempaa vaikutuksettomuutta.
+Todistetun ennen aloitusta hylätyn `BUSY`-/`INVALID`-pyynnön jatko vaatii
+myös nykyisen elävän runtimen; epävarma omistajuus estää sen silti.
+Projektorin lisävirhe säilyy erillisenä alkuperäisen syyn jälkeen.
+
 Peruutuksen jatkotoiminto luetaan nykyisestä runtimesta, ei peruutuskuitista.
 Elävä aktiivinen backend säilyttää oman varauksensa ja sen `assertRunning`
 tarkistetaan; suljetussa tilassa vaaditaan erikseen main-omistajuus.

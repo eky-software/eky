@@ -10,10 +10,12 @@ import { InMemoryWorkspaceMaintenanceLease } from '../maintenance/workspaceMaint
 import { EmptyWorkspaceCreationError } from '../creation/emptyWorkspaceCreationError.js';
 import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError.js';
 import { WorkspaceRegistryMutationError } from '../registry/workspaceRegistryMutations.js';
-import { createWorkspaceManagementCapability, type WorkspaceManagementCapability } from './workspaceManagementCapability.js';
+import { createWorkspaceManagementCapability, type WorkspaceDeletionResultRuntime,
+  type WorkspaceManagementCapability } from './workspaceManagementCapability.js';
 import { createEmptyWorkspaceIpcChannel, workspaceManagementIpcChannels } from './workspaceManagementCapabilityProtocol.js';
 import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
-import { WorkspaceManagementService, type WorkspaceManagementServiceOptions } from './workspaceManagementService.js';
+import { WorkspaceManagementService, type WorkspaceDeletionFailureOutcomeHandler,
+  type WorkspaceManagementServiceOptions } from './workspaceManagementService.js';
 import { WorkspaceManagementError } from './workspaceManagementError.js';
 import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
 import { JsonLineDesktopOperationalLogger } from '../../observability/infrastructure/jsonLineDesktopOperationalLogger.js';
@@ -22,6 +24,8 @@ import type { WorkspaceDeletionPreparationLifetime, WorkspaceManagementObserver,
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 const request = { formatVersion: 1, workspaceId, typedLabel: 'Synthetic company',
   backupChoice: 'explicitDataLoss' as const };
+const unknownDeletionResult = Object.freeze({ formatVersion: 1, status: 'recoveryRequired',
+  errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'restartRequired' } as const);
 type Prepare = NonNullable<WorkspaceManagementServiceOptions['deletionPreparation']>['prepare'];
 const fixtures: Array<{ capability: WorkspaceManagementCapability; service: WorkspaceManagementService }> = [];
 const releases: Array<() => void> = [];
@@ -357,9 +361,9 @@ describe('workspace deletion main-only completion response', () => {
       readNextAction: () => 'restartRequired',
       async complete() { throw original; },
     });
-    await expect(f.startDurable()).rejects.toMatchObject({
-      message: 'WORKSPACE_MANAGEMENT_CAPABILITY_FAILED', cause: original,
-    });
+    await expect(f.startDurable()).resolves.toEqual(unknownDeletionResult);
+    expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({ cause: original, sideEffectState: 'unknown' });
+    expect(f.runtime.projectFailure.mock.calls[0]![0].cause).toBe(original);
     expect(continuation.recordRemoved).toHaveBeenCalledOnce();
     expect(f.maintenanceLease.readState()).toBe('idle');
     expect(f.runtime.complete).toHaveBeenCalledOnce();
@@ -448,7 +452,8 @@ describe('workspace deletion main-only completion response', () => {
     await entered.promise;
     f.webContents.emit('did-start-loading');
     finish.release();
-    await expect(operation).rejects.toThrow('WORKSPACE_DELETE_FAILED');
+    await expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    expect(f.runtime.projectFailure.mock.calls[0]![0].cause).toMatchObject({ code: 'WORKSPACE_DELETE_FAILED' });
     expect(continuation.captureAuthority).not.toHaveBeenCalled();
     expect(continuation.resume).not.toHaveBeenCalled();
     expect(f.maintenanceLease.readState()).toBe('idle');
@@ -476,7 +481,8 @@ describe('workspace deletion main-only completion response', () => {
     await expectUnsettled(serviceClosing);
     expect(f.maintenanceLease.readState()).toBe('busy');
     finish.release();
-    await expect(operation).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    await expect(operation).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    expect(f.runtime.projectFailure.mock.calls[0]![0].cause).toMatchObject({ code: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
     await Promise.all([capabilityClosing.result, serviceClosing.result]);
     expect(capabilityClosing.isSettled()).toBe(true);
     expect(serviceClosing.isSettled()).toBe(true);
@@ -511,7 +517,8 @@ describe('workspace deletion main-only completion response', () => {
       await expectUnsettled(serviceClosing);
       expect(f.maintenanceLease.readState()).toBe('busy');
       finish.release();
-      await expect(operation).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+      await expect(operation).resolves.toEqual(unknownDeletionResult);
+      expect(f.runtime.projectFailure.mock.calls[0]![0].cause).toMatchObject({ code: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
       await Promise.all([capabilityClosing.result, serviceClosing.result]);
       expect(continuation.recordRemoved).not.toHaveBeenCalled();
       expect(f.maintenanceLease.readState()).toBe('idle');
@@ -533,12 +540,15 @@ describe('workspace deletion main-only completion response', () => {
     expect(continuation.captureAuthority).not.toHaveBeenCalled();
   });
 
-  it('retains the original durable exception only in the main-only failure chain', async () => {
+  it('delivers the original durable exception to main before returning a safe failure result', async () => {
     const original = new Error('Synthetic original durable failure');
     const continuation = deletionContinuationFixture(async () => { throw original; });
     const f = fixture(undefined, undefined, undefined, continuation.port);
-    await expect(f.startDurable()).rejects.toMatchObject({ message: 'WORKSPACE_DELETE_FAILED',
-      cause: { code: 'WORKSPACE_DELETE_FAILED', cause: original } });
+    await expect(f.startDurable()).resolves.toEqual(unknownDeletionResult);
+    expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({
+      cause: expect.objectContaining({ code: 'WORKSPACE_DELETE_FAILED', cause: original }), sideEffectState: 'unknown',
+    });
+    expect((f.runtime.projectFailure.mock.calls[0]![0].cause as Error).cause).toBe(original);
     expect(JSON.stringify(f.events)).not.toMatch(/Synthetic|message|cause|stack|workspaceId|typedLabel/);
     expect(f.maintenanceLease.readState()).toBe('idle');
   });
@@ -548,11 +558,97 @@ describe('workspace deletion main-only completion response', () => {
     { formatVersion: 1, status: 'completed' },
     { formatVersion: 1, status: 'cancelled', nextAction: 'continue' },
     { formatVersion: 1, status: 'completed', navigation: 'selector', private: 'untrusted' },
-  ])('rejects a malformed internal service result at case %#', async value => {
+  ])('never upgrades a malformed internal service result to success at case %#', async value => {
     const f = fixture();
     vi.spyOn(f.service, 'deleteWorkspace').mockResolvedValueOnce(value as never);
-    await expect(f.startDurable()).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    await expect(f.startDurable()).resolves.toEqual(unknownDeletionResult);
+    expect(f.runtime.projectFailure.mock.calls[0]![0].cause).toMatchObject({ message: 'WORKSPACE_MANAGEMENT_CAPABILITY_INVALID' });
+    expect(f.runtime.complete).not.toHaveBeenCalled();
     expect(f.prepare).not.toHaveBeenCalled();
+  });
+
+  it('uses a real pre-admission outcome rather than the observer as its no-effect proof', async () => {
+    const original = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+    const expected = { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_MANAGEMENT_BUSY',
+      sideEffectState: 'none', nextAction: 'continue' } as const;
+    const f = fixture(undefined, async () => { throw original; }, {
+      record() { throw new Error('SYNTHETIC_LOGGER_UNAVAILABLE'); },
+    }, undefined, { projectFailure: () => expected });
+    await expect(f.startDurable()).resolves.toEqual(expected);
+    expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({ cause: original, sideEffectState: 'none' });
+    expect(f.runtime.projectFailure.mock.calls[0]![0].cause).toBe(original);
+    expect(f.prepare).not.toHaveBeenCalled();
+    expect(f.runtime.complete).not.toHaveBeenCalled();
+  });
+
+  it.each(['matched', 'missing', 'differentCause', 'duplicate', 'unknown', 'accessor', 'extraField'] as const)(
+    'keeps failure proof scoped to this exact rejection: %s', async variant => {
+      const original = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+      const f = fixture();
+      const getter = vi.fn(() => original);
+      vi.spyOn(f.service, 'deleteWorkspace').mockImplementationOnce(async (_request, _lifetime, report) => {
+        if (variant === 'accessor') report!(Object.defineProperty({ sideEffectState: 'none' }, 'cause',
+          { get: getter, enumerable: true }) as never);
+        else if (variant === 'extraField') report!({ cause: original, sideEffectState: 'none', unexpected: true } as never);
+        else if (variant !== 'missing') {
+          const value = { cause: variant === 'differentCause' ? new Error('SYNTHETIC_OTHER_FAILURE') : original,
+            sideEffectState: variant === 'unknown' ? 'unknown' as const : 'none' as const };
+          report!(value);
+          if (variant === 'duplicate') report!(value);
+        }
+        throw original;
+      });
+      await expect(f.startDurable()).resolves.toEqual(unknownDeletionResult);
+      expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({ cause: original,
+        sideEffectState: variant === 'matched' ? 'none' : 'unknown' });
+      expect(getter).not.toHaveBeenCalled();
+      expect(f.prepare).not.toHaveBeenCalled();
+    },
+  );
+
+  it('cannot reuse a late service proof for a later main-completion error', async () => {
+    const original = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+    let retained: WorkspaceDeletionFailureOutcomeHandler | undefined;
+    const completion = deletionContinuationFixture().completion;
+    const f = fixture(undefined, undefined, undefined, undefined, {
+      async complete() {
+        retained!({ cause: original, sideEffectState: 'none' });
+        throw original;
+      },
+    });
+    vi.spyOn(f.service, 'deleteWorkspace').mockImplementationOnce(async (_request, _lifetime, report) => {
+      retained = report; return completion;
+    });
+    await expect(f.startDurable()).resolves.toEqual(unknownDeletionResult);
+    expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({ cause: original, sideEffectState: 'unknown' });
+    expect(f.runtime.complete).toHaveBeenCalledOnce();
+  });
+
+  it('leaves malformed proof unavailable even when the rejection value itself is undefined', async () => {
+    const f = fixture();
+    vi.spyOn(f.service, 'deleteWorkspace').mockImplementationOnce(async (_request, _lifetime, report) => {
+      report!({ unexpected: true } as never);
+      throw undefined;
+    });
+    await expect(f.startDurable()).resolves.toEqual(unknownDeletionResult);
+    expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({ cause: undefined, sideEffectState: 'unknown' });
+  });
+
+  it.each([
+    { formatVersion: 1, status: 'completed', navigation: 'selector' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'continue' },
+    { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_MANAGEMENT_BUSY', sideEffectState: 'none', nextAction: 'continue' },
+  ] as const)('rejects an unsafe failure projection without losing its first cause at case %#', async value => {
+    const original = new WorkspaceManagementError('WORKSPACE_MANAGEMENT_BUSY', 'delete');
+    const f = fixture(undefined, undefined, undefined, undefined, { projectFailure: () => value });
+    vi.spyOn(f.service, 'deleteWorkspace').mockRejectedValueOnce(original);
+    const failure = await f.startDurable().catch(error => error);
+    expect(failure).toMatchObject({ message: original.code });
+    const aggregate = (failure.cause as Error).cause as AggregateError;
+    expect(aggregate.cause).toBe(original);
+    expect(aggregate.errors[0]).toBe(original);
+    expect(aggregate.errors[1]).toMatchObject({ message: 'WORKSPACE_MANAGEMENT_CAPABILITY_INVALID' });
+    expect(f.runtime.complete).not.toHaveBeenCalled();
   });
 });
 
@@ -588,7 +684,7 @@ function fixture(
   guard = async () => {},
   observer?: WorkspaceManagementObserver,
   continuation?: WorkspaceManagementServiceOptions['deletionContinuation'],
-  resultRuntime?: NonNullable<Parameters<typeof createWorkspaceManagementCapability>[0]['deletionRuntime']>,
+  resultRuntime?: Partial<WorkspaceDeletionResultRuntime>,
 ) {
   const events: Readonly<WorkspaceManagementOperationEvent>[] = [];
   const command = vi.fn(prepare);
@@ -614,6 +710,9 @@ function fixture(
   const runtime = {
     readNextAction: vi.fn(resultRuntime?.readNextAction ?? (() => 'continue' as const)),
     complete: vi.fn(resultRuntime?.complete ?? (async () => undefined)),
+    projectFailure: vi.fn<WorkspaceDeletionResultRuntime['projectFailure']>(
+      resultRuntime?.projectFailure ?? (() => unknownDeletionResult),
+    ),
   };
   const capability = createWorkspaceManagementCapability({
     ipcMain: { handle: (channel: string, handler: (event: unknown, ...args: unknown[]) => Promise<unknown>) => {

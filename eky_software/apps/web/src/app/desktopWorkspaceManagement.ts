@@ -3,6 +3,19 @@ import type { EkyDesktopApi } from './desktopBridge.js';
 const WORKSPACE_LABEL_MAX_CODE_POINTS = 80;
 const WORKSPACE_STATUS_MAX_BYTES = 32 * 1024;
 const WORKSPACE_MAX_ENTRIES = 64;
+const workspaceDeletionResultVersion = 1 as const;
+const workspaceDeletionFailureCodes = Object.freeze([
+  'WORKSPACE_MANAGEMENT_BUSY',
+  'WORKSPACE_MANAGEMENT_INVALID',
+  'WORKSPACE_DELETE_STALE_CONFIRMATION',
+  'WORKSPACE_DELETE_BACKUP_UNAVAILABLE',
+  'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN',
+  'WORKSPACE_DELETE_INVENTORY_INVALID',
+  'WORKSPACE_DELETE_JOURNAL_CONFLICT',
+  'WORKSPACE_DELETE_IO_FAILED',
+  'WORKSPACE_DELETE_CLEANUP_FAILED',
+  'WORKSPACE_DELETE_FAILED',
+] as const);
 const workspaceIdPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const forbiddenWorkspaceLabelCodePoint =
@@ -28,6 +41,36 @@ export interface WorkspaceManagementStatus {
   readonly workspaces: readonly WorkspaceManagementEntry[];
   readonly duplicateWorkspaceLabelIds?: readonly string[];
 }
+
+export type WorkspaceDeletionFailureCode =
+  (typeof workspaceDeletionFailureCodes)[number];
+
+export type WorkspaceDeletionResult = Readonly<
+  | {
+      formatVersion: 1;
+      status: 'cancelled';
+      nextAction: 'continue' | 'relaunching' | 'restartRequired';
+    }
+  | {
+      formatVersion: 1;
+      status: 'completed';
+      navigation: 'selector' | 'reopenPrevious';
+    }
+  | {
+      formatVersion: 1;
+      status: 'failed';
+      errorCode: WorkspaceDeletionFailureCode;
+      sideEffectState: 'none';
+      nextAction: 'continue' | 'restartRequired';
+    }
+  | {
+      formatVersion: 1;
+      status: 'recoveryRequired';
+      errorCode: WorkspaceDeletionFailureCode;
+      sideEffectState: 'unknown';
+      nextAction: 'restartRequired';
+    }
+>;
 
 export interface WorkspaceManagementCapability {
   createEmpty(workspaceLabel: string): Promise<'completed' | 'relaunching'>;
@@ -126,6 +169,71 @@ function readWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
   } catch {
     return invalidWorkspaceStatus();
   }
+}
+
+export function readWorkspaceDeletionResult(value: unknown): WorkspaceDeletionResult {
+  try {
+    return parseWorkspaceDeletionResult(value);
+  } catch {
+    throw new Error('Invalid workspace deletion result.');
+  }
+}
+
+// Renderer validation accepts only the wire projection, never deletion authority.
+function parseWorkspaceDeletionResult(value: unknown): WorkspaceDeletionResult {
+  if (isRecord(value)) {
+    if (hasExactKeys(value, ['formatVersion', 'status', 'navigation']) &&
+        value.formatVersion === workspaceDeletionResultVersion &&
+        value.status === 'completed' &&
+        (value.navigation === 'selector' || value.navigation === 'reopenPrevious')) {
+      return Object.freeze({
+        formatVersion: workspaceDeletionResultVersion,
+        status: 'completed',
+        navigation: value.navigation,
+      });
+    }
+    if (hasExactKeys(value, ['formatVersion', 'status', 'nextAction']) &&
+        value.formatVersion === workspaceDeletionResultVersion &&
+        value.status === 'cancelled' &&
+        (value.nextAction === 'continue' || value.nextAction === 'relaunching' ||
+          value.nextAction === 'restartRequired')) {
+      return Object.freeze({
+        formatVersion: workspaceDeletionResultVersion,
+        status: 'cancelled',
+        nextAction: value.nextAction,
+      });
+    }
+    if (hasExactKeys(value, [
+      'formatVersion', 'status', 'errorCode', 'sideEffectState', 'nextAction',
+    ]) && value.formatVersion === workspaceDeletionResultVersion &&
+        isWorkspaceDeletionFailureCode(value.errorCode)) {
+      if (value.status === 'failed' && value.sideEffectState === 'none' &&
+          (value.nextAction === 'continue' || value.nextAction === 'restartRequired')) {
+        return Object.freeze({
+          formatVersion: workspaceDeletionResultVersion,
+          status: 'failed',
+          errorCode: value.errorCode,
+          sideEffectState: 'none',
+          nextAction: value.nextAction,
+        });
+      }
+      if (value.status === 'recoveryRequired' && value.sideEffectState === 'unknown' &&
+          value.nextAction === 'restartRequired') {
+        return Object.freeze({
+          formatVersion: workspaceDeletionResultVersion,
+          status: 'recoveryRequired',
+          errorCode: value.errorCode,
+          sideEffectState: 'unknown',
+          nextAction: 'restartRequired',
+        });
+      }
+    }
+  }
+  throw new Error('Invalid workspace deletion result.');
+}
+
+function isWorkspaceDeletionFailureCode(value: unknown): value is WorkspaceDeletionFailureCode {
+  return workspaceDeletionFailureCodes.some((code) => value === code);
 }
 
 function parseWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
