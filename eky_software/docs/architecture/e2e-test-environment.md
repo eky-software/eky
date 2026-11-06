@@ -1460,7 +1460,9 @@ vertailutaso on dokumentoitu tiedostossa
 
 Linuxin core-tarkistusten omistajuus jakautuu
 `Package regression tests` -> `Test, typecheck and build` -ketjuun.
-Jälkimmäinen käynnistyy vain ensimmäisen onnistuttua. Kumpikin käyttää
+Ensimmäinen ajaa desktopin ja jälkimmäinen muiden pakettien nykyiset testit
+ennen tyypitys-, build- ja tarkistusprosessivaiheita. Jälkimmäinen käynnistyy
+vain ensimmäisen onnistuttua. Kumpikin käyttää
 saman revision omaa checkoutia ja lukittua valmistelua ilman build-artifactin
 siirtoa. Molempien 15 minuutin ja nykyisen salatun virheaineiston sopimus
 on [testausohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).

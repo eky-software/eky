@@ -63,8 +63,8 @@ test('light, lifecycle, mixed and full-event changes select exact coverage and c
 test('Linux package and build jobs require their own exact successful steps', () => {
   const plan = planFor([fast]);
   const owners = {
-    'Package regression tests': ['Run tests'],
-    'Test, typecheck and build': ['Run typecheck', 'Build backend', 'Build web', 'Build desktop',
+    'Package regression tests': ['Run desktop tests'],
+    'Test, typecheck and build': ['Run remaining package tests', 'Run typecheck', 'Build backend', 'Build web', 'Build desktop',
       'Prepare Linux inspection Electron runtime', 'Verify Linux isolated profile inspection'],
   };
   const required = requiredCiJobs(plan).verify;
@@ -589,7 +589,8 @@ function workflowStep(source, name) {
 function assertLinuxCoreSplit(source) {
   const setup = ['Check out repository', 'Set up Node.js', 'Prepare locked package manager', 'Install dependencies'];
   const commands = {
-    'Run tests': "        run: pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --stream run test",
+    'Run desktop tests': '        run: pnpm --filter @eky/desktop test',
+    'Run remaining package tests': "        run: pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --filter '!@eky/desktop' --stream run test",
     'Run typecheck': '        run: pnpm typecheck',
     'Build backend': '        run: pnpm --filter @eky/backend build',
     'Build web': '        run: pnpm --filter @eky/web build',
@@ -598,7 +599,7 @@ function assertLinuxCoreSplit(source) {
     'Verify Linux isolated profile inspection': "        env:\n          EKY_E2E: '1'\n        run: pnpm --filter @eky/desktop inspection:proof:linux",
   };
   const jobs = {
-    'test-packages': { name: 'Package regression tests', steps: ['Run tests'], key: 'core-tests' },
+    'test-packages': { name: 'Package regression tests', steps: ['Run desktop tests'], key: 'core-tests' },
     verify: { name: 'Test, typecheck and build', steps: Object.keys(commands).slice(1), key: 'core-verify' },
   };
   const setups = [];
@@ -639,7 +640,11 @@ test('Linux core split keeps mandatory sequential jobs and all original commands
     [build, build.replace('timeout-minutes: 15', 'timeout-minutes: 30')],
     [tests, tests.replace('persist-credentials: false', 'persist-credentials: true')],
     [build, build.replace('persist-credentials: false', "persist-credentials: false\n          ref: main")],
-    [tests, tests.replace("--workspace-concurrency=1", '--workspace-concurrency=2')],
+    [tests, tests.replace('--filter @eky/desktop', '--filter @eky/backend')],
+    [build, build.replace('--workspace-concurrency=1', '--workspace-concurrency=2')],
+    [build, build.replace(" --filter '!eky-software'", '')],
+    [build, build.replace(" --filter '!@eky/desktop'", '')],
+    [build, build.replace('name: Run remaining package tests', 'name: Missing remaining package tests')],
     [build, build.replace('run: pnpm typecheck', 'if: false\n        run: pnpm typecheck')],
     [build, build.replace('run: pnpm --filter @eky/desktop build', 'run: pnpm --filter @eky/desktop build || true')],
     [build, build.replace('name: Verify Linux isolated profile inspection', 'name: Missing Linux proof')],

@@ -130,8 +130,8 @@ sarjallistuksen läpäisy ratkaise aiemman aikakatkaisun syytä.
 
 ## Core-CI:n pakettisarjojen ajo
 
-Core-CI:n `Package regression tests` ajaa pakettien nykyiset testiskriptit yksi paketti
-kerrallaan. Pakettien sisäiset työntekijämäärät, testikohtaiset aikarajat,
+Core-CI ajaa pakettien nykyiset testiskriptit kahdessa peräkkäisessä työssä.
+Pakettien sisäiset työntekijämäärät, testikohtaiset aikarajat,
 pretest-vaiheet, eristys, reporterit ja testivalikoima säilyvät. Juuren
 orkestroiva `eky-software`-skripti suljetaan nimenomaisesti pois, joten
 samoja sarjoja ei käynnistetä sen kautta uudelleen. Riippuvuusjärjestys ja
@@ -139,11 +139,18 @@ ensimmäiseen epäonnistuneeseen pakettiin pysähtyminen säilyvät.
 
 Omistajan 6.11.2026 hyväksymä työnjako erottaa pakettitestit ja niiden
 jälkeiset tarkistukset kahteen pakolliseen peräkkäiseen Linux-työhön.
-`test-packages` ajaa vain nykyisen pakettitestikomennon;
+`test-packages` (`Package regression tests`) ajaa desktopin koko nykyisen
+testiskriptin: tavallisen Vitest-vaiheen, erillisen rooliketjun ja Node-testit.
 `verify` (`Test, typecheck and build`) odottaa sen onnistumista ja ajaa
-nykyisen tyypityksen, backendin/webin/desktopin käännökset sekä eristetyn
+ensin muiden pakettien nykyiset testiskriptit sarjallisesti. Sen valinta
+sulkee pois sekä juuren orkestroivan skriptin että jo testatun desktopin.
+Tämän jälkeen tulevat nykyinen tyypitys, backendin/webin/desktopin käännökset sekä eristetyn
 Linux-tarkistusprosessin valmistelun ja todellisen kokeen. Molemmat saavat
 15 minuuttia, joten yhteinen enimmäisvara kasvaa 15:stä 30 koneminuuttiin.
+Desktopin erottaminen ei muuta pakettien omia `pretest`-vaiheita tai siirrä
+desktopin valmistelutuloksia toiseen työhön. Tarkat valinnat, niiden koko
+alkuperäistä valikoimaa vastaava päällekkäisyydetön yhdistelmä ja kummankin
+ryhmän omat pakolliset askeleet todennetaan ennen jaon hyväksymistä.
 
 Kumpikin työ tekee saman versionmukaisen checkoutin ja lukitun
 paketinhallinta-/riippuvuusvalmistelun itsenäisesti. Valmiita build-tavuja

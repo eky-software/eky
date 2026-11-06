@@ -151,8 +151,9 @@ muutosta; paikallinen dokumentaatio ei muuta GitHub-asetuksia.
 Checkien nimiä ei muuteta hiljaisesti, koska branch protection viittaa
 GitHubissa täsmällisiin check-nimiin.
 
-Linuxin pakettitestit ja myöhemmät tyypitys-/build-/tarkistusprosessivaiheet
-ovat kaksi pakollista peräkkäistä 15 minuutin työtä, yhteisvara 30 minuuttia.
+Linuxin desktop-testit ovat ensimmäisessä ja muiden pakettien testit sekä
+tyypitys-/build-/tarkistusprosessivaiheet toisessa pakollisessa työssä.
+Työt ovat peräkkäisiä, kumpikin 15 minuuttia, yhteisvara 30 minuuttia.
 Molemmat vaaditaan koontiin; tarkka valmistelu-, sisältö- ja
 virheaineistosopimus on [core-testauksen ohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).
 

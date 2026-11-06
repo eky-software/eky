@@ -12879,8 +12879,11 @@ ennen testien keräystä. Tämä ei ole testihylkäys tai korjauksen hyväksynt�
 Lähde säilyi muuttumattomana. Myöhempi CI läpäisi pakettitestit, mutta
 kokonaiskatkaisu esti varsinaisen Linux-tarkistusprosessin kokeen.
 Nykyinen puhtaan revision Linux-CI-portti vaaditaan edelleen.
-Hyväksytty jako erottaa pakettitestit ja niiden jälkeiset tarkistukset
-kahteen pakolliseen peräkkäiseen 15 minuutin työhön, yhteisvara 30 minuuttia.
+Hyväksytyn kahden peräkkäisen 15 minuutin työn sisäinen kuorma jaetaan
+desktopin testeihin ensimmäisessä sekä muiden pakettien testeihin ja
+nykyisiin jatkotarkistuksiin toisessa. Yhteisvara pysyy 30 minuutissa.
+Ensimmäinen kaikkien testien yhteinen työ katkaistiin backendin sarjassa;
+sen ensiaineisto säilyy eikä keskeneräistä sarjaa hyväksytä.
 Se ei muuta poistokoodia, testivalikoimaa tai tarkistusprosessin turvarajoja.
 Tarkka CI-sopimus on [testausohjeessa](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo).
 Valmisteluestettä ei ratkaista rinnakkaisella testirunnerilla.

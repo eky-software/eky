@@ -5,6 +5,36 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.4:n core-testikuorman tasapainotus 6.11.2026
+
+Ensimmäinen kahden työn revisio `3e74c09f0273ee5fd5a5f3500a91892dcdd92868`
+läpäisi [riippuvuusauditoinnin](https://github.com/eky-software/eky/actions/runs/42155202662).
+[V2-kierroksen](https://github.com/eky-software/eky/actions/runs/42155202744)
+pakettitestityö katkaistiin omassa 15 minuutin rajassaan kesken backendin
+Vitest-sarjan. Sen onnistumisesta riippuva tyypitys-/build-työ jäi oikein
+ajamatta. Desktopin koko kolmivaiheinen komento ja muut valmistuneet
+pakettisarjat läpäisivät; keskeneräistä backend-sarjaa ei hyväksytty.
+Kaikki 11 salatun ensiaineiston tiedostoa, tiivisteet ja testatun merge-
+revision vanhemmat varmennettiin. Mukana olleet kahdeksan alkuperäistä
+syytä olivat samat tarkoitukselliset reporterin ja säilytyksen kontrollit
+kuin aiemmassa aineistossa, eivät backendin valmistumisen todiste.
+Katkaisun jälkeistä siivousta ei päätellä onnistuneeksi.
+
+Kuorma tasataan samoihin kahteen pakolliseen peräkkäiseen 15 minuutin
+työhön: koko desktopin nykyinen testiskripti ensimmäiseen ja muiden
+pakettien testit ennen nykyisiä tyypitys-/build-/Linux-tarkistuksia toiseen.
+Yhteisvara pysyy 30 minuutissa. Todellisen lukitun paketinhallinnan
+valintavertailu kattoi kaikki 11 workspace-pakettia ja seitsemän nykyistä
+testiskriptiä ilman puuttuvia tai päällekkäisiä paketteja. Kaikki manifestit
+ja pakettien omat valmistelut säilyivät. Lähdekatselmus ei löytänyt
+desktop-työn tuloksista riippuvaa valmistelua jälkimmäisessä työssä.
+Erillinen lähtökontrolli hylkäsi vanhan työnjaon ennen kytkentäkorjausta.
+64 CI-kohdekontrollia, koko normaali 429 testin CI-sarja ja desktopin
+230 kytkentätestiä läpäisivät ilman ohituksia; sarjoja ei summata.
+Riippumaton lähdekatselmus ja toteutetun deltan jatkokatselmus eivät
+löytäneet puutetta. Paikallinen valintanäyttö ei vielä hyväksy kummankaan hosted-työn kestoa
+tai koko integraatiota; uusi korjausrevisio vaatii omat normaalit porttinsa.
+
 ## W7.4:n hyväksytty Linux core-CI-työnjako 6.11.2026
 
 Omistaja hyväksyi kaksi pakollista peräkkäistä 15 minuutin työtä,

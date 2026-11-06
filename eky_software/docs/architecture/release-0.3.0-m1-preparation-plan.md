@@ -15,12 +15,14 @@ on varmennettu hyväksytyiksi. Nykyinen haara on `codex/w7-4-deletion`;
 kaikki sen keskeneräiset muutokset säilytetään.
 
 **Integraation nykytila:** [PR #327](https://github.com/eky-software/eky/pull/327)
-on avoinna. Viimeisin testattu head on
-`ecfe654f35d0a673b6d2161ca2c008c4486cc3b3`:
-[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42121557074)
-läpäisi, mutta [V2](https://github.com/eky-software/eky/actions/runs/42121557200)
-hylättiin salauskokeen tunnistevertailuun ja core-työn kokonaiskatkaisuun.
-Nykyinen rajattu testikorjaus on tämän revision päällä. Ajantasainen head
+on avoinna. Nykyisen työnjaon korjauksen lähtöhead on
+`3e74c09f0273ee5fd5a5f3500a91892dcdd92868`:
+[riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42155202662)
+läpäisi, mutta [V2:n](https://github.com/eky-software/eky/actions/runs/42155202744)
+ensimmäinen core-työ katkaistiin 15 minuutissa kesken backendin testien.
+Toinen työ jäi oikein ajamatta. Muut jo läpäisseet portit eivät korvaa tätä
+estettä. Kuorma jaetaan samoihin kahteen 15 minuutin työhön: desktop ensin,
+muut paketit ja nykyiset jatkotarkistukset toisessa. Ajantasainen head
 ja hyväksyntä varmennetaan PR:stä; vanhoja ajoja ei siirretä uudelle SHA:lle.
 Myös ensimmäinen head `25bb186fc5dbd67805490dfb32c79e900952360e`,
 [sen V2](https://github.com/eky-software/eky/actions/runs/42018622466)
@@ -77,15 +79,16 @@ Työpuun rajatut korjaukset ja niiden nykyinen näyttö:
   riippumaton deltakatselmus läpäisivät. Tarkka sidonta, peitto,
   35 tiedoston tavuvertailu ja kaikki aiemmat virherajat säilyivät.
 
-**Seuraava portti:** hyväksytyn core-CI-työnjaon deltakatselmuksen viimeistely,
-uuden jäädytetyn PR-headin kaikki portit sekä uuden mainin omat portit.
-Kohdesarja, normaali 429 testin CI-sarja ja desktopin 225 kytkentätestiä
-läpäisivät. Katselmuksen löytämä vanha testityön omistajaodotus on korjattu;
-[erillinen näyttö](release-0.3.0-integration-history.md#w74n-hyväksytty-linux-core-ci-työnjako-6112026)
-säilyttää myös ensimmäiset hylkäykset. Omistaja hyväksyi kaksi pakollista peräkkäistä
-15 minuutin työtä, yhteisvara 30 minuuttia. Pakettitestit säilyvät
-ensimmäisessä; tyypitys, kaikki kolme käännöstä ja todellinen Linux-
-tarkistusprosessi toisessa. Koonti vaatii kaikki varsinaiset vaiheet;
+**Seuraava portti:** tasapainotetun core-työnjaon uuden jäädytetyn PR-headin
+kaikki portit sekä uuden mainin omat portit. Todellinen pakettivalinta
+kattaa samat 11 workspace-pakettia ja seitsemän testiskriptiä ilman
+puuttuvia tai päällekkäisiä valintoja. Pakettien valmistelut säilyvät.
+64 kohdekontrollia, normaali 429 testin CI-sarja, desktopin 230
+kytkentätestiä ja rajattu riippumaton deltakatselmus läpäisivät.
+[Erillinen näyttö](release-0.3.0-integration-history.md#w74n-core-testikuorman-tasapainotus-6112026)
+säilyttää myös ensimmäiset hylkäykset. Omistajan hyväksymät kaksi
+pakollista peräkkäistä 15 minuutin työtä ja yhteisvara 30 minuuttia
+säilyvät. Koonti vaatii molemmat testiryhmät ja kaikki jatkovaiheet;
 molemmilla on nykyinen ehdollinen salattu virhekeräys
 [core-sopimuksen](../ai/testing-rules.md#core-cin-pakettisarjojen-ajo) mukaan.
 Uusi jako ei nimeä vanhaa kokonaiskatkaisua korjatuksi tai hyväksy

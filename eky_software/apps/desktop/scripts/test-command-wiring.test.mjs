@@ -96,7 +96,9 @@ const REQUIRED_FILES = [
 ];
 const CI_EDGES = [
   { job: 'test-packages', name: 'Package regression tests', gate: 'verify',
-    step: 'Run tests', run: "pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --stream run test" },
+    step: 'Run desktop tests', run: 'pnpm --filter @eky/desktop test' },
+  { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
+    step: 'Run remaining package tests', run: "pnpm --recursive --workspace-concurrency=1 --filter '!eky-software' --filter '!@eky/desktop' --stream run test" },
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
     step: 'Prepare Linux inspection Electron runtime', run: 'pnpm --filter @eky/desktop e2e:prepare-electron-runtime' },
   { job: 'verify', name: 'Test, typecheck and build', gate: 'verify',
@@ -481,10 +483,11 @@ for (const [name, change] of [
   ['root scheduler substituted for serial CI', () => 'pnpm test'],
   ['parallel package suites in core CI', command => command.replace('--workspace-concurrency=1', '--workspace-concurrency=4')],
   ['root package exclusion missing in core CI', command => command.replace(" --filter '!eky-software'", '')],
+  ['desktop package exclusion missing in remaining core tests', command => command.replace(" --filter '!@eky/desktop'", '')],
   ['first package failure ignored in core CI', command => command.replace(' run test', ' --no-bail run test')],
 ]) {
   test(`rejects ${name}`, () => rejectsMutation(fixture => {
-    const command = CI_EDGES.find(edge => edge.job === 'test-packages' && edge.step === 'Run tests').run;
+    const command = CI_EDGES.find(edge => edge.job === 'verify' && edge.step === 'Run remaining package tests').run;
     fixture.core = fixture.core.replace(`        run: ${command}\n`, `        run: ${change(command)}\n`);
   }));
 }
