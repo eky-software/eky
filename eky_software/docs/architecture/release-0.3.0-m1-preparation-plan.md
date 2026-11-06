@@ -30,16 +30,20 @@ Myös tämän mainin oma [V2](https://github.com/eky-software/eky/actions/runs/4
 ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42176483388)
 läpäisivät. Tämä ei avaa hyväksyttyä W7.4:ää uudelleen.
 
-**Main-pohjan uudempi tarkistus on hylätty:** saman revision määräajoin ajettu
+**Main-pohjan kohdeuusinta läpäisi:** saman revision määräajoin ajettu
 [V2 42195653452](https://github.com/eky-software/eky/actions/runs/42195653452)
 hylkäsi kaksi backend-testiä viiden sekunnin rajaan sekä salatun aineiston
 keräystestin `timedOut`-toimitukseen. Molemmat paketit on purettu ja kaikki
 ajosidonnat/tiedostotiivisteet varmennettu. Rajattu lähdetarkistus ei
-osoittanut korjattavaa vikaa; yksi failed-only-kohdeuusinta samalla lähteellä
-on käynnistetty. Ensimmäisen viiveen syy ja siivoustila pysyvät avoimina.
+osoittanut korjattavaa vikaa. Yksi failed-only-kohdeuusinta samalla lähteellä
+läpäisi 40 pakollista työtä; kuusi valitsematonta diagnostiikkatyötä eivät
+ole läpäisyjä. Kolme aiemmin valmista pakettia säilyi muuttumattomana,
+ja aiemmin estyneet workspace-palautus-/siivousvaiheet läpäisivät.
+Ensimmäisen viiveen syy ja siivoustila pysyvät avoimina.
 [Alkuperäinen havainto](release-0.3.0-integration-history.md#w75n-main-pohjan-ensihylkäykset-6112026)
 säilyy erillisenä. [Uusi auditointi](https://github.com/eky-software/eky/actions/runs/42196766347)
-läpäisi. Uusinta ei yksin hyväksy alkuperäistä hylkäystä tai W7.5:tä.
+läpäisi. Tämä ei ole muuttuneen W7.5-lähteen testi eikä yksin hyväksy
+alkuperäistä hylkäystä tai W7.5:tä.
 
 **Aktiivinen työ on W7.5 A/B:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
