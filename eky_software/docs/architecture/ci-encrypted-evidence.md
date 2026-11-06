@@ -153,6 +153,15 @@ ei epäonnistumisen vuoksi säilytettyä profiilia tai tietokantaa. Tämä
 on tiedostokomennon ja raportoinnin näyttö, ei Electronin, tuotannon
 cold-admissionin tai GitHub-artifactin toimituksen hyväksyntä.
 
+W7.5:n saman tukivientiomistajan IPC- ja kertakäyttöinen native-entry
+tarjoavat testissä ensimmäisen alkuperäisen poikkeuksen nykyiselle
+runner-sinkille ennen turvallista virhevastausta. Sama OpenPGP-koe vertaa
+molempien alkuperäiset raporttitavut, viestin, pinon, syyketjun sekä
+testi-/ajosidonnan puretusta paketista. Tarkoituksellinen assertion jää
+hylkäykseksi, eivätkä raakasyyt kuulu julkiseen tulosteeseen tai
+salaamattomaan käyttäjän tukipakettiin. Tämä ei lisää aineistolajia eikä
+yksin todista ennen pääikkunaa toimivaa main-kytkentää tai hosted-toimitusta.
+
 Saman kokeen nykyinen execution-projektio saa alkuperäisen virheen oikealta
 poissaololukijalta: synteettinen `lstat`-vastaus hylätään ennen omistajuuden
 menetystä. Purku varmentaa tämän viestin, pinon ja syyketjun sekä erilliset

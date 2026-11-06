@@ -11,6 +11,7 @@ import {
   desktopOnlySupportBundleFormatVersion,
   desktopOnlySupportBundleKind,
   desktopOnlySupportBundleSections,
+  isSupportBundleTechnicalId,
   readSupportBundleDesktopData,
 } from './supportBundleDesktopData.js';
 
@@ -43,8 +44,7 @@ export function createDesktopOnlySupportBundleArchive(input: {
   const createdAt = new Date(Date.prototype.getTime.call(suppliedDate));
   if (!Number.isFinite(createdAt.getTime())) throw new Error('SUPPORT_BUNDLE_DESKTOP_DATA_INVALID');
   const creationCorrelationId = input.creationCorrelationId ?? randomUUID();
-  if (typeof creationCorrelationId !== 'string' ||
-      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(creationCorrelationId)) {
+  if (!isSupportBundleTechnicalId(creationCorrelationId)) {
     throw new Error('SUPPORT_BUNDLE_DESKTOP_DATA_INVALID');
   }
   const document = {

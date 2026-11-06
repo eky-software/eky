@@ -46,6 +46,10 @@ const eventFields = Object.freeze([
   'retryable', 'runtimeInstanceId', 'schemaVersion', 'sideEffectState', 'stage', 'timestamp',
 ]);
 
+export function isSupportBundleTechnicalId(value: unknown): value is string {
+  return typeof value === 'string' && technicalUuid.test(value);
+}
+
 // This validates a bounded projection, not build admission or process absence.
 export function readSupportBundleDesktopData(value: unknown): Readonly<SupportBundleDesktopData> {
   try {
@@ -106,7 +110,7 @@ function readFailure(
   const event = validateDesktopOperationalEvent(value);
   if ((event.eventName !== 'workspaceManagement.operationFailed' && event.eventName !== 'workspaceBackup.operationFailed' &&
       event.eventName !== 'workspaceBackup.cleanupFailed') ||
-      !technicalUuid.test(event.eventId) || event.appVersion !== system.appVersion || event.buildRevision !== system.buildRevision ||
+      !isSupportBundleTechnicalId(event.eventId) || event.appVersion !== system.appVersion || event.buildRevision !== system.buildRevision ||
       Object.entries(event).some(([key, field]) => value[key] !== field) || !timestamp(event.timestamp)) return invalid();
   const cleanup = event.eventName === 'workspaceBackup.cleanupFailed' ||
     (event.eventName === 'workspaceManagement.operationFailed' && event.stage === 'deleteCleanup');

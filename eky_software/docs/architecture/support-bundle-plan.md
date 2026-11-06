@@ -123,6 +123,25 @@ hyväksyntäaukko toistettiin ja korjattiin kielteisine regressioineen.
 Tämä on sisältö-/tiedostorajan näyttö, ei mainin, IPC:n, native-viennin,
 observer-kytkennän tai paketoidun sovelluksen hyväksyntä.
 
+**W7.5:n yhteinen vientiomistaja:** `supportBundleCapability.ts` käyttää
+samaa vahvistus-, kohdevalinta-, arkistointi-, kirjoitus- ja virhepolkua
+täydelle v2:lle ja rajatulle v3:lle. Muoto valitaan eri main-factoreissa,
+ei rendererin parametrilla tai täyden viennin virheen perusteella.
+Ikkuna-entry säilyttää omat sender-/frame-/dokumenttivartijansa.
+Mainin erillinen native-export kuluttaa kertakäyttöisen lupansa jo
+ensimmäisellä kutsulla, myös peruutuksessa; sillä ei ole IPC-lähettäjää tai
+keinotekoista ikkunaa. Molemmat tarkistavat omistajan synkronisen valtuuden
+odotusten jälkeen ja ennen kirjoitusta. Suljettu tai vanhentunut lupa ei
+kirjoita eikä avaa vanhan tilan virheilmoitusta.
+
+V3:n tietolähde on synkroninen nykyisen mainin projektio. Väärä
+asynkroninen palautus hylätään heti: sen dataa ei odoteta tai hyväksytä ja
+mahdollinen Promise-hylkäys käsitellään ilman julkista raakavirhettä.
+App/build tarkistetaan myös viejän suorittajan identiteettiin. Nämä pienet
+entry-kokeet eivät vielä todista todellisen mainin hallintasukupolvea,
+build-luottamuksen myöntämiskohtaa tai käyttöliittymää edeltävää vientiä.
+Kytkentä näihin omistajiin odottaa omaa näyttöporttia.
+
 Main valitsee polun luotetusta runtime-/selector-tilasta, ei rendererin
 parametrista. Nykyinen argumentiton `createSupportBundle()` ja mainin
 native-vahvistus/Save-dialogi säilyvät. Vain nykyinen sallittu ikkuna,

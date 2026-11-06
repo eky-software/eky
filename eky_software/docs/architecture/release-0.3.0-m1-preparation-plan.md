@@ -73,6 +73,16 @@ regressioineen. [Näytön raja](local-company-workspace-plan.md#w75-bn-sisältö
 ei vielä kata mainin native-entryä, hallintasession sidontaa, observeria tai
 paketoitua vientiä. Seuraava työ on näiden nykyisten omistajien A/B-liitos.
 
+**A/B:n yhteinen vientityö:** v2 ja v3 käyttävät samaa capability-omistajaa;
+kertakäyttöinen native-entry ja erillinen ikkuna-entry läpäisivät pienet
+elinikä-/tiedostokokeet. Kuuden kokonaisen tukivientitiedoston 211 testiä,
+tyypitys ja native-ensisyyn nykyinen OpenPGP-koe läpäisivät. Katselmuksen
+async-tietolähteen käsittelyaukko korjattiin, jälkikatselmuksessa ei löydöstä.
+[Näytön raja](local-company-workspace-plan.md#w75-abn-yhteisen-vientiomistajan-koe)
+ei vielä kata todellista hallintasukupolvea, observeria tai varhaisen mainin
+lupaa. Koko nykyinen 398 testin main-regressio läpäisi ilman ohituksia.
+Uudet v3-entryt eivät vielä ole käytössä, julkinen poisto pysyy kiinni.
+
 Vanhat ensihylkäykset, epäselvät alkuperäiset syyt ja varmentamattomat
 siivoustilat säilyvät [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-prmain-loppuhyväksyntä-6112026),
 eivät korjattuina tai jälkikäteen onnistuneina ajoina. Myös edeltävä

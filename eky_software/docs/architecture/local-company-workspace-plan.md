@@ -2672,6 +2672,34 @@ todista hallintasession sukupolvea, observerin nykyistä havaintoa tai
 paketoitua ketjua. Nämä ovat seuraava A/B-liitos; poistokanava pysyy
 suljettuna. Päällekkäisiä kohdesarjoja ei summata.
 
+##### W7.5 A/B:n yhteisen vientiomistajan koe
+
+Nykyinen `supportBundleCapability.ts` käyttää samaa vientityötä täydelle
+v2:lle ja rajatulle v3:lle. Sen kertakäyttöinen native-factory ei tarvitse
+ikkunaa tai IPC-lähettäjää; ikkuna-factory vaatii edelleen oikean
+senderin, framen ja dokumentin. Molemmat saavat synkronisen tuoreusvartijan
+nykyiseltä main-omistajalta, eivät myönnä lupaa sen puolesta.
+V3 ei kutsu backend-loaderia tai toimi v2:n fallbackina. Sen app/build
+verrataan suorittajan identiteettiin ennen tiedostokirjoitusta.
+
+Kuuden kokonaisen tukivientitiedoston 211 testiä ja tyypitys läpäisivät.
+Kokeet kattavat peruutuksen, käytetyn native-luvan, dispose-/sukupolvi-
+muutoksen dialogeissa, reentrantin tietolähteen ja oikeat tiedostotavut.
+Katselmuksen virheellisen async-tietolähteen Promise-hylkäysaukko korjattiin;
+neljä lisäkontrollia eivät odota tai hyväksy sen dataa, ja jälkikatselmukseen
+ei jäänyt löydöstä. Nykyisen OpenPGP-kokeen neljä testiä läpäisivät myös
+native-entryn alkuperäisen synteettisen virheen purun. Sama raporttien
+tosiasiallinen tavusisältö ja testisidonta säilyivät, julkinen tuloste ei
+sisältänyt raakasyytä. Tämä ei ole uuden aineistolajin keräyslupa.
+
+Kumpaakaan uutta v3-entryä ei vielä ole liitetty mainin käynnistykseen tai
+valitsimeen. Nykyisen todellisen hallintasukupolven, observerin ja ennen
+pääikkunaa päättyvän startupin kertakäyttöisen valtuuden liitos on edelleen
+avoin. Tätä ei korvata injektoidun vartijan onnistumisella. Nykyisen
+main-tiedoston kaikki 398 regressiota läpäisivät ilman ohituksia yhteisen
+vientityön muutoksen jälkeen. Sen Electron-/backend-rajat ovat edelleen
+kontrolloituja; tämä ei ole uusien v3-entryjen native-todiste.
+
 #### Testikattavuus ilman rinnakkaista testijärjestelmää
 
 W7.4:n journal-, 23 kohteen rooli-, fyysinen poisto-, metadata- ja

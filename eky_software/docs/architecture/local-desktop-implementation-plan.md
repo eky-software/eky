@@ -1009,6 +1009,24 @@ prosessin käynnistys-/terveystulosta. Julkinen kanava, preload ja UI pysyvät
 vielä suljettuina. Nykyisen [W7.5-sopimuksen](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 muut näyttö- ja pakettiportit säilyvät.
 
+### W7.5:n tukiviennin pyyntöelinikä
+
+Nykyinen tukivienticapability käyttää yhtä vientityötä v2:lle ja erilliselle
+`desktopOnly` v3:lle. Ikkuna-entry vaatii edelleen saman ikkunan,
+pääframen ja dokumentin; native-entry ei lainaa niitä eikä rekisteröi IPC:tä.
+Mainin native-lupa on kertakäyttöinen myös peruutuksen jälkeen.
+Tuore synkroninen omistajavartija tarkistetaan kummassakin entryssä kaikkien
+odotusten jälkeen ja ennen nykyistä synkronista tiedostokirjoittajaa.
+Dispose tai sukupolven muutos estää kirjoituksen ja vanhan virhedialogin.
+Ensimmäinen poikkeus on testissä yksityisen havaitsijan saatavilla ennen
+turvallista vastausta, mutta vastauksessa ei ole raakaa `cause`-ketjua.
+
+Sisältösopimuksen omistaa [tukipakettisuunnitelma](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus).
+Uusien v3-entryjen kytkentä todelliseen hallinta-/startup-omistajaan on vielä
+avoin. Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
+poissaoloa tai packaged-ketjua. Vanha v2 säilyttää backend-permissioninsa;
+sen epäonnistuminen ei käynnistä v3:a fallbackina.
+
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 
 - main/preload IPC allowlist -yksikkötestit
