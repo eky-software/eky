@@ -2715,7 +2715,9 @@ osan nykyinen näyttö on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-p
 B3b:n pyyntökaappaus ja valitsimen kytkentä ovat haarassa; oikea
 palvelu-/observer-/tiedostoketju sekä mainin kolme sulku-/vientikontrollia
 on todennettu. Rajatussa riippumattomassa tuotantokytkennän katselmuksessa
-ei löydöstä; nykyisen koko regression portti on vielä kesken.
+ei löydöstä. Koko main-regression portti on yhä hylätty yhden vanhan
+cold-forward-palautustapauksen aikakatkaisuun; M1 erottaa uuden lähteen
+401 läpäisyä tästä hylkäyksestä ja säilyttää aiemmat havainnot avoimina.
 B4:n erillinen startup-lupa on edelleen avoinna. Tarkka näyttö ja vanhat
 hylkäykset säilyvät M1:ssä ja sen linkitetyssä historiassa.
 

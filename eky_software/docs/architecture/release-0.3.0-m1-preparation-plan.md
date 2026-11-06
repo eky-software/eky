@@ -56,8 +56,7 @@ Valitsimen main-kytkennän kolme kohdekontrollia läpäisivät: todellinen
 gzip-/tarkastinketju ja myöhäisen vastauksen esto kummankin native-dialogin
 sulussa; muut 399 main-tapausta eivät kuuluneet kohdeajoon. Myös tyypitys
 läpäisi. Rajattu riippumaton tuotantokytkennän katselmus ei löytänyt
-korjattavaa puutetta. Uuden lähteen koko main-regressio on vielä kesken.
-V2:n sopimus ei muutu.
+korjattavaa puutetta. V2:n sopimus ei muutu.
 Seuraava nimetty pala on [B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
 ei yleinen startup-fallback tai poistopainikkeen julkaisu.
 
@@ -66,7 +65,13 @@ replacement-aikakatkaisua ja rajattu erillisdiagnoosi säilyvät hylättyinä.
 Työt ja testiresurssien siivous päättyivät, aineistot säilyivät. Lähdetarkistus
 osoitti fixturen tarpeettoman rekisterin kaksoiskirjoituksen ja yhden
 harhaanjohtavan vaihenimen; rajattu fixturekontrolli läpäisi korjauksen.
-Tämä ei vielä todista aikakatkaisujen syytä tai nykyisen main-sarjan läpäisyä.
+Uuden puhtaan revision `42b462f5f7709d67b3d28450460a215373ace4d2` normaali
+main-sarja läpäisi 401/402 testiä ilman ohituksia. Tapaus `uses cold content
+admission across actual forward moves (replacement: true)` aikakatkaisi
+edelleen viiden sekunnin rajaan startup-vaiheessa. Sen työ ja testiresurssien
+siivous päättyivät ja aineisto säilyi; juurisyy on avoin. Muut kaksi vanhaa
+tapausta läpäisivät tässä ajossa, mutta aiempia hylkäyksiä ei suljeta.
+Koko main-portti on siis edelleen hylätty, ei B3b:n tai mergen hyväksyntä.
 Ei muuttumatonta lisäuusintaa tai aikarajan nostoa. [Edellinen checkpoint](release-0.3.0-integration-history.md#w75n-b3an-checkpoint-6112026)
 säilyttää tarkat osanäytöt ja muistivertailun rajat.
 Delete-IPC, preload, poistopainike, B4 sekä julkinen/paketoitu näyttö ovat
