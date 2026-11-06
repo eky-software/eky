@@ -30,7 +30,7 @@ Myös tämän mainin oma [V2](https://github.com/eky-software/eky/actions/runs/4
 ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/42176483388)
 läpäisivät. Tämä ei avaa hyväksyttyä W7.4:ää uudelleen.
 
-**Aktiivinen työ on W7.5 A:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+**Aktiivinen työ on W7.5 A/B:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
 toteutuscheckpoint on A:n varhaisen tukiviennin koe ja B:n rajattu
 tukipaketti, ei poistopainikkeen julkaisu. Nykyisen sisäisen paluu- ja
@@ -63,7 +63,15 @@ raakasyytä IPC-virheessä tai julkisessa testitulosteessa.
 ei vielä kata v3:a tai varhaista native-entryä. Myös koko 398 testin
 main-regressio läpäisi ilman ohituksia. Rajatun katselmuksen IPC-vuotoriski
 korjattiin, eikä jälkikatselmukseen jäänyt löydöstä. Seuraava työ on yllä
-nimetty varhaisen tukiviennin ja backendittömän paketin toteutusnäyttö.
+nimetty varhaisen tukiviennin ja backendittömän paketin ajonaikainen kytkentä.
+
+**B:n tiedostoraja:** rajattu v3 kulkee nykyisestä arkisto- ja
+tiedostokirjoittajasta viralliseen tarkastimeen. Viiden kokonaisen
+tukivientitiedoston 179 testiä, tarkastimen 21 testiä ja tyypitys läpäisivät.
+Vanha v2/legacy säilyi. Tarkastimen virhekoodin tyyppiaukko korjattiin
+regressioineen. [Näytön raja](local-company-workspace-plan.md#w75-bn-sisältö--ja-tiedostoraja)
+ei vielä kata mainin native-entryä, hallintasession sidontaa, observeria tai
+paketoitua vientiä. Seuraava työ on näiden nykyisten omistajien A/B-liitos.
 
 Vanhat ensihylkäykset, epäselvät alkuperäiset syyt ja varmentamattomat
 siivoustilat säilyvät [integraatiohistoriassa](release-0.3.0-integration-history.md#w74n-prmain-loppuhyväksyntä-6112026),

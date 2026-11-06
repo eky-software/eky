@@ -2650,6 +2650,28 @@ testiä ilman ohituksia samoilla rajoilla. Rajatussa katselmuksessa havaittu
 IPC:n raakasyyn vuotoriski korjattiin; jälkikatselmukseen ei jäänyt löydöstä.
 Kohdeajot ja koko main-sarja ovat päällekkäisiä, eivät summattavaa kattavuutta.
 
+##### W7.5 B:n sisältö- ja tiedostoraja
+
+Nykyinen arkisto-omistaja tuottaa erillisen suljetun `desktopOnly` v3:n,
+ja virallisessa tarkastimessa on sen erillinen lukija. Sisällön omistaa
+`supportBundleDesktopData.ts`; [tukipakettisuunnitelma](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus)
+omistaa kentät, tapahtumaroolit ja rajat. Vain nykyinen turvallinen
+ensivirhe ja erillinen siivoushavainto ovat sallittuja; puuttuva tieto ei
+muutu terveystulokseksi tai nollaksi.
+
+Viiden kokonaisen tukivientilähitiedoston 179 testiä, tarkastimen 21 testiä
+ja tyypitys läpäisivät nykyisillä rajoilla. Todellinen gzip, nykyinen
+tiedostokirjoittaja, virallinen tarkastin ja JSONin uusintaluku säilyttivät
+tavut, naapuritiedoston ja checksumien avainjärjestyksen. Suljetut
+syöterajat, muuttuneet checksumit ja virhekoodin tyyppivirhe hylätään;
+vanhan v2:n ja legacy-päätteen regressiot säilyivät. Tarkastimen katselmuksen
+ei-merkkijonoisen virhekoodin aukko toistettiin ja korjattiin.
+
+Tämä ei vielä avaa tukivientiä valitsimeen tai ennen pääikkunaa eikä
+todista hallintasession sukupolvea, observerin nykyistä havaintoa tai
+paketoitua ketjua. Nämä ovat seuraava A/B-liitos; poistokanava pysyy
+suljettuna. Päällekkäisiä kohdesarjoja ei summata.
+
 #### Testikattavuus ilman rinnakkaista testijärjestelmää
 
 W7.4:n journal-, 23 kohteen rooli-, fyysinen poisto-, metadata- ja

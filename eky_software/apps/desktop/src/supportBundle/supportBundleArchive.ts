@@ -7,6 +7,12 @@ import type {
   SupportBundleIncidentSummary,
 } from './supportBundleBackendData.js';
 import { supportBundleSizeBudget } from './supportBundleSizeBudget.js';
+import {
+  desktopOnlySupportBundleFormatVersion,
+  desktopOnlySupportBundleKind,
+  desktopOnlySupportBundleSections,
+  readSupportBundleDesktopData,
+} from './supportBundleDesktopData.js';
 
 export const supportBundleFormatVersion = 2;
 export const maximumUncompressedSupportBundleBytes =
@@ -24,6 +30,38 @@ interface CreateSupportBundleArchiveInput {
 export interface SupportBundleArchive {
   compressed: Buffer;
   fileName: string;
+}
+
+export function createDesktopOnlySupportBundleArchive(input: {
+  desktopData: unknown;
+  createdAt?: Date;
+  creationCorrelationId?: string;
+}): SupportBundleArchive {
+  const data = readSupportBundleDesktopData(input.desktopData);
+  const suppliedDate = input.createdAt ?? new Date();
+  if (!(suppliedDate instanceof Date)) throw new Error('SUPPORT_BUNDLE_DESKTOP_DATA_INVALID');
+  const createdAt = new Date(Date.prototype.getTime.call(suppliedDate));
+  if (!Number.isFinite(createdAt.getTime())) throw new Error('SUPPORT_BUNDLE_DESKTOP_DATA_INVALID');
+  const creationCorrelationId = input.creationCorrelationId ?? randomUUID();
+  if (typeof creationCorrelationId !== 'string' ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(creationCorrelationId)) {
+    throw new Error('SUPPORT_BUNDLE_DESKTOP_DATA_INVALID');
+  }
+  const document = {
+    manifest: {
+      supportBundleFormatVersion: desktopOnlySupportBundleFormatVersion,
+      kind: desktopOnlySupportBundleKind,
+      createdAt: createdAt.toISOString(),
+      creationCorrelationId,
+      sectionChecksums: Object.fromEntries(desktopOnlySupportBundleSections.map(name => [name, checksum(data[name])])),
+    },
+    ...data,
+  };
+  const uncompressed = Buffer.from(JSON.stringify(document), 'utf8');
+  if (uncompressed.byteLength > maximumUncompressedSupportBundleBytes) throw new Error('SUPPORT_BUNDLE_CORE_TOO_LARGE');
+  const compressed = gzipSync(uncompressed);
+  if (compressed.byteLength > maximumUncompressedSupportBundleBytes) throw new Error('SUPPORT_BUNDLE_CORE_TOO_LARGE');
+  return { compressed, fileName: createSupportBundleFileName(createdAt) };
 }
 
 export function createSupportBundleArchive(

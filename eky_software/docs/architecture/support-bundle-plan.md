@@ -93,6 +93,36 @@ ei koko käynnistyksen virhehistoria tai 30 päivän tapahtumakeräys.
 | Virheprojektio | Nykyinen katalogi ja tukipaketin tapahtumakohtaiset tarkistukset omistavat sallitut kentät, koodit ja vaiheet. W7-delete/resume laajentaa samaa katalogia ennen kytkentää. Raaka Error, viesti, stack, journal, company/workspace/lineage-ID, polku ja salaisuus ovat kiellettyjä. Vapaata merkkijonoa ei muuteta turvalliseksi vain katkaisemalla tai isolla kirjainkoolla. |
 | Puuttuva syy | Sallittu `unavailable`-havainto voi tuottaa rajatun tukipaketin, mutta käyttöliittymä ja tarkastin ilmoittavat sen puuttuvaksi. Historiallinen vika ei muutu selitetyksi eikä paketin luonti ratkaise recovery-tilaa. |
 
+**W7.5:n toteutettu tiedostoraja (6.11.2026):**
+`supportBundleDesktopData.ts` omistaa kolmen osion suljetun projektion;
+nykyinen arkisto-omistaja tuottaa v3:n ja virallisessa tarkastimessa on
+sen erillinen Node-only-lukija. System-version on oltava nykyisen omistajan
+mukainen SemVer, enintään 100 merkkiä; buildRevision on 7-40 pientä
+heksamerkkiä tai kehitysruntimen eksplisiittinen `development`, ei puuttuvan
+packaged-identiteetin oletus. Platformin metadata-arvot ovat `win32`,
+`linux`, `darwin` ja arkkitehtuurin `x64`, `arm64`; tämä ei laajenna
+tuettuja toimituksia tai anna runtimen avaamislupaa.
+
+Saatavilla oleva havainto sisältää täsmälleen `firstError`- ja
+`cleanupError`-kentät, joista vähintään yksi on nykyinen turvallinen
+tapahtuma. Sallitut perheet ovat nykyiset `workspaceManagement.operationFailed`,
+`workspaceBackup.operationFailed` ja `workspaceBackup.cleanupFailed`.
+Poiston `deleteCleanup` kuuluu erilliseen siivouskenttään vain koodilla
+`WORKSPACE_DELETE_CLEANUP_FAILED`. Tapahtumapari sidotaan samaan operaatioon,
+korrelaatioon ja runtimeen eri tapahtumatunnisteilla. Nykyinen tapahtuma-
+katalogi omistaa koodi-/vaiheyhdistelmät; tunnisteet ovat teknisiä UUID-arvoja,
+aika kanoninen UTC ja app/build täsmälleen paketin suorittajan identiteetti.
+Projektio ei siivoa vapaata tekstiä turvalliseksi tapahtumaksi.
+
+Viiden kokonaisen tukipakettilähitiedoston 179 testiä, virallisen tarkastimen
+21 testiä ja desktopin tyypitys läpäisivät. Oikea gzip -> nykyinen
+tiedostokirjoittaja -> virallinen tarkastin sekä JSONin uusintaluku säilyttivät
+checksumit ja avainjärjestyksen. V2/legacy-regressiot ja puuttuvan historian
+rehellinen esitys säilyivät. Tarkastimen ei-merkkijonoisen virhekoodin
+hyväksyntäaukko toistettiin ja korjattiin kielteisine regressioineen.
+Tämä on sisältö-/tiedostorajan näyttö, ei mainin, IPC:n, native-viennin,
+observer-kytkennän tai paketoidun sovelluksen hyväksyntä.
+
 Main valitsee polun luotetusta runtime-/selector-tilasta, ei rendererin
 parametrista. Nykyinen argumentiton `createSupportBundle()` ja mainin
 native-vahvistus/Save-dialogi säilyvät. Vain nykyinen sallittu ikkuna,
@@ -155,7 +185,7 @@ läpäisivät erillisinä kohdennettuina tarkistuksina. Yksityinen v3-ehdokas
 kulkee todellisen gzipin ja nykyisen tiedostokirjoittajan kautta rajattuun
 ehdokastarkastimeen. Suljetut kentät, checksumit, pakatut/puretut kokorajat,
 ensivirheen ja siivoushavainnon erottelu sekä puuttuva havainto tarkistetaan.
-Nykyinen virallinen tarkastin hylkää edelleen v3:n; sitä ei ole muutettu.
+Tuon kokeen aikainen virallinen tarkastin hylkäsi v3:n; kokeessa sitä ei muutettu.
 Koe käyttää nykyisiä import/replace-virhetapahtumia, ei vielä W7-delete-
 tapahtumia. Lokikirjoittajan todellinen tiedostovirhe ei poista omistajalla
 jo olevaa turvallista havaintoa paketista. Tämä ei todista, että tulevan
@@ -176,8 +206,9 @@ Tilat ja dialogit ovat injektoituja: tämä ei ole oikean Electron-IPC:n,
 backend-permissionin tai käyttöliittymän hyväksyntätodiste.
 
 Tuotantokytkennässä pitää vielä todentaa todellinen tilanomistaja ja
-sukupolvien vaihto, W7-observerin tapahtuma ja lukuketju, virallisen
-tarkastimen v3-haara sekä molemmat packaged-vientipolut. Ehdokas käyttää
+sukupolvien vaihto, W7-observerin tapahtuma ja lukuketju sekä molemmat
+packaged-vientipolut. Yllä oleva W7.5:n tiedostoraja kattaa virallisen
+tarkastimen erillisen v3-haaran, ei näitä ajonaikaisia liitoksia. Ehdokas käyttää
 paketoitua build-identiteettiä ja rajattua platform/architecture-joukkoa;
 tuotannon tarkat sallitut arvot sidotaan omistavan runtimen sopimukseen,
 eikä kokeen arvojoukko muuta täyden v2-paketin hyväksyntää.
