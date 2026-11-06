@@ -5,6 +5,40 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+## W7.5:n B3a:n checkpoint 6.11.2026
+
+Seuraava edeltävä jatkamiskohta on siirretty M1:stä sellaisenaan.
+Myöhempi fixturekorjaus ei muuta aikakatkaisuja onnistuneiksi ajoiksi.
+
+**Aktiivinen työ on W7.5 A/B:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
+toteutuscheckpoint on [B3b:n pyyntökaappaus ja B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
+ei poistopainikkeen julkaisu. B3a:n todellinen palvelu-/observer-/composition-
+kytkentä läpäisi seitsemän kokonaisen testitiedoston 197 testiä, tyypityksen
+ja nykyisen neljän testin salaus/purku-sarjan. Katselmuksen kielteisen
+kontrollin peittoaukko korjattiin; jälkikatselmuksessa ei löydöstä.
+Koko main-regressiossa 395 testiä läpäisi ja kolme vanhaa replacement-
+palautustapausta aikakatkaisi viiden sekunnin rajaan. Niiden työt päättyivät,
+testiresurssien siivous valmistui ja aineistot säilyivät; juurisyy on avoin.
+Yksi rajattu kolmen tapauksen erillisdiagnoosi samalla lähteellä ja rajoilla
+hylkäsi samat tapaukset. B3a:ta edeltävän kolmen toteutustiedoston
+muistivertailussa kaksi aikakatkaisua toistui, yksi tapaus läpäisi. Tämä
+ei hyväksy nykyistä toteutusta tai ratkaise alkuperäistä viivettä.
+Viimeisen siivoustapahtumaliitoksen kahdeksan main-vaikutuskontrollia
+läpäisivät; muut 390 tapausta eivät kuuluneet kohdeajoon.
+Ei lisäuusintaa tai aikarajan nostoa. Tukiviennin todellinen pyyntö- ja
+käynnistyslupa sekä julkinen/native-/pakettinäyttö ovat edelleen avoinna.
+Main-pohjan ensihylkäykset käsitellään erillään W7.5-koodimuutoksista.
+Nykyisen sisäisen paluu- ja
+pyyntöelinikäliitoksen osanäyttö on alla; julkinen/paketoitu ketju ja tuki
+ennen yritysvalinnan valmistumista ovat vielä todentamatta. Omistaja
+hyväksyi 6.11.2026 myös varhaisen native-tukiviennin toteutuksen ja
+kytkennän vasta kokeiden ja katselmuksen läpäistyä.
+Delete-IPC, preload, poistopainike ja backenditon tukivienti pysyvät
+suljettuina ensimmäisten kokeiden ja kytkentäporttien aikana. W7.5:tä
+toteutetaan saman Goalin rajattuina paloina; koko 0.3.0 ei ole hyväksytty;
+muut jäljellä olevat tehtävät ja M5 ovat [roadmapissa](release-0.3.0-plan.md).
+
 ## W7.5:n main-pohjan ensihylkäykset 6.11.2026
 
 Seuraava alkuperäinen checkpoint on siirretty M1:stä sellaisenaan.

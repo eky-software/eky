@@ -60,6 +60,15 @@ interface DesktopOnlySupportBundleOptions extends SupportBundleExportOptions {
   loadDesktopData(): Readonly<SupportBundleDesktopData>;
 }
 
+interface DesktopOnlySupportBundleRequest {
+  assertCurrent(): void;
+  loadDesktopData(): Readonly<SupportBundleDesktopData>;
+}
+
+interface DesktopOnlyWindowSupportBundleOptions extends WindowSupportBundleOptions {
+  captureRequest(): Readonly<DesktopOnlySupportBundleRequest>;
+}
+
 export interface SupportBundleCapability {
   dispose(): void;
 }
@@ -76,10 +85,15 @@ interface ArchiveCreationContext {
 
 type CreateArchive = (context: ArchiveCreationContext) => SupportBundleArchive | Promise<SupportBundleArchive>;
 
+interface WindowArchiveRequest {
+  assertCurrent?(): void;
+  createArchive: CreateArchive;
+}
+
 export function createSupportBundleCapability(
   options: SupportBundleCapabilityOptions,
 ): SupportBundleCapability {
-  return createWindowSupportBundleCapability(options, async context => {
+  const createArchive: CreateArchive = async context => {
     const backendValue = await options.loadBackendData();
     context.assertCurrent();
     return createSupportBundleArchive({
@@ -87,13 +101,25 @@ export function createSupportBundleCapability(
       backendData: readSupportBundleBackendData(backendValue), createdAt: context.createdAt,
       creationCorrelationId: context.creationCorrelationId, platform: options.platform,
     });
-  });
+  };
+  return createWindowSupportBundleCapability(options, () => ({ createArchive }));
 }
 
 export function createDesktopOnlySupportBundleCapability(
-  options: DesktopOnlySupportBundleOptions & Pick<WindowSupportBundleOptions, 'ipcMain' | 'mainWindow'>,
+  options: DesktopOnlyWindowSupportBundleOptions,
 ): SupportBundleCapability {
-  return createWindowSupportBundleCapability(options, desktopOnlyArchiveCreator(options));
+  return createWindowSupportBundleCapability(options, () => {
+    const request = options.captureRequest();
+    if (isPromise(request)) {
+      void Promise.prototype.then.call(request, undefined, () => undefined);
+      throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+    }
+    return Object.freeze({
+      assertCurrent: request.assertCurrent.bind(request),
+      createArchive: desktopOnlyArchiveCreator({ operationalIdentity: options.operationalIdentity,
+        loadDesktopData: request.loadDesktopData.bind(request) }),
+    });
+  });
 }
 
 // A main-owned, once-only entry. It never fabricates an IPC sender or a window.
@@ -124,7 +150,7 @@ export function createDesktopOnlySupportBundleExport(options: DesktopOnlySupport
   });
 }
 
-function desktopOnlyArchiveCreator(options: DesktopOnlySupportBundleOptions): CreateArchive {
+function desktopOnlyArchiveCreator(options: Pick<DesktopOnlySupportBundleOptions, 'loadDesktopData' | 'operationalIdentity'>): CreateArchive {
   const loadDesktopData = options.loadDesktopData.bind(options);
   return context => {
     context.assertCurrent();
@@ -145,7 +171,9 @@ function desktopOnlyArchiveCreator(options: DesktopOnlySupportBundleOptions): Cr
   };
 }
 
-function createWindowSupportBundleCapability(options: WindowSupportBundleOptions, createArchive: CreateArchive): SupportBundleCapability {
+function createWindowSupportBundleCapability(options: WindowSupportBundleOptions,
+  captureRequest: () => WindowArchiveRequest,
+): SupportBundleCapability {
   let creationInProgress = false;
   let disposed = false;
   let documentEpoch = 0;
@@ -167,6 +195,7 @@ function createWindowSupportBundleCapability(options: WindowSupportBundleOptions
     async (event, ...args: unknown[]): Promise<SupportBundleCreationResult> => {
       const epoch = documentEpoch;
       const observeFailure = firstFailureObserver(options);
+      let request: WindowArchiveRequest | undefined;
       const assertRequestCurrent = () => {
         if (disposed || documentEpoch !== epoch || args.length !== 0 ||
             !isTrustedMainWindowRequest(event, options.mainWindow)) {
@@ -177,6 +206,7 @@ function createWindowSupportBundleCapability(options: WindowSupportBundleOptions
         try {
           assertRequestCurrent();
           if (assertRuntimeCurrent !== undefined) assertUpdateJournalAuthority(assertRuntimeCurrent);
+          if (request?.assertCurrent !== undefined) assertUpdateJournalAuthority(request.assertCurrent);
           assertRequestCurrent();
         } catch (cause) {
           observeFailure(cause);
@@ -190,7 +220,14 @@ function createWindowSupportBundleCapability(options: WindowSupportBundleOptions
       creationInProgress = true;
 
       try {
-        return await runSupportBundleCreation(options, createArchive, assertCurrent, observeFailure);
+        try {
+          request = captureRequest();
+          assertCurrent();
+        } catch (cause) {
+          observeFailure(cause);
+          throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+        }
+        return await runSupportBundleCreation(options, request.createArchive, assertCurrent, observeFailure);
       } finally {
         creationInProgress = false;
       }

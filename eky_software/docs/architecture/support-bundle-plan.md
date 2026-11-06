@@ -157,7 +157,8 @@ kaksi turvallista projektiota; ne eivät ole uusia lokitapahtumia tai
 valtuuksia. `observeProjectedEvent` toimittaa saman validoidun muuttumattoman
 tapahtuman vastaanottajalle ennen loggeria. Näyttö ja seuraava portti ovat
 [M1:n nykytilassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
-Näitä portteja ei vielä ole liitetty valitsimen vientipyyntöön tai startupiin.
+Valitsimen vientipyyntö käyttää haarassa alla kuvattua B3b-kaappausta;
+startupin erillistä raportointilupaa ei vielä ole kytketty.
 Tavallisen delete-komennon todettu loppukäsittely-/vapautusvirhe tuottaa
 nykyisen ensitapahtuman lisäksi saman katalogin `deleteCleanup`-tapahtuman
 samalla korrelaatiolla, enintään kerran. Se ei muuta heitettyä ensivirhettä,
@@ -208,6 +209,19 @@ otetun kontekstin kautta vahvistuksen ja kohdevalinnan jälkeen. Nykyiset
 sender-, frame-, dokumentti- ja dispose-vartijat sekä mainin tuoreusvartija
 tarkistetaan edelleen kaikkien odotusten jälkeen ja ennen kirjoitusta.
 Vanha `idle -> busy -> idle` -pyyntö hylätään, vaikka ikkuna olisi sama.
+
+**B3b:n haaratoteutus:** v3-ikkuna-entryn `captureRequest` palauttaa
+pyyntökohtaisen synkronisen vartijan ja vasta myöhemmin käytettävän datalukijan.
+Kaappausvirhe jää nykyiselle yksityiselle havaitsijalle ennen turvallista
+vastausta; vahvistusta tai sisältölukua ei silloin aloiteta. Async-kaappausta
+ei odoteta tai hyväksytä, ja sen hylkäys käsitellään. Valitsimen composition
+sitoo kaappauksen todelliseen `captureOperationObservation`-kontekstiin ja
+main-varaukseen. Sulku disposeaa vienti-entryn synkronisesti; se ei odota
+omaa native-dialogiaan tai päättele sen peruuntuneen. Prosessin saatavuus
+on varovaisesti `exitUnconfirmed`, ei lifecycle-tilasta päätelty `notRunning`.
+V2:n option-, backend-permission- ja datamuoto sekä native-entryn nykyinen
+kertakäyttöinen sopimus säilyvät. Julkinen poistotoiminto ja B4 eivät kuulu
+tämän pyyntöliitoksen näyttöön; ajantasaiset testit ovat M1:ssä.
 
 **Ennen ensimmäistä ikkunaa.** `main/index.ts` omistaa yhden
 käynnistysyrityksen raportointieliniän. `desktopComposition` ei luovuta

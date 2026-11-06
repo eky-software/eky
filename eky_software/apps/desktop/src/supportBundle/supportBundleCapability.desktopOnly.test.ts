@@ -11,6 +11,7 @@ import type { SupportBundleDesktopData } from './supportBundleDesktopData.js';
 import { writeSupportBundleAtomically } from './supportBundleFileStore.js';
 
 type NativeOptions = Parameters<typeof createDesktopOnlySupportBundleExport>[0];
+type WindowOptions = Parameters<typeof createDesktopOnlySupportBundleCapability>[0];
 const identity = { appVersion: '1.2.3', buildRevision: '123456789abc', runtimeInstanceId: '11111111-1111-4111-8111-111111111111' };
 const modes = ['native', 'window'] as const;
 
@@ -47,7 +48,7 @@ describe('desktop-only support entry owners', () => {
 
     it(`${mode}: rejects a revoked owner before showing native dialogs`, async () => {
       const fixture = createFixture(mode);
-      fixture.changeGeneration();
+      fixture.revokeOwner();
       await expect(fixture.create()).rejects.toThrow('SUPPORT_BUNDLE_FORBIDDEN');
       expect(fixture.confirmCreation).not.toHaveBeenCalled();
       expect(fixture.loadDesktopData).not.toHaveBeenCalled();
@@ -205,10 +206,113 @@ describe('desktop-only support entry owners', () => {
       expect(fixture.writeArchive).not.toHaveBeenCalled();
     } finally { gate.resolve(); await work; fixture.capability.dispose(); }
   });
+
+  it('window captures each request before confirmation but does not read cancelled data', async () => {
+    const order: string[] = [];
+    const request = {
+      assertCurrent() { expect(this).toBe(request); },
+      loadDesktopData() { order.push('read'); return desktopData(); },
+    };
+    const fixture = createFixture('window', {
+      captureRequest() { order.push('capture'); return request; },
+      confirmCreation: async () => { order.push('confirm'); return false; },
+    });
+    try {
+      await expect(fixture.create()).resolves.toBe('cancelled');
+      await expect(fixture.create()).resolves.toBe('cancelled');
+      expect(order).toEqual(['capture', 'confirm', 'capture', 'confirm']);
+      expect(fixture.captureRequest).toHaveBeenCalledTimes(2);
+      expect(fixture.selectTargetPath).not.toHaveBeenCalled();
+      expect(fixture.writeArchive).not.toHaveBeenCalled();
+    } finally { fixture.capability.dispose(); }
+  });
+
+  it('window rejects an old generation even after idle returns, but accepts a fresh request', async () => {
+    const gate = deferred();
+    const fixture = createFixture('window', { confirmCreation: async () => { await gate.wait(); return true; } });
+    const first = fixture.create().catch((cause: unknown) => cause);
+    try {
+      await gate.entered;
+      fixture.changeGeneration();
+      gate.resolve();
+      expect(await first).toMatchObject({ message: 'SUPPORT_BUNDLE_CREATION_FAILED' });
+      expect(fixture.loadDesktopData).not.toHaveBeenCalled();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+      expect(fixture.writeArchive).not.toHaveBeenCalled();
+      await expect(fixture.create()).resolves.toBe('created');
+      expect(fixture.captureRequest).toHaveBeenCalledTimes(2);
+      expect(fixture.loadDesktopData).toHaveBeenCalledOnce();
+      expect(fixture.writeArchive).toHaveBeenCalledOnce();
+    } finally { gate.resolve(); await first; fixture.capability.dispose(); }
+  });
+
+  it('window does not capture an unauthorized or concurrently rejected request', async () => {
+    const gate = deferred();
+    const fixture = createFixture('window', { confirmCreation: async () => { await gate.wait(); return true; } });
+    await expect(fixture.invoke({})).rejects.toThrow('SUPPORT_BUNDLE_FORBIDDEN');
+    expect(fixture.captureRequest).not.toHaveBeenCalled();
+    const first = fixture.create().catch((cause: unknown) => cause);
+    try {
+      await gate.entered;
+      await expect(fixture.create()).rejects.toThrow('SUPPORT_BUNDLE_CREATION_IN_PROGRESS');
+      expect(fixture.captureRequest).toHaveBeenCalledOnce();
+      gate.resolve();
+      expect(await first).toBe('created');
+    } finally { gate.resolve(); await first; fixture.capability.dispose(); }
+  });
+
+  it('window keeps a capture failure private and releases request admission', async () => {
+    const original = new Error('synthetic private capture failure', { cause: new Error('synthetic capture cause') });
+    const captureRequest = vi.fn<WindowOptions['captureRequest']>()
+      .mockImplementationOnce(() => { throw original; })
+      .mockReturnValue({ assertCurrent() {}, loadDesktopData: desktopData });
+    const fixture = createFixture('window', { captureRequest });
+    try {
+      const error = await fixture.create().catch((cause: unknown) => cause);
+      expect(error).toMatchObject({ message: 'SUPPORT_BUNDLE_FORBIDDEN' });
+      expect(error).not.toHaveProperty('cause');
+      expect(fixture.observeFailure).toHaveBeenCalledExactlyOnceWith(original);
+      expect(fixture.confirmCreation).not.toHaveBeenCalled();
+      expect(fixture.showSafeError).not.toHaveBeenCalled();
+      await expect(fixture.create()).resolves.toBe('created');
+      expect(fixture.writeArchive).toHaveBeenCalledOnce();
+    } finally { fixture.capability.dispose(); }
+  });
+
+  it('window cannot confirm after reentrant capture invalidates its document', async () => {
+    let fixture!: ReturnType<typeof createFixture>;
+    fixture = createFixture('window', { captureRequest() {
+      fixture.webContents.emit('did-start-loading');
+      return { assertCurrent() {}, loadDesktopData: desktopData };
+    } });
+    try {
+      await expect(fixture.create()).rejects.toThrow('SUPPORT_BUNDLE_FORBIDDEN');
+      expect(fixture.confirmCreation).not.toHaveBeenCalled();
+      expect(fixture.loadDesktopData).not.toHaveBeenCalled();
+      expect(fixture.writeArchive).not.toHaveBeenCalled();
+    } finally { fixture.capability.dispose(); }
+  });
+
+  it('window drains an accidental async capture without awaiting or accepting it', async () => {
+    const original = new Error('synthetic asynchronous capture');
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+    const fixture = createFixture('window', { captureRequest: (() => Promise.reject(original)) as never });
+    try {
+      await expect(fixture.create()).rejects.toThrow('SUPPORT_BUNDLE_FORBIDDEN');
+      await new Promise<void>(resolve => setImmediate(resolve));
+      expect(unhandled).not.toHaveBeenCalled();
+      expect(fixture.confirmCreation).not.toHaveBeenCalled();
+      expect(fixture.loadDesktopData).not.toHaveBeenCalled();
+      expect(fixture.writeArchive).not.toHaveBeenCalled();
+    } finally { process.off('unhandledRejection', unhandled); fixture.capability.dispose(); }
+  });
 });
 
-function createFixture(mode: typeof modes[number], overrides: Partial<NativeOptions> = {}) {
+function createFixture(mode: typeof modes[number], overrides: Partial<NativeOptions> &
+  Pick<Partial<WindowOptions>, 'captureRequest'> = {}) {
   let generation = 0;
+  let revoked = false;
   const ownerGeneration = generation;
   const ownerFailure = new Error('synthetic management generation revoked');
   const events: string[] = [];
@@ -220,13 +324,20 @@ function createFixture(mode: typeof modes[number], overrides: Partial<NativeOpti
   const observeFailure = vi.fn(overrides.observeFailure ?? (() => undefined));
   const showSafeError = vi.fn(overrides.showSafeError ?? (() => undefined));
   const options: NativeOptions & { loadBackendData: typeof loadBackendData } = {
-    assertCurrent() { if (generation !== ownerGeneration) throw ownerFailure; },
+    assertCurrent() { if (revoked || generation !== ownerGeneration) throw ownerFailure; },
     confirmCreation, selectTargetPath, loadDesktopData, loadBackendData, writeArchive, observeFailure, showSafeError,
     now: () => new Date('2026-11-06T10:00:00.000Z'), runtimeRoot: overrides.runtimeRoot ?? '/synthetic/runtime',
     operationalIdentity: identity, operationalLogger: overrides.operationalLogger ?? { write(event) { events.push(event.eventName); } },
   };
   const webContents = Object.assign(new EventEmitter(), { isDestroyed: () => false, mainFrame: {} });
   const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents });
+  const captureRequest = vi.fn(overrides.captureRequest ?? (() => {
+    const selectedGeneration = generation;
+    return Object.freeze({
+      assertCurrent() { if (generation !== selectedGeneration) throw ownerFailure; },
+      loadDesktopData,
+    });
+  }));
   let invoke!: (event: unknown, ...args: unknown[]) => Promise<unknown>;
   let create: () => Promise<unknown>;
   let capability;
@@ -235,6 +346,7 @@ function createFixture(mode: typeof modes[number], overrides: Partial<NativeOpti
     create = capability.create;
   } else {
     capability = createDesktopOnlySupportBundleCapability({ ...options, mainWindow: mainWindow as never,
+      assertCurrent() { if (revoked) throw ownerFailure; }, captureRequest,
       ipcMain: { handle(channel, handler) {
         expect(channel).toBe(createSupportBundleIpcChannel);
         invoke = handler as never;
@@ -242,7 +354,8 @@ function createFixture(mode: typeof modes[number], overrides: Partial<NativeOpti
     create = () => invoke({ sender: webContents, senderFrame: webContents.mainFrame });
   }
   return { capability, create, invoke: (event: unknown, ...args: unknown[]) => invoke(event, ...args), webContents,
-    changeGeneration() { generation += 1; }, ownerFailure, events, confirmCreation, selectTargetPath,
+    changeGeneration() { generation += 1; }, revokeOwner() { revoked = true; }, captureRequest,
+    ownerFailure, events, confirmCreation, selectTargetPath,
     loadDesktopData, loadBackendData, writeArchive, observeFailure, showSafeError };
 }
 

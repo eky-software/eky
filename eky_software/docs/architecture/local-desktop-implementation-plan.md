@@ -1022,8 +1022,9 @@ Ensimmäinen poikkeus on testissä yksityisen havaitsijan saatavilla ennen
 turvallista vastausta, mutta vastauksessa ei ole raakaa `cause`-ketjua.
 
 Sisältösopimuksen omistaa [tukipakettisuunnitelma](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus).
-Uusien v3-entryjen kytkentä todelliseen hallinta-/startup-omistajaan on vielä
-avoin. Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
+V3:n valitsin-entry on haarassa sidottu todellisen hallintapalvelun
+pyyntökohtaiseen havaintokontekstiin ennen ensimmäistä native-odotusta.
+Startupin erillinen raportointilupa on vielä avoin. Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
 poissaoloa tai packaged-ketjua. Vanha v2 säilyttää backend-permissioninsa;
 sen epäonnistuminen ei käynnistä v3:a fallbackina.
 

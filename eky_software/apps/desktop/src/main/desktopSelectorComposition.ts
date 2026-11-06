@@ -9,6 +9,9 @@ import type { DesktopOperationalLogger } from '../observability/desktopOperation
 import type { IncidentIndexDesktopLogFailureSink } from '../observability/infrastructure/incidentIndexDesktopLogFailureSink.js';
 import { createBackupPasswordWindowController, type BackupPasswordWindowController } from '../profileBackup/passwordWindow/backupPasswordWindow.js';
 import { registerElectronPermissionPolicy } from '../security/electronPermissionPolicy.js';
+import { createDesktopOnlySupportBundleCapability } from '../supportBundle/supportBundleCapability.js';
+import { readSupportBundleDesktopData } from '../supportBundle/supportBundleDesktopData.js';
+import { createDesktopProfilePaths } from '../runtime/desktopProfilePaths.js';
 import type { LocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
 import type { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import type { WorkspaceManagementCapability } from '../workspaces/management/workspaceManagementCapability.js';
@@ -28,7 +31,7 @@ import { packagedSelectorVerificationPhase } from './packagedSmoke.js';
 interface DesktopSelectorCompositionOptions {
   options: StartDesktopCompositionOptions;
   dependencies: Pick<DesktopCompositionDependencies,
-    'showOpenDialog' | 'showErrorBox' | 'showMessageBox' | 'createWorkspaceManagementCapability'>;
+    'showOpenDialog' | 'showSaveDialog' | 'showErrorBox' | 'showMessageBox' | 'createWorkspaceManagementCapability'>;
   selection: WorkspaceSelectorStartupSelection;
   reservation: Awaited<ReturnType<typeof acquireDesktopWorkspaceReservation>>;
   maintenanceLease: InMemoryWorkspaceMaintenanceLease;
@@ -49,6 +52,7 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
   let capability: WorkspaceManagementCapability | undefined;
   let passwordWindow: BackupPasswordWindowController | undefined;
   let logFailureCapability: ReturnType<typeof createOperationalLogFailureCapability> | undefined;
+  let supportBundleCapability: ReturnType<typeof createDesktopOnlySupportBundleCapability> | undefined;
   const assertCurrent = () => {
     if (!alive) throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
     options.assertSingleInstanceOwnership();
@@ -98,6 +102,7 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
       () => capability?.dispose(),
       () => passwordWindow?.dispose(),
       () => logFailureCapability?.dispose(),
+      () => supportBundleCapability?.dispose(),
     ]) {
       try { close(); } catch (error) { failures.push(error); }
     }
@@ -180,6 +185,48 @@ export async function startDesktopSelectorComposition(input: DesktopSelectorComp
       preloadPath: join(options.applicationPath, 'dist/profileBackup/passwordWindow/backupPasswordPreload.cjs'),
     });
     logFailureCapability = createOperationalLogFailureCapability({ ipcMain, mainWindow: window, failureSink: input.failureSink });
+    const currentManagement = management;
+    supportBundleCapability = createDesktopOnlySupportBundleCapability({
+      ipcMain, mainWindow: window,
+      assertCurrent() {
+        assertCurrent();
+        if (shutdownTask !== undefined) throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+        reservation.assertMainCurrent();
+      },
+      captureRequest() {
+        const selected = currentManagement.captureOperationObservation();
+        return Object.freeze({ assertCurrent: selected.assertCurrent,
+          loadDesktopData: () => readSupportBundleDesktopData({
+            system: { appVersion: input.operationalIdentity.appVersion, buildRevision: input.operationalIdentity.buildRevision,
+              architecture: process.arch, platform: process.platform, electronVersion: process.versions.electron },
+            // A lifecycle state alone does not prove that every candidate has exited.
+            availability: { backend: 'exitUnconfirmed', database: 'notInspected',
+              diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+            observation: selected.readObservation(),
+          }),
+        });
+      },
+      async confirmCreation() {
+        const result = await input.dependencies.showMessageBox(window, {
+          buttons: ['Peruuta', 'Jatka'], cancelId: 0, defaultId: 0, noLink: true, type: 'warning',
+          title: 'Luo tukipaketti', message: 'Luodaanko Eky-tukipaketti?',
+          detail: 'Tukipaketti ei ole salattu. Tallenna ja lähetä se vain luotetulle tukihenkilölle.\n\nPaketti sisältää sovellusversiot ja nykyisen yrityshallintatoiminnon saatavilla olevat turvalliset virhetiedot. Se ei sisällä yrityksen tietoja, PDF:iä, salasanoja tai lokihistoriaa. Tietokantaa ei tarkisteta.',
+        });
+        return result.response === 1;
+      },
+      async selectTargetPath(defaultFileName) {
+        const result = await input.dependencies.showSaveDialog(window, {
+          defaultPath: defaultFileName, title: 'Tallenna Eky-tukipaketti',
+          filters: [{ extensions: ['json.gz'], name: 'Eky-tukipaketti, GZip-pakattu JSON' }],
+        });
+        return result.canceled || result.filePath === '' ? null : result.filePath;
+      },
+      showSafeError() {
+        input.dependencies.showErrorBox('Tukipakettia ei voitu luoda', 'Eky-tukipakettia ei voitu luoda turvallisesti.');
+      },
+      operationalIdentity: input.operationalIdentity, operationalLogger: input.operationalLogger,
+      runtimeRoot: createDesktopProfilePaths(options.userDataPath).runtimeRoot,
+    });
     const rejectReplacement = async (): Promise<never> => {
       throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'replace');
     };

@@ -289,6 +289,15 @@ käyttäjän vahvistamaan kohteeseen. Renderer ei anna backend-osoitetta,
 runtime-sessionia, tiedostopolkua eikä tukipaketin sisältöä. Legacy-
 `.ekysupport`-paketit säilyvät virallisen tarkastimen tukemina.
 
+W7.5:n erillinen `desktopOnly` v3 ei kutsu tätä backend-projektiota.
+Valitsimen main-composition käyttää nykyisen yrityshallintakomennon
+enintään kahta turvallista havaintoa pyyntökohtaiseen sukupolveen sidottuna.
+Tietokanta jää `notInspected`-tilaan ja historia `notCollected`-tilaan;
+puuttuvaa havaintoa ei täytetä lokihaulla. V2:n virhe ei vaihda v3:een.
+[Omistajuus ja näyttörajat](../architecture/support-bundle-plan.md#w75n-nykyisen-operaation-ja-varhaisen-viennin-omistajuus)
+erottavat valitsimen kytkennän vielä avoimesta ikkunattomasta entrypointista
+ja W7.5:n kokonaisuudesta.
+
 Support bundle -adapterit käyttävät yhtä Diagnostics-moduulin sisäistä
 bounded JSONL -tiedostolukijaa. Primitive omistaa vain regular file/no symlink
 -tarkistuksen, rajatun tail-luvun, osittaisen ensimmäisen rivin poisjätön sekä

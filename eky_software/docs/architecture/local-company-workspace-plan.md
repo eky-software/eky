@@ -2712,7 +2712,12 @@ Se ei todista alla olevia toteutusportteja; erityisesti admission-sulun
 jälkeinen virhehavainto ja erillisen raportointiluvan sulku tarvitsevat
 oikeiden nykyisten omistajien näytön. B3a:n palvelu-/observer-/composition-
 osan nykyinen näyttö on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä);
-B3b:n vientipyyntö ja B4:n startup-lupa ovat edelleen avoinna.
+B3b:n pyyntökaappaus ja valitsimen kytkentä ovat haarassa; oikea
+palvelu-/observer-/tiedostoketju sekä mainin kolme sulku-/vientikontrollia
+on todennettu. Rajatussa riippumattomassa tuotantokytkennän katselmuksessa
+ei löydöstä; nykyisen koko regression portti on vielä kesken.
+B4:n erillinen startup-lupa on edelleen avoinna. Tarkka näyttö ja vanhat
+hylkäykset säilyvät M1:ssä ja sen linkitetyssä historiassa.
 
 | Pala | Nykyiset omistajat ja rajattu muutos | Pieni näyttö ennen kytkentää |
 | --- | --- | --- |

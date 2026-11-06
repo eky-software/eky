@@ -45,34 +45,33 @@ säilyy erillisenä. [Uusi auditointi](https://github.com/eky-software/eky/actio
 läpäisi. Tämä ei ole muuttuneen W7.5-lähteen testi eikä yksin hyväksy
 alkuperäistä hylkäystä tai W7.5:tä.
 
-**Aktiivinen työ on W7.5 A/B:n rajattu toteutus ja kokeet:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
-nimeävät nykyiset omistajat, puuttuvat liitokset ja testit. Seuraava
-toteutuscheckpoint on [B3b:n pyyntökaappaus ja B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
-ei poistopainikkeen julkaisu. B3a:n todellinen palvelu-/observer-/composition-
-kytkentä läpäisi seitsemän kokonaisen testitiedoston 197 testiä, tyypityksen
-ja nykyisen neljän testin salaus/purku-sarjan. Katselmuksen kielteisen
-kontrollin peittoaukko korjattiin; jälkikatselmuksessa ei löydöstä.
-Koko main-regressiossa 395 testiä läpäisi ja kolme vanhaa replacement-
-palautustapausta aikakatkaisi viiden sekunnin rajaan. Niiden työt päättyivät,
-testiresurssien siivous valmistui ja aineistot säilyivät; juurisyy on avoin.
-Yksi rajattu kolmen tapauksen erillisdiagnoosi samalla lähteellä ja rajoilla
-hylkäsi samat tapaukset. B3a:ta edeltävän kolmen toteutustiedoston
-muistivertailussa kaksi aikakatkaisua toistui, yksi tapaus läpäisi. Tämä
-ei hyväksy nykyistä toteutusta tai ratkaise alkuperäistä viivettä.
-Viimeisen siivoustapahtumaliitoksen kahdeksan main-vaikutuskontrollia
-läpäisivät; muut 390 tapausta eivät kuuluneet kohdeajoon.
-Ei lisäuusintaa tai aikarajan nostoa. Tukiviennin todellinen pyyntö- ja
-käynnistyslupa sekä julkinen/native-/pakettinäyttö ovat edelleen avoinna.
-Main-pohjan ensihylkäykset käsitellään erillään W7.5-koodimuutoksista.
-Nykyisen sisäisen paluu- ja
-pyyntöelinikäliitoksen osanäyttö on alla; julkinen/paketoitu ketju ja tuki
-ennen yritysvalinnan valmistumista ovat vielä todentamatta. Omistaja
-hyväksyi 6.11.2026 myös varhaisen native-tukiviennin toteutuksen ja
-kytkennän vasta kokeiden ja katselmuksen läpäistyä.
-Delete-IPC, preload, poistopainike ja backenditon tukivienti pysyvät
-suljettuina ensimmäisten kokeiden ja kytkentäporttien aikana. W7.5:tä
-toteutetaan saman Goalin rajattuina paloina; koko 0.3.0 ei ole hyväksytty;
-muut jäljellä olevat tehtävät ja M5 ovat [roadmapissa](release-0.3.0-plan.md).
+**Aktiivinen työ on W7.5 A/B:** [toteutussopimus ja palat A-E](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+säilyvät. B3b:n v3-pyyntö kaappaa nykyisen hallintakontekstin ennen
+native-dialogeja; vanha pyyntö ei elvy komennon päätyttyä. Oikean
+palvelun/observerin havainto kulki nykyiseen kirjoittajaan ja viralliseen
+tarkastimeen; seitsemän kokonaisen tukivienti-/palvelutiedoston 265 testiä
+läpäisi. Uuden kaappausvirheen alkuperäinen viesti, pino ja syyketju löytyivät
+nykyisen neljän testin salaus/purku-sarjassa; julkinen tuloste säilyi turvallisena.
+Valitsimen main-kytkennän kolme kohdekontrollia läpäisivät: todellinen
+gzip-/tarkastinketju ja myöhäisen vastauksen esto kummankin native-dialogin
+sulussa; muut 399 main-tapausta eivät kuuluneet kohdeajoon. Myös tyypitys
+läpäisi. Rajattu riippumaton tuotantokytkennän katselmus ei löytänyt
+korjattavaa puutetta. Uuden lähteen koko main-regressio on vielä kesken.
+V2:n sopimus ei muutu.
+Seuraava nimetty pala on [B4:n varhainen native-vienti](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus),
+ei yleinen startup-fallback tai poistopainikkeen julkaisu.
+
+**Main-regression avoin portti:** edellisen 398 testin sarjan kolme
+replacement-aikakatkaisua ja rajattu erillisdiagnoosi säilyvät hylättyinä.
+Työt ja testiresurssien siivous päättyivät, aineistot säilyivät. Lähdetarkistus
+osoitti fixturen tarpeettoman rekisterin kaksoiskirjoituksen ja yhden
+harhaanjohtavan vaihenimen; rajattu fixturekontrolli läpäisi korjauksen.
+Tämä ei vielä todista aikakatkaisujen syytä tai nykyisen main-sarjan läpäisyä.
+Ei muuttumatonta lisäuusintaa tai aikarajan nostoa. [Edellinen checkpoint](release-0.3.0-integration-history.md#w75n-b3an-checkpoint-6112026)
+säilyttää tarkat osanäytöt ja muistivertailun rajat.
+Delete-IPC, preload, poistopainike, B4 sekä julkinen/paketoitu näyttö ovat
+edelleen avoinna. Ei W7.5-PR:ää tai uutta CI-kierrosta. Koko 0.3.0 ja M5
+säilyvät [roadmapin](release-0.3.0-plan.md) erillisinä hyväksyntöinä.
 
 **A:n nykyinen osanäyttö:** tulosparserit, vastauselinikä sekä main-only-
 paluu- ja virhesovitus ovat haarassa. Neljäntoista kokonaisen desktop-

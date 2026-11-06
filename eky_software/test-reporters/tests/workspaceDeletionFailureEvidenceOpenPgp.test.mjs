@@ -227,7 +227,7 @@ test('workspace main projections retain original causes and coverage through Ope
       }
     }
     // Existing evidence plus each support entry's original, assertion and receipt.
-    assert.equal(originals.size, 41);
+    assert.equal(originals.size, 44);
     // Synthetic collector identity, not hosted admission or an artifact upload.
     const collected = await collectJobFailureEvidence({ ...binding,
       RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
@@ -322,12 +322,17 @@ test('workspace main projections retain original causes and coverage through Ope
     assert.equal(nativeSupport[0].exception.chain[0].message, 'SYNTHETIC_W75_NATIVE_SUPPORT_ORIGINAL');
     assert.equal(nativeSupport[0].exception.chain[1].message, 'SYNTHETIC_W75_NATIVE_SUPPORT_CAUSE');
     assert.equal(nativeSupport[0].exception.chain[0].stack.includes('inspection.test.mjs'), true);
+    const capture = records.filter(record => record.phase === 'supportBundleRequestCapture');
+    assert.equal(capture.length, 1, 'SUPPORT_REQUEST_CAPTURE_ORIGINAL_MISSING');
+    assert.equal(capture[0].exception.chain[0].message, 'SYNTHETIC_W75_CAPTURE_ORIGINAL');
+    assert.equal(capture[0].exception.chain[1].message, 'SYNTHETIC_W75_CAPTURE_CAUSE');
+    assert.equal(capture[0].exception.chain[0].stack.includes('inspection.test.mjs'), true);
     const assertion = records.find(record => record.phase === 'testFailure');
     assert.equal(assertion.exception.chain[0].message.includes('W74_INSPECTION_EXPECTED_SUCCESS'), true);
     assert.equal(JSON.stringify(assertion.exception).includes('SYNTHETIC_W74_INSPECTION_ORIGINAL'), false);
     for (const marker of ['W74_INSPECTION_EXPECTED_SUCCESS', 'W74_DELETION_EXPECTED_SUCCESS',
       'W74_PUBLICATION_EXPECTED_SUCCESS', 'W74_COLD_EXPECTED_SUCCESS', 'W74_PAYLOAD_JOURNAL_EXPECTED_SUCCESS',
-      'W75_SUPPORT_EXPECTED_SUCCESS', 'W75_NATIVE_SUPPORT_EXPECTED_SUCCESS']) {
+      'W75_SUPPORT_EXPECTED_SUCCESS', 'W75_NATIVE_SUPPORT_EXPECTED_SUCCESS', 'W75_CAPTURE_EXPECTED_SUCCESS']) {
       const expected = records.filter(record => record.phase === 'testFailure' &&
         record.exception.chain[0].name === 'AssertionError' && record.exception.chain[0].message?.startsWith(`${marker}: `));
       assert.equal(expected.length, 1, 'EXPECTED_SYNTHETIC_ASSERTION_NOT_RETAINED');
@@ -389,7 +394,7 @@ import { WorkspaceRegistryStore } from ${JSON.stringify(moduleUrl('../../apps/de
 import { createWorkspaceDeletionRegistryPublisher } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionRegistryPublication.ts'))};
 import { EventEmitter } from 'node:events';
 import { inspect } from 'node:util';
-import { createSupportBundleCapability, createDesktopOnlySupportBundleExport } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/supportBundle/supportBundleCapability.ts'))};
+import { createSupportBundleCapability, createDesktopOnlySupportBundleExport, createDesktopOnlySupportBundleCapability } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/supportBundle/supportBundleCapability.ts'))};
 import * as registryPhases from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/deletion/workspaceDeletionPhaseSelection.ts'))};
 import { WORKSPACE_REGISTRY_FILE_NAME } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/registry/workspaceRegistryPaths.ts'))};
 import { deriveWorkspaceRoot } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/workspaces/registry/deriveWorkspaceRoot.ts'))};
@@ -794,6 +799,43 @@ test('support export original cause before safe IPC projection', async context =
   expect(inspect(result).includes('SYNTHETIC_W75_SUPPORT')).toBe(false);
   expect(false, 'W75_SUPPORT_EXPECTED_SUCCESS').toBe(true);
 });
+test('window support capture original cause before any native dialog', async context => {
+  const original = new Error('SYNTHETIC_W75_CAPTURE_ORIGINAL', { cause: new Error('SYNTHETIC_W75_CAPTURE_CAUSE') });
+  const sink = createRunnerFailureSink();
+  let first, invoke;
+  const webContents = Object.assign(new EventEmitter(), { mainFrame: {}, isDestroyed: () => false });
+  const mainWindow = Object.assign(new EventEmitter(), { webContents, isDestroyed: () => false });
+  const confirmCreation = vi.fn(async () => true);
+  const selectTargetPath = vi.fn(async () => null);
+  const writeArchive = vi.fn();
+  const capability = createDesktopOnlySupportBundleCapability({
+    runtimeRoot: process.env.TMPDIR, mainWindow,
+    ipcMain: { handle(_channel, handler) { invoke = handler; }, removeHandler() {} },
+    captureRequest() { throw original; }, confirmCreation, selectTargetPath, writeArchive,
+    observeFailure(error) { first ??= { error }; }, showSafeError() { throw new Error('CAPTURE_MUST_NOT_SHOW_NOTICE'); },
+    operationalIdentity: { appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
+      runtimeInstanceId: '11111111-1111-4111-8111-111111111111' },
+    operationalLogger: { write() {} },
+  });
+  context.onTestFailed(async () => {
+    if (first === undefined) return;
+    sink.record({ runner: 'vitest', phase: 'supportBundleRequestCapture', error: first.error,
+      testName: context.task.fullTestName, testId: context.task.id + ':11111111-1111-4111-8111-111111111111',
+      file: context.task.file.filepath, line: context.task.location?.line, column: context.task.location?.column,
+      attempt: 0, retryCount: 0, repeatCount: 0 });
+    await sink.flush();
+  });
+  let result;
+  try { result = await invoke({ sender: webContents, senderFrame: webContents.mainFrame }).catch(error => error); }
+  finally { capability.dispose(); }
+  expect(result.message).toBe('SUPPORT_BUNDLE_FORBIDDEN');
+  expect(result.cause).toBeUndefined();
+  expect(first?.error === original).toBe(true);
+  expect(confirmCreation).not.toHaveBeenCalled(); expect(selectTargetPath).not.toHaveBeenCalled();
+  expect(writeArchive).not.toHaveBeenCalled();
+  expect(inspect(result).includes('SYNTHETIC_W75_CAPTURE')).toBe(false);
+  expect(false, 'W75_CAPTURE_EXPECTED_SUCCESS').toBe(true);
+});
 test('native support export original cause before the safe result', async context => {
   const original = new Error('SYNTHETIC_W75_NATIVE_SUPPORT_ORIGINAL', { cause: new Error('SYNTHETIC_W75_NATIVE_SUPPORT_CAUSE') });
   const sink = createRunnerFailureSink();
@@ -858,6 +900,7 @@ test('native support export original cause before the safe result', async contex
     'SYNTHETIC_W74_COLD_ORIGINAL', 'SYNTHETIC_W74_COLD_CAUSE', 'SYNTHETIC_W74_COLD_CLEANUP',
     'SYNTHETIC_W75_SUPPORT_ORIGINAL', 'SYNTHETIC_W75_SUPPORT_CAUSE',
     'SYNTHETIC_W75_SUPPORT_LOG_FAILED', 'SYNTHETIC_W75_SUPPORT_NOTICE_FAILED',
+    'SYNTHETIC_W75_CAPTURE_ORIGINAL', 'SYNTHETIC_W75_CAPTURE_CAUSE',
     'SYNTHETIC_W75_NATIVE_SUPPORT_ORIGINAL', 'SYNTHETIC_W75_NATIVE_SUPPORT_CAUSE',
     'SYNTHETIC_W75_NATIVE_SUPPORT_LOG_FAILED', 'SYNTHETIC_W75_NATIVE_SUPPORT_NOTICE_FAILED']) {
     assert.equal(output.includes(marker), false, 'INSPECTION_ORIGINAL_LEAKED_TO_PUBLIC_OUTPUT');

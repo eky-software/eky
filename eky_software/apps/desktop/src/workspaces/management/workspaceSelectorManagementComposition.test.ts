@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+import { existsSync, mkdirSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -37,6 +39,8 @@ import * as backupObserver from './workspaceBackupOperationalObserver.js';
 import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError.js';
 import { readSupportBundleDesktopData } from '../../supportBundle/supportBundleDesktopData.js';
 import { createDesktopOperationalEvent } from '../../observability/createDesktopOperationalEvent.js';
+import { createDesktopOnlySupportBundleCapability } from '../../supportBundle/supportBundleCapability.js';
+import { writeSupportBundleAtomically } from '../../supportBundle/supportBundleFileStore.js';
 
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 
@@ -115,9 +119,56 @@ it('retains both safe import roles across its own admission closure before faili
   expect(validated.observation).toEqual(observation);
   expect(f.log).toHaveBeenCalledTimes(2);
   expect(utilityProcess.fork).not.toHaveBeenCalled();
+  const support = createSelectorSupportExport(f, test);
+  await expect(support.create()).resolves.toBe('created');
+  const inspector = await import(new URL('../../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+  const inspected = inspector.inspectSupportBundle(support.targetPath);
+  expect(inspected.summary).toMatchObject({ formatVersion: 3, kind: 'desktopOnly', observationStatus: 'available',
+    backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' });
+  expect(inspected.document.observation).toEqual(observation);
+  expect(support.loadDesktopData).toHaveBeenCalledOnce();
+  expect(support.writeArchive).toHaveBeenCalledOnce();
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
   await f.composition.shutdown();
   expect(() => selected.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
 });
+
+it.for(['confirmation', 'target'] as const)(
+  'binds the real settled selector generation before the %s dialog', async (heldAt, test) => {
+    const f = await fixture(test);
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const hold = async () => { enter(); await pending; };
+    const support = createSelectorSupportExport(f, test, {
+      async confirmCreation() { if (heldAt === 'confirmation') await hold(); return true; },
+      async selectTargetPath() { if (heldAt === 'target') await hold(); return join(f.root, 'support.json.gz'); },
+    });
+    const first = support.create().catch((cause: unknown) => cause);
+    try {
+      await entered;
+      test.signal.throwIfAborted();
+      await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+        .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+      expect((await f.composition.service.getStatus()).operationState).toBe('idle');
+      release();
+      expect(await first).toMatchObject({ message: 'SUPPORT_BUNDLE_CREATION_FAILED' });
+      expect(support.loadDesktopData).not.toHaveBeenCalled();
+      expect(support.writeArchive).not.toHaveBeenCalled();
+      expect(support.showSafeError).not.toHaveBeenCalled();
+      expect(existsSync(support.targetPath)).toBe(false);
+      await expect(support.create()).resolves.toBe('created');
+      const inspector = await import(new URL('../../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+      expect(inspector.inspectSupportBundle(support.targetPath).document.observation)
+        .toEqual(f.composition.captureOperationObservation().readObservation());
+      expect(support.loadDesktopData).toHaveBeenCalledOnce();
+      expect(support.writeArchive).toHaveBeenCalledOnce();
+      expect(utilityProcess.fork).not.toHaveBeenCalled();
+      expect(await readFile(f.registryPath)).toEqual(Buffer.from(serializeWorkspaceRegistry(selectorRegistry)));
+    } finally { release(); await first; support.capability.dispose(); }
+  },
+);
 
 it('rejects foreign and late projected events without replacing the first current failure', async test => {
   const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
@@ -605,6 +656,57 @@ it('closes admission immediately and waits for a started selector slot read', as
   expect(settled).toBe(true);
   expect(await f.registry.inspect()).toEqual(selectorRegistry);
 });
+
+function createSelectorSupportExport(f: Awaited<ReturnType<typeof fixture>>, test: TestContext,
+  dialogs: Partial<Pick<Parameters<typeof createDesktopOnlySupportBundleCapability>[0], 'confirmCreation' | 'selectTargetPath'>> = {},
+) {
+  const targetPath = join(f.root, 'support.json.gz');
+  mkdirSync(join(f.root, 'runtime'), { recursive: true, mode: 0o700 });
+  const webContents = Object.assign(new EventEmitter(), { isDestroyed: () => false, mainFrame: {} });
+  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents });
+  let invoke!: (event: unknown) => Promise<unknown>;
+  let firstFailure: { error: unknown } | undefined;
+  test.onTestFailed(async () => {
+    const observed = firstFailure;
+    if (observed === undefined) return;
+    try {
+      const { createRunnerFailureSink } = await import('../../../../../test-reporters/runnerFailureEvidence.mjs');
+      const sink = createRunnerFailureSink();
+      const task = test.task;
+      const retryCount = task.result?.retryCount ?? 0;
+      const repeatCount = task.result?.repeatCount ?? 0;
+      sink.record({ runner: 'vitest', phase: 'supportBundleCreationCatch', error: observed.error,
+        testName: task.fullTestName, testId: task.id, file: task.file.filepath,
+        ...(task.location === undefined ? {} : { line: task.location.line, column: task.location.column }),
+        ...(retryCount === 0 && repeatCount === 0 ? { attempt: 0 } : {}), retryCount, repeatCount });
+      await sink.flush();
+    } catch { /* Evidence must not replace the original test failure. */ }
+  });
+  const loadDesktopData = vi.fn((readObservation: () => unknown) => readSupportBundleDesktopData({
+    system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+    availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+    observation: readObservation(),
+  }));
+  const writeArchive = vi.fn(writeSupportBundleAtomically);
+  const showSafeError = vi.fn();
+  const capability = createDesktopOnlySupportBundleCapability({
+    ipcMain: { handle(_channel, handler) { invoke = handler as never; }, removeHandler: vi.fn() }, mainWindow: mainWindow as never,
+    assertCurrent() { if (!f.state.current) throw new Error('SELECTOR_EXPIRED'); },
+    captureRequest() {
+      const selected = f.composition.captureOperationObservation();
+      return { assertCurrent: selected.assertCurrent, loadDesktopData: () => loadDesktopData(selected.readObservation) };
+    },
+    confirmCreation: dialogs.confirmCreation ?? (async () => true),
+    selectTargetPath: dialogs.selectTargetPath ?? (async () => targetPath),
+    runtimeRoot: join(f.root, 'runtime'), writeArchive, showSafeError,
+    observeFailure(error) { firstFailure ??= { error }; },
+    operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+    operationalLogger: { write: f.log },
+  });
+  test.onTestFinished(() => capability.dispose());
+  return { capability, targetPath, loadDesktopData, writeArchive, showSafeError,
+    create() { firstFailure = undefined; return invoke({ sender: webContents, senderFrame: webContents.mainFrame }); } };
+}
 
 async function fixture(test: TestContext, value = selectorRegistry) {
   const root = await mkdtemp(join(tmpdir(), 'eky-selector-composition-'));
