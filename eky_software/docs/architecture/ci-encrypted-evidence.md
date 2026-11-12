@@ -185,6 +185,22 @@ peittyneen tunnisteen hylkäys säilyvät; salaisuuksien peittoa ei kevennetä.
 Luokittelu-, koonti- ja riippuvuusauditointijobit eivät tuota tämän sopimuksen
 raakaa testiaineistoa eivätkä saa yleistä koko jobin tulostekaappausta.
 
+<a id="linux-preflight-private-check"></a>
+
+Omistajan 12.11.2026 hyväksymä rajaus sallii Linuxin työkalumetadatan
+hylkäyksestä nykyiseen salattuun syyketjuun vain lähdekoodissa määritellyn
+työkaluroolin, `tool`/`ancestor`-kohdeluokan ja hylänneen tarkistuksen tunnisteen.
+Opt-in on nykyisen Linux-palveluomistajan sisäinen; tavallisen preflight-
+kutsujan virhesopimus ja julkinen turvallinen diagnoosi säilyvät. Tunniste
+ei sisällä luettua polkua, UID:tä, mode-/device-/inode-arvoa, tiedostosisältöä
+tai koneinventaaria; sille ei lisätä uutta pinotietoa. Raakaa metadataluvun
+poikkeusta ei tällä luvalla palauteta. Sama nykyinen runner-raportti,
+redaktointi, salaus/purku, keräysrajat ja säilytys pysyvät. Tarkistusten
+ehdot, oikosulkujärjestys, aikarajat ja poissaolo-/siivousvaatimukset eivät
+muutu. Kohderegressiot ja todellinen salaus/purku vaaditaan ennen yhtä
+nimettyä Linux-todennusta; vanha `metadataInvalid` ei muutu selitetyksi
+pelkän uuden tunnisteen toteutuksella.
+
 | Lähde | Kerättävä sisältö | Rajaus |
 | --- | --- | --- |
 | Node- ja Vitest-testit | Yhteisen reporter-liitännän rajattu alkuperäinen poikkeus, kutsupino, syyketju ja testin sijainti sekä toimituksen yhteenveto. | Ei ohitettujen tai odotetusti hylättyjen testien poikkeuksia. Kytkentä on omistavissa testikomennoissa; riippuvuuksien valmisteluvirhe ei ole testitapaus. |

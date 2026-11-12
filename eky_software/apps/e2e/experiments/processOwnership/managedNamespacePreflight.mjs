@@ -9,18 +9,26 @@ const cgroup2Magic = 0x63677270;
 const managerDirectory = '/run/systemd/system';
 const managerSocket = '/run/systemd/private';
 
-function failure(reason, stage) {
-  return Object.assign(new Error('Managed namespace host metadata unverified'), { reason, stage });
+function failure(reason, stage, privateCheck) {
+  let cause;
+  if (privateCheck !== undefined) {
+    cause = new Error(`MANAGED_NAMESPACE_PREFLIGHT_CHECK:${privateCheck.role}:${privateCheck.scope}:${privateCheck.check}`);
+    cause.stack = undefined;
+  }
+  return Object.assign(new Error('Managed namespace host metadata unverified',
+    cause === undefined ? undefined : { cause }), { reason, stage });
 }
 
 // Metadata only, for the trusted CI image. This does not prove sudo policy,
 // manager reachability, supported properties, unit ownership or tree cleanup.
 // Importing this module performs no host access. No path is supplied by callers.
-export async function inspectManagedHost({ deadline, runtime = process, fs = filesystem, time = globalThis }) {
+export async function inspectManagedHost({ deadline, runtime = process, fs = filesystem, time = globalThis,
+  privateDiagnostics = false }) {
   let stage = 'context';
   let finished = false;
   let timer;
   let identity;
+  let failedCheck;
   const check = () => {
     if (finished) throw failure('deadlineExceeded', stage);
     try { deadline.check('ready'); }
@@ -33,30 +41,41 @@ export async function inspectManagedHost({ deadline, runtime = process, fs = fil
     return result;
   };
   const directories = new Set();
-  async function entry(path, kind, specialBits = 0) {
-    const stat = await call(() => fs.lstat(path));
-    if (stat.isSymbolicLink() || !stat[kind]() || stat.uid !== 0 ||
-        !Number.isSafeInteger(stat.mode) || stat.mode < 0 || stat.mode > 0xffff ||
-        (stat.mode & 0o022) !== 0 || (stat.mode & 0o7000) !== specialBits ||
-        !Number.isSafeInteger(stat.dev) || stat.dev < 0 || !Number.isSafeInteger(stat.ino) || stat.ino <= 0) {
-      throw failure('metadataInvalid', stage);
+  function metadataInvalid(check, role, kind) {
+    if (privateDiagnostics === true && stage === 'tools' && role !== undefined) {
+      failedCheck = { role, scope: kind === 'isDirectory' ? 'ancestor' : 'tool', check };
     }
-    if (await call(() => fs.realpath(path)) !== path) throw failure('metadataInvalid', stage);
+    return failure('metadataInvalid', stage);
+  }
+  async function entry(path, kind, specialBits = 0, role) {
+    const stat = await call(() => fs.lstat(path));
+    // Preserve the original short-circuit order; diagnostics contain no observed values.
+    if (stat.isSymbolicLink()) throw metadataInvalid('symbolicLink', role, kind);
+    if (!stat[kind]()) throw metadataInvalid('entryKind', role, kind);
+    if (stat.uid !== 0) throw metadataInvalid('rootOwner', role, kind);
+    if (!Number.isSafeInteger(stat.mode) || stat.mode < 0 || stat.mode > 0xffff) {
+      throw metadataInvalid('modeRange', role, kind);
+    }
+    if ((stat.mode & 0o022) !== 0) throw metadataInvalid('writePermissions', role, kind);
+    if ((stat.mode & 0o7000) !== specialBits) throw metadataInvalid('specialBits', role, kind);
+    if (!Number.isSafeInteger(stat.dev) || stat.dev < 0) throw metadataInvalid('deviceIdentity', role, kind);
+    if (!Number.isSafeInteger(stat.ino) || stat.ino <= 0) throw metadataInvalid('inodeIdentity', role, kind);
+    if (await call(() => fs.realpath(path)) !== path) throw metadataInvalid('canonicalPath', role, kind);
     return stat;
   }
-  async function ancestors(path) {
+  async function ancestors(path, role) {
     const parent = posix.dirname(path);
     if (directories.has(parent)) return;
-    if (parent !== '/') await ancestors(parent);
-    await entry(parent, 'isDirectory');
+    if (parent !== '/') await ancestors(parent, role);
+    await entry(parent, 'isDirectory', 0, role);
     directories.add(parent);
   }
   async function observe() {
     stage = 'tools';
     for (const [name, path] of Object.entries(managedSystemTools)) {
-      await ancestors(path);
-      const stat = await entry(path, 'isFile', name === 'sudo' ? 0o4000 : 0);
-      if ((stat.mode & 0o111) !== 0o111) throw failure('metadataInvalid', stage);
+      await ancestors(path, name);
+      const stat = await entry(path, 'isFile', name === 'sudo' ? 0o4000 : 0, name);
+      if ((stat.mode & 0o111) !== 0o111) throw metadataInvalid('executable', name, 'isFile');
     }
     stage = 'manager';
     await ancestors(managerDirectory);
@@ -92,7 +111,8 @@ export async function inspectManagedHost({ deadline, runtime = process, fs = fil
     return receipt;
   } catch (error) {
     const reasons = ['invalidContext', 'invalidIdentity', 'metadataInvalid', 'cgroupV2Unverified', 'deadlineExceeded'];
-    throw failure(reasons.includes(error?.reason) ? error.reason : 'metadataReadFailed', stage);
+    const reason = reasons.includes(error?.reason) ? error.reason : 'metadataReadFailed';
+    throw failure(reason, stage, reason === 'metadataInvalid' && stage === 'tools' ? failedCheck : undefined);
   } finally {
     finished = true;
     time.clearTimeout(timer);

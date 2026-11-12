@@ -125,7 +125,8 @@ export interface LinuxServiceStartupFailureEvidence {
   readonly startupFailure: 'preparationFailed' | 'startupDeadlineExceeded' | 'launchFailed' | 'workloadExited' | 'observationLost';
 }
 export class OwnedLinuxServiceStartupFailure extends Error implements ProcessOutput {
-  constructor(profile: LinuxServiceProfile, evidence: LinuxServiceStartupFailureEvidence, output: ProcessOutput);
+  constructor(profile: LinuxServiceProfile, evidence: LinuxServiceStartupFailureEvidence, output: ProcessOutput,
+    options?: ErrorOptions);
   readonly evidence: Readonly<LinuxServiceStartupFailureEvidence>;
   readonly readStdout: () => string;
   readonly readStderr: () => string;

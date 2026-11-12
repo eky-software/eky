@@ -137,6 +137,81 @@ test('tools must be regular executable files, with setuid permitted only for sud
   }
 });
 
+test('private tool diagnostics contain only the fixed role, scope and rejecting check', async () => {
+  const variants = [
+    ['symbolicLink', s => { s.isSymbolicLink = () => true; }],
+    ['entryKind', s => { s.isFile = () => false; }],
+    ['rootOwner', s => { s.uid = 1001; }],
+    ['modeRange', s => { s.mode = NaN; }],
+    ['writePermissions', s => { s.mode |= 0o020; }],
+    ['specialBits', s => { s.mode |= 0o2000; }],
+    ['deviceIdentity', s => { s.dev = -1; }],
+    ['inodeIdentity', s => { s.ino = 0; }],
+    ['executable', s => { s.mode &= ~0o111; }],
+  ];
+  for (const [role, path] of Object.entries(managedSystemTools)) {
+    for (const [check, mutate] of variants) {
+      const plain = fixture(), detailed = fixture();
+      mutate(plain.records.get(path)); mutate(detailed.records.get(path));
+      await rejects(inspectManagedHost(plain.input), 'metadataInvalid', 'tools');
+      await assert.rejects(inspectManagedHost({ ...detailed.input, privateDiagnostics: true }), error => {
+        assert.equal(error.message, 'Managed namespace host metadata unverified');
+        assert.equal(error.reason, 'metadataInvalid'); assert.equal(error.stage, 'tools');
+        assert.deepEqual(Object.keys(error).sort(), ['reason', 'stage']);
+        assert.equal(error.cause.message, `MANAGED_NAMESPACE_PREFLIGHT_CHECK:${role}:tool:${check}`);
+        assert.equal(error.cause.stack, undefined); assert.equal(error.cause.cause, undefined);
+        assert.ok(!error.cause.message.includes(path) && !error.cause.message.includes('1001'));
+        return true;
+      });
+      assert.deepEqual(detailed.calls, plain.calls); assert.equal(detailed.timers.size, 0);
+    }
+  }
+});
+
+test('private ancestor and canonical-path checks never contain the observed path', async () => {
+  for (const path of ['/', '/usr', '/usr/bin', managedSystemTools.sudo]) {
+    const f = fixture(); f.aliases.set(path, '/PRIVATE/replacement');
+    await assert.rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), error => {
+      assert.equal(error.cause.message,
+        `MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:${path === managedSystemTools.sudo ? 'tool' : 'ancestor'}:canonicalPath`);
+      assert.equal(error.cause.stack, undefined); assert.ok(!JSON.stringify(error).includes('PRIVATE'));
+      return true;
+    });
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test('private diagnostics do not expose read errors or enable for non-true options', async () => {
+  for (const privateDiagnostics of [undefined, false, 'true', 1]) {
+    const f = fixture(); f.records.get(managedSystemTools.sudo).uid = 1001;
+    await rejects(inspectManagedHost({ ...f.input, privateDiagnostics }), 'metadataInvalid', 'tools');
+  }
+  const f = fixture();
+  f.errors.set(`lstat:${managedSystemTools.sudo}`, Object.assign(Error('PRIVATE host information'),
+    { code: 'EACCES', path: '/PRIVATE' }));
+  await rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), 'metadataReadFailed', 'tools');
+});
+
+test('private check selection preserves short-circuit access and cannot escape the tool stage', async () => {
+  for (const privateDiagnostics of [false, true]) {
+    const f = fixture(), stat = f.records.get(managedSystemTools.sudo);
+    stat.isSymbolicLink = () => true;
+    stat.isFile = () => { throw new Error('PRIVATE later predicate must not be evaluated'); };
+    Object.defineProperty(stat, 'uid', { get() { throw new Error('PRIVATE later value must not be read'); } });
+    await assert.rejects(inspectManagedHost({ ...f.input, privateDiagnostics }), error => {
+      assert.equal(error.reason, 'metadataInvalid'); assert.equal(error.stage, 'tools');
+      assert.equal(error.cause?.message,
+        privateDiagnostics ? 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:symbolicLink' : undefined);
+      return true;
+    });
+  }
+  for (const path of ['/run/systemd/private', '/sys/fs/cgroup']) {
+    const f = fixture(); f.records.get(path).uid = 1001;
+    await rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), 'metadataInvalid',
+      path.startsWith('/run') ? 'manager' : 'cgroup');
+  }
+});
+
 test('filesystem identities and mode values cannot be missing, rounded or malformed', async () => {
   for (const [key, values] of [['dev', [-1, NaN, Number.MAX_SAFE_INTEGER + 1, '7']],
     ['ino', [0, -1, NaN, Number.MAX_SAFE_INTEGER + 1, '8']], ['mode', [-1, NaN, 0x10000, '0755']]]) {

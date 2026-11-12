@@ -7,12 +7,14 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { guardLinuxService } from '../../../e2e/experiments/processOwnership/linuxServiceContract.mjs';
 import { inspectServicePath, resolveLinuxInspectionElectron } from '../../../e2e/experiments/processOwnership/linuxServiceConfiguration.mjs';
 import { startLinuxService } from '../../../e2e/experiments/processOwnership/linuxServiceSession.mjs';
+import { encodeLinuxServiceDiagnostic } from '../../../e2e/experiments/processOwnership/linuxServiceDiagnostic.mjs';
 import { createE2eFixtureLifetime } from '../../../e2e/src/environment/e2eFixtureLifetime.ts';
 import { E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS } from '../../../e2e/src/environment/e2eServiceStartupBudgets.ts';
 import { removeE2eRunRoot } from '../../../e2e/src/environment/removeE2eRunRoot.ts';
 import { inspectionPreparationFailure, inspectionProofMaximumBytes, requireInspectionProof } from './linuxProfileInspectionContract.mjs';
 import { inspectionPreparationEvidence, prepareLinuxInspectionProof } from './prepareLinuxInspectionProof.mjs';
 import { runLinuxInspectionOwner } from './runLinuxInspectionOwner.mjs';
+import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 const repository = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -38,6 +40,7 @@ async function readResult(path) {
 }
 
 export async function runLinuxProfileInspectionProof() {
+  const failures = createRunnerFailureSink();
   let phase = 'preflight';
   let evidenceRoot;
   let nativeRoot;
@@ -66,9 +69,24 @@ export async function runLinuxProfileInspectionProof() {
       // Original startup plus unchanged utility work/shutdown ceilings; no reset.
       const lifetime = createE2eFixtureLifetime(E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS +
         profileInspectionWorkMilliseconds + profileInspectionShutdownMilliseconds);
+      let serviceDiagnostic;
       const outcome = await runLinuxInspectionOwner({ ...fixture, repository: repository.replace(/\/$/u, ''), lifetime,
         startupDeadline: performance.now() + E2E_BACKEND_STARTUP_SAFETY_TIMEOUT_MILLISECONDS },
-      { start: startLinuxService, readResult });
+      { start: (profile, input) => startLinuxService(profile, input, { reportFailure(value) {
+        serviceDiagnostic = encodeLinuxServiceDiagnostic(value);
+        process.stdout.write('\n' + serviceDiagnostic);
+      } }), readResult, observeException(error, failurePhase) {
+        failures.record({ runner: 'node', phase: `linuxInspection-${failurePhase}`,
+          testName: `linuxProfileInspection-${fixture.config.variant}`, testId: fixture.config.generation,
+          attempt: 0, file: 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs', error });
+        if (serviceDiagnostic !== undefined) {
+          failures.record({ runner: 'node', phase: 'linuxInspection-serviceDiagnostic',
+            testName: `linuxProfileInspection-${fixture.config.variant}`, testId: fixture.config.generation,
+            attempt: 0, file: 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs',
+            error: { message: serviceDiagnostic } });
+          serviceDiagnostic = undefined;
+        }
+      } });
       const target = join(evidenceRoot, fixture.config.variant);
       await mkdir(target, { mode: 0o700 });
       // Existing encrypted collector allowlists this exact filename. No profile,
@@ -83,6 +101,11 @@ export async function runLinuxProfileInspectionProof() {
     }
     return 0;
   } catch (error) {
+    try {
+      failures.record({ runner: 'node', phase: `linuxInspection-${phase}`,
+        testName: 'linuxProfileInspection', attempt: 0,
+        file: 'apps/desktop/scripts/profileInspection/runLinuxProfileInspectionProof.mjs', error });
+    } catch { /* Keep the original failure and safe public result. */ }
     const failure = inspectionPreparationFailure(phase, error);
     if (evidenceRoot) {
       try {
@@ -95,6 +118,8 @@ export async function runLinuxProfileInspectionProof() {
     process.stderr.write(JSON.stringify(failure) + '\n');
     process.stderr.write('LINUX_PROFILE_INSPECTION_PROOF_FAILED\n');
     return 1;
+  } finally {
+    try { await failures.flush(); } catch { /* Delivery cannot change the proof result. */ }
   }
 }
 

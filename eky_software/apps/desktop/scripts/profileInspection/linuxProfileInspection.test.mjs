@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { chmod, link, lstat, mkdir, mkdtemp, readFile, readdir, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join, posix } from 'node:path';
 import { tmpdir } from 'node:os';
+import { fileURLToPath } from 'node:url';
+import { validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { assertInspectionProofResult, inspectionProofPaths, inspectionProofVariants,
   inspectionPreparationFailure, parseInspectionProofConfig } from './linuxProfileInspectionContract.mjs';
 import { runLinuxInspectionCase } from './linuxProfileInspectionCase.mjs';
@@ -338,3 +341,242 @@ test('finite inspection caller requires host evidence and the existing owner sto
     if (mode === 'passed') assert.deepEqual(events, ['read', 'wait', 'read', 'result', 'stop']);
   }
 });
+
+for (const [label, error] of [['undefined', undefined], ['null', null], ['false', false], ['zero', 0], ['empty', '']]) {
+  for (const failurePhase of ['ownerStart', 'hostExit', 'hostResult', 'ownerCleanup']) {
+    test(`inspection records ${label} thrown at ${failurePhase} independently of truthiness`, async () => {
+      const fixture = scenario();
+      const result = await fixture.run();
+      const events = [];
+      const observed = [];
+      const outcome = await runLinuxInspectionOwner({ config: fixture.config,
+        paths: { result: 'synthetic-result' }, repository: '/source',
+        lifetime: { readRemainingWorkMilliseconds: () => 100 }, startupDeadline: 100 }, {
+        async start() {
+          events.push('start');
+          if (failurePhase === 'ownerStart') throw error;
+          return { readStdout: () => '', readStderr: () => '',
+            workload: { async readState() { events.push('state');
+              if (failurePhase === 'hostExit') throw error;
+              return 'exited'; } },
+            async stop() { events.push('stop'); if (failurePhase === 'ownerCleanup') throw error; } };
+        },
+        async readResult() { events.push('result'); if (failurePhase === 'hostResult') throw error; return result; },
+        observeException(actual, phase) { events.push('observe'); observed.push({ error: actual, phase }); },
+      });
+      assert.equal(outcome.status, 'failed');
+      assert.equal(outcome.originalFailure, failurePhase !== 'ownerCleanup');
+      assert.equal(outcome.cleanupFailure, failurePhase === 'ownerCleanup');
+      assert.equal(outcome.phase, failurePhase === 'ownerCleanup' ? 'hostResult' : failurePhase);
+      assert.equal(outcome.processTree, ['hostExit', 'hostResult'].includes(failurePhase) ? 'stopped' : 'unverified');
+      assert.equal(outcome.result, failurePhase === 'ownerCleanup' ? result : null);
+      assert.deepEqual(observed, [{ error, phase: failurePhase }]);
+      assert.deepEqual(events, failurePhase === 'ownerStart' ? ['start', 'observe']
+        : failurePhase === 'hostExit' ? ['start', 'state', 'observe', 'stop']
+          : failurePhase === 'hostResult' ? ['start', 'state', 'result', 'observe', 'stop']
+            : ['start', 'state', 'result', 'stop', 'observe']);
+      assert.deepEqual(Object.keys(outcome), ['status', 'phase', 'originalFailure', 'cleanupFailure',
+        'processTree', 'result', 'output']);
+    });
+  }
+}
+
+test('inspection preserves the first exception before independent cleanup even when its observer throws', async () => {
+  const original = new Error('synthetic inspection first', { cause: new Error('synthetic inner') });
+  for (const observerThrows of [false, true]) {
+    const observed = [];
+    const outcome = await runLinuxInspectionOwner({ config: configFor(), paths: {}, repository: '/source',
+      lifetime: { readRemainingWorkMilliseconds: () => 100 }, startupDeadline: 100 }, {
+      async start() { return { workload: { async readState() { throw original; } },
+        readStdout: () => '', readStderr: () => '', async stop() { throw undefined; } }; },
+      async readResult() { assert.fail('no result after failed state read'); },
+      observeException(error, phase) {
+        observed.push({ error, phase });
+        if (observerThrows) throw new Error('synthetic reporting failure');
+      },
+    });
+    assert.deepEqual(observed, [{ error: original, phase: 'hostExit' }, { error: undefined, phase: 'ownerCleanup' }]);
+    assert.equal(outcome.status, 'failed');
+    assert.equal(outcome.originalFailure, true);
+    assert.equal(outcome.cleanupFailure, true);
+    assert.equal(outcome.processTree, 'unverified');
+    assert.equal(outcome.result, null);
+    assert.doesNotMatch(JSON.stringify(outcome), /synthetic inspection|synthetic inner|synthetic reporting/u);
+  }
+});
+
+// Execute the real CLI and sink. Only preflight/preparation/service ports are
+// synthetic; no Linux service, Electron or business profile is started.
+async function inspectionCliFixture(t, mode) {
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'eky-inspection-cli-'));
+  let accepted = false;
+  t.after(async () => { if (accepted) await rm(root, { recursive: true }); });
+  const fixture = scenario();
+  const result = await fixture.run();
+  const cli = new URL('./runLinuxProfileInspectionProof.mjs', import.meta.url);
+  const session = new URL('../../../e2e/experiments/processOwnership/linuxServiceSession.mjs', import.meta.url);
+  const preflight = new URL('../../../e2e/experiments/processOwnership/managedNamespacePreflight.mjs', import.meta.url);
+  const nativeTemp = join(root, 'temp');
+  await mkdir(nativeTemp);
+  const source = `
+    import assert from 'node:assert/strict';
+    import { registerHooks } from 'node:module';
+    import * as fs from 'node:fs';
+    import * as fsPromises from 'node:fs/promises';
+    import * as url from 'node:url';
+    import { mkdir, writeFile } from 'node:fs/promises';
+    import { join } from 'node:path';
+    import { inspectManagedHost } from ${JSON.stringify(preflight.href)};
+    const root = ${JSON.stringify(root)};
+    const mode = ${JSON.stringify(mode)};
+    const config = ${JSON.stringify(fixture.config)};
+    const result = ${JSON.stringify(result)};
+    const cli = ${JSON.stringify(cli.href)};
+    const repository = ${JSON.stringify(new URL('../../../../', import.meta.url).href)};
+    const runRoot = join(root, 'temp', 'eky-e2e', 'run-synthetic');
+    const resultPath = join(runRoot, 'result.json');
+    const nativeRoots = [];
+    const sentinel = 'SYNTHETIC_INSPECTION_FIRST';
+    const original = Object.assign(new Error(sentinel + ' ' + process.env.INSPECTION_TEST_SECRET,
+      { cause: new Error('SYNTHETIC_INSPECTION_INNER') }), { reason: 'metadataInvalid', stage: 'tools' });
+    // Synthetic Linux metadata on a Windows test runner, not host acceptance.
+    process.getuid ??= () => 0;
+    process.getgid ??= () => 0;
+    globalThis.inspectionCliPorts = {
+      fs, fsPromises, url, root, repository, config, runRoot, resultPath,
+      async prepare(repositoryRoot, temp, nativeRoot) {
+        nativeRoots.push(nativeRoot);
+        await mkdir(runRoot, { recursive: true });
+        await writeFile(resultPath, JSON.stringify(result), { mode: 0o600 });
+        return [{ config, paths: { runRoot, config: join(runRoot, 'inspection.json'), result: resultPath } }];
+      },
+      async start(profile, input, startLinuxService, dependencies) {
+        if (mode === 'startup' || mode === 'sinkRejected' || mode === 'preflightCheck') return startLinuxService(profile, input, {
+          ...dependencies,
+          prepare: () => ({ config: { startUntil: String(process.hrtime.bigint() + 45000000000n),
+            workUntil: String(process.hrtime.bigint() + 90000000000n) } }),
+          async preflight(options) {
+            if (mode !== 'preflightCheck') throw original;
+            return inspectManagedHost({ ...options,
+              runtime: { platform: 'linux', env: { CI: 'true', GITHUB_ACTIONS: 'true', EKY_E2E: '1' },
+                getuid: () => 1001, geteuid: () => 1001, getgid: () => 1002, getegid: () => 1002 },
+              fs: { async lstat() { return { isSymbolicLink: () => true }; } },
+            });
+          }, removeControl() {},
+        });
+        return { readStdout: () => '', readStderr: () => '',
+          workload: { async readState() { if (mode === 'readAndCleanup') throw original; return 'exited'; } },
+          async stop() { if (mode === 'readAndCleanup') throw new Error('SYNTHETIC_INSPECTION_CLEANUP'); } };
+      },
+    };
+    const mocks = new Map([
+      ['node:fs', 'export const { constants, realpathSync } = globalThis.inspectionCliPorts.fs; export const lstatSync = () => ({ mode: 0o755 });'],
+      ['node:fs/promises', 'export const { mkdir, mkdtemp, open, writeFile } = globalThis.inspectionCliPorts.fsPromises; export const lstat = async (path, options) => { const value = await globalThis.inspectionCliPorts.fsPromises.lstat(path, options); if (path === globalThis.inspectionCliPorts.resultPath) return Object.assign(value, { uid: process.getuid(), gid: process.getgid(), mode: (value.mode & ~0o7777) | 0o600 }); return value; };'],
+      ['node:url', 'export const { pathToFileURL } = globalThis.inspectionCliPorts.url; export const fileURLToPath = value => String(value) === globalThis.inspectionCliPorts.repository ? globalThis.inspectionCliPorts.root : globalThis.inspectionCliPorts.url.fileURLToPath(value);'],
+      ['../../../e2e/experiments/processOwnership/linuxServiceContract.mjs', 'export const guardLinuxService = () => {};'],
+      ['../../../e2e/experiments/processOwnership/linuxServiceConfiguration.mjs', 'export const inspectServicePath = () => {}; export const resolveLinuxInspectionElectron = () => {};'],
+      ['./prepareLinuxInspectionProof.mjs', 'export const prepareLinuxInspectionProof = globalThis.inspectionCliPorts.prepare; export const inspectionPreparationEvidence = async failure => failure;'],
+      ['../../../e2e/experiments/processOwnership/linuxServiceSession.mjs', 'import { startLinuxService as realStart } from ' + JSON.stringify(${JSON.stringify(session.href)}) + '; export const startLinuxService = (profile, input, dependencies) => globalThis.inspectionCliPorts.start(profile, input, realStart, dependencies);'],
+    ]);
+    registerHooks({ resolve(specifier, context, nextResolve) {
+      if (context.parentURL === cli && mocks.has(specifier)) return {
+        url: 'data:text/javascript,' + encodeURIComponent(mocks.get(specifier)), shortCircuit: true };
+      if (specifier === url.pathToFileURL(join(root, 'apps/desktop/dist/runtime/profileInspectionMessages.js')).href)
+        return { url: 'data:text/javascript,export const profileInspectionWorkMilliseconds = 1000; export const profileInspectionShutdownMilliseconds = 1000;', shortCircuit: true };
+      return nextResolve(specifier, context);
+    } });
+    // The normal argv guard and module-entry condition both execute.
+    process.argv = [process.execPath, url.fileURLToPath(cli)];
+    await import(cli);
+    assert.equal(process.exitCode, mode === 'passed' ? 0 : 1);
+    for (const path of nativeRoots) assert.ok(path.startsWith(join(root, 'temp')));
+  `;
+  const env = { ...process.env, TEMP: nativeTemp, TMP: nativeTemp, TMPDIR: nativeTemp,
+    INSPECTION_TEST_SECRET: 'synthetic-inspection-redaction-value' };
+  for (const key of Object.keys(env)) if (/^(?:GITHUB_|EKY_EVIDENCE_|NODE_OPTIONS$)/u.test(key)) delete env[key];
+  if (mode === 'sinkRejected') Object.assign(env, { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: 'invalid' });
+  const run = spawnSync(process.execPath, ['--input-type=module', '-e', source], {
+    cwd: root, env, encoding: 'utf8', timeout: 30_000, maxBuffer: 1024 * 1024, windowsHide: true,
+  });
+  await writeFile(join(root, 'cli-output.private.log'), (run.stdout ?? '') + (run.stderr ?? ''), { flag: 'wx' });
+  assert.equal(run.error, undefined, 'synthetic CLI must terminate within its existing bound');
+  assert.equal(run.signal, null);
+  assert.equal(run.status, mode === 'passed' ? 0 : 1, 'real CLI must keep its expected exit code');
+  const output = run.stdout + run.stderr;
+  assert.doesNotMatch(output, /SYNTHETIC_INSPECTION_FIRST|SYNTHETIC_INSPECTION_INNER|SYNTHETIC_INSPECTION_CLEANUP|synthetic-inspection-redaction-value|MANAGED_NAMESPACE_PREFLIGHT_CHECK/u);
+  const directories = (await readdir(nativeTemp)).filter(name => name.startsWith('eky-test-errors-'));
+  const records = [];
+  for (const directory of directories) for (const name of await readdir(join(nativeTemp, directory))) {
+    records.push(validateRunnerFailureEvidence(JSON.parse(await readFile(join(nativeTemp, directory, name), 'utf8'))));
+  }
+  const runs = await readdir(join(root, 'apps/e2e/test-results'));
+  assert.equal(runs.length, 1);
+  const outcome = JSON.parse(await readFile(join(root, 'apps/e2e/test-results', runs[0], 'current/process-output.private.json'), 'utf8'));
+  return { records, outcome, output, root, temp: nativeTemp, accept() { accepted = true; } };
+}
+
+for (const mode of ['startup', 'readAndCleanup', 'sinkRejected', 'passed', 'preflightCheck']) {
+  test(`real inspection CLI delivers only private bounded runner evidence: ${mode}`, async t => {
+    const run = await inspectionCliFixture(t, mode);
+    const failures = run.records.filter(value => value.kind === 'runnerFailure').sort((a, b) => a.sequence - b.sequence);
+    if (mode === 'sinkRejected') {
+      assert.deepEqual(run.records, []);
+      assert.equal(run.outcome.status, 'failed');
+      assert.equal(run.outcome.originalFailure, true);
+      assert.equal(run.outcome.cleanupFailure, false);
+      assert.equal(run.outcome.processTree, 'stopped');
+      assert.match(run.output, /EKY_TEST_FAILURE_EVIDENCE_PARTIAL/u);
+      assert.match(run.output, /"observed":3,"recorded":0,"rejected":3/u);
+    } else if (mode === 'passed') {
+      assert.deepEqual(run.records, []);
+      assert.equal(run.outcome.status, 'passed');
+      assert.equal(run.outcome.originalFailure, false);
+      assert.equal(run.outcome.cleanupFailure, false);
+      assert.equal(run.outcome.processTree, 'stopped');
+    } else {
+      assert.equal(run.outcome.status, 'failed');
+      assert.equal(run.outcome.originalFailure, true);
+      assert.equal(run.outcome.cleanupFailure, mode === 'readAndCleanup');
+      const first = failures[0];
+      const startup = mode === 'startup' || mode === 'preflightCheck';
+      assert.equal(first.phase, startup ? 'linuxInspection-ownerStart' : 'linuxInspection-hostExit');
+      assert.equal(first.test.name, 'linuxProfileInspection-current');
+      assert.equal(first.test.id, configFor().generation);
+      assert.equal(first.test.attempt, 0);
+      assert.deepEqual(first.binding, { kind: 'local' });
+      const chain = first.exception.chain;
+      if (mode === 'preflightCheck') {
+        assert.equal(chain.length, 3);
+        assert.equal(chain[1].message, 'Managed namespace host metadata unverified');
+        assert.equal(chain[2].message, 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:ancestor:symbolicLink');
+        assert.equal(chain[2].stack, null);
+        assert.doesNotMatch(chain[2].message, /PRIVATE|\/|1001|1002/u);
+      } else {
+        const original = chain[startup ? 1 : 0];
+        assert.equal(original.message, 'SYNTHETIC_INSPECTION_FIRST [redacted]');
+        assert.match(original.stack, /SYNTHETIC_INSPECTION_FIRST \[redacted\]/u);
+        assert.equal(chain.at(-1).message, 'SYNTHETIC_INSPECTION_INNER');
+      }
+      if (startup) {
+        assert.equal(chain[0].message, 'E2E_PROFILE_INSPECTION_OWNER_START_FAILED');
+        assert.equal(failures[1].phase, 'linuxInspection-serviceDiagnostic');
+        const diagnostic = failures[1].exception.chain[0];
+        assert.equal(diagnostic.stack, null);
+        assert.deepEqual(JSON.parse(diagnostic.message.slice('EKY_LINUX_SERVICE_FAILURE '.length)), {
+          schemaVersion: 1, profile: 'profileInspection', phase: 'preflight', startupFailure: 'observationLost',
+          causeReason: 'metadataInvalid', causeStage: 'tools', spawnObserved: false, processTree: 'stopped',
+        });
+      } else {
+        assert.equal(failures[1].phase, 'linuxInspection-ownerCleanup');
+        assert.equal(failures[1].exception.chain[0].message, 'SYNTHETIC_INSPECTION_CLEANUP');
+      }
+      assert.equal(failures.at(-1).exception.chain[0].message, 'LINUX_PROFILE_INSPECTION_PROOF_INVALID');
+      const summary = run.records.find(value => value.kind === 'runnerFailureSummary');
+      assert.equal(summary.status, 'recorded');
+      assert.equal(summary.observed, failures.length);
+      assert.equal(summary.recorded, failures.length);
+      assert.doesNotMatch(JSON.stringify(run.outcome), /SYNTHETIC_INSPECTION|exception|stack|causeReason|causeStage/u);
+    }
+    run.accept();
+  });
+}

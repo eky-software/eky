@@ -8,10 +8,10 @@ import { requireService, serviceDeadlines, serviceFailure, linuxChromiumPaths } 
 import { encodeLinuxServiceDiagnostic, projectLinuxServiceCause } from './linuxServiceDiagnostic.mjs';
 
 export class OwnedLinuxServiceStartupFailure extends Error {
-  constructor(profile, evidence, output) {
+  constructor(profile, evidence, output, options) {
     super(profile === 'backend' ? 'E2E_BACKEND_OWNER_START_FAILED' : profile === 'chromium'
       ? 'E2E_CHROMIUM_OWNER_START_FAILED' : profile === 'profileInspection'
-        ? 'E2E_PROFILE_INSPECTION_OWNER_START_FAILED' : 'E2E_VITE_OWNER_START_FAILED');
+        ? 'E2E_PROFILE_INSPECTION_OWNER_START_FAILED' : 'E2E_VITE_OWNER_START_FAILED', options);
     this.evidence = Object.freeze({ spawnObserved: evidence.spawnObserved,
       exitedBeforeCleanup: evidence.exitedBeforeCleanup, processTree: evidence.processTree,
       startupFailure: evidence.startupFailure });
@@ -48,10 +48,10 @@ export async function startLinuxService(profile, input, {
   const admissionClosed = new Promise((_, reject) => { rejectAdmission = reject; });
   void admissionClosed.catch(() => {});
   const output = Object.freeze({ readStdout: () => stdout, readStderr: () => stderr });
-  const failure = () => new OwnedLinuxServiceStartupFailure(profile, {
+  const failure = options => new OwnedLinuxServiceStartupFailure(profile, {
     spawnObserved: state.spawnObserved, exitedBeforeCleanup, processTree: stopped ? 'stopped' : 'unverified',
     startupFailure: firstFailure ?? 'observationLost',
-  }, output);
+  }, output, options);
   const record = reason => { firstFailure ??= reason; rejectAdmission(serviceFailure(firstFailure)); };
   const publish = next => {
     if (state.terminal !== undefined) return;
@@ -102,13 +102,13 @@ export async function startLinuxService(profile, input, {
       removeControl(prepared);
       deadline.check('wrapper');
       stopped = true;
-    } catch {
+    } catch (error) {
       // A manager stop is containment only. Never promote it to namespace or
       // fixture-root deletion evidence, even if its command exits successfully.
       try { await wait(control?.dispose(), 'wrapper'); } catch { /* Keep first failure. */ }
       try { await wait(manager?.emergencyStop(), 'wrapper'); } catch { /* Keep uncertainty. */ }
       try { await wait(manager?.settle(), 'wrapper'); } catch { /* Actual command close still required. */ }
-      throw failure();
+      throw failure({ cause: error });
     } finally { time.clearTimeout(workTimer); }
     if (firstFailure !== undefined) throw failure();
   }
@@ -126,7 +126,7 @@ export async function startLinuxService(profile, input, {
     prepared = prepare(profile, input);
     deadline = serviceDeadlines(prepared.config, now);
     phase = 'preflight';
-    await preflight({ deadline });
+    await preflight({ deadline, privateDiagnostics: true });
     deadline.check('ready');
     phase = 'managerPrepare';
     manager = createManager(prepared.config, deadline);
@@ -167,7 +167,7 @@ export async function startLinuxService(profile, input, {
     } else {
       try { await stop(); } catch { /* Preserve original startup classification separately. */ }
     }
-    const original = failure();
+    const original = failure({ cause: error });
     try {
       reportFailure({ schemaVersion: 1, profile, phase, ...cause,
         startupFailure: original.evidence.startupFailure,

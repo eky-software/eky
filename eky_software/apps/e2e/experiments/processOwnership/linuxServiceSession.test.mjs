@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { startLinuxService, OwnedLinuxServiceStartupFailure } from './linuxServiceSession.mjs';
 import { serviceFailure } from './linuxServiceContract.mjs';
+import { inspectManagedHost } from './managedNamespacePreflight.mjs';
 
 const generation = 'a'.repeat(32);
 const pending = () => { let resolve; let reject; const promise = new Promise((yes, no) => { resolve = yes; reject = no; });
@@ -29,7 +30,8 @@ function fixture(options = {}) {
     async observe() { events.push('observe'); assert.equal(owned, true);
       if (options.wrapperFailure) throw serviceFailure('cleanupUnverified');
       return { waitingWrapper: 'normalExit' }; },
-    async emergencyStop() { events.push('emergency'); },
+    async emergencyStop() { events.push('emergency');
+      if (options.emergencyFailure) throw new Error('synthetic containment failure'); },
     async settle() { events.push('commandsClosed'); },
     mayHaveStarted: () => attempted,
   };
@@ -99,6 +101,33 @@ test('live backend, Vite and inspection preserve workload API and require owners
     await service.stop(); assert.equal(await service.workload.readState(), 'exited');
     assert.deepEqual(f.events.slice(-3), ['observe', 'commandsClosed', 'removeControl']);
     assert.equal(f.timers.size, 0);
+  }
+});
+
+test('private preflight check survives the original cause without entering public diagnostics', async () => {
+  for (const profile of ['backend', 'vite', 'chromium', 'profileInspection']) {
+    const f = fixture({ profile });
+    let reads = 0, original;
+    f.overrides.preflight = async input => {
+      assert.equal(input.privateDiagnostics, true);
+      try {
+        await inspectManagedHost({ ...input, time: f.overrides.time,
+          runtime: { platform: 'linux', env: { CI: 'true', GITHUB_ACTIONS: 'true', EKY_E2E: '1' },
+            getuid: () => 1001, geteuid: () => 1001, getgid: () => 1002, getegid: () => 1002 },
+          fs: { async lstat() { reads++; return { isSymbolicLink: () => true }; } },
+        });
+      } catch (error) { original = error; throw error; }
+    };
+    await assert.rejects(f.start(), error => {
+      assert.ok(error instanceof OwnedLinuxServiceStartupFailure);
+      assert.equal(error.cause, original);
+      assert.equal(error.cause.cause.message, 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:ancestor:symbolicLink');
+      assert.equal(error.evidence.spawnObserved, false); assert.equal(error.evidence.processTree, 'stopped');
+      return true;
+    });
+    assert.equal(reads, 1); assert.equal(f.timers.size, 0);
+    assert.ok(!f.events.includes('launch') && !f.events.includes('go'));
+    assert.ok(!JSON.stringify(f.diagnostics).includes('MANAGED_NAMESPACE_PREFLIGHT_CHECK'));
   }
 });
 
@@ -216,6 +245,52 @@ test('safe startup diagnostics preserve the original failure when reporting fail
     causeReason: 'workloadExited', causeStage: 'unverified',
     startupFailure: 'workloadExited', spawnObserved: true, processTree: 'stopped' }]);
   assert.ok(f.events.includes('removeControl'));
+});
+
+test('startup wrapper retains the exact original cause chain without changing safe diagnostics or cleanup', async () => {
+  for (const error of [undefined, null, false, 0, '',
+    Object.assign(new Error('synthetic original', { cause: new Error('synthetic inner') }),
+      { reason: 'metadataInvalid', stage: 'tools' })]) {
+    const f = fixture({ profile: 'profileInspection', reportFailure: true });
+    f.overrides.preflight = async () => { throw error; };
+    await assert.rejects(f.start(), actual => {
+      assert.ok(actual instanceof OwnedLinuxServiceStartupFailure);
+      assert.equal(Object.hasOwn(actual, 'cause'), true);
+      assert.equal(actual.cause, error);
+      assert.equal(actual.message, 'E2E_PROFILE_INSPECTION_OWNER_START_FAILED');
+      assert.deepEqual(actual.evidence, { spawnObserved: false, exitedBeforeCleanup: false,
+        processTree: 'stopped', startupFailure: 'observationLost' });
+      assert.equal(actual.readStdout(), '');
+      assert.equal(actual.readStderr(), '');
+      return true;
+    });
+    assert.deepEqual(f.events, ['profileInspection', 'removeControl']);
+    assert.equal(f.diagnostics[0].phase, 'preflight');
+    assert.doesNotMatch(JSON.stringify(f.diagnostics), /synthetic original|synthetic inner|stack|message/u);
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test('cleanup wrapper preserves a falsy cause independently of a later containment failure', async () => {
+  for (const error of [undefined, null, false, 0, '']) {
+    const f = fixture({ profile: 'profileInspection', emergencyFailure: true });
+    const listen = f.overrides.listen;
+    f.overrides.listen = (...args) => {
+      const control = listen(...args);
+      return { ...control, verifyClosed() { throw error; } };
+    };
+    const service = await f.start();
+    await assert.rejects(service.stop(), actual => {
+      assert.ok(actual instanceof OwnedLinuxServiceStartupFailure);
+      assert.equal(Object.hasOwn(actual, 'cause'), true);
+      assert.equal(actual.cause, error);
+      assert.equal(actual.evidence.processTree, 'unverified');
+      return true;
+    });
+    assert.ok(f.events.includes('emergency'));
+    assert.ok(!f.events.includes('removeControl'));
+    assert.equal(f.timers.size, 0);
+  }
 });
 
 test('original lifetime expiry triggers failure without renewing stop or fixture deadlines', async () => {
