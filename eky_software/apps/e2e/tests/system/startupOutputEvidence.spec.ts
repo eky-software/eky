@@ -3,9 +3,73 @@ import { expect, test, type TestInfo } from '@playwright/test';
 
 import { createBoundedProcessOutput, defaultProcessOutputLimitBytes } from '../../src/environment/boundedProcessOutput.js';
 import { finishIsolatedElectronTest, reportElectronFixtureCompletion } from '../../src/fixtures/isolatedElectronTest.js';
-import { reportFixtureProcessOutput, reportStartupProcessOutput } from '../../src/fixtures/reportStartupProcessOutput.js';
+import { reportFixtureProcessOutput, reportStartupProcessOutput, reportLinuxPreflightPrivateCheck }
+  from '../../src/fixtures/reportStartupProcessOutput.js';
+
+type PrivateCheckSink = NonNullable<Parameters<typeof reportLinuxPreflightPrivateCheck>[2]>;
+const privateCheck = 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:rootOwner';
+const privateContext = { testName: 'synthetic preflight relay', testId: 'synthetic-test',
+  file: 'synthetic.spec.ts', attempt: 0, retryCount: 0, repeatCount: 0 };
 
 test.describe('startup output attachments @security', () => {
+  test('private preflight relay records only the validated check and context in a fake sink after cleanup', async ({}, info) => {
+    const calls: string[] = [];
+    const records: unknown[] = [];
+    const beforeAttachments = [...info.attachments];
+    const beforeAnnotations = [...info.annotations];
+    const sink: PrivateCheckSink = {
+      record(value) { calls.push('record'); records.push(value); },
+      async flush() { calls.push('flush'); },
+    };
+    const original = new Error('SYNTHETIC_ORIGINAL_STARTUP_FAILURE');
+    await expect((async () => {
+      try { throw original; }
+      finally {
+        calls.push('cleanup');
+        await reportLinuxPreflightPrivateCheck(() => { calls.push('read'); return privateCheck; }, privateContext, sink);
+      }
+    })()).rejects.toBe(original);
+    expect(calls).toEqual(['cleanup', 'read', 'record', 'flush']);
+    expect(records).toEqual([{ ...privateContext, runner: 'playwright', phase: 'linuxHostPreflight',
+      error: { message: privateCheck } }]);
+    expect(info.attachments).toEqual(beforeAttachments);
+    expect(info.annotations).toEqual(beforeAnnotations);
+  });
+
+  for (const fault of ['read', 'record', 'flush'] as const) {
+    test(`private preflight ${fault} failure never replaces the original startup failure`, async () => {
+      const calls: string[] = [];
+      const original = new Error('SYNTHETIC_ORIGINAL_STARTUP_FAILURE');
+      const sink: PrivateCheckSink = {
+        record() { calls.push('record'); if (fault === 'record') throw new Error('PRIVATE reporting failure'); },
+        async flush() { calls.push('flush'); throw new Error('PRIVATE flush failure'); },
+      };
+      await expect((async () => {
+        try { throw original; }
+        finally {
+          await reportLinuxPreflightPrivateCheck(() => {
+            calls.push('read');
+            if (fault === 'read') throw new Error('PRIVATE read failure');
+            return privateCheck;
+          }, privateContext, sink);
+        }
+      })()).rejects.toBe(original);
+      expect(calls).toEqual(fault === 'read' ? ['read'] : fault === 'record' ? ['read', 'record'] : ['read', 'record', 'flush']);
+    });
+  }
+
+  test('private preflight missing or rejected values never record or flush the fake sink', async () => {
+    const calls: string[] = [];
+    const sink: PrivateCheckSink = {
+      record() { calls.push('record'); }, async flush() { calls.push('flush'); },
+    };
+    for (const value of [undefined, null, '', { message: privateCheck }, `${privateCheck}:uid=1001`,
+      privateCheck.replace('sudo', 'backend'), `${privateCheck}\n`, 'x'.repeat(64 * 1024)]) {
+      await expect(reportLinuxPreflightPrivateCheck(() => value, privateContext, sink)).resolves.toBeUndefined();
+    }
+    expect(calls).toEqual([]);
+  });
+
   for (const failure of ['body', 'assertion', 'api', 'runtime', 'port', 'remove', 'report'] as const) {
     test(`successful Electron launch exports current generation after ${failure} failure and handle clearing`, async ({}, info) => {
       let closed = false;

@@ -32,7 +32,7 @@ import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRe
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { finishServiceFixture } from './finishServiceFixture.js';
-import { reportFixtureProcessOutput, reportStartupProcessOutput } from './reportStartupProcessOutput.js';
+import { reportFixtureProcessOutput, reportStartupProcessOutput, reportLinuxPreflightPrivateCheck } from './reportStartupProcessOutput.js';
 
 export interface IsolatedWebHarness {
   api: APIRequestContext;
@@ -181,10 +181,23 @@ export async function runIsolatedWebTest(
       report: async (cleanup) => {
         if (startupFailure !== undefined) {
           const error = startupFailure.error;
+          if (error instanceof E2eBackendStartupFailure) {
+            await reportLinuxPreflightPrivateCheck(() => error.readPrivatePreflightCheck(), {
+              testName: testInfo.title, testId: testInfo.testId, file: testInfo.file,
+              attempt: testInfo.retry, retryCount: testInfo.retry, repeatCount: testInfo.repeatEachIndex,
+            });
+          }
           await reportStartupProcessOutput(testInfo, 'backend-startup', () =>
             error instanceof E2eBackendStartupFailure ? error.readPrivateOutput() : undefined);
         }
         if (failure !== undefined || testInfo.status !== testInfo.expectedStatus || cleanup.runRoot !== 'removed') {
+          if (webStartupFailure !== undefined) {
+            const error = webStartupFailure;
+            await reportLinuxPreflightPrivateCheck(() => error.readPrivatePreflightCheck(), {
+              testName: testInfo.title, testId: testInfo.testId, file: testInfo.file,
+              attempt: testInfo.retry, retryCount: testInfo.retry, repeatCount: testInfo.repeatEachIndex,
+            });
+          }
           await reportFixtureProcessOutput(testInfo, 'web', [
             { name: 'backend', role: 'current', generation: null, read: () => backend === undefined ? undefined : {
               stdout: backend.managedProcess.readStdout(), stderr: backend.managedProcess.readStderr(),

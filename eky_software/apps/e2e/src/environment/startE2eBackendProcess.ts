@@ -20,6 +20,7 @@ import {
 } from './e2eProcessStartupObservation.js';
 import { OwnedWindowsBackendStartupFailure, startOwnedWindowsBackend } from './startOwnedWindowsBackend.js';
 import { OwnedLinuxServiceStartupFailure, startOwnedLinuxBackend } from './startOwnedLinuxBackend.js';
+import { linuxPreflightPrivateCheck, readLinuxServicePreflightCheck } from '../../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 import { beforeBackendOwnerDeadline } from './windowsBackendServiceControl.js';
 import { readHttpHealthProbeOutcome, waitForHttpHealth, type HttpHealthProbeOutcome } from './waitForHttpHealth.js';
 import { waitForLoopbackPortRelease } from './waitForLoopbackPortRelease.js';
@@ -52,9 +53,12 @@ export interface E2eBackendStartupFailureEvidence {
 export class E2eBackendStartupFailure extends Error {
   readonly evidence: E2eBackendStartupFailureEvidence;
   readonly #output: Readonly<{ stdout: string; stderr: string }> | undefined;
+  readonly #preflightCheck: string | undefined;
 
-  constructor(evidence: E2eBackendStartupFailureEvidence, output?: Readonly<{ stdout: string; stderr: string }>) {
+  constructor(evidence: E2eBackendStartupFailureEvidence, output?: Readonly<{ stdout: string; stderr: string }>,
+    preflightCheck?: string) {
     super(evidence.errorCode);
+    this.#preflightCheck = linuxPreflightPrivateCheck(preflightCheck);
     this.#output = output === undefined ? undefined : Object.freeze({ stdout: output.stdout, stderr: output.stderr });
     this.evidence = Object.freeze({
       errorCode: evidence.errorCode,
@@ -70,6 +74,7 @@ export class E2eBackendStartupFailure extends Error {
   }
 
   readPrivateOutput() { return this.#output; }
+  readPrivatePreflightCheck() { return this.#preflightCheck; }
 }
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
@@ -177,6 +182,7 @@ export async function reportOwnedBackendStartupFailure(input: {
   releasePort(): Promise<void>;
 }): Promise<never> {
   const { error } = input;
+  const preflightCheck = error instanceof OwnedLinuxServiceStartupFailure ? readLinuxServicePreflightCheck(error) : undefined;
   const output = readStartupOutput(error);
   const codes = {
     preparationFailed: 'E2E_BACKEND_PROCESS_SPAWN_FAILED',
@@ -200,7 +206,7 @@ export async function reportOwnedBackendStartupFailure(input: {
     errorCode, spawnObserved: error.evidence.spawnObserved,
     exitedBeforeCleanup: error.evidence.exitedBeforeCleanup,
     listeningNotice: readListeningNotice(output, input.backendOrigin), lastHealthProbe: 'notObserved', cleanup,
-  }, output);
+  }, output, preflightCheck);
 }
 
 export async function waitForE2eBackendStartup(input: {

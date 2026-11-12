@@ -21,6 +21,13 @@ function fixture(fault?: Fault) {
     project: { outputDir: outputDirectory, timeout: 10_000 } } as WorkerInfo;
   const bodyFailure = new Error('ORIGINAL_BODY_FAILURE');
   const startupFailure = new OwnedChromiumStartupFailure(fault === 'startupVerified' ? 'stopped' : 'unverified', 'browserConnect');
+  const privateReads: { rootExists: boolean; pending: boolean; reports: number }[] = [];
+  // Observe the real call site without sending an expected failure to the global sink.
+  startupFailure.readPrivatePreflightCheck = () => {
+    privateReads.push({ rootExists: existsSync(runRoot),
+      pending: existsSync(join(outputDirectory, '.eky-chromium-worker-pending.json')), reports: reports.length });
+    return undefined;
+  };
   const browser = { isConnected: () => fault !== 'disconnected', close: async () => {
     if (fault === 'close') throw new Error('PRIVATE close failure');
   } } as Browser;
@@ -51,7 +58,7 @@ function fixture(fault?: Fault) {
       if (fault === 'report') throw new Error('PRIVATE report failure');
     },
   };
-  return { runRoot, outputDirectory, marker, reports, bodyFailure, startupFailure,
+  return { runRoot, outputDirectory, marker, reports, bodyFailure, startupFailure, privateReads,
     pending: () => existsSync(join(outputDirectory, '.eky-chromium-worker-pending.json')),
     claim: () => claimChromiumWorker(input),
     run: (failBody = false) => runOwnedChromiumWorker({ playwright }, async () => {
@@ -80,6 +87,8 @@ test.describe('SYS-CHROMIUM-WORKER-LIFECYCLE-001 @critical @security', () => {
           expect(f.claim).toThrow('E2E_CHROMIUM_WORKER_ADMISSION_REFUSED');
           expect(f.reports).toHaveLength(1);
           expect(f.reports[0]).toMatchObject({ cleanup: 'unverified', workerRoot: 'retained' });
+          expect(f.privateReads).toEqual(fault === 'startupUnverified'
+            ? [{ rootExists: true, pending: true, reports: 0 }] : []);
           expect(JSON.stringify(f.reports)).not.toContain('PRIVATE');
           expect(JSON.stringify(f.reports)).not.toContain(f.runRoot);
         } finally { f.dispose(); }
@@ -107,6 +116,7 @@ test.describe('SYS-CHROMIUM-WORKER-LIFECYCLE-001 @critical @security', () => {
       expect(f.pending()).toBe(false);
       expect(existsSync(f.runRoot)).toBe(false);
       expect(f.reports[0]).toMatchObject({ phase: 'browserConnect', cleanup: 'verified' });
+      expect(f.privateReads).toEqual([{ rootExists: false, pending: false, reports: 0 }]);
     } finally { f.dispose(); }
   });
   test('diagnostic write failure never replaces the original body error', async () => {

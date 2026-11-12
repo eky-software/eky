@@ -201,6 +201,17 @@ muutu. Kohderegressiot ja todellinen salaus/purku vaaditaan ennen yhtä
 nimettyä Linux-todennusta; vanha `metadataInvalid` ei muutu selitetyksi
 pelkän uuden tunnisteen toteutuksella.
 
+Backendin, webin ja Chromium-workerin turvallinen E2E-virhemuunnos ei saa
+kadottaa tätä tunnistetta ennen yksityistä raportointia. Välitys käyttää vain
+validoitua kiinteää tekstiä yksityisessä kentässä, ei julkista `cause`-ketjua,
+prosessin stderrin täydentämistä tai uutta artifact-muotoa. Nykyinen fixture
+toimittaa sen nykyiseen runner-sinkiin jälkiraportoinnissa. Käynnistyksen
+kriittiselle polulle ei lisätä I/O-kuittausodotusta. Puuttuva tunniste säilyy
+puuttuvana, raportointivirhe ei muuta varsinaista tulosta ja uusi välitys
+todennetaan erikseen salaus/purku-ketjun läpi.
+Viestipohjainen tunniste säilyttää nykyisen projektion osittaisuusmerkinnän,
+koska sille ei kerätä pinoa. Täydellisyyslippua ei korjata keksimällä pinoa.
+
 | Lähde | Kerättävä sisältö | Rajaus |
 | --- | --- | --- |
 | Node- ja Vitest-testit | Yhteisen reporter-liitännän rajattu alkuperäinen poikkeus, kutsupino, syyketju ja testin sijainti sekä toimituksen yhteenveto. | Ei ohitettujen tai odotetusti hylättyjen testien poikkeuksia. Kytkentä on omistavissa testikomennoissa; riippuvuuksien valmisteluvirhe ei ole testitapaus. |

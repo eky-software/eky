@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { linuxPreflightPrivateCheck, readLinuxServicePreflightCheck }
+  from '../../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 import {
   OwnedLinuxServiceStartupFailure,
   type LinuxServiceDependencies,
@@ -26,6 +28,7 @@ import { startOwnedLinuxVite, OwnedLinuxServiceStartupFailure as ViteOwnerFailur
 
 const repositoryRoot = resolve(import.meta.dirname, '../../../..');
 const output = { readStdout: () => '', readStderr: () => '' };
+const privateCheck = 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:rootOwner';
 
 test.describe('Linux service injection ports', () => {
   for (const profile of ['backend', 'vite', 'chromium'] as const) {
@@ -94,7 +97,9 @@ test.describe('Linux service injection ports', () => {
         const calls: (LinuxServiceInputs['backend'] | LinuxServiceInputs['vite'])[] = [];
         const failure = new OwnedLinuxServiceStartupFailure(profile, {
           startupFailure: 'observationLost', processTree, spawnObserved: true, exitedBeforeCleanup: false,
-        }, output);
+        }, output, { cause: new Error('Managed namespace host metadata unverified', {
+          cause: { message: privateCheck },
+        }) });
         const before = performance.now();
         try {
           const error = await rejection(profile === 'backend'
@@ -120,6 +125,11 @@ test.describe('Linux service injection ports', () => {
             expect(seen.redactedValues).toEqual(['synthetic-session']);
           }
           expect(error).toBeInstanceOf(profile === 'backend' ? E2eBackendStartupFailure : E2eWebStartupFailure);
+          if (!(error instanceof E2eBackendStartupFailure || error instanceof E2eWebStartupFailure)) {
+            throw new Error('EXPECTED_SAFE_STARTUP_WRAPPER');
+          }
+          expect(error.readPrivatePreflightCheck()).toBe(privateCheck);
+          expectPublicFailureSafe(error);
           expect(error).toMatchObject({ evidence: {
             errorCode: profile === 'backend' ? 'E2E_BACKEND_WORKLOAD_OBSERVATION_LOST' : 'E2E_WEB_WORKLOAD_OBSERVATION_LOST',
             spawnObserved: true, exitedBeforeCleanup: false, cleanup: { processTree, port: 'released' },
@@ -168,7 +178,81 @@ test.describe('Linux service injection ports', () => {
       }
     });
   }
+
+  test('Chromium private preflight relay survives the real Linux owner error conversion', async () => {
+    const runRoot = createE2eRunRoot();
+    try {
+      const error = await rejection(startOwnedLinuxChromium({
+        repositoryRoot, runRoot, lifetime: createE2eFixtureLifetime(30_000),
+        startupDeadline: performance.now() + 10_000, redactedValues: [],
+        browserExecutable: resolve(runRoot, 'synthetic-browser'),
+      }, { get chromium(): never { throw new Error('UNEXPECTED_BROWSER'); } }, {
+        prepare() {
+          throw new Error('Managed namespace host metadata unverified', { cause: { message: privateCheck } });
+        },
+      }));
+      expect(error).toBeInstanceOf(OwnedChromiumStartupFailure);
+      if (!(error instanceof OwnedChromiumStartupFailure)) throw new Error('EXPECTED_CHROMIUM_WRAPPER');
+      expect(error.readPrivatePreflightCheck()).toBe(privateCheck);
+      expect(error).toMatchObject({ processTree: 'stopped', phase: 'ownerPreparation', ownerFailure: 'preparationFailed' });
+      expectPublicFailureSafe(error);
+    } finally { await removeE2eRunRoot(runRoot); }
+  });
+
+  test('private preflight validator accepts only fixed roles, scopes and checks without coercion', () => {
+    for (const role of ['sudo', 'manager', 'control', 'environment', 'namespace', 'credentials']) {
+      for (const scope of ['tool', 'ancestor']) {
+        for (const check of ['symbolicLink', 'entryKind', 'rootOwner', 'modeRange', 'writePermissions',
+          'specialBits', 'deviceIdentity', 'inodeIdentity', 'canonicalPath', 'executable']) {
+          const value = `MANAGED_NAMESPACE_PREFLIGHT_CHECK:${role}:${scope}:${check}`;
+          expect(linuxPreflightPrivateCheck(value)).toBe(value);
+        }
+      }
+    }
+    for (const value of [undefined, null, 1, true, {}, [privateCheck],
+      { toString() { throw new Error('UNEXPECTED_COERCION'); } },
+      privateCheck.replace('sudo', 'backend'), privateCheck.replace(':tool:', ':host:'),
+      privateCheck.replace('rootOwner', 'uid'), privateCheck.toLowerCase(),
+      `prefix ${privateCheck}`, `${privateCheck}\n`, `${privateCheck}\r\n`, `${privateCheck}\0`,
+      `${privateCheck}:uid=1001`, `${privateCheck} /PRIVATE/host`, 'x'.repeat(64 * 1024)]) {
+      expect(linuxPreflightPrivateCheck(value)).toBeUndefined();
+      expect(readLinuxServicePreflightCheck({ message: value })).toBeUndefined();
+    }
+  });
+
+  test('private preflight reader bounds own value descriptors and excludes getters, cycles and metadata', () => {
+    let getterCalls = 0;
+    const getter = () => { getterCalls++; throw new Error('UNEXPECTED_GETTER'); };
+    expect(readLinuxServicePreflightCheck({ message: privateCheck })).toBe(privateCheck);
+    expect(readLinuxServicePreflightCheck({ cause: { cause: { message: privateCheck } } })).toBe(privateCheck);
+    expect(readLinuxServicePreflightCheck({ cause: { cause: { cause: { message: privateCheck } } } })).toBeUndefined();
+    const cycle: { message: string; cause?: unknown } = { message: 'safe' };
+    cycle.cause = cycle;
+    const revoked = Proxy.revocable({}, {});
+    revoked.revoke();
+    for (const value of [null, undefined, privateCheck, cycle, revoked.proxy,
+      Object.create({ message: privateCheck }), Object.create({ cause: { message: privateCheck } }),
+      Object.defineProperty({}, 'message', { get: getter }),
+      Object.defineProperty({}, 'cause', { get: getter }),
+      { stack: privateCheck, metadata: { message: privateCheck }, uid: 1001, path: '/PRIVATE/host' }]) {
+      expect(readLinuxServicePreflightCheck(value)).toBeUndefined();
+    }
+    expect(readLinuxServicePreflightCheck(Object.defineProperty({ cause: { message: privateCheck } },
+      'message', { get: getter }))).toBe(privateCheck);
+    expect(getterCalls).toBe(0);
+  });
 });
+
+function expectPublicFailureSafe(error: Error) {
+  expect(Object.getOwnPropertyDescriptor(error, 'cause')).toBeUndefined();
+  expect(Object.getOwnPropertyNames(error)).not.toContain('preflightCheck');
+  for (const text of [error.message, error.stack ?? '', JSON.stringify(error),
+    JSON.stringify(Object.getOwnPropertyDescriptors(error))]) {
+    expect(text).not.toContain('MANAGED_NAMESPACE_PREFLIGHT_CHECK');
+    expect(text).not.toContain('Managed namespace host metadata unverified');
+    expect(text).not.toContain('/PRIVATE/host');
+  }
+}
 
 function backendStub() {
   return { backendOrigin: 'http://127.0.0.1:12346', sessionSecret: 'synthetic-session', managedProcess: output,

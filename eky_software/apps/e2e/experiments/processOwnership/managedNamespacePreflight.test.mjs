@@ -3,6 +3,8 @@ import test from 'node:test';
 import { inspectManagedHost } from './managedNamespacePreflight.mjs';
 import { budgets, createDeadline } from './pidNamespaceContract.mjs';
 import { managedSystemTools } from './managedNamespaceLaunchContract.mjs';
+import { readLinuxServicePreflightCheck } from './linuxServiceDiagnostic.mjs';
+import { OwnedLinuxServiceStartupFailure } from './linuxServiceSession.mjs';
 
 function fixture() {
   let elapsed = 0;
@@ -179,6 +181,22 @@ test('private ancestor and canonical-path checks never contain the observed path
     });
     assert.equal(f.timers.size, 0);
   }
+});
+
+test('real preflight rejection relays only its fixed check through the Linux owner cause', async () => {
+  const f = fixture();
+  f.records.get(managedSystemTools.sudo).uid = 1001;
+  await assert.rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), error => {
+    const owner = new OwnedLinuxServiceStartupFailure('backend', {
+      startupFailure: 'preparationFailed', processTree: 'stopped', spawnObserved: false, exitedBeforeCleanup: false,
+    }, { readStdout: () => '', readStderr: () => '' }, { cause: error });
+    assert.equal(readLinuxServicePreflightCheck(owner), 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:rootOwner');
+    assert.ok(!JSON.stringify(owner).includes('MANAGED_NAMESPACE_PREFLIGHT_CHECK'));
+    assert.ok(!JSON.stringify(owner).includes('1001'));
+    assert.equal(error.cause.stack, undefined);
+    assert.equal(f.timers.size, 0);
+    return true;
+  });
 });
 
 test('private diagnostics do not expose read errors or enable for non-true options', async () => {

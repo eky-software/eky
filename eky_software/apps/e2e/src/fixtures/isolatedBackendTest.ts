@@ -24,7 +24,7 @@ import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
 import { readE2eScenarioId } from './readE2eScenarioId.js';
 import { finishServiceFixture } from './finishServiceFixture.js';
-import { reportFixtureProcessOutput, reportStartupProcessOutput } from './reportStartupProcessOutput.js';
+import { reportFixtureProcessOutput, reportStartupProcessOutput, reportLinuxPreflightPrivateCheck } from './reportStartupProcessOutput.js';
 import type { ProcessOutput } from '../environment/boundedProcessOutput.js';
 
 export interface IsolatedBackendHarness {
@@ -204,6 +204,12 @@ export async function runIsolatedBackendTest(
       report: async (cleanup) => {
         if (startupFailure !== undefined) {
           const error = startupFailure.error;
+          if (error instanceof E2eBackendStartupFailure) {
+            await reportLinuxPreflightPrivateCheck(() => error.readPrivatePreflightCheck(), {
+              testName: testInfo.title, testId: testInfo.testId, file: testInfo.file,
+              attempt: testInfo.retry, retryCount: testInfo.retry, repeatCount: testInfo.repeatEachIndex,
+            });
+          }
           await reportStartupProcessOutput(testInfo, 'backend-startup', () =>
             error instanceof E2eBackendStartupFailure ? error.readPrivateOutput() : undefined);
         }
