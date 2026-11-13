@@ -2177,11 +2177,11 @@ it.for(['next', 'backup'] as const)('preserves ordinary registry recovery with m
     const path = join(f.root, WORKSPACE_REGISTRY_FILE_NAME), bytes = await readFile(path);
     const sibling = `${path}.${slot}`, invalid = Buffer.from('{');
     const controlRoot = join(f.root, 'ordinary-registry-control');
-    await mkdir(controlRoot);
+    await mkdir(controlRoot, { mode: 0o700 });
     const controlPath = join(controlRoot, WORKSPACE_REGISTRY_FILE_NAME);
-    await writeFile(controlPath, bytes, { flag: 'wx' });
-    await writeFile(controlPath + `.${slot}`, invalid, { flag: 'wx' });
-    await writeFile(sibling, invalid, { flag: 'wx' });
+    await writeFile(controlPath, bytes, { flag: 'wx', mode: 0o600 });
+    await writeFile(controlPath + `.${slot}`, invalid, { flag: 'wx', mode: 0o600 });
+    await writeFile(sibling, invalid, { flag: 'wx', mode: 0o600 });
     const strict = vi.spyOn(WorkspaceRegistryStore.prototype, 'inspectSlots');
     expect(await discover(f)).toEqual({ mode: 'notOffered', reason: 'registryRecovery' });
     expect(strict).not.toHaveBeenCalled();

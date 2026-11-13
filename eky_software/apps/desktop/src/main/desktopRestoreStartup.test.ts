@@ -6,6 +6,7 @@ import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, stat, writeFil
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
+import { runInNewContext } from 'node:vm';
 
 import type { BrowserWindow, IpcMainInvokeEvent } from 'electron';
 import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from 'vitest';
@@ -1400,7 +1401,7 @@ describe('restricted recovery selector composition', () => {
     const registry = (await f.registry.read())!;
     const entry = registry.workspaces[0]!;
     const otherId = validateWorkspaceId('44444444-4444-4444-8444-444444444444');
-    await mkdir(deriveWorkspaceRoot(f.root, otherId, 1).workspaceRoot, { recursive: true });
+    await mkdir(deriveWorkspaceRoot(f.root, otherId, 1).workspaceRoot, { recursive: true, mode: 0o700 });
     await f.registry.write({ formatVersion: 2, activeWorkspaceId: active === 'target' ? workspaceId : active === 'other' ? otherId : null,
       workspaces: [entry, { ...entry, workspaceId: otherId, workspaceLabel: 'Synthetic other company',
         lineageIdentity: { formatVersion: 1, profileId: foreignProfileId } }] });
@@ -3021,7 +3022,7 @@ describe('backendless selector main composition', () => {
             });
             const registry = (await fixture.registry.read())!;
             const otherId = validateWorkspaceId('44444444-4444-4444-8444-444444444444');
-            await mkdir(deriveWorkspaceRoot(fixture.root, otherId, 1).workspaceRoot, { recursive: true });
+            await mkdir(deriveWorkspaceRoot(fixture.root, otherId, 1).workspaceRoot, { recursive: true, mode: 0o700 });
             await fixture.registry.write({ ...registry, formatVersion: 2, activeWorkspaceId: null,
               workspaces: [...registry.workspaces, { ...registry.workspaces[0]!, workspaceId: otherId,
                 workspaceLabel: 'Synthetic conflicting company',
@@ -7486,7 +7487,7 @@ async function createFixture(
   const sourceId = options.replacementTarget
     ? validateWorkspaceId('44444444-4444-4444-8444-444444444444') : undefined;
   if (sourceId !== undefined) {
-    await mkdir(deriveWorkspaceRoot(root, sourceId, 1).workspaceRoot, { recursive: true });
+    await mkdir(deriveWorkspaceRoot(root, sourceId, 1).workspaceRoot, { recursive: true, mode: 0o700 });
     workspaces.push({
       ...workspaces[0]!,
       workspaceId: sourceId,
@@ -8247,8 +8248,7 @@ describe('packaged empty-selector verification main coupling', () => {
     const reporter = packagedSmoke.createPackagedSmokeProgressReporter(fixture.smokeConfiguration);
     await reporter.reportStage('startup');
     // Only the renderer transport is controlled; the real capability writes the archive.
-    const execute = vi.fn(async (script: string, gesture: boolean) => {
-      expect([script, gesture]).toEqual(['window.ekyDesktop.createSupportBundle()', true]);
+    const request = vi.fn(async () => {
       const handler = electronBoundary.ipcHandlers.get(createSupportBundleIpcChannel);
       if (typeof handler !== 'function') throw new Error('SUPPORT_CAPABILITY_NOT_REGISTERED');
       const result = await handler({ sender: fixture.mainWindow.webContents, senderFrame: fixture.mainWindow.webContents.mainFrame });
@@ -8259,6 +8259,19 @@ describe('packaged empty-selector verification main coupling', () => {
           kind: 'desktopOnly', observationStatus: 'unavailable', backend: 'exitUnconfirmed' });
       }
       return result;
+    });
+    const execute = vi.fn(async (script: string, gesture: boolean) => {
+      expect(gesture).toBe(true);
+      const querySelectorAll = vi.fn(() => [{ textContent: 'Luo tukipaketti', disabled: false }]);
+      try {
+        const result: unknown = await runInNewContext(script, {
+          document: { querySelectorAll }, window: { ekyDesktop: { createSupportBundle: request } },
+        });
+        return result;
+      } finally {
+        expect(querySelectorAll).toHaveBeenCalledExactlyOnceWith('button');
+        expect(request).toHaveBeenCalledExactlyOnceWith();
+      }
     });
     Object.assign(fixture.mainWindow.webContents, { executeJavaScript: execute });
     const smoke = vi.spyOn(packagedSmoke, 'runPackagedSelectorSmoke');

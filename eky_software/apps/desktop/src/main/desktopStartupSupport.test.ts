@@ -1,6 +1,6 @@
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setImmediate as nextTurn } from 'node:timers/promises';
@@ -46,6 +46,8 @@ it('index consumes the real admitted composition failure without a window', asyn
   const f = await fixture(context, { actualCompositionFailure: true });
   await f.finished();
   expect(f.realWorkspaceFailure).toHaveBeenCalledOnce();
+  expect(f.firstFailure()?.phase).toBe('compositionStartup');
+  expect(f.firstFailure()?.error).toBe(f.realWorkspaceError);
   expect(f.receiptDelivery).toHaveBeenCalledOnce();
   expect(f.runtimeDesktopDataRead).toHaveBeenCalled();
   expect(f.exit).toHaveBeenCalledExactlyOnceWith(1);
@@ -411,7 +413,8 @@ async function fixture(context: TestContext, options: {
   const runtimeDesktopDataRead = vi.fn(readSupportBundleDesktopData);
   const receiptDelivery = vi.fn((observe: NonNullable<StartDesktopCompositionOptions['observeWorkspaceStartupFailure']>,
     receipt: Readonly<DesktopWorkspaceStartupSupportReceipt>) => observe(receipt));
-  const realWorkspaceFailure = vi.fn(async (): Promise<never> => { throw new Error('SYNTHETIC_REAL_WORKSPACE_STARTUP_ORIGINAL'); });
+  const realWorkspaceError = new Error('SYNTHETIC_REAL_WORKSPACE_STARTUP_ORIGINAL');
+  const realWorkspaceFailure = vi.fn(async (): Promise<never> => { throw realWorkspaceError; });
   const app = Object.assign(new EventEmitter(), {
     isPackaged: false, commandLine: { hasSwitch: (name: string) =>
       (options.excludedMode === 'smoke' && name === 'desktop-smoke') ||
@@ -525,6 +528,15 @@ async function fixture(context: TestContext, options: {
       const actual = await importOriginal<typeof import('./desktopComposition.js')>();
       return { ...actual, async startDesktopComposition(input: StartDesktopCompositionOptions) {
         compositionInput = input;
+        // Prepare the entrypoint-selected synthetic profile before real read-only startup guards.
+        const runtimeRoot = join(input.userDataPath, 'runtime');
+        await mkdir(runtimeRoot, { recursive: true, mode: 0o700 });
+        for (const directory of [input.userDataPath, runtimeRoot]) {
+          const metadata = await lstat(directory);
+          expect(metadata.isDirectory()).toBe(true);
+          expect(metadata.isSymbolicLink()).toBe(false);
+          if (process.platform !== 'win32') expect(metadata.mode & 0o077).toBe(0);
+        }
         return actual.startDesktopComposition({ ...input,
           dependencies: { ...input.dependencies, resolveActiveWorkspace: realWorkspaceFailure },
           observeStartupException(error, phase, excluded) {
@@ -574,7 +586,7 @@ async function fixture(context: TestContext, options: {
   });
   await import('./index.js');
   return { root, targetPath, app, state, exit, logger, showMessageBox, showSaveDialog, showErrorBox,
-    nativeExportCreation, supportDataLoad, supportWrite, runtimeDesktopDataRead, receiptDelivery, realWorkspaceFailure,
+    nativeExportCreation, supportDataLoad, supportWrite, runtimeDesktopDataRead, receiptDelivery, realWorkspaceFailure, realWorkspaceError,
     proveReservationReleased() {
       context.signal.throwIfAborted();
       if (fixtureClosing) throw new Error('STARTUP_SUPPORT_FIXTURE_CLOSED');

@@ -129,9 +129,9 @@ for (const entry of ['current', 'backup', 'next', 'currentBackup', 'currentNext'
       for (const f of [direct, observed]) {
         test.signal.throwIfAborted();
         const paths = createLocalUpdateRuntimePaths({ userDataPath: f.root, legacyRuntimeRoot: createDesktopProfilePaths(f.root).runtimeRoot });
-        await mkdir(dirname(paths.acceptedBuildMetadataPath), { recursive: true });
+        await mkdir(dirname(paths.acceptedBuildMetadataPath), { recursive: true, mode: 0o700 });
         await writeFile(paths.acceptedBuildMetadataPath, JSON.stringify({ formatVersion: 1, acceptedAt: build.buildCreatedAt,
-          appVersion: build.appVersion, buildRevision: build.buildRevision, releaseChannel: 'pilot' }) + '\n', { flag: 'wx' });
+          appVersion: build.appVersion, buildRevision: build.buildRevision, releaseChannel: 'pilot' }) + '\n', { flag: 'wx', mode: 0o600 });
         const originalBytes = await readFile(f.journalPaths.currentPath);
         const bytes = shape === 'v1Rejected' ? Buffer.from(JSON.stringify({ ...JSON.parse(originalBytes.toString()), formatVersion: 1 }) + '\n') : originalBytes;
         await rm(f.journalPaths.currentPath);

@@ -619,7 +619,9 @@ function rejectedBridgeFixture(context, targetName) {
 }
 
 function assertOriginalObserved(fixture) {
-  expect(fixture.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+  expect(fixture.execute).toHaveBeenCalledOnce();
+  expect(fixture.execute.mock.calls[0]?.[0]).toContain('window.ekyDesktop.createSupportBundle()');
+  expect(fixture.execute.mock.calls[0]?.[1]).toBe(true);
   expect(fixture.observeFailure.mock.calls[0]?.[0] === fixture.original).toBe(true);
 }
 
@@ -648,7 +650,9 @@ test(names.success, async context => {
     return 'created';
   });
   await runPackagedSupportBundleSmoke(fixture.options);
-  expect(fixture.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+  expect(fixture.execute).toHaveBeenCalledOnce();
+  expect(fixture.execute.mock.calls[0]?.[0]).toContain('window.ekyDesktop.createSupportBundle()');
+  expect(fixture.execute.mock.calls[0]?.[1]).toBe(true);
   expect(fixture.observeFailure).not.toHaveBeenCalled();
   await expect(readFile(fixture.target)).rejects.toMatchObject({ code: 'ENOENT' });
   completed.success = true;
