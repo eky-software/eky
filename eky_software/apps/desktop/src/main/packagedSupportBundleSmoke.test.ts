@@ -3,6 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { gunzipSync, gzipSync } from 'node:zlib';
+import { runInNewContext } from 'node:vm';
 
 import type { BrowserWindow } from 'electron';
 import { describe, expect, it, vi, type TestContext } from 'vitest';
@@ -37,7 +38,10 @@ describe('support smoke file delivery', () => {
   it.for(['full', 'desktopOnly'] as const)('consumes and removes the real %s file without changing its neighbor', async (kind, context) => {
     const f = await supportSmokeFixture(context, kind);
     await runPackagedSupportBundleSmoke(f.options);
-    expect(f.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(f.execute.mock.calls[0]?.[1]).toBe(true);
+    if (kind === 'full') expect(f.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+    else expect(f.execute.mock.calls[0]?.[0]).toContain('window.ekyDesktop.createSupportBundle()');
     expect(f.inspected()).toMatchObject({ formatVersion: kind === 'full' ? 2 : 3 });
     expect(f.observeFailure).not.toHaveBeenCalled();
     await expect(readFile(f.target)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -107,6 +111,58 @@ describe('support smoke file delivery', () => {
     expect(failure.errors[1]).not.toBe(f.observeFailure.mock.calls[1]?.[0]);
     expect(await readFile(retainedPath, 'utf8')).toBe('synthetic invalid export target');
     expect(await readFile(f.neighbor, 'utf8')).toBe('synthetic unrelated export');
+  });
+});
+
+describe('selector support smoke readiness', () => {
+  it('waits for the rendered support control before its one export request', async context => {
+    const f = await supportSmokeFixture(context, 'desktopOnly');
+    const button = { textContent: 'Luo tukipaketti', disabled: true };
+    const renderer = selectorRenderer(f, [button], polls => {
+      expect(renderer.request).not.toHaveBeenCalled();
+      if (polls === 2) button.disabled = false;
+    });
+    await runPackagedSupportBundleSmoke(f.options);
+    expect(renderer.polls()).toBe(2);
+    expect(renderer.request).toHaveBeenCalledOnce();
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(f.observeFailure).not.toHaveBeenCalled();
+    expect(f.inspected()).toMatchObject({ formatVersion: 3 });
+    await expect(readFile(f.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
+  it.for(['missing', 'disabled', 'ambiguous'] as const)(
+    'never exports through a %s selector control', async (state, context) => {
+      const f = await supportSmokeFixture(context, 'desktopOnly');
+      const button = { textContent: 'Luo tukipaketti', disabled: state === 'disabled' };
+      const renderer = selectorRenderer(f, state === 'missing' ? [] : state === 'ambiguous' ? [button, { ...button }] : [button]);
+      await expect(runPackagedSupportBundleSmoke(f.options)).rejects.toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_CREATE_FAILED');
+      expect(renderer.request).not.toHaveBeenCalled();
+      expect(f.execute).toHaveBeenCalledOnce();
+      await expect(readFile(f.target)).rejects.toMatchObject({ code: 'ENOENT' });
+      expect(await readFile(f.neighbor, 'utf8')).toBe('synthetic unrelated export');
+    },
+  );
+
+  it('keeps a ready selector export failure first without retrying the request', async context => {
+    const f = await supportSmokeFixture(context, 'desktopOnly');
+    const renderer = selectorRenderer(f, [{ textContent: 'Luo tukipaketti', disabled: false }]);
+    const original = new Error('synthetic selector export first failure');
+    renderer.request.mockRejectedValueOnce(original);
+    await expect(runPackagedSupportBundleSmoke(f.options)).rejects.toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    expect(renderer.request).toHaveBeenCalledOnce();
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(f.observeFailure).toHaveBeenCalledExactlyOnceWith(original);
+  });
+
+  it('keeps the full support export independent of selector controls', async context => {
+    const f = await supportSmokeFixture(context, 'full');
+    const renderer = selectorRenderer(f, []);
+    await runPackagedSupportBundleSmoke(f.options);
+    expect(renderer.polls()).toBe(0);
+    expect(renderer.request).toHaveBeenCalledOnce();
+    expect(f.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+    expect(f.inspected()).toMatchObject({ formatVersion: 2 });
   });
 });
 
@@ -423,7 +479,7 @@ async function supportSmokeFixture(context: TestContext, kind: 'full' | 'desktop
   await writeFile(neighbor, 'synthetic unrelated export');
   let document = kind === 'full' ? createDocument() : createDesktopOnlyDocument();
   let inspected: unknown;
-  const execute = vi.fn(async () => {
+  const execute = vi.fn<(source?: string, userGesture?: boolean) => Promise<unknown>>(async () => {
     const archive = gzipSync(JSON.stringify(document));
     writeSupportBundleAtomically({ archive, runtimeRoot, targetPath: target });
     expect(await readFile(target)).toEqual(archive);
@@ -439,6 +495,29 @@ async function supportSmokeFixture(context: TestContext, kind: 'full' | 'desktop
     : { ...common, kind, system: { ...expectedDesktopIdentity } };
   return { options, execute, observeFailure, target, neighbor,
     setDocument(value: Record<string, unknown>) { document = value; }, inspected: () => inspected };
+}
+
+function selectorRenderer(
+  fixture: Awaited<ReturnType<typeof supportSmokeFixture>>,
+  buttons: { textContent: string; disabled: boolean }[],
+  onPoll?: (polls: number) => void,
+) {
+  const write = fixture.execute.getMockImplementation()!;
+  let clock = 0, polls = 0;
+  const request = vi.fn(async () => write());
+  fixture.execute.mockImplementation(async source => {
+    if (typeof source !== 'string') throw new Error('SYNTHETIC_SELECTOR_SCRIPT_MISSING');
+    return await runInNewContext(source, {
+      window: { ekyDesktop: { createSupportBundle: request } },
+      document: { querySelectorAll: () => buttons }, Date: { now: () => clock },
+      setTimeout(resolve: () => void, delay: number) {
+        clock += delay; polls += 1;
+        if (polls > 101) throw new Error('SYNTHETIC_SELECTOR_READINESS_UNBOUNDED');
+        onPoll?.(polls); resolve();
+      },
+    });
+  });
+  return { request, polls: () => polls };
 }
 
 function createDesktopOnlyDocument(

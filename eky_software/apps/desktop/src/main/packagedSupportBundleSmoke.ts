@@ -24,6 +24,22 @@ import {
 
 const sha256ChecksumPattern = /^[0-9a-f]{64}$/;
 
+// Follow the selector's admission state before the smoke-only bridge call.
+const selectorSupportBundleRequest = `(async () => {
+  const deadline = Date.now() + 5000;
+  while (Date.now() < deadline) {
+    const buttons = [...document.querySelectorAll('button')].filter(
+      button => button.textContent?.trim() === 'Luo tukipaketti',
+    );
+    if (buttons.length > 1) return null;
+    if (buttons.length === 1 && !buttons[0].disabled) {
+      return window.ekyDesktop.createSupportBundle();
+    }
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  return null;
+})()`;
+
 const forbiddenSerializedMarkers = [
   'actorId',
   'actorUserId',
@@ -57,6 +73,8 @@ export async function runPackagedSupportBundleSmoke(options: PackagedSupportBund
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
   }
   const { mainWindow, observeFailure, supportBundlePath } = options;
+  const requestScript = options.kind === desktopOnlySupportBundleKind
+    ? selectorSupportBundleRequest : 'window.ekyDesktop.createSupportBundle()';
   let firstFailure: { error: Error } | undefined;
   try {
     let validate: (document: unknown) => void;
@@ -71,7 +89,7 @@ export async function runPackagedSupportBundleSmoke(options: PackagedSupportBund
     await mkdir(dirname(supportBundlePath), { recursive: true });
     const result: unknown =
       await mainWindow.webContents.executeJavaScript(
-        `window.ekyDesktop.createSupportBundle()`,
+        requestScript,
         true,
       );
     if (result !== 'created') {

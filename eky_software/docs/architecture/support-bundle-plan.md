@@ -719,6 +719,15 @@ smoke-apuri kutsuu valitsimen argumentitonta capabilityä mainin valitsemassa
 v3-tilassa. Yhteinen smoke-omistaja johtaa kiinteän testikohteen; v2 käyttää
 samaa polkusääntöä eikä vaihda formaattia.
 
+Valitsimen v3-smoke odottaa nykyisen `Luo tukipaketti` -painikkeen olevan
+yksikäsitteisesti saatavilla ja käytössä ennen yhtä bridge-kutsua. Odotus
+on enintään viisi sekuntia, tilaehto tarkistetaan 50 millisekunnin välein.
+Se kuluttaa nykyistä 120 sekunnin vaihe- ja 300 sekunnin kokonaisbudjettia,
+ei pidennä tai nollaa niitä. Puuttuva, estetty tai moniselitteinen ohjain
+ei käynnistä vientiä. Viennin virhettä ei yritetä uudelleen. Täyden v2:n
+kutsu, tavallinen käyttö ja palvelun keskeneräisen työn esto säilyvät.
+Tämä täsmentää smoke-ohjauksen ajoitusta, ei palvelun hyväksymisehtoa.
+
 Vain nykyisellä smoke-/token-/juuriportilla hyväksytyn tavallisen valitsimen
 testivienti ohittaa vahvistus-, tallennus- ja virhedialogit. Rajattu
 palautushallinta ja tavallinen käyttö säilyttävät nykyiset nativedialogit

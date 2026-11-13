@@ -17,8 +17,19 @@ säilyvät. W7.0-W7.4 ja muut hyväksytyt paketit eivät avaudu ilman regressiot
 **Omistaja jatkoi samaa Goalia 13.11. päiväpalaverin jälkeen.**
 [Sidontatallentimen hyväksytty lähdekytkentä](local-company-workspace-plan.md#w75-binding-leading-read-20261113)
 on toteutettu ja sen normaalit lähdeportit sekä oikeat Electronin poisto-
-ja rajatun tukiviennin kohdepolut läpäisivät. Seuraava rajattu työ on
-lähteen lopullinen staged-tarkistus ja puhdas jäädytys pakettitodennukseen.
+ja rajatun tukiviennin kohdepolut läpäisivät. Puhdas lähde `d0c8c27c`
+rakennettiin pilot-paketiksi. Tavallinen smoke ja neljä paketoitua
+palautustapausta läpäisivät; viimeisen yrityksen poisto/restart hylkäsi
+valitsimen `supportBundle`-vaiheessa. Alkuperäinen kerätty syy on
+`WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED` havaintokontekstin kaappauksessa.
+Säilytä paketti ja ensivirhe. Savutestin vanha suora tukivientikutsu
+ohitti käyttöliittymän valmiusehdon; vastakoe hylkäsi odotetusti ja
+rajattu testiohjauksen korjaus sekä sen 360 testin vaikutussarja ja
+tyypitys läpäisivät. Palvelun keskeneräisen työn estoa ei kevennetä.
+Korjauksen riippumaton katselmus sekä 43 pakettiajurin ja salatun
+virhetoimituksen kontrollia läpäisivät. Uusi puhtaan lähteen
+pakettitodennus on vielä tekemättä; ei vielä PR/CI-ajoa. Lähteestä päätelty kilpaileva
+alkutilaluku ei yksin todista alkuperäisen ajon kaikkia sisäisiä tiloja.
 `DESK-DELETE-RECOVERY-001` säilyttää sovitun 150 sekunnin kokonaisrajan
 ja 100 sekunnin tulosodotuksen; globaali 10 sekunnin oletus ei muutu.
 Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
@@ -105,9 +116,9 @@ Nykyinen rajattu näyttö:
   työkalutarkistus puuttuu edelleen; nykyisen kytkennän hosted-todennus on tekemättä.
 
 Seuraavat portit järjestyksessä:
-1. Varmenna lopullinen staged-sisältö ja puhdas commitoitu lähde.
-   Muuttuneen lähteen katselmus ja nykyiset development-kohdepolut
-   läpäisivät; niiden toisto ei korvaa seuraavaa pakettiporttia.
+1. Jäädytä paketoidun valitsimen tukiviennin katselmoitu testiohjauskorjaus
+   puhtaaksi lähteeksi. Todista korjaus oikealla paketilla; älä ohita
+   palvelun keskeneräisen työn vartijaa.
 2. Jäädytä puhdas lähde. Todista samat hardened-paketin tavut ketjussa
    backup -> inspect -> restore -> restart -> compare sekä poisto/restart
    ja tukiviennit v2/v3. Pakettisopimuksen tarkistus on erillinen työ.

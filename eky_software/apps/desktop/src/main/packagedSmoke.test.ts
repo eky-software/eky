@@ -489,7 +489,9 @@ describe('packaged selector smoke shutdown', () => {
     const f = await selectorFixture(context);
     await f.run();
     expect(f.events).toEqual(['supportBundle', 'export', 'shutdown', 'close', 'destroy', 'quit']);
-    expect(f.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(f.execute.mock.calls[0]?.[0]).toContain('window.ekyDesktop.createSupportBundle()');
+    expect(f.execute.mock.calls[0]?.[1]).toBe(true);
     await expect(stat(f.supportBundlePath)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readResult(f.root)).toEqual({ stage: 'shutdown', status: 'ok', electronVersion: '0.0.0' });
     expect(f.close).toHaveBeenCalledOnce();
@@ -694,7 +696,7 @@ async function selectorFixture(context: TestContext) {
   const system = { appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
     architecture: 'x64', platform: 'win32', electronVersion: '0.0.0' } as const;
   const supportBundlePath = resolvePackagedSmokeSupportBundlePath(configuration)!;
-  const execute = vi.fn(async (): Promise<unknown> => {
+  const execute = vi.fn(async (_source?: string, _userGesture?: boolean): Promise<unknown> => {
     events.push('export');
     const archive = createDesktopOnlySupportBundleArchive({ createdAt: new Date('2026-11-09T12:00:00.000Z'),
       creationCorrelationId: '22222222-2222-4222-8222-222222222222', desktopData: {
