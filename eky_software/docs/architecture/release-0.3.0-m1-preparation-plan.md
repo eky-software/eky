@@ -7,7 +7,7 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 ## Jatka tästä
 
-**13.11.2026: W7.5 A-E on kesken.** Työhaara on
+**14.11.2026: W7.5 A-E odottaa integraatioportteja.** Työhaara on
 `codex/w7-5-deletion-feedback`, lähdeporttien lähtö-HEAD `f704c6e3`; hyväksytty lähtö on
 suojattu main `9657fdc1` ja PR #327/#328. Säilytä kaikki paikalliset muutokset.
 Omistaja on jatkanut samaa Goalia. [Täysi W7.5-sopimus ja portit](local-company-workspace-plan.md#w75-toteutussuunnitelma)
@@ -17,19 +17,18 @@ säilyvät. W7.0-W7.4 ja muut hyväksytyt paketit eivät avaudu ilman regressiot
 **Omistaja jatkoi samaa Goalia 13.11. päiväpalaverin jälkeen.**
 [Sidontatallentimen hyväksytty lähdekytkentä](local-company-workspace-plan.md#w75-binding-leading-read-20261113)
 on toteutettu ja sen normaalit lähdeportit sekä oikeat Electronin poisto-
-ja rajatun tukiviennin kohdepolut läpäisivät. Puhdas lähde `d0c8c27c`
-rakennettiin pilot-paketiksi. Tavallinen smoke ja neljä paketoitua
-palautustapausta läpäisivät; viimeisen yrityksen poisto/restart hylkäsi
-valitsimen `supportBundle`-vaiheessa. Alkuperäinen kerätty syy on
-`WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED` havaintokontekstin kaappauksessa.
-Säilytä paketti ja ensivirhe. Savutestin vanha suora tukivientikutsu
-ohitti käyttöliittymän valmiusehdon; vastakoe hylkäsi odotetusti ja
-rajattu testiohjauksen korjaus sekä sen 360 testin vaikutussarja ja
-tyypitys läpäisivät. Palvelun keskeneräisen työn estoa ei kevennetä.
-Korjauksen riippumaton katselmus sekä 43 pakettiajurin ja salatun
-virhetoimituksen kontrollia läpäisivät. Uusi puhtaan lähteen
-pakettitodennus on vielä tekemättä; ei vielä PR/CI-ajoa. Lähteestä päätelty kilpaileva
-alkutilaluku ei yksin todista alkuperäisen ajon kaikkia sisäisiä tiloja.
+ja rajatun tukiviennin kohdepolut läpäisivät. Puhdas korjattu lähde
+`03f97967` rakennettiin kerran pilot-paketiksi. Sen tavallinen smoke ja
+kaikki viisi paketoitua palautus/poistotapausta läpäisivät samoilla
+tavuilla, ilman uusintoja. Viimeisen yrityksen poisto/restart vaati myös
+prosessipuun poissaolon, portin vapautumisen ja siivouksen onnistumisen.
+[Ensimmäinen pakettihylkäys ja korjauksen rajaus](release-0.3.0-integration-history.md#w75-selector-readiness-package-20261114)
+säilyvät erillisinä. Vain smoke-ohjauksen ajoitus muuttui; palvelun
+keskeneräisen työn estoa ei kevennetty. Vastakoe, 360 testin vaikutussarja,
+43 pakettiajurin ja salatun virhetoimituksen kontrollia, tyypitys sekä
+riippumaton katselmus läpäisivät. Paikallinen pakettinäyttö on sidottu
+revisioon `03f97967`; myöhempi pelkkä checkpoint-teksti ei vaihda sen
+build-identiteettiä. PR:n täsmällisen headin ja mainin omat portit ovat avoinna.
 `DESK-DELETE-RECOVERY-001` säilyttää sovitun 150 sekunnin kokonaisrajan
 ja 100 sekunnin tulosodotuksen; globaali 10 sekunnin oletus ei muutu.
 Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
@@ -116,17 +115,14 @@ Nykyinen rajattu näyttö:
   työkalutarkistus puuttuu edelleen; nykyisen kytkennän hosted-todennus on tekemättä.
 
 Seuraavat portit järjestyksessä:
-1. Jäädytä paketoidun valitsimen tukiviennin katselmoitu testiohjauskorjaus
-   puhtaaksi lähteeksi. Todista korjaus oikealla paketilla; älä ohita
-   palvelun keskeneräisen työn vartijaa.
-2. Jäädytä puhdas lähde. Todista samat hardened-paketin tavut ketjussa
-   backup -> inspect -> restore -> restart -> compare sekä poisto/restart
-   ja tukiviennit v2/v3. Pakettisopimuksen tarkistus on erillinen työ.
-3. Säilytä läpäisseen stressin ja täyden 30 minuutin soakin lähdesidonta;
+1. Viimeistele normaali PR puhtaasta lähteestä, yksityisyystarkistus ja
+   täsmällisen headin portit sekä riippuvuusauditointi. Nykyiset hosted-
+   ensihylkäykset ja puuttuvat alkuperäiset syyt säilyvät avoimina.
+2. Säilytä läpäisseen stressin ja täyden 30 minuutin soakin lähdesidonta;
    mahdollinen myöhempi toiminnallinen muutos arvioidaan vaikutusalueensa mukaan.
-4. Varmenna yksityisyys, täsmä-PR-headin auditointi ja portit, normaali
-   suojattu merge sekä uuden mainin omat portit. Muuttunut lähde vaatii
-   vaikutusalueensa katselmuksen.
+3. Vaadi normaali suojattu merge sekä uuden mainin omat portit.
+   Muuttunut lähde vaatii vaikutusalueensa katselmuksen; paikallinen
+   pakettinäyttö ei yksin hyväksy W7.5:tä tai koko 0.3.0:aa.
 
 Puhtaan paketin tai PR/mainin hyväksyntää ei vielä ole.
 Aiemmat worker-/IPC-, aikakatkaisu-,

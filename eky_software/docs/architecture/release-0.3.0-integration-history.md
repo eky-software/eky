@@ -19724,3 +19724,38 @@ vähän varaa. Työ eteni poisto-, metadata- ja viimeistelyvaiheiden läpi;
 yhtä pysähtynyttä kutsua ei todettu. Erillinen nykyisen Node-vaiheen ajo
 läpäisi 586 testiä, 12 ohitettiin. Kumpikaan ei muuta alkuperäistä koko
 komentoa onnistuneeksi tai todista hitautta korjatuksi.
+
+<a id="w75-selector-readiness-package-20261114"></a>
+
+## Valitsimen tukiviennin pakettitodennus 14.11.2026
+
+Ensimmäinen puhtaan `d0c8c27c`-lähteen pilot-paketti läpäisi tavallisen
+smoken ja neljä palautustapausta. Viimeisen yrityksen poisto/restart hylkäsi
+valitsimen `supportBundle`-vaiheessa, ei testin aikarajaan. Alkuperäinen
+main-poikkeus `WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED` löytyi nykyisestä
+keräyksestä ennen yleistä savutestivirhettä. Ensimmäinen paketti, virhe ja
+epävarman semanttisen loppusiivouksen tila säilyvät erillisinä.
+
+Savutestin suora tukivientikutsu ohitti käyttöliittymän valmiusehdon.
+Vanhan lähteen vastakoe hylkäsi; korjaus odottaa nykyistä käytössä olevaa
+valitsimen tukivientiohjainta ennen yhtä bridge-kutsua. Palvelun keskeneräisen
+työn esto ja viennin tuore valtuus säilyvät. Lähteestä päätelty alkutilaluvun
+kilpailu ei todista ensimmäisen ajon kaikkia sisäisiä tiloja tai selitä
+muita historiallisia hylkäyksiä. [Omistava sopimus](support-bundle-plan.md)
+rajaa valmiusodotuksen nykyisten vaihe- ja kokonaisbudjettien sisään.
+
+Korjauksen 360 testin vaikutussarja, 43 pakettiajurin ja salatun
+virhetoimituksen kontrollia, tyypitys ja rajattu riippumaton katselmus
+läpäisivät. Nämä eivät korvaa native-ketjua. Uusi puhdas `03f97967`-paketti
+rakennettiin kerran: tavallinen smoke ja kaikki viisi nykyistä paketoitua
+palautus/poistotapausta läpäisivät ilman uusintoja. Samat lähteet,
+supervisorin valitut tavut ja koko paketin inventaariosidos säilyivät.
+Ketju kattoi vanhan 038-varmuuskopion, keskeytyneen luonnin ja tuonnin,
+sidotun tuonnin sekä viimeisen yrityksen poiston ja restartin tyhjään
+valitsimeen. Viimeinen tapaus vaati myös prosessipuun poissaolon,
+diagnostiikan, portin vapautumisen ja siivouksen onnistumisen.
+
+Tämä on nimetyn puhtaan paketin näyttö, ei PR/main- tai W7.5-loppuhyväksyntä.
+Myöhempi dokumentointicommit ei muuta testatun paketin build-identiteettiä.
+Ensimmäinen hylkäys ei muutu jälkikäteen onnistuneeksi. [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa seuraavan integraatioportin.
