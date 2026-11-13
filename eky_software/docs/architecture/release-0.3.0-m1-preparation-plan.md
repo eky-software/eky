@@ -7,132 +7,76 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 ## Jatka tästä
 
-**14.11.2026: W7.5 A-E odottaa integraatioportteja.** Työhaara on
-`codex/w7-5-deletion-feedback`, lähdeporttien lähtö-HEAD `f704c6e3`; hyväksytty lähtö on
-suojattu main `9657fdc1` ja PR #327/#328. Säilytä kaikki paikalliset muutokset.
-Omistaja on jatkanut samaa Goalia. [Täysi W7.5-sopimus ja portit](local-company-workspace-plan.md#w75-toteutussuunnitelma)
-sekä [tuontijournalin kutsujasopimus](local-company-workspace-plan.md#w75-original-import-read-contract-20261112)
-säilyvät. W7.0-W7.4 ja muut hyväksytyt paketit eivät avaudu ilman regressiota.
+**14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
+Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
+ensimmäisen CI-kierroksen head `e2acc40e`. Hyväksytty lähtö on main `9657fdc1`
+ja PR #327/#328. Säilytä kaikki paikalliset korjaukset.
+[Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+sekä [tuontijournalin](local-company-workspace-plan.md#w75-original-import-read-contract-20261112)
+ja [sidontatallentimen](local-company-workspace-plan.md#w75-binding-leading-read-20261113)
+hyväksytyt rajaukset säilyvät. Hyväksyttyjä paketteja ei avata ilman regressiota.
 
-**Omistaja jatkoi samaa Goalia 13.11. päiväpalaverin jälkeen.**
-[Sidontatallentimen hyväksytty lähdekytkentä](local-company-workspace-plan.md#w75-binding-leading-read-20261113)
-on toteutettu ja sen normaalit lähdeportit sekä oikeat Electronin poisto-
-ja rajatun tukiviennin kohdepolut läpäisivät. Puhdas korjattu lähde
-`03f97967` rakennettiin kerran pilot-paketiksi. Sen tavallinen smoke ja
-kaikki viisi paketoitua palautus/poistotapausta läpäisivät samoilla
-tavuilla, ilman uusintoja. Viimeisen yrityksen poisto/restart vaati myös
-prosessipuun poissaolon, portin vapautumisen ja siivouksen onnistumisen.
-[Ensimmäinen pakettihylkäys ja korjauksen rajaus](release-0.3.0-integration-history.md#w75-selector-readiness-package-20261114)
-säilyvät erillisinä. Vain smoke-ohjauksen ajoitus muuttui; palvelun
-keskeneräisen työn estoa ei kevennetty. Vastakoe, 360 testin vaikutussarja,
-43 pakettiajurin ja salatun virhetoimituksen kontrollia, tyypitys sekä
-riippumaton katselmus läpäisivät. Paikallinen pakettinäyttö on sidottu
-revisioon `03f97967`; myöhempi pelkkä checkpoint-teksti ei vaihda sen
-build-identiteettiä. PR:n täsmällisen headin ja mainin omat portit ovat avoinna.
-`DESK-DELETE-RECOVERY-001` säilyttää sovitun 150 sekunnin kokonaisrajan
-ja 100 sekunnin tulosodotuksen; globaali 10 sekunnin oletus ei muutu.
+**Ensimmäinen PR-kierros hylkäsi.**
+[V2-ajo 43517211792](https://github.com/eky-software/eky/actions/runs/43517211792)
+päättyi: 28 onnistui, viisi hylkäsi, yksi peruttiin ja kymmenen ohitettiin.
+Ohituksista kuusi oli tarkoituksella valitsemattomia diagnostiikkatöitä;
+neljä muuta ei ole hyväksyttyä kattavuutta. Todellinen checkout oli
+`b0326c603627e12cb901e8061fb899895aed5da2`, ei PR-head.
+[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43517211725)
+läpäisi. PR ei ole mergevalmis.
+
+Nykyinen rajattu korjaus ja avoimet syyt:
+- Linuxin system/web pysähtyivät työkalujen `metadataInvalid`-ennakkotarkistukseen.
+  Alkuperäiset salatut paketit, ajosidonnat ja säilyneet tavut varmennettiin.
+  Tarkka hylännyt tarkistus puuttuu: lähdekiintiö säilytti yhden invokaation
+  toistovirheitä. Keräimen korjattu järjestys antaa eri invokaatioiden
+  yhteenvedoille ja ensimmäisille virheille etusijan toistoihin nähden.
+  Nykyiset rajat ja validoinnit säilyvät. Rajatut 79 kontrollia ja koko
+  nykyinen 371 testin salatun virheaineiston komento läpäisivät; joukot
+  ovat päällekkäisiä. Oikea salaus/purku, alkuperäisten tavujen vertailu
+  ja riippumaton katselmus läpäisivät.
+  Tämä korjaa todetun keräysaukon, ei tuntematonta Linuxin alisyytä.
+- Workspace-sopimustesti odotti vanhaa tukiviennin JavaScript-ilmaisua.
+  Kahden kontrolloidun fixtureväittämän korjaus ja salaus/purku läpäisivät;
+  todellisen valmiusodotuksen oma suorituskoe säilyy erillisenä.
+- Electronin alkuperäinen väittämä osoitti vain siltalistan puuttuvan
+  `deleteWorkspace`-metodin. Täsmällinen sallittujen metodien lista päivitettiin;
+  nimetty oikean Electronin rajatesti läpäisi ilman uusintaa.
+  Raakaa IPC:tä, Nodea tai tiedostopääsyä ei sallittu.
+- Desktopin Linux-sarja hylkäsi 87 testiä neljässä tiedostossa.
+  Rajatut fixturekorjaukset koskevat yksityisiä hakemisto-/tiedosto-oikeuksia
+  ja vanhaa smoke-odotusta. Kolmen tiedoston 868 testiä sekä erillisen
+  käynnistystiedoston 28 testiä ja tyypitys läpäisivät. Käynnistysfixture
+  valmistelee todellisen valitun juuren ja vaatii täsmälleen tarkoitetun
+  alkuperäisen virheen; sen vanhan CI-virheen puuttuvaa alisyytä ei arvata.
+  Windows-läpäisy ei yksin todista Linux-korjausta. Koontihylkäys on
+  seurannainen, ei erillinen juurisyy. Korjausten rajattu riippumaton
+  katselmus ei löytänyt uutta korjattavaa.
+
+Jo säilyvä lähdenäyttö: normaali koko desktop-komento ja sama 23 kohteen /
+kymmenen roolin ketju läpäisivät 240 sekunnin testirajassa; web-, backend-,
+HTTP- ja E2E-ajurien vaikutusportit sekä stress ja täysi soak läpäisivät.
+Oikeat Electronin poisto-/tukivientipolut läpäisivät ilman uusintoja.
+Puhdas lähde `03f97967` rakennettiin kerran: tavallinen hardened smoke ja
+kaikki viisi paketoitua palautus/poistotapausta läpäisivät samoilla tavuilla.
+Myöhempi checkpoint-commit ei vaihda paketin build-identiteettiä.
+Koko A-E:n riippumaton koodikatselmus valmistui; muuttuneet korjaukset
+katselmoidaan erikseen. [Täsmällinen aiempi näyttö ja avoimet ensihylkäykset](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330)
+säilyvät historiassa, eivät rinnakkaisena työjonona.
+
+Seuraavaksi:
+1. Julkaise tarkistettu rajattu korjausjoukko normaalisti PR #330:een;
+   säilytä alkuperäiset virheet ja erilliset lähdesidonnat.
+2. Vaadi jäädytetyn korjausrevision normaalit PR-portit sekä auditointi.
+   Puuttuva Linux-alisyy tai uusi hylkäys käsitellään aineistosta; ei vihreyteen
+   tähtäävää uusintasilmukkaa tai aikarajojen/turvavartijoiden kevennystä.
+3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
+   main-revision omat tarkistukset. W7.5 tai koko 0.3.0 ei ole vielä hyväksytty.
+
+`DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
+tulosodotus; globaali 10 sekunnin oletus ei muutu. Aiemmat timeoutit,
+tuntemattomat syyt ja siivousepävarmuudet säilyvät avoimina.
 Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
-Rajatut lähtö-/ehdokaskontrollit ja tyypitys läpäisivät; alkuperäisen
-testimoduulin 31 kontrollia sekä ehdokkaan 35 kontrollia todennettiin.
-Katselmuksen aikaisimman callback-rajan testiaukko korjattiin ja vastakokeella
-todennettiin; muita avoimia rajatun katselmuksen löydöksiä ei jäänyt.
-Omistaja hyväksyi rajatun kytkennän ja portit 13.11.2026. Pysyvät regressiot,
-tyypitys, kytkennän katselmus ja sama 23 kohteen ketju läpäisivät.
-Tämä ei ole W7.5:n loppuhyväksyntä.
-
-**Nykyinen normaali koko desktop-komento läpäisi:** 486 testitiedostoa,
-12 534 läpäissyttä testiä ja 13 ohitusta; sen jälkeen sama kymmenen roolin
-ja 23 kohteen poistoketju läpäisi nykyisessä 240 sekunnin testirajassa.
-Myös viimeinen Node-vaihe läpäisi: 586 testiä ja 12 ohitusta. Ajolähteiden
-tavut ja muuttuneiden lähteiden joukko säilyivät. Kytkennän 35 pysyvää
-kontrollia, kahdeksan tiedoston vaikutussarja ja tyypitys sekä rajattu
-riippumaton katselmus läpäisivät. Kohdesarjat ovat osin päällekkäisiä.
-[Edellinen koko ajo](release-0.3.0-integration-history.md#w75-desktop-whole03-20261113)
-ja sen ensihylkäykset säilyvät hylättyinä. Yksi normaali läpäisy ei ole
-yleinen nopeus-/vakaustakuu tai W7.5:n paketti-/PR/main-hyväksyntä.
-
-Nykyinen rajattu näyttö:
-- Oikean kehitys-Electronin palautushallinnan lomake läpäisi poiston ja
-  fyysisen restartin. Kuusi muuta nykyistä poistotapausta läpäisi: tavallisen
-  lomakkeen kaksi kohdetta sekä aktiivinen, passiivinen, viimeinen ja
-  vikatilainen yritys. Valitsimen kolme rajatun tukiviennin tapausta läpäisi
-  virallisen tarkastimen ja peruutuksen. Jokainen tapaus ajoi kerran ilman
-  uusintaa; samat lähde- ja valittujen build-tavujen tiivisteet säilyivät.
-  Nykyinen eristetty fixture vaatii myös sulun ja siivouksen onnistumisen.
-  Kahdeksan erillistä nykyistä rajatapausta läpäisi myös täyden v2-/legacy-
-  tukiviennin, native-dialogin sulun, poistoperuutuksen, pidettyjen töiden
-  odottamisen sekä salatun backupin valmistelun ja muutoksen torjunnan.
-  Tämä on development-ketjun näyttö, ei puhtaan hardened-paketin hyväksyntä.
-- Normaali E2E-testiajurin komento läpäisi molemmat Node-vaiheet
-  (874 ja 515 testiä, ei hylkäyksiä tai ohituksia) sekä tyyppitarkistuksen.
-  Nykyinen desktop-stress läpäisi koko sovitun työkuorman, samoin täysi
-  30 minuutin soak loppu- ja siivoustarkistuksineen. Samat lähde- ja valitut
-  build-tavut säilyivät. Tämä ei ole yleinen suorituskyky- tai vakaustakuu.
-- [Edellinen koko desktop-ajo](release-0.3.0-integration-history.md#w75-source-byte-rebind-20261113)
-  hylkäsi: 12 517 läpäisi, yhdeksän hylkäsi (seitsemän aikakatkaisua ja kaksi
-  tavusidonnan väittämää), 13 ohitettiin; rooli- ja Node-vaiheet eivät ajaneet.
-  Alkuperäiset virheet säilyvät. Myöhempi kohdeläpäisy ei hyväksy tuota sarjaa.
-- [Valittujen tavujen loppusidonta](release-0.3.0-integration-history.md#w75-source-byte-rebind-20261113)
-  lukee ja tiivistää tavut uudelleen viimeisen asynkronisen callbackin jälkeen
-  saman muuttamattoman 35 sekunnin määräajan sisällä. Lopullinen kohdesarja
-  läpäisi 91 testiä, kolme Windowsissa soveltumatonta ohitettiin; tyypitys,
-  kontrollit ja digest-vastakoe läpäisivät. Tämä ei lupaa atomista snapshotia.
-- Loppusidonnan [seitsemän nimetyn tapauksen testibudjetit](../ai/testing-rules.md#w75-current-seven-case-budgets)
-  muuttuivat; rungot ja 602 nimen/järjestys tarkistettiin, tyypitys ja normaali
-  seitsemän kohteen ajo läpäisivät. Tämä ei ole nopeus- tai juurisyykorjaus.
-  Myöhempi erillinen [16 tapauksen rajaus](../ai/testing-rules.md#w75-current-sixteen-case-budgets)
-  ja sen näyttö säilyvät omistavassa testausohjeessa. Sovelluksen, CI:n,
-  turvan ja siivouksen rajat säilyvät.
-- Riippumaton koko A-E:n rajattu koodiloppukatselmus valmistui.
-  Sen P2-regressiotodiste korjattiin; avoimia uusia koodilöydöksiä ei jäänyt.
-  Myöhempien muutosten riippumaton rajattu katselmus ja nykyisten
-  julkaistavien tiedostojen yksityisyystarkistus eivät löytäneet uutta
-  korjattavaa. Lopullinen staged-sisältö tarkistetaan vielä ennen committia.
-  Lähdekatselmus ei ole ajonaikainen tai paketin hyväksyntä.
-- Nykyisen web-paketin normaali testikomento läpäisi 1 251 testiä 166
-  tiedostossa ilman ohituksia. Tyyppitarkistus ja build läpäisivät;
-  tallennetut web-/jaettujen lähteiden tiivisteet säilyivät. Tämä ei korvaa
-  oikeaa Electron-käyttäjäpolkua tai puhtaan paketin portteja.
-- [Suorien system-koostamistestien yksityinen tunnistevälitys](release-0.3.0-integration-history.md#w75-direct-composition-relay-20261113)
-  korjattiin viidessä tiedostossa. Todellisten kutsujien regressiot, tyypitys
-  sekä kolme salaus/purku-varianttia ja 12 raporttitiedoston tarkka palautus
-  läpäisivät. Tämä ei selitä hosted-hylkäystä tai korjaa erillistä web-ajoa.
-- Mainin uudet [V2](https://github.com/eky-software/eky/actions/runs/43403911094)-
-  ja [riippuvuusauditointiajot](https://github.com/eky-software/eky/actions/runs/43404673471)
-  hylkäsivät samalla main-revisiolla. Tuotantoauditointi löysi seitsemän
-  haavoittuvuutta mainin Hono/Node-adapterin ketjusta. [Rajattu paikallinen
-  korjausehdokas](local-company-workspace-plan.md#pakollisen-http-riippuvuusauditoinnin-korjaus-13112026)
-  läpäisi tuotanto-/koko auditoinnin, allekirjoitukset, 149 HTTP-kontrollia,
-  normaalin backend-komennon (16 Node, 4 393 Vitest; viisi ohitettu),
-  backend-/desktop-tyypityksen, backend-buildin ja rajatun katselmuksen.
-  Tämä ei hyväksy mainia tai korvaa paketti-/PR/main-portteja. Molemmat
-  system-security-/web-critical-ajot pysähtyivät Linuxin työkaluvartijan
-  `metadataInvalid`-valmisteluun ennen varsinaista työkuormaa. Täsmällinen
-  hylännyt tarkistus ei tallentunut mainin keräykseen; sitä ei arvata.
-  Alkuperäiset salatut liitteet säilytettiin ja niiden GitHub-tiivisteet
-  varmennettiin. Molempien pakettien purku, manifestien ajosidonta ja kaikkien
-  säilyneiden tiedostojen tiivisteet varmennettiin. Tarkka hylännyt
-  työkalutarkistus puuttuu edelleen; nykyisen kytkennän hosted-todennus on tekemättä.
-
-Seuraavat portit järjestyksessä:
-1. Viimeistele normaali PR puhtaasta lähteestä, yksityisyystarkistus ja
-   täsmällisen headin portit sekä riippuvuusauditointi. Nykyiset hosted-
-   ensihylkäykset ja puuttuvat alkuperäiset syyt säilyvät avoimina.
-2. Säilytä läpäisseen stressin ja täyden 30 minuutin soakin lähdesidonta;
-   mahdollinen myöhempi toiminnallinen muutos arvioidaan vaikutusalueensa mukaan.
-3. Vaadi normaali suojattu merge sekä uuden mainin omat portit.
-   Muuttunut lähde vaatii vaikutusalueensa katselmuksen; paikallinen
-   pakettinäyttö ei yksin hyväksy W7.5:tä tai koko 0.3.0:aa.
-
-Puhtaan paketin tai PR/mainin hyväksyntää ei vielä ole.
-Aiemmat worker-/IPC-, aikakatkaisu-,
-metadata- ja Linux-hylkäysten tuntemattomat syyt sekä siivousepävarmuudet
-säilyvät avoimina; kohdetulos ei sulje niitä. Ei uutta yleistä optimointi-
-tai havaintokerrosta ilman regressiota tai pakollisen portin osoittamaa estettä.
-
-[Edellinen aktiiviosuus säilytettynä](release-0.3.0-integration-history.md#m1-checkpoint-20261113):
-päivätty näyttö, päätösperustelut ja alkuperäiset caller-/sopimuslinkit.
-Tämä huolto ei muuta Goalin rajoja, hyväksyntäehtoja tai valtuuksia.
 
 ## Voimassa olevat sopimukset
 
