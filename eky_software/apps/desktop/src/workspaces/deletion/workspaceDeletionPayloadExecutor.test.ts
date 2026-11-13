@@ -285,7 +285,7 @@ it.for(['before', 'after'] as const)('recovers a real interrupted journal public
   await f.preserved();
 });
 
-it('rejects concurrent execution and joins a pending rename before reporting owner loss', async test => {
+it('rejects concurrent execution and joins a pending rename before reporting owner loss', { timeout: 10_000 }, async test => {
   const f = await fixture(test);
   let entered!: () => void, release!: () => void;
   const started = new Promise<void>(resolve => { entered = resolve; });

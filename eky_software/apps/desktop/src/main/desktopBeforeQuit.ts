@@ -1,10 +1,11 @@
-interface DesktopQuitLifecycle {
+export interface DesktopQuitLifecycle {
   deferQuitForInstallerHandoff?(): boolean;
   shutdown(): Promise<void>;
 }
 
 interface DesktopBeforeQuitOptions {
   invalidateStartupReporting?(): void;
+  closeStartupAdmission?(): void;
   readLifecycle(): DesktopQuitLifecycle | undefined;
   quitApplication(): void;
 }
@@ -36,6 +37,8 @@ export function createDesktopBeforeQuitHandler(
       event.preventDefault();
       return;
     }
+    try { options.closeStartupAdmission?.(); }
+    catch { /* A closing-hook failure must not skip the owning lifecycle's drain. */ }
     if (shutdownState === 'settled') return;
     if (shutdownState === 'pending') {
       event.preventDefault();

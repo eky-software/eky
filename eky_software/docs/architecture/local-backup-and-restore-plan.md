@@ -1393,8 +1393,13 @@ Ensimmäinen havaittu virhe lukitaan ennen odotettavaa sulkua; myöhempi
 sulkuvirhe ei korvaa sitä. Jokaisen tiedoston todelliset tavut, koko,
 tiiviste, PDF-alkutunniste ja kahva-/polkuidentiteetti tarkistetaan edelleen.
 Viimeinen tiedostosidonta tehdään vasta kutsujan odotetun loppuvaltuuden
-jälkeen. Aiemman onnistumisen tiivistettä ei käytetä uusien tavujen lukemisen
-korvikkeena, eikä eräluku muuta aika- tai muistirajoja.
+jälkeen. Asynkronisen loppuvaltuuden jälkeen samat valitut tavut luetaan ja
+tiivisteet tarkistetaan uudelleen sekä tiedostoidentiteetit verrataan
+ensimmäiseen luentaan: samankokoisen tiedoston metadatan yhtäläisyys ei
+korvaa tavusidontaa. Molemmat lukukierrokset käyttävät samaa enintään neljän
+PDF:n erää, erillistä DB-lukua, määräaikaa ja sulkusopimusta. Aiemman
+onnistumisen tiivistettä ei käytetä uusien tavujen lukemisen korvikkeena,
+eikä eräluku muuta aika- tai muistirajoja.
 
 [Hyväksynnän ja siivouksen tilasopimus](release-0.3.0-m1-preparation-plan.md#v2az-hyväksynnän-pysyvyys-ja-alkuperäiskannan-poissaolo)
 erottaa pysyvän `accepted`-julkaisun sen jälkeisestä siivouksesta.

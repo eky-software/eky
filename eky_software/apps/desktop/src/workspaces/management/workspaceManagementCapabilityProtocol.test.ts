@@ -1,12 +1,18 @@
-import { describe, expect, it } from 'vitest';
+import { readFile } from 'node:fs/promises';
+import { Script } from 'node:vm';
+import { ModuleKind, ScriptTarget, transpileModule } from 'typescript';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   createWorkspaceOperationResult,
+  deleteWorkspaceIpcChannel,
   parseWorkspaceIdRequest,
   parseWorkspaceDeletionRequest,
   parseWorkspaceDeletionOperationResult,
   parseWorkspaceLabelRequest,
   parseWorkspaceRenameRequest,
+  parseWorkspaceRecoveryStatusResult,
+  parseWorkspaceStatusResult,
   workspaceManagementCapabilityProtocolVersion,
   workspaceManagementIpcChannels,
 } from './workspaceManagementCapabilityProtocol.js';
@@ -14,13 +20,55 @@ import {
 const workspaceId = '11111111-1111-4111-8111-111111111111';
 
 describe('workspace management capability protocol', () => {
+  it('selects the recovery status parser without widening the v1 shape', () => {
+    const recovery = {
+      formatVersion: 2,
+      mode: 'recoveryManagement',
+      runtimeState: 'absent',
+      maintenanceState: 'idle',
+      operationState: 'idle',
+      persistedActiveWorkspaceId: workspaceId,
+      target: { workspaceId, workspaceLabel: 'Synthetic company' },
+    };
+    expect(parseWorkspaceRecoveryStatusResult(recovery)).toEqual(recovery);
+    expect(() => parseWorkspaceStatusResult(recovery)).toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    expect(() => parseWorkspaceRecoveryStatusResult({ ...recovery, journal: 'private' }))
+      .toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+    expect(() => parseWorkspaceRecoveryStatusResult({ formatVersion: 2, mode: 'recoveryManagement',
+      runtimeState: 'absent', maintenanceState: 'idle', operationState: 'recoveryRequired' }))
+      .not.toThrow();
+  });
+
   it('uses one explicit protocol version and unique versioned channels', () => {
     expect(workspaceManagementCapabilityProtocolVersion).toBe(1);
-    expect(new Set(workspaceManagementIpcChannels).size).toBe(6);
-    expect(workspaceManagementIpcChannels).toHaveLength(6);
+    expect(new Set(workspaceManagementIpcChannels).size).toBe(7);
+    expect(workspaceManagementIpcChannels).toHaveLength(7);
+    expect(workspaceManagementIpcChannels).toContain(deleteWorkspaceIpcChannel);
     for (const channel of workspaceManagementIpcChannels) {
       expect(channel).toContain(':v1:');
     }
+  });
+
+  it('exposes only the fixed deletion command through the actual isolated preload', async () => {
+    const source = await readFile(new URL('../../preload/index.cts', import.meta.url), 'utf8');
+    const { outputText } = transpileModule(source, { compilerOptions: {
+      module: ModuleKind.CommonJS, target: ScriptTarget.ES2022,
+    }, fileName: 'index.cts' });
+    const result = Object.freeze({ formatVersion: 1, status: 'cancelled', nextAction: 'continue' });
+    const invoke = vi.fn(async () => result);
+    let api!: { deleteWorkspace(input: unknown): Promise<unknown> };
+    new Script(outputText).runInNewContext({ exports: {}, require(specifier: string) {
+      expect(specifier).toBe('electron');
+      return { contextBridge: { exposeInMainWorld(name: string, value: typeof api) {
+        expect(name).toBe('ekyDesktop'); api = value;
+      } }, ipcRenderer: { invoke } };
+    } });
+    const request = { formatVersion: 1, workspaceId, typedLabel: 'Synthetic company', backupChoice: 'explicitDataLoss' };
+    await expect(api.deleteWorkspace(request)).resolves.toBe(result);
+    expect(invoke).toHaveBeenCalledExactlyOnceWith(deleteWorkspaceIpcChannel, request);
+    expect(Object.isFrozen(api)).toBe(true);
+    expect(api).not.toHaveProperty('prepareDeletion');
+    expect(api).not.toHaveProperty('ipcRenderer');
   });
 
   it('accepts only exact workspace label requests', () => {
@@ -71,8 +119,6 @@ describe('workspace management capability protocol', () => {
       expect(Object.isFrozen(parsed)).toBe(true);
       input.typedLabel = 'Changed later';
       expect(parsed.typedLabel).toBe('Oma yritys Oy');
-      expect(workspaceManagementIpcChannels).toHaveLength(6);
-      expect(workspaceManagementIpcChannels.some(channel => channel.endsWith(':delete'))).toBe(false);
     },
   );
 
@@ -120,7 +166,6 @@ describe('workspace deletion operation result protocol', () => {
       const parsed = parseWorkspaceDeletionOperationResult({ formatVersion: 1, status: 'completed', navigation });
       expect(parsed).toEqual({ formatVersion: 1, status: 'completed', navigation });
       expect(Object.isFrozen(parsed)).toBe(true);
-      expect(workspaceManagementIpcChannels.some(channel => channel.endsWith(':delete'))).toBe(false);
     },
   );
 

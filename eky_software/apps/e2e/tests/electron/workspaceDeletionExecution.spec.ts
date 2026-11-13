@@ -13,12 +13,78 @@ import { expect, test, type IsolatedElectronHarness } from '../../src/fixtures/i
 import { createApprovedInvoiceWithPdf } from '../../src/journeys/invoicingApiJourney.js';
 
 type MainGlobal = typeof globalThis & { __EKY_ELECTRON_E2E__: {
-  workspaceDeletionExecutionProof: Pick<ReturnType<typeof createWorkspaceDeletionExecutionProof>, 'execute' | 'snapshot'>;
+  workspaceDeletionExecutionProof: Pick<ReturnType<typeof createWorkspaceDeletionExecutionProof>, 'execute' | 'snapshot'> & {
+    prepareRecovery(request: unknown): Promise<void>;
+  };
   backendIsRunning(): boolean;
   backendStartCount(): number;
 } };
 
 test.use({ e2eSelectorProfile: 'empty' });
+
+for (const keepForeign of [true, false]) {
+  test(`DESK-DELETE-UI-001 @critical @security @recovery deletes through the production form preload and default main command (last company: ${!keepForeign})`, async ({ e2eElectron }) => {
+    const targetLabel = 'Synthetic public deletion', foreignLabel = 'Synthetic public retained company';
+    if (keepForeign) await createCompany(e2eElectron, foreignLabel);
+    await createCompany(e2eElectron, targetLabel);
+    await openCompany(e2eElectron, targetLabel);
+    const target = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath);
+    const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
+    expect((await e2eElectron.api.get(`/invoices/${invoice.invoiceId}/pdf`)).status()).toBe(200);
+    expect((await e2eElectron.api.put('/company-settings/email-secret', {
+      data: { secret: 'Synthetic public deletion secret 2026!' },
+    })).status()).toBe(200);
+    expect(readFileSync(target.databaseFilePath).subarray(0, 16).toString()).toBe('SQLite format 3\0');
+    expect(existsSync(target.emailSecretFilePath)).toBe(true);
+    const before = readRegistry(e2eElectron);
+    const foreign = before.workspaces.find(entry => entry.workspaceId !== target.workspaceId);
+    expect(before.workspaces).toHaveLength(keepForeign ? 2 : 1);
+    expect(foreign === undefined).toBe(!keepForeign);
+    if (foreign !== undefined) expect(foreign.workspaceLabel).toBe(foreignLabel);
+    const foreignRoot = foreign === undefined ? undefined : join(e2eElectron.runtime.userDataPath, 'workspaces', foreign.workspaceId);
+    const foreignBytes = foreignRoot === undefined ? undefined : treeBytes(foreignRoot);
+    const external = join(e2eElectron.runRoot, 'public-deletion-external.pdf');
+    const externalBytes = Buffer.from('%PDF-1.7\nSynthetic public external archive\n%%EOF\n');
+    writeFileSync(external, externalBytes, { flag: 'wx' });
+    expect(await e2eElectron.electronApp.evaluate(() =>
+      (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.workspaceDeletionExecutionProof.snapshot().request)).toBe('notStarted');
+    expect(await e2eElectron.page.evaluate(() => 'ekyWorkspaceDeletionProof' in window)).toBe(false);
+    await e2eElectron.page.getByRole('button', {
+      name: `Vaihda yritystä. Aktiivinen yritys: ${targetLabel}`, exact: true,
+    }).click();
+    const dialog = e2eElectron.page.getByRole('dialog');
+    const row = dialog.getByRole('listitem').filter({ hasText: targetLabel });
+    await row.getByRole('button', { name: 'Poista yritys', exact: true }).click();
+    await expect(dialog.getByRole('heading', { name: 'Yrityksen lopullinen poisto', exact: true })).toBeVisible();
+    const submit = dialog.getByRole('button', { name: 'Jatka poistovahvistukseen', exact: true });
+    await expect(submit).toBeDisabled();
+    await dialog.getByLabel('Vahvista yrityksen nimi', { exact: true }).fill(targetLabel);
+    await dialog.getByRole('radio', { name: 'Jatkan ilman varmuuskopiota ja hyväksyn tietojen menetyksen', exact: true }).check();
+    await expect(submit).toBeEnabled();
+    const confirmationsBefore = await e2eElectron.electronApp.evaluate(() =>
+      (globalThis as unknown as { __EKY_ELECTRON_E2E__: { nativeAdapterSnapshot(): { messageBoxCount: number } } })
+        .__EKY_ELECTRON_E2E__.nativeAdapterSnapshot().messageBoxCount);
+    const observationsPath = e2eElectron.runtime.observationsPath;
+    const closed = await e2eElectron.performRelaunchingOperation(async () => { await submit.click(); });
+    expect(e2eElectron.runtime.sessionSecret === closed.previousSessionSecret).toBe(false);
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    const confirmations = readFileSync(observationsPath, 'utf8').split(/\r?\n/u).filter(Boolean)
+      .map(line => JSON.parse(line) as { operation: string }).filter(value => value.operation === 'showMessageBox');
+    expect(confirmations).toHaveLength(confirmationsBefore + 2);
+    assertRemoved(e2eElectron, target.workspaceRoot, foreign);
+    if (foreignRoot !== undefined) expect(treeBytes(foreignRoot)).toEqual(foreignBytes);
+    expect(readFileSync(external).equals(externalBytes)).toBe(true);
+    expect(await e2eElectron.electronApp.evaluate(() =>
+      (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.backendIsRunning())).toBe(false);
+    const session = e2eElectron.runtime.sessionSecret;
+    await e2eElectron.restart();
+    expect(e2eElectron.runtime.sessionSecret === session).toBe(false);
+    await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    assertRemoved(e2eElectron, target.workspaceRoot, foreign);
+    if (foreignRoot !== undefined) expect(treeBytes(foreignRoot)).toEqual(foreignBytes);
+    expect(readFileSync(external).equals(externalBytes)).toBe(true);
+  });
+}
 
 for (const keepForeign of [false, true]) {
   const scenario = keepForeign ? 'DESK-DELETE-ACTIVE-001' : 'DESK-DELETE-LAST-001';
@@ -166,6 +232,101 @@ test('DESK-DELETE-FAULT-001 @critical @security @recovery removes a corrupt data
   assertRemoved(e2eElectron, root, undefined);
 });
 
+test('DESK-DELETE-RECOVERY-001 @critical @security @recovery transfers actual startup ownership through the production form to terminal deletion', async ({ e2eElectron }) => {
+  const targetLabel = 'Synthetic interrupted recovery target', foreignLabel = 'Synthetic recovery retained company';
+  await createCompany(e2eElectron, foreignLabel);
+  await createCompany(e2eElectron, targetLabel);
+  await openCompany(e2eElectron, targetLabel);
+  const target = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath);
+  const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
+  expect((await e2eElectron.api.get(`/invoices/${invoice.invoiceId}/pdf`)).status()).toBe(200);
+  expect((await e2eElectron.api.put('/company-settings/email-secret', {
+    data: { secret: 'Synthetic recovery deletion SMTP secret 2026!' },
+  })).status()).toBe(200);
+  await e2eElectron.page.getByRole('button', {
+    name: `Vaihda yritystä. Aktiivinen yritys: ${targetLabel}`, exact: true,
+  }).click();
+  await openCompany(e2eElectron, foreignLabel);
+  const retained = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath);
+  const retainedInvoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
+  const retainedInvoiceData = await (await e2eElectron.api.get(`/invoices/${retainedInvoice.invoiceId}`)).json();
+  const retainedPdf = await (await e2eElectron.api.get(`/invoices/${retainedInvoice.invoiceId}/pdf`)).body();
+  expect((await e2eElectron.api.put('/company-settings/email-secret', {
+    data: { secret: 'Synthetic retained recovery company secret 2026!' },
+  })).status()).toBe(200);
+  const foreign = readRegistry(e2eElectron).workspaces.find(entry => entry.workspaceId !== target.workspaceId)!;
+  expect(foreign.workspaceLabel).toBe(foreignLabel);
+  const foreignRoot = join(e2eElectron.runtime.userDataPath, 'workspaces', foreign.workspaceId);
+  const external = join(e2eElectron.runRoot, 'recovery-retained-external.pdf');
+  const externalBytes = Buffer.from('%PDF-1.7\nSynthetic recovery external archive\n%%EOF\n');
+  writeFileSync(external, externalBytes, { flag: 'wx' });
+  await e2eElectron.electronApp.evaluate((_electron, request) =>
+    (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.workspaceDeletionExecutionProof.prepareRecovery(request),
+  { workspaceId: target.workspaceId });
+  const registryBefore = readFileSync(join(e2eElectron.runtime.userDataPath, WORKSPACE_REGISTRY_FILE_NAME));
+  const targetBefore = treeBytes(target.workspaceRoot), foreignBefore = treeBytes(foreignRoot);
+  const retainedSecret = readFileSync(retained.emailSecretFilePath);
+  expect(readFileSync(target.databaseFilePath).subarray(0, 16).toString()).toBe('SQLite format 3\0');
+  expect(existsSync(target.emailSecretFilePath)).toBe(true);
+  const previousSession = e2eElectron.runtime.sessionSecret;
+  await e2eElectron.restart();
+  expect(e2eElectron.runtime.sessionSecret === previousSession).toBe(false);
+  await expect(e2eElectron.page.getByRole('heading', { name: 'Yrityksen palautushallinta', exact: true })).toBeVisible();
+  const status = await e2eElectron.page.evaluate(() => (window as typeof window & { ekyDesktop: {
+    getWorkspaceManagementStatus(): Promise<unknown>;
+  } }).ekyDesktop.getWorkspaceManagementStatus());
+  expect(status).toEqual({ formatVersion: 2, mode: 'recoveryManagement', runtimeState: 'absent',
+    maintenanceState: 'idle', operationState: 'idle', persistedActiveWorkspaceId: retained.workspaceId,
+    target: { workspaceId: target.workspaceId, workspaceLabel: targetLabel } });
+  expect(readFileSync(join(e2eElectron.runtime.userDataPath, WORKSPACE_REGISTRY_FILE_NAME)).equals(registryBefore)).toBe(true);
+  expect(treeBytes(target.workspaceRoot)).toEqual(targetBefore);
+  expect(treeBytes(foreignRoot)).toEqual(foreignBefore);
+  expect(await e2eElectron.electronApp.evaluate(() => {
+    const main = (globalThis as MainGlobal).__EKY_ELECTRON_E2E__;
+    return { starts: main.backendStartCount(), running: main.backendIsRunning() };
+  })).toEqual({ starts: 0, running: false });
+  expect(await e2eElectron.electronApp.evaluate(() =>
+    (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.workspaceDeletionExecutionProof.snapshot().request)).toBe('notStarted');
+  const confirmationsBefore = await e2eElectron.electronApp.evaluate(() =>
+    (globalThis as unknown as { __EKY_ELECTRON_E2E__: { nativeAdapterSnapshot(): { messageBoxCount: number } } })
+      .__EKY_ELECTRON_E2E__.nativeAdapterSnapshot().messageBoxCount);
+  const recoverySession = e2eElectron.runtime.sessionSecret;
+  await e2eElectron.page.getByRole('button', { name: 'Poista yritys', exact: true }).click();
+  await expect(e2eElectron.page.getByRole('radio', { name: 'Luo ja tarkista varmuuskopio ennen poistoa', exact: true })).toHaveCount(0);
+  await e2eElectron.page.getByLabel('Vahvista yrityksen nimi', { exact: true }).fill(targetLabel);
+  const loss = e2eElectron.page.getByRole('radio', { name: 'Jatkan ilman varmuuskopiota ja hyväksyn tietojen menetyksen', exact: true });
+  await expect(loss).not.toBeChecked();
+  await loss.check();
+  e2eElectron.selectWorkspaceDeletionObservationRuntime();
+  await e2eElectron.page.getByRole('button', { name: 'Jatka poistovahvistukseen', exact: true }).click();
+  await expect(e2eElectron.page.getByRole('status').filter({ hasText: 'Yritys poistettiin. Voit sulkea Ekyn.' }))
+    .toHaveText('Yritys poistettiin. Voit sulkea Ekyn.', { timeout: 100_000 });
+  expect(e2eElectron.runtime.sessionSecret === recoverySession).toBe(true);
+  expect(await e2eElectron.electronApp.evaluate(() =>
+    (globalThis as unknown as { __EKY_ELECTRON_E2E__: { nativeAdapterSnapshot(): { messageBoxCount: number } } })
+      .__EKY_ELECTRON_E2E__.nativeAdapterSnapshot().messageBoxCount)).toBe(confirmationsBefore + 2);
+  expect(await e2eElectron.electronApp.evaluate(() =>
+    (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.workspaceDeletionExecutionProof.snapshot().request)).toBe('notStarted');
+  expect(e2eElectron.page.isClosed()).toBe(false);
+  assertRemoved(e2eElectron, target.workspaceRoot, foreign, retained.workspaceId);
+  expect(treeBytes(foreignRoot)).toEqual(foreignBefore);
+  expect(readFileSync(external).equals(externalBytes)).toBe(true);
+  expect(await e2eElectron.electronApp.evaluate(() =>
+    (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.backendStartCount())).toBe(0);
+  await e2eElectron.restart();
+  await expect(e2eElectron.page.getByRole('button', {
+    name: `Vaihda yritystä. Aktiivinen yritys: ${foreignLabel}`, exact: true,
+  })).toBeVisible();
+  assertRemoved(e2eElectron, target.workspaceRoot, foreign, retained.workspaceId);
+  expect(readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath).workspaceId).toBe(retained.workspaceId);
+  expect(await (await e2eElectron.api.get(`/invoices/${retainedInvoice.invoiceId}`)).json()).toEqual(retainedInvoiceData);
+  expect((await (await e2eElectron.api.get(`/invoices/${retainedInvoice.invoiceId}/pdf`)).body()).equals(retainedPdf)).toBe(true);
+  expect(readFileSync(retained.emailSecretFilePath).equals(retainedSecret)).toBe(true);
+  expect(readFileSync(external).equals(externalBytes)).toBe(true);
+  expect(await e2eElectron.electronApp.evaluate(() =>
+    (globalThis as MainGlobal).__EKY_ELECTRON_E2E__.backendStartCount())).toBe(1);
+});
+
 async function createCompany(harness: IsolatedElectronHarness, label: string) {
   await expect(harness.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
   await harness.page.getByRole('button', { name: 'Lisää yritys Ekyyn' }).click();
@@ -194,10 +355,10 @@ function readRegistry(harness: IsolatedElectronHarness): {
 }
 
 function assertRemoved(harness: IsolatedElectronHarness, targetRoot: string,
-  foreign: { workspaceId: string; workspaceLabel: string } | undefined) {
+  foreign: { workspaceId: string; workspaceLabel: string } | undefined, activeWorkspaceId: string | null = null) {
   expect(existsSync(targetRoot)).toBe(false);
   const registry = readRegistry(harness);
-  expect(registry.activeWorkspaceId).toBeNull();
+  expect(registry.activeWorkspaceId).toBe(activeWorkspaceId);
   expect(registry.workspaces).toEqual(foreign === undefined ? [] : [foreign]);
   assertDeletionArtifactsAbsent(harness);
 }

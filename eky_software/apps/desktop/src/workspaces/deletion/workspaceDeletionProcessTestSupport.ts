@@ -15,7 +15,7 @@ import { createSwitchRegistry, TEST_SOURCE_WORKSPACE_ID, TEST_TARGET_WORKSPACE_I
 import { deletionTestId } from './workspaceDeletionDataTestSupport.js';
 import type { WorkspaceDeletionJournal } from './workspaceDeletionJournalCodec.js';
 
-export type DeletionProcessCut = 'authorized' | 'payloadAbsent' | 'registryPublished' | 'originalFailure' |
+export type DeletionProcessCut = 'reservationAcquired' | 'authorized' | 'payloadAbsent' | 'registryPublished' | 'originalFailure' |
   `${'before' | 'after'}:${Exclude<WorkspaceDeletionJournal['phase'], 'authorized'>}`;
 type ChildMessage = { event: 'cut' | 'completed' | 'failed'; pid: number; cut?: DeletionProcessCut;
   receiptCount?: number; coldSettled?: boolean;
@@ -32,6 +32,11 @@ export async function assertDeletionReservationBusy(acquire: () => Promise<{ rel
 }
 
 export function startDeletionProcessChild(test: TestContext, config: Record<string, unknown>) {
+  const context = Object.freeze({
+    testId: typeof config.testId === 'string' ? config.testId : null,
+    mode: typeof config.mode === 'string' && ['publish', 'resume', 'resumeCold'].includes(config.mode) ? config.mode : null,
+    cut: typeof config.cut === 'string' ? config.cut : null,
+  });
   const env = { ...process.env };
   delete env.NODE_TEST_CONTEXT;
   const child = fork(fileURLToPath(new URL('../../../scripts/workspaceDeletionProcess.fixture.mjs', import.meta.url)), [], {
@@ -96,7 +101,7 @@ export function startDeletionProcessChild(test: TestContext, config: Record<stri
   child.send(config, error => { if (error) fail(error); });
   return {
     pid: child.pid,
-    readEvidence() { return Object.freeze({ atAbort, after: observe(), close: closeResult }); },
+    readEvidence() { return Object.freeze({ context, atAbort, after: observe(), close: closeResult }); },
     async message(event: ChildMessage['event']) {
       return wait(event, async () => {
         while (true) {

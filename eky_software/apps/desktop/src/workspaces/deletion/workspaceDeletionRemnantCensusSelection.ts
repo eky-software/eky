@@ -12,7 +12,11 @@ import { workspaceRemnantBindingInvalidCode as invalidCode } from './workspaceRe
 type Observation = ReturnType<typeof observeWorkspaceDeletionRemnants> extends AsyncGenerator<infer Row> ? Row : never;
 type Metadata = Extract<Observation, { observation: { kind: 'binding' } }>['observation'];
 type Candidate = Extract<Observation, { kind: 'metadataCandidate' }>['selection'];
-type RemnantCensusReceipt = Readonly<{ assertUnchanged(): Promise<void> }>;
+export type WorkspaceDeletionSourceReadAuthority = WorkspaceInspectionRemnantAuthority & {
+  onFailure(error: unknown): void;
+  assertRecoverySourceReadCurrent?(): void;
+};
+type RemnantCensusReceipt = Readonly<{ assertUnchanged(readAuthority?: WorkspaceDeletionSourceReadAuthority): Promise<void> }>;
 
 // A private, bounded source comparison at the publication boundary, NEVER a per-I/O mutation guard.
 // It supplements, and cannot replace, the publisher's target/registry and inventory-row EOF comparisons.
@@ -30,34 +34,68 @@ async function captureRemnantCensus(
 ): Promise<{ receipt: RemnantCensusReceipt; captureCompared(authority: WorkspaceInspectionRemnantAuthority,
   observe: (row: Observation) => void): Promise<RemnantCensusReceipt> }> {
   const check = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
-  let failed = false;
-  const guard = () => { if (failed) return invalidDeletionData(invalidCode); check(); };
+  let failed = false, retained = false;
+  let firstFailure: unknown;
+  const retain = (error: unknown) => { if (!retained) { retained = true; firstFailure = error; } failed = true; return firstFailure; };
+  const guard = () => { if (retained) throw firstFailure; if (failed) return invalidDeletionData(invalidCode); check(); };
   const selectedAuthority = { assertAuthority: guard, assertExternalSelection: authority.assertExternalSelection.bind(authority),
     assertWritersAbsent: authority.assertWritersAbsent.bind(authority) };
-  const read = async (observe?: (observation: Observation) => void) => {
+  const read = async (observe?: (observation: Observation) => void, port?: WorkspaceDeletionSourceReadAuthority) => {
+    const checkRead = port === undefined ? undefined : checkedDeletionAuthority(port.assertAuthority.bind(port), invalidCode);
+    const checkRecoveryReadCurrent = port?.assertRecoverySourceReadCurrent === undefined ? undefined :
+      checkedDeletionAuthority(port.assertRecoverySourceReadCurrent.bind(port), invalidCode);
+    let reading = true;
+    const expireRead = (error: unknown) => {
+      if (port === undefined) return;
+      retain(error); reading = false;
+      try { port.onFailure(error); } catch { /* Keep the first locally observed cause. */ }
+    };
+    const readGuard = () => {
+      try { guard(); if (!reading) return invalidDeletionData(invalidCode); checkRead?.(); }
+      catch (error) { expireRead(error); throw error; }
+    };
+    const awaited = async (work: () => Promise<void>) => {
+      try {
+        readGuard(); const value: unknown = await work(); readGuard();
+        if (value !== undefined) return invalidDeletionData(invalidCode);
+      } catch (error) { expireRead(error); throw error; }
+    };
+    const readAuthority = port === undefined ? selectedAuthority : {
+      assertAuthority: readGuard,
+      assertExternalSelection: () => awaited(port.assertExternalSelection.bind(port)),
+      assertWritersAbsent: () => awaited(selectedAuthority.assertWritersAbsent),
+      ...(checkRecoveryReadCurrent === undefined ? {} : { assertRecoverySourceReadCurrent: () => {
+        try {
+          readGuard(); checkRecoveryReadCurrent(); readGuard();
+        } catch (error) { expireRead(error); throw error; }
+      } }),
+    };
     const hash = sourceHash();
-    const source = observeWorkspaceDeletionRemnants(userDataRoot, selectedAuthority, reads, targetWorkspaceId);
+    const source = observeWorkspaceDeletionRemnants(userDataRoot, readAuthority, reads, targetWorkspaceId);
     let readFailed = false;
     let failure: unknown;
     try {
       while (true) {
-        guard();
+        readGuard();
         const next = await source.next();
-        guard();
+        readGuard();
         if (next.done) break;
         // Hash every source before the synchronous projection can inspect it.
         hash.update(JSON.stringify(sourceValue(next.value))).update('\n');
         observe?.(next.value);
-        guard();
+        readGuard();
       }
-    } catch (error) { readFailed = true; failure = error; }
+    } catch (error) {
+      readFailed = true; failure = error;
+      if (port !== undefined) { retain(error); reading = false; try { port.onFailure(error); } catch { /* Preserve read cause. */ } }
+    }
     try { await source.return(undefined); }
     catch (error) {
       if (readFailed) throw new AggregateError([failure, error], invalidCode);
       throw error;
     }
     if (readFailed) throw failure;
-    guard();
+    readGuard();
     return hash.digest('hex');
   };
   let baseline: string;
@@ -65,12 +103,12 @@ async function captureRemnantCensus(
     baseline = await read(onInitialObservation);
     if (expected !== undefined && baseline !== expected) return invalidDeletionData(invalidCode);
   } catch (error) { failed = true; throw error; }
-  const receipt = Object.freeze({ async assertUnchanged() {
+  const receipt = Object.freeze({ async assertUnchanged(port?: WorkspaceDeletionSourceReadAuthority) {
     try {
       guard();
-      if (await read() !== baseline) return invalidDeletionData(invalidCode);
+      if (await read(undefined, port) !== baseline) return invalidDeletionData(invalidCode);
       guard();
-    } catch (error) { failed = true; throw error; }
+    } catch (error) { if (port !== undefined) retain(error); failed = true; throw error; }
   } });
   return { receipt, async captureCompared(selectedAuthority: WorkspaceInspectionRemnantAuthority,
     observe: (observation: Observation) => void) {

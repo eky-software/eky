@@ -31,26 +31,42 @@ export interface WorkspaceDeletionMainCommand {
 }
 
 /** Reply follow-up only. It neither authorizes nor performs file deletion. */
-export function createWorkspaceDeletionResultRuntime(input: Readonly<{
+type WorkspaceDeletionResultRuntimeOptions = Readonly<{
   assertCurrent(): void;
   assertMainCurrent(): void;
   assertOwned(): Promise<void>;
   assertRuntimeAbsent(): Promise<void>;
   readRuntimeState(): 'available' | 'stopped' | 'unavailable';
   maintenanceState: WorkspaceMaintenanceStateReader;
-  runtimeRelaunch: Pick<DeferredWorkspaceRuntimeRelaunch, 'request' | 'complete' | 'isRequested' | 'hasDispatched'>;
-}>): Readonly<WorkspaceDeletionResultRuntime> {
+}> & (
+  | Readonly<{ kind?: 'runtime';
+    runtimeRelaunch: Pick<DeferredWorkspaceRuntimeRelaunch, 'request' | 'complete' | 'isRequested' | 'hasDispatched'>; }>
+  | Readonly<{ kind: 'recoveryManagement' }>
+);
+
+export function createWorkspaceDeletionResultRuntime(input: WorkspaceDeletionResultRuntimeOptions): Readonly<WorkspaceDeletionResultRuntime> {
   const check = input.assertCurrent.bind(input), owned = input.assertOwned.bind(input);
   const main = input.assertMainCurrent.bind(input);
   const absent = input.assertRuntimeAbsent.bind(input), readState = input.readRuntimeState.bind(input);
   const readMaintenance = input.maintenanceState.readState.bind(input.maintenanceState);
-  const request = input.runtimeRelaunch.request.bind(input.runtimeRelaunch);
-  const complete = input.runtimeRelaunch.complete.bind(input.runtimeRelaunch);
-  const requested = input.runtimeRelaunch.isRequested.bind(input.runtimeRelaunch);
-  const dispatched = input.runtimeRelaunch.hasDispatched.bind(input.runtimeRelaunch);
+  const recovery = input.kind === 'recoveryManagement';
+  const relaunch = input.kind === 'recoveryManagement' ? undefined : Object.freeze({
+    request: input.runtimeRelaunch.request.bind(input.runtimeRelaunch),
+    complete: input.runtimeRelaunch.complete.bind(input.runtimeRelaunch),
+    requested: input.runtimeRelaunch.isRequested.bind(input.runtimeRelaunch),
+    dispatched: input.runtimeRelaunch.hasDispatched.bind(input.runtimeRelaunch),
+  });
+  const requested = () => relaunch?.requested() ?? false;
+  const dispatched = () => relaunch?.dispatched() ?? false;
+  let recoveryFailure: { readonly cause: unknown } | undefined;
+  const retainFailure = (cause: unknown) => { recoveryFailure ??= { cause }; return recoveryFailure.cause; };
   let spent = false;
   const fail = (): never => { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); };
-  const assertCurrent = () => assertUpdateJournalAuthority(check);
+  const assertCurrent = () => {
+    if (recovery && recoveryFailure !== undefined) throw recoveryFailure.cause;
+    try { assertUpdateJournalAuthority(check); }
+    catch (cause) { throw recovery ? retainFailure(cause) : cause; }
+  };
   const assertStoppedIdle = () => {
     assertCurrent();
     if (readState() !== 'stopped' || readMaintenance() !== 'idle') fail();
@@ -58,14 +74,16 @@ export function createWorkspaceDeletionResultRuntime(input: Readonly<{
     assertCurrent();
   };
   const readNextAction: WorkspaceDeletionResultRuntime['readNextAction'] = () => {
-    assertCurrent();
-    const state = readState(), pending = requested(), sent = dispatched();
-    const idle = readMaintenance() === 'idle';
-    if (state === 'stopped') assertUpdateJournalAuthority(main);
-    assertCurrent();
-    if (idle && state === 'available' && !pending && !sent) return 'continue';
-    if (idle && state === 'stopped' && sent) return 'relaunching';
-    return 'restartRequired';
+    try {
+      assertCurrent();
+      const state = readState(), pending = requested(), sent = dispatched();
+      const idle = readMaintenance() === 'idle';
+      if (recovery || state === 'stopped') assertUpdateJournalAuthority(main);
+      assertCurrent();
+      if (idle && state === 'available' && !pending && !sent) return 'continue';
+      if (idle && state === 'stopped' && sent) return 'relaunching';
+      return 'restartRequired';
+    } catch (cause) { throw recovery ? retainFailure(cause) : cause; }
   };
   return Object.freeze({
     readNextAction,
@@ -87,101 +105,161 @@ export function createWorkspaceDeletionResultRuntime(input: Readonly<{
         errorCode: failure.code, sideEffectState: 'none', nextAction });
     },
     async complete(value: Readonly<WorkspaceDeletionCompletion>) {
-      if (spent) fail();
-      spent = true;
-      if (parseWorkspaceDeletionOperationResult(value).status !== 'completed' || requested()) fail();
-      // Only the capability's fulfilled service call enters here: its command
-      // and release have settled. Do not borrow the now-expired delete lease.
-      assertStoppedIdle();
-      await absent();
-      assertStoppedIdle();
-      await owned();
-      assertStoppedIdle();
-      request();
-      // Never await application shutdown from its own admitted management work.
-      complete(assertStoppedIdle);
-      if (!dispatched()) fail();
+      if (recovery && recoveryFailure !== undefined) throw recoveryFailure.cause;
+      try {
+        if (spent) fail();
+        spent = true;
+        if (parseWorkspaceDeletionOperationResult(value).status !== 'completed' || requested()) fail();
+        // Only the capability's fulfilled service call enters here: its command
+        // and release have settled. Do not borrow the now-expired delete lease.
+        assertStoppedIdle();
+        const absentResult: unknown = await absent();
+        if (recovery && absentResult !== undefined) fail();
+        assertStoppedIdle();
+        const ownedResult: unknown = await owned();
+        if (recovery && ownedResult !== undefined) fail();
+        assertStoppedIdle();
+        if (relaunch !== undefined) {
+          relaunch.request();
+          // Never await application shutdown from its own admitted management work.
+          relaunch.complete(assertStoppedIdle);
+          if (!dispatched()) fail();
+        }
+      } catch (cause) { throw recovery ? retainFailure(cause) : cause; }
     },
   });
 }
 
-export function bindWorkspaceDeletionContinuation(input: {
+type WorkspaceDeletionContinuationOptions = Readonly<{
   command: WorkspaceDeletionMainCommand;
-  activeWorkspaceId: WorkspaceId | null;
   assertCurrent(): void;
   assertOwned(): Promise<void>;
-  sealActiveMarker(): Promise<void>;
-  recordActiveRemoved(): void;
-}) {
+}> & (
+  | Readonly<{ kind?: 'runtime'; activeWorkspaceId: WorkspaceId | null;
+    sealActiveMarker(): Promise<void>; recordActiveRemoved(): void; }>
+  | Readonly<{ kind: 'recoveryManagement'; persistedActiveWorkspaceId: WorkspaceId | null;
+    assertRuntimeCurrent(): void; assertRuntimeAbsent(): Promise<void>; }>
+);
+
+export function bindWorkspaceDeletionContinuation(input: WorkspaceDeletionContinuationOptions) {
   // Capture collaborators before the first await; they are never renderer inputs.
   const publish = input.command.publish.bind(input.command);
   const resume = input.command.resume.bind(input.command);
   const assertMain = input.assertCurrent.bind(input);
   const assertOwned = input.assertOwned.bind(input);
-  const seal = input.sealActiveMarker.bind(input);
-  const recordActiveRemoved = input.recordActiveRemoved.bind(input);
-  const activeWorkspaceId = input.activeWorkspaceId;
+  const runtime = input.kind === 'recoveryManagement' ? undefined : Object.freeze({
+    activeWorkspaceId: input.activeWorkspaceId,
+    seal: input.sealActiveMarker.bind(input), recordActiveRemoved: input.recordActiveRemoved.bind(input),
+  });
+  const recovery = input.kind === 'recoveryManagement' ? Object.freeze({
+    persistedActiveWorkspaceId: input.persistedActiveWorkspaceId,
+    assertCurrent: input.assertRuntimeCurrent.bind(input), assertOwned: input.assertRuntimeAbsent.bind(input),
+  }) : undefined;
+  const persistedActiveWorkspaceId = input.kind === 'recoveryManagement' ? input.persistedActiveWorkspaceId : input.activeWorkspaceId;
+  let firstRecoveryFailure: { readonly cause: unknown } | undefined;
+  const retainRecoveryFailure = (cause: unknown) => { firstRecoveryFailure ??= { cause }; return firstRecoveryFailure.cause; };
   let selected: WorkspaceDeletionJournal | undefined;
   let publicationStarted = false;
   let captured = false;
   let removed = false;
   let recording = false;
-  const fail = (): never => { throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN'); };
-  const assertCurrent = () => assertUpdateJournalAuthority(assertMain);
+  const fail = (): never => {
+    const cause = new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    throw recovery === undefined ? cause : retainRecoveryFailure(cause);
+  };
+  const assertCurrent = () => {
+    if (recovery === undefined) return assertUpdateJournalAuthority(assertMain);
+    if (firstRecoveryFailure !== undefined) throw firstRecoveryFailure.cause;
+    try {
+      assertUpdateJournalAuthority(assertMain);
+      assertUpdateJournalAuthority(recovery.assertCurrent);
+      assertUpdateJournalAuthority(assertMain);
+    } catch (cause) { throw retainRecoveryFailure(cause); }
+  };
+  const assertRecoveryOwned = async () => {
+    try {
+      assertCurrent();
+      if (recovery !== undefined) {
+        const result: unknown = await recovery.assertOwned();
+        if (result !== undefined) fail();
+        assertCurrent();
+      }
+    } catch (cause) { throw retainRecoveryFailure(cause); }
+  };
   const preparationPublish: WorkspaceDeletionPreparationOptions['publish'] = async (
-    assertAuthority, assertPublicationCurrent, target, context, assertPreparationCurrent,
+    assertAuthority, assertPublicationCurrent, target, context, assertPreparationCurrent, assertPreparationReadOwned,
+    assertRecoverySourceReadCurrent,
   ) => {
-    assertCurrent();
-    if (publicationStarted || context.target !== target || target.previousActiveWorkspaceId !== activeWorkspaceId) fail();
-    publicationStarted = true;
-    if (target.workspaceId === activeWorkspaceId) await seal();
-    assertCurrent();
-    assertUpdateJournalAuthority(assertAuthority);
-    await assertPublicationCurrent();
-    assertCurrent();
-    assertUpdateJournalAuthority(assertAuthority);
-    const published = await publish(assertAuthority, assertPublicationCurrent, target, context, assertPreparationCurrent);
-    assertCurrent();
-    assertUpdateJournalAuthority(assertAuthority);
-    const journal = captureWorkspaceDeletionJournal(published.journal);
-    if (journal.phase !== 'authorized' || journal.target.operationId !== context.operationId ||
-        journal.target.workspaceId !== target.workspaceId || journal.target.lineageIdentity.profileId !== target.profileId ||
-        journal.target.registryEntrySha256 !== target.registryEntrySha256 || journal.registryBeforeSha256 !== target.registrySha256 ||
-        journal.previousActiveWorkspaceId !== target.previousActiveWorkspaceId || journal.backupDisposition !== context.backupDisposition ||
-        published.workspaceRootIdentity !== target.rootIdentity) fail();
-    selected = journal;
+    try {
+      assertCurrent();
+      if (assertRecoverySourceReadCurrent !== undefined && recovery === undefined) fail();
+      if (publicationStarted || context.target !== target || target.previousActiveWorkspaceId !== persistedActiveWorkspaceId) fail();
+      publicationStarted = true;
+      if (recovery !== undefined) await assertRecoveryOwned();
+      if (runtime !== undefined && target.workspaceId === runtime.activeWorkspaceId) await runtime.seal();
+      assertCurrent();
+      assertUpdateJournalAuthority(assertAuthority);
+      await assertPublicationCurrent();
+      assertCurrent();
+      assertUpdateJournalAuthority(assertAuthority);
+      const args = [assertAuthority, assertPublicationCurrent, target, context, assertPreparationCurrent] as const;
+      const published = await (assertRecoverySourceReadCurrent !== undefined
+        ? publish(...args, assertPreparationReadOwned, assertRecoverySourceReadCurrent)
+        : assertPreparationReadOwned === undefined ? publish(...args) : publish(...args, assertPreparationReadOwned));
+      assertCurrent();
+      assertUpdateJournalAuthority(assertAuthority);
+      const journal = captureWorkspaceDeletionJournal(published.journal);
+      if (journal.phase !== 'authorized' || journal.target.operationId !== context.operationId ||
+          journal.target.workspaceId !== target.workspaceId || journal.target.lineageIdentity.profileId !== target.profileId ||
+          journal.target.registryEntrySha256 !== target.registryEntrySha256 || journal.registryBeforeSha256 !== target.registrySha256 ||
+          journal.previousActiveWorkspaceId !== target.previousActiveWorkspaceId || journal.backupDisposition !== context.backupDisposition ||
+          published.workspaceRootIdentity !== target.rootIdentity) fail();
+      selected = journal;
+    } catch (cause) { throw recovery === undefined ? cause : retainRecoveryFailure(cause); }
   };
   const continuation: NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']> = {
     captureAuthority(operationId, assertLease) {
-      assertCurrent();
-      assertUpdateJournalAuthority(assertLease);
-      if (captured || selected === undefined || selected.target.operationId !== operationId) fail();
-      captured = true;
-      const binding = selected ?? fail();
-      const assertOwner = () => {
+      try {
         assertCurrent();
         assertUpdateJournalAuthority(assertLease);
-        assertCurrent();
-      };
-      return Object.freeze({
-        assertCurrent: assertOwner,
-        async assertOwned() { assertOwner(); await assertOwned(); assertOwner(); },
-        recordRemoved(value: unknown) {
-          if (recording || removed) fail();
-          recording = true;
+        if (captured || selected === undefined || selected.target.operationId !== operationId) fail();
+        captured = true;
+        const binding = selected ?? fail();
+        const assertOwner = () => {
           try {
-            deletionDataRecord(value, ['status', 'journal'], 'WORKSPACE_DELETE_JOURNAL_CONFLICT');
-            const terminal = captureWorkspaceDeletionJournal(value.journal);
-            if (value.status !== 'removed' || terminal.phase !== 'registryPublished' ||
-                !sameWorkspaceDeletionJournalBinding(binding, terminal)) fail();
-            // No await or external callback may separate the final guard from storage.
-            assertOwner();
-            removed = true;
-            if (binding.target.workspaceId === activeWorkspaceId) recordActiveRemoved();
-            return deletionCompletion(binding);
-          } finally { recording = false; }
-        },
-      });
+            assertCurrent();
+            assertUpdateJournalAuthority(assertLease);
+            assertCurrent();
+          } catch (cause) { throw recovery === undefined ? cause : retainRecoveryFailure(cause); }
+        };
+        return Object.freeze({
+          assertCurrent: assertOwner,
+          async assertOwned() {
+            try {
+              assertOwner(); const result: unknown = await assertOwned();
+              if (recovery !== undefined && result !== undefined) fail();
+              assertOwner();
+              if (recovery !== undefined) { await assertRecoveryOwned(); assertOwner(); }
+            } catch (cause) { throw recovery === undefined ? cause : retainRecoveryFailure(cause); }
+          },
+          recordRemoved(value: unknown) {
+            if (recording || removed) fail();
+            recording = true;
+            try {
+              deletionDataRecord(value, ['status', 'journal'], 'WORKSPACE_DELETE_JOURNAL_CONFLICT');
+              const terminal = captureWorkspaceDeletionJournal(value.journal);
+              if (value.status !== 'removed' || terminal.phase !== 'registryPublished' ||
+                  !sameWorkspaceDeletionJournalBinding(binding, terminal)) fail();
+              // No await or external callback may separate the final guard from storage.
+              assertOwner();
+              removed = true;
+              if (runtime !== undefined && binding.target.workspaceId === runtime.activeWorkspaceId) runtime.recordActiveRemoved();
+              return deletionCompletion(binding);
+            } catch (cause) { throw recovery === undefined ? cause : retainRecoveryFailure(cause); }
+            finally { recording = false; }
+          },
+        });
+      } catch (cause) { throw recovery === undefined ? cause : retainRecoveryFailure(cause); }
     },
     resume,
   };

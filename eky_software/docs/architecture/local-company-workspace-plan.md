@@ -2364,6 +2364,102 @@ käyttäytymissopimukset säilyvät. Vanhoja tutkimuskierroksia ei nosteta
 aktiiviseksi työjonoksi. Jokaisen palan tulos päivitetään tähän ja M1:een,
 eikä suunnittelun tarkistusta merkitä toteutuksen testinäytöksi.
 
+<a id="w75-binding-leading-read-20261113"></a>
+
+#### Sidontatallentimen alkuluennan rajattu koe 13.11.2026
+
+Koe koskee vain `WorkspaceRemnantBindingStore.clearCommittedAfterPayloadsAbsent`-
+metodin nykyistä `readSelection`-kutsutapaa ja sen yksityistä
+`withCommittedCleanup -> observe`-alkuluentaa. Nykyinen luentavaltuus
+korvaisi vain johtavan täyden tarkistuksen. Luvun jälkeinen täysi
+`external -> payloadAbsent -> external`-tarkistus säilyy. Luetut slotit,
+tavut, identiteetit, digest ja kohdesidonta tarkistetaan edelleen.
+
+Palautettavan valinnan poisto-/sync-vartija rakennetaan alkuperäisestä
+tiukasta valtuudesta, ei kevyestä luentavartijasta. Nykyiset varsinaisten
+muutosten ja jälkilukujen suojat, oletuskutsu ilman `readSelection`-arvoa,
+`inspectCommittedAfterPayloadsAbsent`-metodin todistusvoima sekä puuttuvan
+hakemiston tuore uusintahavainto säilyvät. Julkista `exclusive`-metodia
+ei kutsuta jo aktiivisen `exclusive`-lohkon sisältä.
+
+Kokeen havaintoero: vain pois jäävässä alkutarkistuksessa näkyvä ja ennen
+säilyvää täyttä tarkistusta täysin palautuva tila voi jäädä havaitsematta.
+Luentacallback voi käynnistyä aiemmin, joten kilpailevien virheiden järjestys
+voi muuttua. Pysyvä muutos estää jatkon. Vertaa lähtöä ja muistiehdokasta:
+oletus-/tarkastuspolut, palannut payload ennen poistoa ja synkronointia,
+muuttuneet slotit ja kohde, päättynyt valtuus, oikean tiedostokahvan pidetty
+luku ja sulku sekä ensivirheen säilyminen. Varmenna tyypitys ja rajattu
+riippumaton katselmus ennen mahdollista seuraavaa kokonaiskoetta.
+Sovelluksen, testien ja CI:n aikarajoja ei nosteta. Koe ei yksin hyväksy
+lähdekytkentää, pitkää ajoa tai vanhojen hylkäysten sulkemista.
+
+Rajattu näyttö: sama 20 kontrollin lähtö-/ehdokasvertailu läpäisi,
+samoin muuttumattomien oletus-/tarkastuspolkujen kohdesarja ja tyypitys.
+Vanhan opt-in-testimoduulin 31 kontrollia läpäisi lähtölähteellä;
+ehdokkaan 35 kontrollia säilyttää vanhat tapaustarkoitukset ja erottaa
+uuden alkuluennan odotuksen myöhemmän poistoluennan odotuksesta.
+Katselmuksen testiaukko korjattiin erottamalla myös alkuperäisten
+sidontatietojen muuttaminen uudessa aikaisimmassa callbackissa ja vanhassa
+täydessä tarkistuksessa. Myöhäisen sidonnan vastakoe hylkäsi vain uuden
+aikaisimman rajan kontrollin; oikea ehdokas läpäisi molemmat.
+Alkuperäinen ehdokkaan ja vanhojen odotusten hylkäys säilyy erillisenä.
+Tiukan palautetun muutosvartijan vastakoe hylkäsi tarkoituksella
+heikennetyn vartijan. Rajattu jälkikatselmus ja tyypitys läpäisivät.
+Omistaja hyväksyi 13.11.2026 rajatun lähdekytkennän nykyiseen tallentimeen
+ja pysyvät regressiot. Sama edellä kuvattu havaintoikkunan ja kilpailevien
+virheiden järjestysero hyväksytään tuotantolähteeseen; sitä ei kuvata
+muuttumattomaksi tarkistukseksi. Säilytä tiukka palautettu muutosvartija,
+oletus-/tarkastuspolut, tiedostotavut ja identiteetit sekä sulku- ja
+ensisyysuoja. Kohderegressioiden, tyypityksen ja rajatun katselmuksen jälkeen
+aja sama 23 kohteen rooliketju nykyisellä `test:deletion:roles`-komennolla
+240 sekunnin testirajassa. Pidemmät kolme aiempaa koebudjettia eivät ole
+ketjun nopeusnäyttöä. Koko W7.5:n paketti-/PR/main-portit ja alkuperäiset
+hylkäykset säilyvät; kytkentä ei ole niiden hyväksyntä.
+
+Kytketyn lähteen 35 pysyvää kontrollia, kahdeksan tiedoston vaikutussarja
+(167 läpäissyttä, yksi alustakohtainen ohitus), tyypitys ja rajattu
+riippumaton katselmus läpäisivät. Normaali koko desktop-komento läpäisi
+12 534 testiä (13 ohitusta), saman 23 kohteen ketjun nykyisessä rajassa
+sekä Node-vaiheen 586 testiä (12 ohitusta). Kohdesarjoja ei lasketa
+yhteen koko ajon kanssa. Tämä on nykyisen lähteen normaali portti, ei
+vanhojen hylkäysten sulkeminen, yleinen nopeustakuu tai paketti-/PR/main-hyväksyntä.
+
+Saman lähteen oikea development-Electronin palautushallinnan poistolomake
+ja fyysinen restart läpäisivät; kuusi muuta nykyistä poistotapausta sekä
+kolme valitsimen rajatun tukiviennin tapausta läpäisivät omat polkunsa.
+Kahdeksan muuta nykyistä rajatapausta läpäisi täyden v2-/legacy-tukiviennin,
+dialogin sulun, peruutuksen, pidettyjen töiden odotuksen sekä salatun backupin
+valmistelun ja muuttuneen backupin torjunnan.
+Jokainen ajoi kerran ilman uusintaa. Lähteen ja valittujen build-tavujen
+tiivisteet säilyivät; nykyinen eristetty fixture vaatii sulun ja siivouksen.
+Tämä ei korvaa puhtaan hardened-paketin, endurance-ajojen tai PR/mainin portteja.
+
+#### Pakollisen HTTP-riippuvuusauditoinnin korjaus 13.11.2026
+
+Nykyisen mainin tuotantoauditointi hylkäsi nykyiset Hono 4.13.11- ja
+`@hono/node-server` 2.1.3 -versiot. Rajattu olemassa olevien kirjastojen
+korjausehdokas on Hono 4.13.16 ja Node-adapteri 2.1.6, erillisinä
+tarkistettavina päivitysvaiheina. Uusia paketteja ei ehdoteta. Tarkista
+todellinen manifesti-/lockfile-diffi ennen asennusta; uusi riippuvuus
+palautuu nykyiseen riippuvuuden hyväksyntäporttiin.
+
+Varmenna tarkat pakettitavut, rekisteriallekirjoitukset, tuotanto- ja koko
+auditointi sekä nykyiset HTTP-, istunto-, body-/virhe- ja graceful-close-
+regressiot. Lisää rajattu adapterin pyyntöpolun hylkäyskontrolli
+julkaisijan sopimuksen mukaan. SQLite, Electron, yritysrajaus, palvelimen
+loopback-sidonta, sovelluksen/CI:n aikarajat ja kaikki W7.5-portit säilyvät.
+Riippuvuuskorjaus ei hyväksy alkuluennan kytkentää tai selitä erillisiä
+system-security-/web-critical-hylkäyksiä. Puhdas paketti ja PR/main-portit
+vaaditaan edelleen; metatietojen tarkistus ei ole niiden läpäisy.
+
+Paikallinen korjausehdokas läpäisi molemmat auditoinnit, rekisteriallekirjoitukset,
+tarkkojen tarball-tavujen eheyden, 149 HTTP-kontrollia sekä normaalin backendin
+16 Node- ja 4 393 Vitest-testiä; viisi ohitettiin. Backend-/desktop-tyypitys,
+backend-build ja rajattu riippumaton katselmus läpäisivät. Vanhojen HTTP-testien
+tavut ja kaikki muut lockfilen muutoksen ulkopuoliset tavut säilyivät.
+Uusia pakettinimiä ei tullut. Tämä on paikallinen vaikutusalueen todennus,
+ei puhtaan paketin, W7.5:n tai PR/main-porttien hyväksyntä.
+
 #### Tavoite ja säilyvät rajat
 
 Avataan nykyinen lopullinen poisto hallitusti nykyiseen yrityshallintaan,
@@ -2463,6 +2559,19 @@ kadonneesta vastauksesta rakenneta tekaistua historiallista onnistumista.
 
 #### Käyttöliittymän rajaus
 
+**8.11.2026, palautushallinnan nykyinen näkymäliitos:** valitsinkoosteen
+nimetty silta hyväksyy mainin tiukan v1/v2-vastauksen; business-silta säilyy
+v1:nä. Nykyinen ohjain, reducer ja dialogi säilyttävät v2:n erillisenä
+tilana ilman väärennettyä aktiiviosoitetta tai `ready`-yritystä. Vain
+joutilaana olevan main-kohteen poisto nykyisellä nimivahvistuksella ja
+menetyshyväksynnällä sallitaan; tavalliset komennot sekä backup-valmistelu
+estetään myös suoraan kutsuttaessa. Busy/selvitystila ei säilytä vanhaa
+kohdetta. Komennon alkaessa kaapattu v2-tulkinta päättää onnistumisen
+käsinsuljettavaan, ei-odottavaan tulosnäkymään ilman uutta lukua, komentoa
+tai automaattista paluuta. Vanhan session vastaus ei muuta uutta näkymää.
+[Rajattu näyttö ja vielä puuttuvat portit](release-0.3.0-integration-history.md#w75-recovery-ui-20261108)
+erotetaan koko W7.5:n hyväksynnästä.
+
 Poisto tulee nykyisen yrityslistan kohdekohtaiseen toimintaan, ei uuteen
 hallintasovellukseen. Nykyinen dialogi/pääsivun yhteinen lomake säilyttää
 fokuksen, näppäimistökäytön, suomenkieliset tekstit ja busy-estot.
@@ -2477,6 +2586,3310 @@ tukee vain avoimen kohdeyrityksen kopiota; passiiviseen tai vikatilaiseen
 kohteeseen ei luvata toimimatonta backup-vaihtoehtoa. Terveen passiivisen
 yrityksen voi avata nykyisellä erillisellä vaihtopolulla ennen poistoyritystä.
 Vikatilainen kohde käyttää hyväksyttyä erillistä menetyshyväksyntää.
+
+**C:n poistovahvistus ja näkymäsidonta 7.11.2026, ei julkista poistokanavaa:**
+`WorkspaceDeletionForm.tsx` on nykyisen featuren kontrolloitu lomake.
+Nykyinen lista/dialogi käyttää sitä vain erikseen annetun valinnaisen
+poistokyvykkyyden kanssa. Oikea `getDesktopWorkspaceManagement`, preload
+ja main eivät vielä julkaise tätä metodia; tavallinen selain ei saa sitä.
+`desktopWorkspaceManagement`
+omistaa saman v1-pyynnön tiukan lukijan ja mainin kanssa yhtäpitävän
+NFC-, kirjainkoko- ja välilyöntivertailun; ne eivät anna poistolupaa.
+Menetysvalintaa ei esivalita. Vain kutsujan todistama avoin kohde saa
+backup-vaihtoehdon; pelkkä tallennettu aktiivivalinta ei riitä.
+Pending estää kentät, paluun ja myös suoraan kutsutun submit-käsittelijän.
+Nykyinen 80 koodipisteen nimiraja säilyy myös UTF-16:n kahden yksikön merkeille.
+
+Katselmus löysi nimen merkityksellisten sisävälilyöntien visuaalisen
+tiivistymisen. Esitys korjattiin säilyttäväksi; selainkoe vaatii oikean
+CSS-tilan, täsmälliset tekstimerkit sekä yhden/kahden välilyönnin erottelun
+vahvistuksessa. Lopulliset 12 kohdetiedoston 256 testiä, webin ja E2E:n
+tyypitys sekä kaksi nykyisen eristetyn selaimen komponenttikoetta läpäisivät.
+Selaimen ja testipalvelujen sulku läpäisi nykyiset siivousehdot. Leveän ja
+kapean näkymän kuvakaappaukset tarkastettiin 125 prosentin tekstikoossa.
+Lomakkeen rajattuun jälkikatselmukseen ei jäänyt löydöstä. Ensimmäisen SSR-väittämän
+attribuuttikoko ja testin tapahtumatyyppi korjattiin; ensitulokset säilyvät.
+
+Historiallinen tulos:
+[9.11.2026, selaintestiapuri](release-0.3.0-workspace-history.md#w75-history-ui-test-module).
+
+Nykyinen `useWorkspaceManagement` ja reducer omistavat kohteen,
+capability-sukupolven ja vastauksen eliniän. Vanha status/success/catch
+ei muuta uutta sessiota tai vapauta sen odottavaa pyyntöä. Myös vanhat
+muokkaus- ja submit-käsittelijät vanhenevat kohteen, näkymän tai todellisen
+business-esityskontekstin vaihtuessa, myös kontekstin palatessa ennalleen.
+Kontekstin vaihto nollaa vielä aloittamattoman backup-/menetysvalinnan,
+mutta ei peru hyväksyttyä komentoa tai hukkaa sen nykyistä vastausta.
+Epävarma kuljetustulos estää uudet työt ilman loputonta pending-ilmoitusta;
+dialogin sulku/avaus tai statusuusinta ei poista tätä estoa. Vain mainin
+suljettu tulos voi osoittaa vaikutuksettomuuden tai hallitun jatkon.
+
+Historiallinen tulos:
+[W7.5 C:n ohjaimen selainnäyttö](release-0.3.0-workspace-history.md#w75-history-ui-controller).
+
+Testikatselmuksen kaksi väiteaukkoa tarkennettiin: vikatilaisen kohteen
+jokainen toimintonappi sekä valitsimen backup-eston vastakkainen syöte
+tarkistetaan erikseen. Selaimen fokus ja dialogin kapea/leveä esitys
+125 prosentin tekstikoossa todennettiin ja kuvat tarkastettiin.
+Pysyvä silta- ja dialogiregressio vaatii poistokanavan pysymään suljettuna.
+Selainkoe ohjaa vain puuttuvaa native-kyvykkyyttä: se ei kutsu desktopia,
+native-vahvistusta, tiedostoja tai poistopalvelua, joten uutta audit- tai
+operational-tapahtumaa ei synny. Virheet käyttävät nykyisen runnerin
+keräystä. Oikean IPC:n, poistamisen, restartin, paketin ja PR/main-porttien
+näyttö pysyy erillisenä; uusi palautushallinta tai v2-julkaisu ei aukea.
+
+**C:n v1-tilalistan vastaanottokorjaus 8.11.2026:** webin nykyinen lukija
+hylkää myös yrityslistan puuttuvat alkiot. Aidosti tyhjä lista säilyy
+sallittuna; muutos ei avaa poistokanavaa tai muuta mainin valtuuksia.
+[Rajattu näyttö](release-0.3.0-integration-history.md#w75-web-status-array-20261108)
+erottaa tämän lukijakorjauksen varsinaisen poistoketjun todentamisesta.
+
+**C:n käynnistysliitoksen lähderaja 7.11.2026, ei uutta kytkentää:**
+Ohjaimen valmistuminen ei ratkaise varhaisen hallinnan kohteen löytämistä.
+Nykyinen `desktopWorkspaceRecoveryObservation.test.ts` antaa havainnolle
+valmiin kohteen ja inventaario-otsakkeen. Sen todellinen varaus-, build-,
+registry- ja journalinäyttö ei siten todista, että varsinainen käynnistys
+löytää yhden sallitun kohteen kaikista tuetuista alkuperäisjournalien
+omistajista. Tallennettu aktiiviosoite ei yksin valitse tätä kohdetta.
+
+| Nykyinen kutsuraja | Varmennettu vastuu ja puuttuva liitos |
+| --- | --- |
+| `desktopComposition.ts`: `recoverDesktopWorkspaceDeletion` | Jo julkaistun poiston nykyinen cold-jatko säilyy ensimmäisenä; uutta hallintavalintaa ei käytetä sen peruuttamiseen tai ohittamiseen. |
+| `readColdWorkspaceRecoveryAdmissionFromRoot` | Nykyinen paluu on `none`/`creation`/`import`. Tämä ei löydä yleistä adoption-/activation-/paikallisen restoren hallintakohdetta eikä anna hallinnan tai poiston valtuutta. |
+| `createInstallationUpdateState` ja `recoverWorkspaceManagementBeforeRuntime` | Ensimmäinen voi jo jatkaa selector-returnia ja hyväksyntämetadatan palautumista; jälkimmäinen omistaa luonnin/tuonnin korjaavan recoveryn. Pelkkä niiden jälkeinen UI-haara ei toteuta ennen palautumista tehtävää käyttäjävalintaa. |
+| `captureWorkspaceDeletionOriginalJournals` ja nykyiset paikallisen restoren lukijat | Ne tarkistavat nimetyn kohteen todelliset slotit ja sidonnat. Kohteen löytävä vain luku -liitos tarvitsee silti tuoreen registry-/build-/varausvalinnan ja kaikkien muiden yritysten konfliktit; lukutulos ei muutu poistovaltuudeksi. |
+| `createSelectorOperationGuard` ja `MainOwnedSelectorWorkspaceLifecycle` | Tavallinen valitsin vaatii v2-rekisterin null-valinnan ja konfliktittoman tilanteen; lifecycle hylkää ei-null-edeltäjän. Näitä oletuksia ei väljennetä eikä rekisteriin kirjoiteta null-arvoa hallinnan näyttämistä varten. |
+| Status- ja pyyntöelinikä | Erillinen v2-parseri sekä palvelun/capabilityn vaihesuoja ovat perusta, eivät aktivoitu hallintaentry. Mainin lukutodisteen, hallintapalvelun ja lopullisen delete-leasen luovutus on vielä nimettävä samaan sopimukseen. |
+
+Seuraavan kohdan suunnittelusopimus täsmentää tämän liitoksen; todellinen
+kohteen löytö ja omistajuuden luovutus tarvitsevat vielä kokeen. Säilyvät sulku-, build-,
+varaus-, sisältö- ja muutosehdot sekä tavallisen onnistuvan recoveryn
+vertailu nimetään ennen kokeellista kytkentää. Tämä lähdetarkistus ei ole
+uusi runtime-, SQLite-, IPC- tai pakettitodiste; tuotantolupa säilyy erillisenä.
+
+**C:n kohteen löytämisen ja luovutuksen koesopimus 7.11.2026:**
+seuraava pala on vain luku -koe nykyisellä testipohjalla. Alla oleva
+suunnittelutulos ei vielä hyväksy uuden entryn, v2-vastauksen tai
+delete-IPC:n julkaisemista. Nykyisiä aikarajoja ei muuteta.
+
+1. `desktopComposition.ts` säilyttää jo julkaistun poiston cold-jatkon
+   ensimmäisenä. Sen työn, siivouksen ja leasen päätyttyä uusi havainto
+   sijoittuu **ennen** `readColdWorkspaceRecoveryAdmissionFromRoot`-kutsua
+   ja `createInstallationUpdateState`-valmistelua. Jälkimmäinen ei ole
+   pelkkä lukija. Asennuksen todellinen main-varaus ja single-instance-
+   omistajuus ovat voimassa jo ennen havaintoa; yhtään candidate- tai
+   business-runtimea ei ole tässä käynnistyksessä aloitettu.
+2. Havainto lukee nykyisen rekisteritallentimen `inspectSlots`-portilla
+   korjaamatta mitään. Uusi hallinta vaatii validoidun v2-currentin ilman
+   sivuslotteja. Kaikki tavut, tiedostoidentiteetti, entryt ja tallennettu
+   aktiiviosoite kiinnitetään; `ready` ei todista avointa tai tervettä
+   yritystä. Polut johdetaan mainin juuresta ja validoiduista entryistä.
+3. Kohdetta ei anneta kokeelle parametrina eikä arvata aktiiviosoitteesta.
+   Alla olevat nykyiset journal-/sidontaomistajat löytävät ehdokkaat.
+   Myös puuttuvat slotit kiinnitetään vertailuun. Lopputuloksen on oltava
+   täsmälleen yksi rekisteröity kohde ja sama lineage kaikissa sitä
+   koskevissa positiivisissa todisteissa. Tyhjä luettelo, orpo sidonta
+   tai pelkkä palautuskansio ei ole positiivinen kohdetodiste.
+4. `captureWorkspaceDeletionLocalUpdateSelection` säilyttää nykyiset
+   build-/päivitysehtonsa. Creation, switch, W6, julkaistu poisto,
+   legacy-juuren paikallinen restore ja vieraan yrityksen palautus eivät
+   kuulu kohdepoikkeukseen. Jokaisen rekisteröidyn yrityksen paikalliset
+   palautusslotit tarkistetaan, myös passiivisten yritysten. Läsnä oleva
+   sidottu yhteinen journal ei saa kuulua toiseen kohteeseen. Alku-/loppu-
+   ja myöhemmät tuoreet vertailut kattavat koko valinnan, eivät vain
+   löydettyä journalia. Tämä havainto ei hyväksy buildia tai tietokantaa.
+
+| Kohteen lähde | Nykyinen lukija ja vaadittu yhteys |
+| --- | --- |
+| Tuonti | `WorkspaceBackupImportJournalStore.inspectSlots`: journalin validoitu `workspaceId` ja `operationId` ohjaavat täsmälliseen `WorkspaceRemnantBindingStore.inspect`-lukuun. Julkaistu sidonta, rekisterin lineage ja `captureWorkspaceBackupImportDeletionSlots` tarkistavat kaikki nykyiset slotit/siirtymät. Journalin null-lineage ei korvaa sidontatodistetta. |
+| Vanhan työtilan käyttöönotto | `WorkspaceLegacyAdoptionJournalStore.inspectSlots`: validoitu workspace-avain löytää nykyisen sidonnan. `captureWorkspaceLegacyAdoptionDeletionSlots` vaatii saman operaation ja `sourceKind: legacy`; fresh-luontia ei tulkita legacy-palautukseksi. |
+| Yhteinen activation | `ProfileRestoreActivationJournalStore.inspectDeletionSlots` antaa operaation. Vain sen täsmälliset replacement- ja activation-migration-sidonta-avaimet luetaan; täsmälleen yksi julkaistu alias hyväksytään. Sidonta antaa rekisteriin verrattavan kohteen/lineagen. `captureProfileRestoreActivationDeletionSlots` tarkistaa kaikkien slottien operaation ja vaihesiirtymät. |
+| Kohteen paikallinen restore | Kaikkien registry-entryjen johdetuista juurista luetaan saman journal-omistajan slotit. Kohde tulee juuresta ja entrystä, ei journalin puuttuvasta company-kentästä. Nykyinen root-/identiteettitarkistus ja `assertProfileRestoreActivationJournalStep` säilyvät. Tämä ei todista DB-sisältöä eikä lainaa yhteisen activation-journalin aliasia. |
+
+Jokaisen positiivisen alkuperäisjournalin on sisällettävä vähintään yksi
+todellinen slot. Nykyisten `capture...DeletionSlots`-tarkistimien hyväksymä
+tyhjä slot-joukko ei yksin riitä. Kahden slotin siirtymät, sidonnan current-
+vaatimus ja kolmen slotin hylkäys säilyvät. Ensimmäinen löytökoe hyväksyy
+paikallisen restoren vain ilman yhteistä alkuperäisjournalia; yhteisten
+omistajien yhdistelmä käyttää niiden nykyisiä erillisiä sidonta- ja
+siirtymätarkistuksia. Paikallisen ja yhteisen journalin yhtäaikaisuus on
+tässä kokeessa nimenomainen `notOffered`, ei onnistunut palautussuunnitelma.
+Sama kohde/lineage ei yksin todista operaatioiden yhteensopivuutta.
+Sekayhdistelmän täsmällinen yhteensopivuussääntö ja näyttö jäävät koko
+W7.5:n tuotantoentryn edeltäväksi avoimeksi portiksi; tämä koerajaus ei
+hyväksy pysyvää tuotepoissulkua. Historiallista sidontaa ei rakenneta
+puuttuvan tiedon tilalle.
+
+**Normaalin käynnistyksen säilyminen:** ennen uuden entryn myöntämistä
+tunnistettu soveltumattomuus palauttaa vain nimetyn `notOffered`-tuloksen,
+ei terveys- tai palautuslupaa. Esimerkiksi journaliton käynnistys, vanha
+rekisterimuoto, rekisteriin vielä julkaisematon tuonti tai normaalille
+päivitysomistajalle kuuluva tila jatkaa täsmälleen nykyisiin portteihinsa.
+Niiden omat hylkäykset säilyvät. Virhettä ei muuteta yleisellä catchilla
+`notOffered`-tulokseksi: menetetty varaus, kesken luvun muuttunut valinta,
+keskeytys, keskeneräinen työ tai lukematta jäänyt aineisto ei oikeuta
+siirtymään korjaavaan palautukseen. Tällöin havainto päätetään, työ
+odotetaan loppuun ja käytetään nykyistä turvallista virhepolkua.
+
+Soveltumattomuuden luokitus tehdään nykyisillä parsereilla ja build-
+luokittelijalla onnistuneesti luetusta vakaasta tilasta, ei virheen tekstistä.
+Puuttuva rekisteri tai development-ajon puuttuva release-tieto erotetaan
+läsnä olevasta virheellisestä tiedostosta ja sen puuttuvista pakollisista
+kentistä. Myös luokitteluluvut kuuluvat työn ja omistajuuden sulkuun.
+`captureWorkspaceDeletionLocalUpdateSelection`-funktion yleinen
+`LOCAL_UPDATE_STATE_MIGRATION_CONFLICT` ei sellaisenaan ole `notOffered`.
+Jos kokeessa tarvitaan erillinen tyypitetty build-kelpoisuustulos, se
+erotetaan nykyisen update-lukijaomistajan sisällä; tiukka poistovalinnan
+portti ja sen nykyiset kutsujat säilyvät. Myös tämä on koetyötä, ei lupa
+muuttaa tavallisen päivityksen tai palautuksen hyväksymisehtoja.
+
+**Native-valinta ja omistajuuden luovutus:** vain kokonainen tuore
+kohdetodiste sallii aiemmin suunnitellun palautuminen/hallinta/sulje-
+valinnan. Palautuminen pysyy oletuksena. Dialogin vastaus ei ole valtuus:
+sama rekisteri, kohde, journalit, build ja varaus tarkistetaan vastauksen
+jälkeen. Muuttunutta kohdetta ei vaihdeta käyttäjän puolesta. Normaaliin
+palautumiseen jatkettaessa havainnon työt päätetään ennen nykyistä
+recovery-ketjua; havainnon tulos ei korvaa sen tuoreita tarkistuksia.
+
+**12.11.2026, oletuskoosteen lähdekytkentä:** nykyinen valintafunktio
+kuuluu mainin oletusriippuvuuksiin, ja E2E-entry käyttää samaa oletusta
+ilman funktion injektiota. Build-, kohde-, omistajuus- ja sulkuvartijat
+sekä kaikki aikarajat säilyvät. Lähdekytkennän
+[regressiot ja näyttöraja](release-0.3.0-integration-history.md#w75-default-choice-coupling-20261112)
+eivät korvaa uuden lähteen native-, puhtaan paketin tai PR/main-portteja.
+
+`desktopRecoveryStartup` sulkee havaintokahvan myös onnistuneen
+composition-palautuksen yhteydessä, ja `desktopComposition` päättää
+startup-valtuuden `finally`-haarassa. Siksi hallintapalvelu ei saa periä
+näitä päättyviä callbackeja eläväksi käyttöluvakseen. Nykyinen
+`desktopSelectorComposition` ottaa eksplisiittisessä `recoveryManagement`-
+haarassa saman fyysisen varauksen sulkuvastuun, muodostaa oman palvelun
+eliniän ja vertaa kaikkia kiinnitettyjä tavuja, läsnäoloja/poissaoloja sekä
+juuri- ja tiedostoidentiteettejä uudelleen ennen capabilityn tai ikkunan
+julkaisua. Uutta luentaa ei hyväksytä hiljaisesti eri vertailupohjaksi.
+Siirrettävä tieto on vain muuttumaton vertailuaineisto;
+vanha havainto päätetään ja sen kaikki työt liittyvät sulkuun. Epäonnistunut
+luovutus ei vapauta varausta ennen työn päättymistä eikä jätä kahta
+sulkuomistajaa. Ulkoinen quit estää myöhäisen ikkunan ja relaunchin.
+
+Tavallinen selector-haara ja sen null-ehto pysyvät ennallaan. Rajattu
+haara kootaan ennen tavallisia candidate-/create-/import-/switch-tehtaita.
+Status käyttää jo toteutettua erillistä v2-muotoa ja vastausvaiheen suojaa;
+vain kohteen status, rajattu tukivienti ja myöhemmin erikseen todennettava
+täsmäpoistopyyntö sallitaan. Palvelun omistajuus ei ole delete-lease.
+Poisto hankkii nykyisen täsmällisen leasen, vahvistukset ja tuoreet
+W7.3/W7.4-portit. Tallennettu aktiiviosoite erotetaan puuttuvasta
+runtime-ownerista; backendin sulkua tai aktiivimarkeria ei teeskennellä.
+Näiden tuotantoliitosten hyväksyntä pysyy erillisenä.
+
+**Seuraavan toteuttajan rajattu koe ja tiedostot:** käytä nykyistä
+`main/desktopWorkspaceRecoveryObservation.test.ts`-fixtuuria ja sen
+nykyisiä tiedosto-, varaus- ja virheensäilytysapureita. Kohteen löytävä
+koekooste voidaan erottaa viereiseen testiapuriin; mahdollisen tuotanto-
+koosteen nimi on `main/desktopWorkspaceRecoverySelection.ts`. Se kokoaa
+yllä nimetyt lukijat, ei uutta journal-parseria, poistotallenninta tai
+yleistä manageria. `desktopRecoveryStartup.test.ts` kattaa luovutuksen
+ja sulun. Tuotannon käynnistyskutsua tai julkista kanavaa ei lisätä kokeessa.
+
+- Tiedostoista löytyvä kohde, kun aktiiviosoite on sama, toinen yritys tai
+  null; väärä annettu kohdetunniste ei kuulu koe-API:in lainkaan.
+- Jokainen neljästä sidotusta omistajasta ja erillinen paikallinen restore,
+  sallitut sivuslottiparit sekä yhteisten omistajien saman kohteen yhdistelmät;
+  paikallisen/yhteisen journalin sekayhdistelmä ei saa tässä kokeessa lupaa.
+  Kaksi eri kohdetta,
+  väärä lineage, molemmat activation-aliasit ja pelkkä orpo sidonta estävät
+  hallinnan. Alkuperäiset ja muiden yritysten tavut säilyvät.
+- Journaliton/legacy/julkaisematon/päivityksen omistama polku jatkaa vain
+  vanhan omistajan kautta; spy-väitteet erottavat `inspect`-luennat
+  korjaavasta `read`- tai recovery-kutsusta. Virheellinen läsnä oleva
+  aineisto tai sama yleinen conflict-virhekoodi ei saa fallbackia.
+  Ei DB:n avausta.
+- Muutos kaappauksen aikana, dialogin aikana tai ennen luovutusta,
+  saman tavun tiedoston vaihto ja varauksen ABA estävät vanhan tuloksen.
+  Yhdenkin vieraan yrityksen minkä tahansa slotin muutos kuuluu vertailuun.
+- Sulku viivästetyn luvun/dialogin/luovutuksen aikana: aloitettu työ päättyy
+  ennen varauksen luovutusta tai vapautusta; ensivirhe ja erillinen
+  sulkuvirhe säilyvät. Vanha startup-kahva päättyy, uusi palvelukahva ei
+  riipu siitä, mutta ulkoinen sulku päättää myös uuden kahvan.
+- Vastaanottava palvelu ei saa lukuobjektista poistolupaa; muut komennot
+  eivät käynnisty. Tuotantokytkennän myöhempi näyttö vaatii oikean
+  main/service/IPC-ketjun, ei pelkkää tämän kokeen simuloitua luovutusta.
+
+Kokeet käyttävät nykyisiä testibudjetteja ja omistajien tiedosto-/tulosrajoja.
+Havainto ei käynnistä poistotyön budjettia tai pidä delete-leasea käyttäjän
+vastauksen ajan. Olemassa olevaa määräaikaa ei nollata luovutuksessa.
+Uusi määräaika tai rinnakkainen palautusjärjestelmä ei kuulu sopimukseen.
+Työmäärästä mitataan omistajaluennat, jotta kaikkien registry-entryjen
+kokeilemista täydellä poistovalinnalla tai sisäkkäistä koko haun toistoa
+ei synny. Ensivirheen nykyinen salattu keräys ja turvallinen käyttäjäpalaute
+säilyvät; uusia lokikenttiä tai pysyvää/backupiin kuuluvaa artifactia ei tule.
+
+Rajattu riippumaton lähdekatselmus vahvisti suoran sidonta-avaimella
+löytämisen ja startup-/palveluvaltuuden erottelun. Se nosti esiin
+paikallisen/yhteisen journalin vielä todentamattoman yhdistelmän sekä
+soveltumattomuuden ja lukuvirheen eron; molemmat on rajattu yllä.
+Katselmus puoltaa tätä testiapurin koetta, ei tuotantoentryä tai
+sekayhdistelmän hyväksymistä. Tällä suunnittelukierroksella ei ajettu
+uusia sovellustestejä eikä muutettu tuotantokoodia.
+
+Historiallinen tulos:
+[7.11.2026, löytö- ja luovutuskokeen osanäyttö](release-0.3.0-workspace-history.md#w75-history-discovery).
+
+<a id="w75-recovery-ownership-proof-review"></a>
+
+**8.11.2026, palautushallinnan varaustodisteen ja tulosodotuksen katselmus.**
+Alla oleva omistusjakso-/kirjoittajapoissaolosopimus säilyy. Lähteessä on
+toistoa, mutta viimeisimmän lomakehylkäyksen syytä ei ole mitattu sen
+sisäisiin kutsuihin. Tämän katselmuksen perusteella ei poisteta vartijoita
+eikä aloiteta yleistä optimointia.
+
+| Vastuu | Nykyinen omistaja ja säilyvä todiste |
+| --- | --- |
+| Fyysinen varaus | `workspaceProcessReservation.assertOwned`: varauksen virhe-/elinkaaritila, juuren oikeat `lstat`-/`realpath`-identiteetit ja kuunteleva omistettu palvelin. Tämä ei ole uusi IPC-pyyntö tai takaisinoton odotussilmukka. |
+| Sama main-omistusjakso | `captureMainOwnership`: täsmällinen jakso ja pidetty kahva ennen fyysistä tarkistusta ja sen jälkeen. Vanha kuitti ei elvy bind/reclaimin jälkeen eikä myöhäinen virhe mitätöi seuraajaa. |
+| Kirjoittajien poissaolo | Startupin `runtimeAbsence`: hyväksytyn sidotun kohteen alkuperä, ennen discoveryä kaapattu main-kuitti sekä päättyneet omat adoption-/deletion-työt ilman epävarmuutta. Tuore `assertOwned` sisältää saman fyysisen varaustarkistuksen. Pelkkä yleinen main-varaus ei korvaa tätä. |
+| Tuore lähdevalinta | Kohteen luovutus, `captureWorkspaceDeletionExternalSelectionFromRoot` ja nykyinen build-/vierasjournalivalinta. Näitä sisältölukuja tai alkuperäisjournalin siirtymää ei muuteta. |
+| Muutos ja lopputulos | Nykyinen komento, lease, vaihe-/rekisteri-/journal-/tiedostovartijat ja terminal-tulos. Luku- tai varaustodiste ei yksin anna poistolupaa, eikä prosessin sulku todista valmistunutta poistoa. |
+
+Katselmuksen lähtötilassa `desktopSelectorComposition.assertRecoveryOwned`
+teki ensin yleisen mainin fyysisen tarkistuksen ja sitten alkuperäiseen
+jaksoon sidotun poissaoloportin fyysisen tarkistuksen. Ainoa tuotannon
+recovery-kutsuja muodosti jälkimmäisen oikealla kaapatulla main-kuitilla.
+Tämä mahdollisti rajatun vertailukokeen,
+mutta ei saman tien kummankaan havainnon poistamista: vain pois jäävässä
+välitarkistuksessa näkyvä ja täysin palautuva juurimuutos voisi jäädä
+havaitsematta myös muutosvartijan sisällä, ja virheiden havaintojärjestys
+voisi vaihtua. Omistaja hyväksyi myöhemmin alla nimetyn havaintoeron vain
+rajattuun vertailukokeeseen, ei tuotantokytkentään.
+Suoran selector-testifixturen muistilippuun perustuva poissaolocallback ei
+kelpaa yksin tällaisen korvauksen fyysiseksi todisteeksi.
+
+Historiallinen tulos:
+[8.11.2026, varauskutsujen kontrolli](release-0.3.0-workspace-history.md#w75-history-reservation-count).
+
+**Rajattu tuotantosopimus 8.11.2026, koetodettu kytkentä hyväksytty.**
+Omistaja hyväksyi vertailun jälkeen saman havaintoeron tuotantokytkentään
+vain nykyiseen koostefunktioon sekä pysyvät regressiot, tyypityksen,
+katselmuksen ja nykyiset portit. Tämä ei hyväksy uutta pitkää ajoa tai
+koko W7.5:n sulkemista. Alla oleva vertailujärjestys säilyy tehdyn kokeen
+näyttörajana, ei uutena pakollisena koejärjestelmänä tai ajosilmukkana.
+Saman fyysisen varauksen työnjako voidaan rajata nykyiseen
+`desktopSelectorComposition.assertRecoveryOwned`-funktioon. Sen ainoa
+tuotannon recovery-kutsuja on `desktopComposition`: ennen discoveryä kaapattu
+main-kuitti ja pending-/uncertainty-tarkistukset muodostavat nykyisen
+`runtimeAbsence`-portin. Tämän funktion yksi onnistunut `assertRecoveryOwned`-
+kutsu tekee yhden fyysisen varaushavainnon kahden sijaan. Koko koosteen,
+operaation tai muutosvartijan muita
+varaushavaintoja ei yhdistetä tähän: esimerkiksi lifecyclen oma
+`proveMainOwned` säilyy erillisenä.
+Pelkkä sama TypeScript-muoto tai callbackin nimi ei todista tätä vastuuta.
+
+| Raja | Hyväksytty vastuu ja säilyvät ehdot |
+| --- | --- |
+| Startup-tuottaja | Säilytä nykyinen alkuperäinen kuitti, sama pidetty kahva ja omistusjakso sekä adoption-/deletion-työn pending-/uncertainty-tarkistukset fyysisen luvun molemmin puolin. Kuittia ei kaapata uudelleen eikä poissaoloa päätellä rekisteristä, process exitistä tai muistilipusta. |
+| Recovery-kooste | Jätä pois vain johtava yleinen `reservation.assertMainOwned()` ja siihen kuuluva välipaluu; käytä nykyistä `recovery.absence.assertOwned()`-kutsua tuoreena joka kerta. Säilytä ulommat synkroniset current-tarkistukset, ensimmäisen omistajuusvirheen pysyvyys, callbackin sidonta ja muun kuin `undefined`-tuloksen hylkäys. Ei välimuistia, jaettua keskeneräistä Promisea tai valtuuden uudelleenhankintaa. |
+| Valinta ja poistovaltuus | Älä muuta lähdevalinnan luovutusta, build-/vierasjournaliluentoja, leaseä, rivikohtaisia valintoja tai siirto-/poisto-/sync-/julkaisuvartijoita. Myös näiden sisältä kutsuttu sama recovery-vartija käyttäisi yhtä fyysistä havaintoa kahden sijaan; muutos ei rajoitu valmisteluun. Luennan läpäisy ei itsessään salli yhtään muutosta. |
+| Sulku | Admission suljetaan erikseen. Aloitettu varausluku ja muu omistettu työ odotetaan loppuun ennen vapautusta. Jo sulkeutuva käyttöliittymä ei mitätöi siivouksen tarvitsemaa fyysistä omistajuutta; todettu omistajuusvirhe ei puolestaan palaudu onnistumiseksi tai vapautusluvaksi. Ensisyy ja erillinen sulkuvirhe säilyvät. |
+| Muut polut | Tavallinen valitsin, aktiivinen yritys, yleinen varausomistaja, native-adapteri, lifecycle-omistaja, cold-valinnan lukijat ja niiden kutsumäärät pysyvät tämän muutoksen ulkopuolella. Niiden käyttämää recovery-vartijaa ei korvata no-opilla. |
+
+**Nimenomainen havaintoero:** nykyinen johtava fyysinen tarkistus voisi
+havaita juuren identiteetin tai saatavuuden poikkeaman, joka on jo palautunut
+täysin ennen jäljelle jäävän tarkistuksen havaintoa. Ehdokas voisi jättää
+tällaisen väliaikaisen poikkeaman havaitsematta myös muutosvartijan sisällä.
+Kilpailevien virheiden havaintojärjestys ja ensimmäinen syy voivat muuttua.
+Kumpikin versio säilyttää oman ensimmäisen havaitun syyn; samoja ensisyitä
+ei luvata eri havaintojärjestyksille. Vertailu käyttää erillisiä omistajia,
+eikä lähtöversion jo havaittua menetystä nollata ehdokasta varten.
+Tätä ei kuvata muuttumattomaksi turvatarkistukseksi. Pysyvä poikkeama tai
+jo havaittu varauksen mitätöinti estää jatkon. Bind/reclaim vaihtaa
+omistusjakson pysyvästi: vanhan kuitin elpymistä tai myöhäisen virheen
+siirtämistä seuraavalle omistajalle ei hyväksytä havaintoerona.
+
+**Hyväksytyn kokeen pienet vertailut nykyisissä testeissä:**
+
+1. Päivitä vain suoran `desktopRestoreStartup.test.ts`-fixturen poissaolo
+   käyttämään ennen discoveryä kaapattua nykyistä main-kuittia. Oma
+   menetyslippu saa lisätä hylkäyksen, ei korvata fyysistä tarkistusta.
+   Myös testikohtaiset onnistuvat ja pidetyn työn onnistumisen palauttavat
+   `absence.assertOwned`-ylikirjoitukset kulkevat saman kuitin kautta
+   current-tarkistuksineen; pelkkä `mockResolvedValueOnce(undefined)` ei
+   riitä. Tahallinen hylkäys voi edelleen päättää tarkistuksen ennen lukua.
+   Todista fixturen lähtö ensin muuttumattomalla sovelluksella, jotta
+   fixturen muutos ei selitä ehdokkaan kutsumääräeroa.
+2. Vertaa samaa jäädytettyä lähtöä ja vain yhtä koostefunktiota muuttavaa
+   ehdokasta: saman kohteen luku, menetyshyväksynnän peruutus, säilyvät
+   rekisteri-/journal-/sisältötavut sekä sulku. Mittaa fyysisen portin
+   kutsut erillään sisällön tarkistuksista; ei absoluuttista nopeusväitettä.
+3. Todista pysyvä juuripoikkeama, varauksen mitätöinti, epävarma/pending
+   kirjoittaja sekä pidetyn fyysisen luvun aikana menetetty omistusjakso.
+   Molemmat myöhäiset lopputulokset hylätään; uusi omistaja säilyy suojassa.
+   Käytä nykyisiä varaustestejä ja startup-tuottajaa, älä pelkkää suoraa
+   poissaolomockia.
+4. Näytä poistuvan havaintokohdan palautuva poikkeama ja kilpailevat syyt
+   erillisinä lähtö-/ehdokaseroina. Havaittu ensisyy jää pysyväksi myös
+   myöhemmän sulkuvirheen jälkeen. Pidetty luku estää vapautuksen ja
+   myöhäisen jatkon; peruutus ei ole työn päättymistodiste.
+5. Todista edelleen, ettei kelvollinen varaustodiste ohita muuttunutta
+   kohdetta, päättynyttä leaseä tai nykyistä muutosvartijaa. Tavallisen
+   selector-polun oletus ja virheen vaihetiedon nykyinen lukuketju säilyvät.
+
+Kytkentä ei lisää tuotannon porttia, manageria, lokituskerrosta tai uutta
+riippuvuutta. Muutos on yhden koosteen toteutusmuutos; tuottajan ja fixturen
+sopimus säilyy niiden nykyisissä omistajissa. Tyypitys, rajattu riippumaton
+katselmus ja vaikutustestit vaaditaan ennen kytkennän hyväksyntänäyttöä.
+Native-kustannusta, koko poistoketjun valmistumista tai
+vanhan aikakatkaisun syytä ei päätellä pienestä kontrollista. Aikarajat,
+nykyiset native-/paketti-/PR/main-portit ja ensihylkäykset säilyvät;
+uusi pitkä ajo ei sisälly tähän kytkentäpäätökseen.
+
+Historiallinen tulos:
+[8.11.2026, varaustodisteen vertailunäyttö](release-0.3.0-workspace-history.md#w75-history-reservation-comparison).
+
+Historiallinen tulos:
+[8.11.2026, varaustodisteen kytkentänäyttö](release-0.3.0-workspace-history.md#w75-history-reservation-production).
+
+Seuraava erillinen portti on nykyisen julkisen palautushallinnan lomakeketjun
+natiivitodennus. Kokeen vanhaa koosteidentiteettiä ei käytetä uuden lähteen
+näyttönä: normaali valmistelu ja lähdesidonta vaaditaan ensin. Omistaja
+hyväksyi tämän valmistelun ja yhden nimetyn `DESK-DELETE-RECOVERY-001`-
+lomakeajon nykyisellä 150 sekunnin kokonaisrajalla ja 10 sekunnin
+tulosodotuksella. Aiempi 100 sekunnin kertalupa on käytetty; se ei uusiudu.
+Tällä kytkennällä ei avata oletuskäynnistyksen uutta valintaa eikä hyväksytä
+koko W7.5:ää, puhdasta pakettia tai mergeä.
+
+Hyväksytty valmistelu ja yksi lomakeajo on nyt tehty. Valmistelu läpäisi
+yhden rajatun uusinnan jälkeen, mutta lomakeajo hylkäsi normaaliin
+10 sekunnin tulosodotukseen. Prosessipuu ja portti vapautuivat; poiston
+loppuväittämät jäivät todentamatta. Siivouksen jälkeinen aloitusjournalin
+välitila ei yksin nimeä sisäistä odottanutta kutsua. Erillinen nykyinen
+Main-ketjumittaus osoitti varauskutsujen kertautuvan myös kohteen luovutuksen
+jälkeisessä aloitusjulkaisussa, ei todellisen Windows-kutsun kustannusta.
+[Näyttöraja](release-0.3.0-integration-history.md#w75-recovery-form-verification-20261108)
+säilyy avoimena. Seuraava rajaus on julkaisijan valmistelutarkistuksen,
+mainin `assertPrepared`-kääreen ja luovutetun valinnan vastuunjako.
+Uutta havaintoeroa tai tuotantomuutosta ei päätellä tästä mittauksesta;
+nykyiset valinta-, muutos- ja aikarajat säilyvät. Pitkän ajon kertalupa on
+käytetty eikä uusi ajo sisälly tähän tulokseen.
+
+<a id="w75-recovery-publication-responsibility-review"></a>
+
+**8.11.2026, aloitusjulkaisun luenta- ja muutosvastuun rajattu kartta.**
+Yksi nykyisen Main-ketjutestin kutsuryhmämittaus läpäisi alkuperäisillä
+väittämillä ja nykyisellä nimetyllä testibudjetilla. Mittaus erotti
+kohteen luovutuksen jälkeiset valmistelukutsut ja niiden sisällä tehdyn
+ulkoisen valinnan tarkistuksen. Ryhmät ovat sisäkkäisiä, eivät yhteen
+laskettavia työn tai keston osia. Tämä rajaa kertautumisen lähteessä,
+ei todista todellisen Windows-varauksen kustannusta tai native-hylkäyksen
+syytä. Väliaikainen mittaus poistettiin ja lähteen palautuminen varmennettiin.
+
+| Tarkistus | Nykyinen omistaja ja erillinen tarkoitus |
+| --- | --- |
+| Valmistelun alkuperäinen valinta | `workspaceDeletionPreparation.assertPreparationCurrent`: täsmällinen kohde, rekisteritavut ja slotti-identiteetit sekä juuren, pysäytetyn runtimen ja main-varauksen todistus. |
+| Mainin valmistelukääre | `desktopSelectorComposition.assertPrepared`: edellinen valmistelutarkistus, kohteen paikallisen palautusjournalin poissaolo ja luovutuksen jälkeen `assertRecoverySelection`. |
+| Luovutettu ulkoinen valinta | `workspaceDeletionColdAdmission.assertSelected`: omistus, päivitys-/build-valinta, vieraat palautusjournalit, uusi build-vertailu ja omistus. Se ei korvaa kohteen tai alkuperäisjournalin valintaa. |
+| Alkuperäisjournalit | `workspaceDeletionOriginalJournalSelection.assertSelected`: kaikkien valittujen journaliryhmien slotit, sidonnat, poissaolot, tavut ja identiteetit. |
+| Varsinainen muutos | Nykyinen byte-slot-tallennin ja poistojournalin julkaisuadapteri: valittujen poistojournalislottien luku, sen jälkeinen täydellinen ulkoinen tarkistus sekä pitkän julkaisuvertailun jälkeinen uusi muutosvartija. |
+
+Sama fyysinen varausportti ei tee näistä keskenään korvattavia tarkistuksia.
+Kuudes `assertPreparationReadOwned`-portti säilyttää julkaisuvaltuuden,
+juuren, kirjoittajien poissaolon ja main-varauksen, mutta ei rekisterin,
+päivitystilatiedostojen tai vieraiden journalien sisältövertailua.
+Julkaisijan `sourceAuthority` välittyy myös metadatavalmistelun todellisiin
+siivousvartijoihin. Sitä ei voi kokonaisena nimetä pelkäksi lukuvartijaksi;
+sen muuttaminen oli aiemman hyväksytyn korjauksen ulkopuolella.
+
+Seuraava sopimuskatselmus rajaa täsmälliset pelkät lukukutsut ennen kohteen
+luovutusta ja sen jälkeen, niiden täydet alku-/loppuvertailut sekä erilliset
+muutosvartijat. Mahdollinen havaintoero on nimettävä: vain pois jäävissä
+näytteissä näkyvä ja ennen seuraavaa täyttä tarkistusta palautuva rekisteri-,
+build-, vierasjournalin, paikallisen palautuksen tai omistajuustilan muutos
+voisi jäädä havaitsematta; myös ensimmäinen syy voisi vaihtua.
+Jo havaittua virhettä ei nollata. Tämä kartta ei hyväksy tällaista
+havaintoeroa, koeehdokasta, tuotantokytkentää tai uutta pitkää ajoa.
+[Rajattu näyttö](release-0.3.0-integration-history.md#w75-recovery-publication-responsibility-20261108)
+ja aiemmat hylkäykset säilyvät erillisinä.
+
+**12.11.2026, saman kartan rajattu lähdekatselmus ja mittaussopimus.**
+Luovutuksellisen julkaisun neljä `sourceComparison`-kutsua säilyvät:
+ennen luovutusta, julkaisun uusintatarkistuksen molemmin puolin ja
+journalijulkaisun jälkeen. Kolmas vertailu kuuluu `publicationCurrent`-
+callbackiin ennen `next -> current` -siirtoa; se ei itse anna siirtolupaa.
+Tallentimen vertailun jälkeinen uusi `beforeMutation`, Node-adapterin
+oma viimeinen vartija sekä synkronoinnin vartijat säilyvät. Myöhempi
+hylkäys ei yksin todista, ettei aiempaa tiedostomuutosta tapahtunut.
+
+Kun yksi rajattua lähdelukuporttia käyttävä vertailu valmistuu onnistuneesti
+ja alkuperäisjournalien valinta on mukana, nykyinen kutsurakenne johtaa
+14 `assertPreparationCurrent`-kutsuun: julkaisijan kaksi ulompaa
+`assertOriginalSelection`-rajaa tuottavat yhteensä kahdeksan, lähdelukijan
+alku-/loppuvalinta kaksi ja sen EOF-vertailun alkuperäisjournaliluennat neljä.
+Alkuperäisjournalien `assertSelected` kutsutaan yhteensä neljästi, mutta
+vain kaksi näistä kuuluu julkaisijan `fullSelection`-tapahtumaan.
+Luovutuksen jälkeen valmistelukääre johtaa myös siirretyn ulkoisen valinnan
+build-/vierasjournalivertailuun. Tämä on lähteestä johdettu kutsurakenne,
+ei mitattu native-kesto, OS-kutsumäärä tai peruste poistaa tarkistuksia.
+
+Rajattu pieni koe käyttää nykyistä yhden rivin julkaisufixtureä,
+vaihehavainnointia ja alkuperäisiin funktioihin delegoivia testikytkentöjä.
+Se erottaa kokonaisen vertailun kutsut sisäisestä `assertRecords`-osuudesta;
+pelkän tallenninkutsun mittaus jättäisi ulommat kahdeksan kutsua pois.
+Vertailut numeroidaan vaiheen mukaan, ei yhteisen tapahtuma-ID:n mukaan.
+Alkuperäiset kutsut, vastaanottajat, argumentit, odotukset, virheet,
+tiedostoväittämät ja sulku säilyvät. Sisäkkäisiä määriä tai kestoja ei
+lasketa yhteen erilliseksi työksi. Mittaus erottaa fixturekutsut tuotannon
+lähdekytkennästä; mitään build-lukijaa tai fyysistä todistusta ei korvata.
+Ei uutta loggeria, tuotantomittaria, pitkää Main-/Electron-ajoa tai
+aikarajamuutosta. Kokeen jälkeen valitaan näytön perusteella yksi seuraava
+rajattu toimenpide; uusia optimointiehdokkaita ei pinota tämän kartan nojalla.
+Mahdollinen uusi turvasopimus ja sovelluskytkentä jäävät erillisiksi.
+
+Historiallinen tulos:
+[12.11.2026, julkaisijan kutsumittaus](release-0.3.0-workspace-history.md#w75-history-publication-count).
+
+**12.11.2026:n pienkoe ennen toteutusvaltuutta:** Mainin luovutuksen jälkeinen
+valmistelukutsu lukee kohteen rekisterin kahdesti, tarkistaa juuren ja
+pysähtyneen omistajan sekä ulkoisen valinnan. Ulkoinen valinta lukee viisi
+päivitysryhmää kahdesti ja tarkistaa vieraat journalit. Nämä lähteestä
+johdetut sisäkkäiset määrät eivät ole native-ajon mitattuja kokonaismääriä.
+Pieni muuttumattoman lähteen koe läpäisi: yksi ulkoisen valinnan kutsu
+teki kymmenen ryhmälukua ja kolmen työtilan fixturellä seitsemän journalin
+läsnäolotarkistusta. Kohteen oma palautusjournalitarkistus ei tässä
+lukijassa vaadi poissaoloa. Tavujen, identiteettien, päättyneen valtuuden
+ja sulun väittämät läpäisivät. Fixturen omistajuus on synteettinen;
+tämä ei ole varsinaisen Main-luovutuksen tai native-keston todennus.
+
+Tämän jälkeen eristetyssä julkaisijaehdokkaassa vain onnistuneen luovutuksen
+jälkeinen, nykyisellä seitsemännellä palautushallinnan luentaportilla
+rajattu `compareSources` käyttäisi ulkorajoillaan suoraan nykyistä
+`selectedOriginals.assertSelected`-lukua. Sen omat alku-/lopun täydet
+valmistelutarkistukset säilyvät. Pois jäisi vain niiden edeltävä
+`valmistelu -> kirjoittajat -> valmistelu`-lisäjakso. Ensimmäinen vertailu,
+muut käyttötavat, alkuvalmistelu, neljä vertailua sekä kirjoitus-/sync-
+vartijoiden nykyinen `assertOriginalSelection` eivät muutu.
+
+Kokeen havaintoero: vain pois jäävässä jaksossa näkyvä ja täysin palautuva
+rekisteri-, palautus-, build-, omistajuus- tai kirjoittajatila voi jäädä
+havaitsematta. Kilpailevien virheiden järjestys ja lukijan ensivirheen
+lukittumiskohta voivat muuttua. Pysyvä muutos estää onnistuneen vertailun.
+Todennetaan lähtö-/ehdokaskutsut, muuttumattomat oletuspolut, myöhäinen
+pysyvä muutos, pidetyn luvun/sulun liittyminen, ensivirhe aggregaatteineen
+ja todelliset sivuvaikutukset viimeisillä muutosrajoilla. Kaikki aikarajat
+säilyvät. Kokeen valtuus ei itsessään kattanut lähdekytkentää tai pitkää
+native-ajoa; uudempi, alla kirjattu omistajavaltuus omistaa jatkon.
+
+Historiallinen tulos:
+[12.11.2026, julkaisijan vertailukoe](release-0.3.0-workspace-history.md#w75-history-publication-prefix).
+
+**12.11.2026, omistajan delegoima W7.5-toteutusvaltuus.**
+Laaja Goal-valtuus kattaa edellä nimetyn yhden palautushallinnan julkaisijan
+myöhempien vertailujen ehdokkaan ja sen kuvatun havaintoeron: vain pois jäävässä
+havainnossa näkyvä ja täysin palautuva muutos voi jäädä havaitsematta, myös
+muutosvartijan sisäisessä luvussa; kilpailevien virheiden järjestys voi vaihtua.
+Omistaja delegoi tämän rajatun kytkentäpäätöksen toteuttajalle näytön perusteella,
+ei hyväksy ehdokasta automaattisesti. Sitä ei palauteta uudeksi lupakysymykseksi.
+Säilytä kaikki neljä kokonaisvertailua, nykyiset sisältö- ja identiteettiluennat,
+viimeiset muutos-, poisto-, rename- ja sync-vartijat, ensivirheet ja alkuperäinen
+näyttö. Tee pysyvät kohdennetut regressiot, Main-ketjun tarkistukset, tyypitys,
+tarpeellinen riippumaton katselmus ja niiden jälkeen nimetty
+`DESK-DELETE-RECOVERY-001` nykyisissä 150/10 sekunnin rajoissa.
+Älä pinoa epäonnistuneita ehdokkaita tai uusi muuttumatonta ajoa vihreyden vuoksi.
+Varsinaiset hyväksyntä-, julkaisu- ja automaattitarkastusportit säilyvät.
+Raportoi valinnat, näyttö, riskit ja eteneminen päivittäisessä tarkistuspisteessä;
+eristä valtuuden ulkopuolinen päätös raporttiin ja jatka hyödyllistä riippumatonta
+työtä. Ohjepäivitys ei itsessään aktivoi Goalia: sovellustyö alkaa vasta
+omistajan aktivoinnista. Tämä valtuus korvaa vain tämän nimetyn ehdokkaan aiemman
+tuotantopäätösodotuksen, ei historiallisten koetulosten näyttörajoja.
+
+**12.11.2026, saman julkaisuketjun mittauksen jatkorajaus.**
+Mainin kaksi nimettyä kestomittausta läpäisivät nykyisellä budjetilla,
+mutta fixturen synteettinen varaus ei todista fyysisen Windows-varauksen
+kustannusta. Säilyneen native-otteen alkupään tapahtumista ei yleistetä
+myöhempien vertailujen kestoja. Nykyinen vaihehavaintomuoto tukee jo
+ilmoitettua suppeampaa kattavuutta ja sen pakollista osittaisuusmerkintää.
+Seuraava pieni kontrolli vertaa nykyistä havaintoa otteeseen, joka ohittaa
+vain varausten ja slottien tapahtumat ennen olemassa olevaa tallenninta.
+Tapahtumien tuottajat ja kaikki todelliset vartijat suoritetaan edelleen.
+Vertailujen alku-/loppuparien säilyminen sekä nykyisen tarkastimen ja
+keräimen yhteensopivuus on todistettava ennen mahdollista native-koetta.
+Pois rajatuista tapahtumista ei raportoida kokonaiskestoja tai kattavuutta.
+Ei uutta sovellusrajapintaa, formaattia, loggeria, taustapollausta tai
+aikarajaa; nykyisen sulun ja ensivirheen käsittely säilyvät. Tämä rajaa
+teknisen pienkokeen, ei hyväksy tuotantomuutosta tai native-onnistumista.
+
+Pienkokeen kaksi puhdasta kontrollia ja semanttinen tyypitys läpäisivät.
+Nykyinen paikallinen ja CI-sidottu tarkastin-/keräinketju hyväksyi suppean
+otteen samassa muodossa; suodattamaton pois rajattu tapahtuma hylkäsi havainnon.
+Tämä on havaintoaineiston sopimusnäyttöä, ei todellisen vartijakytkennän tai
+Electron-keston todistus. Seuraava yksityinen valmistelu rajataan nykyisen
+E2E-havainnoijan kattavuuteen ja vastaavaan tapahtumasuodatukseen; nykyiset
+poiston tuottajat, vartijat, oletuspolut ja sulku eivät muutu sen perusteella.
+
+**12.11.2026, native-otteen julkaisuvartijoiden lähdekartta.**
+Yksityinen havaintorajaus läpäisi kohdekontrollit ja katselmuksen, mutta
+nimetty native-ajo hylkäsi edelleen tulosodotukseen. Kolme vertailua
+valmistui ja neljäs oli alkanut. Tavut ja erillinen siivous varmistuivat;
+ajotiedoston tarkka käänteismuutos palautti oletushavainnoijan. Tämä ei
+osoita yksittäistä hidasta I/O-kutsua tai poiston loppua.
+
+Alkujulkaisun tyhjän journalin haara selittää vertailujen ulkopuoliset
+valintakutsut seuraavasti. Järjestys on johdettu nykyisten omistajien
+peräkkäisistä kutsuista, ei pelkistä tapahtumatunnisteista tai kestoista.
+
+| Rajan tarkoitus | Nykyinen omistaja ja säilyvä ehto |
+| --- | --- |
+| Kaksi teknistä välilukua | `CrashSafeByteSlotStore.replaceSelected`: valitut kolme slottia luetaan ennen hakemistovalmistelua sekä uuden writerin kuitatun sulun ja identiteetin takaisinluvun jälkeen. Molempien lopussa tehdään nykyinen täysi ulkoinen valinta. Luku ei anna poistolupaa. |
+| Kuusi muutosvartijaa | Hakemistovalmistelu, writerin luonti, julkaisijan siirtokääreen tarkistus pitkän vertailun molemmin puolin, Node-adapterin viimeinen rename-tarkistus ja sync-vartija. Näitä ei poisteta luentakustannuksen perusteella. |
+| Yksi kuittausvartija | Byte-slot-tallentimen viimeinen täysi valintatarkistus ennen julkaistun identiteetin palautusta; ei uusi kirjoitus mutta ei myöskään vapaa poistettava tarkistus. |
+
+`advance` tukee erikseen hyväksyttyä väliluennan jälkitarkistinta; nykyinen
+`publish` ei välitä sellaista. Rajapinnan olemassaolo ei hyväksy sopimuksen
+laajentamista alkujulkaisuun. Kaksi väliluvun täyttä loppuvalintaa eivät
+yksin todista nykyisen tulosrajan saavutettavuutta: neljäs vertailu,
+julkaisun jälkivarmennukset ja lopullinen poisto jäivät vielä kesken.
+Mahdollinen uusi luenta-/muutosvastuun sopimus tai nimetty testibudjetti
+jää erilliseksi päätökseksi; nykyisiä vartijoita ja aikarajoja ei muuteta
+tämän kartan perusteella. Laajemmat nykyiset regressioportit säilyvät.
+
+[Nykyisen lähdekytkennän normaali desktop-komento](release-0.3.0-integration-history.md#w75-publication-desktop-regression-20261112)
+läpäisi nykyisillä työntekijä- ja aikarajoilla ilman uusintaa, mukaan lukien
+julkaisija, Main-ketju, erillinen 23 tietueen rooliketju ja Node-vaihe.
+Tämä ei ratkaise oikean Electron-tulosodotuksen hylkäystä tai korvaa
+puhtaan paketin ja PR/mainin portteja. Uutta ehdokasta ei päätellä
+kahden teknisen väliluennan määrästä eikä aiempia hylkäyksiä suljeta.
+
+**12.11.2026, omistajan valtuuttama tulosodotuksen mittaus.** Hylkäävä kymmenen
+sekuntia tulee nykyisen Playwright-asetuksen yleisestä tekstiväittämän
+rajasta. Palautushallinnan lomake odottaa capabilityn todellista tulosta;
+palvelu palauttaa sen vasta poistoketjun ja varauksen loppukäsittelyn jälkeen.
+Tästä ei päätellä poiston valmistuvan, sovellusvian puuttuvan tai pidemmän
+pysyvän rajan sopivuutta. Vanha sadan sekunnin kertamittaus katkaistiin
+testin kokonaisrajaan, sen lupa on käytetty eikä sitä uusita sellaisenaan.
+Omistajan uudempi nimenomainen päätös hyväksyy yhden saman nimetyn lomaketestin
+60 sekunnin tulosmittaus: 150 sekunnin kokonaisraja, kaikki loppuväittämät,
+sulkurajat ja sovelluslähde säilyvät. Sadan sekunnin mittaukseen verrattuna
+valmistelulle ja lopputarkistuksille jää enemmän yhteistä budjettia;
+tämä ei takaa valmistumista eikä ole tuotannon suorituskykylupaus.
+Normaali kymmenen sekunnin odotus
+palautetaan kokeen jälkeen; tulos ei ole normaalin testin läpäisy,
+pysyvä budjettipäätös tai mergepoikkeus. Yksi [nykyisen lähteen mittaus](release-0.3.0-integration-history.md#w75-ui60-phase-result-20261112)
+on ajettu: myös 60 sekunnin tulosodotus hylkäsi, mutta 150 sekunnin
+kokonaisraja ei loppunut. Kaikki neljä lähdevertailua, journalijulkaisu
+ja valmistelu valmistuivat. Viimeinen osittainen havainto oli alkanut
+viimeistely; sen sisäistä odottavaa kutsua ei vielä tunneta. Prosessien
+ja portin siivous sekä lähdetavujen säilyminen varmistuivat, ja koetavut
+palautettiin alkuperäisiksi. Seuraava rajattu lähdeselvitys kohdistetaan
+julkaisun jälkeiseen poistoketjuun ja viimeistelyyn. Mittaus ei oikeuta
+muuttumattomaan uusintaan tai todista pysyvän aikarajan sopivuutta.
+Omistaja valtuutti myös perustellut pysyvät testiajoitukset
+[yhteisen ajoitusohjeen](../ai/testing-rules.md#testin-tuotannon-ja-cin-aikabudjetit)
+mukaisesti ilman uutta lupakysymystä. Sovelluksen ja CI:n rajat sekä varsinaiset
+turva- ja hyväksyntäportit säilyvät. Aiempi 10.11.2026:n 60 sekunnin hylkäys
+on erillinen historia; tämä on nykyisen lähteen ja uuden vaiheotteen mittaus,
+ei muuttumattoman ajon uusintalupa. Julkaisijakytkennän aiempi delegointi säilyy.
+
+<a id="w75-recovery-source-comparison-contract"></a>
+
+**8.11.2026, ehdotus vain julkaisun lähdevertailun pienkokeeksi.**
+Rajaus on `workspaceDeletionPublication.compareSources` ja sen kuluttama
+`selectedSource.records()`, ei koko `sourceAuthority`. Ensimmäinen
+metadatavalmistelu, lähdekaappaus ja inventaarion kirjoitus säilyvät
+muuttumattomina. Näin `prepareWorkspaceDeletionRemnantBindings` saa edelleen
+alkuperäisen täyden valtuuden myös oikeaan payloadittoman metadatan poistoon,
+ja `prepared.captureInventoryCensus` säilyttää saman `baseAuthority`-olion,
+kertakäytön, alkuperäisjournalin ja lähtöaineiston sidonnan.
+
+**Kolme nykyistä omistajaa, ei uutta yhteistä valvontakerrosta:**
+
+| Omistaja | Kokeen täsmällinen vastuu |
+| --- | --- |
+| `workspaceDeletionPublication.ts` | Luo vain yhden `compareSources`-kutsun ajaksi erillinen lähdeluvun valtuus nykyisen kuudennen `assertPreparationReadOwned`-portin pohjalta. Välitä se eksplisiittisesti vain vertailun `records`-kutsuun. Nykyinen inventaariotiedoston lukuvaltuus pysyy erillisenä; pelkkä kirjoittajapoissaolo ei korvaa lähteen juuri-/lifecycle-todistusta. Täydet `assertOriginalSelection`-rajat, backupin uusintaluku ja kaikki muutosvartijat säilyvät. |
+| `workspaceDeletionInventorySources.ts` | Lisää vain nimetylle myöhemmälle vertailuluennalle valinnainen luentaportti. Kokoa jokaiselle kulutukselle oma päättyvä valtuus; valvo alkuperäistä kuittia ja annettua luentavaltuutta yhdessä. Vertaa parent-ketju nykyisellä `captureWorkspaceRemnantParents`-kutsulla aina koko alkuperäiseen `parents.identities`-taulukkoon, samoilla poluilla ja lukijoilla, kuten nykyinen alkuperäisjuurten poissaololukija jo tekee. Älä korvaa alkuperäistä kuittia. Suojaa sivuluvut, kaikki rivit ja EOF samalla luentavaltuudella. Täydet ulkoiset alku-/loppuvertailut ja alkuperäisjournalien nykyiset tarkistukset jäävät erilleen. |
+| `workspaceDeletionRemnantCensusSelection.ts` | Salli vain olemassa olevan census-kuitin jälkivertailun käyttää yksityisen `read`-funktion kutsukohtaista valtuusparametria. Käytä nykyistä täydellistä lukijaa ja alkuperäistä digestia; palauta vain `void`, älä luo uutta census-kuittia tai lähtötilaa. Alkuperäisen kuitin vartija, pysyvä hylkäystila ja kirjoittajapoissaolo säilyvät. Kaappaus, metadatavalmistelu, sen cleanup-valtuus ja `captureInventoryCensus`-sidonta eivät käytä uutta porttia. |
+
+Puuttuva luentaportti säilyttää nykyisen kutsujan tarkistusjärjestyksen.
+Uuden portin synkroninen vartija validoidaan nykyisellä checked-mallilla,
+ja odotetun callbackin paluuarvon on oltava `undefined`. Virheellinen paluu
+hylätään ja säilytetään syynä ennen seuraavaa I/O:ta; oletuspolkuun ei pudota.
+Yhteistä parent-lukijaa, tallentimia, Main-koostetta, Preparationia tai
+alkuperäisjournalin lukijaa ei muuteta kokeessa. Julkaisijan kuudes portti
+on myös tavallisen aktiivisen yrityksen ja valitsimen valmistelussa:
+kokeen vaikutus on nimetty julkaisijan vertailukutsu, ei automaattisesti
+vain palautushallinta. Kaikki kolme käyttötapaa kuuluvat vertailuun;
+puuttuvan portin vanha polku on erillinen muuttumaton kontrolli.
+
+**Valtuus ja sulku.** Uusi luentavaltuus ei mene inventaarion julkaisuun,
+metadata-cleariin, journaliin, siirtoon, poistoon tai synkronointiin eikä
+korvaa niiden viimeistä täydellistä tarkistusta. Ei globaalia lukutilalippua,
+vaihdettavaa yhteistä callbackia, välimuistia tai vanhan valtuuden elvytystä.
+Jokainen uuden portin kulutus saa erillisen valtuuden. Päällekkäinen kulutus,
+jossa vähintään toinen käyttää uutta porttia, hylätään ennen uuden kutsun
+I/O:ta vapauttamatta käynnissä olevan lukijan varausta. Kahden vanhan,
+portittoman kutsun nykyistä käytöstä ei muuteta. Vanha callback hylätään myös
+seuraavan kulutuksen aikana. Paikallinen lukija päättää oman luentavaltuutensa ensimmäisessä
+itse havaitsemassaan virheessä ennen omaa siivousodotustaan. Se ei väitä
+havaitsevansa toisen lukijan sisäistä virhettä ennen tämän vastausta.
+Kesken oleva luku ja iteratorin sulku odotetaan; ensimmäinen syy, myös
+`undefined`, ja erillinen sulkuvirhe säilyvät nykyisessä järjestyksessä.
+Osittainen kulutus ei tuota hyväksyttyä EOF-todistetta tai uutta lähtötilaa.
+Generaattorin valtuus tarkistetaan ensimmäisessä `next()`-kutsussa ennen
+I/O:ta, ei vain `records()`-kutsun yhteydessä. Yhteisen lähdekuitin
+ulkoinen `assertUnchanged` ei saa käyttää samaa tilaa kesken uuden portin
+kulutuksen; EOF käyttää omaa sisäistä vertailua odottamatta itseään. Parent- tai
+census-luennan hylkäys mitätöi myös alkuperäisen lähdekuitin, eikä pelkkää
+väliaikaista lukuvaltuutta. Uuden portin luvussa havaittu ensimmäinen syy
+säilyy myös mitätöidyn source-/census-kuitin seuraaville kutsuille; pelkkä
+`failed`- tai `reading = false` -lippu ei saa korvata syytä yleisellä koodilla.
+
+**Erikseen hyväksyttävä havaintoero.** Vain uuden vertailuluennan sisällä
+näkyvä ja ennen seuraavaa täyttä tarkistusta täysin palautuva ulkoinen
+rekisteri-, päivitys-/build-, vierasjournalin tai paikallisen palautuksen
+valintamuutos voi jäädä havaitsematta. Sama koskee luentaa journalin
+muutosvartijan sisältä. Täyden valinnan mukana jää myös joitakin fyysisen
+omistajuuden ja kirjoittajapoissaolon näytteitä pois: vain pois jäävän
+näytteen kohdalla näkyvä ja täysin palautuva poikkeama voi jäädä
+havaitsematta. Tuore kuudes portti, alkuperäinen kirjoittajatarkistus ja
+kaikki tiedostoluennat säilyvät; näytteiden määrää tai hetkeä ei väitetä
+muuttumattomaksi. Pysyvä muutos estää seuraavan muutoksen tai onnistumisen,
+ja jo havaittu valtuusvirhe pysyy hylkäyksenä. Kilpailevien virheiden
+ensimmäinen havaittu syy voi vaihtua.
+
+**Pienen vertailun portit:** lähtö ja ehdokas samoilla pienillä oikeiden
+tiedostotavujen fixtureillä, nykyisillä aikarajoilla ja nykyisellä yksityisellä
+testiraportoinnilla. Todista vähintään:
+
+1. Sama valmis inventaario, kaikki sivut ja rivit, alkuperäinen hash ja
+   identiteetit, säilyvät vieraat tavut sekä muuttumaton puuttuvan portin polku.
+2. Pysyvä valintamuutos ennen luentaa, kesken luvun, viimeisessä sulussa ja
+   ennen seuraavaa muutosta estää jatkon. Nimetty täysin palautuva muutos ja
+   kilpailevien syiden järjestys verrataan rehellisesti lähtöön.
+3. Alkuperäinen juuri-/omistusjakso, kirjoittajapoissaolo, päättynyt valtuus,
+   päällekkäinen tai keskeytynyt iterator, pidetty oikea tiedostokahva sekä
+   ensimmäinen lukuvirhe ja erillinen sulkuvirhe. Ei aikaisempaa vapautusta.
+4. Valittu `baseAuthority` pysyy samana; todellinen metadatan poisto,
+   inventaarion kirjoitus sekä journalin write/move/remove/sync käyttävät
+   edelleen täyttä valintaa. Pelkkä luentatulos ei kelpaa muutosluvaksi.
+5. Active-, selector- ja recovery-julkaisun liitos ennen ja jälkeen kohteen
+   luovutuksen. Testikääreet välittävät saman kutsukohtaisen valtuuden oikeaan
+   `records`-kulutukseen ja census-lukuun; argumentin vastaanotto mockissa
+   tai tyypitys yksin ei todista liitosta. Täydet backup-/julkaisu-/
+   jälkivarmennukset säilyvät.
+6. Laske täyden valinnan, lukuportin, fyysisen varauksen ja kirjoittajien
+   kutsut erikseen. Sisäkkäisiä laskureita tai kestoja ei summata eikä
+   kontrolloitu portti todista Windows-kustannusta tai native-ajan riittävyyttä.
+
+Kokeen valmistumisehto on rajattu näyttö ja riippumaton katselmus, ei
+pelkkä kutsumäärän pieneneminen. Omistaja hyväksyi yllä nimetyn havaintoeron
+ja rajatun kolmen omistajan vertailukokeen 8.11.2026. Lupa ei hyväksy
+tuotantokytkentää, pitkää native-ajoa tai mergeä.
+Omistaja hyväksyi kokeen jälkeen erikseen kolmen nykyisen omistajan
+tuotantokytkennän, pysyvät regressiot ja vaikutusalueen tarkistukset.
+Niiden läpäistyä saa valmistella nykyisen testiversion ja ajaa yhden uuden
+`DESK-DELETE-RECOVERY-001`-lomaketodennuksen nykyisessä 150 sekunnin
+kokonaisrajassa ja 10 sekunnin tulosodotuksessa. Tämä ei hyväksy koko
+W7.5:ttä tai mergepoikkeusta. Nykyiset
+aikarajat, vanhat hylkäykset ja W7.5:n kaikki integraatioportit säilyvät.
+Rajattu riippumaton lähdekatselmus puolsi kolmen omistajan vaihtoehtoa
+näillä täsmennyksillä. Se ei ole toteutetun ehdokkaan tai ajamattoman
+kokeen hyväksyntä.
+
+Historiallinen tulos:
+[8.11.2026, lähdevertailun koe- ja osanäyttö](release-0.3.0-workspace-history.md#w75-history-source-comparison).
+
+<a id="w75-source-inventory-reservation-review"></a>
+
+**9.11.2026, lähdevertailun, inventaariolukijan ja varauksen vastuuraja.**
+Tämä täydentää yllä olevaa hyväksyttyä lähdevertailusopimusta; se ei muuta
+vartijoita, havaintoikkunoita tai aikarajoja. Kyse on lähdekatselmuksesta,
+ei hitauden juurisyyn tai uuden toteutuksen ajonaikaisesta todennuksesta.
+
+| Lukuraja | Omistaja ja säilyvä vastuu |
+| --- | --- |
+| Tallennetun inventaarion tavut | `WorkspaceDeletionInventoryStore.assertRecords` ja `workspaceDeletionInventoryStream`: alkuperäinen hash, rajat, rivijärjestys, kaikki rivit ja EOF, kahvan/polun identiteetit sekä sulku. Julkaisijan tämän puolen lukuportti käyttää kirjoittajapoissaoloa, ei kuudetta valmisteluporttia. Rivikohtainen synkroninen valtuustarkistus ei ole fyysinen varaustarkistus. |
+| Nykyiset lähteet | `workspaceDeletionInventorySources.records(port)`: alkuperäiset parent-identiteetit, kaikki nykyiset lähteet ja census sekä alkuperäisjournalit. Pienen alkuperäissivun muistikuva on vain vertailuaineisto, ei nykytilan tai poistovaltuuden välimuisti. Lähdeluku käyttää myös valmistelun juuri-/lifecycle-todistusta; pelkkä inventaariotiedoston lukuvartija ei korvaa sitä. |
+| Valmistelun luentatodiste | `workspaceDeletionPreparation.assertPreparationReadOwned`: julkaisu/request/lease, alkuperäinen kohdejuuri, pysäytetty lifecycle ja tuore main-varaus. Palautushallinnan nykyisessä liitoksessa lifecycle tekee yleisen fyysisen tarkistuksen ja alkuperäiseen omistusjaksoon sidotun poissaolotarkistuksen; valmistelu tekee tämän jälkeen vielä oman sidotun poissaolotarkistuksen. Onnistuvassa kutsussa on siis kolme fyysisen portin havaintoa, ei kolme tiedostojärjestelmäkutsua. |
+| Varaus ja kirjoittajien poissaolo | `desktopSelectorComposition.assertRecoveryOwned` käyttää startupin samaan main-omistusjaksoon sidottua kuittia sekä pending-/uncertainty-ehtoja. Yleinen main-varaus ei yksin todista näitä. Havaittu virhe on pysyvä; bind/reclaim ei elvytä vanhaa kuittia eikä myöhäinen vastaus saa mitätöidä seuraajaa. |
+| Muutosvaltuus | Julkaisijan täydet alku-/loppuvalinnat, backup-uusintaluku, alkuperäisjournalit ja varsinaisten muutosten viimeiset vartijat säilyvät. Yksikään luku, laskuri tai onnistunut varauskutsu ei anna itsenäistä poistolupaa. |
+
+Lähteessä näkyvä kertautuminen on kahdella tasolla: yllä olevan yhden
+valmisteluportin sisällä ja lähdeluvun parent-/census-rajoissa, jotka
+koostavat valinta-kirjoittajat-valinta-tarkistuksen. Census-lukijan sisäinen
+`readonlyAuthority` rajaa jo täyden valinnan kierroksen reunoille; sen
+lehtilukujen jokaista kirjoittajahavaintoa ei saa tulkita kolmen tarkistuksen
+valmistelukutsuksi. Inventaariotiedoston ja lähteiden työ on erotettava.
+Nykyinen `reservation`-vaihehavainto kattaa recovery-koosteen callbackin,
+ei lifecyclen suoraa yleistä tarkistusta. Sen kokonaislaskuri ei siis ole
+kaikkien fyysisten havaintojen määrä eikä yhden lähdevertailun kustannus.
+
+**Seuraava rajattu näyttö, muuttumaton sovellus:** käytä nykyisen
+`desktopRestoreStartup.test.ts`-fixturen nimenomaista `startup`-reittiä
+ja nykyisiä testikääreitä. Erota yksi luonnostaan tapahtuva kuudennen
+valmisteluportin kutsu luovutuksen kummaltakin puolelta; välitä kaikki
+muut kutsut muuttumattomina. Älä lisää mittauskutsua tai käytä päättynyttä
+callbackia uudelleen. Erota yleinen fyysinen havainto, sidotut kuittihavainnot
+sekä kohdejuuren ja lifecyclen tarkistukset. Todista valmistuminen, alkuperäisten
+tavujen säilyminen, valtuuden päättyminen ja sulku. Hallittu julkaisumalli
+ei ole oikean journalijulkaisun tai poiston näyttö.
+
+Pidä myös lähdegeneraattorin ja inventaariotiedoston erottelu samassa
+Main-fixtuurissa; erillisen lähdelukijatestin ohjattu valtuus ei todista
+startupin sidontaa. Nykyinen julkaisuyhteistesti käyttää `direct`-reittiä;
+`startup`-reitin testikytkennässä on todennettava myös nykyisten havaitsijoiden
+välitys. Kääreet kutsuvat alkuperäistä toteutusta muuttamatta
+sen argumentteja, järjestystä, paluuta tai virhettä. Yleistä ja sidottua
+fyysistä havaintoa ei eroteta pelkän järjestysnumeron tai pinotekstin
+perusteella; todellinen tuottaja ja mittauspiste on osoitettava. Sisäkkäisiä
+kestoja tai kutsulaskureita ei summata: `assertRecords` sisältää myös lähteen
+kulutuksen. Suurin kutsumäärä ei yksin ole suurin aikakustannus.
+Native-adapterin kontrolloitu portti todistaa kutsurakenteen, ei oikeaa
+fyysistä Windows-varmennusta tai sen kustannusta.
+
+Ei uutta mittarikerrosta, tuotannon havaintokenttää, pitkää ajoa, budjetin
+nostoa tai vartijan ohitusta. Erityisesti kuudennen portin muuttaminen
+vaikuttaisi myös alkuperäisjournalin kaappaukseen ja journalin alkulukuun,
+ei vain lähdevertailuun. Mahdollinen myöhempi yhdistäminen tarvitsee oman
+täsmällisen sopimuksen: poistuva hetkellinen havainto ja kilpailevan
+ensisyyjärjestyksen ero eivät kuulu tähän muuttumattoman lähteen mittaukseen.
+Nykyinen lifecycle-todistus, kaikki neljä luovutuksellisen julkaisun
+lähdevertailua, täydet muutosvartijat ja keskeneräisen työn odottaminen
+säilyvät. [Katselmuksen näyttöraja](release-0.3.0-integration-history.md#w75-source-inventory-reservation-review-20261109)
+ei sulje vanhoja hylkäyksiä tai koko W7.5:tä.
+
+Historiallinen tulos:
+[9.11.2026, lähdelukujen kutsumittaus](release-0.3.0-workspace-history.md#w75-history-read-attribution).
+
+<a id="w75-source-leading-selection-proposal"></a>
+
+**9.11.2026, ehdotus lähdeluvun yhden johtavan tarkistuksen vertailukokeeksi.**
+Kutsumittaus rajasi työn lähdegeneraattoriin ja ulompiin valintoihin.
+`workspaceDeletionInventorySources.records(port)` tekee tällä hetkellä
+alkuperäisen täyden valinnan sekä ennen omaa luentaansa että sen lopussa.
+Julkaisijan `compareSources` tekee lisäksi täydet `assertOriginalSelection`-
+tarkistukset koko inventaario-/lähdevertailun molemmin puolin.
+Nämä ovat eri kutsurajoja; mittaus ei yksin hyväksy niiden muuttamista.
+
+Ehdotus koskee vain portillisen `records`-haaran ensimmäistä suoraa
+`selectedAuthority.assertExternalSelection()`-kutsua. Vain kokeessa se
+käyttäisi nykyistä `local.assertExternalSelection()`-luentavartijaa:
+alkuperäinen lähdekuitti, tuore julkaisu/request/lease, kohdejuuri,
+pysäytetty lifecycle ja main-omistus säilyvät nykyisissä omistajissa.
+Rivien, parent-identiteettien, censusin, alkuperäisjournalien, kirjoittajien,
+iteratorin sulun ja EOF:n nykyisiä tarkistuksia ei muuteta.
+Lukijan viimeinen alkuperäinen täysi valintatarkistus jää ennalleen,
+samoin julkaisijan täydet vertailurajat, kaikki neljä lähdevertailua,
+backup-uusintaluku sekä muutosten ja journalijulkaisun viimeiset vartijat.
+Luennan tulos ei anna poistolupaa.
+
+Alkuperäiskaappaus, metadatan oikea ennakkosiivous, `legacyRecords`,
+portiton kutsu, yleinen census/parent-lukija ja kuudennen valmisteluportin
+kolme fyysistä havaintoa eivät muutu. Vaikutus koskisi nykyisen julkaisijan
+aktiivista yritystä, valitsinta ja palautushallintaa, ei vain jälkimmäistä.
+Portillisen lähdeluvun ainoa tuotantokuluttaja on nykyinen `compareSources`.
+
+**Päätettävä havaintoero:** vain johtavan täyden tarkistuksen kohdalla
+näkyvä ja ennen seuraavaa täyttä tarkistusta täysin palautuva ulkoinen
+rekisteri-, build-/päivitys-, vierasjournalin tai paikallisen palautuksen
+valintamuutos voisi jäädä havaitsematta. Sama koskee vertailua
+muutosvartijan sisällä; kilpailevien virheiden havaintojärjestys voi muuttua.
+Pysyvä muutos estää edelleen myös lähdelukijan oman onnistuneen EOF:n
+viimeisessä täydellisessä tarkistuksessa. Alussa tapahtuvan hylkäyksen
+sijaan ensin voi valmistua luentatyötä ja palautua havaintorivejä; ne eivät
+ole hyväksytty EOF tai muutosvaltuus. Tiedostot säilyvät hylkäyksessä.
+Jo havaittua virhettä tai päättynyttä valtuutta ei elvytetä.
+Molempien sisäisten täysien rajojen vaihtaminen ei kuulu ehdotukseen:
+se muuttaisi myös lukijan omaa pysyvän valintavirheen hylkäyssopimusta.
+
+Pienessä vertailussa on osoitettava muuttumaton portiton polku,
+pysyvä valintamuutos ennen ensimmäistä `next()`-kutsua, luennan aikana ja
+viimeisessä sulussa myös ilman alkuperäisjournalikuittia, nimetty palautuva
+havaintoero, kilpailevat ensisyyt, `undefined`-syyn säilyminen, päättynyt
+tai virheellinen luentaportti sekä pidetty luku erillisine sulkuvirheineen.
+Todelliset tiedostotavut ja vieraat lähteet säilytetään. Julkaisukontrollit
+todistavat kaikki kolme käyttötapaa sekä varsinaisten muutosten täydet
+vartijat; yksi luentatulos ei korvaa niitä. Täyden valinnan, luentaportin,
+fyysisen varauksen ja kirjoittajien kutsut erotetaan nykyisillä testiapureilla.
+Ei uutta mittarikerrosta tai absoluuttista nopeuslupausta.
+Lukijan oman täyden valinnan kutsumäärä vähenisi kahdesta yhteen; kontrolli
+osoittaa jäljelle jäävän kutsun olevan juuri viimeinen täysi tarkistus.
+Nykyinen palautuvan valinnan testi ei yksin eristä uutta johtavaa ikkunaa.
+
+Rajattu riippumaton lähdekatselmus vahvisti yhden tuotantokuluttajan,
+muutosvaltuuden erillisyyden ja tämän yhden rajan vaihtoehdon. Se vahvisti
+myös molempien rajojen vaihtamisen laajemman EOF-sopimusaukon; sitä
+vaihtoehtoa ei ehdoteta kokeeseen. Kokeita tai sovellusmuutoksia ei tehty
+tällä sopimuskatselmuksella.
+
+**10.11.2026: omistaja hyväksyi yllä kuvatun havaintoeron vain pieneen
+vertailukokeeseen.** Sovelluslähde pysyy ennallaan; ehdokas ladataan
+vain kokeen muistiin. Hyväksyntä ei muuta aikarajoja, hyväksy
+tuotantokytkentää tai uutta pitkää/native-ajoa eikä koko W7.5:tä.
+Koetulos ja katselmus edeltävät mahdollista tuotantopäätöstä.
+
+Historiallinen tulos:
+[10.11.2026, johtavan tarkistuksen pienkoe](release-0.3.0-workspace-history.md#w75-history-source-leading).
+
+<a id="w75-recovery-preparation-ownership-review"></a>
+
+**10.11.2026, valmistelun yhteiskatselmus: koesopimus, ei kytkentälupa.**
+Nykyisen palautushallinnan `assertPreparationReadOwned` tarkistaa saman
+fyysisen varauksen kolmesti: lifecyclen yleinen main-omistus, sen
+käynnistyskuittiin sidottu kirjoittajapoissaolo ja valmistelun samaan
+kuittiin sidottu main-tarkistus. Näillä on eri ympäröivät ehdot, vaikka
+fyysinen resurssi on sama. Käynnistyskuitti sitoo sekä varauskahvan että
+omistusjakson; hyväksytty luovutus päättää sen myös saman kahvan palautuessa.
+Pelkkä pysäytetty lifecycle tai runtime-tagi ei korvaa tätä todistetta.
+Rajattu riippumaton lähdekatselmus vahvisti tämän kytkennän; uusia kokeita
+ei tällä katselmuksella ajettu. Lähdelukijan aiempaa ehdokasta ei kytketä.
+
+**Ehdotettu pieni vertailukoe:** nykyinen selector-lifecycle saisi nimetyn
+`assertRecoveryPreparationReadOwned()`-metodin vain palautushallinnan
+valmisteluluentaan. Se vaatisi pysäytetyn tilan, saman lease-/request- ja
+selector-valtuuden sekä konstruktorissa kaapatun recovery-portin. Metodi
+tekisi tämän portin kautta yhden tuoreen alkuperäiseen käynnistyskuittiin
+sidotun fyysisen havainnon, tarkistaisi nykyisyyden odotuksen molemmin puolin
+ja hyväksyisi vain `undefined`-tuloksen. Tavallisen selectorin käyttö
+hylättäisiin; ei valinnaista ohitusta, kutsujan antamaa korvaavaa todistetta,
+tulosvälimuistia tai aiemman kutsun onnistumisen uudelleenkäyttöä.
+
+Valmistelu sitoisi metodin ennen ensimmäistä odotusta vain recovery-runtimeen.
+Vain sen `assertPreparationReadOwned` käyttäisi järjestystä nykyisyys →
+nykyinen kohdejuuren tarkistus → nykyisyys → nimetty lifecycle-todiste →
+nykyisyys. Mainin kytkennän on edelleen todistettava, että portti käyttää
+alkuperäistä varausta sekä adoption-/poistotyön keskeneräisyys- ja
+epävarmuusehtoja. Tämä on kahden nykyisen omistajan koemuutos ja main-liitoksen
+todennus, ei uusi omistajuusjärjestelmä. Kuudes valmisteluportti palvelee
+myös alkuperäisjournalien kaappausta ja julkaisun teknistä alkulukua;
+vaikutusta ei rajata virheellisesti vain lähdevertailuun.
+
+Yleinen `assertNoActiveWorkspaceRuntime`, alkusulku, täydet valintakutsut,
+aktiivisen yrityksen ja tavallisen valitsimen polut säilyvät ennallaan.
+Kohdejuurta ei yhdistetä asennusjuuren varaukseen. Kaikki neljä vertailua,
+alkuperäisjournalien tavut/identiteetit ja varsinaisten muutosten viimeiset
+vartijat säilyvät; luentatodiste ei anna poistolupaa.
+
+**Erikseen päätettävä havaintoero:** vain pois jäävän fyysisen havainnon
+kohdalla näkyvä ja ennen säilyvää havaintoa täysin palautuva ulkoinen
+varausjuuren muutos voi jäädä havaitsematta, myös muutosvartijan sisäisessä
+luennassa. Kilpailevien ensisyiden järjestys voi muuttua. Havaittu menetys,
+pysyvä muutos, päättynyt omistusjakso tai epävarma kirjoittajapoissaolo
+estää jatkon. Menetettyä valtuutta ei elvytetä eikä vanhan kutsun virhe
+saa mitätöidä seuraavaa omistajaa. Tämä ero ei sisälly lähdelukijan aiempaan
+koelupaan. Omistaja hyväksyi 10.11.2026 tämän erillisen havaintoeron vain
+rajattuun vertailukokeeseen; tuotantokytkentää tai pitkää native-ajoa ei
+hyväksytty samalla päätöksellä.
+
+Kokeen portit ovat täsmällinen kolme → yksi -kutsutodiste ennen ja jälkeen
+lähdevalinnan luovutuksen, muuttumattomat yleiset/muutosvartijat, rinnakkaisten
+kutsujen riippumattomuus, vanhentunut kuitti myös bind/reclaim-tilanteessa,
+request-/lease-/root-/kirjoittajaepävarmuus, virheellinen paluuarvo,
+`undefined`-ensisyyn ja erillisen sulkuvirheen säilyminen sekä pidetyn
+fyysisen luvun päättyminen ennen sulkua. Palautuva havaintoero ja kilpailevat
+ensisyyt verrataan lähtöön. Nykyiset testiapurit ja aikarajat säilyvät.
+Kutsumäärän väheneminen ei todista native-kustannusta tai 10 sekunnin
+tulosodotuksen riittävyyttä. Pienen vertailun jälkeen arvioidaan hyöty ja
+kattavuus ennen mahdollista kytkentää; ei automaattista pitkää ajoa tai
+seuraavaa vartijamuutosta. Vaihtoehto on pitää lähde ennallaan ja selvittää
+vain nykyisen natiivin varaushavainnon kustannus rajatulla kokeella.
+
+Historiallinen tulos:
+[10.11.2026, valmistelutodisteen osanäyttö](release-0.3.0-workspace-history.md#w75-history-preparation-proof).
+
+**10.11.2026 hyväksytty yksi diagnostinen kertamittaus:** ehdokas jätetään pois sovelluslähteestä,
+ja nykyisen muuttumattoman sovelluksen `DESK-DELETE-RECOVERY-001`-ketjulle
+tehdään yksi diagnostinen kertamittaus. Vain tulosodotus olisi kokeessa
+60 sekuntia nykyisen 10 sekunnin sijaan; testin kokonaisraja säilyisi
+150 sekunnissa. Tarkoitus on erottaa koko poiston valmistuminen sen
+ensimmäisen tulosodotuksen päättymisestä nykyisellä vaihekeräyksellä,
+ennen uusien tarkistusmuutosten ehdottamista. Nykyisen valmistellun runtimen
+lähde-/käännössidonnat sekä edellisen ajon siivous varmistetaan ensin.
+Turva-, sisältö-, app- ja siivousrajat säilyvät. Omistaja hyväksyi tämän
+erillisen kertamittauksen; ei pysyvää testirajaa, vanhan hylkäyksen sulkemista,
+tuotantokytkentää tai automaattista lisänostoa/uusintaa.
+
+Historiallinen tulos:
+[10.11.2026, käytetyn kertamittauksen hylkäys](release-0.3.0-workspace-history.md#w75-history-result60).
+
+<a id="w75-postpublication-responsibility-review"></a>
+
+**Julkaisun jälkeinen tarkistusvastuu 10.11.2026, ei tuotantomuutos:**
+aloitusjournalin julkaisu ei todista fyysistä poistoa. Nykyinen havaintokeräys
+kattaa valmistelua ja jatkoa samalla laskurilla; tapahtumarajan täytyttyä
+siitä ei voi erottaa jatkon vaihekohtaisia kutsuja tai odotusaikoja.
+Laskureita ei vähennetä eri ajokertojen välillä viiveen paikantamiseksi.
+
+| Nykyinen omistaja | Säilyvä vastuu ja katselmuksen raja |
+| --- | --- |
+| `desktopComposition` / `desktopSelectorComposition` | Startup-kuittiin sidottu varaus ja kirjoittajien poissaolo, tuore pääsyvaltuus sekä erillinen täysi recovery-/build-valinta. Suljettu pääsy ei yksin poista siivouksen fyysistä omistajuutta. |
+| `WorkspaceManagementService` / `workspaceDeletionContinuation` | Sama lease pysyvälle jatkolle; ennen komentoa täysi omistajuus ja lopuksi todellinen poistokuitti. Vastaajan katoaminen ei ole peruutus eikä backend-exit main-I/O:n päättyminen. |
+| `workspaceDeletionCommand` | Nykyinen `coldSelection` erottaa jo sisäisen varausvartijan täydestä valinnasta. Täydet vaihe- ja muutosrajat säilyvät; samaa erottelua ei rakenneta uudelleen. |
+| `workspaceDeletionPhaseSelection` / `workspaceDeletionColdAdmission` | Vaihe-, journal-, rekisteri- ja build-valinnan ympärillä on sisäkkäisiä omistajuuskutsuja. Niiden kutsurakenne on todennettavissa lähteestä, mutta kustannusta tai poistettavuutta ei päätellä siitä. Yhteisten kutsujien oletukset säilyvät. |
+
+Tarkastelluista vartijakutsuista ei löytynyt itseensä palaavaa kutsukehää.
+Tämä ei sulje pois odottavaa I/O:ta, todista native-viiveen juurisyytä tai
+tee saman fyysisen portin kutsujista keskenään vaihdettavia: pääsy-,
+ensisyyn lukitus- ja sulkuehdot eroavat.
+
+**Seuraava rajattu mittaus nykyisillä testiapureilla:**
+
+- Pidä nykyinen Main-julkaisutesti, sen hallittu pysähdys ennen oikeaa
+  `resumea`, kaikki väittämät ja vain sille hyväksytty 20 sekunnin raja
+  muuttumattomina. Testimuistin kääreet erottavat valmistelun, julkaisun,
+  palvelun jatkovaltuuden, hallitun pysähdyksen ja sulun. Oikeaa fyysistä
+  jatkoa ei lisätä tähän testiin eikä sen budjettia lainata sisartestille.
+  Hallitun `resume`-korvikkeen alkaminen ei ole oikean authorization-vaiheen
+  alkutodiste.
+- Käytä nykyisiä `workspaceDeletionPhaseSelection.test.ts`-kontrolleja
+  oikeilla journal-/rekisteritavuilla ja nykyisissä rajoissa. Mittaa
+  capture-kokonaisuus, `owned`/`writers`-alikutsut ja palautettujen porttien
+  ulkoiset kutsut. Metodikääre ei näe sulkeuman sisäisiä kutsuja; niitä ei
+  raportoida täydellisenä kutsupuuna. Nykyiset ensisyyn ja pidetyn työn
+  sulkukontrollit säilyvät, eikä lukutulos anna poistolupaa. Aloitettu
+  callback odotetaan loppuun ennen loppulaskureita ja fixturen siivousta.
+- Sido valmistuminen kutsun aloitusvaiheeseen. Erota havaintotapahtuma,
+  varauskuitin tarkistusportti ja OS-työ; sisäkkäisiä kestoja tai kutsuja ei
+  summata erilliseksi työksi. Saavuttamaton authorization/purge/registry/cleanup on
+  mittaamatta, ei nollakustannus. Mittaus ei muuta poiston ohjausta.
+
+Valmistumisehto on lähteeseen sidottu pieni kutsukartta ja alkuperäisten
+väittämien sekä sulun todennus, ei uusi vartijaehdokas. Jos tämä ei paikanna
+native-odotusta, puuttuva näyttö nimetään. Ei uutta havaintokehystä, pysyvää
+mittaria, aikarajamuutosta, pitkää ajoa tai automaattista tuotantokytkentää.
+[Katselmuksen näyttöraja](release-0.3.0-integration-history.md#w75-postpublication-review-20261110)
+säilyy erillään [valmistuneesta rajatusta mittauksesta](release-0.3.0-integration-history.md#w75-postpublication-measurement-20261110).
+Historiallinen tulos:
+[10.11.2026, julkaisun jälkeinen mittaus ja testisulku](release-0.3.0-workspace-history.md#w75-history-postpublication).
+
+<a id="w75-post-ready-observation-proposal"></a>
+
+**10.11.2026, rajattu jatkoselvitys: backendin valmiuden jälkeinen odotus.**
+Nykyinen käynnistyshavainto erottaa backendin valmiuden ikkunan luonnista,
+mutta ei niiden välissä odottavaa main-kutsua. Lähdekatselmus erottaa
+snapshot-brokerin valmiuden ja tilaluvun, palautuksen validoinnin,
+health-/sisältö-/session-tarkistukset, työtilan hyväksynnän,
+FirstStart-/rekisterisiirtymät ja ajastimen ensimmäisen tarkistuksen.
+Minkään näistä nimeäminen viimeiseksi saavutetuksi vaiheeksi ei yksin
+todista sen virheellisyyttä tai anna lupaa ohittaa sitä.
+
+Koesuunta on nykyisen `electronE2eStartupObservation`-omistajan yksi
+erillinen viimeisen main-vaiheen muistihavainto. Nykyinen enintään 16
+checkpointin lista ja backendin erillinen havainto säilyvät: uutta
+vaiheaikajanaa ei kasvateta eikä main-vaihetta naamioida backend-vaiheeksi.
+Vaihenimet ovat suljettuja; havainto erottaa kutsuun saapumisen ja siitä
+paluun. Hylkäys ei tuota paluumerkintää. Mukaan ei tule tunnisteita,
+polkuja, sisältöä, raakavirheitä, uutta kanavaa tai levy-I/O:ta.
+Mahdollinen lisäkenttä vaatii versionoidun testiformaatin ja täsmällisen
+parserin; nykyistä v2-muotoa ei muuteta hiljaisesti.
+
+Pieni koe käyttää nykyisiä composition- ja lifecycle-kontrolleja.
+Pidetty tilaluku, sisältövalidointi, hyväksyntä ja ajastimen tarkistus
+erotetaan toisistaan; havaitsijan virhe ei muuta alkuperäistä tulosta,
+virhettä (myös `undefined`), sulkuvaltuutta tai ikkunan avausjärjestystä.
+Testataan rajattu muisti, tuntemattomien kenttien hylkäys, muuttumaton
+snapshot sekä ensimmäisen virheotteen säilyminen myöhäisen vastauksen ja
+siivouksen yli. Nykyinen yksityinen lukija käyttää yhteistä parseria;
+nykyinen kerääjä säilyttää nimetyn lifecycle-tiedoston tavut, ei tulkitse
+vaiheita uudeksi testitulokseksi. Puuttuva havainto säilyy puuttuvana,
+ei jumittumisen todisteena.
+
+Tämä on lähteistä rajattu koesuunnitelma, ei toteutettu havaintokytkentä,
+uusi native-ajolupa tai juurisyyn korjaus. Koe ei muuta käynnistyksen
+järjestystä, aikarajoja, poistovartijoita tai julkisia käyttäjälokeja.
+Tuotantoliitoksen ja uuden pitkän todennuksen valtuus ratkaistaan erikseen;
+nykyisen kertaluvan kuluminen säilyy M1:n jatkamiskohdassa.
+
+Historiallinen tulos:
+[10.11.2026, käynnistyshavainnon ensimmäinen pienkoe](release-0.3.0-workspace-history.md#w75-history-post-ready-small).
+
+[Täydennetty muistiehdokas](release-0.3.0-integration-history.md#w75-post-ready-observation-groups-20261110)
+erottaa normaalin työn, virheen käsittelyn, siivouksen ja palautumisen.
+Main omistaa suljetun signaalin ilman E2E-riippuvuutta; E2E-adapteri vain
+kytkee ja säilyttää sen. Havainto koskee alkuperäistä lausetta tai ryhmää:
+`returned` kertoo ohjauksen paluusta, ei onnistumisesta. Ehdollisen ryhmän
+paluu ei todista sen sisäisen kutsun suorittamista. Esimerkiksi nykyisen
+sulkuvirheen muuttuminen epätodeksi tulokseksi ei muutu onnistumiseksi
+havainnon vuoksi. `startupCatch` ja kaikissa haaroissa poistuva
+`recoveryHandling` saavat vain saapumismerkinnän.
+
+Lähdekartta kattaa nimetyn backend-ready/ikkuna- ja catch-välin odotuslauseet;
+se ei todista myöhemmin kutsuttavien callbackien dynaamista kattavuutta.
+Alkuperäiset promiset, odotusjärjestys ja sulkuvaltuudet säilyvät.
+Nimetyt pienkontrollit läpäisivät, mutta varsinainen kytkentä pysyvine
+regressioineen, uuden otteen salaus/purku sekä oikea native-todennus ovat
+vielä tekemättä kokeen päättyessä. Omistaja hyväksyi 11.11.2026 tämän
+rajatun kytkennän, pysyvät regressiot, salaus/purkuketjun ja niiden sekä
+katselmuksen jälkeen yhden uuden nimetyn native-todennuksen nykyisillä
+rajoilla. Pelkkä pienkokeen läpäisy ei hyväksy native-ketjua tai koko W7.5:tä.
+
+**Kytkentäehdotuksen omistajat.** Mainin puhdas signaalimoduuli ja
+`StartDesktopCompositionOptions` omistaisivat valinnaisen synkronisen
+havaitsijan. Nykyinen options-välitys säilyttäisi sen runtimeen asti.
+Vain `electronE2eEntrypoint` kytkisi muistikeräyksen; tavallinen main-entrypoint
+ei kytkisi havaitsijaa. Nykyinen `readElectronStartupObservation` ja
+`captureElectronStartupObservation` käyttäisivät samaa kanavaa ja versionoitua
+parseria, jonka tyyppi erottaa v2:n ja v3:n. Siivousta ei odotuteta
+diagnostiikan vuoksi. Pysyvä kytkentäregressio todentaisi entrypointin
+välityksen sekä tavallisen polun keräyksettömyyden; aiemmat muistimuuntimet
+eivät korvaa tätä näyttöä. Uutta IPC-kanavaa, tiedostoa tai käyttäjälokia
+ei tarvita. Toteutuksen ja todennuksen tila kuuluu M1:n jatkamiskohtaan;
+käynnistyksen viivettä ei merkitä korjatuksi havaintokytkennän perusteella.
+
+<a id="w75-candidate-binding-responsibility"></a>
+
+**11.11.2026, tarkistuskopion lukujärjestys: rajattu tuotantokytkentä hyväksytty.**
+`workspaceCandidateRemnantSelection` omistaa yhden import-/adoption-kopion
+sidonta- ja kansiohavainnot, ei poistolupaa. Nykyinen `observe` lukee
+sidonnat, kansion, sidonnat uudelleen, kansion uudelleen ja lopuksi sidonnat.
+Lähdekartta erotti tämän metadata- ja varsinaisen operation-kansion
+luetteloinnin toistumisesta; eri aineistojen luentoja ei yhdistetty.
+
+Yksityinen vertailuehdokas poisti vain keskimmäisen sidontakierroksen.
+[Kokeen näyttö ja rajat](release-0.3.0-integration-history.md#w75-candidate-binding-order-20261111)
+osoittivat vähentyneen työn ja aidon havaintoeron, mutta yksi nykyinen
+järjestysregressio hylkäsi. Ehdokas ei siksi ole hyväksytty korvaaja.
+Pois jäävä kierros sisältää sidontatavujen lisäksi alias-hakemistojen
+identiteetit sekä ulkoisen valinnan ja kirjoittajien poissaolon havaintoja.
+Niiden täysin palautuva välitila voi jäädä havaitsematta ja kilpailevien
+virheiden havaintojärjestys muuttua. Muutosta ei kuvata pelkäksi
+muuttumattomaksi tarkistukseksi tai sisällön välimuistiksi.
+
+Vaiheeseen sidottu kansiovaihto erotti myös nykyisen lukijan rajallisen
+snapshot-sopimuksen: viimeisen oman kansioluvun jälkeinen ulkoinen vaihto
+ei yksin tule havaituksi pelkästä sidontaluvusta. Koe ei todista tämän
+olevan uusi tuotantovirhe eikä anna lupaa poistaa viimeistä tarkistusta.
+Nykyisellä lukijalla on kolme suoraa kuluttajaa:
+
+| Kuluttaja | Vastuu ja säilyvä raja |
+| --- | --- |
+| `workspaceDeletionRemnantCensus` | Sidontahakemiston metadatahavainto; tarkistaa receiptin myös rivin kulutuksen jälkeen. Koko census verrataan erikseen loppuun asti. |
+| `workspaceCandidateRemnantEnumeration` | Todellisen operation-kansion nimet, kopion havainto ja receiptin tarkistus kulutuksen jälkeen. Nimeämätöntä tai vierasta aineistoa ei päätellä puuttuvaksi. |
+| `workspaceDeletionBindingCleanup` | Payloadittoman metadatan ennakkosiivous. Alkuperäinen strict-capture sekä erillinen `assertPayloadsAbsent` suojaavat siivousta; jälkimmäinen ei kutsu `observe`-kierrosta. |
+
+Inventaariolähde ja julkaisu vertaavat koko aineiston erikseen.
+`workspaceDeletionPayloadExecutor` sekä `workspaceDeletionQuarantine` käyttävät
+julkaistun vaiheen valtuutta, ja `workspaceDeletionPayloadSelection` vertaa
+tuoreen kohteen identiteetin inventaarioriviin ennen siirtoa. Näitä vastuita
+ei saa korvata yhdellä aiemmalla kopion lukutuloksella.
+
+Historiallinen tulos:
+[11.11.2026, kopion fyysisen siirron kontrollit](release-0.3.0-workspace-history.md#w75-history-candidate-physical).
+
+**Hyväksytty rajaus.** Luettelointiin rajattu ratkaisu jättää pois
+jäävän keskimmäisen sidontakierroksen vain kahden ensimmäisen kuluttajan
+luettelovertailuun. Nykyinen strict-capture ja itse
+`clearAbsentWorkspaceDeletionBinding`-siivoojan muutosvaltuus säilyvät.
+Myös metadatan ennakkosiivousta valmisteleva census käyttää rajattua
+havaintoa; tätä valmistelun vaikutusta ei väitetä muuttumattomaksi.
+Havainnon rajattu tulos ei sisällä `assertPayloadsAbsent`-metodia
+tai `ownerSlots`-todistetta; sitä ei saa käyttää siivouksen valtuutena.
+Tämä on sisäisen rajapinnan vastuurajaus, ei uusi käyttöoikeustarkistus;
+varsinaiset muutosvartijat säilyvät erillisinä. Census voi silti toimia
+muutosvartijan sisällä: sen luennan havaintoero on ilmoitettava myös siinä.
+Saman omistajan yhteinen sisäinen toteutus estää kahden kopioidun lukijan
+eriytymisen. Nykyisen strict-exportin ei-asynkroninen välitys palauttaa
+yhteisen sisäisen toteutuksen Promisen suoraan; sen keskimmäinen kierros
+säilyy. Rajatun havainnon oma projektio lisää asynkronisen rajan.
+Viimeinen luenta ei ole atominen snapshot tai itsenäinen poistolupa.
+Pysyvät regressiot vertaavat oletuspolkua, havaintoeroa, muuttuvia tavuja,
+päättyvää valtuutta ja siivouskutsujan toimintaa; aikarajat säilyvät.
+
+Historiallinen tulos:
+[11.11.2026, rajatun luettelointiehdokkaan koe](release-0.3.0-workspace-history.md#w75-history-candidate-enumeration).
+
+**Omistajan hyväksyntä 11.11.2026.** Päätös koskee vain yhteisen lukijan rajattua
+havaintorajapintaa ja kahta nimettyä luettelointikutsujaa. Hyväksyntä kattaa
+yllä kuvatun havaintoikkunan, kilpailevien virheiden järjestyseron
+ja readonly-projektion asynkronisen rajan, myös valmistelu-censuksen sekä
+muutosvartijan sisäisen census-luennan osalta. Suora metadatasiivooja,
+varsinaisten muutosten vartijat ja aikarajat säilyvät. Näitä eroja ei
+kuvata muuttumattomiksi tarkistuksiksi tai itsenäiseksi poistovaltuudeksi.
+Kytkennän hyväksyntänäyttöön tarvitaan pysyvät regressiot, valmistelun ja
+julkaisun vaikutustestit, tyypitys, nykyinen salattu virhetodiste ja katselmus.
+Uuden lähteen native-todennuksen rajaus ratkaistaan vasta niiden jälkeen;
+pitkää lisäajoa, pakettihyväksyntää, mergeä tai koko W7.5:tä ei päätellä
+pienkokeista. Yksityisiä koemuuntimia tai mittareita ei toimiteta sovelluksessa.
+Nykyistä testiä ei muuteta vihreäksi siirtämällä vikainjektion järjestysnumeroa.
+
+Historiallinen tulos:
+[11.11.2026, luettelointikytkennän osanäyttö](release-0.3.0-workspace-history.md#w75-history-candidate-production).
+
+<a id="w75-recovery-combined-preparation-proof"></a>
+
+**11.11.2026, hyväksytty koesopimus: palautushallinnan yhdistetty valmistelutodistus.**
+Rajattu lähdekatselmus ehdottaa nykyisen selector-lifecyclen omistamaa
+palautushallinnan todistusta, ei uutta manageria tai välimuistia.
+Omistaja hyväksyi rajatun lähtö-/ehdokaskokeen ja alla kuvatun havaintoeron.
+Koelupa koski vain pieniä kokeita nykyisissä aikarajoissa. Näytön jälkeen
+omistaja hyväksyi saman kolmen omistajan lähdekytkennän, pysyvät regressiot
+ja nykyiset vaikutusalueen portit sekä niiden ja katselmuksen jälkeen
+testiversion valmistelun ja yhden `DESK-DELETE-RECOVERY-001`-ajon nykyisillä
+150/10 sekunnin kokonais-/tulosrajoilla. Ei mergepoikkeusta tai vanhojen
+hylkäysten sulkemista. Alla oleva havaintoero kuuluu myös lähdekytkentään.
+
+| Nykyinen omistaja | Ehdotettu vastuu |
+| --- | --- |
+| `MainOwnedSelectorWorkspaceLifecycle` | Nimetty `assertRecoveryPreparationOwned` vaatii recovery-tilan, pysähtyneen lifecyclen sekä nykyiset selector-, delete-lease-, main- ja runtime-tilavartijat. Se odottaa yhden constructorissa sidotun `assertMainOwnedAndRuntimeAbsent`-todistuksen, vaatii `undefined`-tuloksen, tarkistaa valtuuden uudelleen ja säilyttää ensisyyn myös sen ollessa `undefined`. Ei todistuksen välimuistia tai samanaikaisten kutsujen yhdistämistä. |
+| `desktopSelectorComposition` | Sitoo nimetyn yhdistetyn callbackin nykyiseen `assertRecoveryOwned`-tuottajaan. Startupin alkuperäiseen omistusjaksoon sidotut varaus-, poissaolo-, pending- ja epävarmuustarkistukset säilyvät. Koostaminen ei korvaa lifecyclen pysähtymis- tai lease-valtuutta. |
+| `workspaceDeletionPreparation` | Sitoo uuden metodin ennen ensimmäistä awaitia vain palautushallinnan runtime-sopimukseen. Käyttää sitä sekä pysähtyneen tilan `assertCurrent`- että `assertPreparationReadOwned`-kutsussa nykyisen poissaolo-/varaustodistusparin sijasta. Kohde-, juuri-, elinikä- ja invalidointivartijat säilyvät. |
+
+Geneerinen lifecycle-/poissaoloportti, aktiivinen yritys, tavallinen
+selector, alkuperäinen sulkujärjestys ja strict `proveMainOwned` säilyvät.
+Constructor-callbackin nimeämisen pitää kuvata sen molemmat todistusvastuut;
+nykyinen strict-polku käyttää edelleen samaa todistusta omassa järjestyksessään.
+Täysi valintavartija säilyttää valmistelu -> kirjoittajat -> valmistelu
+sekä alkuperäisjournalien tarkistuksen. Journalin julkaisun molemmat
+muutosvartijat, fyysisen siirtäjän oma vartija, lähdeidentiteetti,
+kohteen poissaolo ja välitön valtuus ennen renamea säilyvät.
+
+Uusi hyväksyttävä havaintoero olisi kolmen fyysisen havaintokerran
+korvaaminen yhdellä jokaisessa nimetyssä valmistelutodistuksessa, myös
+täyden muutosvartijan sisällä. Vain pois jäävissä havainnoissa näkyvä ja
+täysin palautuva varausjuuren muutos voisi jäädä havaitsematta.
+Kilpailevien virheiden koodi, ensisyyn omistaja ja await-ajoitus voivat
+muuttua; tarkistuksia ei kuvata muuttumattomiksi. Valtuuden menetys säilyy
+pysyvänä, aloitettu työ odotetaan loppuun ja epävarma sulku estää jatkon.
+
+Ensin tarvitaan lähtö-/ehdokasvertailu nykyisissä rajoissa: oikea
+startup-/composition-kytkentä ja molemmat valmistelukutsut ennen/jälkeen
+luovutuksen, erilliset samanaikaiset kutsut, pysyvät ja palautuvat
+varaus-/poissaolomuutokset, pending/epävarmuus, lease-/pyyntö-/juurikatkot,
+virheellinen tulos, myöhäinen valmistuminen ja ensisyyn säilyminen.
+Varsinaisen julkaisun slot-/lähde-/kohdemuutosten ja valtuuden päättymisen
+pitää estää rename; pidetty todistus pitää sulun odottamassa.
+Koenäytön jälkeinen lähdekytkentä ja yksi nimetty native-todennus hyväksyttiin
+yllä rajatuin portein. Nopeus, uusi aikaraja tai koko W7.5:n hyväksyntä
+eivät seuraa pelkästä lähdekatselmuksesta.
+
+Historiallinen tulos:
+[11.11.2026, yhdistetyn valmistelutodisteen näyttö](release-0.3.0-workspace-history.md#w75-history-combined-preparation).
+
+<a id="w75-recovery-census-proof-responsibility"></a>
+
+**11.11.2026, rajattu katselmus: myöhemmän lähdevertailun varaustodistus.**
+Historiallinen tulos:
+[11.11.2026, census-luennan kutsumittaus](release-0.3.0-workspace-history.md#w75-history-census-count).
+
+**Hyväksytty rajattu tuotantokytkentä, integraatio kesken:**
+vain palautushallinnan myöhempi `records(readAuthority)`-vertailu ja sen
+`census.assertUnchanged`-luenta. Alkuperäinen kaappaus, ennakkosiivous,
+sivujen erilliset lähdeluvut, aktiivinen yritys, tavallinen valitsin sekä
+ilman nimettyä luentatodistusta toimivat kutsujat säilyttävät nykyisen polun.
+Geneerinen `assertAuthority` ei yksin todista kirjoittajien poissaoloa.
+
+| Nykyinen omistaja | Kokeen vastuu |
+| --- | --- |
+| `workspaceDeletionPreparation` | Sitoo ennen awaitia vain recovery-tilassa nimetyn synkronisen nykytilatodistuksen: alkuperäinen omistusjakso, runtime-poissaolo, pysähtynyt lifecycle, lease ja julkaisupyynnön elinikä. Virhe päättää luentavaltuuden pysyvästi; myös `undefined` ensisyynä säilyy. Ei uutta lifecycle-omistajaa tai aiemman fyysisen havainnon välimuistia. |
+| `desktopSelectorComposition` ja `workspaceDeletionContinuation` | Välittävät uuden nimetyn callbackin alkuperäiseen valmisteluun sidottuna nykyisten julkaisukääreiden läpi. Vain recovery-haara saa toimittaa sen; aktiivinen ja tavallinen selector eivät saa päätyä ehdokaspolulle pelkän yleisen luentaportin perusteella. |
+| `workspaceDeletionPublication` | Välittää todistuksen vain myöhemmän lähdevertailun omaan päättyvään luentavaltuuteen. Neljä kokonaista vertailua, alkuperäisjournalit, backup-uusintaluku ja kaikki täydet muutosvartijat säilyvät. |
+| `workspaceDeletionInventorySources` ja `workspaceDeletionRemnantCensusSelection` | Välittävät nimetyn todistuksen vain kyseisen kulutuksen census-jälkivertailuun. Kaappaus, sivuluvut, slotit, hashit, identiteetit ja kaikkien rivien vertailu säilyvät. Todiste ei anna muutosvaltuutta. |
+| `workspaceDeletionRemnantCensus` | Säilyttää täyden valinnan ja alkuperäisen fyysisen kirjoittaja-/varaustodistuksen ennen lukua sekä lähteen ja kahvojen päätyttyä ennen onnistunutta EOF:ää. Vain nimetyn luennan sisäiset kirjoittajatodistukset käyttäisivät synkronista nykytilatodistusta. Puuttuva todistus säilyttää vanhan tiukan oletuspolun. |
+
+Kokeen nimetty callback on `assertRecoverySourceReadCurrent`, ei pelkkä
+mainin `assertRecoveryOwnedCurrent`. Valmistelu sitoo sen nykyiseen
+`assertReadCurrent -> assertPublication -> assertContinuity`-ketjuun,
+joka vaatii pysähtyneen lifecyclen ja sen alkuperäisen runtime-/lease-/
+main-omistusjakson. Callback jakaa valmistelun luennan ensivirheen ja
+vanhenee sen kanssa. Julkaisijan jokainen vertailu lisää oman lyhyemmän
+elinaikansa; vanhan vertailun callback ei kelpaa seuraavaan vertailuun.
+Välitys kulkee `publish`-portin nimettynä valinnaisena lisäargumenttina
+edellä mainittujen kahden main-kääreen ja nykyisen komentovälityksen
+kautta. Komennon rest-välityksen säilyminen todistetaan Main-testissä.
+Alempi census saa vain tähän yhteen luentaan sidotun callbackin.
+Virheellinen toimitettu callback tai ei-synkroninen tulos hylätään;
+vain puuttuva callback käyttää muuttumatonta oletuspolkua.
+
+Uusi havaintoero olisi fyysisen varausjuuren tarkistusrytmissä: vain
+pois jäävässä sisähavainnossa näkyvä ja ennen seuraavaa fyysistä havaintoa
+täysin palautuva ulkoinen muutos voisi jäädä havaitsematta myös
+muutosvartijan sisäisessä luvussa. Pysyvä muutos estää luennan hyväksymisen;
+jo havaittu valtuuden menetys ei palaudu. Kilpailevien virheiden ensisyy
+ja await-ajoitus voivat muuttua. Tämä ero ei sisälly aiempaan kolmen
+valmistelutodistuksen yhdistämisen hyväksyntään.
+
+Omistaja hyväksyi tämän havaintoeron pieniin kokeisiin 11.11.2026.
+Historiallinen tulos:
+[11.11.2026, census-todisteen muistivertailu](release-0.3.0-workspace-history.md#w75-history-census-experiment).
+
+Ennen mahdollista tuotantokytkentää todista oikean main-tuottajan kytkennän
+lisäksi fyysisen
+varausjuuren pysyvän ja palautuvan muutoksen, runtime-/lease-/pending-
+katkon pidetyn luvun aikana, lähteen sulkeutumisen ennen EOF:ää sekä
+karanneen callbackin eston. Mukaan tulevat koko välitysketjun sekä väärän
+tilan, virheellisen, vanhentuneen ja uudelleenkäytetyn callbackin kontrollit.
+Ensivirhe ja erillinen sulkuvirhe säilytetään.
+Alkuvalmistelun ja oletuskutsujien vertailu sekä strict-clear-, siirto-,
+poisto- ja sync-kontrollit todistavat, ettei lukutodistus anna poistolupaa.
+Pelkkä Boolean-fixture tai kutsumäärän lasku ei riitä kytkentänäytöksi.
+Koe ei korvaa väärän tilan ja kaikkien tuotantokutsujien todistusta eikä
+osoita native-ketjun nopeutumista. Omistaja hyväksyi tämän jälkeen vain
+kuvatun rajauksen tuotantokytkennän, pysyvät regressiot, tyypityksen,
+katselmuksen ja erikseen nimetyn native-ajon nykyisillä aikarajoilla.
+Kytkentä on työpuussa: recovery-tuottajan nimeämä callback kulkee kahden
+main-kääreen läpi vain myöhempään lähdevertailuun; tavallinen kuusiargumenttinen
+julkaisukutsu ja puuttuvan callbackin tiukka oletuspolku säilyvät.
+Alku- ja loppurajojen fyysinen varaus, todelliset tiedostotavut ja kaikkien
+muutosten täydet vartijat säilyvät. Pysyvä regressio kattaa palautuvan ja
+pysyvän fyysisen juuren muutoksen, väärän tilan, vanhentuneen sekä
+ei-synkronisen callbackin, pidetyn luvun ja ensivirheen erillään sulusta.
+Lähde-, valmistelu-, Main-kohde- ja vaikutussarjat sekä tyypitys läpäisivät;
+vanhan kutsumuodon ensin hylännyt testi korjattiin yhteensopivuusmuutoksella.
+Riippumaton katselmus löysi ensin nimetyn todistuksen vuotavan myös täyden
+sivun erilliseen uudelleenlukuun. Korjattu rajaus antaa sen vain
+`census.assertUnchanged`-jälkilukuun; monisivun molemmat variantit,
+korjatun lähteen 130 vaikutustestiä, tyypitys ja normaali Main
+(1 654 testiä, 44 tiedostoa) läpäisivät. Jälkikatselmus ei löytänyt estettä.
+Yksi nimetty oikean Electronin testi hylkäsi yhä 10 sekunnin tulosodotuksen.
+Sen osittaisessa vaiheotteessa journalijulkaisu oli aktiivinen eikä yksikään
+myöhempi lähdevertailu ollut alkanut. Jäädytetyt 4 027 lähde-/runtime-tiedostoa
+säilyivät, ja prosessi-/portti-/bridge-siivous varmistui; poiston loppu ja
+restart eivät valmistuneet testissä. Ote ei kerro tarkkaa levytilaa
+odotushetkellä tai juurisyytä. Nyt kytketty myöhemmän luennan muutos ei siis
+yksin selitä tätä ajoa. Vanhoja aikakatkaisuja ei merkitä korjatuiksi,
+eikä W7.5:tä tai mergeä hyväksytä tämän rajatun kytkennän perusteella.
+
+<a id="w75-initial-inventory-read-boundary"></a>
+
+**11.11.2026, alkuinventaarion lukuvastuun rajaus (ei kytkentäpäätös).**
+Julkaisija kirjoittaa inventaarion otsakkeen ennen lähdegeneraattorin kulutusta.
+Valmistelu lukee koko jäännösaineiston, tarkistaa sen tuoreeltaan, kaappaa
+inventaarion lähteet uudella vertailuluennalla ja tarkistaa lähteen vielä
+rivigeneraattorin EOF:ssa. Nämä ovat eri hetkiä; väliaikaiseen `next`-tiedostoon
+jäänyt otsake ja työtilarivi eivät todista, mikä seuraava luku tai kirjoitus
+odotti natiivin tulosrajan täyttyessä.
+
+| Vastuu | Säilyvä raja mahdollisessa kokeessa |
+| --- | --- |
+| `workspaceDeletionRemnantCensusSelection` | Vain kokonaisen, pelkästään lukevan kierroksen sisäisiä havaintoja saa verrata rajattuun luentavaltuuteen. Täysi alku-/loppuvalinta, alkuperäisjournalin sidonta, kaikkien lähteiden tavut ja kahvojen päättyminen säilyvät. Puuttuvan payloadin sidonnan `clearAbsentWorkspaceDeletionBinding` käyttää edelleen alkuperäistä täyttä muutosvaltuutta. |
+| `workspaceDeletionInventorySources` | Kaappaus, rivit ja EOF eivät anna poistolupaa. Erillinen sivujen uudelleenluku, parent-identiteetit ja tuore loppuvertailu pysyvät tiukkoina, ellei niiden omaa havaintoeroa erikseen todenneta ja päätetä. |
+| `workspaceDeletionInventoryStore` | Jokaisen hakemistoluonnin, `next`-kirjoituksen ja syncin, `next -> current` -siirron sekä lopputarkistuksen nykyiset `beforeMutation`- ja tiedostoidentiteettivartijat säilyvät. `readAt('next')` myös juuri ennen siirtoa on tuore eheystarkistus, ei korvattava kopio ensimmäisestä takaisinluvusta. |
+
+Omistaja hyväksyi tämän havaintoeron vain rajattuun pienkokeeseen.
+[Tarkennettu muistiehdokas](release-0.3.0-integration-history.md#w75-initial-census-inner-only-experiment-20261111)
+käytti nykyiseen omistusjaksoon sidottua päättyvää luentavaltuutta vain
+alkujulkaisun kokonaisten jäännöslukujen sisällä. Pysyvä muutos esti jatkon;
+pidetyn luvun virhe, päättyneen callbackin esto, ensisyy/sulkupari ja
+keskeneräinen `next` ilman `current`-siirtoa läpäisivät pienet kontrollit.
+Pois jäävän sisähavainnon
+aikana täysin palautuva ulkoinen kirjoittajatila voi jäädä havaitsematta,
+ja kilpailevien virheiden järjestys voi muuttua. Koenäyttö ei vielä kata
+tuotantokytkentää tai natiivin Electronin nopeutta. Rajattu riippumaton
+lähdekatselmus ei löytänyt estävää puutetta, mutta metadatan siivouksen,
+inventaarion muutosrajojen ja kilpailevan luku-/sulkuvirheen integroitu
+koenäyttö sekä erillinen tuotantopäätös vaaditaan ennen lähdemuutosta
+ja nimettyä native-ajoa.
+
+Pienkokeen jatkossa metadatan siivous, vieraan sidonnan säilyminen ja
+julkaisijan oma päättyvä luentavaltuus todennettiin nykyisen 10 sekunnin
+julkaisijatestin koemuunnoksella. Erilliset viisi valtuus-, keskeytys- ja
+virhekontrollia, inventaariotallentimen nykyiset 38 rajatestiä (yksi
+alustakohtainen ohitus) ja virtuaalinen tyyppitarkistus läpäisivät.
+Muutosvaltuus pysyy erillisenä myös aloituksen `next`-kirjoituksessa;
+siivous ei saa poistolupaa lukutuloksesta. Lisänäytön ensihylkäykset ja
+mittausrajat ovat [historiassa](release-0.3.0-integration-history.md#w75-initial-census-inner-only-experiment-20261111).
+Koe on yhä vain testimuistissa. Erillinen tuotantopäätös, sen omat
+regressiot ja native-todennus puuttuvat; Electronin nopeutumisesta tai
+poistoketjun valmistumisesta ei ole uutta näyttöä. Rajattu näyttökatselmus
+ei suosittele lähdekytkentää pelkän fyysisten havaintojen vähenemisen
+perusteella: ohjattu Main-koe ei osoittanut olennaista ajallista hyötyä.
+Omistaja hyväksyi yhden eristetyn natiivivertailun nykyisillä
+150/10 sekunnin rajoilla ja sen tilapäisen lähde-eristyksen, sillä
+testimuistin muunnos ei siirry Electronin omaan käännökseen. [Koe tehtiin](release-0.3.0-integration-history.md#w75-initial-census-inner-native-20261111):
+nimetty Electron-testi hylkäsi edelleen 10 sekunnin tulosodotuksessa,
+vaikka lähde- ja build-tavut sekä siivous varmistuivat. Tämä ei osoita
+riittävää natiivinopeutta eikä hyväksy tuotantokytkentää tai rajojen muutosta.
+Koeehdokas jää erilleen tuotantolähteestä.
+
+**11.11.2026, tarkennettu vastuu ja seuraava mittaus, ei uusi kytkentä:**
+palautushallinnan journalijulkaisu tekee neljä erillistä lähdevertailua:
+ennen luovutusta, kaksi julkaisuvalinnan molemmin puolin ja yhden julkaistun
+journalin jälkeen. Aiempi kuvaus inventaariolukijan täydestä valinnasta oli
+virheellinen; riippumaton lähdekatselmus vahvisti alla olevan kutsusidonnan.
+
+| Omistaja ja kutsu | Todellinen vastuu tässä polussa |
+| --- | --- |
+| `workspaceDeletionPublication.compareSources` | Täysi `assertOriginalSelection` koko vertailun molemmin puolin. Inventaarion lukijalle annetaan erillinen päättyvä `readAuthority`, jonka ulkoinen callback todistaa vain kirjoittajien poissaolon. |
+| `WorkspaceDeletionInventoryStore.assertRecords/readAt` | Toistaa juuri saamansa kirjoittajatodistuksen, ei julkaisijan täyttä yritys-/palautusvalintaa. Parent-, tiedosto-, hash-, rivi-, EOF- ja sulun jälkeiset tarkistukset säilyvät. `beforeMutation`-nimi ei muuta callbackin sisältöä. |
+| `selectedSource.records(sourceReadAuthority)` | Eri luentavaltuus, johon kuuluu valmistelun juuri-/lifecycle-omistajuus ja rajattu census-todistus. Sitä ei sekoiteta inventaariotiedoston lukijaan. |
+| `desktopSelectorComposition.assertPrepared` luovutuksen jälkeen | Valmistelun nykytila ja erikseen luovutettu ulkoinen build-/palautusvalinta. Jälkimmäinen kulkee `captureWorkspaceDeletionExternalSelectionFromRoot.assertSelected`-ketjuun. |
+| Ulkoisen valinnan `assertOwner` ja build-lukija | `owned -> writers -> owned`. Recovery-compositionin yksi `owned` kutsuu luovutetun main-omistajan todistusta ja sen jälkeen recovery-todistusta. `handoff` on kuitenkin jo sitonut main-omistajan samaan `assertRecoveryAdmissionOwned`-callbackiin: fyysinen todistus toistuu, mutta luovutetun omistajan elinikä- ja ensivirhesuoja on erillinen. Build-valinta tekee omat alku-/lopputodistuksensa. Tämä ei ole lupa poistaa havaintoja. |
+| Journalin `next -> current` | Omat täydet muutosvartijat, slot-tavut, identiteetit ja fyysisen siirtäjän viimeinen tarkistus. Lukutulos ei korvaa niitä. |
+
+Rajattu työ oli muuttumattoman lähteen kutsumittaus nykyisellä
+Main-testillä `publishes the recovery main selection before a controlled
+durable stop without rereading discovery` sen nykyisessä 20 sekunnin
+rajassa. Nykyinen yksityinen mittausapurikytkentä erottaa alkuvalmistelun,
+luovutuksen ja luovutuksen jälkeisen journalijulkaisun. Lasketaan alkuperäisen
+main-varauksen fyysiset lehtikutsut erikseen ulkoisesta valinnasta ja
+build-valinnasta; sisäkkäisiä määriä tai kestoja ei summata. Nykyinen
+`reservation`-vaihehavainto kattaa recovery-kääreen, ei kaikkia alkuperäisen
+main-todistuksen kutsuja. Mittaus käyttää rajattuja laskureita, säilyttää
+alkuperäiset väittämät ja odottaa aloitetun työn sulun. Se ei muuta
+vartijoita, lisää tuotantomittaria tai käynnistä uutta Electron-ajoa.
+Puuttuva näyttö tai uusi aikakatkaisu säilytetään, ei automaattista uusintaa.
+Mahdollinen yhdistetty omistajuusportti vaatii tämän jälkeen oman
+havaintoeron, eliniän, ensisyyn ja muutosrajojen vertailukokeen sekä
+kytkentäpäätöksen. Yhteistä inventaariotallenninta tai neljää lähdevertailua
+ei muuteta virheellisen aiemman vastuuoletuksen perusteella.
+
+**Mittaus valmistui 11.11.2026; eristetty vertailukoe kuuluu testausvaltuuteen.**
+Historiallinen tulos:
+[11.11.2026, luovutuksen jälkeinen mittaus](release-0.3.0-workspace-history.md#w75-history-handoff-measurement).
+
+Mittaus ja lähdeketju kohdistavat seuraavan kysymyksen yhteen
+`desktopSelectorComposition`-callbackiin: luovutetun `main.owned`-todistuksen
+jälkeinen suora `assertRecoveryAdmissionOwned` toistaa jo sen sisällä ajetun
+fyysisen todistuksen. Mahdollinen pieni lähtö-/ehdokaskoe säilyttäisi
+luovutetun omistajan alku-/loppuvalinnan, eliniän ja ensivirheen sekä
+koosteen loppuvartijan. Build-luvut, kirjoittajatodistukset, neljä
+lähdevertailua ja varsinaisten muutosten vartijat eivät kuulu muutokseen.
+Alkuperäinen koeoletus koski pois jäävässä havaintohetkessä näkyvää ja
+täysin palautuvaa varausmuutosta sekä kilpailevien ensivirheiden järjestystä
+ja await-ajoitusta. Alla oleva pienkoe tarkensi tämän oletuksen rajoja.
+Omistajan täsmennetty
+[testausvaltuus](../ai/workflow.md#suunnitelman-sisältö-ja-hyväksyntä)
+sallii tämän eristetyn synteettisen vertailun ilman uutta rutiinilupaa.
+Koe ohittaa vain toisen suoran `assertRecoveryAdmissionOwned`-kutsun
+testimuistissa; `authority.assertOwned`, `assertRecoveryBase` ja kaikki
+muutosvartijat säilyvät. Todennetaan myös pysyvän menetyksen estyminen ennen
+kirjoitusta, keskeytys, ensivirhe ja todelliset kutsumäärät. Havaittu ero
+kirjataan sellaisenaan; koe ei hyväksy uutta tuotantosopimusta.
+Ei tuotantokytkentää, uutta native-ajoa tai aikarajamuutosta mittauksen tai
+testausvaltuuden perusteella. [Näyttö](release-0.3.0-integration-history.md#w75-post-handoff-attribution-20261111)
+ei sulje aiempia hylkäyksiä.
+
+Historiallinen tulos:
+[11.11.2026, yhden callbackin kielteinen koetulos](release-0.3.0-workspace-history.md#w75-history-handoff-experiment).
+
+Rajattu riippumaton katselmus edellytti havaintoeron täsmennystä ennen
+mitään tuotantokytkentäehdotusta. Seuraavaksi tehty kontekstikoe vertasi
+säilyvää fyysistä vartijaa todellisen journalitiedoston siirtoon.
+Nykyinen journalin `publicationFileSystem.moveSlot` säilyttää järjestyksen
+`beforeMutation -> assertPublicationCurrent -> beforeMutation -> assertAuthority
+-> moveSlot`; mitään näistä vartijoista ei kokeessa poistettu. Pelkkä
+vartijan olemassaolo ei korvaa sen todellisen ajoituksen näyttöä.
+Ehdokasta ei kytketä sovelluslähteeseen eikä native-ajoa käynnistetä.
+[Koenäyttö](release-0.3.0-integration-history.md#w75-post-handoff-owned-experiment-20261111)
+ja ensihylkäys säilyvät; aikarajat eivät muutu.
+
+Historiallinen tulos:
+[11.11.2026, alemman muutosrajan kontekstikoe](release-0.3.0-workspace-history.md#w75-history-mutation-context).
+
+Jatkorajaus on suunnitella mahdollinen vain luentaan kohdistuva työmäärän
+vähennys erillään viimeisen muutoksen valtuudesta nykyisissä omistajissa.
+Nykyistä ehdokasta ei laajenneta, kytketä sovellukseen tai ajeta uudelleen
+native-ketjussa. Uusi koeehdokas tarvitsee täsmällisen elinikä-, havainto-
+ja ensivirhesopimuksen; tuotantomuutos päätetään vasta näytön jälkeen.
+
+<a id="w75-external-build-read-contract"></a>
+
+**11.11.2026, ulkoisen valinnan build-luennan koesuunnitelma, ei tuotantopäätös.**
+Tavoite on vähentää luovutuksen jälkeisen palautushallinnan sisäistä
+varaustyötä muuttamatta viimeisen muutosvartijan fyysistä todistusketjua.
+Edellä hylättyä yhden callbackin ehdokasta ei käytetä pohjana: koosteen
+`authority.assertOwned -> assertRecoveryAdmissionOwned -> assertRecoveryBase`
+säilyy kokonaan. Myös `selectionLifetime`-omistajan ensivirhe, sulku ja
+omistusjakson tarkistukset säilyvät. Aikarajoja ei muuteta.
+
+| Nykyinen omistaja | Vain testimuistiin valmisteltava rajaus |
+| --- | --- |
+| `desktopSelectorComposition` | Vain jo onnistuneen `transferSourceSelection`-palautuksen jälkeen asetettu `recoveryExternalSelection` käyttää nimettyä `assertSelectedForRecoveryRead()`-menetelmää. Ennen luovutusta käytetään nykyistä omistajaa. Kaapattu main-omistusjakso ja recovery-/runtime-vartijat säilyvät; tiukka `assertOwned`-callback ei muutu. |
+| `workspaceDeletionColdAdmission` / ulkoinen valinta | Uusi nimetty menetelmä jakaa nykyisen vertailurungon, mutta sen kaksi sisäistä build-vertailua käyttävät rajattua lukumenetelmää. Alun ja lopun `assertOwner` säilyy järjestyksessä `owned -> writers -> owned`; kumpikin `owned` säilyttää koosteen molemmat fyysiset näytteet. Nykyinen `assertSelected`, alkuperäinen kaappaus, luovutuksen omat tarkistukset, erikseen tarjottu `assertBuildSelected` ja kaikki oletuskutsujat pysyvät tiukkoina. Vieraan journalin luvut eivät muutu. |
+| `workspaceDeletionLocalUpdateSelection` | Sama viiden slot-ryhmän parseri, tavut, identiteetit, terminal-/admission-säännöt ja alkuperäiseen valintaan vertailu. Nimetty `assertSelectedForOwnedRead` saa yhden odotetun luvun päättyvän `assertCurrent`-vartijan ulkoiselta valinnalta; nykyinen `assertSelected` ja kaappaus säilyvät ennallaan. Tarkistussääntöjä ei kopioida. |
+
+Erilliset menetelmät ovat nykyisten omistajien sisäisiä rajapintoja, eivät
+uusi yleinen valtuuspalvelu. Kaappauksen tai luovutuksen sisällä ei kytketä
+lukutilaa päälle: `transferSourceSelection` käyttää myös palautetun olion
+nykyistä tiukkaa `assertSelected`-menetelmää ennen alkuperäisen valinnan
+sulkemista. Vasta tämän jälkeen composition saa valita uuden lukumenetelmän.
+
+Lukuvartija on yhden odotetun build-luvun paikallinen valtuus, ei uusi
+manageri, fyysinen varaustodiste, välimuisti tai muutosvaltuus. Se tarkistaa
+oman avoimuutensa, alkuperäisen main-omistusjakson ja ulkoisen valinnan
+voimassaolon ennen lukua sekä jokaisen odotuksen jälkeen. Kutsuja odottaa
+lukijan loppuun ja päättää vartijan `finally`-haarassa ennen seuraavaa
+lukua tai paluuta. Sulku estää uudet luvut heti, mutta ei vapauta varausta
+ennen aloitetun työn ja tiedostokahvojen päättymistä. Ei jaettua
+`reading`-tilalippua, väliaikaista callbackin vaihtoa tai ulompaan
+muutosvartijaan vuotavaa lukutilaa. Lukutulos ei sisällä poisto-oikeutta.
+Ensimmäinen havaittu virhe jää nykyisen omistajan säilyttämäksi; erillinen
+sulkuvirhe ei korvaa sitä eikä vanha luentavaltuus kelpaa seuraavalle luvulle.
+Sama ensisyy säilyy tiukan ja nimetyn menetelmän välillä myös silloin, kun
+heitetty arvo on `undefined`. Kutsukohtainen sulku ei peru yhteistä
+build-valintaa eikä päättynyt käyttöliittymäpyyntö päätä pysyvää operaatiota.
+
+Aloitetun työn odotuksen omistaja säilyy nykyisenä:
+`WorkspaceManagementService.trackWork` rekisteröi työn ennen callbackeja,
+ja `runAdmitted` odottaa myös poiston loppukäsittelyn ja varauksen vapautuksen.
+Selectorin sulku odottaa capabilityn, managementin ja recovery-omistajan
+työt ennen ulkoisen valinnan peruuttamista ja varauksen sulkemista.
+Jokaisen uuden menetelmäkutsun on kuuluttava tähän odotettuun ketjuun;
+pelkkä paikallinen `await` ei todista sitä. Koe kattaa sulun kutsumisen
+uudelleen sisäisestä callbackista sekä kahden samanaikaisen luvun erilliset
+valtuudet. Uutta pending-seurantaa ei rakenneta tämän sopimuksen perusteella.
+
+**Havaintoero kokeessa:** sisäisissä build-luennoissa ei tehdä kaikkia
+aiempia fyysisiä varaushavaintoja. Vain pois jäävässä kohdassa näkyvä ja
+ennen säilyvää fyysistä tarkistusta täysin palautuva juurimuutos voi jäädä
+havaitsematta, myös koko valinnan ollessa muutosvartijan sisällä.
+Kilpailevien virheiden järjestys ja await-ajoitus voivat muuttua. Pysyvä
+juurimuutos on havaittava viimeistään saman kokonaisvalinnan säilyvässä
+loppuvartijassa ennen seuraavaa muutosta. Tämä on kokeella todistettava
+ehto, ei nykyinen tulos tai väite atomisesta tiedostojärjestelmähavainnosta.
+Myöhemmän hylkäyksen lisäksi verrataan todellisia tiedostovaikutuksia.
+
+Pienet lähtö-/ehdokaskokeet tehdään nykyisellä testiapurilla ja nykyisissä
+rajoissa; tarkistusmäärät erotetaan sisäkkäisistä kokonaiskutsuista:
+
+1. Kaikki viisi build-slot-ryhmää, väärät tavut/identiteetit ja sivuslotit;
+   sama onnistumistulos, muuttumattomat tiedostot ja tiukka oletuspolku.
+2. Todellinen prosessivaraus ja journalin viimeinen Node-siirtovartija:
+   juurimuutos loppuvartijan viimeisen `owned`-kutsun ensimmäisen näytteen
+   jälkeen. Molempien versioiden on estettävä `next -> current` ja säilytettävä
+   samat `next`-tavut. Vastaava pysyvä muutos sisäluvussa sekä erillinen
+   täysin palautuva muutos erottavat säilyvän suojan havaintoerosta.
+3. Päättynyt/väärän omistusjakson vartija, ei-void- tai asynkroninen
+   synkroniseksi luvattu vartija, pidetty luku ja sulku, vanha callback,
+   rinnakkaisten lukujen eristys, callbackista alkava sulku, ensivirhe
+   menetelmien välillä sekä erillinen sulkuvirhe. Ei siirtoa, poistoa tai synciä
+   epäonnistuneen lukukierroksen jälkeen; jo aloitetut luvut odotetaan.
+4. Main-kytkentä valitsee uuden lukumenetelmän vain nimetylle recovery-haaralle
+   ja vasta onnistuneen luovutuksen jälkeen; luovutuksen aikainen tarkistus
+   käyttää edelleen tiukkaa menetelmää.
+   Tavallinen valitsin, aktiivinen yritys, cold-jatko, alkuperäisen kohteen
+   kaappaus ja erillinen build-tarkistus säilyvät entisellään. Neljää
+   lähdevertailua, inventaariotallenninta, journalitallenninta ja byte-slotin
+   tai Node-adapterin muutosvartijoita ei muuteta.
+
+Valmistumisehto on tyypitetty muistiehdokas, rajattu riippumaton katselmus
+sekä yllä olevat kontrollit nykyisine loppuväittämineen. Pelkkä fyysisten
+kutsujen väheneminen ei osoita native-nopeutta. Uusi tuotannon havaintoero
+esitetään päätettäväksi vasta näytön jälkeen; pitkä Main-/Electron-ajo,
+tuotantokytkentä ja koko W7.5:n hyväksyntä eivät sisälly tähän suunnitelmaan.
+Jos kokeessa tehdään muutos ennen säilyvää hylkäystä tai tarvitaan
+viimeisen vartijan muutos, ehdokas hylätään eikä rajaa laajenneta hiljaisesti.
+
+Historiallinen tulos:
+[11.11.2026, ulkoisen build-luennan pienkoe](release-0.3.0-workspace-history.md#w75-history-build-read-experiment).
+
+Nimetty Main-liitos aikakatkaisi alkuperäisessä 20 sekunnin rajassa myös
+yhdessä erillisdiagnoosissa. Diagnoosi ehti tiukan luovutustarkistuksen ja
+nimettyjen lukujen käyttöön, mutta kaikki loppuväittämät eivät valmistuneet.
+Elinikäapuri todisti työn ja resurssisiivouksen päättymisen ja säilytti
+epäonnistumisen aineiston. Tämä ei hyväksy Main-ketjua tai selitä viivettä.
+Samaa muuttumatonta koetta ei uusita vihreyden vuoksi; sovelluslähde ja
+aikarajat säilyvät ennallaan. [Vaiheen näyttö ja avoimet portit](release-0.3.0-integration-history.md#w75-external-build-read-experiment-20261111).
+
+**Jatkon päätöskohta:** pieni lähtö-/ehdokasmittaus vahvisti, että nimetty
+muutos vähentää varaustyötä, ei build-lukijoiden tai vieraan journalin
+läsnäoloryhmien määrää. OS-tiedostokutsujen kokonaismäärää tai Mainin
+aikakatkaisun syytä ei tästä päätellä. Ehdotus on yksi eristetty
+`DESK-DELETE-RECOVERY-001` nykyisissä 150/10 sekunnin rajoissa, nykyisellä
+tilapäisen lähde-eristyksen menetelmällä ja samalla kolmen omistajan
+ehdokkaalla. Omistaja vahvisti 11.11.2026 tämän kokeen valmisteluineen
+hyväksytyn kehitystyön valtuuteen kuuluvaksi ja täsmensi
+[nykyistä hyväksyntäkohtaa](../ai/workflow.md#suunnitelman-sisältö-ja-hyväksyntä):
+tavallinen lähde-eristys ei muodosta uutta omistajaporttia. Tämä korvaa
+tämän vaiheen aiemman pitkän ajon lupavarauksen. Kokeessa ei kytketä
+ehdokasta sovelluslähteeseen eikä lisätä muita aiempia muistiehdokkaita.
+Mainin hylkäykset, poiston loppuväittämät, siivous ja restart pysyvät
+erillisinä vaatimuksina. Eristetyn ajon läpäisy ei yksin hyväksy
+tuotantokytkentää tai sulje Mainin hylkäyksiä.
+
+Historiallinen tulos:
+[11.11.2026, eristetyn build-luentakokeen hylkäys](release-0.3.0-workspace-history.md#w75-history-build-read-native).
+
+<a id="w75-original-import-read-contract-20261112"></a>
+
+**12.11.2026: alkuperäisen tuontijournalin kutsujasidottu lukukoe.**
+Nykyisen Goalin delegoidulla teknisellä valtuudella rajataan muistiehdokas
+kahteen omistajaan: `workspaceDeletionMetadataCleanup` ja
+`WorkspaceBackupImportJournalStore.clearAfterDeletionPurged`. Tämä on uusi
+jatko yllä olevalle yksittäisen tallentimen ratkaisulle, ei sen uudelleentoteutus.
+Yhteinen byte-slot-tallennin, natiivimuutokset ja muut journalit eivät muutu.
+
+Tuontitallentimen kolmas, valinnainen `CrashSafeByteSlotReadSelection`-argumentti
+sitoo vain teknisen slottien alkuluvun. Ilman sitä nykyinen `E -> S -> F`
+säilyy täsmälleen; tarjottuna alku käyttää kertakäyttöistä luentavartijaa.
+`S` lukee edelleen kaikki slottitavut ja identiteetit. Jokaisen poiston,
+synkronoinnin ja loppukuittauksen viimeinen `F = E -> P -> E` säilyy,
+mukaan lukien `journalContext`in viimeinen tiukka `selectedBinding`.
+Lukutulos tai onnistunut omistajuushavainto ei anna poistolupaa.
+
+Metadatasiivooja tarjoaa portin vain tuontijournalin poistoon sekä v1- että
+v2-poistojournalilla; suora vanha kutsutapa ei muutu kummassakaan muodossa.
+Portti tarkistaa saman vaihe-/retirement-valtuuden ennen ja jälkeen odotusten
+sekä omistajuuden, kirjoittajien poissaolon ja omistajuuden uudelleen.
+Se päättyy oman kutsun `finally`-haarassa. Tallennin kaappaa sen kerran ennen
+odotusta ja säilyttää nykyisen boolean-pohjaisen ensivirhelukon, `undefined`-
+virheen ja `onUncertain`-sopimuksen. Väärä portti tai ei-void-tulos hylätään;
+vanha callback ei tee I/O:ta eikä myrkytä seuraavaa operaatiota.
+
+Kokeessa hyväksyttävä ero on ennen `S`:ää pois jäävä täysi ulkoinen valinta:
+vain siinä näkyvä ja ennen säilyvää `F`:ää täysin palautuva muutos voi jäädä
+havaitsematta myös muutosvartijan sisäisessä luvussa. Pysyvä muutos estää
+seuraavan muutoksen. Luku-/valtuusvirheiden ensimmäinen havaintojärjestys voi
+vaihtua. Tämä ei ole atomisen tilakuvan tai muuttumattoman havaintoikkunan väite.
+
+Ensin nykyisten fixtuurien lähtö-/ehdokasvertailu, portin kaappaus/elinikä,
+pidetty työ ja sulku, ensivirhe, todelliset tavut sekä viimeiset poisto-/sync-
+vartijat. Nykyiset V2 current-/sync- ja viimeisen retirement-sidontaluvun
+vastakokeet säilyvät. Vasta niiden, tyypityksen ja riippumattoman katselmuksen
+jälkeen delegoitu tekninen valtuus kattaa ehdollisen lähdekytkennän sekä
+yhden nimetyn `DESK-DELETE-RECOVERY-001`-diagnoosin 150/60 sekunnin
+rajoissa. Tässä koevaiheessa tavallisen testin 150/10 sekuntia ei muutettu.
+Pelkkä kutsusäästö ei todista native-nopeutta; aikarajat ja
+W7.5:n paketti-/PR-/main-portit säilyvät. Ajotulokset kuuluvat historiaan.
+
+Kytkennän ensimmäisen native-hylkäyksen jälkeen delegoitu testausvaltuus
+rajataan yhteen saman sovelluskoodin valmistumismittaukseen: vain
+`DESK-DELETE-RECOVERY-001`:n tulosodotus 60 -> 100 sekuntia, koko testi
+edelleen 150 sekuntia. Mittauksessa tavallisen testin 150/10 sekä sovelluksen,
+CI:n ja siivouksen rajat säilyivät. Kysymys on valmistuuko koko ketju, ei läpäiseekö
+se pidemmällä odotuksella nopeusvaatimuksen. Vanha hylkäys säilyy;
+ei automaattista lisänostoa, normaalia hyväksyntää tai uutta turvamuutosta.
+
+**12.11.2026: nimetyn lomaketestin tulosbudjetti.** Valmistumismittaus läpäisi
+koko poiston, säilyvien SQLite-/PDF-/secret-tavujen vertailut ja restartin.
+Mitattu tulosodotus ylitti aikaisemman oletusodotuksen mutta koko testi
+valmistui nykyisessä kokonaisrajassa. Delegoidulla testausvaltuudella vain
+`DESK-DELETE-RECOVERY-001`:n tavallinen tulosodotus asetetaan 100 sekuntiin;
+kokonaisraja pysyy 150 sekunnissa. Globaali 10 sekunnin oletus, muut testit,
+sovellus-, CI-, poistovartija- ja siivousrajat säilyvät. Tämä on pitkän
+asiointitestin budjetti, ei sovelluksen nopeuskorjaus tai vanhojen
+hylkäysten sulkeminen. Hyväksyntä vaatii erillisen tavallisen, lähteeseen
+sidotun ajon ilman koemuunnoksia sekä nykyiset paketti-/PR-/main-portit.
+
+<a id="w75-terminal-clear-responsibility"></a>
+
+**10.11.2026, katselmuksen rajaus: viimeisen journal-kuittauksen vartijat säilyvät.**
+Nykyisten `workspaceDeletionFinalization`- ja
+`workspaceDeletionJournalStore.clearTerminal`-omistajien liitoksesta ei
+osoitettu tarkistusta, jonka poistaminen säilyttäisi nykyisen
+havaintoikkunan. Säilyneen aineiston tarkistus ei todista juuri
+tulosodotuksen päättymishetken tilaa tai onnistunutta poistoa.
+Yksityiskohtainen tutkimusaineisto pysyy paikallisena.
+
+Historiallinen tulos:
+[10.11.2026, viimeisen journalin kutsumittaus](release-0.3.0-workspace-history.md#w75-history-terminal-count).
+
+**Nykyinen tarkistusvastuu.** Yksinäisen `current`-slotin tapauksessa
+`clearSelected` käy vartijassa neljässä eri rajassa: ennen siivoussarjaa,
+fyysisen poiston sisällä, hakemistosynkronoinnin sisällä ja loppukuittauksessa.
+Myös Windowsin synkronointipolku suorittaa vartijan ennen paluutaan.
+Kukin näistä lukee nykyiset kolme slottia tavuineen ja identiteetteineen.
+Luvun jälkeinen `clearTerminal`-vartija tarkistaa täyden ulkoisen valinnan,
+inventaarion ja operaatiokansion poissaolon sekä uudelleen täyden valinnan.
+Kahdeksan täyttä tarkistusta ei siten tarkoita kahdeksaa saman hetken lukua.
+Viimeistelijä tekee tämän lisäksi omat alku- ja jälkivarmennuksensa.
+Erillinen slot-lukuvartija on jo kytketty; sitä ei toteuteta uudelleen.
+Journal-last, jokaisen muutoksen tuore valtuus, alkuperäisjuuret,
+ensivirhe, keskeneräisen työn sulku ja muiden tallenninkutsujien oletukset
+säilyvät. Tämä katselmus ei hyväksy uutta vartijaehdokasta.
+
+**Seuraava pieni koe, ei vielä native-kytkentä tai pitkä ajo.**
+Käytä nykyistä suljettua vaihehavaintoa, älä uutta lokitusjärjestelmää.
+Rajaa koekytkentä neljään nimettyyn alku-/loppupariin:
+`finalization` nykyisen komennon koko viimeistelykutsulle sekä
+`inventoryRetirement`, `terminalJournalClear` ja `postClearVerification`
+viimeistelijän nykyisille sisäisille kutsuryhmille. Muutosten vartijat,
+järjestys ja siivousvaltuus eivät muutu. Parentin aktiivinen kokonaiskutsu
+ilman aktiivista alikutsua tarkoittaa vain kattamatonta väliä, ei I/O-jumia.
+
+- Nykyinen recovery-main välittää valinnaisen havainnon komennolle ja
+  viimeistelijälle. Alempi omistaja ei importoi mainia tai E2E-koodia.
+  `observeStage` ei korvaa tätä: palvelun kutsukohtainen havaitsija ohittaa
+  komennon oletushavaitsijan, eikä pelkkä vaiheen nimi ole loppukuittaus.
+- Nykyinen `workspaceDeletionPhaseObservation` omistaa suljetun nimijoukon
+  ja validoinnin. Koetuottaja, proof, parent ja keräin käyttävät samaa muotoa;
+  vanhan seitsemän vaiheen otteen luettavuus ja uuden joukon täsmällinen
+  erottaminen todistetaan ennen kytkentää. Ei vapaamuotoisia lisäkenttiä.
+- Enimmäisrajat 32 KiB, 64 tapahtumaa ja 16 aktiivista kutsua säilyvät.
+  Täyttynyt historia ei saa pysäyttää laskureita tai aktiivisen työn
+  havaintoa. Aktiivisen kutsun aloitusaika säilyy; `clock.lastMs` on
+  viimeisen tapahtuman aika, ei snapshotin ottoaika tai kutsun kesto.
+  Pois jäänyttä valmiin kutsun kestoa ei päätellä laskurista.
+  Snapshot kuvaa vastaanotettua havaintohetkeä, ei automaattisesti UI:n
+  odotusrajan päättymishetkeä; nykyinen sulkumerkki säilyy.
+- Testaa ensin pienesti puuttuva ja poikkeuksen heittävä havaitsija,
+  alkuperäinen tulos/ensivirhe, pidetty työ ja erillinen sulkuvirhe,
+  täyttynyt tapahtumahistoria, kutsujen erottelu sekä vanhentunut runtime.
+  Vertaa myös vartijajärjestys, todelliset slotit, inventaarion poissaolo ja
+  säilyvät tavut. Havainto ei saa siirtyä viimeisen valtuustarkistuksen ja
+  tiedostomuutoksen väliin eikä lisätä odotusta, timeria tai uusintaa.
+- Kokeen omistajat ovat nykyinen selector-kooste, poistokomento,
+  viimeistelijä ja testin nykyinen formaatti-/toimitusketju regressioineen.
+  Jaettu byte-slot-tallennin ja tiedostoadapteri eivät muutu. Uutta
+  I/O-keräystä, yritystietoa, polkua, raakavirhettä tai julkista lokia ei lisätä.
+
+Kokeen valmistumisehto on rajattu kutsuryhmän tunnistus myös täyttyneen
+historian jälkeen, muuttumaton turvasemantiikka ja sama todistettu
+salaus/purku-reitti. Tämä ei vielä mittaa native-kustannusta tai paikanna
+ryhmän sisäistä odotusta. Koetuloksen ja katselmuksen jälkeen päätetään
+varsinainen liitos ja nimetty native-todennus erikseen; nykyiset aikarajat
+sekä avoimet hylkäykset säilyvät. Valmistelua ei avata uudelleen tämän
+rajauksen perusteella.
+
+Historiallinen tulos:
+[10.11.2026, viimeistelyhavainnon pienkokeet](release-0.3.0-workspace-history.md#w75-history-terminal-observation).
+
+**10.11.2026: rajattu tuotantokytkentä ja nimetty todennus hyväksytty:** valinnainen havaitsija
+nykyiseen main-/komento-/viimeistelijäketjuun sekä testiraportin eksplisiittinen
+v2 nykyiseen formaatti-/proof-/parent-/keräinpolkuun. Vanha v1 säilyy
+luettavana vain omalla seitsemän vaiheen sopimuksellaan. Kokeen erillinen
+legacy-kopio ei ole toimitettava ratkaisu: formaattiomistajan versionoidut
+sallitut vaiheet käyttävät yhtä validoivaa toteutusta, ilman hiljaista
+kenttätäydennystä. Ennen yhtä uutta nimettyä native-todennusta vaaditaan
+pysyvät regressiot, tyypitys, sama salaus/purku-ketju ja rajattu katselmus.
+Nykyiset 150/10 sekunnin lomakerajat, muut aikarajat, poistovartijat ja
+raportin rajat säilyvät. Tavalliseen käyttöön ei kytketä vaihekeräystä;
+kyse ei ole poistojournalin, varmuuskopion tai liiketoimintatiedon versiosta.
+Omistajan nimenomainen kytkentäpäätös on saatu. Pysyvät tarkistukset ja
+katselmus edeltävät yhtä nimettyä native-ajoa; pienkokeet eivät korvaa niitä.
+
+Historiallinen tulos:
+[10.11.2026, havaintoparserin ja toimituksen osanäyttö](release-0.3.0-workspace-history.md#w75-history-terminal-parser).
+
+<a id="w75-initial-publication-read-contract"></a>
+
+**Hyväksytty rajattu vertailukoe 9.11.2026, ei tuotantokytkentää:**
+ensimmäisen journal-julkaisun slottilukujen alkutarkistus. Nykyisen
+Main-kontrollin vaihemittaus ja riippumaton lähdekatselmus puoltavat tämän
+rajan tutkimista, eivät todista natiivin odottavaa kutsua tai korjausta.
+Kahden nykyisen omistajan ehdotus käyttää olemassa olevaa
+`CrashSafeByteSlotReadSelection`-porttia; yhteinen byte-slot-tallennin,
+tiedostoadapteri ja erillinen väliluvun loppuportti eivät muutu.
+
+- `workspaceDeletionJournalStore.ts`: vain `publish` välittäisi valinnaisen
+  luentaportin nykyiseen `replaceSelected`-kutsuun. Puuttuvan portin polku,
+  journalin muoto, exclusive-omistajuus ja muut kutsujat säilyisivät.
+- `workspaceDeletionPublication.ts`: vain journalin julkaisukutsu saisi
+  oman päättyvän luentavaltuuden nykyisestä tuoreesta kuudennesta
+  valmisteluportista ja kirjoittajien poissaolosta. Vartijat suojaisivat
+  odotusten molempia puolia; paluuarvo validoitaisiin. Portiton kutsu ei
+  käyttäisi pelkkään kirjoittajapoissaoloon perustuvaa korviketta.
+- Slottiluvun alun täysi alkuperäisvalinta korvautuisi tällä vartijalla
+  sekä teknisessä väliluvussa että muutosvartijan sisällä. Kaikkien kolmen
+  slotin todelliset tavut ja identiteetit sekä niiden jälkeinen täysi
+  alkuperäisvalinta säilyisivät. Julkaisun siirtokääre, backup-uusintaluku,
+  inventaariovertailut ja julkaisun jälkivarmennukset säilyisivät.
+
+**Uusi hyväksyttävä havaintoero:** pois jäävän alkuhavainnon kohdalla näkyvä
+ja ennen seuraavaa täyttä tarkistusta kokonaan palautuva rekisteri-,
+build-/recovery-valinnan, alkuperäisjournalin tai sidontametadatan muutos
+voisi jäädä havaitsematta myös muutosvartijan sisällä. Myös fyysisen
+omistajuuden ja kirjoittajapoissaolon havaintorytmi sekä kilpailevien
+virheiden ensimmäinen havaittu syy voisivat muuttua. Pysyvä muutos estäisi
+seuraavan muutoksen. Viimeinen täysi muutosvartija säilyisi, mutta kaikkia
+sen sisäisiä alkuhavaintoja ei väitettäisi muuttumattomiksi.
+
+Ensin vain pienet lähtö-/ehdokasvertailut nykyisillä rajoilla: kaikki
+slotit ja identiteetit, pysyvä ja palautuva muutos, jokainen nykyinen
+muutosraja, portiton polku sekä aktiivinen/valitsin/recovery-liitos.
+Pidetty oikea luku tai sulku, päättynyt callback, ensimmäinen syy myös
+`undefined`-arvolla ja erillinen sulkuvirhe todennettaisiin; aloitettu työ
+odotettaisiin loppuun eikä vanha callback myrkyttäisi uutta kutsua.
+Luvun tulos ei antaisi itsenäistä muutoslupaa. Kokeen erillinen hyväksyntä
+ei vielä hyväksyisi tuotantokytkentää, aikarajamuutosta tai pitkää ajoa.
+Omistaja hyväksyi yllä kuvatun kokeen ja havaintoeron. Nykyisen Goalin
+laaja jatkovaltuus ei muuta tämän kokeen nimettyä rajausta tai sen
+erillisiä tuotanto-, aika- ja integraatioportteja.
+
+Historiallinen tulos:
+[9.11.2026, alkujulkaisun luentaportin koetulos](release-0.3.0-workspace-history.md#w75-history-initial-publication).
+
+**Tuotantokytkentä hyväksytty 9.11.2026:** omistaja hyväksyi saman kahden
+omistajan rajauksen, pysyvät regressiot ja nykyiset tarkistusportit.
+Yllä nimetty havaintoero sekä kilpailevien ensisyiden mahdollinen
+järjestysero säilyvät myös tuotannossa; niitä ei kuvata muuttumattomiksi
+tarkistuksiksi. Kytkentä ja regressiot ovat työhaarassa. Kahden kokonaisen
+kohdetiedoston 107 testiä, tyypitys, rajattu siirtokatselmus ja koko
+normaalin Main-sarjan 1 540 testiä 43 tiedostossa läpäisivät. Nykyisen
+alkuperäisvirheen salaus/purku läpäisi neljä kontrollia; hallittu sisäinen
+hylkäys ja julkisen tulosteen suoja säilyivät. Purkukoe ei ole natiivin
+lomakkeen virhehaaran näyttö. Ennakkoporttien jälkeen nykyistä lähdettä
+vastaavan testiversion normaali valmistelu läpäisi. Yksi uusi
+`DESK-DELETE-RECOVERY-001` hylkäsi edelleen 10 sekunnin tulosodotukseen;
+150 sekunnin kokonaisraja ei lauennut. Siivous todentui ja aineisto säilyi,
+mutta poiston loppuväittämiä ja toista restartia ei saavutettu. Odottavaa
+sisäistä kutsua ei ole nimetty. Nimetyn ajon lupa on käytetty; uusi ajo tai
+tarkistusvastuun muutos ei seuraa automaattisesti hylkäyksestä. Tämä ei
+sulje vanhoja hylkäyksiä tai hyväksy koko W7.5:ttä tai mergepoikkeusta.
+[Kytkennän näyttö](release-0.3.0-integration-history.md#w75-initial-publication-production-20261109)
+erottaa nämä portit aiemmasta kokeesta ja historian vapautuskorjauksesta.
+
+<a id="w75-initial-publication-observation-review"></a>
+
+**9.11.2026, rajattu yhteiskatselmus ja seuraavan kokeen ehdotus.**
+[Tarkistusvastuukartta](#w75-recovery-publication-responsibility-review)
+säilyy. Lähteessä ei tässä rajauksessa löytynyt itseään odottavaa sykliä;
+täydet vartijat kokoavat kuitenkin toistuvasti usean omistajan tarkistuksia.
+Julkaisijan yksi täysi ulkoinen tarkistus kutsuu valmistelun tarkistusta
+kirjoittajapoissaolon molemmin puolin. Luovutuksen jälkeen mainin
+valmistelukääre tarkistaa lisäksi uuden ulkoisen valinnan: omistuksen,
+build-/päivitystilan, vieraat journalit, buildin uudelleen ja omistuksen.
+Build-tarkistuksella on omat todelliset slottilukunsa ja omistusrajansa.
+Nämä eivät ole sama asia kuin kohteen rekisteri, alkuperäisjournalit tai
+julkaistavan poistojournalin vaihtuvat slotit.
+
+Journalin siirtokääreen vertailun jälkeinen uusi slot-valinta sekä
+tiedostoadapterin viimeinen vartija suojaavat eri odotusvälejä. Niitä tai
+neljää lähdevertailua ei poisteta pelkkien kutsumäärien perusteella.
+Nykyinen Main-mittaus käyttää kontrolloitua varausporttia ja pysäyttää
+ketjun ennen todellista jatkokomentoa; se ei mittaa native-ketjun koko
+työtä. Sisäkkäisiä kestoja tai päällekkäisiä laskureita ei summata;
+toisensa poissulkevien lehtilaskurien summa on erillinen kokonaismäärä.
+
+**Todettu havaintoaukko:** `captureWorkspaceDeletionFailure` lukee syntyneet
+poikkeukset ennen fixturen runtime-sulkua. Hiljainen keskeneräinen työ ei
+välttämättä tuota poikkeusta, eikä tämä luku saa myöhemmin sulussa syntyvää
+virhettä. Nykyinen lifecycle-todiste kertoo prosessista, ei julkaisun
+sisäisestä odottavasta kutsusta. Siivouksen jälkeinen `.next` ei paikkaa
+tätä aukkoa. [Katselmuksen näyttöraja](release-0.3.0-integration-history.md#w75-publication-observation-review-20261109)
+ei siis hyväksy uutta vartijakevennystä tai nimeä natiivin viiveen syytä.
+
+**Rajattu suunnittelu ja pienet kokeet hyväksytty 9.11.2026:**
+omistaja hyväksyi alla olevan havaintosisällön suunnittelun ja pienet
+kontrollit nykyisessä testikoosteessa. Tämä ei hyväksy native-kytkentää,
+uutta pitkää ajoa tai julkaisun keräysrajan laajennusta. Ei uutta loggeria,
+supervisoria tai tuotannon ohjausporttia.
+
+1. Nimeä valmistelu, lähdevertailu, valinnan luovutus ja journalin julkaisu;
+   erota julkaisun sisällä täysi valinta, slot-I/O ja fyysinen varaus.
+   Havainnot ovat vain suljettuja vaihenimiä, kutsu-/valmistumislaskureita,
+   suhteellisia kestoja ja keskeneräisyyttä. Ei polkuja, journalin sisältöä,
+   yritystietoja, salaisuuksia tai uusia raakavirhekenttiä.
+2. Käytä nykyistä `workspaceDeletionExecutionProof`-testiomistajaa,
+   E2E-entryn sulkurajaa ja nykyistä fixturen virheenlukukohtaa. Määritä
+   rajattu muistipuskuri, kutsun/sukupolven sidonta ja yksityinen toimitus
+   ennen kytkentää. Poikkeussinkki ei hyväksy vaihetilaa sellaisenaan:
+   havaintoa ei naamioida poikkeukseksi eikä lisätä julkiseen lifecycleen.
+3. Todista pienellä fixturellä valmistuva työ, pidetty I/O, sulun aikana
+   syntyvä erillinen virhe, puuttuva/rajattu havainto ja havaitsijan oma
+   häiriö. Vartijoiden järjestys, ensimmäinen syy, alkuperäiset tulokset,
+   aloitetun työn odotus ja nykyiset sulkuajat säilyvät. Ei odotettavaa
+   tiedostokuittausta kriittiselle polulle tai mittauksen vuoksi uutta työtä.
+4. Kasvava valmistumislaskuri osoittaa etenemistä. Avoin I/O-havainto
+   osoittaa vain keskeneräisyyttä, ei pysyvää jumia. Sulun jälkeen havaittu
+   virhe ei yksin ole sulun aiheuttama virhe; puuttuva loppuhavainto jää
+   puuttuvaksi. Mittauskääreen ajoitusvaikutus ilmoitetaan.
+5. Kokeen tulos on katselmoitu havaintosopimus ja pieni näyttö nykyrajoilla,
+   ei suorituskykykorjaus. Uusi native-kytkentä, sen toimitusnäyttö ja
+   mahdollinen nimetty pitkä ajo päätetään vasta tämän jälkeen. Aiempi
+   yhden lomakeajon lupa on käytetty; 150/10 sekunnin rajat säilyvät.
+
+<a id="w75-phase-observation-small-experiment"></a>
+
+Historiallinen tulos:
+[9.11.2026, vaihehavainnon ensimmäinen koetulos](release-0.3.0-workspace-history.md#w75-history-phase-observation).
+
+**Seuraava pienkoe ennen native-kytkentäpäätöstä:** todenna alla oleva
+[tuottajan ja toimituksen sopimus](#w75-phase-observation-implementation-contract).
+Koefixturen sisäinen dekorointi ei yksin todista oletuskoosteen I/O:ta.
+Nykyinen lupa kattaa suunnittelun ja pienet kokeet, ei vielä native-kytkentää
+tai uutta pitkää ajoa. Hitauden syy ja W7.5:n integraatioportit jäävät auki.
+
+<a id="w75-phase-native-contract-boundary"></a>
+<a id="w75-phase-observation-implementation-contract"></a>
+
+**9.11.2026, tuottajan ja yksityisen toimituksen pienkoesopimus.**
+Valittu ehdokas on nykyisten omistajien valinnainen, vain havaintotietoa
+välittävä portti. Todellinen palautushallinnan oletuskomento säilyy;
+ei korvaavaa testikomentoa, yksityisen kentän dekorointia tai koko prosessin
+I/O-monkeypatchia. Muisti, kello ja projektio kuuluvat nykyiseen
+`workspaceDeletionExecutionProof`-testiomistajaan. Normaali käynnistys ei
+aseta havaitsijaa. Tämä suunnitelma ei vielä hyväksy tuotanto-/native-
+kytkentää tai keräimen muutosta. Aiempi lähdekartoitus säilyy
+[historiassa](release-0.3.0-integration-history.md#w75-phase-native-boundary-20261109).
+
+| Nykyinen omistaja | Rajattu ehdokas ja säilyvä vastuu |
+| --- | --- |
+| `StartDesktopCompositionOptions` ja `desktopSelectorComposition` | Testikooste välittää portin vain nimetyn palautushallinnan todelliseen valmisteluun ja oletuskomentoon. `preparation` alkaa oikean `deletionPreparation.prepare`-kutsun alusta. `assertRecoveryOwned` on yhdistetty varaus-/poissaoloryhmä, ei yksittäiseksi nimettävä järjestelmäkutsu. |
+| `workspaceDeletionCommand` ja `workspaceDeletionPublication` | Välitys omalle julkaisijalle: nykyiset lähdevertailut, valinnan luovutus, journal-julkaisu ja täydet valintatarkistukset. Neljä lähdevertailua, valtuudet ja lopputulos eivät muutu. |
+| `WorkspaceDeletionJournalStore` ja `crashSafeFileSlot` | Vain tämän julkaisijan tallentimen valinnainen portti ulottuu normaaliin Node-adapteriin ja sen palauttamaan kirjoittajaan. Vartijoita sisältävä slot-ryhmä erotetaan varsinaisesta tiedostokutsusta. Muiden kutsujien oletuspolku ja tavualgoritmi säilyvät. |
+| E2E-entry ja `workspaceDeletionExecutionProof` | Vain nimetty testitila ottaa havaitsijan käyttöön. Nykyinen main-only-testilukija palauttaa suljetun snapshotin; ei uutta IPC-, preload-, renderer- tai HTTP-reittiä. `before-quit` merkitsee sulun, ei peru tai odota työtä. |
+| `isolatedElectronTest` ja `captureWorkspaceDeletionFailure` | Yksi luku sidotaan oikeaan runtimeen ennen sen sulkua; sulku ei odota lukua. Erillinen vaiheprojektion raportointi käyttää alla nimettyä yksityistä kohdetta. Nykyinen alkuperäispoikkeusten talteenotto säilyy erillisenä. |
+
+Havaitsija saa vain suljetun vaihe-/kutsunimen, paikallisen kutsunumeron ja
+`entered`/`fulfilled`/`rejected`-tilan. Se ei saa työfunktiota, tulosta,
+virheoliota, valtuutta, yritys-/operaatiotunnistetta, polkua tai tiedostotavuja.
+Omistava koodi käynnistää työn kerran; havaitsijan virhe ei korvaa ensisyytä,
+erillistä sulkuvirhettä tai alkuperäistä Promisea. Havaitsijaton polku ei
+lisää Promise-reaktioita, ajastimia tai I/O:ta. Havaittu polku voi muuttaa
+mikrotehtävien ajoitusta; sama järjestys ei tarkoita samaa kestoa.
+Callbackia ei sijoiteta viimeisen synkronisen valtuustarkistuksen ja
+tiedostomuutoksen väliin. Alkuhavainto tehdään ennen nykyistä tarkistusta,
+ja tarkistus sekä muutos säilyvät vierekkäin. Alkuhavainto kertoo yrityksestä,
+ei vielä todista tiedostotyön alkaneen. Ellei yksittäistä kutsua voi
+erottaa näin, raportoidaan ryhmä ja puuttuva sisäinen kattavuus, ei keksittyä
+I/O-syytä tai uutta turvatarkistusta mittauksen korjaamiseksi.
+
+**Kutsu ja suljettu tietosisältö.** Sidonta on fixturestä saatu odotettu
+`runtimeInstanceId` ja saman palautushallinnan ensimmäinen todellinen
+`deletionPreparation.prepare`-yritys (`invocation: 1`), ennen sen vartijaa.
+Testiaineiston `prepareRecovery`, proofin `used` tai `notStarted`-pyyntötila
+eivät tunnista tätä kutsua. Palvelun aiempi varaus ja kohdetarkistus eivät
+kuulu tämän valmisteluhavainnon kattavuuteen. `publish` ja `resume` ovat
+saman yrityksen jatkoa. Julkaisuyritys lasketaan recovery-koosteen omassa
+`publish`-kääreessä ennen `binding.publish`-kutsua, ei vasta komennossa:
+myös jatkosidonnan vartijan hylkäämä yritys on havaittava.
+Toinen valmisteluyritys tai saman valmistelun toinen `publish`-yritys
+merkitsee havainnon epäselväksi ja sulkee sen sekoittamatta uusia tapahtumia;
+varsinainen komento käyttää silti omia alkuperäisiä hyväksyntäehtojaan.
+Vanha callback ei saa muuttaa seuraavan runtimen havaintoa.
+
+Testikohtainen `apps/desktop/e2e/workspaceDeletionPhaseObservation.ts`
+omistaa raw-havaintotuottajan, vakiot ja snapshot-validoinnin ilman
+lähdepuun työkaluriippuvuuksia. Yksi yhteinen toimitusmuodon parseri ja
+parent-/keräinvertailu ovat `workspaceDeletionPhaseHandoff.ts`-tiedostossa;
+se lataa nykyiset lähdetyökalut ESM:nä eikä kuulu raw-hostin latausketjuun.
+Tuotannon alimmat tiedostotyypit eivät riipu E2E-koodista.
+Ennen kytkentää pienkoe jäädyttää suljetun kenttäjoukon:
+`schemaVersion: 1`, `kind: workspaceDeletionPhaseObservation`, parentin
+vahvistama ajo-/testiyritys-/runtime-sidonta, `invocation`, `availability`
+ja vain saatavilla oleva `snapshot`. Snapshot sisältää seitsemän nimetyn
+vaiheen laskurit, numeroidut alku-/lopputapahtumat, aktiiviset kutsut,
+suhteelliset kestot tai `null`, sulun sekvenssin ja puuttumisen syyt.
+Slot-ryhmä ja sen todellinen I/O-lehti nimetään erikseen; ryhmien ja
+lasten kestoja ei summata. Enintään 64 tapahtumaa, 16 aktiivista kutsua
+ja 32 KiB koko kuorelle sidontoineen. Ylivuoto merkitään osittaiseksi,
+kellovirhe ei muutu nollakestoksi. Tuntematon avain, nimi, väärä sidonta,
+epäkelpo laskuri tai ylikokoinen sisältö hylätään. `notStarted` on
+validoitu tyhjä havainto, ei puuttuvan vastauksen oletusarvo.
+
+**Pienkokeessa täsmennetty havaintoraja:** suljettu kattavuusluettelo kertoo
+todella kytkettävät vaiheet ja operaatiot. Puuttuva kattavuus merkitään
+osittaiseksi; nollalaskuri ei yksin osoita ettei työtä ollut. 64 tapahtuman
+historiaraja ei pysäytä nykyisiä laskureita tai tunnettuja aktiivisia kutsuja.
+Seitsemän vaihekohtaista kasvavan kutsutunnisteen rajaa pitää muistitarpeen
+vakiona; pois jääneiden tapahtumien järjestystä tai kestoa ei keksitä.
+Aktiivisen työn rajan tai virheellisen kutsuketjun vuoksi suljettu havainto
+ei enää lupaa tuntea myöhempää nykytyötä. [Koenäyttö](release-0.3.0-integration-history.md#w75-phase-wire-small-20261109)
+ei vielä hyväksy tämän kuoren keräys- tai native-kytkentää.
+
+**Luku ja sulku.** Nimetty lomaketesti valitsee nykyisen fixturen
+`selectWorkspaceDeletionObservationRuntime`-testimetodilla juuri
+palautushallintaan käynnistämänsä runtimen ennen poistopainiketta.
+Metodi sitoo nykyisen sovelluskahvan ja runtime-tunnisteen kerran
+muuttumattomasti; se ei tee Electron-kutsua, anna poistolupaa tai päättele
+kohdetta snapshotin sisällöstä. Aiempi valmisteluruntime ei kuluta lukua,
+eikä seuraava restart korvaa sidontaa. Tämän runtimen `closeCurrentRuntime`
+aloittaa yhden `evaluate`-luvun ennen
+sulkua myös onnistuneessa testissä ja testin omassa restartissa. Sulku ei
+odota lukua; käytetään nykyisen `captureElectronStartupObservation`-mallin
+myöhäisvastauksen estoa. Nykyinen yhteyden siivous omistaa keskeneräisen
+luvun: ei uutta timeria, uusintaa, drainia tai lopetuskuittauksen odotusta.
+Tulos jäädytetään juuri tämän runtimen siivousyritysten `finally`-rajalla,
+myös sulun epäonnistuessa, ja säilytetään parentissa restartin yli.
+Vasta lopullinen virhetila, myös pelkkä siivousvirhe, ratkaisee tallennuksen.
+Luvun käynnistys ennen sulkua ei todista vastauksen syntyneen ennen sitä;
+sulkumerkki erottaa saadun otteen. Jäädytyksen jälkeinen vastaus ohitetaan.
+Saatu ote säilyy Electronin päätyttyä, mutta viimeistä sulkuhavaintoa tai
+sen jälkeisiä virheitä ei luvata. Puuttuva vastaus on `unavailable`, ei
+onnistuminen. Tämä ei korvaa poikkeusten keräystä tai todista sen kaikkia
+myöhäisiä virhehaaroja katetuiksi.
+
+**Yksityinen toimitus.** `captureWorkspaceDeletionFailure.ts`:n erikseen
+nimetty vaiheprojektion export kutsutaan nykyisestä siivouksen jälkeisestä
+raportointikohdasta. Se kirjoittaa vain virheessä jäädytetyn kuoren täsmälliseen
+`testInfo.outputPath('failure.private.json')`-kohteeseen yksinoikeudella
+(`wx`). Parent vahvistaa yrityshakemiston ja sidonnat ennen kirjoitusta;
+olemassa oleva tiedosto on toimitustörmäys, ei ylikirjoitus, yhdistäminen
+tai hyväksytty aiempi sisältö. Toimitustörmäys tai muu projektion virhe ei
+katkaise nykyisiä poikkeus- ja lifecycle-raportteja. Nykyinen `ciFailureEvidence` saa vain tämän
+täsmällisen tiedoston haaran: sama tiukka parseri, 32 KiB:n kokonaisraja
+ja CI-/polkusidonnan vertailu ennen sisällön hyväksyntää. Pelkkä nykyinen
+`processOutput`-luokittelu ei riitä. Yleinen `collectFailureArtifacts`
+ei toimi kirjoittajana eikä sen profiilikopiointia tai liitteitä laajenneta.
+Ei uutta globia, stdout-raakadataa, poikkeukseksi naamiointia, julkista
+lifecycle-kenttää tai käyttäjän tukipakettia. Toimitusvirhe ei korvaa
+alkuperäistä hylkäystä; salauksen virhe ei oikeuta salaamatonta julkaisua.
+
+**9.11.2026, pienkokeen jälkeen avoin liitos:** parent omistaa valitun
+palautusruntimen ja testiyrityksen todentamisen. Keräimen ei sovittu
+löytävän runtimea uudelleen. [Tavu-/salauskoe](release-0.3.0-integration-history.md#w75-phase-crypto-small-20261109)
+käytti erikseen annettua synteettistä odotuskarttaa; se ei vielä osoita,
+miten oikea parent toimittaa odotetun CI-/polku-/testi-/runtime-sidonnan
+nykyiselle keräimelle. Nykyiset yleiset lifecycle- ja prosessitulosteet
+eivät yksin sisällä valittua runtimea, eikä odotuksia oteta tarkistettavasta
+aineistosta. Tämä vastuuraja katselmoidaan ennen varsinaista liitosta;
+koe ei hyväksy uutta sivutiedostoa, julkista metadataa tai native-ajoa.
+
+<a id="w75-phase-binding-handoff-proposal"></a>
+
+**9.11.2026, hyväksytty koesopimus: parentin todistus ja keräimen tarkistus.**
+Omistaja hyväksyi alla kuvatun vastuunjaon ja todistusrajan vain pieniin
+kokeisiin. Tämä ei vielä hyväksy tuotanto-/keräyskytkentää tai pitkää ajoa.
+Oikea keräin käynnistyy erillisenä prosessina testin jälkeen; nykyinen
+`jobEvidenceBinding` tuntee CI-ajon, ei testifixturen valitsemaa runtimea.
+Suositus on erottaa nämä vastuut ilman uutta kuittitiedostoa:
+
+- `isolatedElectronTest` sitoo nykyisen sovelluskahvan ja runtime-tunnisteen
+  ennen painallusta. Se ottaa skenaarion, retryn ja toistoindeksin omasta
+  testikontekstistaan. Mainin vastaus ei saa valita odotuksia. Väärän runtimen
+  vastaus hylätään ennen kuoren muodostusta ja yksinoikeudellista kirjoitusta;
+  nykyinen lukemisen, jäädytyksen ja restartin sopimus säilyy.
+- Testin jälkiraportointi muodostaa saman yksityisen kuoren toimitussidonnan
+  nykyisellä `runnerFailureBinding`-omistajalla. CI-ajon yritys ja Playwrightin
+  retry ovat eri kenttiä. Nykyinen `jobKeySource` erottaa eksplisiittisen
+  avaimen ja job-oletuksen; puuttuvaa avainta ei täytetä aineistosta.
+  Job-oletus ei todista keräimen erillistä matriisiavainta: vertailu säilyttää
+  nykyisen eron `binding.job`- ja eksplisiittisen `binding.jobKey`-odotuksen välillä.
+  Paikallinen ajo merkitään paikalliseksi eikä sille keksitä CI-revisiota.
+- Raporttijuuren tunniste ja suoran testihakemiston nimi tulevat validoidusta
+  Playwrightin output-juuresta ja `testInfo.outputPath`-kohteesta. Niitä ei
+  päätellä testin otsikosta tai retryn nimipäätteestä. Temp-profiilin juuri,
+  raportin `run-UUID` ja runtime-UUID eivät ole sama tunniste.
+- `ciFailureEvidence` tarkistaa saman suljetun muodon ja nykyisen 32 KiB:n
+  rajan sekä vertaa toimitussidontaa omiin CI-arvoihinsa ja todella lukemaansa
+  suhteelliseen tiedostopolkuun. Paikallinen, väärään ajoon/jobiin/revisioon
+  tai polkuun sidottu aineisto ei kelpaa. Hylkäys ei putoa yleiseen
+  `processOutput`-haaraan. Keräin ei väitä todistavansa runtime-valintaa itse.
+- Yksi formaattiomistaja tarjoaa yhteisen rakenneparserin ja erikseen nimetyt
+  parent- ja keräinvertailut. Ei valinnaista `expected`-ohitusta eikä
+  tarkistettavasta aineistosta rakennettua näennäisesti riippumatonta odotusta.
+  Vielä toimittamattoman koemuodon runtime-sidontaan ei vaadita kuvitteellista
+  `scenarioRunNonce`-arvoa tai paikallista lähde-SHA:ta: CI-revisio kuuluu
+  toimitussidontaan, paikallinen lähdejäädytys nykyiseen ajotodisteeseen.
+
+**Todistusrajan ero:** parentin kirjoituksen jälkeen samassa polussa täysin
+kelvolliseksi muutettu runtime-/testiyritystieto voi läpäistä keräimen,
+vaikka erilliseen odotuskarttaan vertaava koe olisi hylännyt sen. Myöskään
+saman ajon sisällä uudelleen sidottua raporttia ei kutsuta riippumattomasti
+todennetuksi runtime-havainnoksi. Nykyiset linkki-, identiteetti- ja
+muuttumattomien lukutavujen tarkistukset säilyvät, mutta eivät ole raportin
+alkuperäallekirjoitus. Havainto on vain yksityistä vianrajausaineistoa:
+se ei anna poisto-, siivous-, testin hyväksyntä- tai mergevaltuutta.
+Omistaja hyväksyi tämän eron rajattuun vertailukokeeseen.
+
+Vaihtoehto on parentin erikseen kirjoittama rajattu sidontakuitti, johon
+keräin vertaa. Se lisäisi uuden tiedoston sekä osittaisen kirjoituksen,
+törmäyksen ja säilytyksen sopimukset; kaksi samalla oikeudella kirjoitettavaa
+tiedostoa eivät silti todista vihamieliseltä runnerilta suojattua alkuperää.
+Nykyisen julkisen lifecycle-raportin laajennusta, tekaistua poikkeusta tai
+Playwrightin kokonaisraportin valmistumisriippuvuutta ei suositella.
+
+Rajattu koe todentaa parentin väärän runtimen ja retryn
+hylkäyksen, restartin yli säilyvän valinnan, riippumattomat CI-/polkuvertailut,
+paikallisen aineiston CI-eston, vanhan yrityksen sekoituksen ja yllä kuvatun
+jälkimuokkauksen havaintorajan. Sama parseri, tarkat 32 KiB:n rajat, `wx`-
+törmäys, puuttuva vastaus ja nykyiset alkuperäisvirhe-/lifecycle-raportit
+säilyvät. Nykyinen salaus/purku-koe päivitetään todelliseen vastuunjakoon;
+synteettistä odotuskarttaa ei kutsuta oikeaksi liitokseksi. Tuotantoliitos
+ja nimetty native-todennus pysyvät erillisinä myöhempinä portteina.
+Liitoskoe käynnistää nykyisen keräimen uudessa prosessissa parentin
+kirjoittamille tavuille ilman muistiin injektoitua odotuskarttaa. Mukaan
+kuuluvat eksplisiittisen ja oletetun job-avaimen erilliset kontrollit.
+Rajattu riippumaton lähdekatselmus puolsi tätä ehdotusta näillä rajoilla;
+se ei ole uuden liitoksen ajonaikainen näyttö tai tuotantohyväksyntä.
+
+Historiallinen tulos:
+[9.11.2026, vaihehavainnon toimituksen viisi pienkoetta](release-0.3.0-workspace-history.md#w75-history-phase-handoff).
+
+**9.11.2026 hyväksytty rajattu tuotantokytkentä ja todennus:** yllä nimettyjen
+main-/tiedosto-omistajien valinnaiset dataportit, nykyisen E2E-proofin
+runtime-kohtainen havainto, yksi yhteinen formaatti-/parseriomistaja sekä
+nykyisen parentin ja keräimen täsmällinen tiedostohaara. Vain nimetty
+palautusskenaario ottaa portit käyttöön; tavallinen ohjelmakäyttö ei kerää
+vaihedataa. Pysyvät regressiot ja vaikutusportit tehdään ennen lähdejäädytystä
+ja yhtä nimettyä `DESK-DELETE-RECOVERY-001`-native-todennusta nykyisissä
+150/10 sekunnin rajoissa. Yllä hyväksytty kirjoituksen jälkeisen muokkauksen
+todistusraja, puuttuvan kattavuuden ilmoittaminen ja varsinaiset
+poistovartijat säilyvät. Omistajan erillinen hyväksyntä laajentaa aiemman
+pienkoeluvan tähän kytkentään, pysyviin regressioihin ja yhteen nimettyyn
+native-todennukseen vasta ennakkoporttien jälkeen. Se ei hyväksy koko W7.5:tä
+tai mergepoikkeusta. Tavallinen ohjelmakäyttö ei kerää vaihehavaintoja.
+
+Historiallinen tulos:
+[9.11.2026, vaihehavainnon kytkentä- ja native-osanäyttö](release-0.3.0-workspace-history.md#w75-history-phase-production).
+
+**Aiemman pienkoeluvan todennusrunko (historia):**
+1. Vain testissä ladattu lähdesidottu ehdokas, oletuspolun ja havaitsijallisen
+   polun vertailu: oikeat tavut, guard-järjestys, ensivirhe ja sulkuvirhe,
+   havaitsijan hylkäys, päättynyt valtuus ja pidetyn todellisen kahvan sulku.
+   Pidetty vartija ja pidetty tiedostokutsu erotetaan ilman jumittuneen
+   järjestelmäkutsun väitettä. Oikea valmistelu-/julkaisukutsu todennetaan.
+2. Parentin luku ennen sulkua, sulussa ja jäädytyksen jälkeen; väärä runtime,
+   toinen kutsuyritys, restart, puuttuva vastaus ja siivousvirhe. Sulku ei odota
+   havaintoa, eikä myöhäinen callback muuta jo jäädytettyä näyttöä.
+3. Tarkka sisältö-, koko-, polku- ja törmäysraja sekä saman kuoren oikea
+   salaus/purku nykyisessä yksityisessä ketjussa; ei muiden tiedostojen
+   keräystä tai raakasisällön päätymistä julkiseen tulosteeseen.
+4. Tyypitys ja rajattu riippumaton katselmus. Vasta näytön jälkeen erillinen
+   tuotanto-/keräyskytkentäpäätös, vaikutusportit ja yksi myöhemmin hyväksyttävä
+   native-todennus nykyisissä 150/10 sekunnin rajoissa. Vanhoja hylkäyksiä
+   ei suljeta eikä uutta pitkää ajoa käynnistetä tällä sopimuksella.
+
+**Aiempi rajattu odotuspäätös ja sen säilyvä sopimus.** Vanha suljettu
+`DESK-DELETE-RECOVERY-001` odotti capability-kutsun vastausta koko testin
+eliniän sisällä. Nykyinen lomake käynnistää saman komennon painikkeesta,
+mutta tulostekstin väittämä alkaa heti ja käyttää 10 sekunnin UI-oletusrajaa.
+Säilyneestä raportista voidaan erottaa vanhan kutsun odotus koko testin
+kestosta; se ei ole uuden julkisen polun valmistumistodiste tai komennon
+sisäinen vaihemittaus. Myös hyväksytty 30 sekunnin kertakoe hylkäsi.
+Sulun yhteydessä kirjattu omistajuusvirhe ei todista alkuperäistä syytä.
+
+Omistaja hyväksyi yhden 100 sekunnin diagnostisen tulosodotuksen
+vain samalle lomaketestille. Nykyinen 150 sekunnin testin kokonaisraja ja
+siivousrajat säilyvät; valmistelu kuluttaa edelleen samaa kokonaisaikaa.
+Kokonaisraja voi siis katkaista testin ennen koko tulosodotuksen kulumista;
+odotusta tai jälkitarkistuksia ei siirretä sen ulkopuolelle.
+Sama tuotannon lomake, preload, capability ja poistokomento säilyvät,
+samoin kaikki SQLite-/PDF-/salaisuus-, vieraan yrityksen, ulkoisten
+tiedostojen ja restartin loppuväittämät. Nykyinen testiaskeleen raportti
+erottaa tulosodotuksen valmistelusta ja jälkitarkistuksista. Ei uutta
+havaitsijaa, lisäkomentoa tai odotusta UI-väittämän eteen.
+
+Kyse on todellisesta nimetyn odotusbudjetin muutoksesta vain kokeeseen, ei
+muuttumattomasta testistä tai pysyvästä poikkeuksesta. Ennen ajon käynnistystä
+varmennetaan nykyinen lähde-/koostesidonta; ajo tehdään kerran, aineisto ja
+siivoustulos säilytetään myös hylkäyksessä, ja väliaikainen muutos palautetaan
+työn päätyttyä. Läpäisy ei yksin hyväksy pysyvää rajaa tai sulje aiempia
+viiveitä; hylkäys ei oikeuta automaattiseen lisänostoon. Tuotannon vartijat,
+sovelluksen ja CI:n rajat sekä native-/paketti-/PR/main-portit säilyvät.
+Mahdollinen läpäisy todistaisi ketjun valmistumisen kyseisessä kokeessa,
+ei käyttäjän kokeman poiston nopeuden riittävyyttä. Komennon työmäärä ja
+kesto arvioidaan erillään testin odotusbudjetista.
+Hyväksyntä koskee vain tätä yhtä mittausta; tavallisten poistotestien
+30 sekunnin paluurajaa ei muuteta. Vartijamuutosta ei tarvita kokeen
+valmisteluun. Mahdollinen myöhempi vastuunmuutos tarvitsee erikseen
+nimetyn havaintoeron ja pienet vertailukontrollit ennen tuotantokytkentää.
+
+Historiallinen tulos:
+[8.11.2026, käytetyn sadan sekunnin kertamittauksen tulos](release-0.3.0-workspace-history.md#w75-history-result100).
+
+Yhden kokeen lupa on käytetty; pysyvää rajaa, automaattista uusintaa tai
+vartijamuutosta ei hyväksytty tällä mittauksella.
+
+Rajattu riippumaton lähdekatselmus vahvisti erillisen diagnostiikkapuutteen:
+live-poiston palvelu raportoi kaikki aloituksen jälkeiset virheet
+`deletePreparation`-vaiheena, vaikka nykyinen komento tuntee myöhemmät vaiheet.
+Omistajan hyväksymä korjauspala välittää nyt komennon kutsukohtaisen vaiheen
+palvelun olemassa olevaan virhetapahtumaan. Ensimmäisen virheen vaihe suljetaan
+ennen completion-/lease-siivousta; myöhäinen callback tai siivousvirhe ei saa
+korvata sitä. Muutos ei lisää julkista kenttää tai poistolupaa. V3-lukijan
+nykyinen rajaus loppusiivouksen syykoodeille säilyy, eikä puuttuvaa lukutulosta
+muunneta onnistumiseksi. Neljä regressiota toisti alkuperäisen puutteen ennen
+korjausta. Lopullisen lähteen 12 kokonaisen vaikutustiedoston 674 testiä,
+desktopin tyypitys ja rajattu riippumaton katselmus läpäisivät.
+Vaiheet, myöhäiset callbackit, ensisyy ja erillinen siivousvirhe sekä nykyinen
+observer-/tukipakettilukija todennettiin; [näytön rajaus](release-0.3.0-integration-history.md#w75-live-deletion-failure-stage-20261108)
+ei ole hitauden korjaus, fyysisen poiston tai salatun virhetoimituksen uusi
+native-näyttö eikä lupa uuteen pitkään mittaukseen. Aikarajat, muutosvartijat,
+lease-järjestys ja julkiset pyyntö-/tuloskentät säilyvät.
+
+<a id="w75-recovery-target-compatibility"></a>
+
+<a id="w75-recovery-joint-contract"></a>
+
+<a id="w75-recovery-production-handoff"></a>
+
+<a id="w75-recovery-writer-handoff-contract"></a>
+
+**8.11.2026, kirjoittajapoissaolon ja kohdeluovutuksen toteutussopimus.**
+Tämä täsmentää alla olevan tuotantopalan seuraavan liitoksen. Nykyinen
+startup tekee vasta korjaamattoman havainnon ja sulkee lukutyön; uuden
+rajatun hallinnan todellinen käynnistys-/komentoketju on vielä avoin.
+Lähdekatselmus ei korvaa sen ajonäyttöä. Aiemmat päivätyt osanäytöt ja
+rajaukset säilyvät; oletuskäynnistyksen uusi valinta ja delete-IPC eivät
+avaudu tällä suunnittelulla.
+
+**Kolme erillistä vastuuta:** kohdelukija todistaa alkuperäisen kohteen ja
+sen kelpoisuuden; nykyinen main-varaus todistaa saman suojatun
+omistusjakson; nykyinen komento, lease ja tiedostovartijat antavat vasta
+varsinaisen muutosvaltuuden. Mikään lukukuitti tai tilavastaus ei yksin
+anna poistolupaa. Tallennettu aktiivivalinta säilyy, eikä sitä korvata
+null-arvolla backendittömyyden osoittamiseksi.
+
+| Nykyinen omistaja | Seuraavan toteutuspalan sopimus |
+| --- | --- |
+| `acquireDesktopWorkspaceReservation` samassa `desktopComposition`-omistajassa | Lisää main-only `captureMainOwnership()`-kuitti, joka sitoo sisäisen omistusjakson ja täsmällisen pidetyn native-kahvan. Hyväksytty `bind` vaihtaa jakson synkronisesti ennen ensimmäistä siirto-odotusta; pelkkä epäkelpo bind-pyyntö ei luo uutta jaksoa. Vanha kuitti ei elvy takaisinotossa, vaikka sama kahva olisi säilynyt eikä fyysistä vapautusta tapahtunut. Kuittia ei voi kaapata siirron, sulun tai epävarman omistajuuden aikana. Nykyisten yleisvartijoiden, lapsen grantin ja reclaimin sopimukset säilyvät. |
+| Kuitin `assertCurrent` / `assertOwned` | Hylkää väärä jakso/kahva ennen muita ulkoisia vartijoita ja toista tarkistus myös synkronisen ulkoisen callbackin sekä native-odotuksen jälkeen. Callbackin aikana tapahtunut bind ei saa jättää `assertCurrent`-kutsua onnistuneeksi. `assertOwned` tekee oikean fyysisen omistajuustarkistuksen, ei pelkkää muistilippua. Vanhan odotuksen myöhäinen onnistuminen ei elvytä kuittia, eikä sen myöhäinen hylkäys saa mitätöidä seuraavaa omistusjaksoa. Saman nykyisen jakson todettu omistajuusvirhe jää pysyväksi. Kuitti ei sisällä `startupActive`-, requester- tai päättyvän kohdelukijan elinikää. |
+| `desktopComposition`-käynnistyksen tuottaja | Kaappaa kuitti ennen tämän kohdehavainnon ensimmäistä lukua. Vain nykyisen kohdelukijan positiivinen, täsmällinen suojatun kirjoittajaketjun sidonta, saman jakson tuore native-omistajuus ja kaikkien aiempien omien töiden päättyminen muodostavat uuden haaran `runtimeAbsence`-portin. Sekä `deletionWork` että `adoptionWork` ovat päättyneitä ja ilman uncertaintyä. Rajattu haara ei luo candidatea, backendia tai muuta kirjoittajaa. Poissaoloportti säilyttää tämän omistajuuden hallinnan ajan, mutta alkuperäisen lähteen tuoreus tarkistetaan erikseen kohdevalinnan omistajassa. |
+| `desktopRecoveryStartup` / nykyinen native-valitsija | Rekisteröi havaintokahva ennen ensimmäistä odotusta. Käytä `selectDesktopWorkspaceRecoveryChoice`-omistajaa ja nykyistä `showMessageBox`-adapteria. Normaali palautuminen tai `notOffered` päättää havaintotyön ja jatkaa entistä palautusta kerran. Sulkeminen odottaa myös alkuperäisen dialogilupauksen ja estää myöhäisen palautuksen, ikkunan tai relaunchin. Sulku ei lisää uutta rajoitusta normaalin recoveryn siivousvaltuuteen. |
+| `desktopSelectorComposition` ja valintakuitit | Hallintavalinnassa siirrä saman fyysisen varauksen sulkuvastuu selectorille ennen sen ensimmäistä odotusta; älä vapauta ja hanki varausta uudelleen. Nykyinen `offer.handoff` odottaa aloitetut luvut ja todentaa saman alkuperäisen kohteen vanhan ja uuden omistajan alla. Vanha havaintotyö päättyy ennen compositionin paluuta, mutta uusi main-elinikä ja poissaoloportti eivät riipu siitä. Osittaisen rakentamisen sulku odotetaan. Jos selector on jo palauttanut lifecyclen ja vanhan havaintotyön sulku sen jälkeen epäonnistuu ennen raw-paluuta, startup odottaa tämän paikallisen lifecyclen `shutdown()`-kutsun ennen hylkäystä. Ensisyy ja erillinen sulkuvirhe säilyvät; epävarma sulku ei anna vapautuslupaa. Ulompi catch ei tee toista vapautusta tai julkaise epävarmaa lifecycleä. |
+| Nykyinen valmistelu, julkaisu ja pysyvä jatko | Säilytä `transferSourceSelection`-raja: ennen aloitusjournalia alkuperäinen valinta vaihtuu saman poisto-operaation ulkoisen valinnan kuittiin, ei uuteen discoveryyn. Saman omistusjakson poissaolo jatkuu tästä riippumatta. Lease, kohteen paikallisen journalin esto, kaikki varsinaiset muutosvartijat ja terminal-kuittaus säilyvät. Requesterin päättyminen ei peru jo pysyvää poistoa; sovelluksen oma shutdown sulkee uudet muutokset nykyisen sopimuksen mukaan ja odottaa aloitetut työt. |
+
+Positiivinen rajaus on edelleen vain sidottu `workspaceImport`,
+`workspaceReplacement`, `workspaceActivationMigration` tai `legacy`-adoption
+nykyisillä vaihe-, alias-, build-, rekisteri- ja konfliktiehdoilla. Näiden
+suojatut candidate-/backend-lapset pitävät saman juuren varauksen
+poistumiseensa asti; nykyinen parent odottaa lisäksi aloittamansa callbackit
+ennen takaisinottoa. Sidonta voi syntyä ennen lapsen poistumista, joten se
+ei ole exit-kuitti. Tuore fyysinen varaus ilman tätä alkuperätodistusta ei
+todista vanhan suojaamattoman kirjoittajan päättymistä. Paikallinen
+restore-v1, sidonnattomat tai epäselvät historialliset tapaukset ja
+asennuksen konfliktit säilyvät nykyisillä normaaleilla palautus-/virhereiteillä.
+Poissaolo ei tarkoita onnistunutta tai puhdasta sammutusta.
+
+**Suljettu kytkentä ja toteutusjärjestys.** Tee ensin omistusjakson kuitti
+ja sen pienet regressiot. Kytke sen jälkeen sama tuottaja nykyiseen startupiin
+nykyisen main-riippuvuussyötön kautta: mahdollinen rajattu native-valinnan
+riippuvuus on oletuksena pois käytöstä. Koekooste käyttää oikeaa nykyistä
+valitsijaa; se ei toimita kohdetta, kirjoittajapoissaoloa tai ohittavia
+vartijoita. Main johtaa ja tarkistaa nämä aina itse. Ei ympäristö-/renderer-
+lippua, rinnakkaista käynnistintä tai uutta manageria. Julkinen entry ja
+poistokanava avataan vasta niiden omien jo sovittujen näyttöporttien jälkeen.
+
+**Todennus nykyisissä omistajissa, ilman uusia aikarajoja:**
+
+1. Varaustestit: kaappaus vain main-omistuksessa, bind/reclaim myös samalla
+   kahvalla, synkronisen vartijan sisäinen bind, siirron ja sulun esto,
+   pidetyn native-luvun myöhäiset molemmat lopputulokset,
+   juuren/omistajuuden menetys ja seuraavan omistajan suoja.
+   Oikea native-varaus ja lapsen exit todennetaan erikseen nykyisellä
+   prosessi-/Electron-fixturellä; mockattu exit ei täytä tätä näyttöä.
+2. Observation-/RecoveryStartup-/Main-testit: kaikki neljä sallittua
+   sidontaa, hylättävät vanhat lähteet, pending/uncertainty, alkuperäisen
+   kohteen muutos, recover/manage/close sekä sulku luvun, dialogin ja
+   luovutuksen aikana. Todista valinnan säilyminen, vanhan lukukuitin
+   päättyminen uuden omistajan jatkuessa, rakentamisvirheen odotettu sulku
+   sekä jo valmistuneen lifecyclen sulku vanhan lukutyön loppusulun
+   epäonnistuessa. Ensivirhe säilyy erillään siivouksesta eikä varausta
+   vapauteta kahdesti.
+3. Uuden haaran oikea `startDesktopComposition` -> capability -> palvelu ->
+   poistokomento -> terminal-ketju nykyisessä eristetyssä Electron-koosteessa.
+   Käytä todellista varausta, lähdelukijaa ja tiedostotavuja; suora
+   `service.deleteWorkspace` tai ohjattu resume ei korvaa tätä liitosta.
+   Nykyiset SQLite/PDF/secret-fixturet, toisen yrityksen ja ulkoisten
+   tiedostojen säilyminen sekä varauksen ja prosessipuun loppusulku vaaditaan.
+   Oikean indexin quit-liitos säilyy erillisenä testinä: composition-entry
+   ei yksin todista indexiä, preloadia tai käyttäjän poistopainiketta.
+4. Nykyinen hallitusti pysäytetty julkaisuketjutesti säilyy omana
+   regressionsa; sitä ei muuteta täydeksi poistotestiksi. Vanhoja nimettyjä
+   testibudjettipoikkeuksia ei lainata uudelle tapaukselle. Uudet testit
+   käyttävät oman tasonsa nykyisiä rajoja, ja E2E-matriisi päivitetään vasta
+   toteutuneen kattavuuden mukaan. Alkuperäisen virheen nykyinen salaus/purku,
+   riippumaton katselmus sekä native-/UI-/paketti-/PR/main-portit säilyvät.
+
+Rajattu riippumaton suunnitelmakatselmus täsmensi jo palautetun lifecyclen
+sulkuvastuun ja synkronisen vartijan jälkitarkistuksen yllä olevaan
+sopimukseen ja regressioihin. Jälkikatselmukseen ei jäänyt tämän sopimuksen
+estäviä löydöksiä. Tämän suunnitelmakatselmuksen vaiheessa toteutus ja
+ajonäyttö olivat vielä tekemättä.
+
+**8.11.2026, ensimmäinen toteutuspala:** `captureMainOwnership()` on nyt
+nykyisessä varausomistajassa. Sen kuitti vanhenee hyväksytyssä bindissä
+pysyvästi, suojaa seuraajaa vanhoilta tarkistustuloksilta eikä riipu
+startup-lukutyön eliniästä. Viiden kokonaisen vaikutustiedoston 208 testiä,
+desktopin tyypitys ja käännös läpäisivät nykyrajoilla. Mukana ovat oikean
+paikallisen IPC-varauksen siirto/takaisinotto sekä todellisen juuren
+katoaminen ja korvaus. Lapsen exit on siirtotestissä mallinnettu eikä tämä
+ole uuden käynnistys-/komentoketjun tai paketin näyttö. Rajatun katselmuksen
+kaksi testikattavuusaukkoa täydennettiin; jälkikatselmukseen ei jäänyt
+löydöstä. Seuraava pala kytkee tämän saman kuitin yllä rajattuun startup-
+tuottajaan ja todentaa kohdeluovutuksen. Oletusentry ja delete-IPC pysyvät
+suljettuina; vanhat ensihylkäykset säilyvät avoimina.
+
+**8.11.2026, suljettu startup-tuottaja:** `desktopComposition` kaappaa nyt
+saman omistusjakson ennen kohdelukua. Valinnainen main-koostamisen
+valitsijaportti käyttää nykyistä native-valitsijaa; oletuksena sitä ei
+ole kytketty. Vain nykyisen lukijan hyväksymä sidottu kohde, päättyneet
+aiemmat omat työt ja saman varauksen tuore todiste voivat siirtyä hallinnalle.
+Varausta ei vapauteta välissä. Vanhan lukutyön sulku ei päättänyt uuden
+omistajan valtuutta. Normaali palautus ja oletuksen vain luku -reitti
+käyttävät edelleen samaa nykyistä palautusketjua.
+
+Historiallinen tulos:
+[8.11.2026, suljetun startup-tuottajan osanäyttö](release-0.3.0-workspace-history.md#w75-history-startup-writer).
+
+Historiallinen tulos:
+[8.11.2026, sisäisen Electron-ketjun rajattu näyttö](release-0.3.0-workspace-history.md#w75-history-native-terminal).
+
+**8.11.2026, tavallisen käyttäjäpolun rajattu tuotantoliitos:** aktiivinen
+composition ja tavallinen selector muodostavat nyt nykyisen oikean
+poistokomennon oletuksena. Sama lifecycle ja fyysinen main-varaus tarkistetaan
+ennen kirjoittajapoissaolon odotusta, sen jälkeen ja fyysisen tarkistuksen
+jälkeen. Eksplisiittinen komento säilyy ensisijaisena; pelkkä publisher
+säilyttää vanhan W7.3-valmistelun ilman julkista poistokanavaa. Rajatun
+palautushallinnan oma nykyinen komentokooste säilyy erillisenä.
+Nykyinen capability julkaisee vain tiukan delete-pyynnön ja turvallisen
+tuloksen, ei valmistelun metodia tai alkuperäisen virheen causea.
+Preload ja web-silta käyttävät samoja nimettyjä pyyntö-/tulosrajoja.
+[Kohdenäyttö ja puuttuvat käyttäjäpolun portit](release-0.3.0-integration-history.md#w75-public-deletion-coupling-20261108)
+eivät vielä hyväksy koko W7.5:ää tai avaa uutta oletuskäynnistysvalintaa.
+
+**7.11.2026, C:n seuraavan tuotantopalan toteutussopimus.** Hyväksytty
+rajattu palvelu ja statuskanavan formaattivalinta ovat haarassa; 296
+lähiregressiota ja tyypitys ovat osanäyttöä, eivät startup-tuottajan tai
+käyttäjälle avatun palautushallinnan hyväksyntä. Alla täsmennetään nykyistä
+yhteissopimusta, ei avata uudelleen hyväksyttyjä käyttäytymispäätöksiä.
+Onnistuneen rajatun poiston jälkeen näytetään tulos ja käyttäjä sulkee EKYn
+itse; tavallisen poiston paluu ei muutu.
+
+Lähdevertailu osoitti kolme liitoskohtaa, jotka estävät testikoosteen suoran
+kopioinnin tuotantoon: havaintokahva syntyy ennen ensimmäistä odotusta,
+tavallinen selector vaatii null-aktiivivalinnan ja hallintacomposition
+valmistelee nykyisin candidate-runtimea ennen haarautumistaan. Lisäksi
+testilukijan rekisterin `inspectSlots` tulkitsee myös hylättäviä
+välitiedostoja ennen `registryRecovery`-päätöstä, kun normaali valinta
+lukee vain valitun lähteen. Nämä ovat keskeneräisen liitoksen riskejä,
+eivät todettuja nykyisen tuotantokäynnistyksen regressioita.
+
+| Toteutuspala ja omistaja | Rajattu sopimus |
+| --- | --- |
+| Kohdelukija, nykyiset registry-/journal-/build-lukijat | Siirrä `desktopWorkspaceRecoveryDiscoveryTestSupport`-kokeen kohdevalinta yhdeksi nimetyn main-lukijan tuotantototeutukseksi; testiapu käyttää sitä, ei ylläpidä rinnakkaista parseria. Ei kokeen `normalSourceTrial`-optiota tuotantoon. Rekisterin ennakkoluku käyttää normaalia lähdeprioriteettia ja slottien identiteettejä ennen `inspectSlots`-lukua: juuri rekisterin next/backup tai muu erikseen nimetty normaali-reitin ehto palauttaa nykyiselle omistajalle ennen tiukempaa sisältölukua. Tätä ei yleistetä journalien sivuslotteihin: niiden sallitut parit ja siirtymät tarkistaa nykyinen journal-omistaja. Poistoehdokkaan kaikki alkuperäiset tavut ja identiteetit tarkistetaan edelleen. Valitun lähteen virhe, omistajuuden menetys tai muuttunut hyväksytty havainto ei ole catch-fallback. Positiiviset neljä sidottua omistajaa ja paikallisen restore-v1:n rajaus säilyvät alla määriteltyinä. |
+| Havaintotyö, `desktopComposition` / `desktopRecoveryStartup` | Luo ja rekisteröi sulkukahva synkronisesti build-admissionin jälkeen, ennen ensimmäistä omaa lukua/dialogia ja ennen `recoverWorkspaceManagementBeforeRuntime`-kutsua. Nykyinen quit-liitos odottaa lukijan ja dialogin todellista päättymistä. Uuden entryn sulkulippu estää vain uuden työn/valinnan; sitä ei lisätä yleiseen `assertStartupAuthority`-vartijaan katkaisemaan normaalin recoveryn cleanup-valtuutta. Normaali valinta sulkee tämän lukijan ja jatkaa entistä palautusta kerran. Erillinen uuden työn vartija säilyy tämän jälkeen yritysvalinnan ja runtime-käynnistyksen odotusrajoilla: sulku estää uuden sessionin, relaunchin, valitsimen ja backendin käynnistämisen, ei vanhan omistajan siivousta. |
+| Omistajuuden luovutus, `desktopSelectorComposition` | Rajattu mode on mainin suljettu variantti, ei rendererin valinta tai tavallisen selectorin null-ehdon ohitus. Selector omistaa keskeneräisenkin rakentamisen sulun ja fyysisen varauksen ennen ensimmäistä omaa odotusta. Vanhan lukijan admission suljetaan, aloitetut työt odotetaan, sama alkuperäinen valinta todennetaan molempien elinaikojen alla ja siirretään kerran. Uuden omistajan vartijat eivät kutsu päättyvää startup-lukukuittia. Epäonnistunut luovutus ei julkaise lifecycleä; paikallinen sulku odotetaan ennen ulomman compositionin virhepalautetta. Ulompi catch ei vapauta selectorille jo luovutettua varausta uudelleen tai epävarman sulun jälkeen. |
+| Rajattu palvelukooste, `workspaceManagementComposition` | Erottele uusi mode ennen candidate-factoryn, ordinary-operation-guardin ja create/import/replace-koordinaattorien valmistelua. Käytä samaa palvelua ja nykyistä havaitsijaa. Älä syötä väärennettyä null-rekisteriä, korjaavaa `registry.read()`-lukua tai tyhjiä ohittavia vartijoita. Tarpeettomat tavalliset riippuvuudet eivät kuulu rajattuun option-varianttiin. Tuettu käynnistys omistaa oikean main-varauksen, eikä tämän haaran kautta voi luoda backend-/candidate-omistajaa. Pelkkä `runtimeEntered === false` tai vapaa varaus ei todista vanhan suojaamattoman kirjoittajan poistumista. |
+| Tilatuottaja, sama kohdelukija / palvelu / capability | Käytä palvelun antamaa statuskontekstia ja kaappaa nykyinen `maintenanceLease.captureStatusObservation()` ennen ensimmäistä odotusta. Varmenna main-omistajuus ja runtime-poissaolo ennen lukua ja sen jälkeen. Loppuvartija sitoo samat main-, palvelu-, lease- ja pyyntösukupolvet vielä IPC-julkaisuun; idle-busy-idle ei palauta vanhaa vastausta kelvolliseksi. Busy ei lue muuttuvaa alkuperäisvalintaa eikä palauta kohdetta. Statusluvun oma virhe ei peru jo kelvollista komentoa; todettu main-omistajuusvirhe päättää omistajan. Tilavastaus ei anna poistolupaa. |
+| Valmistelu ja pysyvä jatko, nykyiset preparation/lifecycle/publication/continuation-omistajat | Säilytä aiemmassa kokeessa erotettu tallennettu aktiivivalinta ja todellinen runtime-poissaolo. Tavallinen selector säilyttää null-ehtonsa; rajatun variantin kohde ja tallennettu valinta kaapataan ennen odotuksia. Backenditön haara ei lupaa backup-tuottajaa, business-relaunchia tai clean-shutdown-merkkiä. Alkuperäisvalinta vaihtuu alla määritellyssä julkaisurajassa samaan ulkoisen valinnan kuittiin, ei uudelleen löydettyyn kohteeseen. Main-omistajuuden todettu menetys sulkee yhteisen omistajan pysyvästi myös durable-jatkossa; pelkkä palvelun `closeAdmission()` ei tätä korvaa eikä requester-sulku peru pysyvää poistoa. Tämä liitos ja oikea terminal-kuittaus todennetaan erikseen ennen näkyvää poistokanavaa. |
+
+Palvelun option-tyyppi erottaa tavallisen ja rajatun variantin samassa
+`WorkspaceManagementService`-omistajassa. Rajattuun varianttiin ei vaadita
+käyttämättömiä ordinary-komentoja tai korjaavaa rekisteriporttia; tyypitystä
+ei kierretä no-op-vartijoilla. Palvelun ja leasen vastausvartijat täydentävät
+capabilityn nykyisiä ikkuna-/frame-/pyyntösuojia, eivät korvaa niitä.
+
+**Pienet regressiot, ei uutta testialustaa:** nykyisiin Observation-,
+RecoveryStartup-, selector- ja palvelufixtuureihin lisätään seuraavat
+nimetyt rajat. Todellinen tiedostolukija/main-varaus erotetaan testeissä
+kontrolloidusta callbackista ja myöhemmästä native-/UI-/SQLite-näytöstä.
+
+1. Nykyinen normaali registry-recovery ehjällä valitulla lähteellä ja
+   hylättävällä viallisella next/backup-sisällöllä: sama lopputulos ja
+   säilyvät tavut havaintoliitoksen kanssa ja ilman sitä. Viallinen valittu
+   lähde ja muuttuneet identiteetit eivät saa avata hallintaa. Tuonnin,
+   adoptionin ja activationin nykyiset normal-source-vertailut säilyvät.
+   Vastakontrollina kelvollinen sidottu kahden journal-slotin siirtymä
+   pysyy ehdokkaana; rekisterin oikoreitti ei saa torjua sitä.
+2. Sulku ennen ensimmäisen luvun vastausta, dialogin aikana ja luovutuksen
+   jokaisen odotuksen aikana. Ei myöhäistä ikkunaa, palautusta tai relaunchia;
+   alkuperäinen syy ja erillinen sulkuvirhe säilyvät. Älä odota sulkulupausta
+   sen oman lukutyön sisältä. Kahvan sulku on idempotentti myös siirron jälkeen.
+   Ensimmäinen virhe ei vapauta varausta ennen muiden aloitettujen lukujen loppua.
+3. Onnistunut luovutus päättää vanhan lukukuitin mutta ei uutta main-omistajaa;
+   toinen luovutus, muuttunut rekisteri/journal/sidonta ja varauksen menetys
+   hylätään. Testaa osittaisen compositionin epäonnistuminen myös luovutuksen
+   jälkeen sekä omistajuuden menetys durable-jatkossa. Ulompi catch ei saa
+   vapauttaa varausta toistamiseen.
+4. Tallennettu valinta on kohde, toinen yritys tai null. Rajattu composition
+   ei käynnistä candidate-factorya, SQLiteä, korjaavaa rekisterilukua tai
+   tavallista muutoskanavaa. Normaali selector ja active-haara säilyvät.
+5. Oikean leasen idle-busy-idle sekä palvelun komennon ja tilapyynnön
+   kilpailu vanhentavat vain oikeat vastaukset. Myöhäinen vastaus ei palauta
+   poistopainiketta; erillisen kelvollisen poistotyön valtuus ei riipu siitä.
+
+Seuraava toteutus aloittaa kohdelukijasta ja suljettavan havaintotyön
+tuotanto-omistajasta, ei näkyvän entryn avaamisesta. Synteettisessä
+composition-kokeessa käytetään nykyistä riippuvuussyöttöä, ei julkista
+ympäristölippua tai ohittavaa production-asetusta. Koodiksi siirrettävän
+koehaaran vanha muunnin poistetaan vasta vastaavan pysyvän näytön jälkeen.
+Ei uutta manageria, journalia, aikarajaa, testaustasoa tai turvatarkistuksen
+kevennystä. Kohdetestit, tyypitys, alkuperäisen virheen nykyinen salaus/purku,
+rajattu katselmus ja myöhemmät native-/UI-/paketti-/PR/main-portit säilyvät.
+Tämä lähdekatselmus ei ole uuden tuotantoliitoksen ajonäyttö.
+Rajattu riippumaton katselmus täsmensi rekisterin sivuslottien normaaliin
+reittiin ohjauksen erilleen journalien sallituista pareista. Sanamuoto ja
+positiivinen vastakontrolli korjattiin; jälkikatselmukseen ei jäänyt löydöstä.
+Palvelu-/capability-katselmus ei osoittanut nykyisessä rajatussa liitoksessa
+korjattavaa vikaa. Yllä nimetyt tuotantotuottajan velvoitteet ja ajonäyttö
+ovat silti avoinna; tässä katselmuksessa ei ajettu sovellustestejä.
+
+**7.11.2026, ensimmäinen yhteinen tuotantopala:** nykyinen
+`desktopRecoveryStartup` omistaa nyt synkronisesti muodostettavan
+`createDesktopRecoveryObservation`-sulkukahvan. Sen admission sulkeutuu
+idempotentisti ennen aborttia, kaikki aloitetut työt odotetaan ja ensimmäinen
+varsinainen virhe säilyy myös jo päättyneen lukutyön jälkeen. Sulkulupaus
+jaetaan vasta admissionin sulkemisen jälkeen. Tämä omistaa vain paikalliset
+käynnistystyöt, ei itsenäisen main-omistajan tai normaalin recoveryn valtuutta.
+Vanha testifixturen rinnakkainen toteutus korvattiin tämän omistajan viennillä.
+
+Uusi `desktopWorkspaceRecoveryRegistrySelection` käyttää nykyisen
+rekisteriomistajan korjaamatonta lähdevalintaa ja identiteettejä ennen
+poistoehdokkaan tiukkaa slottilukua. Rekisterin next/backup ohjaa normaalille
+reitille ilman hylättävän sisällön tulkintaa. Valittu viallinen lähde ei
+vaihdu kelvolliseen varakappaleeseen. Slottiluvun on täsmättävä alkuperäisiin
+tavuihin, arvoon ja kaikkiin identiteetteihin. Havaintokoe käyttää tätä
+samaa tuotantolukijaa; journalien kelvolliset kahden slotin siirtymät säilyvät.
+Vanhan paikallisen restore-lähdekokeen test-only-rajausta ei siirretty
+tuotantoon eikä koko muun kohde-/tilalukijan kokeellisuutta poistettu.
+
+Ensimmäinen kolmen vaikutustiedoston 288 testin sarja läpäisi. Rajattu
+katselmus löysi kaksi uuden yhteisen palan puutetta: rekisteriomistajan
+yleinen virhemuunnos peitti luentavaltuuden alkuperäisen syyn ja abort-signaalin
+oletussyy poikkesi tarkoituksellisen sulun tunnisteesta. Kolme uutta
+regressiota hylkäsi puutteet ennen korjausta. Lukija säilyttää nyt oman
+valtuusvirheensä täsmällisesti molempien todellisten registry-lukujen yli,
+ja abort käyttää samaa yksityistä peruutusoliota. Pidetty sisartyö odotetaan
+edelleen. Indexin ensisyytesti käyttää samaa tuotannon lukutyön sulkukahvaa;
+alkuperäinen syy ja erillinen siivousvirhe säilyvät. Korjauksen rajattuun
+jälkikatselmukseen ei jäänyt löydöstä.
+
+Historiallinen tulos:
+[7.11.2026, yhteisen rekisterilukijan lopullinen osanäyttö](release-0.3.0-workspace-history.md#w75-history-registry-production).
+
+**7.11.2026, yhteiset lähde- ja konfliktihavainnot:**
+`desktopWorkspaceRecoverySources` omistaa nyt rekisterin, build-tilan ja
+sidottujen tuonti-/adoptio-/activation-journalien korjaamattoman luennan.
+Saman tiedoston census-luku johtaa yritysjuuret validoidusta rekisteristä,
+säilyttää juuri-identiteetit ja paikallisen restoren normaalin lähdevalinnan
+sekä lukee nykyiset creation/switch/migration/deletion/legacy-restore-omistajat.
+Lukija ei muodosta omaa parseria: kunkin journalin lähdeprioriteetin,
+slottiparit ja sidonnat tarkistavat sen nykyiset omistajat. Hylättävän
+sisällön normaali palautus ja poistoehdokkaan tiukka valinta pysyvät erillisinä.
+
+Tulokset ovat vain mainin muistissa olevia havaintoja. `observed` ei todista
+runtime-poissaoloa, main-varauksen siirtoa, kohteen kelpoisuutta, puhdasta
+asennusta tai poistolupaa. Paikallinen restore-v1 näkyy census-aineistossa,
+mutta ei muodosta suojatun kirjoittajan todistetta. Tuotantolukijalla ei ole
+`normalSourceTrial`-optiota, korjaus- tai poistometodia, tietokanta-avausta,
+lokikanavaa, pysyvää artifactia tai uutta aikarajaa. Nykyinen testikooste
+käyttää samoja tuotantolukijoita; vain historiallisen paikallisen restoren
+koepolitiikka sekä jatkuvan kohdevalinnan, statuksen ja luovutuksen kooste
+jäävät vielä testipuolelle.
+Ne eivät ole tuotannon entry eikä valmis main-elinajan luovutus.
+
+`readDesktopWorkspaceRecoveryTarget` kokoaa näistä saman hetken
+ehdokashavainnon. Vain neljän hyväksytyn sidotun omistajan yksiselitteinen
+kohde voi olla ehdokas; lähteen normaali-reitin ehto, puuttuva kohde,
+eri yrityksiin viittaavat ehdokkaat, globaali palautusomistaja tai kohteen
+tai vieraan yrityksen paikallinen restore estävät tarjoamisen. Tallennettu
+aktiivivalinta säilyy erillisenä tietona. Paikallinen restore-v1 yksin
+ei tuota ehdokasta eikä sekayhdistelmä lainaa sidotun journalin kelpoisuutta.
+Ehdokashavainnossa ei ole sulku-, varaussiirto-, palautus- tai poistometodia.
+Alkuperäisten tavujen jatkuva valinta, itsenäiselle main-omistajalle luovutus
+ja todellinen runtime-poissaolo ovat seuraavan liitoksen velvoitteita.
+
+Historiallinen tulos:
+[7.11.2026, yhteisten lähdelukijoiden osanäyttö](release-0.3.0-workspace-history.md#w75-history-sources-production).
+
+**7.11.2026, jatkuvan valinnan omistaja:**
+`desktopWorkspaceRecoverySelection` muodostaa sulkukahvan synkronisesti
+ennen lähdelukua. Se kaappaa nykyisten yhteisten lukijoiden alkuperäiset
+tavut ja identiteetit eikä vaihda niitä myöhempään vertailupohjaan.
+Luovutus sulkee vanhat uudet lukupyynnöt, odottaa jo aloitetut luvut ja
+vertaa samaa valintaa sekä startupin että uuden main-omistajan alla.
+Vain yksi luovutus sallitaan. Onnistuneen siirron jälkeen startupin sulku
+ei päätä itsenäistä main-omistajaa; epäonnistuminen sulkee julkaisemattoman
+omistajan ja odottaa keskeneräisen työn. Kummankaan lukutulos ei anna
+varaus-, palautus- tai poistolupaa.
+
+Pyyntökohtainen lukuhäiriö ei päätä mainin elinaikaa, mutta todettu mainin
+omistajuuden menetys säilyy peruuttamattomana. Sulku odottaa myös tällaisen
+luvun todellisen päättymisen. Ulkoisen synkronisen vartijan paluu ei saa
+antaa valtuutta, jos sama callback sulki omistajan. Tarkoituksellinen
+startup-peruutus käyttää samaa yksityistä syyoliota; odotettu alkuperäinen
+lähdevirhe säilyy compositionin ensisyynä, ei keinotekoisena toisena
+siivousvirheenä. Nykyisen startup-kääreen ja oikeiden tiedostolukijoiden
+regressiot todentavat nämä rajat. Varsinainen selector-/composition-liitos,
+tilatuottaja ja alkuperäisvalinnan vaihto julkaisurajassa jäävät seuraaviksi
+toimitusporteiksi. Näkyvä entry ja delete-IPC pysyvät suljettuina.
+
+Rajattu katselmus löysi uuden palan kaksi omistajuusaukkoa: pyyntökohtainen
+luku käytti vain pyytäjän odottavaa omistajuustodistusta, ja viimeinen
+ulkoinen callback saattoi sulkea startupin viimeisen sulkutarkistuksen
+jälkeen. Neljä kielteistä kontrollia toisti aukot, mukaan lukien vanhan
+valintakuitin sulun ilman startup-scopeen kohdistuvaa sulkua. Korjattu luku todentaa
+ensin itsenäisen omistajan ja sitten pyytäjän; pyynnön oma hylkäys ei
+mitätöi mainia, mutta mainin todettu menetys jää pysyväksi. Luovutuksen
+viimeiset molempien elinaikojen ja startup-scopen sulkutarkistukset tehdään
+ulkoisten callbackien jälkeen ilman uutta callbackia tai odotusta ennen
+siirtoa. Testit vertaavat samaa alkuperäistä aineistoa ja
+odottavat myös epäonnistuneen työn päättymisen; aikarajat eivät muutu.
+
+Historiallinen tulos:
+[7.11.2026, jatkuvan valinnan lopullinen osanäyttö](release-0.3.0-workspace-history.md#w75-history-selection-production).
+
+**7.11.2026, saman omistajan tilatuottaja ja palveluvariantti:**
+`WorkspaceManagementService` erottaa tavallisen ja rajatun option-variantin.
+Rajattu variantti ei vaadi eikä hyväksy tavallisia komento-, korjaavan
+rekisterin tai business-paluun riippuvuuksia. Nykyinen
+`desktopWorkspaceRecoverySelection.readStatus` käyttää palvelun antamaa
+statuskontekstia ja ennen odotusta kaapattua oikean leasen sukupolvea.
+Se todentaa omistajan, pyynnön ja runtime-poissaolon erikseen ennen lukua
+ja sen jälkeen; busy ei lue muuttuvaa alkuperäisvalintaa tai palauta kohdetta.
+Sama tuoreusvartija säilyy myöhempään julkaisuun. Vanha testiapurin
+tilaprojektio poistettiin nykyisten testien siirron ja läpäisyn jälkeen.
+[Kohde- ja vaikutusnäyttö](release-0.3.0-integration-history.md#w75-status-producer-20261107)
+ei vielä todista oikeaa selector-/composition-liitosta, uutta native-entryä,
+poiston julkaisurajan valtuussiirtoa tai koko W7.5:n hyväksyntää.
+
+**7.11.2026, rajattu hallintokooste ennen tavallisia riippuvuuksia:**
+Saman `createWorkspaceManagementComposition`-omistajan rajattu variantti
+muodostaa palvelun ennen import/replacement-omistajien, candidate-factoryn,
+rekisterin tai tavallisten koordinaattorien valmistelua. Se saa vain nykyisen
+main-admissionin ja operatiivisen identiteetin/lokikirjoittajan. Nykyisen
+operaation suodatettu havaitsija ja tukilukija jaetaan molemmille tiloille
+samassa tiedostossa; tavallinen dispose-/shutdown-järjestys säilyy.
+Tämän rajatun variantin poiston valmistelu- ja jatkoportit odottavat vielä
+niiden erillistä julkaisurajan kytkentää, eivät korvaudu puuttuvilla vartijoilla.
+[Toteutusnäyttö](release-0.3.0-integration-history.md#w75-restricted-composition-20261107)
+ei vielä todista valitsimen main-elinajan tai tuotantokäynnistyksen liitosta.
+
+**7.11.2026, valitsimen rajattu main-elinikä:**
+`desktopSelectorComposition` erottaa nyt tavallisen selectorin ja mainin
+valitseman palautushallinnan suljettuina variantteina. Rajattu haara
+luovuttaa saman alkuperäisen kohdevalinnan kerran itsenäiselle omistajalle
+ennen palvelun tai ikkunan valmistelua. Se ei muodosta tavallista
+null-valinnan lifecycleä, candidate-runtimea tai poiston valmistelu-/jatkoportteja.
+Sama tilakanava saa v2-tuottajan ja viimeisen main-only-julkaisuvartijan;
+poistokanavaa ei rekisteröidä. Tavallisen selectorin riippuvuudet ja
+null-valinnan sopimus säilyvät.
+
+Uuden omistajan sulku estää uudet pyynnöt heti ja odottaa aloitetut
+palvelu-, capability- ja kohdeluvut ennen fyysisen varauksen vapautusta.
+Tarkoituksellinen admission-sulku ei mitätöi siivouksen omistajuustodistusta.
+Todettu main- tai kirjoittajapoissaolon menetys sen sijaan jää pysyväksi,
+myös tilatuottajan erillisessä odottavassa poissaolotarkistuksessa.
+Katselmuksen löytämä jälkimmäisen haaran aukko toistettiin hylkäävällä
+regressiolla ja korjattiin käyttämään samaa pysyvää omistajaa. Erillinen
+rakentamisrajan kontrolli toisti myös vasta capabilityn muodostamisen
+jälkeen havaitun single-instance-virheen elpymisen. Rajattu variantti käyttää
+nyt samaa pysyvää vartijaa kaikissa yhteisissä nykyisyys- ja odottavissa
+main-tarkistuksissa; tavallinen selector käyttää entistä vartijaansa.
+Osittainen ikkunarakentaminen ja myöhäinen ulkoinen sulku kuuluvat samaan
+paikalliseen sulkuun; alkuperäinen rakentamisvirhe säilyy ensisyynä.
+
+Nykyisen Main-fixturen kytkentätestit käyttävät oikeita tiedostolukijoita,
+palvelua ja capabilitya mutta kontrolloitua Electron-/prosessivarausrajaa
+sekä erillistä kontrolloitua runtime-poissaolotodistetta. Ne eivät avaa
+tuotannon native-valintaa eivätkä todista vanhan kirjoittajaketjun poistumista.
+Varsinainen startup-admission, alkuperäisvalinnan vaihto julkaisurajassa,
+poiston valmistelu/jatko ja native-/SQLite-/pakettiportit säilyvät erillisinä.
+[Vaihekohtainen näyttö](release-0.3.0-integration-history.md#w75-selector-owner-20261107)
+ei ole koko W7.5:n tai julkisen poistokanavan hyväksyntä.
+
+**7.11.2026, kohdeluvun rekisteröinti oikeaan käynnistykseen:**
+`desktopComposition` luo ja rekisteröi nykyisen jatkuvan kohdevalinnan
+sulkukahvan ennen sen ensimmäistä lukua. Paikka on hyväksytyn build-
+admissionin jälkeen ja ennen `recoverWorkspaceManagementBeforeRuntime`-
+kutsua. Liitos koskee nykyisen startup-portin normaalia hyväksyttyä
+käynnistystä, ei smokea tai W6B.2-koetta. Havaintotulos ei vielä avaa
+native-valintaa, rajattua käyttöliittymää tai poistokanavaa.
+
+Havaintotyö päätetään ja odotetaan ennen nykyisen normaalin recoveryn
+jatkamista tai ulomman virhehaaran varauksen vapautusyritystä. Yleinen
+`assertStartupAuthority` säilyy ennallaan; paikallinen sulkulippu ei katkaise
+normaalin recoveryn siivousvaltuutta. Erillinen epävarma havainnon sulku
+mitätöi fyysisen omistajan, jotta ulompi catch ei vapauta sitä. Ensimmäinen
+lähdevirhe ja erillinen sulkuvirhe säilyvät aggregaatissa ennen turvallista
+käyttäjäkoodia. Main-lähteen alkuperäinen virhe toimitetaan odottamattomassa
+testihylkäyksessä nykyiselle yksityiselle runner-kerääjälle, ei käyttäjäpakettiin.
+
+Rajattu katselmus löysi havaintoluvun jälkeisestä jatkosta kaksi sulkuaukkoa:
+odottava yritysvalinta tai backend-valmistelu saattoi vielä aloittaa uuden
+työn, ja tämän eston jälkeinen palautussiivous saattoi pyytää relaunchia.
+Erillinen uuden työn admission suojaa nyt uusien palautusvaiheiden alun,
+valinnan ja runtime-aloituksen rajat. Jo alkanut tuontipalautus saa siivota
+nykyisellä valtuudellaan, mutta sulku estää seuraavan vaiheen aloittamisen.
+Sama mainin sulkulippu suodattaa kaikki runtimeen ja valitsimeen
+välitetyt relaunch-pyynnöt sekä FirstStart-virhehaaran relaunchin. Se ei
+heitä uutta syytä siivouksen päälle eikä lainaa päättyvää startup-valtuutta
+palautuneelle lifecyclelle. Kumpikin puute toistettiin ennen korjausta;
+aloitetut työt, alkuperäinen poikkeus, säilyvät tavut ja varauksen yksi
+vapautus kuuluvat pysyviin regressioihin. Lopullisen lähteen ajonäyttö ja
+sen rajat kirjataan M1:n integraatiohistoriaan, ei uutena hyväksyntäkerroksena.
+
+Sidotun v2-tuonnin nykyinen lähde käy lisäksi saman havaitun journalin
+`inspectWorkspaceBackupImportBindingAdmission`-portin kautta. Aiemmin
+havaitun sidonnan katoaminen tästä tarkistuksesta on virhe, ei lupa palata
+toiseen kohteeseen tai korjaavaan lukuun. Sidonnaton vanha tuonti säilyttää
+nykyisen palautusreittinsä. Tämä read-only-liitos ei anna kirjoittajien
+poissaolotodistusta; native-varauksen ja täsmällisen guarded-writer-ketjun
+yhteinen admission sekä hallinnan luovutus todistetaan ennen uuden entryn
+avaamista. Myös julkaisurajan ja pysyvän poiston portit säilyvät.
+
+**7.11.2026, sidonnan ja native-varauksen yhteinen lukukoe:** nykyinen
+tuotannon kohdelukija, kertaluovutus ja rajattu tilapalvelu on yhdistetty
+testissä neljään yllä hyväksyttyyn sidottuun omistajaan sekä todelliseen
+main-varaukseen. Vanhat lukukuitit ja candidate-varauksen takaisinotto
+eivät elvytä omistajuusvirheen saanutta tilavastausta. Tämä on nykyisten
+porttien yhteistodennusta, ei native-valinnan tai tuotantoentryn hyväksyntä.
+[Ajonäyttö ja rajat](release-0.3.0-integration-history.md#w75-native-status-joint-20261107)
+omistavat tulokset; aikarajoja, poistolupaa tai muita vartijoita ei muuteta.
+
+Seuraavan main-kytkennän konkreettiset vastuut pysyvät nykyisissä omistajissa:
+
+- `createDesktopWorkspaceRecoverySelection.discover()` omistaa alkuperäisen
+  sidotun lähdevalinnan. Pelkkää palautettua target-/owners-projektiota ei
+  tulkita uudeksi poissaolotodisteeksi tai muutosluvaksi.
+- `acquireDesktopWorkspaceReservation`-omistajan `assertMainCurrent()` ja
+  `assertMainOwned()` todentavat mainin hallussa olevan tuoreen varauksen
+  ja keskeneräisen lapselle luovutuksen puuttumisen. Ne yhdistetään
+  täsmälliseen hyväksyttyyn kirjoittajaketjuun; native-portti ei yksin sulje
+  pois vanhaa suojaamatonta kirjoittajaa. Koosteen sisäinen
+  `runtimeEntered`-lippu ei korvaa näitä ehtoja.
+- Native-valinta käyttää saman havainnon signaalia ja odottaa alkuperäisen
+  dialogikutsun lopputuloksen myös keskeytyksessä. Peruutuksen ilmoitus ei
+  ole dialogin päättymistodiste eikä oikeuta varausta vapauttavaan raceen.
+  Sama alkuperäinen valinta ja fyysinen omistajuus tarkistetaan ennen
+  valintaa ja sen jälkeen; muuttunut lähde ei ole normaaliin reittiin
+  palaamisen catch-fallback. Rajattu `selectDesktopWorkspaceRecoveryChoice`
+  toteuttaa tämän lukusopimuksen, myös ulompien odotusjatkojen tuoreussuojan.
+  Sen normaali palautuminen / hallinta / sulkeminen -tulos ei ole poistolupa;
+  funktiota ei vielä kutsuta näkyvästä käynnistysreitistä.
+- Selectorille välitettävä fyysinen portti sidotaan itsenäiseen main-
+  elinaikaan, ei päättyvän startup-lukijan kuittiin. Nykyinen handoff
+  toistaa samat alkuperäiset tavut molempien elinaikojen alla; normaali
+  vanhan havainnon sulku ei sulje uutta omistajaa. Tallennettua aktiivista
+  yritystä ei muuteta tämän liitoksen vuoksi.
+
+Oikean kirjoittavan lapsiprosessin poistuminen, native-dialogin ja
+käynnistyksen yhteinen keskeytys sekä valmistelun/julkaisun pysyvä liitos
+ovat edelleen omat ajonäyttönsä ennen näkyvän entryn avaamista. Kokeen
+ohjattua candidate-rajaa ei raportoida näiden porttien läpäisyksi.
+
+**7.11.2026, valmistelun avoin valinta-/runtime-raja:** nykyinen
+`prepareWorkspaceDeletion` ja `MainOwnedSelectorWorkspaceLifecycle` vaativat
+tavallisessa selector-polussa tyhjän pysyvän aktiivivalinnan. Kaksi uutta
+kontrollia todentaa ensimmäisen eston säilyttäen joko kohteen tai muun
+yrityksen valinnan: ei vahvistuksia, julkaisua tai tavumuutoksia.
+Aiemman `realPreparation`-kokeen tyhjäksi vaihdettu rekisteri ja ohjattu
+lifecycle eivät todista uuden palautushallinnan tätä liitosta. Ennen
+kytkentää täsmennetään saman delete-leasen ja tuoreen main-omistajuuden
+alla backendittömän valmistelun sulku sekä pysyvän valinnan säilyminen;
+tavallisen selectorin null-ehtoa ei ohiteta. [Näyttö ja rajaus](release-0.3.0-integration-history.md#w75-recovery-preparation-identity-20261107)
+eivät muuta alla hyväksyttyä käyttäytymistä tai nykyisiä turvarajoja.
+
+<a id="w75-recovery-preparation-contract"></a>
+#### Palautushallinnan valmistelun ja sulun toteutussopimus
+
+**7.11.2026, katselmoitu rajattu toteutussopimus.**
+Tallennettu aktiivivalinta, käynnissä oleva runtime ja delete-operaation
+valtuus ovat eri asioita. Nykyinen selectorin null-ehto on oikea; sitä ei
+väljennetä. Historiallinen tyhjän valinnan kooste ei ole tämän liitoksen
+positiivinen näyttö. Alla oleva sopimus täsmentää hyväksyttyä palautushallintaa
+nykyisissä omistajissa; se ei vielä kytke näkyvää entryä tai poistokanavaa.
+
+Tämä ei aloita aiempaa tallennetun valinnan ja runtimen erottelukoetta
+uudelleen. Sen kolmen omistajan muistiehdokas, 29 kontrollia ja 175 testin
+vaikutussarja säilyvät erillisenä näyttönä kontrolloiduilla omistajuusporteilla.
+Hyödynnä niitä seuraavan palan pohjana. Ehdokkaan valinnaiset recovery-
+asetukset täsmennetään suljetuiksi varianteiksi ja liitetään nykyiseen
+main-valintaan sekä todelliseen varaukseen; vanha läpäisy ei todista tätä
+uutta liitosta. Tämä koe on eri asia kuin yllä rajattu, rekisterin tyhjentävä
+`realPreparation`-kooste.
+
+| Omistaja | Rajattu muutos ja säilyvä ehto |
+| --- | --- |
+| `workspaceDeletionPreparation` | Suljettuun runtime-unioniin nimetty `recoveryManagement`-variantti. Main kaappaa alkuperäisestä kohdevalinnasta kohteen ja pysyvän aktiiviosoittimen; renderer tai tuore rekisteriluku ei valitse niitä uudelleen. Nykyisen `captureDeletionTarget`-lukijan tuloksen on vastattava niitä sekä alkuperäistä lähde-/identiteettivalintaa. `active` ja `selector` säilyttävät nykyiset ehdot, myös selectorin null-ehdon. |
+| `MainOwnedSelectorWorkspaceLifecycle` | Saman backendittömän omistajan suljettu recovery-variantti, ei uusi lifecycle-manageri. Tavallinen constructor-polku ja create/import/switch/delete-sopimus säilyvät. Recovery-variantti hyväksyy vain kaapatun pysyvän osoittimen ja kyseisen delete-leasen; sillä ei ole paluukäynnistyksen riippuvuutta. Eri osoitin, vieras lease ja myöhempi uusi lease hylätään. |
+| `desktopSelectorComposition` | Vain luotettu recovery-haara muodostaa variantin. Se käyttää nykyistä itsenäistä main-omistajaa ja erillistä guarded-writer-/runtime-poissaolotodistetta. Mainin fyysinen varaus, kandidaatille luovutuksen puuttuminen ja alkuperäinen sidottu kirjoittajaketju säilyvät vaatimuksina. Pelkkä `runtimeState: absent`, tallennettu osoitin tai lifecycle-tilasana ei riitä. |
+| `workspaceManagementComposition` / `WorkspaceManagementService` | Rajattu composition välittää vain nykyiset valmistelu- ja jatkoportit; tavallisia candidate-, switch- tai korjaavan rekisteriluvun riippuvuuksia ei muodosteta. Nykyinen `deleteWorkspace` hankkii leasen ja tarkistaa saman kohteen ennen valmistelua. `prepareDeletion` pysyy palautushallinnassa estettynä. Valmistelu saa juuri palvelun kaappaaman operaatiotunnisteen ja lease-vartijan, ei jälkikäteen haettua nykyistä omistajaa. |
+| `workspaceDeletionContinuation` | Julkaisun alkuperäisvalinta erotetaan elävän runtimen marker-vastuusta suljetulla main-only-variantilla. Recovery-haarassa journalin `previousActiveWorkspaceId` verrataan todelliseen säilytettyyn osoittimeen; live-markerin `sealActiveMarker`/`recordActiveRemoved`-callbackeja ei lainata. Tavallinen active-/selector-haara säilyy. Terminal-kuitin, journalin ja lopullisen rekisterin nykyiset tarkistukset säilyvät. |
+
+**Valmistelun tarkka järjestys:**
+
+1. Kaappaa mainin alkuperäinen kohde, pysyvä osoitin ja callbackit ennen
+   ensimmäistä odotusta. Tarkista sama alkuperäinen valinta sekä nykyinen
+   delete-lease nykyisen `captureDeletionTarget`-luennan molemmin puolin.
+   Väärä kohde, nimi, osoitin, journal, sidonta tai identiteetti estää
+   vahvistukset. Rekisteriä, journalia tai yritysjuurta ei korjata.
+   Variantit erotetaan suljetuilla tyypeillä, ei `skip`-lipulla, castilla
+   tai virheen jälkeisellä tavallisen selectorin fallbackilla.
+2. Backendittömällä haaralla ei ole backup-tuottajaa. `createBackup`
+   hylätään ennen sivuvaikutuksia; vaaditaan nykyinen nimenomainen
+   tietojen menetyksen hyväksyntä ja viimeinen native-poistovahvistus.
+   Vahvistusikkunan vastaus ei korvaa tuoretta kohde- ja omistajuustarkistusta.
+3. Nykyinen `closeAdmissionForOwnStop` säilyttää vain oman hyväksytyn
+   pyynnön. Palvelun uusien komentojen sulku ei päätä fyysistä omistajuutta.
+   Recovery-lifecycle kaappaa saman delete-leasen ennen odotusta ja
+   todentaa nykyisen main-varauksen sekä kirjoittajien poissaolon ennen
+   `quiesced`/`stopped`-tilaa. Se ei kutsu business-backendin sulkua, luo
+   exit-todistetta tyhjästä eikä odota omaa palvelu-/capability-pyyntöään.
+4. Valmistelun täydet kohde-/valintatarkistukset, nykyiset kevyet sisäiset
+   luentavartijat ja viimeinen julkaisuportti säilyvät. Uusi recovery-variantti
+   ei lisää koko alkuperäisvalinnan lukua jokaiseen sisäiseen tiedostolukuun.
+   Ensimmäinen havaittu virhe päättää kyseisen valtuuden pysyvästi.
+5. Alkuperäisen discovery-valinnan vaihto poiston ulkoiseen valintaan
+   tapahtuu vain alla sovitussa [julkaisurajassa](#w75-recovery-production-handoff):
+   sama in-memory-journal ja `transition.after`, molempien valintojen
+   tuoreet tarkistukset ja vanhojen lukujen päättyminen ennen omaa
+   journalijulkaisua. Valmistelun myöhempi tarkistus ei saa enää lukea
+   oman julkaisun muuttamaa vanhaa discovery-tilaa. Registry-/kohdejuuren
+   nykyinen valmistelukuitti säilyy valmistelun loppuun; fyysinen poisto
+   alkaa vasta nykyisessä pysyvässä jatkossa. Epävarma julkaisu ei peruunnu.
+
+**Sulku, peruutus ja tulos:** ennen omaa admission-sulkua tehty peruutus
+säilyttää nykyisen valinnan ja tiedostot. Mahdollinen jatkaminen tarkoittaa
+vain saman rajatun hallinnan käyttöä tuoreilla vartijoilla, ei business-
+avausta tai aiemman poistopyynnön uusintaa. Sulun jälkeen recovery-variantti
+ei kutsu `confirmReturn`-, `ensurePreviousWorkspaceRunning`- tai relaunch-
+polkua: sillä ei ollut avointa yritystä, johon palata. Peruutus ei avaa
+admissionia uudelleen tai esitä yritystä käyttövalmiina. Nykyinen
+turvallinen jatkotoiminto on käsin sulkeminen/uudelleenkäynnistys; tavallisen
+W7.3-peruutuspaluun käyttäjän valinta säilyy muuttumattomana.
+
+Ulkoinen quit sulkee uudet työt ja estää uuden julkaisun/jatkomuutoksen,
+mutta odottaa kaikki aloitetut alkuperäiset lupaukset. Tarkoituksellinen
+admission-sulku ei yksin estä fyysisen omistajuuden todentavaa siivousta.
+Epävarma sulku ei oikeuta varauksen vapautukseen. Lähdevirhe säilytetään
+ennen erillistä sulkuvirhettä; jo käsiteltyä pyyntövirhettä ei lasketa uudeksi
+sulkuvirheeksi. Julkaisun jälkeen sama lease siirtyy nykyiselle pysyvälle
+jatkolle ennen vapautusta, eikä vanhan vastausdokumentin katoaminen peru sitä.
+
+Hyväksytty käsinsuljettava onnistumisnäkymä käyttää nykyisen
+`createWorkspaceDeletionResultRuntime`-omistajan erillistä recovery-varianttia:
+palvelun terminal ja vapautus, huoltovarauksen vapaa tila sekä tuore main- ja
+runtime-poissaolotodiste vaaditaan edelleen. Vapautettua delete-leasea tai
+vanhaa discovery-kuittia ei lainata tuloksen tarkistamiseen. Variantti ei
+kutsu relaunchia; sisäinen `navigation`-arvo säilyy tarkistettavana
+W7.4-tuloksena, ei uuden prosessin lupana. Ei uusia julkisia DTO-kenttiä
+tämän valmistelupalan vuoksi.
+
+**Toteutus ja näyttö, pienissä nykyisten omistajien paloissa:**
+
+- Ensin aiemman recovery-variantin valmistelun ja lifecyclen rajattu liitoskoe.
+  Hyödynnä vanhat kontrollit; älä luo rinnakkaista fixtureä tai koejärjestelmää.
+  Oikeat registry-/journal-/sidontatavut ja nykyinen native-varaus;
+  pysyvä valinta kohde, toinen yritys tai null. Älä tyhjennä rekisteriä.
+  Säilytä kaksi nykyistä ordinary-selector-estokontrollia ja sen
+  lifecycle-testit. Positiivinen koe vaatii todellisen uuden variantin,
+  ei vain mukautetun `stop`-mockin hyväksyvää tulosta.
+- Todista tarkka lease ja kohde, vaihto uuteen leaseen, main-varauksen
+  menetys ja candidate-luovutus, palautuva lähdevirhe, pidetty poissaololuku
+  ja ulkoinen sulku, molemmat peruutuskohdat sekä alkuperäinen ja erillinen
+  sulkuvirhe. Tarkista säilyvät tavut ja ettei backend-/backup-/marker-/
+  return-/relaunch-callbackia kutsuta. Mittaa odotusraja tapahtumalla,
+  ei kiinteällä unella tai uudella aikarajalla.
+- Seuraavaksi saman palvelun ja continuation/result-omistajan rajattu
+  yhdistelmäkoe: main-only `deleteWorkspace`, sama lease valmistelusta
+  jatkoon, oikea säilytetty osoitin ja terminal-kuitti, vapautusvirheen esto
+  sekä ei relaunchia. Julkaisun valintasiirto todistetaan omassa jo
+  määritellyssä liitoksessaan; valmistelukoe ei korvaa sitä.
+- Kytke nykyiseen selector-/main-koosteeseen vasta näiden rajojen
+  todennuksen ja riippumattoman katselmuksen jälkeen. Näkyvä käynnistys-
+  valinta/delete-IPC, oikea Electron/SQLite/UI, paketoitu ketju, salattu
+  ensivirhe, endurance sekä PR/main-portit säilyvät W7.5:n omina ehtoina.
+
+Tässä suunnittelupäivityksessä ei muuteta sovelluskoodia, aikarajoja,
+riippuvuuksia, pysyviä formaatteja, backup-yhteensopivuutta tai yleisiä
+palautusomistajia. Uusi variantti ei anna uusia oikeuksia rendererille.
+Kaksi odottavaa testibudjettipäätöstä ja aiemmat ensihylkäykset säilyvät
+erillisinä; suunnittelukatselmus ei ole uuden kokeen läpäisy.
+
+Rajattuun riippumattomaan sopimuskatselmukseen ei jäänyt avointa löydöstä.
+Peruutuksen käsinsulkuraja täsmentää aiempaa recovery-kokeen sopimusta,
+ei muuta tavallista peruutuspaluuta. [Katselmuksen näyttöraja](release-0.3.0-integration-history.md#w75-recovery-preparation-contract-20261107)
+erottaa tämän työn toteutuksen ja uuden yhteiskokeen hyväksynnästä.
+
+Historiallinen tulos:
+[7.11.2026, valmistelu- ja tulosvarianttien sisäiset lähdenostot](release-0.3.0-workspace-history.md#w75-history-preparation-implementation).
+
+**8.11.2026, rajattu palvelukoosteen liitos:** recovery-variantti välittää
+vain nykyiset valmistelu- ja jatkoportit, joiden callbackit sidotaan ennen
+koosteen ensimmäistä paluuta. Puutteellinen porttipari estää durable-poiston
+ennen leasen hankintaa. `prepareDeletion` säilyy tässä tilassa estettynä.
+Historiallinen tulos:
+[8.11.2026, palvelukoosteen kontrolloitu osanäyttö](release-0.3.0-workspace-history.md#w75-history-service-composition).
+
+**8.11.2026, julkaisurajan keskeneräinen sisäinen ehdokas:** mainin
+alkuperäiset kohdeluvut on erotettu sen fyysisestä ja kiireisen tilaluennan
+elinajasta. Nykyinen publisher/command välittää saman muistissa muodostetun
+journalin ja rekisterin jälkitilan nimettyyn kertakäyttöiseen tarkistukseen
+ennen journalin kirjoitusta. Uusi haara vertaa luettelon lisäksi ennen
+siirtokohtaa; tavallisen polun kolme vertailua säilyvät. Kaksi kokeessa
+osoitettua ensisyyn peittymiskohtaa korjattiin kielteisine väittämineen.
+[Osanäyttö](release-0.3.0-integration-history.md#w75-recovery-publication-transfer-20261108)
+ei vielä hyväksy main-adapteria: yksi oikean julkaisun yhteistesti läpäisi
+vain hyväksytyn kertamittauksen pidemmässä testibudjetissa. Omistaja hyväksyi
+8.11.2026 kymmenen sekunnin pysyvän rajan vain tälle nimetylle yhteistestille;
+sen tavallinen kohdetodennus läpäisi. Myöhemmin hyväksytyt kolme nimettyä
+julkaisijakontrollin budjettia läpäisivät myös normaalissa vaikutussarjassa,
+mutta sarjan metadatasiivouksen ja julkaisun yhdistelmätesti aikakatkaisi:
+360/361 ei ole hyväksytty vaikutussarja. Rajattu testikytkentäkorjaus siirsi
+vain tämän yhden tapauksen nykyisen Preparation-omistajan kuuden argumentin
+kutsuun; muiden 25 tapauksen oletuskutsu säilyi. Alkuperäiset väittämät,
+neljä uutta kielteistä kontrollia, tyypitys ja rajattu katselmus läpäisivät.
+Lopullinen viiden kokonaisen vaikutustiedoston normaali sarja läpäisi
+534 testiä ilman muunninta tai poissulkua. Kaikki neljä vertailua
+säilyvät, eikä aiempia hylkäyksiä suljeta. Näkyvä entry,
+delete-IPC ja tämän palan varsinainen selector-kutsuja pysyvät suljettuina.
+
+**8.11.2026, sisäisen main-adapterin jatko:** selector-kutsuja muodostaa
+nyt katselmoidut recovery-portit nykyisistä omistajista. Se ei vielä avaa
+näkyvää entryä tai delete-IPC:tä. Kuudennen luentaportin erillinen
+välityskorjaus läpäisi 289 vaikutustestiä, tyypityksen, käännöksen ja
+rajatun katselmuksen. Adapterin pienet peruutus-, kohde-, sulku- ja
+myöhäisen journalin kontrollit läpäisivät kohdeajoissa. Sen oikean
+julkaisijan yhdistelmätesti jäi viiden sekunnin rajaan myös vaiheistetussa
+diagnoosissa; myöhemmin havaittu julkaisun valmistuminen ei hyväksy
+kesken jääneitä loppuväittämiä. Aikarajoja tai turvavartijoita ei muutettu.
+[Adapterin näyttö ja avoimet portit](release-0.3.0-integration-history.md#w75-recovery-main-adapter-20261108)
+erottavat tämän ehdokkaan hyväksytystä pääprosessin poistoketjusta.
+Myöhemmät pienet main-/palvelu-/tuloskontrollit todensivat myös pysyvän
+työn säilymisen vastausdokumentin vanhentuessa sekä pidetyn työn sulun;
+niiden julkaisu ja fyysinen poisto ovat mallinnettuja. Testifixturen
+abort-sulku ja alkuvaiheen siivousvastuu korjattiin regressioineen.
+Oikean julkaisijan viiden sekunnin koe on edelleen hylätty, eikä näistä
+kontrolleista päätellä sen, fyysisen poiston tai koko W7.5:n hyväksyntää.
+Omistajan erikseen hyväksymä yhden 30 sekunnin diagnostinen koe läpäisi
+sittemmin saman julkaisijatestin alkuperäiset loppuväittämät ja sulun.
+[Mittauksen näyttöraja](release-0.3.0-integration-history.md#w75-recovery-main-publication-measurement-20261108)
+on todellinen julkaisu ja hallittu jatkon hylkäys, ei fyysinen poisto tai
+normaalin testibudjetin hyväksyntä. Tuotannon vartijat säilyivät ennallaan.
+Tämän jälkeen hyväksytyt kolme nimettyä testibudjettia todennettiin
+kohdeajolla sekä normaalin Main-testitiedoston 467 läpäisseellä tapauksella
+ilman ohituksia tai uusintaa. [Nykyinen näyttö](release-0.3.0-integration-history.md#w75-main-composition-budgets-20261108)
+ei muuta julkaisijatestin ohjattua jatkoa uuden haaran fyysiseksi poistoksi.
+Adapterin rakentamisen synteettinen pysyvä omistajuusvirhe ja sen sisempi syy
+todennettiin erikseen nykyisen runnerin keräys–OpenPGP–purkuketjun läpi.
+Koe vaatii sulku-/säilymisväittämien suorituskuittauksen ennen tarkoituksellista
+hylkäystä. [Näyttö ja rajat](release-0.3.0-integration-history.md#w75-selector-ownership-evidence-20261108)
+eivät korvaa todellista native/index-käynnistystä tai julkaisuketjun porttia.
+Erillinen rakentamis-/ikkunasiivousregressio ja nykyinen salauskoe todensivat
+myös saman main-paluuvirheen ensisyyn ja siivoussisaruksen erillisinä.
+[Rajattu purkutodiste](release-0.3.0-integration-history.md#w75-selector-construction-close-evidence-20261108)
+ei ole näyttö aidon ikkunan tai prosessin päättymisestä.
+
+**C:n yhteiskatselmus 7.11.2026: seuraavan yhteiskokeen sopimus, ei tuotantolupa.**
+Erilliset kohde-, palvelu-, runtime-, paluu- ja käynnistyskokeet eivät vielä
+todista niiden yhteistä kytkentää. Alla on nykyinen jatkosopimus; tämän
+jälkeiset päivätyt koetekstit säilyttävät aiemman näytön ja sen rajat.
+Uusi palautushallinta, v2-julkaisu ja delete-IPC pysyvät suljettuina.
+
+Lähdekatselmuksessa erotettiin kolme liitosriskiä: käynnistyksen lukijan
+sulku ei saa päättää jo luovutetun hallinnan omistajaa; alkuperäistä
+kohdehavaintoa ei saa vaihtaa tuoreeseen lähtötilaan eikä käyttää poiston
+omien muutosten jälkeen; nykyinen `app.relaunch()` ei siirrä seuraavaan
+prosessiin täsmällistä paluukohdetta. Lisäksi testikoosteen tuontihaara ei
+vielä vaadi nykyisen omistajan v2-admissionia. Nämä ovat keskeneräisen
+liitoksen löydöksiä, eivät näyttö hyväksytyn W7.4-poiston regressiosta.
+
+| Raja ja nykyinen omistaja | Yhteiskokeessa vaadittu sopimus |
+| --- | --- |
+| `desktopComposition` / `desktopRecoveryStartup` | Havainto sijoittuu build-admissionin jälkeen mutta ennen `recoverWorkspaceManagementBeforeRuntime`-kutsua. Sulkukahva rekisteröidään ennen omaa odotusta. Normaali valinta päättää lukutyön ja jatkaa nykyistä palautusta kerran. `runtimeEntered === false` ei todista kaikkien candidate-töiden poissaoloa. |
+| `desktopSelectorComposition` ja kohteen lukija | Varmennettu muuttumaton kohde luovutetaan nykyisen valitsimen itsenäiselle main-elinajalle ennen raakaa composition-paluuta. Vanhan lukijan sisäänpääsy suljetaan, työ odotetaan ja sama alkuperäinen tavu-/identiteettivalinta tarkistetaan molempien elinaikojen alla. Palvelun jatkuva vartija sidotaan tähän main-elinikään, ei myöhemmin päättyvän lukukuitin `assertCurrent`-metodiin. Osittain luotu ikkuna/lifecycle pysyy sulun omistuksessa. |
+| `WorkspaceManagementService` ja nykyinen capability | Mainin sulku, pyynnön elinikä, statusluvun vaihe ja kohdevalinta ovat eri vartijoita. Palvelu sallii vain saman kohteen status-/poistotyön; tukivienti käyttää nykyistä erillistä omistajaa. Muut komennot estetään mainissa. Palvelu odottaa kaikki aloitetut luvut ennen omistajan vapautusta. |
+| `workspaceDeletionPreparation` ja selector-lifecycle | Nykyinen delete-lease, tarkka nimi, menetyshyväksyntä ja viimeinen native-vahvistus säilyvät. Tallennettu aktiivivalinta ei tarkoita elävää runtimea. Alkuperäinen kohde tarkistetaan leasen alla sekä odotusten jälkeen; muuttunutta registryä tai journalia ei hyväksytä uudeksi vertailupohjaksi. Backendittömyys ei luo backup-tuottajaa. |
+| `workspaceDeletionPublication` | Alkuperäinen kohdehavainto sidotaan nykyisiin alkuperäisjournalien ja inventaariolähteen kuitteihin sekä `captureWorkspaceDeletionExternalSelectionFromRoot`-omistajan build-/vieraan palautuksen valintaan ennen poiston aloitusjournalin kirjoitusta. Metadatasiivous ei saa muuttaa discovery-valintaan kuuluvia alkuperäisslotteja. Uusi kapea main-only-liitos siirtää lukuvastuun, ei muutoslupaa. |
+| `workspaceDeletionContinuation` | `recoveryOwned` jatkaa main-omistajuutta, kirjoittajien poissaoloa sekä saman ulkoisen valinnan build-/konfliktitarkistuksia ja alla nimettyä kohteen paikallisen journalin poissaoloa, ei poiston jo muuttaman discovery-tilan uusintalukua. Sama delete-lease siirtyy nykyiselle pysyvälle omistajalle. Rekisterin, journalin, tiedostojen, syncin ja loppukuittauksen nykyisiä vartijoita ei korvata lukukuitilla. |
+| `createWorkspaceDeletionResultRuntime` / `before-quit` | Loppupalaute odottaa koko palveluketjun ja varauksen vapautuksen. Lopputilan vertailu perustuu alkuperäiseen terminal-kuittiin, ei ensimmäiseen jälkilukuun. Poistotulos ei ole uuden käynnistyksen terveystulos. Sulkupyyntö ei odota itseään oman capability-työnsä sisältä. |
+
+**Kirjoittajan kelpoisuus seuraavassa yhteiskokeessa:** fyysinen main-varaus
+ei todista vanhan suojaamattoman prosessin päättymistä. Positiivinen
+koerajaus käyttää vain nykyisen suojatun kirjoittajaketjun täsmällistä
+sidontaa sekä tuoretta native-varausta, ei journalin versionumeroa yksin:
+
+- Tuonti vaatii v2:n ja julkaistun `workspaceImport`-sidonnan. Nykyisen
+  `inspectWorkspaceBackupImportBindingAdmission`-omistajan ehdot säilyvät;
+  sidonnaton v2 kuuluu normaalille palautukselle ja v1 sen nykyiselle
+  suljetulle virhepolulle, ei tämän entryn positiiviseen haaraan.
+- Korvaus ja kopioaktivointi käyttävät edelleen activation-v1-journalia,
+  mutta vaativat täsmällisen `workspaceReplacement`- tai
+  `workspaceActivationMigration`-sidonnan, yksiselitteisen aliasin sekä
+  nykyiset omistaja-/vaihe- ja konfliktitarkistukset. Sidonta ei yksin
+  todista sulkua; julkaisu voi edeltää kirjoittajan päättymistä.
+- Adoption vaatii nykyisen `legacy`-lähteen ja saman operaation,
+  työtilan sekä lineagen julkaistun sidonnan. `fresh` ja sidonnaton
+  historiallinen journal eivät kelpaa positiiviseksi todisteeksi.
+- Pelkkä paikallinen restore-v1 ei erottele suojattua ja vanhaa
+  kirjoittajaa. Sen aiempi kohdekoe ei täytä tätä porttia: se ja epäselvät
+  sekayhdistelmät jäävät seuraavan positiivisen yhteiskokeen ulkopuolelle
+  nykyiseen normaaliin palautus-/virhepolkuun. Luontijournal, switch/W6,
+  julkaistu poistojournal ja globaalit konfliktit säilyttävät omistajansa.
+
+Tämä rajaus ei kiellä vanhan backupin normaalia tuontia eikä kirjoita
+historiaa tai puuttuvia sidontoja jälkikäteen. Se ei myöskään väitä kaikkien
+vikatilojen uutta poistopolkua valmiiksi. Mahdollinen paikallisen restoren
+lisätodiste ratkaistaan ennen sen tuotantoadmissionia, ei oleteta kokeesta.
+
+**Kohteen myöhäinen paikallinen journal:** nykyinen ulkoisen valinnan
+lukija sallii tarkoituksella kohteen paikallisen restoren poistettavana
+payloadina. Se ei siis yksin ylläpidä uuden entryn tiukempaa poissaoloehtoa.
+Vain tämän main-adapterin vartija vaatii alkuperäisen kanonisen kohteen
+current/backup/next-poluille tuoreen `hasAnyJournalSlot(...) === false`
+ennen aloitusjulkaisua ja nykyisillä muutosrajoilla. Lukuvirhe ei ole poissaolo;
+polkuja ei vaihdeta siirrettyyn juureen eikä yleistä W7.4-lukijaa väljennetä.
+Oman renamen jälkeen alkuperäisjuuren poissaolon, siirretyn juuren identiteetin
+ja sen purge-valtuuden omistaa nykyinen `workspaceDeletionPayloadSelection`.
+Tämä ei lupaa koko siirretyn sisällön uutta muuttumattomuustodistusta eikä
+korvaa kirjoittajien päättymistä, lisää SQLite-lukua tai rekursiivista inventaariota.
+
+**Seuraava pieni yhdistelmäkoe nykyisillä fixtureillä:**
+
+1. Yhdistä oikeat synteettiset registry-/journal-/sidontatavut ja natiivivaraus
+   käynnistyshavainnosta hallintapalveluun. Todista vanhan lukijan drain,
+   uuden omistajan säilyminen startupin normaalissa sulussa, ulkoisen quitin
+   esto sekä main-varauksen menetys. Business-backendia ei käynnistetä.
+2. Yhdistä sama kohde nykyiseen valmisteluun ja julkaisijaan. Siirtokohta on
+   valmiin inventaarion ja muistiin muodostetun `authorized`-journalin jälkeen,
+   ennen `journalStore.publish`-kutsua. Nykyinen ulkoisen valinnan lukija saa
+   juuri tämän journalin ja `transition.after`-arvon, ei myöhempää jälkilukua.
+   Alkuperäinen discovery-valinta tarkistetaan ennen kaappausta ja sen
+   jälkeen; alkuperäisjournalit, inventaariolähde ja uusi ulkoinen valinta
+   varmennetaan ennen lukuvastuun siirtoa. Viimeisen odotuksen jälkeen
+   tarkistetaan molempien omistajien elinikä.
+   Eri kohde, muuttunut journal/sidonta ja valtuuden menetys estävät aloituksen.
+   Nykyiset täydet julkaisuvertailut ja varsinaisen poiston suojat säilyvät;
+   pysyvän aloituksen epävarmuutta ei palauteta vaikutuksettomaksi peruutukseksi.
+   Inventaarion kirjoitus on jo voinut tapahtua ennen liitoksen hylkäystä:
+   testaa nykyinen tiedostojen säilytys ja sulku, älä väitä sivuvaikutuksettomuutta.
+3. Todista, ettei W7.4:n oma journalin synty tai hyväksytty myöhempi
+   metadatasiirtymä laukaise vanhan discovery-lukijan virhettä. Testaa silti
+   luvaton muutos sekä ensivirhe ja erillinen sulkuvirhe. Ulkoisen valinnan
+   sama kuitti suojaa myöhempää julkaisua ja pysyvää jatkoa loppusiivoukseen
+   asti; vieras restore, creation/switch/W6 tai build-muutos siirtokohdan
+   jälkeen estää jatkon. Sen työt ja sulku kuuluvat pysyvälle main-omistajalle.
+   Kohteen paikallisen journalin myöhäinen ilmestyminen estää julkaisun tai
+   seuraavan muutoksen; oma rename saa jatkua nykyisellä payload-todisteella.
+   Alkuperäisten slottien säilyminen ennakkosiivouksessa on nimenomainen väittämä;
+   jos se ei toteudu, koetta ei korjata yleisellä ohituksella.
+4. Säilytä normaalin palautuksen vertailut ja tee yksi ketjutodiste nykyiseen
+   loppuomistajaan. Kontrolloitu prosessi-/loppukuittaus merkitään sellaiseksi;
+   SQLite-, oikea native/UI-, puhtaan paketin ja PR/main-portit jäävät erillisiksi.
+
+Tuotantototeutuksessa testikoostetta ei kopioida uudeksi hallintajärjestelmäksi:
+käytetään yllä nimettyjä nykyisiä lukijoita ja omistajia. Ei uutta manageria,
+pysyvää paluujournalia, formaattia, riippuvuutta, tarkistusten kevennystä tai
+aikarajaa. Täsmällinen julkaisuliitos ja sen rajattu katselmus edeltävät
+tuotantopäätöstä; tämän lähdekatselmuksen aikana ei ajettu uutta sovelluskoetta.
+Riippumattoman katselmuksen täsmennykset koskevat ulkoisten ehtojen jatkuvuutta,
+lukukuitin ja main-elinajan eroa sekä jo kirjoitetun inventaarion säilytystä.
+Ne ovat seuraavan kokeen vaatimuksia, eivät jo korjattua tuotantokoodia.
+Täsmennetyn sopimuksen rajattuun riippumattomaan jälkikatselmukseen ei jäänyt
+estettä pienelle yhteiskokeelle. Tämä ei ole toteutuksen hyväksyntä.
+
+Historiallinen tulos:
+[7.11.2026, ensimmäisen synteettisen yhdistelmäkokeen tulokset](release-0.3.0-workspace-history.md#w75-history-joint-experiment).
+
+**Hyväksytty käyttäytyminen 7.11.2026:** vain uuden rajatun
+palautushallinnan onnistuneen poiston jälkeen tulos näytetään ja
+käyttäjä sulkee EKYn itse. Sovellus ei käynnisty automaattisesti uudelleen.
+Seuraava käsin tehtävä käynnistys
+käyttää muuttumattomia normaaleja portteja; sitä ei väitetä tämän pyynnön
+automaattiseksi kohdesidotuksi paluuksi. Aktiivisen/viimeisen yrityksen
+poiston null-valinta ja passiivisen kohteen aiempi aktiivivalinta säilyvät
+rekisterissä W7.4:n mukaan. Tavallisen yrityspoiston paluuta ei muuteta.
+Automaattisen paluun erillistä käynnistysten välistä kohdesidontaa ei lisätä
+eikä väitetä nykyisen `app.relaunch()`-kutsun ominaisuudeksi. Tämä päätös
+ei avaa tuotantoentryä; sen oma todistus ja hyväksyntä säilyvät vaadittuina.
+Rajatun hallinnan `completed`-näkymä ei saa käyttää nykyisen tavallisen
+poiston `relaunching`-esitystä. Näyttö erotetaan todennetulla
+hallintakontekstilla, ei pelkän rendererin valitsemalla lipulla;
+nykyinen sisäinen `navigation`-tulos ei yksin anna uudelleenkäynnistyslupaa.
+Webin erillinen v2-vastaanottolukija on työpuussa: se pitää joutilaassa
+tilassa kohteen ja tallennetun aktiivivalinnan erillään sekä hylkää
+busy-/selvitystilan kohdekentät, lisäkentät ja accessor-syötteet.
+Sen omistajatiedoston 114 testiä, koko webin 1 197 testiä ja web-tyypitys
+läpäisivät. Tavallinen
+v1-tilasilta hylkää v2-vastauksen edelleen. Tämä ei vielä julkaise
+v2-tilaa, poistokanavaa eikä käsinsulun käyttöliittymää.
+
+**C:n palautusomistajien yhteensopivuussopimus 7.11.2026, seuraava pieni koe:**
+lähdekatselmus erotti hallinnan kohdetodisteen normaalin palautuksen
+valinnasta. Edellisen kokeen 169 testiä eivät todista tätä yhteensopivuutta.
+Alla täsmennetään jo hyväksyttyä suunnittelu-/koetyötä; tuotantoentry,
+v2-julkaisu ja delete-IPC pysyvät suljettuina. Aikarajat eivät muutu.
+
+**Sidonnaton tuonti ja adoption:** niiden nykyinen `inspectRecoverySelection`
+valitsee auktoritatiivisen journalin järjestyksessä current, backup, next.
+Se lukee ja validoi valitun lähteen tavut sekä kaikkien slottien turvalliset
+identiteetit. Pois jäävien sisarusten sisältö tai keskinäinen
+live-kirjoitussiirtymä ei ole tämän normaalin palautusvalinnan ehto.
+Siksi myös kolme slottia, ristiriitaiset sisaroperaatiot tai katkennut
+pois jäävä sisartiedosto voivat olla tuettu valintamuoto. Tämä ei yksin
+hyväksy palautumista: nykyinen omistaja tarkistaa vielä oman registry-,
+juuri-, vaihe- ja sisältösopimuksensa. Tuonnin v1-journal ei saa v2-cold-
+valtuutta eikä adoptionin erityinen recoveryRequired-haara väljenny.
+
+Ensimmäisen kokeen `inspectSlots` ja yleinen `validateUnbound` hylkäävät
+osan näistä muodoista jo ennen `notOffered`-tulosta. Lisäksi kokeen backup-
+ensisijainen `first()` ei ole normaalin omistajan lähdevalinta. Korjaus
+rajataan aluksi testikoosteeseen, ei palautusomistajien sääntöjen muutokseen:
+
+| Tilanne | Havainnon vastuu ja seuraava omistaja |
+| --- | --- |
+| Tuonnin/adoptionin nykyinen palautusvalinta onnistuu ja valitun lähteen täsmällisen sidonta-avaimen kaikki slotit puuttuvat | Nimetty normaalin omistajan reitti (`notOffered`), ei hallinta- tai palautuslupaa. Kiinnitä valitun lähteen tavut, kaikkien slottien identiteetit ja sidonnan poissaolo. Päätä havaintotyö ennen muuttumatonta normaalia palautusketjua. |
+| Sama valinta ja julkaistu kohdesidonta | Hallinnan positiivinen todistus käyttää edelleen kaikkien slottien `inspectSlots`-luentaa ja nykyistä `capture...DeletionSlots`-tarkistinta. Lähdevalinnan ja tiukan luennan on vastattava samaa kiinnitettyä operaatiota ja kohdetta; vanhempaa backup-operaatiota ei valita niiden sijaan. |
+| Valittu lähde on virheellinen, sidonta osittainen/ristiriitainen tai luku/identiteetti/varaus muuttuu | Ei yleistä catch-fallbackia. Nykyinen turvallinen virhepolku, kaikkien aloitettujen töiden sulku ja ensivirheen säilyminen. |
+
+Normaalille omistajalle reititettävän aineiston todistus ei siis väitä
+lukeneensa kaikkien sisarusten sisältöä. Hallintaan tarjotun kohteen täysi
+tavu-/identiteettivertailu säilyy. Tyhjä lähde ei anna positiivista todistetta,
+eikä puuttuvaa historiallista sidontaa luoda. Muiden omistajien valinta-
+ja poistotarkistimia ei muuteta tämän rajatun korjauksen mukana.
+Vakaasti tunnistetulle sidonnattomalle normaalireitille ei enää ajeta
+hallinnan kaikkien slottien sisältölukijaa edes vertailuaineiston
+kokoamiseksi: se palauttaisi juuri poistetun yhteensopivuusesteen.
+Havainnon sulun jälkeen keskeytys, ensivirhe ja todellinen varaus
+tarkistetaan ennen muuttumatonta normaalia käynnistysketjua; sen
+muut konfliktit ja omistajuusportit eivät siirry havaintotuloksen vastuulle.
+
+**Muiden palautuslukijoiden avoin raja:** `ProfileRestoreActivationJournalStore`
+käyttää normaalissa `peek`/`read`-polussa laiskaa current/backup/next-valintaa,
+mutta löydön `inspectDeletionSlots` lukee myös kaikki sisarukset. Nykyinen
+`profileRestoreActivationJournalStore.test.ts` todistaa virheellisen
+pois jäävän sisaruksen säilyvän `peek`-valinnan ulkopuolella. Tämä koskee
+sekä sidonnatonta yhteistä activationia että paikallista restorea.
+Niiden reititys tarvitsee oman omistajakohtaisen sovituksen ja vertailun
+ennen koko entryn tuotantopäätöstä; tuonnin/adoptionin tulosta ei yleistetä
+niihin. Seuraava rajattu koe säilyttää tämän eron nimettynä kontrollina,
+ei korjaa sitä yleisellä catch-fallbackilla tai muuta tiukkaa poistovalintaa.
+
+**Paikallinen restore ja yhteinen alkuperäisjournal:** nykyinen W7.4:n
+`workspaceDeletionColdAdmission` erottaa kohteen paikallisen restoren
+poistettavaksi payloadiksi, mutta vieraan yrityksen palautuksen konfliktiksi.
+`workspaceDeletionOriginalJournalSelection` sitoo yhteiset alkuperäisjournalit
+erikseen samaan kohteeseen. Nämä ovat lähdetodiste olemassa olevasta
+poiston vastuunjaosta, eivät vielä uuden hallintaentryn hyväksyntä.
+
+Seuraava pieni koe korvaa yleisen `mixedLocalAndGlobal`-poissulun vain
+tapauksella, jossa jokainen positiivinen todiste on itsenäisesti nykyisen
+omistajansa hyväksymä ja kaikki nimeävät saman rekisteröidyn kohteen.
+Paikallinen journal sidotaan todelliseen turvalliseen yritysjuureen;
+yhteinen journal tarvitsee oman julkaistun kohde-/lineagesidontansa.
+Eri operaatioiden keskinäistä järjestystä tai aliasia ei päätellä samasta
+yritystunnuksesta. Vieras kohde, epäselvä activation-alias tai puutteellinen
+omistajuus ei saa hallintaa. Muut build-, asennus-, registry- ja
+palautuskonfliktit sekä kaikkien muiden yritysten suoja säilyvät.
+
+Tarjottu hallinta osoittaa vain luettavan kohteen, ei palautusten yhteistä
+suorituskelpoisuutta eikä poistolupaa. Käyttäjän normaali palautumisvalinta
+jatkaa muuttumattomiin omistajiin ja niiden nykyisiin konflikteihin.
+Poistopyyntö tarvitsee myöhemmin oman tuoreen leasen, `captureDeletionTarget`-
+valinnan, täydellisen inventaarion ja kaikki W7.3/W7.4-vartijat. Esimerkiksi
+havainnon kiinnittämä puuttuva juuri ei täytä poistovalmistelun vaatimusta
+todellisesta kohdejuuresta. Havainto ei avaa tietokantaa tai muuta rekisteriä.
+
+**Tiedostot ja kokeen sulkuportti:** käytä nykyistä
+`desktopWorkspaceRecoveryDiscoveryTestSupport.ts`-koostetta ja
+`desktopWorkspaceRecoveryObservation.test.ts`-fixtuuria. Tuonnin ja
+adoptionin `inspectRecoverySelection`-portit ovat jo olemassa; uutta
+parseria tai tallenninrajapintaa ei tarvita. Nykyiset
+`workspaceLegacyAdoptionJournalSelection.test.ts` ja
+`crashSafeObservedRecovery.test.ts` omistavat palautusvalinnan lähtönäytön.
+
+- Vertaa samoista itsenäisistä fixtuuretavuista suoraa normaalia
+  palautuspolkua ja havainto -> sama normaali palautuspolku: kaikki
+  seitsemän läsnäoloyhdistelmää, pois jäävän sisaruksen katkennut/ylisuuri
+  sisältö sekä edustavat eri operaatiot ja käänteiset siirtymät. Vertaa
+  myös säilyvät tavut, lopputila ja hylkäys, älä vain valittua haaraa.
+- Valitun lähteen virhe, pelkkä sidonnan next/backup, myöhäinen slotin tai
+  sidonnan identiteetin vaihto ja menetetty varaus eivät saa normaaliin
+  palautukseen naamioitua poikkeusta. Sidotun poistovalinnan nykyiset
+  kolmen slotin ja ristiriitaisten operaatioiden kielteiset testit säilyvät.
+- Paikallinen restore + kukin sidottu yhteinen omistaja: sama kohde voidaan
+  kokeessa havaita, vieras kohde/alias hylätään. Nykyinen palautumisvalinta
+  saa edelleen oman alkuperäisen tuloksensa. Testaa aktiiviosoite sama/toinen/
+  null, muuttumattomat tavut, muut yritykset ja sulku ilman matriisin
+  kopiointia kaikkiin UI-testeihin.
+- Havainnon päättäminen ja uuden palvelueliniän vertailu eivät elvytä
+  vanhaa valtuutta tai vaihda vertailupohjaa. Palvelun myöhempi
+  `recoveryManagement`-haara erottaa tallennetun osoitteen puuttuvasta
+  runtimesta; tavallisen selectorin null-ehto, markerit ja paluuehdot
+  eivät väljenny. Oikea palvelu-/startup-kytkentä odottaa erillistä näyttöä.
+
+Edellinen riippumaton lähdekatselmus vahvisti normaalin valintajärjestyksen ja
+ensimmäisen koekoosteen yhteensopivuusaukon sekä puolsi rajattua
+tuonnin/adoptionin koesopimusta. Muiden palautuslukijoiden lisälöytö on
+pääagentin lähdehavainto, ei erikseen todennettu koe tai koko entryn
+riippumaton hyväksyntä. Tämä kierros ei muuttanut
+sovellus- tai testilähteitä eikä ajanut uusia palautuskokeita. Pienkokeen,
+tyypityksen ja katselmuksen jälkeen arvioidaan tuotantokytkennän tarkka
+raja erikseen. Vanhat Main-hylkäykset ja koko W7.5:n integraatioportit
+säilyvät avoimina.
+
+Historiallinen tulos:
+[7.11.2026, palautusomistajien yhteensopivuuskokeen tulokset](release-0.3.0-workspace-history.md#w75-history-compatibility).
+
+**C:n paikallisen restore-lukijan rajattu luentakoe 7.11.2026:**
+rajattu pala lisää nykyiseen `ProfileRestoreActivationJournalStore`-
+omistajaan vain `inspectRecoverySelection`-havainnon. Nykyinen
+`CrashSafeByteSlotStore` valitsee current/backup/next-lähteen ja kiinnittää
+kaikkien slottien identiteetit lukematta hylättyjen sisarusten sisältöä.
+Valitun lähteen dekoodaus käyttää samaa omistajan JSON-/journal-parseria
+kuin tavallinen `peek`/`read`, myös UTF-8/BOM-reunoissa. Nykyinen yksityinen
+kokoraja ja tiedostolukija säilyvät; niitä ei kopioida main-koosteeseen.
+Tulos ei anna slotin korjaus-, palautus-, poisto- tai siivousvaltuutta.
+
+Havaintoa verrattiin tavalliseen lukijaan kaikilla slottiyhdistelmillä,
+virheellisillä ja ylisuurilla sisaruksilla sekä valitun lähteen virheillä.
+Myös täsmällinen tavuraja, BOM, puuttuva kansio, muuttunut identiteetti,
+menetetty valtuus ja oikean tiedostokahvan viivästetty luku katettiin.
+Alkuperäinen luku päättyy ja kahva sulkeutuu ennen hylkäystä. Uusi
+sisäinen havainto säilyttää parserin alkuperäisen poikkeuksen; tavallisen
+`peek`/`read`-polun nykyinen turvallinen virhemuunnos säilyy erillisenä.
+Normaaleja `peek`/`read`/`write`/`clear`-oletuksia
+ja `inspectDeletionSlots`-/poistovartijoita ei väljennetä. Portti jää ilman
+tuotantokutsujaa. Testikoosteen yhteinen sidonnaton activation käyttää
+nyt tätä havaintoa ja molempien täsmällisten alias-sidontojen todettua
+poissaoloa ennen normaaliin omistajaan palauttamista. Sidottu kohde
+vaatii edelleen tiukan slottiluennan ja alkuhavainnon kaikkien
+identiteettien sekä valittujen tavujen täsmäämisen. Osittaiset sidonnat,
+muuttuneet tavut ja samat tavut eri tiedostossa hylätään säilyttäen
+journalin, sidonnan ja rekisterin todelliset tavut.
+
+Historiallinen tulos:
+[7.11.2026, paikallisen restore-lukijan osanäyttö](release-0.3.0-workspace-history.md#w75-history-restore-read).
+
+**C:n paikallisen payload-havainnon vertailusopimus, vain koe:**
+nykyinen W7.4:n cold-admission käsittelee kohteen oman paikallisen
+restore-journalin yritysjuuren payloadina, ei yhteisen alkuperäisjournalin
+poistettavana metadatana. Seuraava testikoosteen erikseen valittava haara
+vertaa paikallista kohdetunnistusta omistajan `inspectRecoverySelection`-
+havaintoon. Nykyinen tiukka koeoletus jää rinnalle muuttumattomana;
+kokeen tulos ei vielä valitse tuotannon kelpoisuusrajaa.
+
+Kohde johdetaan validoidusta rekisteristä ja turvallisesta yritysjuuresta,
+ei journalin sisältä arvattavasta yritystunnuksesta. Valitun journalin
+nykyinen parseri, lähdejärjestys, tavut ja kaikkien slottien identiteetit
+säilyvät. Hylättyjen sisarusten sisältöä tai niiden keskinäistä siirtymää
+ei tässä vaihtoehdossa parsita: myös kolme slottia tai katkennut,
+ylisuuri tai toiseen operaatioon kuuluva hylätty sisarus voi kuulua
+luettavaan kohdehavaintoon. Tämä on nimenomainen ero aiempaan tiukkaan
+koehaaraan, ei muuttumaton kaikki-slotit-tarkistus. Valitun lähteen virhe,
+epävarma juuri, muuttunut valinta tai menetetty varaus hylätään;
+catch-fallbackia ei lisätä. Havaitun valinnan jatkuva vertailu päättyy
+ensimmäiseen virheeseen eikä havainto anna poisto- tai palautusvaltuutta.
+
+Vertaa tavallisen `peek`/`read`-omistajan valintaa ja lopputavuja kaikilla
+seitsemällä slottiyhdistelmällä sekä hylättyjen sisarusten reunatapauksilla.
+Todista lisäksi valitun lähteen virheet, pysyvät muutokset, vieras kohde,
+sulku ja vanhan havainnon päättyminen. Muiden omistajien sidontavaatimukset,
+globaalit konfliktit, tavallinen palautus ja W7.4:n kaikki muutosvartijat
+säilyvät. Tuotannon startup-entry, paikallisen kohteen lopullinen
+kelpoisuussopimus ja oikea palautus-/SQLite-/Electron-ketju odottavat
+edelleen omaa katselmusta ja päätöstä. Aikarajoja ei muuteta.
+
+Historiallinen tulos:
+[7.11.2026, paikallisen payload-havainnon vertailunäyttö](release-0.3.0-workspace-history.md#w75-history-local-payload).
+
+**Tilaluvun erillinen elinikäkoe, vain nykyinen testikooste:** palvelun
+vaihehavainto ja kohdetodiste yhdistetään ensin ilman v2-julkaisua.
+Kohdetodisteen nykyinen `assertSelected` säilyy omistajan päättävänä
+tarkistuksena. Rinnakkainen tilaluku käyttää erillistä pyyntökohtaista
+luentaa samoihin kiinnitettyihin vertailutietoihin: virhe ei siirry
+toisen eliniän ensivirheeksi eikä päivitä vertailupohjaa. Pääomistaja
+seuraa silti aloitettua lukutyötä ja odottaa sen päättymistä ennen
+luovutusta. Todellinen pääomistajan menetys estää molemmat; suljettua
+omistajaa tai vanhaa pyyntöä ei elvytetä. Kokeet erottavat palveluvaiheen
+vaihtumisen, lukijan oman virheen, pidetyn luvun sulun ja todellisen
+varauksen menetyksen. Tämä ei ole uusi yleinen elinkaaripalvelu eikä
+tuotannon tilalukukytkentä. Tavalliset palvelun admission- ja
+poistovartijat sekä aikarajat säilyvät.
+
+Historiallinen tulos:
+[7.11.2026, tilaluennan elinikäkokeen osanäyttö](release-0.3.0-workspace-history.md#w75-history-status-lifetime).
+
+**Idle-/busy-tilaprojektion koe, vain testikooste:** nykyinen
+palvelun vaihehavainto ja nykyinen maintenance-havainto kaapataan ennen
+odotuksia. Samalle pääomistajalle kuuluva koko tilapyyntö seurataan loppuun,
+myös runtime-poissaolon erilliset lukutodisteet. Idle lukee kiinnitetyn
+kohteen tuoreesti; busy ei lue komennon jo muuttamia journaleja eikä
+sisällä kohdetta tai aktiivivalintaa. Molemmat käyttävät nykyistä tiukkaa
+v2-parseria. Runtime-poissaolon ja main-omistajuuden todistukset säilyvät
+erillisinä ennen ja jälkeen; kumpaakaan ei päätellä vastauksen kentästä.
+
+Palautettu vastaus sisältää vain mainiin jäävän loppuvartijan ja turvallisen
+projektion. Myös viimeinen ulomman odotuksen jälkeinen julkaisu tarvitsee
+saman vaihe-, maintenance-, runtime- ja omistajavartijan. Määräajan,
+huoltovarauksen tai sukupolven vaihtuminen ei nollaa vartijaa. Virhe ei
+muutu tässä kokeessa `recoveryRequired`-headeriksi tai tavalliseksi
+valitsimeksi yleisellä catch-fallbackilla. Runtime-poissaolokutsuja on
+tässä fixtuuressa kontrolloitu; oikea startup-poissaololiitos, sulku,
+`recoveryRequired`-tilan lähde, palvelun rajattu toimintopinta ja tuotannon
+tilalukija tarvitsevat edelleen oman yhteisketjun näytön.
+
+Koe nimeää myös tilannekuvan rajan: valmiin tilavastauksen synkroninen
+julkaisuvartija ei lue tiedostoja uudelleen. Myöhempi ulkoinen
+tiedostomuutos havaitaan seuraavassa täydellisessä valinnan uusintaluvussa,
+ei pelkästä edelleen samasta palveluvaiheesta. Tämä on erikseen havaittava
+koeominaisuus, ei tuotannon atomisen kohdevalinnan tai poistoluvan
+hyväksyntä. Varsinaisen toiminnon tuoreet valinta- ja muutosvartijat
+eivät siirry DTO:n vastuulle. Tuotantoliitos ja tämän vastuunjaon
+kokonaiskatselmus säilyvät avoimina.
+
+Historiallinen tulos:
+[7.11.2026, idle-/busy-projektion osanäyttö](release-0.3.0-workspace-history.md#w75-history-status-projection).
+
+**Tallennetun valinnan ja runtimen erottelukoe:** vain muistiin
+ladattava ehdokas käyttää nykyistä `workspaceDeletionPreparation`-,
+`MainOwnedSelectorWorkspaceLifecycle`- ja `workspaceDeletionContinuation`-
+omistajaa. Tavallinen active-/selector-polku säilyy vertailuna.
+Rajattu recovery-tila sitoo täsmällisen kohteen ja alkuperäisen tallennetun
+aktiivivalinnan, mutta vaatii business-runtimen poissaolon erillisestä
+portista. Kokeessa sekä se että main-varauksen portti ovat kontrolloituja,
+eivät natiivin poistumisen tai oikean startup-varauksen näyttöä.
+Main-varaus tai `ready`-entry ei yksin todista sitä. Lifecycle
+saa sitoutua vain delete-varaukseen, ei luontiin, tuontiin tai vaihtoon.
+Valmistelu kaappaa uuden recovery-haaran identiteetit ja sidotut
+elinkaarikutsut ennen ensimmäistä odotusta. Vahvistuscallback ei saa
+vaihtaa niitä. Jatkon ensimmäinen recovery-omistajuusvirhe päättää saman
+valtuuden pysyvästi: tilan palauttaminen ei elvytä sitä, ja alkuperäinen
+syy säilyy myös seuraavissa tarkistuksissa. Nämä kaksi katselmuksessa
+havaittua koe-ehdokkaan aukkoa todennetaan erillisillä regressioilla.
+
+Vain nykyinen explicit-data-loss-haara sopii backendittömään kokeeseen;
+se ei lupaa uutta backupin luontipolkua. Peruutus ennen työn sulkemista
+jättää hallinnan nykyiselleen. Viimeisen vahvistuksen peruutus sulun
+jälkeen ei kutsu yrityksen paluukäynnistystä tai elvytä vanhaa capabilityä.
+Uusi käyttöliittymä-/sulku-/paluuliitos säilyy erikseen todennettavana.
+Tallennettu aktiivivalinta ei myöskään anna lupaa kirjoittaa kuvitteellisen
+elävän runtimen clean-shutdown-merkkiä. Jatkon kuittaus säilyttää W7.4:n
+rekisteriin perustuvan merkityksen; toiseen yritykseen viittaava kuittaus
+ei vielä hyväksy sen automaattista avaamista rajatusta hallintatilasta.
+Tämän vuoksi oikean result-runtime-/composition-paluun sopimus ja näyttö
+ovat edelleen avoinna. Koe ei kytke uutta entryä, tilajulkaisua tai
+julkista komentoa tuotantoon eikä muuta aikarajoja.
+
+Historiallinen tulos:
+[7.11.2026, tallennetun valinnan erottelukokeen tulos](release-0.3.0-workspace-history.md#w75-history-runtime-separation).
+
+**Rajattu palveluadmissionin koe, ei tuotantokytkentää:** nykyisen
+`WorkspaceManagementService`-omistajan muistiin ladattava ehdokas kaappaa
+rajatun tilan kohteen ja callbackit konstruktorissa. Tavallinen v1-tilaluku
+ei käynnistä tässä tilassa korjaavaa rekisterilukua. Erillinen main-only-
+tilaluku käyttää nykyistä v2-parseria ja palvelun nykyistä `trackWork`-
+sulkua; palautettu yksityinen loppuvartija seuraa samaa komentovaihetta.
+Busy-vaihe ei voi julkaista idle-kohdetta. Pyynnön oma lukuvirhe ei itsessään
+päätä erillistä kohdeomistajaa, eikä vanha vastaus elvy komennon jälkeen.
+
+Muut komennot estetään palvelussa ennen koordinaattoria. Poistopyynnön
+kohteen on täsmättävä kaapattuun kohteeseen ennen delete-varauksen saamista.
+Nykyisen yleisen recovery-vartijan poikkeukseksi ei hyväksytä catch-
+fallbackia: rajatun tilan oma täysi kohde- ja globaalivalinnan todiste
+vaaditaan erikseen ennen ja jälkeen varauksen. Epävarma todiste päättää
+saman palveluvaltuuden pysyvästi. Varauksen jälkeisen odotuksen jälkeen
+admission tarkistetaan vielä uudelleen ennen valmisteluun pääsyä;
+odotuksen aikana tehty sulku estää sen ja vapauttaa oman varauksen.
+Valmistelun requester-elinikä yhdistää
+alkuperäisen kutsujan ja tämän main-omistajan; oman sulun säilyvä valtuus
+ei tarkoita uuden pyynnön pääsyä. Tavallista business-paluun callbackia
+ei kutsuta tässä tilassa, mutta nykyinen delete-varauksen vapautus ja
+virheen/lisävirheen käsittely säilyvät.
+
+Kokeen valintatodiste, status-tuottaja ja durable-kuittaus ovat tässä
+kontrolloituja. Ne eivät korvaa oikeita journal-/tiedostolukijoita,
+natiivia runtime-poissaoloa tai W7.4:n fyysistä poistoketjua. Seuraava
+yhteiskoe sitoo saman käynnistyksen kohdetodisteen tähän palveluun;
+uuden entryn tuotantopäätös sekä lopullinen result-runtime-/UI-paluusopimus
+säilyvät avoimina. Uutta palvelua, loggeria, testialustaa, formaattia,
+riippuvuutta tai aikarajaa ei lisätä.
+
+Historiallinen tulos:
+[7.11.2026, palveluadmissionin koetulos](release-0.3.0-workspace-history.md#w75-history-service-admission).
+
+**7.11.2026, palvelun tilakokeen tarkennus:** yksityinen ehdokas hylkäsi
+alkujaan v2:n sallitun, kohteettoman `recoveryRequired`-tilan.
+Uusi regressio hylkäsi ehdokkaan ennen korjausta. Korjatussa kokeessa
+palvelu palauttaa tämän tilan ilman kohdetta, rekisterin korjaavaa lukua
+tai poistovaltuutta; kiireisen komentovaiheen vanhentunut projektio pysyy
+estettynä. Kaikki 25 saman koefixturen kontrollia ja koetyypitys
+läpäisivät. Tämä ei ole tuotantolähteen, nykyisen IPC-tilakanavan tai
+käynnistyksen hyväksyntä. Tuotantoliitos tarvitsee luotetun formaattivalinnan
+samalla tilakanavalla sekä erilliset palvelu-, capability-, preload-,
+renderer- ja sulkutodisteet ennen julkista poistokanavaa.
+
+**7.11.2026, C:n rajattu palvelu-/tilakanavaliitos:** omistaja hyväksyi
+koetodetun palvelun siirtämisen nykyiseen tuotanto-omistajaan ja v1/v2:n
+luotetun valinnan samaan status-IPC-kanavaan. Rajattu palvelu vaatii
+täsmällisen kohteen tuoreen valinnan ennen poistoa ja delete-leasen jälkeen;
+pelkkä kohteeton `recoveryRequired`-tilavastaus ei anna eikä kiellä
+poistovaltuutta. Hylätty valintatodistus sulkee kyseisen palveluajon,
+eikä sitä uusita samassa ajossa. Rajatun tilan muut palvelukomennot sekä
+valmistelu-only-komento estetään; capability ei rekisteröi tavallisia
+muutoskanavia. Status-julkaisu tarkistaa sekä mainin että palvelun
+vastausvartijan myös ulomman odotuksen jälkeen. Tavallinen v1-palvelu ja
+v1-parseri säilyvät erillisinä.
+
+Historiallinen tulos:
+[7.11.2026, palvelu- ja tilakanavaliitoksen osanäyttö](release-0.3.0-workspace-history.md#w75-history-status-channel).
+
+**Tiedostolukijan ja palvelun yhteiskoe:** käytetään saman nykyisen
+Observation-fixtuurin oikeaa main-varausta, rekisteriä ja alkuperäisjournaleja.
+Kokeen service-muunnos ja lisätapaukset ladataan vain muistiin; fixtuuria
+ei kopioida eikä tuotannon entryä avata. Testiavun synkroninen
+`assertCurrent` seuraa ainoastaan alkuperäisen lukutodisteen elinikää:
+se ei tee uutta tiedostolukua tai anna muutosvaltuutta. Valmis luovutus päättää
+vanhan todistuksen; uuden palvelun on käytettävä juuri luovutettua
+vertailupohjaa ilman uudelleenvalintaa.
+
+Yhteismatriisi yhdistää importin, adoptionin, replacementin,
+aktivointimigraation ja paikallisen restoren kolmella tallennetulla
+aktiivivalinnalla: kohde, toinen yritys tai null. Valmistelu on tässä
+kontrolloitu peruutus ennen julkaisua. Erillinen oikean journal-tavun
+muutos delete-varauksen saamisen jälkeen estää valmistelun ja säilyttää
+muutetun aineiston. Todellisen slot-lukijan viivästetty vastaus odotetaan
+ennen palvelun sulun valmistumista; tämä ei ole pidetyn OS-tiedostokahvan
+tai backend-prosessin poistumisen näyttö. Native-runtimen poissaoloportti
+on yhä kontrolloitu eikä seuraa main-varauksen olemassaolosta.
+Varsinainen startup-, runtime-, julkaisu-/poisto-, IPC- ja renderer-ketju
+sekä lopullinen paluusopimus säilyvät erikseen todennettavina.
+
+Historiallinen tulos:
+[7.11.2026, tiedostolukijan ja palvelun yhteiskokeen tulos](release-0.3.0-workspace-history.md#w75-history-reader-service).
+
+**Rajattu valmistumisen paluukoe, ei tuotantokytkentää:** nykyisen
+`createWorkspaceDeletionResultRuntime`-omistajan muistiehdokas erottaa
+rajatun hallinnan tallennetun valinnan käynnissä olevasta runtimesta.
+W7.4:n suljettu `completed/navigation`-kuittaus säilyy muuttumattomana.
+Kokeen erillinen main-only-politiikka kaappaa odotetun navigaation,
+loppuvalinnan lukijan sekä natiivin paluu-/sulkucallbackit ennen odotuksia.
+Kuittauksen navigaatioluokka ei yksin todista avattavaa yritystä.
+
+Loppuvalinnan vertailupohja tulee alkuperäisen validoidun terminal-journalin
+`registryAfterSha256`-arvosta ja aiemmasta aktiivivalinnasta, ei ensimmäisestä
+jälkiluvusta. Nykyinen `inspectSlots` ja
+`captureWorkspaceDeletionRegistryState` tarkistavat tarkan after-sisällön,
+current-slotin ja sivuslottien poissaolon korjaamatta rekisteriä. Tämä luku
+ei käytä poiston jo muuttamaa alkuperäistä discovery-valintaa eikä anna
+poistovaltuutta. Loppuvalinta on viimeinen asynkroninen tarkistus ennen
+paluu-/sulkupyynnön julkaisua; myös ulomman odotuksen jälkeen tarkistetaan
+main-elinikä, idle-huoltotila ja aiemman relaunch-pyynnön puuttuminen.
+
+Kokeen aktiivisen/viimeisen kohteen kuittaus palaa nykyiseen null-valitsimeen.
+Passiivisen kohteen jälkeen erillinen kontrolloitu käyttäjävalinta sallii
+vain aiempaan yritykseen paluun tai EKYn sulkemisen. Sulkuvaihtoehto mitätöi
+vastauksen capabilityn synkronisesti ja pyytää nykyistä quit-omistajaa;
+se ei odota oman pyyntönsä shutdownia sisältäpäin. Oikean
+`createDesktopBeforeQuitHandler`-omistajan kontrolli odottaa pyynnön ja
+palvelun päättymisen ennen lopullista quitia. Pelkkä vastausdokumentin
+vanheneminen estää vastauksen, ei peru jo valmistunutta main-operaatiota;
+mainin oma sulku estää myös myöhäisen paluun. Vanhaa capabilityä ei elvytetä
+eikä vanhaan dokumenttiin näytetä uutta virheikkunaa.
+
+Kokeen oikean rekisterin muutokset estävät paluun fyysisen main-omistuksen
+säilyessä. Kaikkien kolmen rekisterislotin muuttuneet tavut ja poissaolot
+verrataan täsmällisesti ennen viimeistä readonly-lukua ja sen jälkeen.
+Terminal-kuittaus ja runtime-poissaolo ovat edelleen kontrolloituja:
+koe ei suorita fyysistä W7.4-poistoa eikä todista natiivia dialogituottajaa,
+tuotantocompositionia tai seuraavan startupin atomista kohdesidontaa.
+Viimeisen tarkistushetken jälkeen tapahtuvaa ulkoista muutosta ei väitetä
+estetyksi. Tämän jatkorajan sopimus ja näyttö vaaditaan ennen tuotantoentryä.
+
+Historiallinen tulos:
+[7.11.2026, valmistumisen paluukokeen tulos](release-0.3.0-workspace-history.md#w75-history-result-runtime).
+
+**Seuraavan startup-liitoksen lähderaja:** main saa fyysisen varauksen
+ennen `recoverWorkspaceManagementBeforeRuntime`-kutsua. Tämä kutsu voi
+kuitenkin jo käynnistää create/import-ehdokkaan tarkistuksen nykyisellä
+`ElectronWorkspaceCandidateRuntimeFactory`-omistajalla. Myöhemmin asetettava
+`runtimeEntered` koskee tavallista business-compositionia, ei kaikkia
+kylmävaiheen lapsitöitä. Siksi uusi havainto-/valintahaara sijoitetaan
+ennen korjaavaa recovery-kutsua ja sen omat työt liitetään nykyiseen
+käynnistyssulkuun; pelkkä `runtimeEntered === false` tai fyysinen varaus
+ei korvaa töiden todettua päättymistä. Normaali valinta jatkaa nykyiseen
+recovery-ketjuun, ei rinnakkaiseen toteutukseen. Tämä on lähteestä rajattu
+kytkentäkohta, ei tuotantolupa.
+
+**Käynnistyssijoituksen rajattu koe:** nykyiseen main-compositioniin
+ladataan vain muistiin koe ennen yllä nimettyä cold-kutsua. Sen työ
+rekisteröidään nykyiselle `desktopRecoveryStartup`-omistajalle ennen
+ensimmäistä omaa odotusta. Callbackit ja käynnistysomistaja kaapataan ennen
+mainin ensimmäistä odotusta. Lukuvaltuus on vain tämän vaiheen voimassa;
+se päättyy ennen tavallisen palautuksen jatkoa tai sulkemista. Se ei ole
+palvelun pysyvä valtuus, lapsiprosessin poistumistodiste tai poistolupa.
+
+Sisäänpääsy suljetaan ennen oman työn päättymisen odottamista. Pidetty
+oikea tiedostokahva sulkeutuu ennen jatkoa ja ennen quit-pyyntöä; syy ja
+erillinen sulkuvirhe säilyvät. Ulkoinen sulku ja varauksen menetys estävät
+uuden työn. Rekisteröintivirhekin kulkee siivousodotuksen läpi. Myös
+testin oman väittämän tai startup-vaihekääreen myöhäinen virhe sulkee
+mahdollisen myöhemmin palautuvan lifecyclen raakatyön tuloksen perusteella.
+
+Backendittömät sulkutapaukset käyttävät oikeaa natiivia pääprosessivarausta:
+kilpaileva hankinta estyy työn aikana ja onnistuu sulun jälkeen.
+Tavallisen jatkon backend ja cold-candidate ovat nykyisen fixtuurin
+kontrolloituja prosessirajoja. Luonnin ja tuonnin `prepared`-/`rootPublished`-
+vertailu säilyttää journalin ennen valintaa ja jatkaa normaalia palautusta
+kerran; alkuperäiset DB/PDF-tavut ja aktiivivalinta säilyvät. Tämä ei
+todista kaikkien historiallisten kirjoittajien päättymistä, SQLiteä,
+natiivia valintadialogia tai uutta palautushallinnan käyttäjäpolkua.
+Varsinainen kohdehavainto, pysyvän main-omistajan luovutus ja hallintaikkuna
+eivät ole vielä tässä kokeessa yhdessä; tuotantoentry ja julkiset kanavat
+pysyvät suljettuina.
+
+Historiallinen tulos:
+[7.11.2026, käynnistyssijoituksen koetulos](release-0.3.0-workspace-history.md#w75-history-startup-placement).
 
 Valitsimen nykyinen `recoveryRequired` ei ole yleinen poistolupa.
 Kohteen avaamiskelvottomuus ja koko asennuksen epävarma omistajuus erotetaan:
@@ -2494,11 +5907,632 @@ ennen julkisen poiston kytkentää; UI ei saa päätellä poistolupaa vikatilast
 tai ohittaa yleistä vartijaa. Lähdeluennan raja ei ole todennettu kaikkien
 vikakohteiden regressio eikä muuta jo hyväksyttyjä poistoperiaatteita.
 
+**C:n rajatun katselmuksen tulos 6.11.2026:** nykyinen tavallinen valitsin
+vaatii v2-rekisterin null-aktiivivalinnan ja konfliktittoman palautusluennan.
+Myös poistovalmistelun selector-lifecycle vaatii null-valinnan. Pelkkä
+palvelun vartijan poikkeus ei siis avaa turvallista käyttäjäpolkua, jos
+keskeytynyt palautus estää käynnistyksen ennen valitsinta. Nykyiset kaksi
+kokonaista admission-testitiedostoa läpäisivät 64 testiä muuttamattomilla
+rajoilla; ne todistavat nykyiset estot, eivät alla ehdotettua uutta entryä.
+Riippumaton lähdekatselmus vahvisti saman rajan. Main-sarjan aiempi
+replacement-aikakatkaisu ja muut integraatioportit säilyvät avoimina.
+
+**Omistajan hyväksymä suunnittelu- ja koesuunta 6.11.2026, ei tuotantolupa:** käytetään nykyistä
+valitsin-compositionia erikseen rajattuun palautushallintaan vain, jos
+main voi todistaa saman kohteen keskeneräisen palautuksen sekä turvallisen
+hallinnan ilman business-runtimea. Tämä olisi uusi entry nykyisen
+virhe/tukivienti/poistuminen-polun rinnalle; B4:n tukivientilupa ei hyväksy
+sitä. Epävarmassa omistajuudessa nykyinen suljettu virhepolku säilyy.
+
+Toteutussopimuksen rajat ennen mahdollista kytkentää:
+
+| Vastuu | Omistaja ja säilyvä ehto |
+| --- | --- |
+| Sisäänpääsy | `desktopComposition.ts` ja nykyinen cold-admission: nimetty vain luku -valinta ennen mutatoivaa recoverya; ei yleistä `catch -> selector` -fallbackia tai epäonnistuneen omistajan valtuuden lainausta. |
+| Rekisteri ja runtime | Nykyinen registry-lukija ja `desktopSelectorComposition.ts`: tallennettu aktiivivalinta säilyy muuttumattomana, vaikka yhtään business-runtimea ei ole käynnissä. Valitsimen näyttämiseksi ei julkaista null-osoitinta eikä muuteta entryn tilaa. |
+| Kohdetodiste | Nykyisten alkuperäisjournalien ja W7.4-sidontojen lukijat todistavat sallitun kohteen ilman tietokannan avausta. Julkaisijan valmistelu ei ole tähän sopiva lukija: se voi jo siivota metadatatiedostoja. |
+| Toiminnot | Nykyinen hallintapalvelu/capability sallii vain rajatun statusluvun, nykyisen tukiviennin ja täsmällisen kohteen poistovalmistelun. Luonti, tuonti, vaihto, korvaus, rename ja päivitys estetään mainissa, ei vain käyttöliittymässä. Tavallisten entryjen yhteistä vartijaa ei väljennetä. |
+| Poistovaltuus | Sisäänpääsyn lukutulos ei anna muutoslupaa. Nykyinen delete-lease, tuore kohde-/rekisteri-/build-valinta, kirjoittajien päättyminen, vahvistukset ja W7.3/W7.4:n julkaisu-/muutosvartijat vaaditaan erikseen. Tukivienti ei anna poistolupaa. |
+| Globaalit esteet | Toisen yrityksen palautus, ristiriitaiset/puuttuvat sidonnat, keskeneräinen asennuspäivitys/W6, epävarma vanha kirjoittaja tai keskeneräinen main-I/O eivät muutu kohdekohtaiseksi poikkeukseksi. Julkaistu poistojournal kuuluu edelleen nykyiseen cold-jatkoon. |
+| Status ja elinikä | Nykyiset status-/protokollaomistajat erottavat tallennetun valinnan, puuttuvan runtimen ja sallitut toiminnot. Nykyistä v1-arvoa ei vääristellä eikä `availability` yksin anna lupaa. Tiukka projektio, vanhentuminen ja vastaanottorajat täsmennetään ennen toteutusta. |
+| Peruutus ja loppu | Peruutus säilyttää rekisterin ja palautusaineiston; rajattu tila ei avaa yritystä automaattisesti. Onnistuminen edellyttää koko nykyisen poistoketjun loppua. Uusi tavallinen valitsin tai yritysavaus vaatii nykyiset tuoreet käynnistysportit, ei virhetilan sisäistä lupien elvytystä. |
+
+Ennen kytkentää nimetään hyväksyttävät alkuperäisjournalien tilat ja niiden
+tuoreet sidontatodisteet, tarkka statusprojektion muoto sekä peruutuksen ja
+valmistumisen paluu. Pienet kokeet kattavat säilyvän ei-null-valinnan,
+nolla backend-/business-käynnistystä, saman kohteen hyväksymisen, vieraan ja
+globaalin konfliktin eston, myöhäisen valintamuutoksen sekä sulussa loppuvan
+työn. Varsinaisen poiston ja keskeytysjatkon syväkattavuutta ei kopioida
+UI-fixtureihin. Uutta palautusmoottoria, hallintasovellusta, pysyvää
+formaattia, aikarajaa tai riippuvuutta ei ehdoteta. Tämä suunnittelukohta
+ei muuta hyväksyttyä B4-entryä tai tarkoita uuden hallintaentryn hyväksyntää.
+
+**Seuraavan pienen kokeen sopimus:** ensin vain mainin muistiin jäävä
+lukutodiste nykyisten omistajien oikeista synteettisistä tiedostoista.
+Ei ikkunaa, capabilityä, backendia, migraatiota tai julkaisukutsua. Kokeen
+kohde tulee validoidun v2-rekisterin entrystä; sen aktiiviosoittimen ei
+tarvitse olla null, mutta rekisterin nykyinen rakennevalidaattori säilyy.
+`ready`-entry ei ole todiste käynnistyneestä tai terveestä runtimesta.
+Valinnan nykyinen tiedostoidentiteetti ja kaikki tavut kiinnitetään ennen
+journal-luentaa ja verrataan uudelleen sen jälkeen. Sivuslotit estävät
+tämän kokeen sisäänpääsyn; niitä ei korjata lukemisen sivuvaikutuksena.
+
+Kokeen ensimmäinen matriisi ei ole koko tulevan hallintaentryn hyväksyntä:
+
+| Pieni koe | Vaadittu tulos |
+| --- | --- |
+| Saman kohteen import/adoption/activation-journal | Kolme nykyistä lukijaomistajaa ja niiden `capture...DeletionSlots` tarkistavat nykyiset slotit/siirtymät; activationin replacement/migration-alias on yksikäsitteinen. Kohde, lineage ja operaation sidonta täsmäävät. Kaikki lähtötavut ja rekisterivalinta säilyvät. |
+| Vieras kohde tai lineage, puuttuva sidonta, molemmat activation-aliasit | Ei lukutodistetta. Olemassa oleva alkuperäisjournalin lukija tekee vertailun; koe ei toteuta sen parseria tai sidontasääntöjä uudelleen. |
+| Journal/registry/binding muuttuu tai saman tavun tiedosto korvataan | Todiste vanhenee eikä jatkokutsu palaudu käyttökelpoiseksi. Muutettuja ja muiden yritysten tiedostoja ei poisteta. |
+| Työlupa päättyy tai kirjoittaja havaitaan kesken viivästetyn luvun | Luku saatetaan loppuun nykyisin sulkurajoin ennen vapautusta. Ensivirhe säilyy erillään sulkuvirheestä; myöhäinen onnistuminen ei elvytä lupaa. |
+| Poisto-, luonti-, switch-, W6- tai vieraan yrityksen palautusjournal | Nimetyllä lukuhavainnolla ei saa ohittaa nykyisiä yleisiä estoja. Julkaistun poiston jatko jää sen nykyiselle omistajalle. |
+| Lukutodiste luetaan uudelleen tai sitä tarjotaan poistovaltuutena | Uusi vain luku -vertailu ei anna kirjoitus-, siirto-, poisto-, sync-julkaisu- tai business-käynnistyslupaa. Suljettu tai virheeseen päättynyt todiste ei elvy. Yleinen palveluvartija säilyy ilman myöhempää hyväksyttyä liitosta. |
+
+Kokeessa käytetään nykyisiä alkuperäisjournalin ja sidonnan fixtuureja sekä
+nykyistä epäonnistumisaineiston säilytystä; ei uutta testikehystä. Importin
+ja adoptionin omat vaihe-/slot-validoinnit sekä activationin revision
+siirtymät säilyvät; kaikkien sallitun parserin tilojen kattavuutta ei
+päätellä yhdestä `prepared`-fixtuurista. Pienten kokeiden jälkeen vaaditaan
+erikseen koko alkuperäisjournalimatriisi, tuore build-/vierasjournalivalinta,
+mainin oikea prosessivaraus sekä todellinen startup/palvelu/renderer-ketju.
+Kohdekohtainen profile-restore ja vanhat muodot pysyvät erikseen
+todennettavina, eivät tämän ensimmäisen kokeen perusteella sallittuina tai
+W7.5:n lopullisesta tavoitteesta poistettuina. Nykyisiä 64 admission-testiä
+ei nimetä uuden ehdokkaan näytöksi. Aikarajat eivät muutu.
+
+Historiallinen tulos:
+[6.11.2026, alkuperäisjournalien lukukokeet](release-0.3.0-workspace-history.md#w75-history-early-read-results).
+
+**Pääprosessin ja asennustilan lukukoe 6.11.2026:** erillinen
+`main/desktopWorkspaceRecoveryObservation.test.ts` yhdistää nykyisen
+`acquireDesktopWorkspaceReservation`-omistajan todellisen IPC-varauksen,
+`captureWorkspaceDeletionLocalUpdateSelection`-lukijan ja saman kohteen
+alkuperäisjournalin lukijan säilyvään ei-null-rekisterivalintaan.
+Viisi kontrollia todensi normaalin luennan, hyväksytyn build-tiedoston
+tavu-/identiteetti-/sivuslottimuutoksen eston sekä vanhan todistuksen
+pysyvän päättymisen varauksen uuden sidonnan jälkeen. Sulun jälkeen
+varaus hankittiin ja vapautettiin uudelleen ennen onnistuneen fixturen poistoa.
+Viiden kokonaisen vaikutustiedoston 215 testiä ja desktop-tyypitys läpäisivät
+nykyrajoilla. Aiemmat 176 testin osanäytöt ovat päällekkäisiä.
+Kyse on vain testikoostamisesta: Electron-ikkunoita, yrityksen backendia,
+SQLitea, oikeaa lapsiprosessia tai poistokomentoa ei käynnistetty.
+Näyttö ei vielä kata muiden yritysten tai globaalien journalien yhteistä
+valintaa, kaikkia build-admission-vaihtoehtoja, palautustilan pääsyä
+startupista, peruutuksen paluuta tai julkista palvelu-/renderer-ketjua.
+Näitä ei saa korvata lukutodisteella tai yleisen vartijan ohituksella.
+
+Historiallinen tulos:
+[6.11.2026, lukutyön sulun ja konfliktien jatkokokeet](release-0.3.0-workspace-history.md#w75-history-early-conflict-results).
+
+**Yhteiskatselmuksen täsmällinen raja:** kokeet eivät vielä
+ratkaise alla olevia tuotantoliitoksia. Ennen uutta admissionia lukitaan:
+
+1. `desktopComposition.ts` / `resolveDesktopWorkspaceStartup.ts`:
+   mikä nimetty vain luku -haara valitaan ennen mutatoivaa recoverya,
+   millä todellisilla build-admission-tiloilla ja ilman yleistä catch-fallbackia.
+2. `desktopSelectorComposition.ts` / `workspaceManagementStatus.ts`:
+   miten tallennettu aktiiviosoite ja puuttuva business-runtime erotetaan
+   tiukassa toimintoprojektiossa muuttamatta rekisteriä tai v1:n merkitystä.
+3. `workspaceManagementService.ts` / `workspaceDeletionPreparation.ts` /
+   `mainOwnedSelectorWorkspaceLifecycle.ts`: miten vain täsmällinen
+   poistopyyntö saa tuoreen admissionin, vaikka tavallisen selector-lifecyclen
+   null-osoitinehto ei päde. Yleiset vartijat ja muut operaatiot säilyvät.
+4. Kohteen paikallisen palautuksen ja globaalien alkuperäisjournalien
+   tarkat sallitut tilat, sidontatodisteet ja muiden yritysten suoja;
+   koeluettelon kopiointi tuotantoon ei korvaa tätä omistajuussopimusta.
+5. Peruutuksen sekä valmistumisen paluu ilman automaattista yritysavausta,
+   vanhan capabilityn elvytystä tai W7.3/W7.4:n kuittausten muuttamista.
+
+Tämä on rajattu liitoskatselmus nykyisiin omistajiin, ei uusi testikehys,
+palautusmoottori tai laajennettu roadmap. Omistajan hyväksymä suunnittelu-
+ja koelupa säilyy; tuotantokytkentä vaatii edelleen täsmällisen sopimuksen
+ja näytön hyväksynnän.
+
+**Yhteiskatselmus 6.11.2026: suunnittelutulos, ei tuotantohyväksyntä.**
+Nykyinen startup voi palauttaa keskeneräisen operaation onnistuneesti.
+Journalin olemassaolo tai sen parserin hyväksymä vaihe ei siis yksin
+tarkoita pysyvää vikatilaa. Uusi entry ei saa automaattisesti korvata
+normaalia palautumista eikä syntyä yleisestä virheen kiinniotosta.
+
+**Hyväksytty jatkosuunnittelu ja kokeet 6.11.2026:** nykyisen mainin native-valinta
+ennen mutatoivaa palautumista, vain kun rajattu kohdetodiste on saatu:
+jatka nykyistä palautumista, avaa rajattu hallinta tai sulje sovellus.
+Hallinnan avaaminen ei vahvista poistoa. Tavallinen käynnistys ilman
+tällaista todistetta ei saa uutta valintaa. Tämä kuitenkin lisää valinnan
+myös tilanteeseen, jossa nykyinen automaattinen palautuminen voisi onnistua;
+suositeltu oletus on nykyisen palautumisen jatkaminen, ei hallinta tai poisto.
+Omistaja hyväksyi tämän suunnan jatkosuunnitteluun ja kokeisiin, ei vielä
+tuotantokytkentään. Hallintaa ei siis rajata vain jo epäonnistuneen
+palautusyrityksen jälkeiseksi fallbackiksi. Dialogin odotus ei pidennä
+työluvan määräaikaa: vastauksen jälkeen vaaditaan tuore valinta nykyisillä
+rajoilla. Sulku, vanhentunut vastaus tai omistajuuden menetys eivät anna
+hallinta- tai poistolupaa.
+
+Katselmuksen toteutusrajat nykyisille omistajille:
+
+| Raja | Suunniteltava liitos ja estettävä oikopolku |
+| --- | --- |
+| Startup ja build | `desktopComposition.ts` valitsee nimetyn vain luku -haaran ennen recovery-/W6-/adoption-muutoksia, mutta julkaistu poisto jää nykyiselle cold-jatkolle. `captureWorkspaceDeletionLocalUpdateSelection` sallii vain nykyiset `exactAcceptedBuild`/`authorizedNewerBuild`-tilansa; keskeneräistä päivitystä ei muuteta hyväksytyksi. Havainto ei hyväksy buildia tai yrityksen terveystarkistusta. |
+| Positiivinen kohdetodiste | `workspaceDeletionOriginalJournalSelection.ts` voi palauttaa tyhjän `proofs`-listan. Konfliktittomuus tai orpo sidonta ei yksin avaa hallintaa. Vaaditaan vähintään yksi täsmällisesti kohteeseen sidottu keskeneräisen palautuksen havainto ja kaikkien muiden lähteiden yhteensopivuus. |
+| Paikallinen palautus | Kohteen oma restore-journal on johdetun yritysjuuren payloadia eikä yhteisen replacement-journalin alias. `ProfileRestoreActivationJournalStore.inspectDeletionSlots` antaa korjaamattoman tavu-/identiteettiluvun. Kohde sidotaan nykyisillä registry-/root-lukijoilla ilman SQLiten avaamista; `captureDeletionTarget`-poistovahvistusta tai jo julkaistua poistojournalia ei lavasteta havaintoa varten. `peek` ei korvaa kaikkien slottien vertailua eikä korjaavaa `read`-metodia käytetä. |
+| Kaikki yritykset | Koefixturen seitsemästä polkuluokasta ei löytynyt puuttuvaa kiinteää journaliperhettä, mutta yksi vieras yritys ei todista koko rekisterin kattavuutta. Vieraiden paikalliset palautuspolut johdetaan kaikista validoiduista registry-entryistä. Nykyinen cold-lukija vaatii julkaistun poistojournalin; sen lupaa ei lainata ennen julkaisua. |
+| Status ja käyttötila | `workspaceManagementStatus.ts` säilyttää v1:n tehdas-/parserimerkityksen. Ehdokas on erillinen tiukka v2: `mode: recoveryManagement`, tallennettu aktiivivalinta, `runtimeState: absent`, todellinen maintenance-tila ja vain täsmällisen kohteen turvallinen projektio. Sen lukeminen ei anna toimintolupaa. Ei v2:n muuntamista v1:ksi, null-rekisterikirjoitusta tai tekaistua `ready`-tilaa. Lopullinen muoto ja statusluvun suhde jo alkaneeseen poistoon todistetaan ennen kytkentää. |
+| Palvelu ja lifecycle | `runAdmitted` tarkistaa yleisen recovery-eston ennen delete-callbackia. Discriminated `mode: recoveryManagement` antaa vain rajatun status-/delete-palvelun; compositio haarautuu ennen candidate-tehdasta ja tavallisia koordinaattoreita. Nimetty delete-haara hankkii todellisen delete-leasen ja sen täsmällisen omistajan ennen tuoretta kohde-/build-/omistajuustodistetta. Yleistä skip-guard-porttia ei lisätä. Muut komennot pysyvät estettyinä myös suoralla kutsulla. Nykyinen selector-lifecycle säilyttää null-oletuksensa tavallisessa tilassa; rajattu tila sitoo todellisen tallennetun osoittimen, sallii vain delete-leasen ja vaatii erillisen startup-omistajan runtime-poissaolotodisteen. Se ei väitä pysäyttäneensä backendia eikä käytä `ensurePreviousWorkspaceRunning`-paluuta. |
+| Pysyvä valinta ja elävä runtime | `workspaceDeletionPreparation.ts` ja `bindWorkspaceDeletionContinuation` erottavat rekisterin `previousActiveWorkspaceId`:n todellisesta runtime-ownerista. Nykyinen yksi aktiivisuusarvo ohjaa myös markerin sulkua/poistokuittausta, joita backendittömässä tilassa ei saa teeskennellä. Tavallisen aktiivisen yrityksen markeriehdot säilyvät. |
+| Peruutus ja valmistuminen | Rajattu tila ei käynnistä business-runtimea automaattisesti. Nykyinen `createWorkspaceDeletionResultRuntime.complete` pyytää relaunchin, ja passiivisen kohteen kuittaus voi tarkoittaa `reopenPrevious`. Tämä sovitetaan eksplisiittisesti nykyisessä tulosomistajassa: pysyvä W7.4-kuittaus säilyy, mutta uutta avausta ei käynnistetä ilman käyttäjän valintaa ja tuoreita startup-portteja. Suljettua capabilityä ei elvytetä eikä keskeneräistä poistoa merkitä peruutetuksi. |
+
+Alkuperäisjournalien nykyiset hyväksytyt lukusäännöt säilyvät: importin
+seitsemän tilaa, legacy-adoptionin viisi tilaa ja shared activationin
+14 vaihetta sekä täsmälleen yksi replacement-/migration-sidonta.
+Sallittuja yhden tai kahden alkuperäisslotin siirtymiä tarkistavat niiden
+nykyiset `capture...DeletionSlots`-omistajat; kolme slottia hylätään.
+Sidontatodiste vaatii julkaistun current-slotin, eivätkä pelkät sivuslotit
+riitä. Nämä ovat lukijoiden hyväksymiä rakenteita, eivät vielä kaikkien
+vaiheiden startup-lupia. Paikallisen restoren 14 luettavaa vaihetta,
+myös `failedSafe`, tarvitsevat erikseen oikean juuren ja slottisiirtymien
+yhteiskokeen; sisältövalidointia tai lineagea ei päätellä journalista.
+Vaihekohtaisen payload-lukijan puute ei yksin ole pysyvä poistokielto.
+
+**Status-/palvelurajan täsmennys 6.11.2026, suunnittelu eikä tuotantolupa:**
+nykyinen `getStatus` saa lukea komennon rinnalla. Sen v1-projektio ei ole
+atominen kohdevalinta: ennen komentoa alkanut rekisteriluku voi valmistua
+komennon aikana, ja tyhjä rekisteri voi näkyä ennen terminal-työtä tai
+delete-leasen vapautusta. V1:n merkitystä ei muuteta eikä siitä päätellä
+palautushallinnan tai poiston valtuutta.
+
+Erillisen v2-projektion kokeiltava täsmällinen muoto:
+
+| Tila | Sallitut kentät ja todistus |
+| --- | --- |
+| Kaikki v2-vastaukset | `formatVersion: 2`, `mode: recoveryManagement`, `runtimeState: absent`, todellinen `maintenanceState: idle/busy` ja `operationState`. Runtime-poissaolo vaatii nykyisen startup-/main-omistajan todistuksen; epävarmuudessa vastauksena on nykyinen turvallinen virhe, ei tekaistu `absent`. |
+| `operationState: idle` | Lisäksi `persistedActiveWorkspaceId` ja yksi `target: { workspaceId, workspaceLabel }`. Nykyinen korjaamaton rekisteri-/kohde-/build-/konfliktiluku on tuore, eikä toinen komento tai huoltovaraus ole käynnissä. Vain tämä tila sisältää kohdeprojektion; se ei silti anna poistolupaa. |
+| `operationState: busy` | Ei kohdetta tai tallennettua aktiivivalintaa. Palvelun alkanut komento on busy jo ennen leasen hankinnan valmistumista; erillinen `maintenanceState` kertoo oikean leasen tilan. Vanhaa kohdetodistetta tai muuttuvia palautusjournaleja ei lueta uudelleen komennon tilalukuna. |
+| `operationState: recoveryRequired` | Ei kohdetta tai aktiivivalintaa. Puuttuva tuore kohdenäyttö ei muutu tyhjäksi tavalliseksi valitsimeksi tai globaaliksi poistoluvaksi. |
+
+`workspaceManagementTypes.ts` ja `workspaceManagementStatus.ts` omistavat
+uuden unionin ja erillisen tiukan v2-parserin. Nykyinen v1-parseri säilyy
+tiukkana. `workspaceManagementCapabilityProtocol.ts` valitsee parserin
+eksplisiittisen formaatin mukaan nykyisessä tilalukukanavassa; protokollan
+versio ja statusdokumentin formaatti ovat erilliset. Preload pysyy
+argumentittomana. Webin `desktopWorkspaceManagement.ts` tekee saman
+vastaanottovalinnan ilman v2 -> v1 -muunnosta. Nykyiset tunniste-, nimi-
+ja 32 KiB:n vastausrajat säilyvät; journalia, lineagea, polkua tai lupatokenia
+ei sarjoiteta rendererille.
+
+Nykyinen palvelu omistaa myös tilaluvun vain mainiin jäävän vaihesidonnan.
+Komennon aloitus, lopullinen päättyminen ja sulku vanhentavat aiemman luvun.
+Sidonta tarkistetaan palvelun odotusten jälkeen ja capabilityn viimeisellä
+vastausrajalla, myös ulomman `runCapability`-odotuksen jälkeen; pelkkä
+ikkunan dokumenttiepoch ei korvaa sitä. Myös havaittu maintenance-tila ja
+sen omistajakerta sidotaan: leasen hankinta tai vapautus voi muuttua saman
+komentovaiheen sisällä. Olemassa olevan lease-omistajan vain luku -havainto
+vanhenee jokaisessa hankinta-/vapautussiirtymässä myös tilan palauduttua
+ennalleen; pelkkä viimeisen `idle/busy`-arvon vertailu ei riitä.
+Tämä ei lue muuttuvia palautusjournaleja tai anna toisen leasen valtuutta.
+Vanha vastaus ei saa palauttaa idle-kohdetta uuden komennon päälle. Sidonta ei anna
+tiedostomuutos- tai poistovaltuutta. Renderer mitätöi nykyisellä
+latausohjaimellaan myös ennen omaa komentoa aloitetun tilapyynnön.
+
+Tilaluvun oma virhe päättää vain sen luvun. Se ei kutsu kesken olevan
+poiston vanhaa havaintotodistetta, sulje palvelua tai peru todellista
+delete-omistajaa. Todellinen main-varauksen, työluvan tai kirjoittajien
+poissaolon menetys estää poistovaltuuden sen omissa nykyisissä vartijoissa;
+tilaluvun erottelu ei peitä sitä. Alkanut status-I/O odotetaan silti
+loppuun ennen omistajan sulkua. Valmistuneen poiston jälkeen vanhaa
+palautushallinnan entryä ei elvytetä vanhan kohteen tiedoilla.
+
+Nykyisen `workspaceManagementDeletionShutdown.test.ts`-fixturen kuusi uutta
+kontrollia todentaa rinnakkaisen statusvirheen eron durable-omistajasta,
+v1-luvun ylittämän komentorajan, terminal-/release-odotuksen eron tyhjästä
+rekisteristä sekä ensimmäisen statusvirheen ja pidetyn sisarluennan sulun.
+Koko tiedoston 44 testiä ja desktop-tyypitys läpäisivät nykyrajoilla.
+Ne käyttävät oikeaa palvelua ja muistileasea mutta kontrolloituja lukijoita
+ja poistokomentoa. Tämä ei vielä todista tuotannon v2-parseria, uutta vaihesidontaa,
+oikeaa palautusjournalin mutaatiota, IPC-vastausrajaa tai renderer-ketjua;
+niiden kokeet ja katselmus vaaditaan ennen tuotantokytkentäpäätöstä.
+
+Muotokokeessa käytettiin erillistä
+`workspaceManagementStatusExperimentTestSupport.ts`-ehdokasta nykyisen
+build-poissulun piirissä. Se korvattiin alla hyväksytyllä tuotantoparserilla.
+Nykyinen status-testitiedosto kattaa 24 uutta kontrollia: tallennettu
+aktiivivalinta erillään kohteesta ja runtimesta, ei kohdetta estetyissä
+tiloissa, ristiriitaiset/ylimääräiset kentät, vanhan v1-parserin hylkäys,
+muuttumaton tulos sekä accessoreiden suorittamatta jättäminen.
+Kolmen kokonaisen tiedoston 124 testiä ja lopullinen desktop-tyypitys
+läpäisivät; aiempi 44 testin ajo sisältyy tähän näyttöön. Muotoehdokas
+ei todista todellista runtime-poissaoloa tai mainin vaihesidontaa.
+Sen tarkka kieli on nykyistä 32 KiB:n rajaa pienempi; tuotantoon siirrettäessä
+käytetään omistavan moduulin nimettyä rajaa, ei uutta rinnakkaista budjettia.
+
+Rajattu katselmus täsmensi maintenance-omistajakerran sekä ulomman
+capability-odotuksen jälkeisen tarkistuksen; täsmennykseen ja
+muotoehdokkaaseen ei jäänyt löydöstä. Seuraavan pienen kokeen on pidettävä
+vastausta komennon alun/lopun, leasen hankinnan/vapautuksen ja sulun yli.
+Myös takaisin ennalleen palaava lease-tila vanhentaa luvun.
+Koe ei saa perua jo luovutettua poistoa tai jättää aloitettua I/O:ta sulun
+ulkopuolelle. Tämä ei hyväksy uuden entryn, v2:n tai delete-IPC:n
+tuotantokytkentää; nykyiset muutosvartijat ja aikarajat säilyvät.
+
+**Vaihesuojan muistiehdokas 6.11.2026, ei tuotantokytkentää:** nykyisen
+huoltovarauksen, hallintapalvelun ja capabilityn ehdokas ladattiin vain
+testin muistiin. Alkuperäiset sovelluslähteet ja niiden tavut säilyivät.
+Huoltovarauksen havaintokerta päättyy onnistuneessa hankinnassa ja oman
+leasen vapautuksessa myös tilan palatessa samaksi. Vanhentuneen kahvan
+toinen vapautus tai hylätty hankintayritys ei mitätöi uuden omistajan
+havaintoa. Tilaluvun aiempi vaihesidonta päättyy ennen ensimmäistä
+komento-odotusta, komennon lopullisessa valmistumisessa ja sulussa.
+
+Main-only-julkaisuhavainto tarkistetaan nykyisen `runCapability`-käsittelijän
+ulomman odotuksen jälkeen, ennen pending-työn loppukuittausta. Oletuspolku
+ilman uutta havaintoporttia säilyi. Kontrolloitu, jo validoitu callback-tulos
+pidettiin odotuksessa: komennon alku/loppu, leasen hankinta/vapautus ja
+omistajan vaihto, main-omistajuuden menetys sekä ikkuna-/capability-sulku
+estivät vanhan vastauksen. Ilman uutta loppuvartijaa sama kontrolli
+palautti vanhan vastauksen. Havainto ei anna leasen tai poiston valtuutta;
+kelvollinen durable-komento jatkoi ja erikseen aiheutettu omistajavirhe esti sen
+nykyisessä muutosvartijassa. Synkroniseksi tarkoitetun tarkistuksen
+Promise-paluu hylättiin nykyisellä tarkistusportilla.
+
+Historiallinen tulos:
+[6.11.2026, vaihesuojan muistiehdokkaan tulokset](release-0.3.0-workspace-history.md#w75-history-phase-proof).
+
+**Vaihesuojan alkuperäisvirheen keräyskoe 6.11.2026:** saman yksityisen
+fixturen ensimmäinen palvelun tilalukuvirhe toimitetaan nykyiselle
+runner-sinkille ennen capabilityn turvallista virhemuunnosta vain testin
+odottamattomassa hylkäyksessä. Ehdokastyypitys ja samat 183 lähitestiä
+läpäisivät tämän kytkennän kanssa. Erillinen pakotettu hylkäys säilyi
+punaisena, ja nykyinen keräys -> OpenPGP -> purku varmisti alkuperäisen
+viestin, pinon, sisäkkäisen syyn, raporttien täsmälliset tavut ja tiivisteet.
+Raakasyy ei tullut julkiseen tulosteeseen.
+
+Katselmuksen jälkeen tarkistin vahvistettiin vaatimaan juuri pakotetun
+hylkäyksen tunniste sekä alkuperäisotteen ja hylkäyksen koko testisidonnan
+yhtäsuuruus. Tiukennettu koe läpäisi erilliseen kuittiin; ensimmäinen tulos
+säilyy välituloksena eikä korvaa lopullista näyttöä. Tämä on paikallinen
+nykyisen keräysketjun koe synteettisillä testiavaimilla, ei hosted-artifactin
+toimitus tai kaikkien statusvirheiden tuotantokeräyksen hyväksyntä.
+Sovelluslähteet, keräyksen tietolajit ja aikarajat säilyivät muuttumattomina.
+Omistaja hyväksyi 6.11.2026 muoto-/vaihesuojaperustan rajatun
+tuotantototeutuksen nykyisiin omistajiin pysyvine regressioineen,
+tyypityksineen, alkuperäisvirheen salaus/purku-kokeineen ja katselmuksineen.
+Erillinen tiukka v2-parseri ei vielä muuta tilakanavan v1-julkaisua.
+Palvelun ja huoltovarauksen vaihesidonta sekä capabilityn viimeinen
+main-only-vastausvartija ovat nyt tuotantolähteessä. Valinnainen portti
+ei vielä ole tuotannon composition-kutsujissa käytössä. Erillinen v2-unioni
+ja parseri käyttävät nykyistä 32 KiB:n rajaa; vanha v1-kanava hylkää v2:n.
+Testissä käytetty rinnakkainen parseri poistettiin ja sen kontrollit
+käyttävät nykyistä omistajaa. Julkaisun pysyvät regressiot ovat
+`workspaceManagementStatusPublication.test.ts`:ssä ilman yksityistä
+lähdemuunninta. Palvelun sulku vanhentaa tilaluvun mutta ei peru jo
+hyväksyttyä durable-komentoa.
+
+Historiallinen tulos:
+[6.11.2026, pysyvän vaihesuojan osanäyttö](release-0.3.0-workspace-history.md#w75-history-status-production).
+
+**Rajatut seuraavat kokeet, ei uusi testialusta:**
+
+1. Paikallinen restore yksin ilman import-fixtureä: nykyiset root- ja
+   slottihavainnot, kaikki vaiheet, puuttuva/virheellinen/ristiriitainen
+   todiste, saman tavun eri tiedosto-/juuri-identiteetti. Ei poistovaltuutta.
+2. Vähintään kolme yritystä ja jokaisen vieraan kohteen ristiriita;
+   tyhjä alkuperäistodiste ja orpo sidonta eivät avaa hallintaa.
+   Nykyiset alkuperäisjournalien lailliset sivuslottiparit, virhesiirtymät
+   ja myöhäinen kilpaileva alias säilyttävät omistajien validoinnin.
+3. Tuore main-varaus/build-valinta ja viivästetyn lukutyön sulku:
+   valtuuden menetys, vanhentuminen ja myöhäinen ristiriita estävät jatkon.
+   Aloitettu työ odotetaan loppuun ennen vapautusta; ensivirhe ja sulkuvirhe
+   säilyvät erillisinä. Aiempi oikean varauksen koe ei todista kaikkien
+   kirjoittajien poissaoloa.
+4. Vasta käynnistysvalinnan päätöksen jälkeen nimetty startup-/service-
+   koe: ei backendia, SQLitea, markerikirjoittajaa tai automaattista
+   yritysavausta; tallennettu valinta säilyy. Tavallinen onnistuva recovery,
+   peruutus ennen/jälkeen sulun ja todellinen loppukuittaus erotetaan.
+
+Rajattu riippumaton lähdekatselmus vahvisti paikallisen palautuksen ja
+koeluettelon rajat. Tässä yhteiskatselmuksessa ei ajettu uusia sovellustestejä.
+Aiempi 305 testin näyttö ei todista yllä olevia puuttuvia liitoksia.
+Tuotantokytkentä, julkinen UI/IPC ja paketoitu näyttö odottavat edelleen
+tarkkaa sopimusta ja sen hyväksyntää. Ei uusia formaatteja levylle,
+riippuvuuksia, palautusmoottoria tai aikaraja-/turvapoikkeuksia.
+
+Historiallinen tulos:
+[6.11.2026, paikallisen palautuksen ja sivuslottien lukukokeet](release-0.3.0-workspace-history.md#w75-history-local-read-results).
+
+**Ennen ikkunaa tapahtuvan sulun avoin liitos:** `index.ts` julkaisee
+`desktopLifecycle`-kahvan vasta `startDesktopComposition`-kutsun palattua.
+Nykyinen `desktopBeforeQuit.ts` ei estä sulkua, kun elinkaarikahva puuttuu;
+raportointiluvan mitätöinti ei yksin sulje uutta dialogia tai odota sen
+lukutöitä. Tämä on uuden entryn suunnittelueste, ei tällä kokeella todettu
+nykyisen palautuksen ajonaikainen vika. Uusi haara tulee ratkaista ennen
+`createInstallationUpdateState`-/recovery-/W6-/adoption-muutoksia,
+nykyisen julkaistun poiston cold-jatkon jälkeen.
+
+Rajattava vaihtoehto on antaa nykyisen quit-käsittelijän nähdä mainin
+omistama tämän käynnistysvaiheen `shutdown()`-kahva jo ennen ikkunaa;
+ei uutta yleistä lifecycle-palvelua. Ennen toteutusta lukitaan kahvan
+julkaisu, sulun synkroninen pääsynesto, aloitettujen lukujen odotus sekä
+kertakäyttöinen luovutus tavalliselle elinkaarelle. Compositionin oma
+sulkupyyntö ei saa odottaa itseään; rinnakkaiset quit-pyynnöt eivät saa
+vapauttaa varausta kahdesti. Dialogin peruutus ei todista I/O:n päättymistä.
+Nykyisen Electronin `MessageBoxOptions.signal` on mahdollinen native-dialogin
+peruutusportti, ei vielä todennettu Windows-sulku. Ei uusia aikarajoja.
+Tuore valinta ennen/jälkeen native-odotuksen vertaa edelleen samaa
+alkuperäistä kohdetta eikä hyväksy tilalle myöhemmin ilmestynyttä yritystä.
+Tämän rajatun omistajuuskysymyksen alla oleva koesopimus ja pienet sulkukokeet
+edeltävät status-/palvelu-/renderer-kytkentää. Muut yllä nimetyt
+suunnittelurajat ja omistajan hyväksymä käynnistysvalinnan koelupa säilyvät.
+
+**Ennen ikkunaa tapahtuvan sulun koesopimus 6.11.2026:** rajattu
+lähdekatselmus erottaa kolme elinikää: uuden palautusvalinnan lukutyön,
+nykyisen composition-kutsun ja valmiin desktop-elinkaaren. Niitä ei
+yhdistetä yhdeksi peruutussignaaliksi. Alla on kokeen toteutusraja,
+ei tuotantokytkentä tai väite todennetusta native-sulusta.
+
+| Nykyinen omistaja | Rajattu vastuu |
+| --- | --- |
+| `main/index.ts` | Säilyttää yhden tämän käynnistysyrityksen väliaikaisen quit-kahvan ja nykyisen valmiin `desktopLifecycle`-kahvan. Rekisteröinti tapahtuu ennen uuden haaran ensimmäistä lukua. Saman kutsun raaka composition-lopputulos odotetaan erillään `startDesktopRuntime`-/virheraportointi-/quit-ketjusta. |
+| `main/desktopBeforeQuit.ts` | Käyttää edelleen nykyistä `shutdown()`-porttia ja pending/settled-suojausta. Index antaa ennen valmista lifecycleä vain nimetyn käynnistyskahvan. Tavallinen puuttuvan kahvan tapaus ja installer-handoffin esto säilyvät. |
+| `main/desktopComposition.ts` | Omistaa uuden entryn pääsyneston, dialogin ja kaikki aloitetut havaintoluvut nykyisten lukijoiden kautta. Julkaistun poiston cold-jatko on ensin valmis; uusi haara edeltää mutatoivaa installation-/recovery-valmistelua. Compositionin nykyinen catch tai jo vastuun saanut selector omistaa varauksen sulun. |
+| `main/desktopSelectorComposition.ts` ja nykyinen runtime-composition | Säilyttävät rakentamisen aikaisen resurssi- ja virhesiivousvastuunsa. Selector saa varauksen omistajuuden jo ennen rakentumisensa valmistumista; vain valmis lifecycle-kahva luovutetaan indexille. Myöhäinen valmistuminen sulkupyynnön jälkeen ei avaa ikkunaa, paluukäynnistystä tai uusia käyttäjäkomentoja. |
+
+Kokeen nimetty main-only-portti on `recoveryStartup`: se tarjoaa
+`registerObservation(owner)`- ja `isClosing()`-operaatiot. Havainto-omistaja
+tarjoaa vain synkronisen `closeAdmission()`-kutsun ja paikallisen
+`waitForSettlement()`-odotuksen; se ei tunne composition-Promisea, quitiä
+tai varauksen vapautusta. Index yhdistää tämän nykyiseen quit-kahvaan.
+Porttia ei välitetä IPC:hen eikä backendille. Uusi entry ei saa käynnistyä
+ilman porttia; vanha entry ilman uutta toimintoa säilyy ennallaan.
+Havainnon normaali sulkeminen ja käyttäjän pysyvä quit-lippu ovat eri tiloja.
+
+1. **Julkaisu ja pääsyn sulku.** Indexin väliaikainen kahva sidotaan vain
+   samaan composition-kutsuun. Rekisteröinti hylätään, jos quit on jo alkanut,
+   kahva on jo rekisteröity tai toinen elinkaari on julkaistu. Sulun pysyvä
+   lippu ja yhteinen odotettava tulos asetetaan ennen callbackeja tai dialogin
+   aborttia, koska kumpikin voi palata synkronisesti `before-quit`-käsittelyyn.
+   Pääsyn sulku estää uuden havainnon ja vanhan dialogivastauksen kulutuksen;
+   sitä ei toteuteta kutsumalla `reservation.invalidate()` tai lisäämällä
+   quit-lippua palautuksen nykyiseen `assertStartupAuthority`-vartijaan.
+2. **Odotuksen suunta.** Ulkoinen sulku odottaa raakaa composition-lopputulosta
+   ja tarvittaessa siitä palautuvan elinkaaren `shutdown()`-kutsua.
+   Composition ei odota tätä ulkoista sulkutulosta. Sen oma sulkemisvalinta
+   liittyy ensin aloitettuihin lukuihin, käyttää nykyistä resurssien sulkua,
+   pyytää quitiä odottamatta quit-käsittelijää ja päättyy ilman lifecycleä.
+   Raaka lopputulos julkaistaan myös hylkäyksessä ennen käyttöliittymän
+   virheraportointia. Sulku ei odota `runSafeDesktopStartup`-kokonaisuutta,
+   `startDesktopRuntime`-käärettä tai sitä itseään odottavaa callbackia.
+3. **Dialogi ja lukutyöt.** Native-valinnalla on oma `AbortController` ja
+   nykyisen `showMessageBox`-portin `signal`. Abort ei yksin todista dialogin
+   tai tiedostotyön päättymistä: jokainen aloitettu Promise ja sen nykyinen
+   sulkutyö odotetaan myös hylkäyksessä. Myöhäinen vastaus ei palauta lupaa.
+   Alkuperäinen kohde-/juuri-/registry-/build-valinta tarkistetaan uudelleen
+   vastauksen jälkeen; muuttunutta kohdetta ei kaapata hiljaa uudeksi.
+4. **Normaali palautuminen.** Käyttäjän valitsema tavallinen recovery käyttää
+   nykyisiä omistajia ja niiden aikarajoja. Havaintokuitti päätetään ennen
+   tätä luovutusta; sitä ei tarkisteta uudelleen valtuutettujen muutosten
+   jälkeen. Quit-kahva säilyy silti compositionin valmistumiseen asti.
+   Sulkupyyntö ei mitätöi palautuksen omaa rollback-/cleanup-valtuutta eikä
+   käynnistä rinnakkaista palautumista. Jo hyväksytyn työn loppukäsittely
+   erotetaan uusien valintojen ja käyttäjäkomentojen estosta.
+5. **Luovutus ja myöhäinen tulos.** Elävän lifecycle-kahvan julkaisu ja
+   väliaikaisen kahvan poistaminen tehdään samassa synkronisessa siirtymässä
+   ilman odotusväliä. Jos sulku on jo alkanut, myöhäinen lifecycle menee
+   suoraan samaan sulkuketjuun, ei aktiiviseksi käyttöliittymäksi.
+   Käynnistysvalinnan omistaja ei vapauta fyysistä varausta toistamiseen.
+   Saman käynnistysyrityksen `isClosing()`-tila säilyy myös väliaikaisen
+   kahvan poistamisen jälkeen eikä palaudu avoimeksi. Indexin myöhempi
+   `before-quit` sulkee sen synkronisesti ennen palautuvia callbackeja;
+   valmis lifecycle omistaa silloin työn odotuksen. Tätä ei yhdistetä
+   sokeasti `invalidateStartupReporting()`-kutsuun, koska myös hyväksytty
+   relaunch mitätöi raportoinnin ennen omaa dispatchiaan. Relaunch tarkistaa
+   ulkoisen sulkutilan ennen dispatchia; sisäinen raportoinnin sulku ei estä
+   sen omaa hyväksyttyä pyyntöä.
+   Sulun jälkeen saapuva `ready-to-show`, latausvirhe tai paluucallback
+   ei näytä ikkunaa tai käynnistä sovellusta uudelleen. Tämä todistetaan
+   myös nykyisellä `applicationWindow.ts`-tapahtumalla, ei vain valintamokilla.
+   Myös `reportDesktopStarted` ja indexin varsinainen relaunch-dispatch
+   vartioidaan. Jo syntyneiden runtime-resurssien jälkeen ei lisätä heittävää
+   porttia niiden catch-/sulkuomistajan ulkopuolelle: myöhäinen esitys
+   jätetään tekemättä, kahva palautetaan suljettavaksi ja nykyinen omistaja
+   päättää työn. Käynnistyksen sulku ei muutu toiseksi resurssisiivoojaksi.
+6. **Virhe ja poistuminen.** `earlyStartup.ts` päätyy nykyisin suoraan
+   `exitApplication(1)`-kutsuun, joka ei kulje `before-quit`-vartijan kautta.
+   Siksi indexin tämän haaran virhekäsittely liittyy raakaa composition-tulosta
+   seuraavaan sulkuun ennen raportointia tai exit-kutsua. Sisäinen virhesulku
+   ei yksin mitätöi B4:n aitoa raportointikuittia; käyttäjän quit tekee sen
+   nykyiseen tapaan. Ensivirhe ja erillinen siivousvirhe säilyvät nykyisellä
+   havaitsijalla ennen turvallista koodimuunnosta. Epävarma sulku ei anna
+   varauksen vapautus-, tiedostosiivous- tai uudelleenavauslupaa.
+   Compositionin sisäinen cleanup odottaa vain paikallisia töitä, ei
+   indexin ulkoista sulkua. Indexin virheraportoinnin edellä tehtävä liittyminen
+   voi odottaa jo julkaistua raakaa lopputulosta ja paikallista sulkua;
+   yhden hylkäys ei ohita muita odotuksia. Tarkoituksellinen Sulje-valinta
+   ei keksi startup-virhettä tai `desktop.started`-onnistumista; todellinen
+   luku-/sulkuvirhe säilyy virheenä myös peruutuksen kanssa kilpaillessaan.
+
+**Kokeen toteutusjärjestys:** ensin nykyisten before-quit- ja index-fixturejen
+rajattu testikooste, sitten sama sopimus oikean main-varauksen ja
+nykyisen havaintofixturen kanssa. Tuotantoon ei lisätä yleistä startup-
+manageria, Promise-aikakatkaisukäärettä, uutta palautusmoottoria tai
+rinnakkaista journalia. Mahdollinen pieni main-only-sovitus omistaa vain
+tämän palautusentryn eliniän. Tavallisen entryn puuttuva uusi portti ei saa
+merkitä, että uusi entry olisi todennettu tai sen suojat voisi ohittaa.
+
+Kokeiden vähimmäisnäyttö ennen tuotantopäätöstä:
+
+- Quit oikean varausluvun, kohdejournalin luvun ja native-valinnan aikana:
+  ei myöhäistä hallinta-/recovery-avausta; aloitettu työ päättyy ennen exitia.
+- Toistuva ja synkronisesti palaava quit: yksi sulkutulos ja vain nykyisen
+  omistajan yksi vapautus; ei itseensä odottavaa ketjua.
+- Compositionin oma Sulje-valinta, tavallinen onnistuva recovery ja sen
+  virhe; myös quit jo luovutetun recoveryn loppukäsittelyn aikana.
+- Myöhään palautuva selector-/runtime-kahva ja myöhäinen `ready-to-show`:
+  sulku odotetaan, käyttöliittymää tai yritystä ei avata uudelleen.
+  Mukana on onnistunut luovutus, sen jälkeinen tavallinen quit ja vasta
+  tämän jälkeen saapuva `ready-to-show`, sekä hyväksytty relaunch ilman quitiä.
+- Ensivirhe sekä erillinen luku-/dialogi-/sulkuvirhe; varauksen epävarmuus
+  säilyttää aineiston. B4:n tavallinen virheraportointi ja vanha quit-polku
+  säilyvät, eikä `app.exit` ohita keskeneräistä työtä.
+- Muuttunut alkuperäinen valinta estää jatkon. Normaalin recoveryn omat
+  hyväksytyt muutokset eivät sen sijaan kaadu vanhan havaintokuitin vertailuun.
+
+Näyttö kirjataan vaiheittain: testikoosteen sulku, oikea varaus-/tiedostoketju
+ja oikea Windows-native-dialogi ovat eri todisteita. Pelkkä Electronin
+tyyppimäärittely tai mockin abort ei todista viimeistä. Nykyiset testien,
+operaatioiden ja CI:n aikarajat sekä W7.5:n paketti- ja integraatioportit
+säilyvät. Status-/palvelu-/renderer-kytkennän muut yllä nimetyt sopimukset
+ovat edelleen erillisiä avoimia liitoksia.
+
+**Rajattu riippumaton lähdekatselmus:** odotussuunnan sopimus voidaan
+toteuttaa nykyisissä omistajissa, mutta pelkkä indexin fallback ei riitä.
+Katselmuksen vaatimat suoran virhe-exitin odotus, recoveryn cleanup-valtuuden
+säilyminen, myöhäisen ikkuna-/onnistumisilmoituksen esto ja relaunch-dispatchin
+esto sisältyvät yllä olevaan koesopimukseen. Tämä kierros ei muuttanut
+sovelluskoodia tai testejä eikä ajanut uutta runtime-todennusta. Jatkokatselmuksen
+kaksi dokumenttitäsmennystä ovat mukana: sulkulippu säilyy luovutuksen yli
+ja selectorin rakentamisen aikainen siivousvastuu alkaa ennen valmista kahvaa.
+Seuraavaksi toteutetaan nimetyt pienet kokeet; native-dialogi ja koko C-kytkentä ovat
+edelleen todennettavia. Aiempi 417 testin näyttö ei ole tämän sulkuliitoksen
+hyväksyntä, eikä avoin Main-aikakatkaisu sulkeudu tällä katselmuksella.
+
+Historiallinen tulos:
+[6.11.2026, sulkusopimuksen ensimmäinen koe](release-0.3.0-workspace-history.md#w75-history-shutdown-experiments).
+
+Rajattu riippumaton katselmus löysi kaksi ehdokkaan puutetta: onnistunut
+raaka paluu saattoi julkaista kahvan ennen paikallisten lukujen päättymistä,
+ja aiempi sulkuvirhe saattoi peittyä myöhemmän luennan hylkäykseen.
+Molemmat korjattiin kontrolleineen; jälkikatselmukseen ei jäänyt löydöstä.
+Index-sovituksen puolustava odotus ei poista compositionin velvollisuutta
+päättää paikalliset työt jo ennen raakaa paluutaan.
+
+Historiallinen tulos:
+[6.11.2026, sulkusopimuksen yhteiskoe ja native-API](release-0.3.0-workspace-history.md#w75-history-shutdown-native).
+
+**Hyväksytty rajattu tuotantototeutus 6.11.2026:** omistaja hyväksyi nykyisen käynnistyksen
+quit-kahvan, raakaa composition-tulosta odottavan liitoksen sekä myöhäisten
+ikkuna-/onnistumis-/relaunch-tapahtumien vartijoiden toteutuksen nykyisiin
+main-omistajiin yllä olevan koesopimuksen mukaan regressioineen. Uusi palautushallinnan
+entry ja delete-IPC eivät aukea tällä valmistelupalalla. Nykyinen
+`before-quit`, index, composition, selector ja ikkunan esitys säilyvät
+omistajina; uutta yleistä lifecycle-manageria ei lisätä. Tuotantototeutuksen
+mukana todistetaan oikean indexin sulku-/virhe-/luovutuskutsut nykyisellä
+fixturellä. Tämä erillinen hyväksyntä koskee vain sulkukytkentää, ei uuden
+palautushallinnan avaamista. Muut C:n status-/palvelu-/kohdevalintasopimukset ja kaikki
+W7.5:n integraatioportit säilyvät.
+
+Historiallinen tulos:
+[6.11.2026, sulkuliitoksen toteutusnäyttö](release-0.3.0-workspace-history.md#w75-history-shutdown-production).
+
 Käyttöliittymä näyttää odotuksen ilman keksittyä prosenttia tai
 vaihevaltuutta. Varsinaisen pyynnön aikana se ei lähetä rinnakkaisia
 muutoksia. Peruutus tapahtuu ennen aloitusta nykyisissä vahvistusdialogeissa;
 kesken poiston ei tarjota peru-toimintoa. Tavallinen selain ei tarjoa
 toimimatonta desktop-poistoa tai tukivientiä.
+
+<a id="w75-terminal-prefix-review"></a>
+
+#### Terminal-luennan rajattu vastuunjakoehdotus
+
+**9.11.2026: lähde- ja riippumaton sopimuskatselmus tehty; omistaja hyväksyi
+rajatun vertailukokeen ja sen jälkeen kahden omistajan tuotantokytkennän,
+pysyvät regressiot ja nykyiset portit. Kytkentä on työpuussa; todennus on kesken.**
+Tämä koskee vain nykyistä `workspaceDeletionFinalization`-viimeistelijää ja
+`workspaceDeletionInventoryRetirement`-omistajaa. [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa etenemistilan. Säilynyt cold-hylkäys rajautui viimeistelijään;
+se ei todista sen kuluttaneen koko testiaikaa tai nimeä viiveen juurisyytä.
+
+| Nykyinen vastuu | Säilyvä ehto ja ehdotettu koerajaus |
+| --- | --- |
+| Viimeistelijän `technical.assertExternalSelection` | Täysi main-/build-valinta, rekisterivalinta, metadatan ja alkuperäisjuurten poissaolo. Nykyinen täysi funktio säilyy. |
+| Retirementin `assertTerminal` | Nyt sama täysi ulkoinen tarkistus ennen ja jälkeen täsmällisen journal-luennan. Vain alkupuolen metadataosuus ehdotetaan erotettavaksi alla kuvatulla nimenomaisella portilla. |
+| `rootGuard`, `removeGuard`, `parentGuard` | Nykyiset kutsukohdat, kansio- ja tiedostoidentiteetit sekä viimeinen täysi tarkistus säilyvät jokaisessa poisto- ja sync-vartijassa. Luenta ei anna itsenäistä muutosvaltuutta. |
+| Journalin viimeinen poisto ja jälkivarmennukset | Nykyinen `clearTerminal`, inventaarion poissaolo, kuittaus, sulku ja vapautus säilyvät kokonaan tämän ehdotuksen ulkopuolella. |
+
+Laajempi vaihtoehto, jossa koko johtava täysi tarkistus vaihdettaisiin
+pelkkään `phase.assertSelected`-kutsuun, **ei ole valittu**: se vähentäisi
+myös vakaata main-valintaa ja V2:n `originalAbsences`-kierroksia. Näiden
+sisäisen toteutuksen säilyminen ei tarkoittaisi saman kutsurytmin säilymistä.
+
+Pienemmässä koeehdokkaassa nykyinen lukukonteksti saisi nimenomaisen
+valinnaisen `assertBeforeSlotRead`-metodin. Vanhan kontekstimuodon
+`assertExternalSelection`-merkitys ja portiton oletuspolku säilyvät.
+Uusi metodi vaikuttaisi vain `assertTerminal`in alkureunaan, ei yhteisen
+`assertSelectedTerminal`-apurin kaikkiin inventaario- ja nimilukuihin.
+Täsmällinen muoto, metodin tyyppi ja sidonta tarkistetaan ennen odotuksia;
+virheellistä porttia ei ohiteta oletuspoluksi.
+
+Viimeistelijän uusi alkutarkistus tekisi järjestyksen
+`stable -> phase external -> originalAbsences -> phase external -> stable -> phase selected`.
+`stable` tehdään vain nykyisen portin ollessa annettu. Alkuperäisjuurten
+nykyinen silmukka ja virheen säilytys jaetaan pieneksi paikalliseksi
+funktioksi, jota molemmat tarkistukset käyttävät. Todisteita ei kaapata
+uudelleen, legacy-luentaa tai yhdistetyn cold-varausportin käyttöalaa ei
+muuteta. Onnistuvalla polulla vakaiden valintojen ja alkuperäisjuurten
+tarkistusten lukumäärä ja keskinäinen järjestys säilyvät, eivät niiden
+ajalliset välit tai virhepolkujen täsmälleen sama järjestys.
+
+Vain alkupuolen yhteinen kolmen palautusjournalin ja viiden
+sidontanimiavaruuden metadatapoissaololuku sisäisine vartijoineen jäisi pois.
+Sen jälkeen luetaan nykyiset journal-slotit tavuineen ja identiteetteineen,
+ja **nykyinen täysi ulkoinen loppuvartija säilyy**. Kaikki varsinaiset
+muutos- ja sync-kutsut sekä natiivin uudelleentarkistukset säilyvät.
+Tulos ei ole välimuisti eikä tiedostojärjestelmän atominen tilakuva.
+
+**Erillinen päätettävä havaintoero:** vain pois jäävän metadataluennan
+aikana näkyvä ja ennen säilyvää tarkistusta täysin palautuva ulkoinen
+metadata tai sen sisäisen vartijan havaitsema tila voi jäädä havaitsematta,
+myös muutosvartijan sisällä. Kilpailevien virheiden ensimmäinen syy voi
+vaihtua. Säilyvässä täydessä tarkistuksessa näkyvä pysyvä muutos estää
+seuraavan varsinaisen muutoksen. Tämä ei lisää lupausta havaita muutosta
+täyden tarkistuksen jälkeisten nykyisten natiivi-odotusten aikana.
+
+Koepäätöksen jälkeen verrataan lähtöä ja yhtä ehdokasta nykyisillä rajoilla:
+vanha/puuttuva portti, V1/V2, tyhjät ja kaikkien omistajien alkuperäistodisteet,
+inventaarion läsnäolo/poissaolo, säilyvät vieraat tavut sekä todelliset
+poisto-/sync-estot. Todennetaan muuttunut journal-identiteetti, palautunut
+payload, menetetty valtuus/kirjoittajapoissaolo, mallinnettu palautuva
+metadata ja kilpailevat syyt. Uuden luvun valtuus päättyy pysyvästi;
+vanha callback hylätään ennen I/O:ta myös myöhemmän luvun aikana.
+Ensivirhe, myös `undefined`, ja erillinen sulkuvirhe säilyvät, ja aloitettu
+työ suljetaan ennen palautumista. Valmiin inventaarioluennan virhepuun
+ilmoitus ei saa hyväksyä muiden lukujen virhettä sen omaksi sulkutulokseksi.
+
+Pienmalliin kytketään tuotantoa vastaavat erilliset `assertStableSelection`
+ja `assertColdReadOwned`-portit; nykyinen pelkän vakaan valinnan fixture ei
+todista niiden koostetta. Laskureissa erotetaan yhteinen metadataluenta,
+alkuperäisjuuret, vakaa valinta ja varsinaiset muutosvartijat. Kesto ei yksin
+riitä: säilyvien tarkistusten järjestys ja estetty muutos on osoitettava.
+Ei uutta manageria, yleistä ohituslippua, fyysisen varausadapterin muutosta
+tai yhteisen tiedostotallentimen korjausta. Omistajan lupa koskee vain
+rajattua koetta. Myöhempi erillinen päätös hyväksyi yllä rajatun tuotantotyön
+sekä yhden uuden jäädytetyn lähteen cold-todennuksen nykyisessä 60 sekunnin
+rajassa vasta pysyvien regressioiden, tyypityksen ja katselmuksen jälkeen.
+Se ei hyväksy aikarajan nostoa, vanhojen hylkäysten sulkemista tai mergepoikkeusta.
+Jos yksi rajattu ehdokas ei auta, tulos luokitellaan ennen uutta ehdotusta;
+tämä ei avaa automaattista vartijoiden keventämissarjaa.
+
+Historiallinen tulos:
+[9.11.2026, terminal-luennan vertailukokeen osanäyttö](release-0.3.0-workspace-history.md#w75-history-terminal-prefix).
+
+Historiallinen tulos:
+[9.11.2026, terminal-kytkennän osanäyttö](release-0.3.0-workspace-history.md#w75-history-terminal-production).
+
+Hyväksytty yksi uuden jäädytetyn lähteen `before:quarantined`-cold-tapaus
+läpäisi nykyisessä 60 sekunnin rajassa. Uusi lapsi jatkoi keskeytynyttä
+poistoa, lähetti valmistumiskuittauksen ja päättyi normaalisti.
+Säilynyt raportti varmisti viimeistelyn, kuittauksen, sulun, leasen ja
+varauksen vapautusten sekä fixturen jälkitarkistusten valmistumisen.
+Kohteen ja teknisten jäännösten poissaolo, säilyvät vieraat/ulkoiset tavut,
+varauksen uusi hankinta ja molempien lasten todellinen close todennettiin.
+Alkuperäisen lapsen tarkoituksellinen katkaisu säilyy osittaisena havaintona.
+Fixture käyttää synteettisiä ei-SQLite-payloadtavuja; tämä ei ole oikean
+SQLiten, kaikkien katkopisteiden, Electron-käyttöliittymän tai paketin näyttö.
+Ensihylkäykset ja muut laajemmat portit pysyvät avoimina. Seuraava normaali
+desktop-kokonaisajo jäi ilman varmennettua loppu- ja siivouskuittausta;
+[osittainen näyttö ja riippumattomat tukipaketti-/salaustulokset](release-0.3.0-integration-history.md#w75-desktop-incomplete-20261110)
+eivät korvaa kokonaisporttia. Samaa ajoa ei uusita epävarman jälkitilan päälle.
+
+Historiallinen tulos:
+[10.11.2026, eristetyn desktop-komennon osanäyttö](release-0.3.0-workspace-history.md#w75-history-terminal-resumed).
 
 #### Backenditon tuki ja virhepolku
 
@@ -2616,17 +6650,8 @@ tuloksen itsenäisesti vastaanottorajalla ja luo uuden muuttumattoman
 projektion. Se ei importoi desktopin tiedosto-/runtime-omistajia eikä anna
 poistovaltuutta. Julkista delete-metodia ei vielä julkaista.
 
-Neljäntoista kokonaisen desktop-lähitiedoston 472 testiä, koko main-tiedoston
-396 testiä ilman ohituksia sekä desktopin tyypitys läpäisivät nykyisillä
-rajoilla. Main-kokeet todentavat myös alkuperäisen vapautusvirheen ennen
-turvallista vastausta. Uusien tulosketjujen kuluttaja ja poistokuitti ovat
-kontrolloituja; tämä ei ole uusi native-/pakettihyväksyntä. Päällekkäisiä
-sarjoja ei summata. Webin kahden kokonaisen vastaanottorajatiedoston 157
-testiä ja tyypitys läpäisivät. Rajattu katselmus havaitsi accessor-testien
-puuttuvan varianttipeiton; jokaisen neljän tulosvariantin kaikki kentät
-tarkistetaan nyt getterin kutsumattomuuteen asti. Jälkikatselmukseen ei
-jäänyt löydöstä. Varhaisen tukiviennin
-omistajuus- ja kytkentänäyttö on edelleen avoin.
+Historiallinen tulos:
+[W7.5 A:n virhetulos- ja vastaanottorajan osanäyttö](release-0.3.0-workspace-history.md#w75-history-a-error-result).
 
 ##### W7.5 A:n tukivientipyynnön elinikä
 
@@ -2640,24 +6665,8 @@ IPC-virhe ei sisällä alkuperäistä poikkeusta; testin yksityinen havaitsija
 saa sen ennen turvallista muunnosta. V2:n sisältö, backend-permission,
 kirjoittaja ja kokorajat säilyvät.
 
-Neljän kokonaisen tukivientitiedoston 83 testiä ja tyypitys läpäisivät.
-Oikeat gzip-/kohde-/naapuritavut tarkistettiin myös vanhentuneessa pyynnössä.
-Kaksi nykyisen main-koostamisen sulkukontrollia läpäisi: vahvistuksessa
-tai tallennusvalinnassa odottava pyyntö ei sulun jälkeen avaa palautetta,
-hae backendin tukitietoja tai kirjoita tiedostoa. Tietokanta-, PDF- ja
-rekisteritavut säilyivät. Main-kokeen Electron-/backend-rajat ovat
-kontrolloituja, eivät native-todiste.
-
-Nykyisen OpenPGP-sarjan neljä koetta läpäisivät. Sen uusi pakotettu
-tukivientihylkäys säilyi hylkäyksenä; alkuperäinen viesti, pino ja syyketju
-löytyivät puretuista samoista tavuista testin ja ajon sidontoineen,
-eivät julkisesta testitulosteesta. Ensimmäisen kokeen vanha tiedostomäärä-
-väittämä täsmennettiin uuden tapauksen kolmelle tiedostolle; aiempi
-epäonnistuminen säilytetään. Tämä ei ole backendittömän v3:n, varhaisen
-native-entryn tai koko W7.5:n hyväksyntä. Koko main-regressio läpäisi 398
-testiä ilman ohituksia samoilla rajoilla. Rajatussa katselmuksessa havaittu
-IPC:n raakasyyn vuotoriski korjattiin; jälkikatselmukseen ei jäänyt löydöstä.
-Kohdeajot ja koko main-sarja ovat päällekkäisiä, eivät summattavaa kattavuutta.
+Historiallinen tulos:
+[W7.5 A:n tukivientipyynnön eliniän osanäyttö](release-0.3.0-workspace-history.md#w75-history-a-support-result).
 
 ##### W7.5 B:n sisältö- ja tiedostoraja
 
@@ -2668,18 +6677,8 @@ omistaa kentät, tapahtumaroolit ja rajat. Vain nykyinen turvallinen
 ensivirhe ja erillinen siivoushavainto ovat sallittuja; puuttuva tieto ei
 muutu terveystulokseksi tai nollaksi.
 
-Viiden kokonaisen tukivientilähitiedoston 179 testiä, tarkastimen 21 testiä
-ja tyypitys läpäisivät nykyisillä rajoilla. Todellinen gzip, nykyinen
-tiedostokirjoittaja, virallinen tarkastin ja JSONin uusintaluku säilyttivät
-tavut, naapuritiedoston ja checksumien avainjärjestyksen. Suljetut
-syöterajat, muuttuneet checksumit ja virhekoodin tyyppivirhe hylätään;
-vanhan v2:n ja legacy-päätteen regressiot säilyivät. Tarkastimen katselmuksen
-ei-merkkijonoisen virhekoodin aukko toistettiin ja korjattiin.
-
-Tämä ei vielä avaa tukivientiä valitsimeen tai ennen pääikkunaa eikä
-todista hallintasession sukupolvea, observerin nykyistä havaintoa tai
-paketoitua ketjua. Nämä ovat seuraava A/B-liitos; poistokanava pysyy
-suljettuna. Päällekkäisiä kohdesarjoja ei summata.
+Historiallinen tulos:
+[W7.5 B:n sisältö- ja tiedostorajan osanäyttö](release-0.3.0-workspace-history.md#w75-history-b-content-result).
 
 ##### W7.5 A/B:n yhteisen vientiomistajan koe
 
@@ -2691,23 +6690,8 @@ nykyiseltä main-omistajalta, eivät myönnä lupaa sen puolesta.
 V3 ei kutsu backend-loaderia tai toimi v2:n fallbackina. Sen app/build
 verrataan suorittajan identiteettiin ennen tiedostokirjoitusta.
 
-Kuuden kokonaisen tukivientitiedoston 211 testiä ja tyypitys läpäisivät.
-Kokeet kattavat peruutuksen, käytetyn native-luvan, dispose-/sukupolvi-
-muutoksen dialogeissa, reentrantin tietolähteen ja oikeat tiedostotavut.
-Katselmuksen virheellisen async-tietolähteen Promise-hylkäysaukko korjattiin;
-neljä lisäkontrollia eivät odota tai hyväksy sen dataa, ja jälkikatselmukseen
-ei jäänyt löydöstä. Nykyisen OpenPGP-kokeen neljä testiä läpäisivät myös
-native-entryn alkuperäisen synteettisen virheen purun. Sama raporttien
-tosiasiallinen tavusisältö ja testisidonta säilyivät, julkinen tuloste ei
-sisältänyt raakasyytä. Tämä ei ole uuden aineistolajin keräyslupa.
-
-Kumpaakaan uutta v3-entryä ei vielä ole liitetty mainin käynnistykseen tai
-valitsimeen. Nykyisen todellisen hallintasukupolven, observerin ja ennen
-pääikkunaa päättyvän startupin kertakäyttöisen valtuuden liitos on edelleen
-avoin. Tätä ei korvata injektoidun vartijan onnistumisella. Nykyisen
-main-tiedoston kaikki 398 regressiota läpäisivät ilman ohituksia yhteisen
-vientityön muutoksen jälkeen. Sen Electron-/backend-rajat ovat edelleen
-kontrolloituja; tämä ei ole uusien v3-entryjen native-todiste.
+Historiallinen tulos:
+[W7.5 A/B:n yhteisen vientiomistajan osanäyttö](release-0.3.0-workspace-history.md#w75-history-ab-owner-result).
 
 ##### W7.5 B3/B4:n omistajuussopimus
 
@@ -2764,6 +6748,15 @@ katselmus sekä täsmällisen revision PR/main-portit. Uusi main-hylkäys
 käsitellään nykyisen ensivirhesäännön mukaan, ei vanhan hyväksynnän nojalla.
 
 #### Testikattavuus ilman rinnakkaista testijärjestelmää
+
+W7.5 B:n valitsinvienti on liitetty nykyiseen `selectorVerification`-
+smoke-omistajaan: `startup` -> `supportBundle` -> `shutdown`. Sama
+argumentiton capability ja nykyinen kirjoittaja tuottavat v3:n mainin
+kiinteään testikohteeseen; normaalin käytön ja palautushallinnan dialogit
+sekä kaikki valtuusvartijat säilyvät. Viennin tai raportoinnin virheessä
+sulku odotetaan eikä onnistumista julkaista. [Sisältö-/sulkusopimus](support-bundle-plan.md#paketoitu-smoke)
+ja [rajattu näyttö](release-0.3.0-integration-history.md#w75-selector-support-smoke-20261109)
+erottavat ohjatun Main-fixturen vielä avoimesta oikeasta pakettiketjusta.
 
 W7.4:n journal-, 23 kohteen rooli-, fyysinen poisto-, metadata- ja
 prosessikatkotestit säilyvät. Niiden koko yhdistelmää ei kopioida kaikkiin

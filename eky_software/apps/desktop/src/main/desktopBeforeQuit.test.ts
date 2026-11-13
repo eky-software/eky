@@ -319,7 +319,7 @@ describe('desktop before-quit handler', () => {
       /await terminateW6b2PackagedProofRuntime\(\{\s*lifecycle: desktopLifecycle,\s*quitApplication\(\) \{\s*w6b2ProofShutdownCompleted = true;\s*app\.quit\(\);\s*\}/,
     );
     expect(source).toMatch(
-      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*invalidateStartupReporting,\s*readLifecycle: \(\) => desktopLifecycle,\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
+      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*invalidateStartupReporting,\s*closeStartupAdmission: \(\) => recoveryStartup\?\.beforeQuit\(\),\s*readLifecycle: \(\) => desktopLifecycle \?\? recoveryStartup\?\.readLifecycle\(\),\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
     );
     expect(source).toMatch(
       /app\.on\('before-quit', \(event\) => \{\s*if \(w6b2ProofShutdownCompleted\) \{\s*invalidateStartupReporting\(\);\s*return;\s*\}\s*void handleBeforeQuit\(event\);\s*\}\);/,
@@ -339,11 +339,11 @@ describe('desktop before-quit handler', () => {
       "import { createDesktopBeforeQuitHandler } from '../src/main/desktopBeforeQuit.js';",
     );
     expect(source).toMatch(
-      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*readLifecycle: \(\) => lifecycle,\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
+      /const handleBeforeQuit = createDesktopBeforeQuitHandler\(\{\s*closeStartupAdmission: \(\) => recoveryStartup\?\.beforeQuit\(\),\s*readLifecycle: \(\) => readElectronE2eQuitLifecycle\(lifecycle \?\? recoveryStartup\?\.readLifecycle\(\),\s*recoveryStartup === undefined \? undefined : deletionExecutionProof\?\.waitForPreparation\),\s*quitApplication: \(\) => app\.quit\(\),\s*\}\);/,
     );
     expect(source.match(/app\.on\('before-quit'/g)).toHaveLength(1);
     expect(source).toMatch(
-      /app\.on\('before-quit', \(event\) => \{\s*deletionProof\?\.closeChannel\(\);\s*deletionExecutionProof\?\.close\(\);\s*void handleBeforeQuit\(event\);\s*\}\);/,
+      /app\.on\('before-quit', \(event\) => \{\s*deletionExecutionProof\?\.markPhaseShutdown\(\);\s*deletionProof\?\.closeChannel\(\);\s*deletionExecutionProof\?\.close\(\);\s*void handleBeforeQuit\(event\);\s*\}\);/,
     );
     expect(source).not.toContain('shutdownStarted');
     expect(source).toContain("app.on('window-all-closed', () => app.quit());");

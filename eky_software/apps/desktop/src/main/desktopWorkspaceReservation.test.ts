@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { mkdir, mkdtemp, readdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { setTimeout as waitForReservationRelease } from 'node:timers/promises';
@@ -80,6 +80,219 @@ beforeEach(() => {
   waitForRelease.mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => { vi.restoreAllMocks(); });
+
+describe('captured main reservation tenure', () => {
+  async function mainFixture() {
+    const f = await fixture();
+    await f.transfer.reclaimAfterExit(f.signal.signal);
+    return f;
+  }
+
+  it('captures an immutable main-only receipt and performs fresh physical checks', async () => {
+    const f = await mainFixture();
+    const receipt = f.owner.captureMainOwnership();
+    const reads = f.initial.handle.assertOwned.mock.calls.length;
+    expect(Object.isFrozen(receipt)).toBe(true);
+    receipt.assertCurrent();
+    await receipt.assertOwned();
+    await receipt.assertOwned();
+    expect(f.initial.handle.assertOwned).toHaveBeenCalledTimes(reads + 2);
+    expect(acquire).toHaveBeenCalledOnce();
+    expect(f.initial.handle.release).not.toHaveBeenCalled();
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['invalidGeneration', 'rejectedAuthority'] as const)(
+    'keeps the current receipt after a rejected %s bind', async variant => {
+      const f = await mainFixture();
+      const receipt = f.owner.captureMainOwnership();
+      const rejected = new Error('synthetic rejected binding');
+      expect(() => f.owner.bind(variant === 'invalidGeneration' ? 'invalid' : randomUUID(), () => {
+        if (variant === 'rejectedAuthority') throw rejected;
+      })).toThrow();
+      receipt.assertCurrent();
+      await receipt.assertOwned();
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+      await f.handle.release();
+      await f.owner.close();
+    },
+  );
+
+  it.each(['bound', 'granted'] as const)(
+    'rejects capture and permanently expires old receipts during a %s transfer', async phase => {
+      const f = await mainFixture();
+      const receipt = f.owner.captureMainOwnership();
+      const transfer = f.owner.bind(randomUUID(), f.assertAuthority);
+      if (phase === 'granted') {
+        await transfer.prepare(f.signal.signal);
+        await transfer.assertGrant(f.signal.signal);
+        transfer.assertCurrent();
+      }
+      expect(() => f.owner.captureMainOwnership()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await transfer.reclaimAfterExit(f.signal.signal);
+      // Bound-only reclaim keeps the exact same physical handle, not the tenure.
+      expect(acquire).toHaveBeenCalledTimes(phase === 'bound' ? 1 : 2);
+      expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await f.owner.captureMainOwnership().assertOwned();
+      await f.handle.release();
+      await f.owner.close();
+    },
+  );
+
+  it.each([
+    ['retained', 'success'], ['retained', 'failure'],
+    ['reacquired', 'success'], ['reacquired', 'failure'],
+  ] as const)('rejects a late %s-handle %s without touching the successor', async (handle, outcome) => {
+    const f = await mainFixture();
+    const receipt = f.owner.captureMainOwnership();
+    const read = deferred();
+    f.initial.handle.assertOwned.mockReturnValueOnce(read.promise);
+    const pending = expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    const transfer = f.owner.bind(randomUUID(), f.assertAuthority);
+    if (handle === 'reacquired') {
+      await transfer.prepare(f.signal.signal);
+      await transfer.assertGrant(f.signal.signal);
+      transfer.assertCurrent();
+    }
+    await transfer.reclaimAfterExit(f.signal.signal);
+    const successor = f.owner.captureMainOwnership();
+    const callbacks = f.assertSingleInstanceOwnership.mock.calls.length;
+    const reads = f.reclaimed.handle.assertOwned.mock.calls.length;
+    if (outcome === 'success') read.resolve();
+    else read.reject(new Error('synthetic old native read failure'));
+    await pending;
+    expect(f.assertSingleInstanceOwnership).toHaveBeenCalledTimes(callbacks);
+    expect(f.reclaimed.handle.assertOwned).toHaveBeenCalledTimes(reads);
+    await successor.assertOwned();
+    await f.owner.assertMainOwned();
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each([
+    ['capture', 'success'], ['capture', 'failure'],
+    ['current', 'success'], ['current', 'failure'],
+    ['owned', 'success'], ['owned', 'failure'],
+  ] as const)('rechecks tenure after a synchronous %s callback with %s', async (boundary, outcome) => {
+    const f = await mainFixture();
+    const receipt = f.owner.captureMainOwnership();
+    let transfer: ReturnType<typeof f.owner.bind> | undefined;
+    f.assertSingleInstanceOwnership.mockImplementationOnce(() => {
+      transfer = f.owner.bind(randomUUID(), f.assertAuthority);
+      if (outcome === 'failure') throw new Error('synthetic old instance callback failure');
+    });
+    if (boundary === 'owned') {
+      await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    } else {
+      expect(() => boundary === 'capture' ? f.owner.captureMainOwnership() : receipt.assertCurrent())
+        .toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    }
+    expect(transfer).toBeDefined();
+    await transfer!.reclaimAfterExit(f.signal.signal);
+    await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    await f.owner.captureMainOwnership().assertOwned();
+    await f.handle.release();
+    await f.owner.close();
+  });
+
+  it.each(['native', 'singleInstance', 'lossSignal', 'invalidated'] as const)(
+    'keeps a current-tenure %s ownership failure sticky', async failure => {
+      const f = await mainFixture();
+      const receipt = f.owner.captureMainOwnership();
+      if (failure === 'native') {
+        f.initial.handle.assertOwned.mockRejectedValueOnce(new Error('synthetic current native failure'));
+      } else if (failure === 'singleInstance') {
+        f.assertSingleInstanceOwnership.mockImplementationOnce(() => { throw new Error('synthetic instance loss'); });
+      } else if (failure === 'lossSignal') f.initial.loss.abort();
+      else f.owner.invalidate();
+      await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => f.owner.captureMainOwnership()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(f.owner.assertMainOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(f.initial.handle.release).not.toHaveBeenCalled();
+      await f.handle.release();
+      await expect(f.owner.close()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    },
+  );
+
+  it('expires receipts immediately on close and shares the physical release', async () => {
+    const f = await mainFixture();
+    const receipt = f.owner.captureMainOwnership();
+    const release = deferred();
+    f.initial.handle.release.mockReturnValueOnce(release.promise);
+    const closing = f.owner.close();
+    expect(f.owner.close()).toBe(closing);
+    expect(() => f.owner.captureMainOwnership()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    release.resolve();
+    await closing;
+    expect(f.initial.handle.release).toHaveBeenCalledOnce();
+    expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    await f.handle.release();
+  });
+
+  it.each(['success', 'failure'] as const)('rejects a pending native %s after close', async outcome => {
+    const f = await mainFixture();
+    const receipt = f.owner.captureMainOwnership();
+    const read = deferred();
+    f.initial.handle.assertOwned.mockReturnValueOnce(read.promise);
+    const pending = expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    await f.owner.close();
+    const callbacks = f.assertSingleInstanceOwnership.mock.calls.length;
+    if (outcome === 'success') read.resolve();
+    else read.reject(new Error('synthetic late native failure after close'));
+    await pending;
+    expect(f.assertSingleInstanceOwnership).toHaveBeenCalledTimes(callbacks);
+    expect(f.initial.handle.release).toHaveBeenCalledOnce();
+    expect(() => f.owner.captureMainOwnership()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+    await f.handle.release();
+  });
+
+  it.for(['missing', 'replaced'] as const)('rejects an actually %s native root through the captured receipt', async (kind, context) => {
+    const actual = await vi.importActual<typeof import('../runtime/workspaceProcessReservation.js')>(
+      '../runtime/workspaceProcessReservation.js',
+    );
+    let native: WorkspaceProcessReservation | undefined;
+    acquire.mockImplementation(async options => {
+      native = await actual.acquireWorkspaceProcessReservation(options);
+      return native;
+    });
+    const root = await mkdtemp(join(tmpdir(), 'eky-main-tenure-root-'));
+    const liveRoot = join(root, 'live');
+    await mkdir(liveRoot);
+    let cleanupVerified = false;
+    context.onTestFinished(async () => {
+      if (context.task.result?.state === 'pass' && cleanupVerified) await rm(root, { recursive: true });
+    });
+    let firstFailure: { cause: unknown } | undefined;
+    try {
+      const owner = await acquireDesktopWorkspaceReservation({ userDataRoot: liveRoot,
+        signal: new AbortController().signal, assertSingleInstanceOwnership() {} });
+      const receipt = owner.captureMainOwnership();
+      await receipt.assertOwned();
+      await rename(liveRoot, join(root, 'original'));
+      if (kind === 'replaced') await mkdir(liveRoot);
+      await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(() => owner.captureMainOwnership()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await expect(owner.close()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      expect(native?.invalidated.aborted).toBe(true);
+    } catch (cause) { firstFailure = { cause }; }
+    // Only this test's native socket remains; all of its checks have settled.
+    try { await native?.release(); cleanupVerified = true; }
+    catch (cause) {
+      if (firstFailure !== undefined) throw new AggregateError([firstFailure.cause, cause], 'TEST_RESERVATION_CLEANUP_FAILED',
+        { cause: firstFailure.cause });
+      throw cause;
+    }
+    if (firstFailure !== undefined) throw firstFailure.cause;
+  });
+});
 
 describe('selector lifecycle with the desktop reservation owner', () => {
   async function selectorFixture() {
@@ -923,6 +1136,8 @@ describe('desktop composition workspace reservation owner', () => {
     });
     let child: WorkspaceProcessReservation | undefined;
     try {
+      const receipt = owner.captureMainOwnership();
+      await receipt.assertOwned();
       await expect(actual.acquireWorkspaceProcessReservation({ userDataRoot: root, signal })).rejects.toThrow();
       let preparationOwned!: () => Promise<void>;
       const transfer = owner.bind(randomUUID(), () => {}, async (_signal, assertCurrent, assertOwned) => {
@@ -932,6 +1147,7 @@ describe('desktop composition workspace reservation owner', () => {
         await expect(actual.acquireWorkspaceProcessReservation({ userDataRoot: root, signal })).rejects.toThrow();
         await assertOwned();
       });
+      expect(() => receipt.assertCurrent()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
       await transfer.prepare(signal);
       await expect(preparationOwned()).rejects.toThrow();
       child = await actual.acquireWorkspaceProcessReservation({
@@ -939,10 +1155,13 @@ describe('desktop composition workspace reservation owner', () => {
       });
       await transfer.assertGrant(signal);
       transfer.assertCurrent();
+      expect(() => owner.captureMainOwnership()).toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
       await expect(owner.assertMainOwned()).rejects.toThrow();
       await child.release();
       child = undefined;
       await transfer.reclaimAfterExit(signal);
+      await expect(receipt.assertOwned()).rejects.toThrow('WORKSPACE_PROCESS_RESERVATION_FAILED');
+      await owner.captureMainOwnership().assertOwned();
       await owner.assertMainOwned();
       await expect(actual.acquireWorkspaceProcessReservation({ userDataRoot: root, signal })).rejects.toThrow();
     } finally {

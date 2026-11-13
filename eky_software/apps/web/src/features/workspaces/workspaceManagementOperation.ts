@@ -1,25 +1,64 @@
 import type {
-  WorkspaceManagementCapability,
+  WorkspaceManagementViewCapability,
   WorkspaceManagementEntry,
-  WorkspaceManagementStatus,
+  WorkspaceManagementViewStatus,
+  WorkspaceDeletionRequest,
+  WorkspaceDeletionResult,
 } from '../../app/desktopWorkspaceManagement.js';
+import { matchesWorkspaceDeletionLabel, readWorkspaceDeletionRequest,
+  readWorkspaceDeletionResult, workspaceDeletionProtocolVersion } from '../../app/desktopWorkspaceManagement.js';
 import type { WorkspaceSelectorMode } from './workspaceSelectorState.js';
 
 type WorkspaceOperationMode = Exclude<WorkspaceSelectorMode, 'list'>;
 
 export type WorkspaceManagementOperationOutcome =
   | Readonly<{ type: 'cancelled' }>
-  | Readonly<{ type: 'refreshed'; status: WorkspaceManagementStatus }>
-  | Readonly<{ type: 'relaunching' }>;
+  | Readonly<{ type: 'refreshed'; status: WorkspaceManagementViewStatus }>
+  | Readonly<{ type: 'relaunching' }>
+  | Readonly<{ type: 'deletion'; result: WorkspaceDeletionResult }>;
 
 export async function runWorkspaceManagementOperation(input: {
-  readonly capability: WorkspaceManagementCapability;
+  readonly capability: WorkspaceManagementViewCapability;
   readonly mode: WorkspaceOperationMode;
   readonly selectedWorkspace?: WorkspaceManagementEntry;
-  readonly status: WorkspaceManagementStatus;
+  readonly status: WorkspaceManagementViewStatus;
   readonly workspaceLabel: string;
+  readonly deletionBackupChoice?: WorkspaceDeletionRequest['backupChoice'] | null;
+  readonly canCreateDeletionBackup?: boolean;
 }): Promise<WorkspaceManagementOperationOutcome> {
+  if (input.status.formatVersion === 2) {
+    const status = input.status;
+    const remove = input.capability.deleteWorkspace;
+    if (input.mode !== 'confirmDelete' || status.operationState !== 'idle' ||
+        status.maintenanceState !== 'idle' || remove === undefined ||
+        input.deletionBackupChoice !== 'explicitDataLoss' ||
+        (input.selectedWorkspace !== undefined && (input.selectedWorkspace.workspaceId !== status.target.workspaceId ||
+          input.selectedWorkspace.workspaceLabel !== status.target.workspaceLabel)) ||
+        !matchesWorkspaceDeletionLabel(input.workspaceLabel, status.target.workspaceLabel)) {
+      throw new Error('WORKSPACE_DELETION_UI_UNAVAILABLE');
+    }
+    const request = readWorkspaceDeletionRequest({ formatVersion: workspaceDeletionProtocolVersion,
+      workspaceId: status.target.workspaceId, typedLabel: input.workspaceLabel, backupChoice: 'explicitDataLoss' });
+    return Object.freeze({ type: 'deletion', result: readWorkspaceDeletionResult(await remove(request)) });
+  }
   switch (input.mode) {
+    case 'confirmDelete': {
+      const selected = requireSelectedWorkspace(input.selectedWorkspace);
+      const target = input.status.workspaces.find(entry => entry.workspaceId === selected.workspaceId);
+      const remove = input.capability.deleteWorkspace;
+      if (remove === undefined || input.status.operationState !== 'idle' || target === undefined ||
+          target.workspaceLabel !== selected.workspaceLabel ||
+          !matchesWorkspaceDeletionLabel(input.workspaceLabel, target.workspaceLabel) ||
+          (input.deletionBackupChoice === 'createBackup' &&
+            (input.canCreateDeletionBackup !== true || !target.isActive ||
+              target.availability !== 'ready' || input.status.activeWorkspaceId !== target.workspaceId))) {
+        throw new Error('WORKSPACE_DELETION_UI_UNAVAILABLE');
+      }
+      const request = readWorkspaceDeletionRequest({ formatVersion: workspaceDeletionProtocolVersion,
+        workspaceId: target.workspaceId, typedLabel: input.workspaceLabel, backupChoice: input.deletionBackupChoice });
+      const result = readWorkspaceDeletionResult(await remove(request));
+      return Object.freeze({ type: 'deletion', result });
+    }
     case 'create': {
       const result = await input.capability.createEmpty(input.workspaceLabel);
       return refreshOrRelaunch(input.capability, result);
@@ -82,7 +121,7 @@ export async function runWorkspaceManagementOperation(input: {
 }
 
 async function refreshOrRelaunch(
-  capability: WorkspaceManagementCapability,
+  capability: WorkspaceManagementViewCapability,
   result: 'completed' | 'relaunching',
 ): Promise<WorkspaceManagementOperationOutcome> {
   if (result === 'relaunching') {

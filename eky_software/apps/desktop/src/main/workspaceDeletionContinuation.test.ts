@@ -6,6 +6,7 @@ import { bindWorkspaceDeletionContinuation, createWorkspaceDeletionResultRuntime
 import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/workspaceMaintenanceLease.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../workspaces/runtime/deferredWorkspaceRuntimeRelaunch.js';
 import { WorkspaceManagementError } from '../workspaces/management/workspaceManagementError.js';
+import type { WorkspaceDeletionExecutionStage } from '../workspaces/management/workspaceManagementService.js';
 
 const operationId = '11111111-1111-4111-8111-111111111111';
 const workspaceId = validateWorkspaceId('22222222-2222-4222-8222-222222222222');
@@ -80,13 +81,66 @@ describe('main-only deletion terminal binding', () => {
     expect(unexpected).not.toHaveBeenCalled();
   });
 
+  it.each(['runtime', 'recoveryManagement'] as const)('forwards the live stage observer unchanged as the third bound resume argument in %s', async kind => {
+    const f = kind === 'runtime' ? fixture() : recoveryTerminalFixture();
+    await f.publish();
+    const owner = f.binding.continuation.captureAuthority(operationId, f.assertLease);
+    const authority = { ...owner, recordRemoved(value: unknown) { owner.recordRemoved(value); } };
+    const observeStage = vi.fn<(stage: WorkspaceDeletionExecutionStage) => void>();
+    await expect(f.binding.continuation.resume(operationId, authority, observeStage)).resolves.toEqual({
+      formatVersion: 1, status: 'completed', navigation: 'selector',
+    });
+    expect(f.command.resume).toHaveBeenCalledExactlyOnceWith(operationId, authority, observeStage);
+    expect(observeStage).not.toHaveBeenCalled();
+    expect(f.removed).toHaveBeenCalledTimes(kind === 'runtime' ? 1 : 0);
+  });
+
   it('forwards the original preparation selection independently of the full publication check', async () => {
     const f = fixture();
     await f.publish();
+    expect(f.command.publish.mock.calls[0]).toHaveLength(5);
     expect(f.command.publish.mock.calls[0]![4]).toBe(f.assertPreparationCurrent);
     await f.command.publish.mock.calls[0]![4]();
     f.revoke();
     await expect(f.command.publish.mock.calls[0]![4]()).rejects.toThrow('SYNTHETIC_MAIN_REVOKED');
+  });
+
+  it.each(['runtime', 'recoveryManagement'] as const)('forwards the optional preparation read owner unchanged in %s', async kind => {
+    const f = kind === 'runtime' ? fixture() : recoveryTerminalFixture();
+    const readOwned = vi.fn(f.assertPreparationCurrent);
+    await f.binding.publish(f.assertLease, f.assertPreparationCurrent, f.target,
+      { operationId, target: f.target, backupDisposition: 'explicitDataLoss' }, f.assertPreparationCurrent, readOwned);
+    const args = f.command.publish.mock.calls[0]!;
+    expect(args).toHaveLength(6);
+    expect(args[4]).toBe(f.assertPreparationCurrent);
+    expect(args[5]).toBe(readOwned);
+    expect(readOwned).not.toHaveBeenCalled();
+    await args[5]!();
+    f.revoke();
+    await expect(args[5]!()).rejects.toThrow('SYNTHETIC_MAIN_REVOKED');
+  });
+
+  it('forwards the recovery-only current proof as the seventh publication argument', async () => {
+    const f = recoveryTerminalFixture();
+    const readOwned = vi.fn(f.assertPreparationCurrent);
+    const readCurrent = vi.fn();
+    await f.binding.publish(f.assertLease, f.assertPreparationCurrent, f.target,
+      { operationId, target: f.target, backupDisposition: 'explicitDataLoss' },
+      f.assertPreparationCurrent, readOwned, readCurrent);
+    const args = f.command.publish.mock.calls[0]!;
+    expect(args).toHaveLength(7);
+    expect(args[5]).toBe(readOwned);
+    expect(args[6]).toBe(readCurrent);
+    expect(readCurrent).not.toHaveBeenCalled();
+  });
+
+  it('rejects a recovery-only current proof from an ordinary runtime before publication', async () => {
+    const f = fixture();
+    await expect(f.binding.publish(f.assertLease, f.assertPreparationCurrent, f.target,
+      { operationId, target: f.target, backupDisposition: 'explicitDataLoss' },
+      f.assertPreparationCurrent, f.assertPreparationCurrent, () => undefined))
+      .rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    expect(f.command.publish).not.toHaveBeenCalled();
   });
 
   it('rejects nested terminal delivery from the final lease guard', async () => {
@@ -310,3 +364,170 @@ function fixture(activeWorkspaceId: typeof workspaceId | null = workspaceId) {
       { operationId, target, backupDisposition: 'explicitDataLoss' }, assertPreparationCurrent),
   };
 }
+
+function recoveryTerminalFixture(persisted: typeof workspaceId | null = workspaceId) {
+  const f = fixture(persisted);
+  const state = { current: true, owned: true, absent: true };
+  const first = new Error('SYNTHETIC_RECOVERY_TERMINAL_OWNER_LOST');
+  const main = vi.fn(() => { if (!state.current) throw first; });
+  const mainOwned = vi.fn(async () => { main(); if (!state.owned) throw first; });
+  const runtimeCurrent = vi.fn(() => { if (!state.absent) throw first; });
+  const runtimeAbsent = vi.fn(async () => { runtimeCurrent(); });
+  const options = { kind: 'recoveryManagement' as const, command: f.command,
+    persistedActiveWorkspaceId: persisted, assertCurrent: main, assertOwned: mainOwned,
+    assertRuntimeCurrent: runtimeCurrent, assertRuntimeAbsent: runtimeAbsent };
+  const binding = bindWorkspaceDeletionContinuation(options);
+  return { ...f, state, first, main, mainOwned, runtimeCurrent, runtimeAbsent, options, binding,
+    publish() { return binding.publish(main, async () => { main(); }, f.target,
+      { operationId, target: f.target, backupDisposition: 'explicitDataLoss' }, f.assertPreparationCurrent); } };
+}
+
+it.each([workspaceId, otherWorkspaceId, null])('recovery terminal preserves %s without imaginary live-marker calls', async persisted => {
+  const f = recoveryTerminalFixture(persisted); await f.publish();
+  const owner = f.binding.continuation.captureAuthority(operationId, f.assertLease);
+  await owner.assertOwned();
+  expect(owner.recordRemoved(f.receipt())).toEqual({ formatVersion: 1, status: 'completed',
+    navigation: persisted === otherWorkspaceId ? 'reopenPrevious' : 'selector' });
+  expect(f.seal).not.toHaveBeenCalled(); expect(f.removed).not.toHaveBeenCalled();
+  expect(f.runtimeAbsent).toHaveBeenCalled();
+});
+
+it.each(['current', 'owned', 'mainOwned'] as const)('recovery terminal never revives after %s fails', async change => {
+  const f = recoveryTerminalFixture(otherWorkspaceId); await f.publish();
+  const owner = f.binding.continuation.captureAuthority(operationId, f.assertLease);
+  if (change === 'current') f.state.absent = false;
+  else (change === 'owned' ? f.runtimeAbsent : f.mainOwned).mockRejectedValueOnce(f.first);
+  await expect(owner.assertOwned()).rejects.toBe(f.first);
+  f.state.absent = true;
+  expect(owner.assertCurrent).toThrow(f.first);
+  expect(() => owner.recordRemoved(f.receipt())).toThrow(f.first);
+  expect(f.seal).not.toHaveBeenCalled(); expect(f.removed).not.toHaveBeenCalled();
+});
+
+it('recovery terminal pins its persisted pointer and runtime callbacks before publication', async () => {
+  const f = recoveryTerminalFixture(otherWorkspaceId);
+  Object.assign(f.options, { persistedActiveWorkspaceId: null, assertRuntimeCurrent() {}, async assertRuntimeAbsent() {} });
+  f.state.absent = false;
+  await expect(f.publish()).rejects.toBe(f.first);
+  expect(f.command.publish).not.toHaveBeenCalled(); expect(f.seal).not.toHaveBeenCalled();
+});
+
+it('recovery terminal rejects false absence and a later otherwise valid receipt', async () => {
+  const f = recoveryTerminalFixture(otherWorkspaceId);
+  f.runtimeAbsent.mockResolvedValueOnce(false as never);
+  await expect(f.publish()).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+  expect(f.command.publish).not.toHaveBeenCalled();
+  const valid = recoveryTerminalFixture(otherWorkspaceId); await valid.publish();
+  const owner = valid.binding.continuation.captureAuthority(operationId, valid.assertLease);
+  let first: unknown;
+  try { owner.recordRemoved({ ...valid.receipt(), status: 'wrong' }); } catch (cause) { first = cause; }
+  expect(first).toBeInstanceOf(Error);
+  expect(() => owner.recordRemoved(valid.receipt())).toThrow(first as Error);
+  expect(valid.removed).not.toHaveBeenCalled();
+});
+
+function recoveryResultFixture(state: 'available' | 'stopped' | 'unavailable' = 'stopped') {
+  const f = resultRuntimeFixture(state);
+  const options = { kind: 'recoveryManagement' as const,
+    assertCurrent() { if (!f.state.current) throw f.revoked; }, assertMainCurrent: f.main,
+    assertOwned: f.owned, assertRuntimeAbsent: f.absent, readRuntimeState: () => f.state.runtime, maintenanceState: f.lease };
+  return { ...f, options, runtime: createWorkspaceDeletionResultRuntime(options) };
+}
+const recoveryCompleted = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: 'reopenPrevious' as const });
+
+it('recovery terminal burns a rejected persisted-pointer publication before any correct retry', async () => {
+  const f = recoveryTerminalFixture(otherWorkspaceId);
+  const target = { ...f.target, previousActiveWorkspaceId: null };
+  const first = await f.binding.publish(f.main, async () => { f.main(); }, target,
+    { operationId, target, backupDisposition: 'explicitDataLoss' }, f.assertPreparationCurrent).catch(cause => cause);
+  expect(first).toMatchObject({ message: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
+  await expect(f.publish()).rejects.toBe(first); expect(f.command.publish).not.toHaveBeenCalled();
+});
+
+it('recovery terminal rejects a false main-owned proof and never accepts a later proof', async () => {
+  const f = recoveryTerminalFixture(otherWorkspaceId); await f.publish();
+  const owner = f.binding.continuation.captureAuthority(operationId, f.assertLease);
+  f.mainOwned.mockResolvedValueOnce(false as never);
+  const first = await owner.assertOwned().catch(cause => cause);
+  expect(first).toMatchObject({ message: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
+  await expect(owner.assertOwned()).rejects.toBe(first);
+  expect(() => owner.recordRemoved(f.receipt())).toThrow(first);
+});
+
+it.each(['captureOperation', 'captureLease', 'ownerLease'] as const)('recovery terminal burns %s rejection', async boundary => {
+  const f = recoveryTerminalFixture(otherWorkspaceId); await f.publish();
+  let first: unknown;
+  if (boundary === 'ownerLease') {
+    const owner = f.binding.continuation.captureAuthority(operationId, f.assertLease);
+    f.assertLease.mockImplementationOnce(() => { throw f.first; });
+    try { owner.assertCurrent(); } catch (cause) { first = cause; }
+    expect(first).toBe(f.first); expect(owner.assertCurrent).toThrow(f.first);
+  } else {
+    if (boundary === 'captureLease') f.assertLease.mockImplementationOnce(() => { throw f.first; });
+    try { f.binding.continuation.captureAuthority(boundary === 'captureOperation' ? '44444444-4444-4444-8444-444444444444' : operationId, f.assertLease); }
+    catch (cause) { first = cause; }
+    expect(first).toBeInstanceOf(Error);
+    expect(() => f.binding.continuation.captureAuthority(operationId, f.assertLease)).toThrow(first as Error);
+  }
+  expect(f.removed).not.toHaveBeenCalled();
+});
+
+it('recovery terminal burns a caught nested terminal rejection before the outer record can succeed', async () => {
+  const f = recoveryTerminalFixture(otherWorkspaceId); await f.publish();
+  const owner = f.binding.continuation.captureAuthority(operationId, f.assertLease);
+  let nestedFailure: unknown;
+  f.assertLease.mockImplementationOnce(() => {
+    try { owner.recordRemoved(f.receipt()); } catch (cause) { nestedFailure = cause; }
+  });
+  expect(() => owner.recordRemoved(f.receipt())).toThrow();
+  expect(nestedFailure).toBeInstanceOf(Error);
+  expect(owner.assertCurrent).toThrow(nestedFailure as Error);
+  expect(f.removed).not.toHaveBeenCalled();
+});
+
+it('recovery result requires fresh idle ownership without borrowing the released delete lease or relaunching', async () => {
+  const f = recoveryResultFixture();
+  const lease = await f.lease.acquire('delete'), old = f.lease.captureCurrentOwner(['delete'], lease);
+  await lease.release(); expect(old).toThrow('WORKSPACE_MAINTENANCE_BUSY');
+  await f.runtime.complete(recoveryCompleted);
+  expect(f.events).toEqual(['absent', 'owned']); expect(f.runtime.readNextAction()).toBe('restartRequired');
+  expect(f.relaunchOwner.isRequested()).toBe(false); expect(f.relaunch).not.toHaveBeenCalled();
+  await expect(f.runtime.complete(recoveryCompleted)).rejects.toThrow('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+});
+
+it.each(['available', 'stopped', 'unavailable'] as const)('recovery result validates physical main observation in %s state', state => {
+  const f = recoveryResultFixture(state);
+  const first = new Error('SYNTHETIC_RECOVERY_RESULT_MAIN_LOST');
+  f.main.mockImplementationOnce(() => { throw first; });
+  expect(() => f.runtime.readNextAction()).toThrow(first);
+  expect(() => f.runtime.readNextAction()).toThrow(first);
+  expect(f.main).toHaveBeenCalledOnce(); expect(f.relaunch).not.toHaveBeenCalled();
+});
+
+it.each(['absent', 'owned'] as const)('recovery result rejects false %s proof and retains the first error', async failed => {
+  const f = recoveryResultFixture();
+  f[failed].mockResolvedValueOnce(false as never);
+  const error = await f.runtime.complete(recoveryCompleted).catch(cause => cause);
+  expect(error).toMatchObject({ message: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
+  expect(() => f.runtime.readNextAction()).toThrow(error);
+  await expect(f.runtime.complete(recoveryCompleted)).rejects.toBe(error);
+  expect(f.relaunch).not.toHaveBeenCalled();
+});
+
+it('recovery result joins held absence before reporting external shutdown', async () => {
+  const f = recoveryResultFixture();
+  let enter!: () => void, release!: () => void, settled = false;
+  const entered = new Promise<void>(resolve => { enter = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; });
+  f.absent.mockImplementationOnce(async () => { enter(); await held; });
+  const work = f.runtime.complete(recoveryCompleted).catch(cause => cause).finally(() => { settled = true; });
+  try {
+    await entered; f.state.current = false;
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(settled).toBe(false); expect(f.owned).not.toHaveBeenCalled();
+    release(); expect(await work).toBe(f.revoked);
+    f.state.current = true;
+    expect(() => f.runtime.readNextAction()).toThrow(f.revoked);
+    expect(f.relaunch).not.toHaveBeenCalled();
+  } finally { release(); await work; }
+});

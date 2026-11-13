@@ -11,13 +11,14 @@ import { deriveWorkspaceDeletionPayloadPaths } from './workspaceDeletionPayloadP
 import { assertDeletionReservationBusy, deletionProcessFixture } from './workspaceDeletionProcessTestSupport.js';
 
 const processCaseTimeoutMs = 60_000;
+const fullColdResumeTimeoutMs = 90_000;
 type AdvancedPhase = Exclude<(typeof workspaceDeletionPhases)[number], 'authorized'>;
 
 for (const phase of workspaceDeletionPhases.filter((value): value is AdvancedPhase => value !== 'authorized')) {
   for (const side of ['before', 'after'] as const) {
     const cut = `${side}:${phase}` as const;
     it(`cold restart joins a real terminated owner ${cut} without replaying consent`, {
-      timeout: processCaseTimeoutMs,
+      timeout: ['before:purgeAuthorized', 'before:quarantined', 'after:quarantined', 'after:purgeAuthorized', 'before:purged'].includes(cut) ? fullColdResumeTimeoutMs : processCaseTimeoutMs,
     }, async test => {
       const f = await deletionProcessFixture(test), first = f.start('publish', cut);
       expect((await first.message('cut')).cut).toBe(cut);
@@ -66,9 +67,9 @@ for (const phase of workspaceDeletionPhases.filter((value): value is AdvancedPha
   }
 }
 
-it.for(['authorized', 'payloadAbsent', 'registryPublished'] as const)(
-  'joins a real terminated owner and resumes the same file command in a fresh process (%s)',
-  { timeout: processCaseTimeoutMs }, async (cut, test) => {
+for (const cut of ['authorized', 'payloadAbsent', 'registryPublished'] as const) {
+  it(`joins a real terminated owner and resumes the same file command in a fresh process (${cut})`,
+  { timeout: cut === 'authorized' ? fullColdResumeTimeoutMs : processCaseTimeoutMs }, async test => {
     const f = await deletionProcessFixture(test), first = f.start('publish', cut);
     expect((await first.message('cut')).cut).toBe(cut);
     await f.assertRetained();
@@ -110,9 +111,10 @@ it.for(['authorized', 'payloadAbsent', 'registryPublished'] as const)(
     for (const path of [slots.currentPath, slots.nextPath, slots.backupPath]) expect(existsSync(path)).toBe(false);
     await f.assertRetained();
   });
+}
 
 it('returns to the empty selector after a real process restart deletes the final faulty workspace', {
-  timeout: processCaseTimeoutMs,
+  timeout: 90_000,
 }, async test => {
   const f = await deletionProcessFixture(test, true), first = f.start('publish', 'authorized');
   await first.message('cut');

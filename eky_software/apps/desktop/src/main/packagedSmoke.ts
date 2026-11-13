@@ -24,6 +24,8 @@ import {
 } from './applicationProtocolSmoke.js';
 import { localRuntimeSessionHeaderName } from './protocolPolicy.js';
 import { runPackagedSupportBundleSmoke } from './packagedSupportBundleSmoke.js';
+import { readSafeStartupFailureCode } from './earlyStartup.js';
+import { readSupportBundleDesktopSystem, type SupportBundleDesktopSystem } from '../supportBundle/supportBundleDesktopData.js';
 
 export const packagedSelectorVerificationPhase = 'selectorVerification' as const;
 export const packagedSelectorVerificationSwitch = 'desktop-smoke-selector-verification';
@@ -73,7 +75,7 @@ const legacyPackagedSmokeStages: readonly PackagedSmokeStage[] = Object.freeze([
   'restoredSessionValidated', 'profileComparison', 'secondBackup', 'shutdown',
 ]);
 
-const selectorPackagedSmokeStages: readonly PackagedSmokeStage[] = Object.freeze(['startup', 'shutdown']);
+const selectorPackagedSmokeStages: readonly PackagedSmokeStage[] = Object.freeze(['startup', 'supportBundle', 'shutdown']);
 
 export type PackagedSmokeStage = (typeof packagedSmokeStages)[number];
 
@@ -281,30 +283,44 @@ export function assertPackagedSelectorSmokeConfiguration(
   }
 }
 
+export function resolvePackagedSmokeSupportBundlePath(configuration: Readonly<PackagedSmokeConfiguration>): string | undefined {
+  return configuration.enabled && configuration.root !== undefined
+    ? join(configuration.root, 'support-bundle', 'packaged-smoke.json.gz') : undefined;
+}
+
 // Verification only: the caller has already completed normal selector startup.
 export async function runPackagedSelectorSmoke(options: {
   configuration: Readonly<PackagedSmokeConfiguration>;
-  electronVersion: string;
-  lifecycle: { applicationWindow: Pick<BrowserWindow, 'destroy'>; shutdown(): Promise<void> };
+  system: Readonly<Record<keyof SupportBundleDesktopSystem, string>>;
+  lifecycle: { applicationWindow: Pick<BrowserWindow, 'destroy' | 'webContents'>; shutdown(): Promise<void> };
+  observeFailure?(error: unknown): void;
   reportStage(stage: PackagedSmokeStage): Promise<void>;
   quitApplication(): void;
 }): Promise<void> {
   const configuration = Object.freeze({ ...options.configuration });
   assertPackagedSelectorSmokeConfiguration(configuration, configuration.userDataPath);
-  const version = options.electronVersion;
+  const system = Object.freeze({ ...options.system });
+  const { applicationWindow } = options.lifecycle, observeFailure = options.observeFailure;
+  const supportBundlePath = resolvePackagedSmokeSupportBundlePath(configuration)!;
   const report = options.reportStage.bind(options), close = options.lifecycle.shutdown.bind(options.lifecycle);
   const destroy = options.lifecycle.applicationWindow.destroy.bind(options.lifecycle.applicationWindow);
   const quit = options.quitApplication.bind(options);
   let failure: { error: unknown } | undefined;
-  try { await report('shutdown'); } catch (error) { failure = { error }; }
+  try {
+    await report('supportBundle');
+    await runPackagedSupportBundleSmoke({ kind: 'desktopOnly', system: readSupportBundleDesktopSystem(system),
+      mainWindow: applicationWindow, supportBundlePath,
+      ...(observeFailure === undefined ? {} : { observeFailure }) });
+    await report('shutdown');
+  } catch (error) { failure = { error }; }
   try { await close(); }
   catch (error) {
     failure = { error: failure === undefined ? error : new AggregateError([failure.error, error],
-      'DESKTOP_SMOKE_SELECTOR_CLOSE_FAILED', { cause: failure.error }) };
+      readSafeStartupFailureCode(failure.error), { cause: failure.error }) };
   }
   if (failure !== undefined) throw failure.error;
   destroy();
-  await writePackagedSmokeResult(configuration, { electronVersion: version, stage: 'shutdown', status: 'ok' });
+  await writePackagedSmokeResult(configuration, { electronVersion: system.electronVersion, stage: 'shutdown', status: 'ok' });
   quit();
 }
 

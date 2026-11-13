@@ -4,6 +4,7 @@ import type {
   InvoicePdfPreviewApi,
   InvoicePdfPreviewTarget,
 } from '../pdf/invoicePdfPreviewTypes.js';
+import type { WorkspaceDeletionRequest } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
 
 const invoicePdfPreviewIpcChannel = 'eky:invoice-pdf-preview:open';
 const openOperationalLogFolderIpcChannel =
@@ -48,6 +49,7 @@ const replaceActiveWorkspaceFromBackupIpcChannel =
   'eky:workspace-management:v1:replace-active-from-backup';
 const switchWorkspaceIpcChannel = 'eky:workspace-management:v1:switch';
 const renameWorkspaceIpcChannel = 'eky:workspace-management:v1:rename';
+const deleteWorkspaceIpcChannel = 'eky:workspace-management:v1:delete';
 
 interface EkyDesktopApi extends InvoicePdfPreviewApi {
   getOperationalLogFailureStatus(): Promise<unknown>;
@@ -57,6 +59,7 @@ interface EkyDesktopApi extends InvoicePdfPreviewApi {
   createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
   createEmptyWorkspace(input: { workspaceLabel: string }): Promise<unknown>;
+  deleteWorkspace(input: Readonly<WorkspaceDeletionRequest>): Promise<unknown>;
   disableInvoicePdfArchive(): Promise<unknown>;
   getInvoicePdfArchiveStatus(): Promise<unknown>;
   getProfileBackupStatus(): Promise<unknown>;
@@ -109,6 +112,9 @@ const ekyDesktopApi: EkyDesktopApi = Object.freeze({
   },
   createEmptyWorkspace(input: { workspaceLabel: string }) {
     return ipcRenderer.invoke(createEmptyWorkspaceIpcChannel, input);
+  },
+  deleteWorkspace(input: Readonly<WorkspaceDeletionRequest>) {
+    return ipcRenderer.invoke(deleteWorkspaceIpcChannel, input);
   },
   disableInvoicePdfArchive() {
     return ipcRenderer.invoke(disableInvoicePdfArchiveIpcChannel);

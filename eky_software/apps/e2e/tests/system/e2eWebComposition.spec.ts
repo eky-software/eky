@@ -15,6 +15,7 @@ import { E2eWebStartupFailure, startE2eWebProcess } from '../../src/environment/
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { windowsServiceProfiles } from '../../src/environment/windowsServiceProfile.js';
 import { finishServiceFixture } from '../../src/fixtures/finishServiceFixture.js';
+import { reportLinuxPreflightPrivateCheck } from '../../src/fixtures/reportStartupProcessOutput.js';
 
 test('WEB-SERVICE-001 @critical boots the actual Vite proxy and closes its owned workload', async ({}, testInfo) => {
   const lifetime = createE2eFixtureLifetime(testInfo.timeout);
@@ -113,6 +114,14 @@ test('WEB-SERVICE-001 @critical boots the actual Vite proxy and closes its owned
       collectArtifacts: async () => {},
       removeRoot: () => removeE2eRunRoot(runRoot),
       report: async cleanup => {
+        const error = failure?.error;
+        if (testInfo.expectedStatus !== 'failed' &&
+          (error instanceof E2eBackendStartupFailure || error instanceof E2eWebStartupFailure)) {
+          await reportLinuxPreflightPrivateCheck(() => error.readPrivatePreflightCheck(), {
+            testName: testInfo.title, testId: testInfo.testId, file: testInfo.file,
+            attempt: testInfo.retry, retryCount: testInfo.retry, repeatCount: testInfo.repeatEachIndex,
+          });
+        }
         await testInfo.attach('web-composition-cleanup', {
           body: JSON.stringify({ schemaVersion: 1, cleanup }), contentType: 'application/json',
         });
@@ -131,6 +140,7 @@ test('WEB-SERVICE-002 @critical @fault rejects an occupied port and preserves th
   let unexpectedWeb: Awaited<ReturnType<typeof startE2eWebProcess>> | undefined;
   let blocker: Server | undefined;
   let failure: { error: unknown } | undefined;
+  let rejected: unknown;
   let startupCleanupUnverified = false;
   try {
     const paths = createE2eWorkerPaths(runRoot, 'WEB-SERVICE-002');
@@ -144,7 +154,6 @@ test('WEB-SERVICE-002 @critical @fault rejects an occupied port and preserves th
       blocker!.once('error', reject);
       blocker!.listen(webPort, '127.0.0.1', resolve);
     });
-    let rejected: unknown;
     startupCleanupUnverified = true;
     try {
       unexpectedWeb = await startE2eWebProcess({ backend, lifetime, paths, runRoot, webPort });
@@ -198,6 +207,15 @@ test('WEB-SERVICE-002 @critical @fault rejects an occupied port and preserves th
       ...(backendPort === undefined ? {} : { releaseBackendPort: () => waitForLoopbackPortRelease(backendPort!) }),
       collectArtifacts: async () => {}, removeRoot: () => removeE2eRunRoot(runRoot),
       report: async cleanup => {
+        const error = failure?.error instanceof E2eBackendStartupFailure || failure?.error instanceof E2eWebStartupFailure
+          ? failure.error : rejected;
+        if (failure !== undefined && testInfo.expectedStatus !== 'failed' &&
+          (error instanceof E2eBackendStartupFailure || error instanceof E2eWebStartupFailure)) {
+          await reportLinuxPreflightPrivateCheck(() => error.readPrivatePreflightCheck(), {
+            testName: testInfo.title, testId: testInfo.testId, file: testInfo.file,
+            attempt: testInfo.retry, retryCount: testInfo.retry, repeatCount: testInfo.repeatEachIndex,
+          });
+        }
         await testInfo.attach('web-fault-composition-cleanup', {
           body: JSON.stringify({ schemaVersion: 1, cleanup }), contentType: 'application/json',
         });

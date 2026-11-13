@@ -36,6 +36,9 @@ export function App(composition: WebAppComposition): React.JSX.Element {
         <DesktopOperationalLogNotice />
         <WorkspaceSelectorPage
           capability={composition.workspaceManagementCapability}
+          {...(composition.createSupportBundle === undefined ? {} : {
+            createSupportBundle: composition.createSupportBundle,
+          })}
         />
       </>
     );

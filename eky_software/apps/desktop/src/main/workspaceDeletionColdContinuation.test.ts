@@ -7,6 +7,7 @@ import * as originalSelection from '../workspaces/deletion/workspaceDeletionOrig
 import { createSwitchRegistry } from '../workspaces/switch/workspaceSwitchTestSupport.js';
 import * as externalSelection from '../workspaces/runtime/workspaceDeletionColdAdmission.js';
 import { createWorkspaceDeletionColdContinuation } from './workspaceDeletionContinuation.js';
+import { createWorkspaceDeletionSettlementObservation } from '../workspaces/deletion/workspaceDeletionSettlementTestSupport.js';
 
 function gate() {
   let resolve!: () => void;
@@ -59,6 +60,20 @@ function fixture(test: TestContext, phase: 'authorized' | 'registryPublished' = 
 }
 
 describe('main cold deletion continuation owner', () => {
+  it('observes actual cold receipt and close without changing their ordering or promise identity', async test => {
+    const f = fixture(test, 'registryPublished'), observation = createWorkspaceDeletionSettlementObservation();
+    await f.run(() => f.owner.assertOwned()); await f.run(f.beforeMetadata);
+    const receipt = observation.sync('recordRemoved', f.owner.recordRemoved.bind(f.owner));
+    expect(receipt(f.terminal())).toEqual({ formatVersion: 1, status: 'completed', navigation: 'selector' });
+    const close = observation.async('ownerClose', f.owner.close.bind(f.owner)), pending = close();
+    expect(pending).toBe(f.owner.close()); await f.run(() => pending);
+    expect(observation.read().events.map(event => `${event.phase}:${event.state}`)).toEqual([
+      'recordRemoved:entered', 'recordRemoved:fulfilled', 'ownerClose:entered', 'ownerClose:fulfilled',
+    ]);
+    expect(f.externalReceipt.revoke).toHaveBeenCalledOnce();
+    expect(f.originalReceipt.revoke).toHaveBeenCalledOnce();
+  });
+
   it('constructs without I/O and initializes only once under owned guards', async test => {
     const f = fixture(test);
     expect(f.capturePhase).not.toHaveBeenCalled(); expect(f.owned).not.toHaveBeenCalled();

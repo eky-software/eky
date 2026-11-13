@@ -112,44 +112,48 @@ async function assertSelectedBytes(input: {
     ...(input.databasePath === undefined ? [] : [dirname(input.databasePath)]),
     ...(input.documentsRoot === undefined ? [] : [input.documentsRoot])])];
   const identities = new Map<string, BigIntStats>();
-  const files: { path: string; identity: BigIntStats }[] = [];
   for (const root of roots) { assertCurrent(); identities.set(root, await inspectRoot(root)); }
-  let batchFailed = false;
-  let firstBatchFailure: unknown;
-  const captureFailure = (error: unknown) => {
-    if (!batchFailed) { batchFailed = true; firstBatchFailure = error; }
-  };
-  const assertBatchCurrent = () => {
-    if (batchFailed) throw firstBatchFailure;
-    try { assertCurrent(); }
-    catch (error) { captureFailure(error); throw error; }
-  };
-  for (let offset = 0; offset < input.documents.length; offset += documentReadBatchSize) {
-    assertBatchCurrent();
-    const outcomes = await Promise.allSettled(input.documents.slice(offset, offset + documentReadBatchSize).map(async document => {
-      try {
-        assertBatchCurrent();
-        if (input.documentsRoot === undefined) throw invalid();
-        const path = join(input.documentsRoot, ...document.storagePath.split('/'));
-        const identity = await assertFileBytes(path, document, profileInspectionMaximumDocumentBytes,
-          assertBatchCurrent, true, captureFailure);
-        return { path, identity };
-      } catch (error) { captureFailure(error); throw error; }
-    }));
-    if (batchFailed) {
-      const others = [...new Set(outcomes.filter(item => item.status === 'rejected')
-        .map(item => item.reason as unknown).filter(error => error !== firstBatchFailure))];
-      if (others.length !== 0) throw new AggregateError([firstBatchFailure, ...others], 'PROFILE_INSPECTION_PDF_BATCH_FAILED');
-      throw firstBatchFailure;
+  const readSelectedFiles = async () => {
+    const files: { path: string; identity: BigIntStats }[] = [];
+    let batchFailed = false;
+    let firstBatchFailure: unknown;
+    const captureFailure = (error: unknown) => {
+      if (!batchFailed) { batchFailed = true; firstBatchFailure = error; }
+    };
+    const assertBatchCurrent = () => {
+      if (batchFailed) throw firstBatchFailure;
+      try { assertCurrent(); }
+      catch (error) { captureFailure(error); throw error; }
+    };
+    for (let offset = 0; offset < input.documents.length; offset += documentReadBatchSize) {
+      assertBatchCurrent();
+      const outcomes = await Promise.allSettled(input.documents.slice(offset, offset + documentReadBatchSize).map(async document => {
+        try {
+          assertBatchCurrent();
+          if (input.documentsRoot === undefined) throw invalid();
+          const path = join(input.documentsRoot, ...document.storagePath.split('/'));
+          const identity = await assertFileBytes(path, document, profileInspectionMaximumDocumentBytes,
+            assertBatchCurrent, true, captureFailure);
+          return { path, identity };
+        } catch (error) { captureFailure(error); throw error; }
+      }));
+      if (batchFailed) {
+        const others = [...new Set(outcomes.filter(item => item.status === 'rejected')
+          .map(item => item.reason as unknown).filter(error => error !== firstBatchFailure))];
+        if (others.length !== 0) throw new AggregateError([firstBatchFailure, ...others], 'PROFILE_INSPECTION_PDF_BATCH_FAILED');
+        throw firstBatchFailure;
+      }
+      for (const outcome of outcomes) {
+        if (outcome.status !== 'fulfilled') throw invalid();
+        files.push(outcome.value);
+      }
     }
-    for (const outcome of outcomes) {
-      if (outcome.status !== 'fulfilled') throw invalid();
-      files.push(outcome.value);
+    if (input.databasePath !== undefined && input.database !== undefined) {
+      files.push({ path: input.databasePath, identity: await assertFileBytes(input.databasePath, input.database, 24 * 1024 ** 3, assertCurrent, false) });
     }
-  }
-  if (input.databasePath !== undefined && input.database !== undefined) {
-    files.push({ path: input.databasePath, identity: await assertFileBytes(input.databasePath, input.database, 24 * 1024 ** 3, assertCurrent, false) });
-  }
+    return files;
+  };
+  const files = await readSelectedFiles();
   await input.assertFinalAuthority?.();
   assertCurrent();
   for (const [root, before] of identities) {
@@ -158,6 +162,13 @@ async function assertSelectedBytes(input: {
     if (before.dev !== after.dev || before.ino !== after.ino) throw invalid();
   }
   assertCurrent();
+  if (input.assertFinalAuthority !== undefined) {
+    // Metadata alone cannot bind content rewritten during the awaited callback.
+    const rebound = await readSelectedFiles();
+    for (let index = 0; index < files.length; index++) {
+      assertSameFile(files[index]!.identity, rebound[index]!.identity);
+    }
+  }
   // Finish caller callbacks before rebinding every file checked earlier in the loop.
   for (const { path, identity } of files) {
     assertTime();

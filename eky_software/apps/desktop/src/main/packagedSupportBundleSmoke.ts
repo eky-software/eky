@@ -4,12 +4,25 @@ import { dirname } from 'node:path';
 import { gunzipSync } from 'node:zlib';
 
 import type { BrowserWindow } from 'electron';
+import { isPackagedBuildRevision } from '../release/desktopBuildInfo.js';
+import {
+  desktopOnlySupportBundleFormatVersion,
+  desktopOnlySupportBundleKind,
+  desktopOnlySupportBundleSections,
+  isSupportBundleTechnicalId,
+  readSupportBundleDesktopData,
+  type SupportBundleDesktopData,
+  type SupportBundleDesktopSystem,
+} from '../supportBundle/supportBundleDesktopData.js';
+import { hasExactDataKeys, isPlainDataRecord } from '../workspaces/registry/workspaceRegistryValueShape.js';
 import { validatePackagedDiagnosticEvidence } from './packagedDiagnosticEvidence.js';
 
 import {
   maximumUncompressedSupportBundleBytes,
   supportBundleFormatVersion,
 } from '../supportBundle/supportBundleArchive.js';
+
+const sha256ChecksumPattern = /^[0-9a-f]{64}$/;
 
 const forbiddenSerializedMarkers = [
   'actorId',
@@ -30,18 +43,34 @@ const forbiddenSerializedMarkers = [
   'userData',
 ];
 
-export async function runPackagedSupportBundleSmoke(options: {
-  appVersion: string;
-  buildRevision: string;
-  mainWindow: BrowserWindow;
+type PackagedSupportBundleSmokeOptions = {
+  mainWindow: Pick<BrowserWindow, 'webContents'>;
   observeFailure?(error: unknown): void;
-  runtimeSessionSecret: string;
   supportBundlePath: string;
-}): Promise<void> {
+} & (
+  | { kind?: 'full'; appVersion: string; buildRevision: string; runtimeSessionSecret: string }
+  | { kind: typeof desktopOnlySupportBundleKind; system: Readonly<SupportBundleDesktopSystem> }
+);
+
+export async function runPackagedSupportBundleSmoke(options: PackagedSupportBundleSmokeOptions): Promise<void> {
+  if (options.kind !== undefined && options.kind !== 'full' && options.kind !== desktopOnlySupportBundleKind) {
+    throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  }
+  const { mainWindow, observeFailure, supportBundlePath } = options;
+  let firstFailure: { error: Error } | undefined;
   try {
-    await mkdir(dirname(options.supportBundlePath), { recursive: true });
+    let validate: (document: unknown) => void;
+    if (options.kind === desktopOnlySupportBundleKind) {
+      const system = Object.freeze({ ...options.system });
+      validate = document => { validateDesktopOnlySupportBundleDocument(document, system); };
+    } else {
+      const identity = Object.freeze({ appVersion: options.appVersion, buildRevision: options.buildRevision,
+        runtimeSessionSecret: options.runtimeSessionSecret });
+      validate = document => { validateSupportBundleDocument(document, identity); };
+    }
+    await mkdir(dirname(supportBundlePath), { recursive: true });
     const result: unknown =
-      await options.mainWindow.webContents.executeJavaScript(
+      await mainWindow.webContents.executeJavaScript(
         `window.ekyDesktop.createSupportBundle()`,
         true,
       );
@@ -49,32 +78,35 @@ export async function runPackagedSupportBundleSmoke(options: {
       throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CREATE_FAILED');
     }
 
-    const metadata = await lstat(options.supportBundlePath);
+    const metadata = await lstat(supportBundlePath);
     if (!metadata.isFile() || metadata.isSymbolicLink()) {
       throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_FILE_FAILED');
     }
-    const compressed = await readFile(options.supportBundlePath);
+    const compressed = await readFile(supportBundlePath);
     const uncompressed = gunzipSync(compressed, {
       maxOutputLength: maximumUncompressedSupportBundleBytes,
     });
     const document = JSON.parse(uncompressed.toString('utf8')) as unknown;
 
-    validateSupportBundleDocument(document, {
-      appVersion: options.appVersion,
-      buildRevision: options.buildRevision,
-      runtimeSessionSecret: options.runtimeSessionSecret,
-    });
+    validate(document);
   } catch (error) {
-    try { options.observeFailure?.(error); } catch { /* Private evidence must not change the result. */ }
-    if (
+    try { observeFailure?.(error); } catch { /* Private evidence must not change the result. */ }
+    const safeError =
       error instanceof Error &&
       /^DESKTOP_SMOKE_SUPPORT_BUNDLE_[A-Z_]+$/.test(error.message)
-    ) {
-      throw error;
-    }
-    throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+        ? error : new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    firstFailure = { error: safeError };
+    throw safeError;
   } finally {
-    await rm(options.supportBundlePath, { force: true });
+    try { await rm(supportBundlePath, { force: true }); }
+    catch (error) {
+      try { observeFailure?.(error); } catch { /* Keep the original result and cleanup failure. */ }
+      const cleanup = new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CLEANUP_FAILED');
+      if (firstFailure !== undefined) {
+        throw new AggregateError([firstFailure.error, cleanup], firstFailure.error.message, { cause: firstFailure.error });
+      }
+      throw cleanup;
+    }
   }
 }
 
@@ -171,6 +203,47 @@ export function validateSupportBundleDocument(
   ) {
     throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CONTENT_FAILED');
   }
+}
+
+export function validateDesktopOnlySupportBundleDocument(
+  value: unknown,
+  expected: Readonly<SupportBundleDesktopSystem>,
+): Readonly<SupportBundleDesktopData> {
+  let data: Readonly<SupportBundleDesktopData>;
+  let sectionChecksums: Record<string, unknown>;
+  let document: Record<string, unknown>;
+  try {
+    if (!isPlainDataRecord(value) || !hasExactDataKeys(value, ['manifest', ...desktopOnlySupportBundleSections])) {
+      throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    }
+    document = value;
+    const manifest = value.manifest;
+    if (!isPlainDataRecord(manifest) || !hasExactDataKeys(manifest, [
+      'supportBundleFormatVersion', 'kind', 'createdAt', 'creationCorrelationId', 'sectionChecksums',
+    ]) || manifest.supportBundleFormatVersion !== desktopOnlySupportBundleFormatVersion ||
+        manifest.kind !== desktopOnlySupportBundleKind || typeof manifest.createdAt !== 'string' ||
+        !Number.isFinite(Date.parse(manifest.createdAt)) || new Date(manifest.createdAt).toISOString() !== manifest.createdAt ||
+        !isSupportBundleTechnicalId(manifest.creationCorrelationId) ||
+        !isPlainDataRecord(manifest.sectionChecksums) || !hasExactDataKeys(manifest.sectionChecksums, desktopOnlySupportBundleSections) ||
+        Object.values(manifest.sectionChecksums).some(value => typeof value !== 'string' || !sha256ChecksumPattern.test(value))) {
+      throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    }
+    sectionChecksums = manifest.sectionChecksums;
+    data = readSupportBundleDesktopData({ system: value.system, availability: value.availability, observation: value.observation });
+    if (!isPackagedBuildRevision(expected.buildRevision) ||
+        data.system.appVersion !== expected.appVersion || data.system.buildRevision !== expected.buildRevision ||
+        data.system.electronVersion !== expected.electronVersion || data.system.platform !== expected.platform ||
+        data.system.architecture !== expected.architecture) {
+      throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    }
+  } catch {
+    throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  }
+  // Hash the validated wire sections, not the projection's canonical key order.
+  if (desktopOnlySupportBundleSections.some(name => sectionChecksums[name] !== checksum(document[name]))) {
+    throw new Error('DESKTOP_SMOKE_SUPPORT_BUNDLE_CHECKSUM_FAILED');
+  }
+  return data;
 }
 
 function hasExpectedSmokeDiagnosticEvent(values: unknown[]): boolean {

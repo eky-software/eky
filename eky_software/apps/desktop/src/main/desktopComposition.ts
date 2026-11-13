@@ -1,7 +1,9 @@
 import { randomUUID } from 'node:crypto';
+import { emitDesktopStartupObservation } from './desktopStartupObservation.js';
 import { bindWorkspaceDeletionContinuation, createWorkspaceDeletionResultRuntime,
   type WorkspaceDeletionMainCommand } from './workspaceDeletionContinuation.js';
 import { createWorkspaceDeletionMarkerBoundary } from './workspaceDeletionMarkerBoundary.js';
+import { createWorkspaceDeletionCommand } from '../workspaces/deletion/workspaceDeletionCommand.js';
 import { recoverDesktopWorkspaceDeletion } from './recoverDesktopWorkspaceDeletion.js';
 import { writePackagedDiagnosticFixture } from './packagedDiagnosticFixture.js';
 import type { StartupExceptionStage } from './startupExceptionEvidence.js';
@@ -109,6 +111,7 @@ import {
   createPackagedSmokeSecretFileStore,
   packagedSelectorVerificationPhase,
   reportPackagedSmokeBackend,
+  resolvePackagedSmokeSupportBundlePath,
   runPackagedSelectorSmoke,
   runPackagedSmokeCheck,
   writePackagedSmokeResult,
@@ -134,6 +137,8 @@ import {
 import { restoreWindowInputFocus } from './windowInputFocus.js';
 import { resolveDesktopWorkspaceStartup } from './resolveDesktopWorkspaceStartup.js';
 import { startDesktopSelectorComposition } from './desktopSelectorComposition.js';
+import { createDesktopWorkspaceRecoverySelection } from './desktopWorkspaceRecoverySelection.js';
+import { selectDesktopWorkspaceRecoveryChoice } from './desktopWorkspaceRecoveryChoice.js';
 import type { DesktopBuildInfo } from '../release/desktopBuildInfo.js';
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createProfileSnapshotBrokerTransport } from '../profileBackup/electronProfileSnapshotBrokerTransport.js';
@@ -287,6 +292,7 @@ export interface DesktopWorkspaceStartupSupportReceipt {
 }
 
 export interface DesktopCompositionDependencies {
+  selectWorkspaceRecoveryChoice?: typeof selectDesktopWorkspaceRecoveryChoice;
   createWorkspaceManagementCapability: typeof createWorkspaceManagementCapability;
   createRuntimeSession(): string;
   openPath(path: string): Promise<string>;
@@ -310,6 +316,11 @@ export interface DesktopCompositionDependencies {
 }
 
 export interface StartDesktopCompositionOptions {
+  readonly observeStartupStage?: import('./desktopStartupObservation.js').DesktopStartupObserver;
+  readonly observeWorkspaceDeletionPhase?: import('./desktopSelectorComposition.js').WorkspaceDeletionPhaseObserver;
+  readonly observeWorkspaceDeletionDetail?: import('./desktopSelectorComposition.js').WorkspaceDeletionPhaseObserver;
+  readonly observeWorkspaceDeletionSlotIo?: import('../workspaces/persistence/crashSafeFileSlot.js').SlotIoObserver;
+  readonly recoveryStartup?: import('./desktopRecoveryStartup.js').DesktopRecoveryStartupPort;
   assertSingleInstanceOwnership(): void;
   appVersion: string;
   applicationPath: string;
@@ -344,6 +355,7 @@ export interface StartDesktopCompositionOptions {
 
 const defaultDesktopCompositionDependencies: DesktopCompositionDependencies = {
   createWorkspaceManagementCapability,
+  selectWorkspaceRecoveryChoice: selectDesktopWorkspaceRecoveryChoice,
   createRuntimeSession: createDesktopRuntimeSession,
   openPath: (path) => shell.openPath(path),
   showErrorBox(title, message) {
@@ -375,6 +387,7 @@ export async function acquireDesktopWorkspaceReservation(options: {
   const identity = held.identity;
   type TransferPhase = 'bound' | 'preparing' | 'released' | 'authorizing' | 'authorized' | 'granted' | 'reclaiming';
   let active: { phase: TransferPhase; pending: boolean } | undefined;
+  let mainTenure = {};
   let invalid = false;
   let closing = false;
   let closeTask: Promise<void> | undefined;
@@ -415,6 +428,38 @@ export async function acquireDesktopWorkspaceReservation(options: {
 
   return Object.freeze({
     assertMainOwned,
+    captureMainOwnership() {
+      const tenure = mainTenure, reservation = held;
+      if (reservation === undefined) throw fail();
+      const assertCaptured = () => {
+        if (tenure !== mainTenure || held !== reservation || active !== undefined || invalid || closing) throw fail();
+      };
+      const assertCurrent = () => {
+        assertCaptured();
+        try { options.assertSingleInstanceOwnership(); }
+        catch {
+          assertCaptured();
+          invalidate();
+          throw fail();
+        }
+        assertCaptured();
+      };
+      assertCurrent();
+      return Object.freeze({
+        assertCurrent,
+        async assertOwned() {
+          assertCurrent();
+          try { await reservation.assertOwned(); }
+          catch {
+            // A completed old check must not invalidate a successor tenure.
+            assertCaptured();
+            invalidate();
+            throw fail();
+          }
+          assertCurrent();
+        },
+      });
+    },
     // Repeatable installation lifetime check, not main ownership or a child grant.
     assertInstallationCurrent: assertMainInstance,
     assertMainCurrent() {
@@ -435,6 +480,7 @@ export async function acquireDesktopWorkspaceReservation(options: {
       if (descriptor === undefined) throw fail();
       assertAuthority();
       const transfer = { phase: 'bound' as TransferPhase, pending: false };
+      mainTenure = {};
       active = transfer;
       let grantSignal: AbortSignal | undefined;
       const assertTransfer = () => {
@@ -658,6 +704,11 @@ export async function startDesktopComposition(
     buildRevision: options.buildInfo.buildRevision,
     runtimeInstanceId: options.runtimeInstanceId,
   } as const;
+  const selectorSmokeSystem = Object.freeze({ appVersion: desktopAppVersion, buildRevision: desktopOperationalIdentity.buildRevision,
+    electronVersion: process.versions.electron, architecture: process.arch, platform: process.platform });
+  const selectorStartupObserver = options.observeStartupException;
+  const observeSelectorSmokeFailure: NonNullable<StartDesktopCompositionOptions['observeStartupException']> =
+    (error, stage, secrets) => selectorStartupObserver?.(error, stage, secrets);
   const operationalLogFailureSink = new IncidentIndexDesktopLogFailureSink({
     logsRoot: operationalLogsRoot,
     operationalIdentity: desktopOperationalIdentity,
@@ -694,6 +745,14 @@ export async function startDesktopComposition(
     if (!startupActive) throw new WorkspaceProcessReservationError('lost');
     options.assertSingleInstanceOwnership();
     reservation?.assertInstallationCurrent();
+  };
+  // Quit stops forward startup, not an existing recovery owner's cleanup.
+  const assertStartupAdmission = () => {
+    assertStartupAuthority();
+    if (options.recoveryStartup?.isClosing()) throw new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  };
+  const relaunchApplication = () => {
+    if (!options.recoveryStartup?.isClosing()) options.relaunchApplication();
   };
   const workspaceMaintenanceLease = new InMemoryWorkspaceMaintenanceLease();
 
@@ -817,6 +876,87 @@ export async function startDesktopComposition(
         assertAuthority: assertStartupAuthority,
       });
     let preWorkspaceBuildAdmission = await readBuildAdmission();
+    if (options.recoveryStartup !== undefined && !smokeMode && options.w6b2PackagedProof === undefined &&
+        (preWorkspaceBuildAdmission === 'exactAcceptedBuild' || preWorkspaceBuildAdmission === 'authorizedNewerBuild')) {
+      const startup = options.recoveryStartup;
+      const mainOwnership = workspaceReservation.captureMainOwnership();
+      const assertObservationCurrent = () => {
+        assertStartupAuthority(); mainOwnership.assertCurrent();
+        if (startup.isClosing()) throw new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+      };
+      const observation = createDesktopWorkspaceRecoverySelection({ root: options.userDataPath,
+        buildInfo: options.buildInfo, releaseInfo: options.releaseInfo,
+        authority: { assertCurrent: assertObservationCurrent,
+          async assertOwned() { assertObservationCurrent(); await mainOwnership.assertOwned(); assertObservationCurrent(); },
+        },
+      });
+      let recoveryLifecycle: DesktopLifecycleHandle | undefined;
+      let closeRequested = false;
+      await reportWorkspaceStage(async () => {
+        const failures: unknown[] = [];
+        try {
+          startup.registerObservation(observation);
+          const offer = await observation.discover();
+          // A choice still requires the unchanged, current recovery offer.
+          if (offer.mode === 'offered' && dependencies.selectWorkspaceRecoveryChoice !== undefined) {
+            const assertRuntimeAbsent = () => {
+              mainOwnership.assertCurrent();
+              if (adoptionWork.pending || adoptionWork.uncertainty !== undefined ||
+                  deletionWork.pending || deletionWork.uncertainty !== undefined) {
+                throw new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+              }
+              mainOwnership.assertCurrent();
+            };
+            const runtimeAbsence = Object.freeze({
+              assertCurrent: assertRuntimeAbsent,
+              async assertOwned() { assertRuntimeAbsent(); await mainOwnership.assertOwned(); assertRuntimeAbsent(); },
+            });
+            await runtimeAbsence.assertOwned();
+            assertObservationCurrent();
+            const choice = await dependencies.selectWorkspaceRecoveryChoice({ selection: offer,
+              ownership: runtimeAbsence, signal: observation.signal,
+              showMessageBox: input => dependencies.showMessageBox(undefined, input) });
+            assertObservationCurrent();
+            await runtimeAbsence.assertOwned();
+            assertObservationCurrent();
+            if (choice === 'manage') {
+              selectorOwnsReservation = true;
+              recoveryLifecycle = await startDesktopSelectorComposition({
+                mode: 'recoveryManagement', selection: offer, runtimeAbsence,
+                options: { ...options, relaunchApplication }, dependencies,
+                reservation: workspaceReservation, maintenanceLease: workspaceMaintenanceLease,
+                localUpdateRuntimePaths: installationUpdateState.localUpdateRuntimePaths,
+                operationalIdentity: desktopOperationalIdentity, operationalLogger: desktopOperationalLogger,
+                failureSink: operationalLogFailureSink, startedAt: desktopStartedAt,
+              });
+            } else if (choice === 'close') closeRequested = true;
+            else if (choice !== 'recover') throw new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+          }
+        } catch (cause) { failures.push(cause); }
+        try { observation.closeAdmission(); }
+        catch (cause) { workspaceReservation.invalidate(); failures.push(cause); }
+        try { await observation.waitForSettlement(); }
+        catch (cause) { workspaceReservation.invalidate(); failures.push(cause); }
+        if (failures.length !== 0) {
+          // A fulfilled local selector is not yet owned by the outer startup bridge.
+          try { await recoveryLifecycle?.shutdown(); }
+          catch (cause) { failures.push(cause); }
+          if (failures.length === 1) throw failures[0];
+          throw new AggregateError(failures, 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', { cause: failures[0] });
+        }
+      }, () => preWorkspaceBuildAdmission !== undefined);
+      if (recoveryLifecycle !== undefined) return recoveryLifecycle;
+      if (closeRequested) {
+        try { await workspaceReservation.close(); }
+        catch (cause) {
+          workspaceReservation.invalidate();
+          throw cause;
+        }
+        options.quitApplication();
+        return undefined;
+      }
+    }
+    assertStartupAdmission();
     let coldImportUncertain = false;
     await reportWorkspaceStage(() => recoverWorkspaceManagementBeforeRuntime({
       admission: coldRecoveryAdmission,
@@ -868,6 +1008,7 @@ export async function startDesktopComposition(
         },
       },
     }), () => preWorkspaceBuildAdmission !== undefined);
+    assertStartupAdmission();
     if (coldRecoveryAdmission !== 'none') {
       // Recovery may publish a first v1 selection, or retain v2 null. Do not
       // carry the earlier registry observation into the selector branch.
@@ -899,14 +1040,17 @@ export async function startDesktopComposition(
         userDataRoot: options.userDataPath,
       });
     let workspaceFirstStartMigration = createWorkspaceMigration();
+    assertStartupAdmission();
     await reportWorkspaceStage(() => workspaceFirstStartMigration.recoverBeforeWorkspaceResolution(),
       () => preWorkspaceBuildAdmission !== undefined);
+    assertStartupAdmission();
     if (installationUpdateState.deferredBusiness?.businessAccepted) {
       // Recovery has completed the already-published business target. Subsequent
       // startup is the normal accepted-build path, not a second deferred migration.
       await deferredBusinessStartup!.assertCurrent();
       deferredBusinessStartup = undefined;
       workspaceFirstStartMigration = createWorkspaceMigration();
+      assertStartupAdmission();
       await reportWorkspaceStage(() => workspaceFirstStartMigration.recoverBeforeWorkspaceResolution(),
         () => preWorkspaceBuildAdmission !== undefined);
     }
@@ -1016,11 +1160,11 @@ export async function startDesktopComposition(
     adoptionWork.pending = true;
     let workspaceStartup: Awaited<ReturnType<typeof resolveDesktopWorkspaceStartup>>;
     try { workspaceStartup = await reportWorkspaceStage(() => resolveDesktopWorkspaceStartup({
-      assertStartupCurrent: assertStartupAuthority,
+      assertStartupCurrent: assertStartupAdmission,
       createRuntimeSession: selectorSmokeConfiguration === undefined ? dependencies.createRuntimeSession : () => {
         throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
       },
-      relaunchApplication: options.relaunchApplication,
+      relaunchApplication,
       resolveActiveWorkspace: dependencies.resolveActiveWorkspace,
       selectorAuthority,
       adoptionAuthority: adoptionPreparation,
@@ -1031,6 +1175,7 @@ export async function startDesktopComposition(
       return undefined;
     }
     if (workspaceStartup.status === 'selector') {
+      assertStartupAdmission();
       if (selectorSmokeConfiguration !== undefined && workspaceStartup.selection.registry.workspaces.length !== 0) {
         throw new Error('DESKTOP_SMOKE_SELECTOR_NOT_EMPTY');
       }
@@ -1038,8 +1183,9 @@ export async function startDesktopComposition(
       // outer catch must not release it after an uncertain selector close.
       selectorOwnsReservation = true;
       const lifecycle = await reportWorkspaceStage(() => startDesktopSelectorComposition({
-        options: selectorSmokeConfiguration === undefined ? options
-          : { ...options, smokeConfiguration: selectorSmokeConfiguration },
+        options: { ...options, relaunchApplication,
+          ...(selectorSmokeConfiguration === undefined ? {} : { smokeConfiguration: selectorSmokeConfiguration,
+            observeStartupException: observeSelectorSmokeFailure }) },
         dependencies, selection: workspaceStartup.selection,
         reservation: workspaceReservation, maintenanceLease: workspaceMaintenanceLease,
         localUpdateRuntimePaths: installationUpdateState.localUpdateRuntimePaths,
@@ -1048,7 +1194,8 @@ export async function startDesktopComposition(
       }), () => preWorkspaceBuildAdmission !== undefined);
       if (selectorSmokeConfiguration !== undefined) {
         await runPackagedSelectorSmoke({ configuration: selectorSmokeConfiguration,
-          electronVersion: process.versions.electron, lifecycle,
+          system: selectorSmokeSystem, lifecycle,
+          observeFailure: error => observeSelectorSmokeFailure(error, 'packagedSmoke'),
           reportStage: options.reportSmokeStage, quitApplication: options.quitApplication });
       }
       return lifecycle;
@@ -1084,6 +1231,7 @@ export async function startDesktopComposition(
       },
     });
     await workspaceReservation.assertMainOwned();
+    assertStartupAdmission();
     await workspaceFirstStartMigration.prepareBeforeBackend({
       activeWorkspaceId: activeWorkspace.workspaceId,
       workspaceState:
@@ -1098,7 +1246,7 @@ export async function startDesktopComposition(
     });
     await rollbackAdmission?.assertCurrent();
     await deferredBusinessStartup?.assertCurrent();
-    assertStartupAuthority();
+    assertStartupAdmission();
     runtimeEntered = true;
     const lifecycle = await startDesktopCompositionRuntime({
       activeWorkspace,
@@ -1111,7 +1259,7 @@ export async function startDesktopComposition(
       installationRuntimeRoot,
       installationUpdateState,
       operationalLogsRoot,
-      options,
+      options: { ...options, relaunchApplication },
       dependencies,
       runtimeSessionSecret,
       rollbackStartupAdmission: rollbackAdmission,
@@ -1122,6 +1270,7 @@ export async function startDesktopComposition(
       workspaceReservation,
       startupReservationOwner,
       assertStartupAuthority,
+      assertStartupAdmission,
       adoptionPreparation,
       adoptionWork,
       ...(!hasDeferredSelectorSwitch && acceptedSelectorStartup === undefined ? {} : { bindSelectorTerminal(prove: NonNullable<typeof proveRuntimeTerminal>) {
@@ -1183,7 +1332,7 @@ export async function startDesktopComposition(
       error instanceof WorkspaceFirstStartMigrationOrchestratorError &&
       error.relaunchRequired
     ) {
-      options.relaunchApplication();
+      relaunchApplication();
       return undefined;
     }
     const reporting = workspaceStartupFailure;
@@ -1223,6 +1372,7 @@ interface DesktopCompositionRuntimeOptions {
   workspaceReservation: DesktopWorkspaceReservation;
   startupReservationOwner: WorkspaceCandidateReservationOwner;
   assertStartupAuthority(): void;
+  assertStartupAdmission(): void;
   bindSelectorTerminal?(prove: (request: DesktopSelectorTerminalRequest) => Promise<Readonly<DesktopSelectorRuntimeTerminalProof>>): void;
 }
 
@@ -1546,6 +1696,7 @@ async function startDesktopCompositionRuntime({
   workspaceReservation,
   startupReservationOwner,
   assertStartupAuthority,
+  assertStartupAdmission,
   adoptionPreparation,
   adoptionWork,
   bindSelectorTerminal,
@@ -1649,14 +1800,7 @@ async function startDesktopCompositionRuntime({
     'smoke',
     'approved-invoice-smoke.pdf',
   );
-  const smokeSupportBundlePath =
-    smokeMode && options.smokeConfiguration.root !== undefined
-      ? join(
-          options.smokeConfiguration.root,
-          'support-bundle',
-          'packaged-smoke.json.gz',
-        )
-      : undefined;
+  const smokeSupportBundlePath = resolvePackagedSmokeSupportBundlePath(options.smokeConfiguration);
   const secretBrokerChannel = new MessageChannelMain();
   const secretBrokerGenerationId = randomUUID();
   const invoicePdfArchiveBrokerChannel = new MessageChannelMain();
@@ -2785,6 +2929,7 @@ async function startDesktopCompositionRuntime({
       : undefined;
     assertStartupAuthority();
     await rollbackBackendAdmission?.assertCurrent();
+    assertStartupAdmission();
     const backendReservation = workspaceReservation.bind(randomUUID(), assertStartupAuthority,
       rollbackBackendAdmission === undefined && !workspaceRestoreSelectionRequired ? undefined
         : async (signal, assertPreparationCurrent) => {
@@ -3020,8 +3165,13 @@ async function startDesktopCompositionRuntime({
     });
     if (smokeMode) reportPackagedSmokeBackend(options.smokeConfiguration, backendHandle.port);
     if (bindSelectorTerminal !== undefined) backendHandle.onUnexpectedExit(() => { selectorBackendExited = true; });
+    emitDesktopStartupObservation(options.observeStartupStage, 'snapshotReady', 'entered');
     await profileSnapshotBrokerClient.waitUntilReady();
+    emitDesktopStartupObservation(options.observeStartupStage, 'snapshotReady', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'snapshotStatus', 'entered');
     await profileSnapshotBrokerClient.getStatus();
+    emitDesktopStartupObservation(options.observeStartupStage, 'snapshotStatus', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'restoreValidation', 'entered');
     const restoreStartupResult =
       await activeProfileRestoreStartupRecovery.validateAfterBackend({
         ...(shouldDeferRestoredProfileAcceptance
@@ -3059,11 +3209,13 @@ async function startDesktopCompositionRuntime({
           ));
         },
       });
+    emitDesktopStartupObservation(options.observeStartupStage, 'restoreValidation', 'returned');
     restoredProfileAwaitingDecision =
       shouldDeferRestoredProfileAcceptance &&
       restoreStartupResult === 'restoredProfileReady';
     selectorRolledBackProfileValidated = profileRestoreStartupMode === 'validateRolledBackProfile' &&
       restoreStartupResult !== 'relaunchRequired';
+    emitDesktopStartupObservation(options.observeStartupStage, 'restoreRelaunchHandling', 'entered');
     if (restoreStartupResult === 'relaunchRequired') {
       if (isWorkspaceActivationReplacementRecovery) {
         const workspaceRecovery = await activeWorkspace.recoverFromFailure();
@@ -3080,11 +3232,17 @@ async function startDesktopCompositionRuntime({
       options.relaunchApplication();
       return undefined;
     }
+    emitDesktopStartupObservation(options.observeStartupStage, 'restoreRelaunchHandling', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'backendHealth', 'entered');
     await assertBackendHealth(
       `http://127.0.0.1:${backendHandle.port}`,
       runtimeSessionSecret,
     );
+    emitDesktopStartupObservation(options.observeStartupStage, 'backendHealth', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'activeProfileAdmission', 'entered');
     activeProfileValidation ??= await validateStartupActiveProfile();
+    emitDesktopStartupObservation(options.observeStartupStage, 'activeProfileAdmission', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'sessionIsolation', 'entered');
     if (firstStartUpdateCoordinator !== undefined) {
       await assertDifferentRuntimeSessionRejected({
         backendOrigin: `http://127.0.0.1:${backendHandle.port}`,
@@ -3093,6 +3251,8 @@ async function startDesktopCompositionRuntime({
         runtimeSessionSecret,
       });
     }
+    emitDesktopStartupObservation(options.observeStartupStage, 'sessionIsolation', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'restoredAcceptance', 'entered');
     if (restoredProfileAwaitingDecision) {
       const restoredProfileId = activeProfileValidation.profileId;
       await activeProfileRestoreStartupRecovery
@@ -3102,8 +3262,10 @@ async function startDesktopCompositionRuntime({
         });
       restoredProfileAwaitingDecision = false;
     }
+    emitDesktopStartupObservation(options.observeStartupStage, 'restoredAcceptance', 'returned');
     selectorAcceptanceReady = true;
     workspaceRestoreSelection?.close();
+    emitDesktopStartupObservation(options.observeStartupStage, 'workspaceAcceptance', 'entered');
     try {
       if (activeWorkspace.mode !== 'adoption') await activeWorkspace.accept(activeProfileValidation.profileId);
       else {
@@ -3130,39 +3292,62 @@ async function startDesktopCompositionRuntime({
       }
     }
     finally { selectorAcceptanceReady = false; }
+    emitDesktopStartupObservation(options.observeStartupStage, 'workspaceAcceptance', 'returned');
     // The switch is now sealed. Later FirstStart validation still checks fresh
     // contents against this accepted lineage, not a consumed switch capability.
     if (bindSelectorTerminal !== undefined) acceptedSelectorProfileId = activeProfileValidation.profileId;
     workspaceStartupAccepted = true;
+    emitDesktopStartupObservation(options.observeStartupStage, 'registryTransition', 'entered');
     await workspaceFirstStartMigration.transitionRegistryAfterActiveWorkspaceAcceptance();
+    emitDesktopStartupObservation(options.observeStartupStage, 'registryTransition', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'packagedFaultGate', 'entered');
     await w6b2PackagedFaultInjection?.interruptAfterRegistryTransitionIfRequested();
+    emitDesktopStartupObservation(options.observeStartupStage, 'packagedFaultGate', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'buildAcceptance', 'entered');
     if (firstStartUpdateCoordinator !== undefined) {
       if (deferredBusinessStartup === undefined) await firstStartUpdateCoordinator.acceptAfterBackendReady();
       else await deferredBusinessStartup.accept(firstStartUpdateCoordinator, workspaceFirstStartMigration);
     }
+    emitDesktopStartupObservation(options.observeStartupStage, 'buildAcceptance', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'selectorFreshness', 'entered');
     await acceptedSelectorStartup?.assertCurrent();
+    emitDesktopStartupObservation(options.observeStartupStage, 'selectorFreshness', 'returned');
     targetBuildAccepted = true;
+    emitDesktopStartupObservation(options.observeStartupStage, 'migrationCompletion', 'entered');
     await workspaceFirstStartMigration.completeAfterTargetAcceptance();
+    emitDesktopStartupObservation(options.observeStartupStage, 'migrationCompletion', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'schedulerInitialCheck', 'entered');
     await recoveryPointScheduler.start();
+    emitDesktopStartupObservation(options.observeStartupStage, 'schedulerInitialCheck', 'returned');
   } catch (error) {
+    emitDesktopStartupObservation(options.observeStartupStage, 'startupCatch', 'entered');
     try { options.observeStartupException?.(error, 'runtimeStartup', [runtimeSessionSecret]); } catch { /* Optional private evidence. */ }
+    emitDesktopStartupObservation(options.observeStartupStage, 'secretDrain', 'entered');
     profileSnapshotInspectionClient.closeAdmission();
     const secretsSettled = await secretBrokerHandle.sealAndDrain().then(() => true, () => false);
+    emitDesktopStartupObservation(options.observeStartupStage, 'secretDrain', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'schedulerStop', 'entered');
     await recoveryPointScheduler.stopChecks().catch(() => undefined);
+    emitDesktopStartupObservation(options.observeStartupStage, 'schedulerStop', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'inspectionShutdown', 'entered');
     let inspectionCleanupFailed = false;
     try { await profileSnapshotInspectionClient.shutdown(); }
     catch { inspectionCleanupFailed = true; }
+    emitDesktopStartupObservation(options.observeStartupStage, 'inspectionShutdown', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'backendStop', 'entered');
     const startedBackend = backendHandle;
     const backendStopped = startedBackend === undefined
       ? !backendStartAttempted || (error instanceof DesktopBackendStartupError &&
           error.ownership.processState === 'absent' && error.ownership.migrationGateSettled &&
           error.ownership.reservationReclaimed)
       : await Promise.resolve().then(() => startedBackend.stop()).then(outcome => outcome === 'exited', () => false);
+    emitDesktopStartupObservation(options.observeStartupStage, 'backendStop', 'returned');
     // Unsettled startup work must retain ownership even if broker cleanup fails.
     // Reclaim from the stopped child before retaining ownership for uncertain main I/O.
     if (!backendStopped || inspectionCleanupFailed || !secretsSettled || workspaceRolledBackValidationFailed || workspaceTerminalWorkUnsettled || adoptionWork.pending || adoptionWork.uncertainty !== undefined) {
       workspaceReservation.invalidate();
     }
+    emitDesktopStartupObservation(options.observeStartupStage, 'brokerClose', 'entered');
     let brokerCleanupFailed = inspectionCleanupFailed || !secretsSettled;
     for (const broker of [
       profileSnapshotBrokerClient,
@@ -3175,6 +3360,8 @@ async function startDesktopCompositionRuntime({
         brokerCleanupFailed = true;
       }
     }
+    emitDesktopStartupObservation(options.observeStartupStage, 'brokerClose', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'recoveryAdmission', 'entered');
     if (brokerCleanupFailed) {
       workspaceReservation.invalidate();
       throw error;
@@ -3186,6 +3373,8 @@ async function startDesktopCompositionRuntime({
     // Rejected original-content authority is not permission to select another runtime.
     if (restoreRuntimeRecoveryBlocked || adoptionWork.pending || adoptionWork.uncertainty !== undefined) throw error;
     await workspaceReservation.assertMainOwned();
+    emitDesktopStartupObservation(options.observeStartupStage, 'recoveryAdmission', 'returned');
+    emitDesktopStartupObservation(options.observeStartupStage, 'recoveryHandling', 'entered');
     const recoverWorkspace = async () => {
       if (activeWorkspace.mode !== 'adoption') return activeWorkspace.recoverFromFailure();
       const context = activeWorkspace.adoptionContext;
@@ -3271,6 +3460,7 @@ async function startDesktopCompositionRuntime({
     throw error;
   }
 
+  emitDesktopStartupObservation(options.observeStartupStage, 'windowPreparation', 'entered');
   backendHandle.onUnexpectedExit(() => {
     profileSnapshotInspectionClient.closeAdmission();
     void profileSnapshotInspectionClient.shutdown().catch(() => undefined);
@@ -3305,6 +3495,8 @@ async function startDesktopCompositionRuntime({
     permissionSession: session.defaultSession,
   });
 
+  emitDesktopStartupObservation(options.observeStartupStage, 'windowPreparation', 'returned');
+  emitDesktopStartupObservation(options.observeStartupStage, 'windowCreation', 'entered');
   applicationWindow = createApplicationWindow(
     options.applicationPath,
     !smokeMode,
@@ -3360,7 +3552,9 @@ async function startDesktopCompositionRuntime({
         );
       },
     },
+    () => !options.recoveryStartup?.isClosing(),
   );
+  emitDesktopStartupObservation(options.observeStartupStage, 'windowCreation', 'returned');
   const mainWindow = applicationWindow;
   operationalLogFailureCapability = createOperationalLogFailureCapability({
     ipcMain, mainWindow, failureSink: operationalLogFailureSink,
@@ -3762,18 +3956,28 @@ async function startDesktopCompositionRuntime({
     },
     workspaceRuntimeRelaunch,
   );
-  const deletionBinding = options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({
-    command: options.workspaceDeletionCommand, activeWorkspaceId: activeWorkspace.workspaceId,
-    assertCurrent() {
-      if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
-      options.assertSingleInstanceOwnership();
-      workspaceReservation.assertMainCurrent();
-      if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
-    },
-    async assertOwned() {
-      await activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();
-      await workspaceReservation.assertMainOwned();
-    },
+  const assertDeletionCurrent = () => {
+    if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+    options.assertSingleInstanceOwnership();
+    workspaceReservation.assertMainCurrent();
+    if (shutdownStarted) throw new Error('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN');
+  };
+  const assertDeletionOwned = async () => {
+    assertDeletionCurrent();
+    await activeWorkspaceLifecycle.assertNoActiveWorkspaceRuntime();
+    assertDeletionCurrent();
+    await workspaceReservation.assertMainOwned();
+    assertDeletionCurrent();
+  };
+  const deletionCommand = options.workspaceDeletionCommand ?? (options.workspaceDeletionPublisher === undefined
+    ? createWorkspaceDeletionCommand({ userDataRoot: options.userDataPath,
+      registry: new WorkspaceRegistryStore({ installationRoot: options.userDataPath,
+        filePath: join(options.userDataPath, WORKSPACE_REGISTRY_FILE_NAME) }),
+      assertWritersAbsent: assertDeletionOwned }) : undefined);
+  const deletionBinding = deletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({
+    command: deletionCommand, activeWorkspaceId: activeWorkspace.workspaceId,
+    assertCurrent: assertDeletionCurrent,
+    assertOwned: assertDeletionOwned,
     sealActiveMarker: deletionMarker.sealActiveMarker,
     recordActiveRemoved: deletionMarker.recordActiveRemoved,
   });
@@ -4385,19 +4589,22 @@ async function startDesktopCompositionRuntime({
     }
   }
 
-  reportDesktopStarted({
-    identity: desktopOperationalIdentity,
-    logger: desktopOperationalLogger,
-    startedAt: desktopStartedAt,
-  });
+  if (!options.recoveryStartup?.isClosing()) {
+    reportDesktopStarted({
+      identity: desktopOperationalIdentity,
+      logger: desktopOperationalLogger,
+      startedAt: desktopStartedAt,
+    });
 
-  void loadApplicationWindow(mainWindow).catch(() => {
-    dependencies.showErrorBox(
-      'Eky ei käynnistynyt',
-      'Käyttöliittymää ei voitu ladata turvallisesti.',
-    );
-    options.quitApplication();
-  });
+    void loadApplicationWindow(mainWindow).catch(() => {
+      if (options.recoveryStartup?.isClosing()) return;
+      dependencies.showErrorBox(
+        'Eky ei käynnistynyt',
+        'Käyttöliittymää ei voitu ladata turvallisesti.',
+      );
+      options.quitApplication();
+    });
+  }
 
   return lifecycleHandle;
 }

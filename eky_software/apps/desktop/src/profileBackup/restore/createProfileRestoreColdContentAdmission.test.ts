@@ -9,6 +9,11 @@ import { createProfileSnapshotArtifactIdentity } from '../../runtime/profileInsp
 import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
 import { encodeProfileInspectionDocumentBindings } from '../../runtime/profileInspectionDocumentBindings.js';
 import type { ProfileInspectionColdSources } from '../../runtime/profileInspectionMessages.js';
+import { WorkspaceRemnantBindingStore } from '../../workspaces/deletion/workspaceRemnantBindingStore.js';
+import { WorkspaceRegistryStore } from '../../workspaces/registry/workspaceRegistryStore.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../../workspaces/registry/workspaceRegistryPaths.js';
+import { captureWorkspaceBackupReplacementStartupSelection } from '../../workspaces/replacement/workspaceBackupReplacementStartupBinding.js';
+import { WorkspaceSwitchJournalStore } from '../../workspaces/switch/workspaceSwitchJournal.js';
 import { createProfileRestoreColdContentAdmission } from './createProfileRestoreColdContentAdmission.js';
 import type { ProfileRestoreColdContentContext } from './prepareProfileRestoreColdForwardRecovery.js';
 import type { ProfileRestoreActivationJournal } from './profileRestoreActivationJournal.js';
@@ -24,6 +29,44 @@ afterEach(context => {
 });
 
 describe('cold forward content admission', () => {
+  it('keeps real replacement metadata fresh at initial and reused content boundaries', async () => {
+    const f = await fixture(), metadata = await attachStartupSelection(f);
+    const registryBefore = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+    const pdfBefore = await readFile(join(f.documentsRoot, 'invoice.pdf'));
+    try {
+      await f.admit(f.context);
+      expect(f.context.assertCurrent).toHaveBeenCalledTimes(6);
+      expect(metadata.registryRead).toHaveBeenCalledTimes(12);
+      expect(metadata.switchRead).toHaveBeenCalledTimes(12);
+      expect(metadata.bindingRead).toHaveBeenCalledTimes(12);
+      await f.admit(f.context);
+      expect(f.context.assertCurrent).toHaveBeenCalledTimes(8);
+      expect(metadata.registryRead).toHaveBeenCalledTimes(16);
+      expect(metadata.switchRead).toHaveBeenCalledTimes(16);
+      expect(metadata.bindingRead).toHaveBeenCalledTimes(16);
+      expect(f.inspect).toHaveBeenCalledOnce();
+      expect(await readFile(f.databasePath)).toEqual(f.database);
+      expect(await readFile(join(f.documentsRoot, 'invoice.pdf'))).toEqual(pdfBefore);
+      expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(registryBefore);
+    } finally { metadata.selection.close(); }
+  });
+
+  it('rejects changed real replacement metadata before accepting reused content', async () => {
+    const f = await fixture(), metadata = await attachStartupSelection(f);
+    const pdfBefore = await readFile(join(f.documentsRoot, 'invoice.pdf'));
+    try {
+      await f.admit(f.context);
+      await metadata.registry.write({ ...metadata.registryValue,
+        workspaces: metadata.registryValue.workspaces.map(entry => ({ ...entry, workspaceLabel: 'Changed synthetic company' })) });
+      const changed = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
+      await expect(f.admit(f.context)).rejects.toThrow('WORKSPACE_REPLACEMENT_RECOVERY_REQUIRED');
+      expect(f.inspect).toHaveBeenCalledOnce();
+      expect(await readFile(f.databasePath)).toEqual(f.database);
+      expect(await readFile(join(f.documentsRoot, 'invoice.pdf'))).toEqual(pdfBefore);
+      expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(changed);
+    } finally { metadata.selection.close(); }
+  });
+
   it('keeps full selection at admission, inspection and final bytes without repeating it inside readonly probes', async () => {
     const f = await fixture();
     const full = vi.spyOn(f.context, 'assertCurrent');
@@ -179,6 +222,26 @@ describe('cold forward content admission', () => {
     expect(await readFile(f.databasePath)).toEqual(f.database);
   });
 });
+
+async function attachStartupSelection(f: Awaited<ReturnType<typeof fixture>>) {
+  const workspaceId = randomUUID(), lineageIdentity = { formatVersion: 1 as const, profileId: 'b'.repeat(64) };
+  const registry = new WorkspaceRegistryStore({ installationRoot: f.root, filePath: join(f.root, WORKSPACE_REGISTRY_FILE_NAME) });
+  const registryValue = { formatVersion: 1 as const, activeWorkspaceId: workspaceId, workspaces: [{ workspaceId,
+    workspaceLabel: 'Synthetic company', lineageIdentity, layoutVersion: 1 as const, lifecycleState: 'ready' as const,
+    createdAt: '2026-11-07T00:00:00.000Z' }] };
+  await registry.write(registryValue);
+  const sources = { registry, switchJournal: new WorkspaceSwitchJournalStore(f.root) };
+  const registryRead = vi.spyOn(registry, 'inspectSlots'), switchRead = vi.spyOn(sources.switchJournal, 'inspectSlots');
+  const bindingRead = vi.spyOn(WorkspaceRemnantBindingStore.prototype, 'inspect');
+  const selection = await captureWorkspaceBackupReplacementStartupSelection({ userDataRoot: f.root,
+    operationId: f.journal.operationId, workspaceId, lineageIdentity, mode: 'normal' }, f.context.assertAuthority, sources);
+  registryRead.mockClear(); switchRead.mockClear(); bindingRead.mockClear();
+  f.context.assertReadOwnership = async () => { f.context.assertAuthority(); };
+  f.context.assertCurrent = vi.fn(async () => {
+    f.context.assertAuthority(); await selection.assertCurrent(f.context.assertAuthority); f.context.assertAuthority();
+  });
+  return { selection, registry, registryValue, registryRead, switchRead, bindingRead };
+}
 
 async function fixture() {
   const root = await mkdtemp(join(tmpdir(), 'eky-cold-admission-')); roots.push(root);

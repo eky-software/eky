@@ -14,7 +14,7 @@ import type {
 import type { DesktopCompositionDependencies } from '../src/main/desktopComposition.js';
 import { readSafeStartupFailureCode } from '../src/main/earlyStartup.js';
 import type { ElectronE2eConfig } from './electronE2eConfig.js';
-import { isWorkspaceDeletionBackupProofScenario } from './workspaceDeletionProofProtocol.js';
+import { isWorkspaceDeletionBackupProofScenario, workspaceDeletionRecoveryProofScenarioId } from './workspaceDeletionProofProtocol.js';
 import {
   parseElectronE2eBackendFailureObservation,
   readElectronE2eBackendFailureCode,
@@ -100,9 +100,14 @@ export function createElectronE2eNativeAdapters(
       const cancelId = options.cancelId ?? 0;
       const acceptedResponse =
         options.buttons?.findIndex((_button, index) => index !== cancelId) ?? 0;
+      const recoveryManagementChoice = config.scenarioId === workspaceDeletionRecoveryProofScenarioId
+        && options.title === 'Keskeytynyt palautus'
+        && options.buttons?.join('|') === 'Jatka palautumista|Rajattu hallinta|Sulje'
+        && options.defaultId === 0 && options.cancelId === 2;
       const response =
         config.dialogMode === 'cancel'
           ? cancelId
+          : recoveryManagementChoice ? 1
           : acceptedResponse >= 0
             ? acceptedResponse
             : 0;

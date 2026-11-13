@@ -97,6 +97,18 @@ export class ProfileRestoreActivationJournalStore {
     });
   }
 
+  // Source selection only; neither this observation nor its identities grant repair authority.
+  inspectRecoverySelection(assertAuthority: () => void) {
+    return this.withDeletionSlotAccess(async () => {
+      const check = () => assertSynchronousProfileRestoreMutationAuthority(assertAuthority);
+      const selection = await new CrashSafeByteSlotStore(this.deletionFileSystem).inspectRecoverySelection(check);
+      const value = selection.bytes === undefined ? undefined
+        : Object.freeze(parseJournalSource(Buffer.from(selection.bytes).toString('utf8')));
+      check();
+      return Object.freeze({ ...selection, value });
+    });
+  }
+
   clearAfterDeletionPurged(bindingValue: unknown, selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority & {
     assertDeletionPurged(): Promise<void>;
   }): Promise<void> {
@@ -573,18 +585,20 @@ async function readJournal(
     ) {
       throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
     }
-    const parsed: unknown = JSON.parse(await readFile(path, 'utf8'));
-    const journal = parseProfileRestoreActivationJournal(parsed);
-    if (journal === undefined) {
-      throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
-    }
-    return journal;
+    return parseJournalSource(await readFile(path, 'utf8'));
   } catch (error) {
     if (isNodeError(error) && error.code === 'ENOENT') {
       return undefined;
     }
     throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
   }
+}
+
+function parseJournalSource(source: string): ProfileRestoreActivationJournal {
+  const parsed: unknown = JSON.parse(source);
+  const journal = parseProfileRestoreActivationJournal(parsed);
+  if (journal === undefined) throw new Error('PROFILE_RESTORE_JOURNAL_INVALID');
+  return journal;
 }
 
 async function assertPrivateDirectory(path: string): Promise<void> {

@@ -33,9 +33,10 @@ export class WorkspaceDeletionJournalStore {
   private readonly byteStore: CrashSafeByteSlotStore;
   private activeOperation = false;
 
-  constructor(userDataRoot: string, fileSystem?: CrashSafeFileSlotFileSystem) {
+  constructor(userDataRoot: string, fileSystem?: CrashSafeFileSlotFileSystem,
+    observer?: import('../persistence/crashSafeFileSlot.js').SlotIoObserver) {
     const paths = createWorkspaceDeletionJournalPaths(userDataRoot);
-    this.fileSystem = fileSystem ?? createNodeCrashSafeFileSlotFileSystem(paths, maximumWorkspaceDeletionJournalBytes);
+    this.fileSystem = fileSystem ?? createNodeCrashSafeFileSlotFileSystem(paths, maximumWorkspaceDeletionJournalBytes, observer);
     this.byteStore = new CrashSafeByteSlotStore(this.fileSystem);
   }
 
@@ -43,14 +44,14 @@ export class WorkspaceDeletionJournalStore {
     return this.exclusive(() => inspectWorkspaceDeletionJournal(this.fileSystem, checkedDeletionAuthority(assertCurrent, invalidCode)));
   }
 
-  publish(value: unknown, selection: WorkspaceDeletionJournalSelection, assertPublicationCurrent?: () => Promise<void>) {
+  publish(value: unknown, selection: WorkspaceDeletionJournalSelection, assertPublicationCurrent?: () => Promise<void>, readSelection?: CrashSafeByteSlotReadSelection) {
     return this.exclusive(async () => {
       const next = captureWorkspaceDeletionJournal(value);
       const selected = captureSelection(selection);
       if (selected.plan.mode !== 'absent' || next.phase !== 'authorized') return invalidDeletionData(invalidCode);
       const store = assertPublicationCurrent === undefined ? this.byteStore :
         new CrashSafeByteSlotStore(publicationFileSystem(this.fileSystem, assertPublicationCurrent));
-      return store.replaceSelected(serializeWorkspaceDeletionJournal(next), selected.guard);
+      return store.replaceSelected(serializeWorkspaceDeletionJournal(next), selected.guard, readSelection);
     });
   }
 

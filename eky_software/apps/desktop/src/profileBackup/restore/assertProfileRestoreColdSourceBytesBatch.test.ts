@@ -19,10 +19,15 @@ import type { ProfileRestoreColdInspectionResult } from './runProfileRestoreCold
 
 const roots: string[] = [];
 const observers: { restore(): Promise<void> }[] = [];
-afterEach(async () => {
+afterEach(async context => {
   for (const observer of observers.splice(0)) await observer.restore();
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await fileSystem.rm(root, { recursive: true, force: true });
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') {
+      for (const root of owned) await fileSystem.rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('cold source PDF byte batches', () => {
@@ -31,18 +36,26 @@ describe('cold source PDF byte batches', () => {
     const tracker = observeFiles(f);
     const realpath = vi.spyOn(fileSystem, 'realpath');
     let finalReadStart = 0;
-    f.input.assertFinalAuthority.mockImplementation(async () => { finalReadStart = realpath.mock.calls.length; });
+    f.input.assertFinalAuthority.mockImplementation(async () => {
+      expect(tracker.stats.opened).toHaveLength(count + 1);
+      expect(tracker.handles.size).toBe(0);
+      finalReadStart = realpath.mock.calls.length;
+    });
     await assertBytes(f.input);
-    expect(tracker.stats.opened.slice(0, -1).sort()).toEqual([...f.paths].sort());
-    expect(tracker.stats.opened.at(-1)).toBe(f.databasePath);
+    for (const offset of [0, count + 1]) {
+      expect(tracker.stats.opened.slice(offset, offset + count).sort()).toEqual([...f.paths].sort());
+      expect(tracker.stats.opened[offset + count]).toBe(f.databasePath);
+    }
+    expect(tracker.stats.opened).toHaveLength(2 * (count + 1));
     expect(tracker.stats.databaseOverlap).toBe(false);
     expect(tracker.stats.peakPdfs).toBeLessThanOrEqual(4);
     expect(tracker.stats.peakReadBufferBytes).toBeLessThanOrEqual(4 * 64 * 1024);
     expect(tracker.handles.size).toBe(0);
-    expect(tracker.stats.closed).toHaveLength(count + 1);
+    expect(tracker.stats.closed).toHaveLength(2 * (count + 1));
     expect(f.input.assertFinalAuthority).toHaveBeenCalledOnce();
     expect(realpath.mock.calls.slice(finalReadStart).map(([path]) => path)
-      .filter(path => f.paths.includes(String(path)) || path === f.databasePath)).toEqual([...f.paths, f.databasePath]);
+      .filter(path => f.paths.includes(String(path)) || path === f.databasePath)
+      .slice(-(count + 1))).toEqual([...f.paths, f.databasePath]);
     await expectUnchanged(f);
   });
 
@@ -51,7 +64,7 @@ describe('cold source PDF byte batches', () => {
       const f = await fixture(9, 1303, { databaseSlot, documentsSlot });
       const tracker = observeFiles(f);
       await assertBytes(f.input);
-      expect(tracker.stats.opened).toHaveLength(10);
+      expect(tracker.stats.opened).toHaveLength(20);
       expect(tracker.stats.databaseOverlap).toBe(false);
       await expectUnchanged(f);
     },
@@ -70,7 +83,7 @@ describe('cold source PDF byte batches', () => {
           databaseSlot: 'active', documentsSlot: 'active' },
       } },
     });
-    expect(tracker.stats.opened).toHaveLength(10);
+    expect(tracker.stats.opened).toHaveLength(20);
     expect(tracker.stats.peakPdfs).toBeLessThanOrEqual(4);
     expect(tracker.stats.databaseOverlap).toBe(false);
     expect(tracker.handles.size).toBe(0);
@@ -150,6 +163,44 @@ describe('cold source PDF byte batches', () => {
     expect(tracker.stats.closed).toHaveLength(4);
     expect(tracker.handles.size).toBe(0);
     expect(f.input.assertFinalAuthority).not.toHaveBeenCalled();
+    await expectUnchanged(f);
+  });
+
+  it('joins final-pass reads and closes after cancellation without starting another batch or database', async () => {
+    const f = await fixture();
+    const reads = deferred();
+    const close = deferred();
+    let finalPass = false;
+    let entered = 0;
+    let closing = false;
+    f.input.assertFinalAuthority.mockImplementation(async () => { finalPass = true; });
+    const tracker = observeFiles(f, {
+      async beforeRead(index, position) {
+        if (!finalPass || index < 0 || index >= 4 || position !== 0) return;
+        entered++;
+        await reads.promise;
+      },
+      async beforeClose(index) {
+        if (finalPass && index === 0) { closing = true; await close.promise; }
+      },
+    });
+    let settled = false;
+    const operation = assertBytes(f.input).finally(() => { settled = true; });
+    const outcome = operation.then(() => undefined, (error: unknown) => error);
+    try {
+      await vi.waitFor(() => expect(entered).toBe(4));
+      expect(tracker.stats.opened).toHaveLength(14);
+      f.cancellation.abort();
+      reads.resolve();
+      await vi.waitFor(() => { expect(closing).toBe(true); expect(tracker.stats.closed).toHaveLength(13); });
+      await nextTurn();
+      expect(settled).toBe(false);
+      expect(tracker.stats.opened).toHaveLength(14);
+    } finally { reads.resolve(); close.resolve(); await outcome; }
+    await expect(operation).rejects.toThrow('PROFILE_INSPECTION_TIMEOUT');
+    expect(tracker.stats.opened.filter(path => path === f.databasePath)).toHaveLength(1);
+    expect(tracker.handles.size).toBe(0);
+    expect(f.input.assertFinalAuthority).toHaveBeenCalledOnce();
     await expectUnchanged(f);
   });
 
@@ -240,7 +291,11 @@ describe('cold source PDF byte batches', () => {
     const tracker = observeFiles(f, { async beforeOpen(index) { if (kind === 'database' && index === -1) await mutate(); } });
     if (kind === 'finalAuthority') f.input.assertFinalAuthority.mockImplementation(mutate);
     await expect(assertBytes(f.input)).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
-    expect(tracker.stats.opened).toHaveLength(10);
+    expect(tracker.stats.opened.slice(0, 9).sort()).toEqual([...f.paths].sort());
+    expect(tracker.stats.opened[9]).toBe(f.databasePath);
+    expect(tracker.stats.opened.slice(10)).toContain(f.paths[0]);
+    expect(tracker.stats.opened.length).toBeLessThanOrEqual(14);
+    expect(tracker.stats.opened.filter(path => path === f.databasePath)).toHaveLength(1);
     expect(tracker.handles.size).toBe(0);
     expect(await fileSystem.readFile(f.databasePath)).toEqual(f.database);
   });

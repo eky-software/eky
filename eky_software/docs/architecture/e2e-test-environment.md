@@ -615,7 +615,7 @@ fyysisen restartin, ei business-avauksen jälkeistä rollbackia tai pakettia.
 `DESK-SELECTOR-CREATE-001`, `DESK-SELECTOR-IMPORT-001`, W7.3:n kuusi
 valmistelutapausta sekä W7.4:n `DESK-DELETE-ACTIVE-001`,
 `DESK-DELETE-LAST-001`, `DESK-DELETE-PASSIVE-001` ja
-`DESK-DELETE-FAULT-001` käyttävät samaa
+`DESK-DELETE-FAULT-001` sekä W7.5:n `DESK-DELETE-RECOVERY-001` käyttävät samaa
 eristettyä Electron-fixtureä. Vain nämä täsmälliset skenaariot
 delegoivat backendin käynnistyksen tuotannon `startDesktopBackend`-omistajalle. Tavallinen fake-backend ei
 suorita FirstStartin tarvitsemaa migraatioporttia. Havaintodekoraattori
@@ -659,8 +659,58 @@ synteettisen SMTP-salaisuuden nykyisillä API-kutsuilla. Ne tarkistavat
 todellisen completion-kuitin, yrityskansion ja journal-slottien poissaolon,
 null-valinnan, vieraan yrityksen ja ulkoisen tiedoston säilyvät tavut sekä
 fyysisen restartin. Nykyinen fixture todentaa prosessipuun ja portin sulun.
-Näille skenaarioille ei asenneta valmistelun preload-siltaa eikä uutta
-renderer-IPC:tä. Ne eivät todista W7.5:n tuotannon poistokäyttöliittymää.
+Näille skenaarioille ei asenneta valmistelun preload-siltaa; niiden suora
+kutsu ei käytä tuotannon renderer-IPC:tä eikä todista W7.5:n poistokäyttöliittymää.
+
+W7.5:n `DESK-DELETE-UI-001` käyttää normaalia lomaketta ja tuotannon
+preload-/delete-IPC-kanavaa. Se ei saa testikoosteen `workspaceDeletionCommand`-
+porttia tai lisättyä preload-metodia. Main rakentaa nykyisen oletuskomennon
+todellisella lifecyclellä ja varauksella. Skenaario käyttää vain nykyistä
+E2E-virhehavaitsijaa: se säilyttää tulosprojektion alkuperäisen syyn ennen
+turvallista muunnosta mutta ei muuta komentoa, valtuutta tai tulosta.
+Havaitsijan sisäinen `execute` on tässä skenaariossa estetty. Vanhoja
+W7.4:n suoria ketjuja ei lasketa uuden julkisen ketjun näytöksi.
+Sama skenaario ajetaan erillisillä testijuurilla sekä vieraan yrityksen
+säilyttävänä että viimeisen yrityksen poistavana varianttina. Jälkimmäinen
+vaatii tyhjän rekisterin ja null-valinnan myös erikseen pyydetyn restartin
+jälkeen; oletusyritystä ei saa syntyä. Muutoin lomake-, vahvistus-,
+salaisuus-, tiedosto-, prosessi- ja aikarajasopimukset pysyvät samoina.
+
+W7.5:n erillinen `DESK-DELETE-RECOVERY-001` käyttää samaa fixtureä ja
+palautushallinnan tuotantolomaketta, preload-siltaa sekä delete-IPC:tä. Testi luo
+yritykset ja business-aineiston normaalisti. Nykyisen lifecyclen sulun
+jälkeen desktopin E2E-valmistelija hankkii todellisen saman juuren varauksen
+ja kirjoittaa vain validoidun sidonta-/tuontijournalin keskeytyssyötteen;
+se ei anna startupille kohdetta tai kirjoittajapoissaoloa. Fyysisen restartin
+oikea composition ja nykyinen valitsija muodostavat nämä itse. Poisto tehdään
+nimivahvistuksella, erillisellä menetyshyväksynnällä ja nykyisillä native-
+vahvistussovittimilla. Sisäisen testipoistopyynnön pitää jäädä aloittamatta
+sekä ennen lomaketta että sen jälkeen. Nykyinen E2E-entry ei enää injektoi
+käynnistysvalintafunktiota vaan käyttää mainin oletusta. Ennen tätä
+lähdekytkentää saatu lomakkeen osanäyttö ei todista uuden lähteen
+native-/quit- tai pakettiketjua. Uuden oletusliitoksen tavallinen development-
+lomakeajo on sittemmin todennettu; erillinen quit- ja pakettinäyttö säilyvät.
+Tavallisen yrityksen julkinen
+poistopolku on oma yllä kuvattu skenaarionsa.
+Kokeen ajonäyttö ja puuttuvat portit erotetaan [testimatriisissa](r0-e2e-test-matrix.md).
+Keskeytyssyöte on semanttisesti mahdollinen `registryPublished`-tuonti:
+kohde on passiivinen eikä oma aiempi aktiivivalintansa. Jokainen journalin
+kirjoitus käyttää nykyistä valittuihin tavuihin ja identiteetteihin sidottua
+`writeSelected`-porttia. Valmistelutyö julkaistaan ennen ensimmäistä odotusta
+ja liittyy nykyisen quit-omistajan sulkuun ilman itseensä odotusta.
+Aloitetun writerin vain kuitattu sulku vapauttaa sen omistusmerkinnän;
+epävarma luonti tai sulku säilyttää varauksen ulomman prosessin loppusiivoukseen.
+Alkuperäinen virhe ja erillinen writer-/varaussulkuvirhe pysyvät erillisinä.
+Pienet oikean tiedostotallentimen kontrollit mallintavat native-varauksen;
+ne eivät yksin todista oikean Electron-prosessin sulkua.
+
+Nykyisen `DESK-DELETE-RECOVERY-001`-lomakeversion nimetty tulosodotus on
+100 sekuntia ja koko testin raja 150 sekuntia. Globaali kymmenen sekunnin
+expect-oletus ja fixture-/sovellus-/siivousrajat eivät muutu. Kokonainen
+palautushallinnan asiointi sisältää oikean poiston, säilyvien tietojen
+vertailut ja restartin. [Budjettiperustelu](local-company-workspace-plan.md#w75-original-import-read-contract-20261112)
+ei ole suorituskyky-SLA tai aiempien hylkäysten sulkeminen.
+
 Alkuperäinen main-poistovirhe säilytetään ennen turvallista virhemuunnosta
 ja toimitetaan nykyisen keräyksen `workspaceDeletionExecution`-vaiheena;
 AggregateErrorin sisarusvirheet toimitetaan rajattuina
@@ -984,6 +1034,12 @@ valmiuden, workspace-ratkaisun, backendin käynnistyspyynnön ja valmiuden,
 ensimmäisen ikkunan luonnin sekä composition-kutsun valmistumisen. Se ei lue
 yritysdataa, kirjoita konsoliin tai levylle eikä muuta tuotannon käynnistystä.
 Havainnot eivät ole uusia valmius- tai hyväksymisehtoja.
+Oikeaa backendia käyttävä selector-havaintodekoraattori kirjaa nykyisen
+`backendReady`-havainnon vasta alkuperäisen käynnistyksen onnistuttua ja
+kahvan säilyttyä sen seurannassa. Odottava tai hylätty käynnistys ei tuota
+havaintoa; valinnaisen havaitsijan poikkeus ei muuta onnistumista tai
+sulkemisen omistajuutta. Sama checkpoint, skeema, rajat ja yksityinen
+lukukanava säilyvät. Tämä havaintokattavuus ei todista native-ajon onnistumista.
 Backendin nykyinen E2E-controller erottaa samalla muistihavainnolla
 `fork`-pyynnön, prosessikahvan palautumisen, `spawn`-tapahtuman,
 start-viestin lähetyksen ja validoidun ready-viestin vastaanoton.
@@ -1090,6 +1146,17 @@ vastaus ei todista mainin jumittumista. Myöhäinen vastaus ei muuta jo
 muodostettua raporttia. Suljettu projektio hyväksyy vain nimetyt vaiheet,
 ei raakavirhettä, polkua, tunnisteita tai vapaata metadataa. Havainto ja sen
 puuttuminen säilyvät erillisinä testivirheestä ja siivoustuloksesta.
+
+Muistihavainnon v3 lisää yhden viimeisen main-vaiheen; tarkka v2 säilyy
+luettavana ilman uutta kenttää. Main omistaa suljetun signaalin, ja vain
+E2E-entrypoint kytkee sen keräyksen. Työ, virheenkäsittely, siivous ja
+palautuminen erottuvat ilman checkpoint-listan kasvua. `entered` ei todista
+työn olevan enää kesken, ja `returned` tarkoittaa vain alkuperäisen
+lause-/kutsuryhmän paluuta, myös ohitetussa ehdossa tai sulun epäonnistuessa.
+Otteen aika on toteutunut lukuhetki, ei varmasti virheen syntyhetki.
+Signaali ei anna poisto- tai siivousvaltuutta eikä muuta tavallisen
+käynnistyksen keräystä. Vaihedata jää nykyiseen yksityiseen lifecycle-
+aineistoon, ei julkiseen projektioon tai käyttäjän tukipakettiin.
 
 Ennen siivousta kerättävä `nativeStartupFailure` säilyttää lisäksi nykyisen
 sukupolven natiiviadapterin suljetut virhekoodit, vaikka main-yhteys olisi jo
@@ -1226,6 +1293,16 @@ ja [ensivirheen seurantaohjetta](../ai/workflow.md#ci-ajon-seuranta-ja-virhetodi
 Packaged-artifactin fuseja, sandboxia, preload-rajaa tai navigointipolitiikkaa
 ei heikennetä testauksen vuoksi.
 
+Varhaisen tukiviennin kehitysruntimeketju ajetaan nykyisen erillisen
+`installer:proof:startup-exception-exit`-komennon startup-support-tapauksena,
+ei tavallisen Vitest- tai salauskoesarjan sivuvaikutuksena. Test-only-bootstrap
+eristää kuusi Electronin kirjoitusjuurta ennen nykyisen indexin importtia ja
+käyttää todellista puuttuvan yritysjuuren startup-hylkäystä. Nykyinen Windows-
+omistaja todistaa exitin ja prosessipuun päättymisen ennen fixturen poistoa.
+Dialogivastausten sovitus ei ole OS-dialogin käyttäjäkuittaus tai packaged-
+hyväksyntä. [Nimetty näyttö ja ensihylkäys](release-0.3.0-integration-history.md#w75-startup-support-native-20261112)
+säilyvät erillisinä.
+
 W7.4:n pakettisarjan kehitysartifact ei täytä poiston cold-build-porttia.
 [Pilot-identiteetin korjaussopimus](local-company-workspace-plan.md#pakettitestin-pilot-identiteetin-korjaussopimus)
 määrittää korjauksen: nykyinen yksi puhdas pilot-build, oikean FirstStartin
@@ -1243,9 +1320,13 @@ ei kaappaa uutta vertailuarvoa eikä epäonnistuminen korvaa aiempaa testivirhet
 W7.4:n `selectorVerification` on nykyisen smoke-omistajan sisäinen
 valitsimen todennusvaihe. Se vaatii saman smoke-valinnan ja kelvollisen tokenin,
 johtaa saman testijuuren eikä yhdisty legacy-/restore-vaiheeseen. Vaiheistus
-on `startup` -> `shutdown`; tulosformaatti ja tavalliset smoke-polut säilyvät.
-`runPackagedSelectorSmoke` saa vain jo käynnistetyn valitsimen sulkukahvan.
-Se odottaa raportoinnin ja sulun, säilyttää ensivirheen erillään myöhemmästä
+on W7.5 B:n liitoksessa `startup` -> `supportBundle` -> `shutdown`;
+tulosformaatti ja tavalliset smoke-polut säilyvät. `runPackagedSelectorSmoke`
+saa jo käynnistetyn valitsimen sekä mainin alkuperäisen suorittajaidentiteetin.
+Sama argumentiton capability tuottaa v3:n mainin kiinteään smoke-kohteeseen;
+vain hyväksytyn tavallisen valitsinsmoken dialogit ohitetaan, ei normaalin
+käytön tai rajatun palautushallinnan dialogeja. Se odottaa viennin,
+raportoinnin ja sulun, säilyttää ensivirheen erillään myöhemmästä
 sulkuvirheestä ja kirjoittaa onnistumisen vasta alkuperäisen ikkunan sulun
 jälkeen ennen quit-pyyntöä. Apuri ei valitse yritystä, avaa backendia tai
 julkaise tai suorita poistoa. Indexin nimetty valinta käyttää samaa

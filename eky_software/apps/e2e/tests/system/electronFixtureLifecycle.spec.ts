@@ -439,7 +439,8 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     elapsed = 25;
     observation.record('appReady');
     const snapshot = observation.snapshot();
-    expect(snapshot.schemaVersion).toBe(2);
+    expect(snapshot.schemaVersion).toBe(3);
+    expect(snapshot.mainStartup).toEqual({ status: 'unobserved' });
     expect(snapshot.backendStartup).toEqual({ status: 'unobserved' });
     expect(snapshot.checkpoints).toEqual([
       { checkpoint: 'waitingForAppReady', elapsedMs: 0 },
@@ -513,6 +514,34 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
       expect(finishCapture()).toEqual(captured);
       expect(existsSync(fixture.root)).toBe(true);
     } finally { await removeE2eRunRootIfPresent(fixture.root); }
+  });
+
+  test('main startup capture shows the actual cleanup read time and seals against later recovery', async () => {
+    const observation = createElectronE2eStartupObservation(() => 0);
+    observation.recordMainStartup({ stage: 'snapshotStatus', phase: 'work', event: 'entered' });
+    let readNow!: () => void;
+    const read = new Promise<unknown>(resolve => { readNow = () => resolve(observation.snapshot()); });
+    const finish = captureElectronStartupObservation(() => read);
+    observation.recordMainStartup({ stage: 'startupCatch', phase: 'failure', event: 'entered' });
+    observation.recordMainStartup({ stage: 'inspectionShutdown', phase: 'cleanup', event: 'entered' });
+    readNow(); await read;
+    const first = finish();
+    expect(first).toMatchObject({ status: 'captured', observation: { schemaVersion: 3,
+      mainStartup: { phase: 'cleanup', stage: 'inspectionShutdown', event: 'entered' } } });
+    observation.recordMainStartup({ stage: 'recoveryAdmission', phase: 'recovery', event: 'entered' });
+    expect(finish()).toBe(first);
+  });
+
+  test('main startup capture rejects mismatched phases and still reads exact legacy v2', async () => {
+    const current = createElectronE2eStartupObservation(() => 0).snapshot();
+    const { mainStartup: _main, schemaVersion: _version, ...common } = current;
+    const legacy = { ...common, schemaVersion: 2 };
+    const valid = captureElectronStartupObservation(async () => legacy);
+    const invalid = captureElectronStartupObservation(async () => ({ ...current,
+      mainStartup: { status: 'observed', stage: 'backendStop', phase: 'work', event: 'returned', elapsedMs: 0 } }));
+    await Promise.resolve();
+    expect(valid()).toEqual({ status: 'captured', observation: legacy });
+    expect(invalid()).toEqual({ status: 'unavailable' });
   });
 
   test('an unavailable or late startup read cannot delay cleanup or replace the original failure', async () => {

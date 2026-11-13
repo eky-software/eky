@@ -55,11 +55,12 @@ describe('desktop first-start boundaries', () => {
       'let preWorkspaceBuildAdmission = await readBuildAdmission()',
     );
     const workspaceStartup = source.indexOf(
-      'await resolveDesktopWorkspaceStartup',
+      'resolveDesktopWorkspaceStartup({',
     );
 
     expect(admission).toBeGreaterThan(-1);
     expect(workspaceStartup).toBeGreaterThan(admission);
+    expect(source).toContain('await reportWorkspaceStage(() => resolveDesktopWorkspaceStartup({');
     const reader = source.indexOf('const readBuildAdmission = async () => {');
     expect(reader).toBeGreaterThan(-1);
     expect(reader).toBeLessThan(admission);
@@ -92,10 +93,10 @@ describe('desktop first-start boundaries', () => {
       'let preWorkspaceBuildAdmission = await readBuildAdmission()',
     );
     const firstStartRecovery = source.indexOf(
-      'await workspaceFirstStartMigration.recoverBeforeWorkspaceResolution()',
+      'workspaceFirstStartMigration.recoverBeforeWorkspaceResolution()',
     );
     const workspaceStartup = source.indexOf(
-      'await resolveDesktopWorkspaceStartup',
+      'resolveDesktopWorkspaceStartup({',
     );
     const firstStartPreparation = source.indexOf(
       'await workspaceFirstStartMigration.prepareBeforeBackend({',
@@ -106,6 +107,7 @@ describe('desktop first-start boundaries', () => {
 
     expect(admission).toBeGreaterThan(-1);
     expect(firstStartRecovery).toBeGreaterThan(admission);
+    expect(source).toContain('await reportWorkspaceStage(() => workspaceFirstStartMigration.recoverBeforeWorkspaceResolution(),');
     expect(workspaceStartup).toBeGreaterThan(firstStartRecovery);
     expect(firstStartPreparation).toBeGreaterThan(workspaceStartup);
     expect(backendStart).toBeGreaterThan(firstStartPreparation);
@@ -126,7 +128,7 @@ describe('desktop first-start boundaries', () => {
       'utf8',
     );
     const workspaceStartup = compositionSource.indexOf(
-      'await resolveDesktopWorkspaceStartup',
+      'resolveDesktopWorkspaceStartup({',
     );
     const backendStart = compositionSource.indexOf(
       'backendHandle = await dependencies.startBackend',
@@ -139,6 +141,7 @@ describe('desktop first-start boundaries', () => {
     );
 
     expect(workspaceStartup).toBeGreaterThan(-1);
+    expect(compositionSource).toContain('await reportWorkspaceStage(() => resolveDesktopWorkspaceStartup({');
     expect(backendStart).toBeGreaterThan(workspaceStartup);
     expect(recovery).toBeGreaterThan(-1);
     expect(adoption).toBeGreaterThan(recovery);

@@ -1,12 +1,12 @@
 import type {
-  WorkspaceManagementCapability,
-  WorkspaceManagementStatus,
+  WorkspaceManagementViewCapability,
+  WorkspaceManagementViewStatus,
 } from '../../app/desktopWorkspaceManagement.js';
 
 interface WorkspaceStatusLoadCallbacks {
   failed(): void;
   started(): void;
-  succeeded(status: WorkspaceManagementStatus): void;
+  succeeded(status: WorkspaceManagementViewStatus): void;
 }
 
 export class WorkspaceStatusLoadController {
@@ -14,7 +14,7 @@ export class WorkspaceStatusLoadController {
   private generation = 0;
 
   load(
-    capability: WorkspaceManagementCapability,
+    capability: WorkspaceManagementViewCapability,
     callbacks: Readonly<WorkspaceStatusLoadCallbacks>,
   ): Promise<void> {
     if (this.activeLoad !== null) return this.activeLoad;

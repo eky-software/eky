@@ -3,6 +3,7 @@ import {
   lstat,
   mkdir,
   mkdtemp,
+  open,
   readdir,
   readFile,
   rename,
@@ -13,6 +14,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { createNodeCrashSafeFileSlotFileSystem } from '../../workspaces/persistence/crashSafeFileSlot.js';
 
 import {
   profileRestoreActivationJournalFileName,
@@ -24,12 +26,13 @@ const roots: string[] = [];
 
 vi.mock('node:fs/promises', async importOriginal => {
   const actual = await importOriginal<typeof import('node:fs/promises')>();
-  return { ...actual, lstat: vi.fn(actual.lstat), rm: vi.fn(actual.rm) };
+  return { ...actual, lstat: vi.fn(actual.lstat), open: vi.fn(actual.open), rm: vi.fn(actual.rm) };
 });
 
 afterEach(context => {
   vi.restoreAllMocks();
   vi.mocked(lstat).mockReset();
+  vi.mocked(open).mockReset();
   vi.mocked(rm).mockReset();
   const owned = roots.splice(0);
   context.onTestFinished(async () => {
@@ -497,6 +500,196 @@ describe('profile restore activation journal store', () => {
     const before = await captureSlots(fixture.filePath);
     await expect(fixture.store.peek()).resolves.toEqual(createJournal());
     expect(await captureSlots(fixture.filePath)).toEqual(before);
+  });
+
+  it.each([
+    ['current', ['']], ['backup', ['.backup']], ['next', ['.next']],
+    ['current', ['', '.backup']], ['current', ['', '.next']],
+    ['backup', ['.backup', '.next']], ['current', ['', '.backup', '.next']],
+  ] as const)('observes the normal %s source and every slot identity without repair %#', async (source, suffixes) => {
+    const f = await createFixture();
+    const bytes = Buffer.from(JSON.stringify(createJournal()) + '\n');
+    for (const suffix of suffixes) await writeFile(f.filePath + suffix, bytes, { flag: 'wx' });
+    const before = await captureSlots(f.filePath);
+    const observed = await f.store.inspectRecoverySelection(() => {});
+    expect(observed.source).toBe(source);
+    expect(Buffer.from(observed.bytes!)).toEqual(bytes);
+    expect(observed.value).toEqual(await f.store.peek());
+    expect(Object.isFrozen(observed)).toBe(true); expect(Object.isFrozen(observed.value)).toBe(true);
+    expect(Object.isFrozen(observed.identities)).toBe(true);
+    for (const [slot, suffix] of [['current', ''], ['backup', '.backup'], ['next', '.next']] as const) {
+      if (suffixes.some(value => value === suffix)) {
+        expect(observed.identities[slot]?.size).toBe(bytes.length);
+        expect(observed.identities[slot]?.ino).not.toBe(0);
+      } else expect(observed.identities[slot]).toBeUndefined();
+    }
+    expect(Object.keys(observed)).not.toContain('recover');
+    expect(await captureSlots(f.filePath)).toEqual(before);
+    await expect(f.store.read()).resolves.toEqual(observed.value);
+    expect(await readdir(dirname(f.filePath))).toEqual([profileRestoreActivationJournalFileName]);
+  });
+
+  it.each(['torn', 'empty', 'oversized', 'foreignOperation'] as const)(
+    'observes a valid current source without parsing the %s discarded siblings', async kind => {
+      const f = await createFixture(), bytes = Buffer.from(JSON.stringify(createJournal()));
+      const discarded = kind === 'torn' ? Buffer.from('{') : kind === 'empty' ? Buffer.alloc(0)
+        : kind === 'oversized' ? Buffer.alloc(1024 * 1024, 32)
+          : Buffer.from(JSON.stringify({ ...createJournal(), operationId: '33333333-3333-4333-8333-333333333333' }));
+      await writeFile(f.filePath, bytes, { flag: 'wx' });
+      for (const suffix of ['.backup', '.next']) await writeFile(f.filePath + suffix, discarded, { flag: 'wx' });
+      const before = await captureSlots(f.filePath);
+      const result = await f.store.inspectRecoverySelection(() => {});
+      expect(result.source).toBe('current'); expect(result.value).toEqual(await f.store.peek());
+      expect(result.identities.backup?.size).toBe(discarded.length);
+      expect(result.identities.next?.size).toBe(discarded.length);
+      expect(await captureSlots(f.filePath)).toEqual(before);
+    },
+  );
+
+  it.each(['empty', 'oversized', 'malformed', 'bom', 'unknownField'] as const)(
+    'preserves the normal selected-source rejection for %s without fallback', async kind => {
+      const f = await createFixture();
+      const valid = Buffer.from(JSON.stringify(createJournal()));
+      const invalid = kind === 'empty' ? Buffer.alloc(0) : kind === 'oversized' ? Buffer.alloc(1024 * 1024, 32)
+        : kind === 'malformed' ? Buffer.from('{') : kind === 'bom' ? Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), valid])
+          : Buffer.from(JSON.stringify({ ...createJournal(), unknown: true }));
+      await writeFile(f.filePath, invalid, { flag: 'wx' }); await writeFile(f.filePath + '.backup', valid, { flag: 'wx' });
+      const before = await captureSlots(f.filePath);
+      await expect(f.store.peek()).rejects.toThrow('PROFILE_RESTORE_JOURNAL_INVALID');
+      if (kind === 'malformed' || kind === 'bom') {
+        // Observation retains the original parser cause; ordinary recovery keeps its safe code.
+        await expect(f.store.inspectRecoverySelection(() => {})).rejects.toBeInstanceOf(SyntaxError);
+      } else await expect(f.store.inspectRecoverySelection(() => {})).rejects.toThrow();
+      expect(await captureSlots(f.filePath)).toEqual(before);
+    },
+  );
+
+  it('observes missing state without creating files and retains current parser duplicate-key semantics', async () => {
+    const f = await createFixture();
+    const absent = await f.store.inspectRecoverySelection(() => {});
+    expect(absent).toEqual({ source: undefined, bytes: undefined, value: undefined,
+      identities: { current: undefined, backup: undefined, next: undefined } });
+    expect(await readdir(dirname(f.filePath))).toEqual([]);
+    await rm(dirname(f.filePath), { recursive: true });
+    expect(await f.store.inspectRecoverySelection(() => {})).toEqual(absent);
+    await expect(readdir(dirname(f.filePath))).rejects.toMatchObject({ code: 'ENOENT' });
+    await mkdir(dirname(f.filePath), { mode: 0o700 });
+    await writeFile(f.filePath, JSON.stringify(createJournal()).replace('"revision":0', '"revision":1,"revision":0'), { flag: 'wx' });
+    const before = await captureSlots(f.filePath);
+    expect((await f.store.inspectRecoverySelection(() => {})).value).toEqual(await f.store.peek());
+    expect(await captureSlots(f.filePath)).toEqual(before);
+  });
+
+  it('waits for an owned source read to settle, preserves its first error and releases only read admission', async context => {
+    const f = await createFixture(), bytes = Buffer.from(JSON.stringify(createJournal()));
+    await writeFile(f.filePath, bytes, { flag: 'wx' });
+    const fs = createNodeCrashSafeFileSlotFileSystem({ directoryPath: dirname(f.filePath), currentPath: f.filePath,
+      backupPath: f.filePath + '.backup', nextPath: f.filePath + '.next' }, 64 * 1024);
+    const store = new ProfileRestoreActivationJournalStore(f.filePath, fs);
+    const first = new Error('SYNTHETIC_OBSERVATION_REVOKED'), later = new Error('SYNTHETIC_LATER_READ_FAILURE');
+    let release!: () => void, entered!: () => void, current = true;
+    const hold = new Promise<void>(resolve => { release = resolve; });
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    const read = fs.readSlot.bind(fs);
+    vi.spyOn(fs, 'readSlot').mockImplementationOnce(async (...args) => {
+      const value = await read(...args); entered(); await hold;
+      if (!current) throw first;
+      return value;
+    });
+    const pending = store.inspectRecoverySelection(() => { context.signal.throwIfAborted(); if (!current) throw later; });
+    void pending.catch(() => {});
+    context.onTestFinished(async () => { release(); await Promise.allSettled([pending]); });
+    await began;
+    await expect(store.inspectDeletionSlots(() => {})).rejects.toThrow('PROFILE_RESTORE_JOURNAL_UNAVAILABLE');
+    let settled = false; void pending.then(() => { settled = true; }, () => { settled = true; });
+    current = false; expect(settled).toBe(false); release();
+    await expect(pending).rejects.toBe(first);
+    expect(await readFile(f.filePath)).toEqual(bytes);
+    current = true;
+    await expect(store.inspectRecoverySelection(() => {})).resolves.toMatchObject({ source: 'current', value: createJournal() });
+  });
+
+  it('closes the real held source handle before rejecting observation after cancellation', async context => {
+    const f = await createFixture(), bytes = Buffer.from(JSON.stringify(createJournal()));
+    await writeFile(f.filePath, bytes, { flag: 'wx' });
+    const actual = await vi.importActual<typeof import('node:fs/promises')>('node:fs/promises');
+    const events: string[] = [], first = new Error('SYNTHETIC_HELD_FILE_OBSERVATION_CLOSED');
+    let release!: () => void, entered!: () => void, current = true;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    vi.mocked(open).mockImplementationOnce(async (...args) => {
+      const handle = await actual.open(...args);
+      events.push('opened');
+      const read = handle.read.bind(handle), close = handle.close.bind(handle);
+      vi.spyOn(handle, 'read').mockImplementationOnce(async (...readArgs) => {
+        events.push('reading'); entered(); await gate;
+        const result = await read(...readArgs); events.push('readSettled'); return result;
+      });
+      vi.spyOn(handle, 'close').mockImplementationOnce(async () => { await close(); events.push('handleClosed'); });
+      return handle;
+    });
+    const pending = f.store.inspectRecoverySelection(() => { context.signal.throwIfAborted(); if (!current) throw first; })
+      .catch(cause => { events.push('rejected'); throw cause; });
+    void pending.catch(() => {});
+    context.onTestFinished(async () => { release(); await Promise.allSettled([pending]); });
+    await began; current = false;
+    expect(events).toEqual(['opened', 'reading']);
+    await expect(f.store.inspectDeletionSlots(() => {})).rejects.toThrow('PROFILE_RESTORE_JOURNAL_UNAVAILABLE');
+    release(); await expect(pending).rejects.toBe(first);
+    expect(events).toEqual(['opened', 'reading', 'readSettled', 'handleClosed', 'rejected']);
+    expect(await readFile(f.filePath)).toEqual(bytes);
+  });
+
+  it.each(['sourceIdentity', 'sideAppears'] as const)('rejects %s drift after the actual observed source read', async change => {
+    const f = await createFixture(), bytes = Buffer.from(JSON.stringify(createJournal()));
+    await writeFile(f.filePath, bytes, { flag: 'wx' });
+    const fs = createNodeCrashSafeFileSlotFileSystem({ directoryPath: dirname(f.filePath), currentPath: f.filePath,
+      backupPath: f.filePath + '.backup', nextPath: f.filePath + '.next' }, 64 * 1024);
+    const store = new ProfileRestoreActivationJournalStore(f.filePath, fs), read = fs.readSlot.bind(fs);
+    vi.spyOn(fs, 'readSlot').mockImplementationOnce(async (...args) => {
+      const value = await read(...args);
+      if (change === 'sourceIdentity') { await rename(f.filePath, f.filePath + '.retained'); await writeFile(f.filePath, bytes, { flag: 'wx' }); }
+      else await writeFile(f.filePath + '.next', bytes, { flag: 'wx' });
+      return value;
+    });
+    await expect(store.inspectRecoverySelection(() => {})).rejects.toThrow();
+    expect(await readFile(f.filePath)).toEqual(bytes);
+    expect(await readFile(f.filePath + (change === 'sourceIdentity' ? '.retained' : '.next'))).toEqual(bytes);
+  });
+
+  it.each(['before', 'afterIdentity'] as const)('rejects revoked observation authority %s source I/O', async boundary => {
+    const f = await createFixture(), bytes = Buffer.from(JSON.stringify(createJournal()));
+    await writeFile(f.filePath, bytes, { flag: 'wx' });
+    const fs = createNodeCrashSafeFileSlotFileSystem({ directoryPath: dirname(f.filePath), currentPath: f.filePath,
+      backupPath: f.filePath + '.backup', nextPath: f.filePath + '.next' }, 64 * 1024);
+    const store = new ProfileRestoreActivationJournalStore(f.filePath, fs), read = vi.spyOn(fs, 'readSlot');
+    const first = new Error('SYNTHETIC_SOURCE_OBSERVATION_EXPIRED'); let current = boundary !== 'before';
+    const inspect = fs.inspectSlotIdentity!.bind(fs);
+    vi.spyOn(fs, 'inspectSlotIdentity').mockImplementationOnce(async (...args) => {
+      const value = await inspect(...args); current = false; return value;
+    });
+    await expect(store.inspectRecoverySelection(() => { if (!current) throw first; })).rejects.toBe(first);
+    expect(read).not.toHaveBeenCalled(); expect(await readFile(f.filePath)).toEqual(bytes);
+  });
+
+  it.each(['resolved', 'rejected', 'value'] as const)('rejects a %s asynchronous or non-void observation guard before I/O', async kind => {
+    const f = await createFixture(); await writeFile(f.filePath, JSON.stringify(createJournal()), { flag: 'wx' });
+    const before = await captureSlots(f.filePath);
+    const guard = () => kind === 'resolved' ? Promise.resolve() : kind === 'rejected'
+      ? Promise.reject(new Error('SYNTHETIC_ASYNC_OBSERVATION')) : true;
+    await expect(f.store.inspectRecoverySelection(guard)).rejects.toThrow('PROFILE_RESTORE_ACTIVATION_STATE_INVALID');
+    expect(await captureSlots(f.filePath)).toEqual(before);
+  });
+
+  it('keeps the exact selected-source byte limit aligned with normal peek', async () => {
+    const f = await createFixture(), limit = 64 * 1024;
+    const bytes = Buffer.alloc(limit, 32); Buffer.from(JSON.stringify(createJournal())).copy(bytes);
+    await writeFile(f.filePath, bytes, { flag: 'wx' });
+    expect((await f.store.inspectRecoverySelection(() => {})).value).toEqual(await f.store.peek());
+    await writeFile(f.filePath, Buffer.concat([bytes, Buffer.from(' ')]));
+    await expect(f.store.peek()).rejects.toThrow();
+    await expect(f.store.inspectRecoverySelection(() => {})).rejects.toThrow();
+    expect(await readFile(f.filePath)).toEqual(Buffer.concat([bytes, Buffer.from(' ')]));
   });
 
   it('round-trips a strict journal and clears every recovery slot', async () => {

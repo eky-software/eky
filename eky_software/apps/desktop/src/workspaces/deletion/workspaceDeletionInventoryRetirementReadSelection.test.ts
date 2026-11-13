@@ -11,6 +11,7 @@ import * as inventoryFiles from './workspaceDeletionInventoryFile.js';
 import * as inventoryRetirement from './workspaceDeletionInventoryRetirement.js';
 import type { WorkspaceDeletionInventoryRetirementReadSelection } from './workspaceDeletionInventoryRetirement.js';
 import { WorkspaceDeletionInventoryStore } from './workspaceDeletionInventoryStore.js';
+import * as journalSlots from './workspaceDeletionJournalSlots.js';
 
 type TerminalMutation = 'inventoryRemove' | 'inventorySync' | 'operationRmdir' | 'parentSync';
 interface TerminalReadHooks {
@@ -102,6 +103,91 @@ it.for([false, true])('distinguishes the modeled restored metadata window (scope
 it('rejects sustained metadata before the first removal', async test => {
   const t = await terminalReadFixture(test); t.hooks.afterInspect = () => t.setStable(false);
   await expect(t.run()).rejects.toBe(t.first); await t.preserved();
+});
+
+it('a successful terminal prefix never grants permission without its full suffix', async test => {
+  const t = await terminalReadFixture(test);
+  t.port.assertBeforeSlotRead = async () => { t.setStable(false); };
+  await expect(t.run()).rejects.toBe(t.first); await t.preserved();
+});
+
+it.for(['error', 'undefined'] as const)('retains the first terminal prefix %s before authority loss', async (kind, test) => {
+  const t = await terminalReadFixture(test), first = kind === 'error' ? new Error('SYNTHETIC_PREFIX_FIRST') : undefined;
+  t.port.assertBeforeSlotRead = async () => { t.f.revoke(); throw first; };
+  const result = await t.run().then(() => ({ ok: true }), error => ({ ok: false, error }));
+  expect(result.ok).toBe(false); if (!('error' in result)) throw new Error('EXPECTED_PREFIX_REJECTION');
+  expect(result.error).toBe(first); await t.preserved();
+});
+
+it.for([null, undefined, false, 3])('rejects malformed explicit terminal prefix %# before IO', async (value, test) => {
+  const t = await terminalReadFixture(test);
+  await expect(t.run({ ...t.port, assertBeforeSlotRead: value })).rejects.toThrow('WORKSPACE_DELETE_INVENTORY_INVALID');
+  expect(t.stats.full).toBe(0); expect(t.stats.read).toBe(0); await t.preserved();
+});
+
+it('captures a terminal prefix and expires its journal callback before the next read', async test => {
+  const t = await terminalReadFixture(test), inspect = journalSlots.inspectWorkspaceDeletionJournal;
+  const stop = new Error('EXPECTED_LATER_TERMINAL_READ');
+  let saved: (() => void) | undefined, calls = 0, checked = false;
+  t.port.assertBeforeSlotRead = async function() { expect(this).toBe(t.port); calls++; };
+  t.hooks.onFull = () => { t.port.assertBeforeSlotRead = async () => { throw new Error('LATE_PREFIX_METHOD'); }; };
+  vi.spyOn(journalSlots, 'inspectWorkspaceDeletionJournal').mockImplementation(async (...args) => {
+    if (saved !== undefined) {
+      const before = calls; expect(() => saved!()).toThrow('WORKSPACE_DELETE_INVENTORY_INVALID');
+      expect(calls).toBe(before); checked = true; throw stop;
+    }
+    saved = args[1]; return inspect(...args);
+  });
+  await expect(t.run()).rejects.toBe(stop);
+  expect(checked).toBe(true); expect(calls).toBe(2); await t.preserved();
+});
+
+it('rejects a nonvoid terminal prefix without removing evidence', async test => {
+  const t = await terminalReadFixture(test);
+  t.port.assertBeforeSlotRead = async () => false as never;
+  await expect(t.run()).rejects.toThrow('WORKSPACE_DELETE_INVENTORY_INVALID'); await t.preserved();
+});
+
+it('joins a pending terminal prefix before returning revoked authority', async test => {
+  const t = await terminalReadFixture(test);
+  let enter!: () => void, release!: () => void, settled = false;
+  const entered = new Promise<void>(done => { enter = done; }), held = new Promise<void>(done => { release = done; });
+  t.f.releases.push(release);
+  t.port.assertBeforeSlotRead = async () => { enter(); await held; };
+  const outcome = t.run().then(() => { settled = true; return undefined; }, error => { settled = true; return error; });
+  try {
+    await Promise.race([entered, outcome.then(() => { throw new Error('EXPECTED_HELD_PREFIX'); })]);
+    t.f.revoke(); await setImmediate(); expect(settled).toBe(false);
+  } finally { release(); await outcome; }
+  expect(await outcome).toBe(t.f.first); await t.preserved();
+});
+
+it.for(['inventoryRemove', 'inventorySync', 'parentSync'] as const)(
+  'keeps the full %s guard after a successful terminal prefix', async (boundary, test) => {
+    const t = await terminalReadFixture(test); let reached = false, prefixes = 0;
+    t.port.assertBeforeSlotRead = async () => { prefixes++; };
+    t.hooks.beforeMutation = name => { if (name === boundary) { reached = true; t.setStable(false); } };
+    await expect(t.run()).rejects.toBe(t.first);
+    expect(reached).toBe(true); expect(prefixes).toBeGreaterThan(0); expect(t.stats.mutations).not.toContain(boundary);
+    expect(await readFile(t.f.journalPaths.currentPath)).toEqual(t.f.journalBytes); await t.f.preserved();
+  });
+
+it.for([false, true])('characterizes restored metadata inside the removal guard (terminalPrefix: %s)', async (prefix, test) => {
+  const t = await terminalReadFixture(test), inspect = journalSlots.inspectWorkspaceDeletionJournal;
+  let injected = false, restored = false;
+  if (prefix) t.port.assertBeforeSlotRead = async () => undefined;
+  t.hooks.beforeMutation = name => { if (name === 'inventoryRemove') { injected = true; t.setStable(false); } };
+  vi.spyOn(journalSlots, 'inspectWorkspaceDeletionJournal').mockImplementation(async (...args) => {
+    const result = await inspect(...args);
+    if (injected) { t.setStable(true); restored = true; }
+    return result;
+  });
+  if (prefix) {
+    await t.run(); expect(restored).toBe(true);
+    expect(t.stats.mutations).toEqual(['inventoryRemove', 'inventorySync', 'operationRmdir', 'parentSync']);
+    expect(await readFile(t.f.journalPaths.currentPath)).toEqual(t.f.journalBytes); await t.f.preserved();
+  } else { await expect(t.run()).rejects.toBe(t.first); expect(restored).toBe(false); await t.preserved(); }
+  expect(injected).toBe(true);
 });
 
 it.for(['writer', 'registry', 'journalIdentity', 'inventoryBytes', 'inventoryIdentity'] as const)(

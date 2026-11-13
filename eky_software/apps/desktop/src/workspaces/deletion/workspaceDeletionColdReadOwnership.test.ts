@@ -18,7 +18,7 @@ import * as originalPayload from './workspaceDeletionOriginalPayloadAbsence.js';
 import { createWorkspaceDeletionCommand as createCommand } from './workspaceDeletionCommand.js';
 import { WorkspaceDeletionJournalStore as JournalStore } from './workspaceDeletionJournalStore.js';
 import { captureWorkspaceDeletionJournal as captureJournal, captureWorkspaceDeletionOriginalJournalProof as captureProof,
-  serializeWorkspaceDeletionJournal as serializeJournal } from './workspaceDeletionJournalCodec.js';
+  maximumWorkspaceDeletionJournalBytes, serializeWorkspaceDeletionJournal as serializeJournal } from './workspaceDeletionJournalCodec.js';
 import { captureWorkspaceRemnantBinding as captureBinding, workspaceRemnantBindingSha256 as bindingHash } from './workspaceRemnantBindingCodec.js';
 
 
@@ -288,4 +288,32 @@ it('checks multiple original commitments before stopping', async test => {
   if (t.f.journal.formatVersion !== 2) throw new Error('EXPECTED_MULTIPLE_PROOFS');
   expect(actual).toEqual(t.f.journal.originalJournalProofs.map(proof => [proof.owner, proof.operationId]));
   expect(t.samples[0]?.checks).toBe(3); await t.retained();
+});
+
+it.for([false, true, 'multiple'] as const)('retains original absence and stable cadence around terminal prefix (proof: %s)', async (proof, test) => {
+  const t = await coldReadFixture(test, true, proof), stop = new Error('EXPECTED_TERMINAL_PREFIX_COMPARISON');
+  const original = originalPayload.captureWorkspaceDeletionOriginalPayloadAbsence;
+  vi.spyOn(originalPayload, 'captureWorkspaceDeletionOriginalPayloadAbsence').mockImplementation(async (...args) => {
+    const absence = await original(...args), owner = captureBinding(args[1]).owner;
+    return { ...absence, async assertAbsent() { t.trace.push(`original:${owner}`); await absence.assertAbsent(); } };
+  });
+  const retire = retirement.retireWorkspaceDeletionInventory;
+  let observed: unknown;
+  vi.spyOn(retirement, 'retireWorkspaceDeletionInventory').mockImplementation((root, journal, authority, fs, read, notice) => {
+    expect(typeof read?.assertBeforeSlotRead).toBe('function');
+    const before = t.trace.length;
+    const selectedJournal = slots.createNodeCrashSafeFileSlotFileSystem(t.f.journalPaths, maximumWorkspaceDeletionJournalBytes);
+    const readSlot = selectedJournal.readSlot.bind(selectedJournal);
+    selectedJournal.readSlot = (...args) => { t.trace.push(`journal:${args[0]}`); return readSlot(...args); };
+    return retire(root, journal, authority, { ...fs, journal: selectedJournal, directories: {
+      async identity() {
+        observed = t.trace.slice(before);
+        throw stop;
+      }, async names() { throw new Error('UNEXPECTED_NAMES'); },
+    } }, read, notice);
+  });
+  await expect(t.run()).rejects.toBe(stop);
+  const owners = t.f.journal.formatVersion === 2 ? t.f.journal.originalJournalProofs.map(row => row.owner) : [];
+  const selected = ['full', ...owners.map(owner => `original:${owner}`), 'full'];
+  expect(observed).toEqual([...selected, 'journal:current', 'journal:backup', 'journal:next', ...selected]); await t.retained();
 });

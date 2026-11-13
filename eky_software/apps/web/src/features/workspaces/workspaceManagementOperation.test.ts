@@ -4,6 +4,8 @@ import type {
   WorkspaceManagementCapability,
   WorkspaceManagementEntry,
   WorkspaceManagementStatus,
+  WorkspaceDeletionResult,
+  WorkspaceRecoveryManagementStatus,
 } from '../../app/desktopWorkspaceManagement.js';
 import { runWorkspaceManagementOperation } from './workspaceManagementOperation.js';
 
@@ -28,7 +30,111 @@ const status: WorkspaceManagementStatus = {
   workspaces: [activeWorkspace, otherWorkspace],
 };
 
+const recoveryStatus: WorkspaceRecoveryManagementStatus = {
+  formatVersion: 2, mode: 'recoveryManagement', runtimeState: 'absent',
+  maintenanceState: 'idle', operationState: 'idle', persistedActiveWorkspaceId: otherWorkspaceId,
+  target: { workspaceId: activeWorkspaceId, workspaceLabel: 'Sama nimi' },
+};
+
 describe('runWorkspaceManagementOperation', () => {
+  it.each(['create', 'import', 'rename', 'confirmSwitch', 'confirmReplace'] as const)(
+    'blocks the direct %s command in recovery management before invoking any capability', async mode => {
+      const unexpected = vi.fn(async (): Promise<never> => { throw new Error('UNEXPECTED_COMMAND'); });
+      const capability = { createEmpty: unexpected, importBackupAsNew: unexpected, rename: unexpected,
+        switchTo: unexpected, replaceActiveFromBackup: unexpected, deleteWorkspace: unexpected, getStatus: unexpected };
+      await expect(runWorkspaceManagementOperation({ capability, mode, status: recoveryStatus,
+        selectedWorkspace: activeWorkspace, workspaceLabel: 'Sama nimi', deletionBackupChoice: 'explicitDataLoss' }))
+        .rejects.toThrow('WORKSPACE_DELETION_UI_UNAVAILABLE');
+      expect(unexpected).not.toHaveBeenCalled();
+    });
+
+  it('uses only the recovery target and explicit loss without inventing an ordinary entry or refreshing', async () => {
+    const result = { formatVersion: 1, status: 'completed', navigation: 'selector' } as const;
+    const remove = vi.fn(async () => result), getStatus = vi.fn(async () => recoveryStatus);
+    const capability = { ...createCapability(), getStatus, deleteWorkspace: remove };
+    for (const input of [
+      { deletionBackupChoice: 'createBackup' as const, canCreateDeletionBackup: true },
+      { deletionBackupChoice: 'explicitDataLoss' as const, selectedWorkspace: otherWorkspace },
+      { deletionBackupChoice: 'explicitDataLoss' as const, selectedWorkspace: { ...activeWorkspace, workspaceLabel: 'Stale name' } },
+    ]) {
+      await expect(runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status: recoveryStatus,
+        workspaceLabel: 'Sama nimi', ...input })).rejects.toThrow('WORKSPACE_DELETION_UI_UNAVAILABLE');
+    }
+    expect(remove).not.toHaveBeenCalled();
+    await expect(runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status: recoveryStatus,
+      workspaceLabel: 'Sama nimi', deletionBackupChoice: 'explicitDataLoss' })).resolves.toEqual({ type: 'deletion', result });
+    expect(remove).toHaveBeenCalledExactlyOnceWith({ formatVersion: 1, workspaceId: activeWorkspaceId,
+      typedLabel: 'Sama nimi', backupChoice: 'explicitDataLoss' });
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
+  it.each(['busy', 'recoveryRequired'] as const)('never uses a previous target in target-free recovery %s', async operationState => {
+    const remove = vi.fn();
+    await expect(runWorkspaceManagementOperation({ capability: createCapability({ deleteWorkspace: remove }),
+      mode: 'confirmDelete', status: { formatVersion: 2, mode: 'recoveryManagement', runtimeState: 'absent',
+        maintenanceState: 'idle', operationState }, selectedWorkspace: activeWorkspace,
+      workspaceLabel: 'Sama nimi', deletionBackupChoice: 'explicitDataLoss' })).rejects.toThrow('WORKSPACE_DELETION_UI_UNAVAILABLE');
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { formatVersion: 1, status: 'completed', navigation: 'selector' },
+    { formatVersion: 1, status: 'completed', navigation: 'reopenPrevious' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'continue' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'relaunching' },
+    { formatVersion: 1, status: 'cancelled', nextAction: 'restartRequired' },
+    { formatVersion: 1, status: 'failed', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'none', nextAction: 'continue' },
+    { formatVersion: 1, status: 'recoveryRequired', errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown', nextAction: 'restartRequired' },
+  ] satisfies WorkspaceDeletionResult[])('returns the closed deletion result without refreshing or choosing a workspace: %j', async result => {
+    const remove = vi.fn(async () => result), getStatus = vi.fn(async () => status);
+    const capability = createCapability({ deleteWorkspace: remove, getStatus });
+    await expect(runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status,
+      selectedWorkspace: otherWorkspace, workspaceLabel: 'Sama nimi', deletionBackupChoice: 'explicitDataLoss' }))
+      .resolves.toEqual({ type: 'deletion', result });
+    expect(remove).toHaveBeenCalledOnce();
+    expect(remove).toHaveBeenCalledWith({ formatVersion: 1, workspaceId: otherWorkspaceId,
+      typedLabel: 'Sama nimi', backupChoice: 'explicitDataLoss' });
+    expect(getStatus).not.toHaveBeenCalled();
+  });
+
+  it('permits backup only with actual open-runtime context and the exact active target', async () => {
+    const remove = vi.fn(async () => ({ formatVersion: 1, status: 'cancelled', nextAction: 'continue' } as const));
+    const capability = createCapability({ deleteWorkspace: remove });
+    for (const [selected, open] of [[activeWorkspace, false], [otherWorkspace, true]] as const) {
+      await expect(runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status,
+        selectedWorkspace: selected, workspaceLabel: selected.workspaceLabel,
+        deletionBackupChoice: 'createBackup', canCreateDeletionBackup: open })).rejects.toThrow('WORKSPACE_DELETION_UI_UNAVAILABLE');
+    }
+    expect(remove).not.toHaveBeenCalled();
+    await runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status,
+      selectedWorkspace: activeWorkspace, workspaceLabel: activeWorkspace.workspaceLabel,
+      deletionBackupChoice: 'createBackup', canCreateDeletionBackup: true });
+    expect(remove).toHaveBeenCalledOnce();
+  });
+
+  it.each(['busy', 'recoveryRequired'] as const)('does not turn global %s into deletion permission', async operationState => {
+    const remove = vi.fn();
+    await expect(runWorkspaceManagementOperation({ capability: createCapability({ deleteWorkspace: remove }), mode: 'confirmDelete',
+      status: { ...status, operationState }, selectedWorkspace: otherWorkspace,
+      workspaceLabel: otherWorkspace.workspaceLabel, deletionBackupChoice: 'explicitDataLoss' })).rejects.toThrow();
+    expect(remove).not.toHaveBeenCalled();
+  });
+
+  it('rejects a changed target name, untrimmed confirmation or malformed result without refresh', async () => {
+    const remove = vi.fn(async () => ({ formatVersion: 1, status: 'prepared' }) as never);
+    const capability = createCapability({ deleteWorkspace: remove });
+    for (const [selectedWorkspace, workspaceLabel] of [
+      [{ ...otherWorkspace, workspaceLabel: 'Old name' }, 'Old name'], [otherWorkspace, 'Sama nimi '],
+    ] as const) {
+      await expect(runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status,
+        selectedWorkspace, workspaceLabel, deletionBackupChoice: 'explicitDataLoss' })).rejects.toThrow();
+    }
+    expect(remove).not.toHaveBeenCalled();
+    await expect(runWorkspaceManagementOperation({ capability, mode: 'confirmDelete', status,
+      selectedWorkspace: otherWorkspace, workspaceLabel: 'Sama nimi', deletionBackupChoice: 'explicitDataLoss' }))
+      .rejects.toThrow('Invalid workspace deletion result.');
+  });
+
   it.each(['create', 'import', 'rename'] as const)(
     'refreshes %s from null selection without automatically opening a workspace', async (mode) => {
       const selectorStatus: WorkspaceManagementStatus = {

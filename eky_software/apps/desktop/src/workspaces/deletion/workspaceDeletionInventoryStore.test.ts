@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { chmod, link, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it } from 'vitest';
+import { deferred } from '../../profileBackup/portableDeletionBackupTestSupport.js';
 import { deletionTestDigest, deletionTestHeader as header, deletionTestRecords as records } from './workspaceDeletionDataTestSupport.js';
 import { deletionInventoryReadChunkBytes } from './workspaceDeletionInventoryCodec.js';
 import { deletionInventoryStoreFixture as fixture } from './workspaceDeletionInventoryStoreTestSupport.js';
@@ -112,6 +113,30 @@ it('retains partial-next and closes the writer when the inventory source itself 
   expect(await readdir(f.paths.directoryPath)).toEqual([`${fileName}.next`]);
   expect((await readFile(f.paths.nextPath, 'utf8')).trim().split('\n')).toHaveLength(2);
   expect(f.handles.closed).toBe(f.handles.opened);
+});
+
+it.for(['lease', 'target'] as const)('waits for a held source and rejects %s loss before inventory publication', async (change, context) => {
+  const f = await fixture(context);
+  const entered = deferred(), release = deferred();
+  let sourceClosed = false, settled = false;
+  async function* source() {
+    try {
+      yield* records(1);
+      entered.resolve();
+      await release.promise;
+    } finally { sourceClosed = true; }
+  }
+  const work = f.store().publish(header, source(), f.authority).finally(() => { settled = true; });
+  try {
+    await entered.promise;
+    if (change === 'lease') f.expire(); else f.changeTarget();
+    expect(settled).toBe(false);
+  } finally { release.resolve(); }
+  await expect(work).rejects.toThrow(change === 'lease' ? 'SYNTHETIC_LEASE_LOST' : 'SYNTHETIC_TARGET_CHANGED');
+  expect(sourceClosed).toBe(true);
+  expect(f.handles.closed).toBe(f.handles.opened);
+  expect(await readdir(f.paths.directoryPath)).toEqual([`${fileName}.next`]);
+  expect((await readFile(f.paths.nextPath, 'utf8')).trim().split('\n')).toHaveLength(2);
 });
 
 for (const change of ['lease', 'target'] as const) {

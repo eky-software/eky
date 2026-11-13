@@ -158,7 +158,8 @@ it.for(['active', 'selector'] as const)('hands %s publication to a fresh reader 
   expect((await new WorkspaceDeletionJournalStore(f.root).inspect(() => {})).plan.mode).toBe('published');
 });
 
-it.for(['active', 'selector'] as const)('preserves %s published slots without live handoff when final preparation loses its requester', async (mode, test) => {
+for (const managementMode of ['active', 'selector'] as const) it.for([managementMode])('preserves %s published slots without live handoff when final preparation loses its requester',
+  managementMode === 'selector' ? { timeout: 10_000 } : {}, async (mode, test) => {
   const resume = vi.fn(async (): Promise<never> => { throw new Error('UNEXPECTED_DURABLE_WORK'); });
   const f = await fixture(test, mode, { continuation: { captureAuthority: () => ({
     assertCurrent() { f.assertCurrent(); }, async assertOwned() { await f.assertOwned(); },

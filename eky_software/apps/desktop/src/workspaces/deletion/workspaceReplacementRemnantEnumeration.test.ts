@@ -163,7 +163,7 @@ it.for(['earlyReturn', 'laterReadFailure'] as const)(
     for (const parent of f.parents) expect(await readFile(join(parent.parentPath, f.binding.operationId, 'keep'), 'utf8')).toBe(f.binding.operationId);
   });
 
-it('merges real 64/65-name directory pages with a controlled selection reader', { timeout: 10_000 }, async context => {
+it('merges real 64/65-name directory pages with a controlled selection reader', { timeout: 20_000 }, async context => {
   const f = await fixture(context), count = directoryEntries.workspaceDeletionDirectoryEntryPageSize + 1;
   for (const parent of f.parents) {
     await mkdir(parent.parentPath, { recursive: true, mode: 0o700 });

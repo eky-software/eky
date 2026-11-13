@@ -481,6 +481,11 @@ Julkaisuyritys, myöhemmät poistovaiheet ja kaikki journalista jatkaminen
 ovat `unknown`, myös resume-admissionin busy. Vaihe ei todista juurisyytä
 tai vaikutuksettomuutta. Muiden operaatioiden vaihe- ja syyrajat säilyvät.
 
+Live-poiston palvelu säilyttää nykyisen komennon kutsukohtaisesti ilmoittaman
+vaiheen. Havainto päättyy ennen completion-/lease-siivousta; myöhäinen
+callback ei vaihda ensivirheen vaihetta tai seuraavan operaation tietoa.
+Cold-kutsun nykyinen vaihehavainto ja julkisen tapahtuman kenttäjoukko säilyvät.
+
 Erillinen loppusiivousvirhe on samalla korrelaatiolla toinen
 `workspaceManagement.operationFailed`, jonka vaihe on `deleteCleanup`.
 Kumpikin kirjoitus on erikseen best effort; ensivirheen kirjoitusvirhe ei

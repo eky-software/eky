@@ -1,4 +1,5 @@
 import type { ApprovedInvoiceEmailPreview } from '@eky/api-client';
+import type { WorkspaceDeletionRequest } from './desktopWorkspaceManagement.js';
 
 export interface EkyDesktopApi {
   chooseInvoicePdfArchiveDirectory(): Promise<unknown>;
@@ -6,6 +7,7 @@ export interface EkyDesktopApi {
   createManualRecoveryPoint(): Promise<unknown>;
   createSupportBundle(): Promise<'cancelled' | 'created'>;
   createEmptyWorkspace(input: { workspaceLabel: string }): Promise<unknown>;
+  deleteWorkspace?(input: Readonly<WorkspaceDeletionRequest>): Promise<unknown>;
   disableInvoicePdfArchive(): Promise<unknown>;
   discardSelectedLocalUpdate(): Promise<unknown>;
   confirmLocalUpdate(): Promise<unknown>;
@@ -392,7 +394,13 @@ export function getDesktopSupportBundleCreator(
     return undefined;
   }
 
-  return () => createSupportBundle();
+  return async () => {
+    const result: unknown = await createSupportBundle();
+    if (result !== 'cancelled' && result !== 'created') {
+      throw new Error('Invalid support bundle result.');
+    }
+    return result;
+  };
 }
 
 export function getDesktopInvoicePdfArchive(

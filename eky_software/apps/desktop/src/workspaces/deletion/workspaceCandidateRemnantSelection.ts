@@ -11,10 +11,33 @@ import { inspectWorkspaceRemnantBindingOwnerDirectory } from './workspaceRemnant
 import { assertSameWorkspaceRemnantBindingSelection, WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js';
 
 // Readonly selection of one candidate, never its shared operation parent or a cleanup authority.
-export async function captureWorkspaceCandidateRemnantSelection(
+export function captureWorkspaceCandidateRemnantSelection(
   userDataRoot: string, operationIdValue: unknown, workspaceIdValue: unknown,
   authority: WorkspaceInspectionRemnantAuthority,
   reads: WorkspaceInspectionRemnantReads = workspaceInspectionRemnantReads,
+) {
+  return captureWorkspaceCandidateRemnantSelectionInternal(userDataRoot, operationIdValue, workspaceIdValue, authority, reads, true);
+}
+
+// Census observations omit the intermediate binding round, never the cleanup caller's strict proof.
+export async function captureWorkspaceCandidateRemnantObservation(
+  userDataRoot: string, operationIdValue: unknown, workspaceIdValue: unknown,
+  authority: WorkspaceInspectionRemnantAuthority,
+  reads: WorkspaceInspectionRemnantReads = workspaceInspectionRemnantReads,
+) {
+  const selected = await captureWorkspaceCandidateRemnantSelectionInternal(userDataRoot, operationIdValue, workspaceIdValue, authority, reads, false);
+  return Object.freeze({
+    binding: selected.binding, bindingSha256: selected.bindingSha256, role: selected.role,
+    rootPath: selected.rootPath, parentPath: selected.parentPath,
+    rootIdentity: selected.rootIdentity, parentIdentity: selected.parentIdentity,
+    ancestors: selected.ancestors, assertSelected: selected.assertSelected,
+  });
+}
+
+async function captureWorkspaceCandidateRemnantSelectionInternal(
+  userDataRoot: string, operationIdValue: unknown, workspaceIdValue: unknown,
+  authority: WorkspaceInspectionRemnantAuthority, reads: WorkspaceInspectionRemnantReads,
+  includeMiddleBindingRound: boolean,
 ) {
   createWorkspaceDeletionJournalPaths(userDataRoot);
   const operationId = validateWorkspaceBackupImportOperationId(operationIdValue);
@@ -112,7 +135,7 @@ export async function captureWorkspaceCandidateRemnantSelection(
     if (matching.length !== 1) return invalidDeletionData(invalidCode);
     const binding = matching[0]!;
     const root = await readRoot();
-    assertBindings(bindings, await readBindings());
+    if (includeMiddleBindingRound) assertBindings(bindings, await readBindings());
     assertRoot(root, await readRoot());
     assertBindings(bindings, await readBindings());
     guard();

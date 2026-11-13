@@ -9,7 +9,11 @@ raportoinnissa ja julkaisemisessa tämän tiedoston
 [konekohtaisten tietojen julkaisukieltoa](#konekohtaisten-tietojen-julkaisukielto).
 Tutkimus- tai lukulupa ei ole julkaisulupa.
 
-Eky-projektissa tekoäly ei saa arvata arkkitehtuuria, liiketoimintasääntöjä, turvallisuussääntöjä tai moduulien vastuita. Jos jokin asia on epäselvä, työ rajataan pienemmäksi tai kysytään lisäohje.
+Eky-projektissa tekoäly ei saa arvata arkkitehtuuria, liiketoimintasääntöjä,
+turvallisuussääntöjä tai moduulien vastuita. Selvitä tuntematon fakta
+nykyisistä lähteistä ja hyväksytyn työn sallituilla kokeilla. Jos jäljelle
+jää uusi omistajapäätös tai ratkaisematon sopimus, rajaa sen toteutus pois
+ja kysy päätös; pelkkä tekninen selvitystarve ei pysäytä hyväksyttyä työtä.
 
 ## Projektin tavoite
 
@@ -106,7 +110,11 @@ Jos ristiriitaa ei voida ratkaista varmasti etusijajärjestyksen avulla:
 - kerro projektin omistajalle, mitkä ohjeet ovat ristiriidassa
 - pyydä projektin omistajalta päätös ennen jatkamista
 
-Sama pysäytyssääntö koskee tilannetta, jossa liiketoimintasääntö, moduulin omistajuus, turvallisuusvaatimus tai arkkitehtuurin vaikutus jää epäselväksi.
+Sama toteutuksen pysäytyssääntö koskee lähteiden ja sallitun selvityksen
+jälkeen ratkaisematta jäävää liiketoiminta-, omistajuus-, turvallisuus- tai
+arkkitehtuuripäätöstä. Valtuutettu lähdeselvitys ja synteettinen todennus
+eivät itsessään toteuta uutta päätöstä. Riippumaton hyväksytty työ voi jatkua;
+epäselvää sopimusta ei ratkaista arvaamalla.
 
 ## Pakollinen lukujärjestys
 
@@ -168,7 +176,9 @@ Ennen muutoksen hyväksymistä tarkista vähintään:
 8. Muuttuuko palvelun verkkonäkyvyys, CORS-, cookie-, token- tai deployment-malli?
 9. Onko muuttuneiden riippuvuuksien tietoturvatila tarkistettu?
 
-Jos jokin kohta jää epäselväksi, kyseistä vaikutusaluetta ei toteuteta ennen projektin omistajan päätöstä.
+Selvitä avoin faktakysymys nykyisistä lähteistä ja valtuutetuilla turvallisilla
+kokeilla. Jos jäljelle jää uusi turvallisuuspäätös tai ratkaisematon sopimus,
+kyseistä vaikutusaluetta ei toteuteta ennen projektin omistajan päätöstä.
 
 ## Backup- ja palautusportti
 

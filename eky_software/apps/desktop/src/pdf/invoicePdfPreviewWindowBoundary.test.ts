@@ -66,6 +66,7 @@ beforeEach(() => {
 describe('invoice PDF preview desktop boundaries', () => {
   it('runs the packaged bridge guard against the actual preload surface and rejects every changed method', async () => {
     const api = electronBoundary.exposeInMainWorld.mock.calls[0]![1];
+    expect(Object.keys(api)).toContain('deleteWorkspace');
     let bridge: unknown = api;
     const executeJavaScript = vi.fn(async (source: string) =>
       new Script(source).runInNewContext({ window: { ekyDesktop: bridge } }));
@@ -95,7 +96,7 @@ describe('invoice PDF preview desktop boundaries', () => {
     const [name, api] = electronBoundary.exposeInMainWorld.mock.calls[0]!;
 
     expect(name).toBe('ekyDesktop');
-    expect(Object.keys(api)).toHaveLength(25);
+    expect(Object.keys(api)).toHaveLength(26);
     expect(Object.isFrozen(api)).toBe(true);
     await api.openInvoicePdf('invoice-1');
     await api.openInvoicePdf('invoice-1', undefined);

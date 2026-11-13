@@ -12,7 +12,8 @@ import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError
 import { WorkspaceRegistryMutationError } from '../registry/workspaceRegistryMutations.js';
 import { createWorkspaceManagementCapability, type WorkspaceDeletionResultRuntime,
   type WorkspaceManagementCapability } from './workspaceManagementCapability.js';
-import { createEmptyWorkspaceIpcChannel, workspaceManagementIpcChannels } from './workspaceManagementCapabilityProtocol.js';
+import { createEmptyWorkspaceIpcChannel, deleteWorkspaceIpcChannel,
+  workspaceManagementIpcChannels } from './workspaceManagementCapabilityProtocol.js';
 import { WorkspaceManagementRecoveryRequiredError } from './workspaceManagementOperationGuard.js';
 import { WorkspaceManagementService, type WorkspaceDeletionFailureOutcomeHandler,
   type WorkspaceManagementServiceOptions } from './workspaceManagementService.js';
@@ -284,10 +285,70 @@ describe('workspace deletion preparation request lifetime', () => {
     expect(f.events).toEqual([]);
   });
 
-  it('never registers deletion IPC while the real W7.4 consumer is absent', () => {
+  it('registers only the final deletion command, never the preparation method', () => {
     const f = fixture();
     expect([...f.handlers.keys()]).toEqual([...workspaceManagementIpcChannels]);
-    expect([...f.handlers.keys()].some(channel => channel.endsWith(':delete'))).toBe(false);
+    expect(f.handlers.has(deleteWorkspaceIpcChannel)).toBe(true);
+    expect([...f.handlers.keys()].some(channel => channel.endsWith(':prepare-deletion'))).toBe(false);
+  });
+});
+
+describe('workspace deletion public IPC', () => {
+  it.each(['cancelled', 'completed'] as const)('uses the actual capability and service for %s', async outcome => {
+    const continuation = deletionContinuationFixture();
+    const f = fixture(async () => outcome === 'cancelled' ? 'cancelled' : 'prepared',
+      undefined, undefined, continuation.port);
+    const invoke = f.handlers.get(deleteWorkspaceIpcChannel)!;
+    await expect(track(invoke(f.event, request))).resolves.toEqual(outcome === 'cancelled'
+      ? { formatVersion: 1, status: 'cancelled', nextAction: 'continue' } : continuation.completion);
+    expect(f.prepare).toHaveBeenCalledOnce();
+    expect(f.runtime.complete).toHaveBeenCalledTimes(outcome === 'completed' ? 1 : 0);
+    expect(f.maintenanceLease.readState()).toBe('idle');
+  });
+
+  it.each(['sender', 'frame', 'arity', 'payload'] as const)('rejects invalid %s before preparation', async invalid => {
+    const f = fixture();
+    const event = { ...f.event, ...(invalid === 'sender' ? { sender: {} } : {}),
+      ...(invalid === 'frame' ? { senderFrame: {} } : {}) };
+    const args = invalid === 'arity' ? [request, 'extra'] : [invalid === 'payload' ? { ...request, path: 'excluded' } : request];
+    await expect(track(f.handlers.get(deleteWorkspaceIpcChannel)!(event, ...args))).rejects.toThrow(
+      invalid === 'payload' ? 'WORKSPACE_MANAGEMENT_CAPABILITY_INVALID' : 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    expect(f.prepare).not.toHaveBeenCalled();
+  });
+
+  it('strips the private cause at the public boundary but keeps it at the main projection owner', async () => {
+    const original = new Error('SYNTHETIC_PUBLIC_DELETE_ORIGINAL', { cause: new Error('SYNTHETIC_PRIVATE_CAUSE') });
+    const projection = new Error('SYNTHETIC_PUBLIC_DELETE_PROJECTION');
+    const f = fixture(undefined, undefined, undefined, undefined, { projectFailure() { throw projection; } });
+    vi.spyOn(f.service, 'deleteWorkspace').mockRejectedValueOnce(original);
+    const error = await track(f.handlers.get(deleteWorkspaceIpcChannel)!(f.event, request)).catch(cause => cause);
+    expect(error).toBeInstanceOf(Error);
+    if (!(error instanceof Error)) throw new Error('EXPECTED_SAFE_PUBLIC_DELETION_ERROR');
+    expect(error.message).toBe('WORKSPACE_DELETE_FAILED');
+    expect(error.cause).toBeUndefined();
+    expect(String(error.stack)).not.toContain('SYNTHETIC_');
+    expect(f.runtime.projectFailure).toHaveBeenCalledExactlyOnceWith({ cause: original, sideEffectState: 'unknown' });
+  });
+
+  it('removes the public channel and rejects a retained handler after admission closes', async () => {
+    const f = fixture(), invoke = f.handlers.get(deleteWorkspaceIpcChannel)!;
+    f.capability.closeAdmission();
+    expect(f.handlers.has(deleteWorkspaceIpcChannel)).toBe(false);
+    await expect(track(invoke(f.event, request))).rejects.toThrow('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+    expect(f.prepare).not.toHaveBeenCalled();
+  });
+
+  it('does not publish an unrecognized inner error code from a runtime follow-up', async () => {
+    const original = new WorkspaceManagementError('SYNTHETIC_PRIVATE_CODE' as never, 'delete');
+    const f = fixture(async () => 'cancelled', undefined, undefined, deletionContinuationFixture().port, {
+      readNextAction() { throw original; },
+    });
+    const failure = await track(f.handlers.get(deleteWorkspaceIpcChannel)!(f.event, request)).catch(error => error);
+    expect(failure).toBeInstanceOf(Error);
+    if (!(failure instanceof Error)) throw new Error('EXPECTED_SAFE_PUBLIC_DELETION_ERROR');
+    expect(failure.message).toBe('WORKSPACE_MANAGEMENT_CAPABILITY_FAILED');
+    expect(failure.cause).toBeUndefined();
+    expect(String(failure.stack)).not.toContain(original.code);
   });
 });
 

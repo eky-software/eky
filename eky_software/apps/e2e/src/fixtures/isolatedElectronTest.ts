@@ -69,7 +69,7 @@ import { assertElectronSelectorFixtureCombination, prepareElectronSelectorProfil
 import { runElectronSelectorRecoveryStartup } from './runElectronSelectorRecoveryStartup.js';
 import { usesSelectorTestBackend } from '../../../desktop/e2e/electronSelectorTestRelease.js';
 import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario } from '../../../desktop/e2e/workspaceDeletionProofProtocol.js';
-import { captureWorkspaceDeletionFailure, shouldCaptureWorkspaceDeletionFailure } from './captureWorkspaceDeletionFailure.js';
+import { captureWorkspaceDeletionFailure, shouldCaptureWorkspaceDeletionFailure, selectWorkspaceDeletionPhaseObservation } from './captureWorkspaceDeletionFailure.js';
 import { captureElectronPrivateCloseFailure, reportElectronCloseFailure, reportElectronStartupException,
   type ElectronPrivateCloseFailure } from './reportElectronPrivateFailure.js';
 
@@ -78,6 +78,7 @@ export { reportElectronLifecycleEvidence } from './reportElectronLifecycleEviden
 export interface IsolatedElectronHarness {
   api: APIRequestContext;
   electronApp: ElectronApplication;
+  selectWorkspaceDeletionObservationRuntime(): void;
   launchSecondInstance(): Promise<void>;
   page: Page;
   paths: E2eWorkerPaths;
@@ -273,6 +274,7 @@ export const test = base.extend<
     let currentOutput: ElectronOutputGeneration = { bridge: undefined, generation: 0 };
     let firstFailedLaunch: typeof currentOutput | undefined;
     let firstStartProof: FirstStartProofCapture = { status: 'notRequested' };
+    let phaseObservation: ReturnType<typeof selectWorkspaceDeletionPhaseObservation> | undefined;
 
     async function launchCurrentRuntime() {
       if (windowsBridge !== undefined || runtimeCleanupUnverified || portReleaseUnverified) {
@@ -344,6 +346,8 @@ export const test = base.extend<
 
     async function closeCurrentRuntime(alreadyClosed = false): Promise<void> {
       const closingRuntimeInstanceId = runtime.runtimeInstanceId;
+      const closingApplication = electronApp;
+      phaseObservation?.beginClose(closingApplication, closingRuntimeInstanceId);
       try {
         if (windowsBridge !== undefined) {
           try {
@@ -379,6 +383,8 @@ export const test = base.extend<
       } catch {
         runtimeCleanupUnverified = true;
         throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
+      } finally {
+        phaseObservation?.finishClose(closingApplication, closingRuntimeInstanceId);
       }
     }
 
@@ -440,6 +446,13 @@ export const test = base.extend<
       const harness: IsolatedElectronHarness = {
         api,
         electronApp: launched.electronApp,
+        selectWorkspaceDeletionObservationRuntime() {
+          if (scenarioId !== 'DESK-DELETE-RECOVERY-001' || phaseObservation !== undefined || electronApp === undefined) {
+            throw new Error('E2E_WORKSPACE_DELETION_OBSERVATION_INVALID');
+          }
+          phaseObservation = selectWorkspaceDeletionPhaseObservation({ application: electronApp,
+            runtimeInstanceId: runtime.runtimeInstanceId, scenarioId, testInfo });
+        },
         async launchSecondInstance() {
           if (runtimeCleanupUnverified) throw new Error('E2E_ELECTRON_RUNTIME_CLEANUP_UNVERIFIED');
           try {
@@ -569,6 +582,7 @@ export const test = base.extend<
         removeRoot: () => removeE2eRunRoot(runRoot),
         async report(cleanup) {
           const failed = failure !== undefined || testInfo.errors.length > 0 || cleanup.runRoot !== 'removed';
+          await phaseObservation?.reportFailure(shouldCaptureWorkspaceDeletionFailure(testInfo.status, testInfo.expectedStatus, failed));
           if (shouldCaptureWorkspaceDeletionFailure(testInfo.status, testInfo.expectedStatus, failed)) {
             await reportElectronStartupException({ runRoot, artifactsRoot: paths.artifactsRoot,
               runtimeInstanceId: runtime.runtimeInstanceId, testInfo, secrets: [runtime.sessionSecret],

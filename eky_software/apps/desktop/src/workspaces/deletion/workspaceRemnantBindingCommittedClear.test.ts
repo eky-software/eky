@@ -55,16 +55,16 @@ for (const shape of ['missing', 'empty', 'current', 'next', 'backup', 'all'] as 
     const proof = { ...f.cleanup('deletionPurged'), async assertPayloadsAbsent() { full++; } };
     await committedClear(store, committedTarget(f), proof, { async assertBeforeSlotRead() { prefix++; } });
     if (shape === 'missing') {
-      expect(prefix).toBe(0);
+      expect(prefix).toBe(1);
       expect(sync).toBe(0);
       expect(reads).toBe(6);
-      expect(full).toBe(5);
+      expect(full).toBe(4);
       expect(await committedFs.readdir(f.root)).toEqual([]);
     }
     else {
       const rounds = selected.length + 3;
-      expect(prefix).toBe(rounds);
-      expect(full).toBe(2 + rounds);
+      expect(prefix).toBe(1 + rounds);
+      expect(full).toBe(1 + rounds);
       expect(reads).toBe(3 + rounds * 3);
       expect(sync).toBe(1);
       expect(await f.snapshot()).toEqual({ [foreign]: Buffer.from('foreign immutable bytes').toString('hex') });
@@ -72,7 +72,7 @@ for (const shape of ['missing', 'empty', 'current', 'next', 'backup', 'all'] as 
   });
 }
 for (const fault of ['workspace', 'lineage', 'digest', 'identity', 'rawBytes', 'sideOnlyForeign'] as const) {
-  it(`committed binding rejects ${fault} before any clear or prefix`, async (context) => {
+  it(`committed binding rejects ${fault} after one leading prefix and before any clear`, async (context) => {
     const f = await fixture(context), store = f.store();
     await store.publish(f.binding, f.authority);
     const slots = (await store.inspect(f.authority)).slots;
@@ -98,59 +98,76 @@ for (const fault of ['workspace', 'lineage', 'digest', 'identity', 'rawBytes', '
     f.fileSystem.removeSlot = async () => { removes++; throw new Error('UNEXPECTED_REMOVE'); };
     f.fileSystem.syncDirectory = async () => { sync++; throw new Error('UNEXPECTED_SYNC'); };
     await expect(committedClear(store, target, proof, { async assertBeforeSlotRead() { prefix++; } })).rejects.toThrow();
-    expect(prefix).toBe(0);
+    expect(prefix).toBe(1);
     expect(removes).toBe(0);
     expect(sync).toBe(0);
     expect(await f.snapshot()).toEqual(before);
   });
 }
-it('committed binding captures commitments before the first external await', async (context) => {
+for (const stage of ['leading observation callback', 'full external guard'] as const) {
+it(`committed binding captures commitments before the ${stage}`, async (context) => {
   const f = await fixture(context), store = f.store();
   await store.publish(f.binding, f.authority);
   const slots = (await store.inspect(f.authority)).slots;
   const mutable = { current: { ...slots.current!, bytes: Uint8Array.from(slots.current!.bytes), identity: { ...slots.current!.identity! } }, next: undefined, backup: undefined };
   const target = committedTarget(f);
-  let once = true;
+  let injected = 0, reads = 0;
+  const read = f.fileSystem.readSlot.bind(f.fileSystem);
+  f.fileSystem.readSlot = async (...args) => { reads++; return read(...args); };
+  const mutate = () => {
+    if (injected) return;
+    expect(reads).toBe(stage === 'leading observation callback' ? 0 : 3);
+    injected++;
+    target.workspaceId = id(8);
+    target.lineageIdentity.profileId = 'f'.repeat(64);
+    proof.bindingSha256 = 'e'.repeat(64);
+    mutable.current.bytes.fill(0);
+    mutable.current.identity.size++;
+  };
   const proof = { ...f.cleanup('deletionPurged'), expectedDeletionSlots: mutable,
     async assertExternalSelection() {
-      if (once) {
-        once = false;
-        target.workspaceId = id(8);
-        target.lineageIdentity.profileId = 'f'.repeat(64);
-        proof.bindingSha256 = 'e'.repeat(64);
-        mutable.current.bytes.fill(0);
-        mutable.current.identity.size++;
-      }
+      if (stage === 'full external guard') mutate();
       await f.authority.assertExternalSelection();
     } };
-  await committedClear(store, target, proof, { async assertBeforeSlotRead() { } });
-  expect(once).toBe(false);
+  await committedClear(store, target, proof, {
+    async assertBeforeSlotRead() {
+      if (stage === 'leading observation callback') mutate();
+      await f.authority.assertExternalSelection();
+    },
+  });
+  expect(injected).toBe(1);
   expect(await f.snapshot()).toEqual({});
 });
+}
 for (const persistent of [false, true]) {
   it(`committed binding documents ${persistent ? 'persistent' : 'fully restored'} prefix payload window`, async (context) => {
     const f = await fixture(context), store = f.store();
     await store.publish(f.binding, f.authority);
     const before = await f.snapshot();
-    let external = 0, reads = 0, dirty = false, blocked = 0;
+    let clearing = false, injected = false, dirty = false, blocked = 0;
+    const clear = CrashSafeByteSlotStore.prototype.clearSelected;
+    vi.spyOn(CrashSafeByteSlotStore.prototype, 'clearSelected').mockImplementation(async function (this: CrashSafeByteSlotStore, selected, option) {
+      clearing = true;
+      return clear.call(this, selected, option);
+    });
     const read = f.fileSystem.readSlot.bind(f.fileSystem);
     f.fileSystem.readSlot = async (...args) => {
       const result = await read(...args);
-      if (++reads === 4 && !persistent)
+      if (dirty && !persistent)
         dirty = false;
       return result;
     };
-    const proof = { ...f.cleanup('deletionPurged'), async assertExternalSelection() {
-        await f.authority.assertExternalSelection();
-        if (++external === 5)
-          dirty = true;
-      }, async assertPayloadsAbsent() { if (dirty) {
+    const proof = { ...f.cleanup('deletionPurged'), async assertPayloadsAbsent() { if (dirty) {
         blocked++;
         throw new Error('SYNTHETIC_RETURNED_PAYLOAD');
       } } };
     const result = await committedClear(store, committedTarget(f), proof, {
-      assertBeforeSlotRead: () => proof.assertExternalSelection(),
+      async assertBeforeSlotRead() {
+        await proof.assertExternalSelection();
+        if (clearing && !injected) { injected = true; dirty = true; }
+      },
     }).then(() => ({ ok: true }), (error: unknown) => ({ error }));
+    expect(injected).toBe(true);
     if (!persistent) {
       expect(result).toEqual({ ok: true });
       expect(blocked).toBe(0);
@@ -213,7 +230,7 @@ it('committed binding captures the callback and receiver once before external wo
     } };
   await store.clearCommittedAfterPayloadsAbsent(committedTarget(f), proof, option);
   expect(gets).toBe(1);
-  expect(old).toBe(4);
+  expect(old).toBe(5);
   expect(late).toBe(0);
   expect(await f.snapshot()).toEqual({});
 });
@@ -232,7 +249,7 @@ for (const failed of [false, true]) {
     const first = undefined;
     let callbacks = 0;
     const result = await store.clearCommittedAfterPayloadsAbsent(committedTarget(f), f.cleanup('deletionPurged'), {
-      async assertBeforeSlotRead() { callbacks++; if (failed)
+      async assertBeforeSlotRead() { callbacks++; if (failed && scopes.length > 0)
         throw first; },
     }).then(() => ({ ok: true }), (error: unknown) => ({ error }));
     if (failed) {
@@ -285,25 +302,35 @@ for (const failed of [false, true]) {
     expect(await f.snapshot()).toEqual({});
   });
 }
-it('committed binding joins the held new prefix across revocation without early I/O or release', async (context) => {
+for (const stage of ['observation', 'clear'] as const) {
+it(`committed binding joins the held ${stage} prefix across revocation without early I/O or release`, async (context) => {
   const f = await fixture(context), store = f.store();
   await store.publish(f.binding, f.authority);
   const before = await f.snapshot(), entered = committedGate(), held = committedGate();
   const read = f.fileSystem.readSlot.bind(f.fileSystem);
-  let reads = 0, settled = false;
+  let reads = 0, settled = false, clearing = false;
+  const clear = CrashSafeByteSlotStore.prototype.clearSelected;
+  vi.spyOn(CrashSafeByteSlotStore.prototype, 'clearSelected').mockImplementation(async function (this: CrashSafeByteSlotStore, selected, option) {
+    clearing = true;
+    return clear.call(this, selected, option);
+  });
+  const initialReads = stage === 'observation' ? 0 : 3;
   f.fileSystem.readSlot = async (...args) => { reads++; return read(...args); };
   const work = store.clearCommittedAfterPayloadsAbsent(committedTarget(f), f.cleanup('deletionPurged'), {
-    async assertBeforeSlotRead() { entered.release(); await held.promise; },
+    async assertBeforeSlotRead() {
+      if (stage === 'clear' && !clearing) return;
+      entered.release(); await held.promise;
+    },
   }).then(() => ({ ok: true }), (error: unknown) => ({ error })).finally(() => { settled = true; });
   context.onTestFinished(async () => { held.release(); await work; });
   try {
     await Promise.race([entered.promise, work.then(() => { throw new Error('PREFIX_NOT_HELD'); })]);
-    expect(reads).toBe(3);
+    expect(reads).toBe(initialReads);
     f.expire();
     await Promise.resolve();
     expect(settled).toBe(false);
     await expect(store.inspect(f.authority)).rejects.toThrow('WORKSPACE_REMNANT_BINDING_INVALID');
-    expect(reads).toBe(3);
+    expect(reads).toBe(initialReads);
     expect(settled).toBe(false);
     expect(await f.snapshot()).toEqual(before);
   }
@@ -311,15 +338,22 @@ it('committed binding joins the held new prefix across revocation without early 
     held.release();
   }
   expect(await work).toMatchObject({ error: { message: 'SYNTHETIC_LEASE_LOST' } });
-  expect(reads).toBe(3);
+  expect(reads).toBe(initialReads);
   expect(await f.snapshot()).toEqual(before);
 });
+}
+for (const stage of ['observation', 'clear'] as const) {
 for (const mode of ['read', 'close'] as const) {
-  it(`committed binding joins a real held ${mode} before releasing exclusivity`, async (context) => {
+  it(`committed binding joins a real held ${stage} ${mode} before releasing exclusivity`, async (context) => {
     const f = await fixture(context), store = f.store();
     await store.publish(f.binding, f.authority);
     const before = await f.snapshot(), held = committedGate(), entered = committedGate();
-    let armed = false, injected = false, closed = 0, settled = false;
+    let armed = false, injected = false, closed = 0, settled = false, clearing = false;
+    const clear = CrashSafeByteSlotStore.prototype.clearSelected;
+    vi.spyOn(CrashSafeByteSlotStore.prototype, 'clearSelected').mockImplementation(async function (this: CrashSafeByteSlotStore, selected, option) {
+      clearing = true;
+      return clear.call(this, selected, option);
+    });
     let handle: FileHandle | undefined;
     committedHooks.opened = (file, path) => {
       if (!armed || injected || String(path) !== f.paths.currentPath)
@@ -349,7 +383,7 @@ for (const mode of ['read', 'close'] as const) {
         } });
     };
     const work = store.clearCommittedAfterPayloadsAbsent(committedTarget(f), f.cleanup('deletionPurged'), {
-      async assertBeforeSlotRead() { armed = true; },
+      async assertBeforeSlotRead() { if (stage === 'observation' || clearing) armed = true; },
     }).then(() => ({ ok: true }), (error: unknown) => ({ error })).finally(() => { settled = true; });
     context.onTestFinished(async () => { held.release(); await work; });
     try {
@@ -371,6 +405,7 @@ for (const mode of ['read', 'close'] as const) {
     committedHooks.opened = undefined;
     expect(await f.snapshot()).toEqual(before);
   });
+}
 }
 for (const mode of ['remove', 'sync'] as const) {
   it(`committed binding joins a held native ${mode} and rechecks authority before mutation`, async (context) => {
@@ -412,12 +447,12 @@ it('committed binding keeps per-key scopes and other actual binding bytes indepe
   let firstReads = 0, secondReads = 0;
   await first.clearCommittedAfterPayloadsAbsent(committedTarget(f), f.cleanup('deletionPurged'), { async assertBeforeSlotRead() { firstReads++; } });
   expect(await readFile(paths.currentPath)).toEqual(otherBytes);
-  expect(firstReads).toBe(4);
+  expect(firstReads).toBe(5);
   expect(secondReads).toBe(0);
   await second.clearCommittedAfterPayloadsAbsent(committedTarget(f), { ...f.cleanup('deletionPurged'), bindingSha256: workspaceRemnantBindingSha256(other) }, {
     async assertBeforeSlotRead() { secondReads++; },
   });
-  expect(firstReads).toBe(4);
-  expect(secondReads).toBe(4);
+  expect(firstReads).toBe(5);
+  expect(secondReads).toBe(5);
   expect(await f.snapshot()).toEqual({});
 });

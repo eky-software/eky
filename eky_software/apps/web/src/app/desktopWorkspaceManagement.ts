@@ -1,9 +1,9 @@
 import type { EkyDesktopApi } from './desktopBridge.js';
 
-const WORKSPACE_LABEL_MAX_CODE_POINTS = 80;
+export const WORKSPACE_LABEL_MAX_CODE_POINTS = 80;
 const WORKSPACE_STATUS_MAX_BYTES = 32 * 1024;
 const WORKSPACE_MAX_ENTRIES = 64;
-const workspaceDeletionResultVersion = 1 as const;
+export const workspaceDeletionProtocolVersion = 1 as const;
 const workspaceDeletionFailureCodes = Object.freeze([
   'WORKSPACE_MANAGEMENT_BUSY',
   'WORKSPACE_MANAGEMENT_INVALID',
@@ -42,8 +42,32 @@ export interface WorkspaceManagementStatus {
   readonly duplicateWorkspaceLabelIds?: readonly string[];
 }
 
+export type WorkspaceRecoveryManagementStatus = Readonly<{
+  readonly formatVersion: 2;
+  readonly mode: 'recoveryManagement';
+  readonly runtimeState: 'absent';
+}> & (
+  | Readonly<{
+      readonly maintenanceState: 'idle';
+      readonly operationState: 'idle';
+      readonly persistedActiveWorkspaceId: string | null;
+      readonly target: Readonly<{ workspaceId: string; workspaceLabel: string }>;
+    }>
+  | Readonly<{
+      readonly maintenanceState: 'idle' | 'busy';
+      readonly operationState: 'busy' | 'recoveryRequired';
+    }>
+);
+
 export type WorkspaceDeletionFailureCode =
   (typeof workspaceDeletionFailureCodes)[number];
+
+export interface WorkspaceDeletionRequest {
+  readonly formatVersion: 1;
+  readonly workspaceId: string;
+  readonly typedLabel: string;
+  readonly backupChoice: 'createBackup' | 'explicitDataLoss';
+}
 
 export type WorkspaceDeletionResult = Readonly<
   | {
@@ -73,6 +97,8 @@ export type WorkspaceDeletionResult = Readonly<
 >;
 
 export interface WorkspaceManagementCapability {
+  // Older desktop bridges and the browser do not offer this command.
+  deleteWorkspace?(request: Readonly<WorkspaceDeletionRequest>): Promise<WorkspaceDeletionResult>;
   createEmpty(workspaceLabel: string): Promise<'completed' | 'relaunching'>;
   getStatus(): Promise<WorkspaceManagementStatus>;
   importBackupAsNew(
@@ -83,14 +109,27 @@ export interface WorkspaceManagementCapability {
   switchTo(workspaceId: string): Promise<'completed' | 'relaunching'>;
 }
 
+export type WorkspaceManagementViewStatus = WorkspaceManagementStatus | WorkspaceRecoveryManagementStatus;
+export type WorkspaceManagementViewCapability = Omit<WorkspaceManagementCapability, 'getStatus'> & {
+  getStatus(): Promise<WorkspaceManagementViewStatus>;
+};
+
 export type WorkspaceSelectorCapability = Pick<
-  WorkspaceManagementCapability,
-  'createEmpty' | 'getStatus' | 'importBackupAsNew' | 'rename' | 'switchTo'
+  WorkspaceManagementViewCapability,
+  'createEmpty' | 'deleteWorkspace' | 'getStatus' | 'importBackupAsNew' | 'rename' | 'switchTo'
 >;
 
 export function getDesktopWorkspaceManagement(
+  target?: Pick<Window, 'ekyDesktop'>,
+): WorkspaceManagementCapability | undefined;
+export function getDesktopWorkspaceManagement(
+  target: Pick<Window, 'ekyDesktop'>,
+  presentation: 'selector',
+): WorkspaceSelectorCapability | undefined;
+export function getDesktopWorkspaceManagement(
   target: Pick<Window, 'ekyDesktop'> = window,
-): WorkspaceManagementCapability | undefined {
+  presentation?: 'selector',
+): WorkspaceManagementViewCapability | undefined {
   const desktop = target.ekyDesktop;
   if (
     typeof desktop?.getWorkspaceManagementStatus !== 'function' ||
@@ -103,7 +142,7 @@ export function getDesktopWorkspaceManagement(
   }
 
   const replaceActiveWorkspaceFromBackup =
-    desktop.replaceActiveWorkspaceFromBackup;
+    presentation === 'selector' ? undefined : desktop.replaceActiveWorkspaceFromBackup;
   const replaceActiveFromBackup =
     typeof replaceActiveWorkspaceFromBackup === 'function'
       ? async (): Promise<'cancelled' | 'relaunching'> =>
@@ -113,8 +152,14 @@ export function getDesktopWorkspaceManagement(
             'replace',
           )
       : undefined;
+  const nativeDeleteWorkspace = desktop.deleteWorkspace;
+  const deleteWorkspace = typeof nativeDeleteWorkspace === 'function'
+    ? async (request: Readonly<WorkspaceDeletionRequest>): Promise<WorkspaceDeletionResult> =>
+        readWorkspaceDeletionResult(await nativeDeleteWorkspace(readWorkspaceDeletionRequest(request)))
+    : undefined;
 
   return Object.freeze({
+    ...(deleteWorkspace === undefined ? {} : { deleteWorkspace }),
     async createEmpty(workspaceLabel: string) {
       const input = readWorkspaceLabel(workspaceLabel);
       const result = await desktop.createEmptyWorkspace({
@@ -127,7 +172,8 @@ export function getDesktopWorkspaceManagement(
       );
     },
     async getStatus() {
-      return readWorkspaceStatus(await desktop.getWorkspaceManagementStatus());
+      const status = await desktop.getWorkspaceManagementStatus();
+      return presentation === 'selector' ? readWorkspaceSelectorStatus(status) : readWorkspaceStatus(status);
     },
     async importBackupAsNew(workspaceLabel: string) {
       const input = readWorkspaceLabel(workspaceLabel);
@@ -171,6 +217,56 @@ function readWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
   }
 }
 
+function readWorkspaceSelectorStatus(value: unknown): WorkspaceManagementViewStatus {
+  if (isRecord(value)) {
+    const version = Object.getOwnPropertyDescriptor(value, 'formatVersion');
+    if (version !== undefined && 'value' in version && version.value === 2) {
+      return readWorkspaceRecoveryManagementStatus(value);
+    }
+  }
+  return readWorkspaceStatus(value);
+}
+
+export function readWorkspaceRecoveryManagementStatus(value: unknown): WorkspaceRecoveryManagementStatus {
+  try {
+    if (!isRecord(value)) return invalidWorkspaceStatus();
+    const operation = Object.getOwnPropertyDescriptor(value, 'operationState');
+    if (operation === undefined || !('value' in operation)) return invalidWorkspaceStatus();
+    const idle = operation.value === 'idle';
+    const keys = ['formatVersion', 'mode', 'runtimeState', 'maintenanceState', 'operationState'];
+    if (!hasExactKeys(value, idle ? [...keys, 'persistedActiveWorkspaceId', 'target'] : keys) ||
+        value.formatVersion !== 2 || value.mode !== 'recoveryManagement' || value.runtimeState !== 'absent' ||
+        (value.maintenanceState !== 'idle' && value.maintenanceState !== 'busy')) {
+      return invalidWorkspaceStatus();
+    }
+    const common = { formatVersion: 2 as const, mode: 'recoveryManagement' as const,
+      runtimeState: 'absent' as const };
+    let result: WorkspaceRecoveryManagementStatus;
+    if (idle) {
+      if (value.maintenanceState !== 'idle' || !isRecord(value.target) ||
+          !hasExactKeys(value.target, ['workspaceId', 'workspaceLabel'])) {
+        return invalidWorkspaceStatus();
+      }
+      result = Object.freeze({ ...common, maintenanceState: 'idle' as const,
+        operationState: 'idle' as const,
+        persistedActiveWorkspaceId: value.persistedActiveWorkspaceId === null
+          ? null : readWorkspaceId(value.persistedActiveWorkspaceId),
+        target: Object.freeze({ workspaceId: readWorkspaceId(value.target.workspaceId),
+          workspaceLabel: readWorkspaceLabel(value.target.workspaceLabel) }) });
+    } else {
+      if (value.operationState !== 'busy' && value.operationState !== 'recoveryRequired') {
+        return invalidWorkspaceStatus();
+      }
+      result = Object.freeze({ ...common, maintenanceState: value.maintenanceState,
+        operationState: value.operationState });
+    }
+    if (encodedByteLength(result) > WORKSPACE_STATUS_MAX_BYTES) return invalidWorkspaceStatus();
+    return result;
+  } catch {
+    return invalidWorkspaceStatus();
+  }
+}
+
 export function readWorkspaceDeletionResult(value: unknown): WorkspaceDeletionResult {
   try {
     return parseWorkspaceDeletionResult(value);
@@ -179,38 +275,64 @@ export function readWorkspaceDeletionResult(value: unknown): WorkspaceDeletionRe
   }
 }
 
+export function readWorkspaceDeletionRequest(value: unknown): Readonly<WorkspaceDeletionRequest> {
+  try {
+    if (!isRecord(value) || !hasExactKeys(value, [
+      'formatVersion', 'workspaceId', 'typedLabel', 'backupChoice',
+    ]) || value.formatVersion !== workspaceDeletionProtocolVersion ||
+        (value.backupChoice !== 'createBackup' && value.backupChoice !== 'explicitDataLoss')) {
+      throw new Error('Invalid workspace deletion request.');
+    }
+    return Object.freeze({ formatVersion: workspaceDeletionProtocolVersion,
+      workspaceId: readWorkspaceId(value.workspaceId),
+      typedLabel: readWorkspaceLabel(value.typedLabel), backupChoice: value.backupChoice });
+  } catch {
+    throw new Error('Invalid workspace deletion request.');
+  }
+}
+
+// Presentation validation only. Main always rechecks the current target.
+export function matchesWorkspaceDeletionLabel(typedLabel: unknown, workspaceLabel: unknown): boolean {
+  try {
+    return readWorkspaceLabel(typedLabel).normalize('NFC') ===
+      readWorkspaceLabel(workspaceLabel).normalize('NFC');
+  } catch {
+    return false;
+  }
+}
+
 // Renderer validation accepts only the wire projection, never deletion authority.
 function parseWorkspaceDeletionResult(value: unknown): WorkspaceDeletionResult {
   if (isRecord(value)) {
     if (hasExactKeys(value, ['formatVersion', 'status', 'navigation']) &&
-        value.formatVersion === workspaceDeletionResultVersion &&
+        value.formatVersion === workspaceDeletionProtocolVersion &&
         value.status === 'completed' &&
         (value.navigation === 'selector' || value.navigation === 'reopenPrevious')) {
       return Object.freeze({
-        formatVersion: workspaceDeletionResultVersion,
+        formatVersion: workspaceDeletionProtocolVersion,
         status: 'completed',
         navigation: value.navigation,
       });
     }
     if (hasExactKeys(value, ['formatVersion', 'status', 'nextAction']) &&
-        value.formatVersion === workspaceDeletionResultVersion &&
+        value.formatVersion === workspaceDeletionProtocolVersion &&
         value.status === 'cancelled' &&
         (value.nextAction === 'continue' || value.nextAction === 'relaunching' ||
           value.nextAction === 'restartRequired')) {
       return Object.freeze({
-        formatVersion: workspaceDeletionResultVersion,
+        formatVersion: workspaceDeletionProtocolVersion,
         status: 'cancelled',
         nextAction: value.nextAction,
       });
     }
     if (hasExactKeys(value, [
       'formatVersion', 'status', 'errorCode', 'sideEffectState', 'nextAction',
-    ]) && value.formatVersion === workspaceDeletionResultVersion &&
+    ]) && value.formatVersion === workspaceDeletionProtocolVersion &&
         isWorkspaceDeletionFailureCode(value.errorCode)) {
       if (value.status === 'failed' && value.sideEffectState === 'none' &&
           (value.nextAction === 'continue' || value.nextAction === 'restartRequired')) {
         return Object.freeze({
-          formatVersion: workspaceDeletionResultVersion,
+          formatVersion: workspaceDeletionProtocolVersion,
           status: 'failed',
           errorCode: value.errorCode,
           sideEffectState: 'none',
@@ -220,7 +342,7 @@ function parseWorkspaceDeletionResult(value: unknown): WorkspaceDeletionResult {
       if (value.status === 'recoveryRequired' && value.sideEffectState === 'unknown' &&
           value.nextAction === 'restartRequired') {
         return Object.freeze({
-          formatVersion: workspaceDeletionResultVersion,
+          formatVersion: workspaceDeletionProtocolVersion,
           status: 'recoveryRequired',
           errorCode: value.errorCode,
           sideEffectState: 'unknown',
@@ -261,7 +383,7 @@ function parseWorkspaceStatus(value: unknown): WorkspaceManagementStatus {
       ? null
       : readWorkspaceId(value.activeWorkspaceId);
   const seenIds = new Set<string>();
-  const workspaces = value.workspaces.map((entry) => {
+  const workspaces = Array.from(value.workspaces, (entry) => {
     if (
       !isRecord(entry) ||
       !hasExactKeys(entry, [

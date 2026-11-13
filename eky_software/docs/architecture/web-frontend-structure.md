@@ -57,12 +57,54 @@ virheen, ei business-fallbackia. Tavallinen selain- ja business-tila säilyvät.
 Desktopin täsmällinen valitsin-URL ohjaa vain esitystä; käyttöoikeus,
 protokollan business-esto ja operaation elinikä kuuluvat mainille.
 Tämä ei lisää routeria tai liiketoimintasääntöjä webiin.
+Valitsimen valinnainen tukivienticallback kaapataan samassa compositionissa
+vain täydellisen workspace-kyvykkyyden rinnalla. Workspaces näyttää sen
+omassa `WorkspaceSupportBundleControl`-komponentissa nykyisen dialogin
+nimetyssä esityspaikassa, ei Diagnostics-featuren sisäisenä importtina.
+Sen paikallinen `useWorkspaceSupportBundle` omistaa callback-kohtaisen
+UI-elinajan, kaksoiskutsusuojan ja vanhentuneiden vastausten eston;
+se ei omista mainin vientilupaa eikä workspace-komennon tai sen vastauksen
+elinikää. Main valitsee tukipaketin muodon; selain ei saa desktop-toimintoa.
+Nimetty selaintestin `*.testMount.ts` on vain nykyisen eristetyn Vite-testin
+moduuli, ei sovelluksen entrypoint tai tuotantobundlen importti. Se käyttää
+samoja React-, ohjain- ja esitystoteutuksia ilman moduulien hakemista
+selaimen rajatusta ajoituslistasta; vientiä tai poistolupaa se ei myönnä.
 W7.5:n `desktopWorkspaceManagement` validoi mainin suljetun poistotuloksen
 uudelleen webin vastaanottorajalla. Se käyttää vain nimettyä tulossopimusta
 ja turvallista syykatalogia, ei desktopin runtime-/tiedosto-omistajien
 importteja. Uusi muuttumaton projektio ei anna poistolupaa eikä päättele
 kadonneesta vastauksesta onnistumista, peruutusta tai automaattista uusintaa.
 Julkisen metodin ja käyttöliittymän kytkentä vaatii edelleen W7.5:n omat portit.
+Sama vastaanottoraja omistaa poistopyynnön tiukan v1-muodon ja täsmällisen
+nimivertailun. Workspacesin `WorkspaceDeletionForm` on kontrolloitu
+esityskomponentti; se ei kutsu Electronia eikä hallitse pyynnön elinikää.
+Nykyinen workspace-controller/reducer omistaa kohteen, capability-sukupolven
+sekä pyyntö-/vastauselinajan. Näkymän ja business-esityskontekstin vaihto
+vanhentaa vanhat muokkaus-/submit-käsittelijät mutta ei nykyisen hyväksytyn
+komennon vastausta. Epävarma tulos estää uudet työt ilman loputonta
+odotustilaa; dialogin uudelleenavaus tai statusuusinta ei nollaa estoa.
+Valinnainen web-käyttöliittymän poistokyvykkyys kaappaa nyt oikean
+`getDesktopWorkspaceManagement`-sillan nimetyn metodin kerran. Sen puuttuessa
+vanha silta ja selain eivät saa poistopainiketta. Jokainen kutsu validoi
+muuttumattoman pyynnön ennen native-rajaa sekä tiukan tuloksen palatessa.
+Ohjaimen selainkoe säilyy mallinnettuna kontrollina, ei fyysisen poiston
+näyttönä. Tuotannon lomake-/preload-/main-ketju tarvitsee oman
+[Electron-porttinsa](r0-e2e-test-matrix.md).
+W7.5:n nykyinen valitsinkooste valitsee saman vastaanottorajan nimetyn
+selector-variantin. Se hyväksyy mainin tiukan v1/v2-vastauksen ilman
+virheen jälkeistä fallbackia; tavallinen business-silta pysyy v1:ssä.
+Sama workspace-controller, reducer ja dialogi käsittelevät v2:n suoraan,
+eivät tekaistuna tyhjänä tai aktiivisena yrityslistana. Joutilas v2 sisältää
+vain täsmällisen kohteen; busy- ja selvitystila eivät sisällä kohdetta.
+V2 estää myös suoraan kutsutut tavalliset komennot ja backup-valinnan.
+Onnistunut poisto jää ei-odottavaan, käsin suljettavaan tulosnäkymään.
+Se ei käynnistä statuksen uusintalukua, uutta poistoa tai relaunchia;
+uusi capability-session päättää tämän paikallisen esitystilan.
+Nykyiset `WorkspaceDeletionController.testMount.ts` ja
+`WorkspaceDeletionForm.testMount.ts` käyttävät samaa nimettyä
+E2E-moduulimallia kuin tukipainikkeen koe. Ne eivät hae Reactia selaimen
+resurssihistoriasta eivätkä kuulu tuotannon entryyn tai bundleen.
+Näkymän kontrollit eivät korvaa oikeaa main-/SQLite-/native- tai pakettiporttia.
 [Workspace-sopimus](local-company-workspace-plan.md#valitsimesta-avauksen-pysyvä-jatko)
 omistaa sulun ja avauksen rajat; [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 erottaa paikallisen osatodennuksen varsinaisesta integraatiohyväksynnästä.

@@ -113,7 +113,25 @@ export function createWorkspaceDeletionMetadataCleaner(input: {
             binding => binding.owner === 'workspaceImport',
             (value, binding) => binding.owner === 'workspaceImport' && value.operationId === binding.operationId && value.workspaceId === binding.workspaceId,
             captureWorkspaceBackupImportDeletionSlots,
-            importJournal.clearAfterDeletionPurged.bind(importJournal)),
+            async (binding, retirement) => {
+              let reading = true;
+              const assertReadCurrent = () => {
+                if (!reading) return invalidDeletionData(invalidCode);
+                assertCurrent(); retirement.assertAuthority();
+              };
+              try {
+                await importJournal.clearAfterDeletionPurged(binding, retirement, {
+                  async assertBeforeSlotRead() {
+                    assertReadCurrent();
+                    try {
+                      await readOwned(); assertReadCurrent();
+                      await writers(); assertReadCurrent();
+                      await readOwned(); assertReadCurrent();
+                    } catch (error) { throw retain(error); }
+                  },
+                });
+              } finally { reading = false; }
+            }),
           journalContext(await adoptionJournal.inspectSlots(assertCurrent), () => adoptionJournal.inspectSlots(assertCurrent),
             binding => binding.owner === 'workspaceLegacyAdoption',
             (value, binding) => binding.owner === 'workspaceLegacyAdoption' && value.operationId === binding.operationId && value.workspaceId === binding.workspaceId,

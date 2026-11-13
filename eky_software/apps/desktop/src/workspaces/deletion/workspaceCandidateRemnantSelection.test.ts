@@ -1,12 +1,15 @@
 import { mkdir, readFile, readdir, rename, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
-import { expect, it, type TestContext } from 'vitest';
+import { expect, it, vi, type TestContext } from 'vitest';
 import { deriveWorkspaceLegacyAdoptionPaths } from '../adoption/workspaceLegacyAdoptionPaths.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { deriveWorkspaceBackupImportPaths } from '../import/workspaceBackupImportPaths.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import { captureWorkspaceCandidateRemnantSelection as capture } from './workspaceCandidateRemnantSelection.js';
-import { deletionTestId as id, deletionTestDigest as hash } from './workspaceDeletionDataTestSupport.js';
+import { deletionTestId as id, deletionTestDigest as hash, deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
+import { captureDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
+import { deriveWorkspaceDeletionPayloadPaths } from './workspaceDeletionPayloadPaths.js';
+import { quarantineWorkspaceDeletionPayload, workspaceDeletionQuarantineFileSystem } from './workspaceDeletionQuarantine.js';
 import { workspaceInspectionRemnantReads as nativeReads } from './workspaceInspectionRemnantAbsence.js';
 import { captureWorkspaceRemnantBinding, serializeWorkspaceRemnantBinding, workspaceRemnantBindingKey } from './workspaceRemnantBindingCodec.js';
 import { createWorkspaceRemnantBindingPaths } from './workspaceRemnantBindingPaths.js';
@@ -240,3 +243,55 @@ it('validates path inputs without creating any directories', async context => {
   expect(await readdir(f.root)).toEqual([]);
   expect(validateWorkspaceId(id(2))).toBe(f.binding.workspaceId);
 });
+
+it.for((['workspaceImport', 'workspaceLegacyAdoption'] as const).flatMap(owner =>
+  (['unchanged', 'replaced'] as const).map(root => ({ owner, root }))))(
+  'requires a fresh physical identity after the $owner candidate was selected ($root)', async ({ owner, root }, context) => {
+    const f = await fixture(context, owner);
+    await f.publish(); await f.addPayload();
+    const selected = await f.capture();
+    const bindings = await f.snapshot();
+    const foreign = join(f.candidate.operationRoot, id(8));
+    await mkdir(foreign, { mode: 0o700 });
+    await writeFile(join(foreign, 'keep'), 'other-company', { mode: 0o600 });
+    const journal = deletionTestJournal();
+    expect(journal.target.workspaceId).toBe(selected.binding.workspaceId);
+    expect(journal.target.lineageIdentity).toEqual(selected.binding.lineageIdentity);
+    const record = captureDeletionInventoryPayloadRecord({ role: selected.role,
+      ownerOperationId: selected.binding.operationId, generationId: null, member: null,
+      rootIdentity: selected.rootIdentity, parentIdentity: selected.parentIdentity,
+      bindingSha256: selected.bindingSha256 });
+    const [paths] = deriveWorkspaceDeletionPayloadPaths(f.root, journal.target, record);
+    expect(paths!.sourcePath).toBe(selected.rootPath);
+    const retained = join(f.root, 'retained-before-physical-check');
+    if (root === 'replaced') {
+      await rename(selected.rootPath, retained);
+      await f.addPayload();
+      expect(await nativeReads.directoryIdentity(selected.rootPath, f.authority.assertAuthority))
+        .not.toBe(record.rootIdentity);
+    }
+    // Keep the external phase permissive so this exercises the physical identity guard itself.
+    const authority = { assertAuthority: f.authority.assertAuthority,
+      assertSelected: vi.fn(async () => { f.authority.assertAuthority(); }) };
+    const fileSystem = { ...workspaceDeletionQuarantineFileSystem,
+      move: vi.fn(workspaceDeletionQuarantineFileSystem.move),
+      syncParent: vi.fn(workspaceDeletionQuarantineFileSystem.syncParent) };
+    const work = quarantineWorkspaceDeletionPayload(f.root, journal, record, authority, fileSystem);
+    if (root === 'replaced') {
+      await expect(work).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+      expect(fileSystem.move).not.toHaveBeenCalled();
+      expect(fileSystem.syncParent).not.toHaveBeenCalled();
+      expect(await readFile(join(retained, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+      expect(await readFile(join(selected.rootPath, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+      await expect(readFile(join(paths!.quarantinePath, 'retained-data'))).rejects.toMatchObject({ code: 'ENOENT' });
+    } else {
+      await expect(work).resolves.toBe('moved');
+      expect(fileSystem.move).toHaveBeenCalledExactlyOnceWith(paths!.sourcePath, paths!.quarantinePath);
+      expect(fileSystem.syncParent).toHaveBeenCalledOnce();
+      expect(await readFile(join(paths!.quarantinePath, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+      await expect(readFile(join(selected.rootPath, 'retained-data'))).rejects.toMatchObject({ code: 'ENOENT' });
+    }
+    expect(authority.assertSelected).toHaveBeenCalled();
+    expect(await f.snapshot()).toEqual(bindings);
+    expect(await readFile(join(foreign, 'keep'), 'utf8')).toBe('other-company');
+  });

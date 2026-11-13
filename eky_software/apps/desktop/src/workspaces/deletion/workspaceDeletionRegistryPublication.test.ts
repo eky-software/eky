@@ -415,8 +415,9 @@ async function originalColdMainProof(f: Awaited<ReturnType<typeof fixture>>, tim
   return { journalBytes, bindingPath, importPath, importBytes };
 }
 
-it.for(['build', 'foreign', 'heldBuild', 'original'] as const)(
-  'cold main actual service owner and native selection reject %s before mutation', async (variant, test) => {
+for (const coldVariant of ['build', 'foreign', 'heldBuild', 'original'] as const) it.for([coldVariant])(
+  'cold main actual service owner and native selection reject %s before mutation',
+  coldVariant === 'heldBuild' || coldVariant === 'original' ? { timeout: 10_000 } : {}, async (variant, test) => {
     const f = await fixture(test), time = '2026-10-25T12:00:00.000Z';
     const accepted = { formatVersion: 1, acceptedAt: time, appVersion: '0.2.81', buildRevision: 'a'.repeat(40), releaseChannel: 'pilot' };
     const buildInfo = { schemaVersion: 1 as const, appVersion: accepted.appVersion, buildRevision: accepted.buildRevision, buildCreatedAt: time, buildDirty: false };

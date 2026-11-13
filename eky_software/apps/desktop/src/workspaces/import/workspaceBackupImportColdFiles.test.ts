@@ -1,11 +1,11 @@
-import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname, join } from 'node:path';
 import { expect, it, vi, type TestContext } from 'vitest';
-import { createImportBindingFixture, importBindingOperationId, importBindingWorkspaceId } from './workspaceBackupImportBindingTestSupport.js';
+import { createImportBindingFixture, importBindingOperationId, importBindingWorkspaceId, snapshotImportBindingFiles } from './workspaceBackupImportBindingTestSupport.js';
 import { WorkspaceBackupImportJournalStore } from './workspaceBackupImportJournalStore.js';
 import { createWorkspaceBackupImportJournalPaths, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from './workspaceBackupImportJournalPaths.js';
 import { createNodeWorkspaceBackupImportJournalFileSystem } from './workspaceBackupImportJournalFileSystem.js';
-import { validateWorkspaceBackupImportJournal } from './workspaceBackupImportJournalValidation.js';
+import { assertWorkspaceBackupImportJournalTransition, validateWorkspaceBackupImportJournal } from './workspaceBackupImportJournalValidation.js';
 import { serializeWorkspaceBackupImportJournal } from './workspaceBackupImportJournalSerializer.js';
 import { WorkspaceBackupImportRecovery } from './workspaceBackupImportRecovery.js';
 import { WorkspaceBackupImportColdContext } from './workspaceBackupImportColdContext.js';
@@ -20,6 +20,12 @@ import { WorkspaceManagementRecoveryRequiredError } from '../management/workspac
 import type { CaptureWorkspaceBackupImportColdOwner, WorkspaceBackupImportColdOwner } from './workspaceBackupImportColdOwner.js';
 import type { WorkspaceMaintenanceLeaseHandle } from '../maintenance/workspaceMaintenanceLease.js';
 import { RecordingWorkspaceBackupCandidate } from './workspaceBackupImportTestSupport.js';
+import { discoverRecoveryTargetExperiment } from '../../main/desktopWorkspaceRecoveryDiscoveryTestSupport.js';
+import { acquireWorkspaceProcessReservation } from '../../runtime/workspaceProcessReservation.js';
+import { createDesktopProfilePaths } from '../../runtime/desktopProfilePaths.js';
+import { createLocalUpdateRuntimePaths } from '../../update/localUpdateRuntimePaths.js';
+import { createProfileSnapshotRuntimePaths } from '../../profileBackup/profileSnapshotRuntimePaths.js';
+import { ProfileRestoreActivationJournalStore } from '../../profileBackup/restore/profileRestoreActivationJournalStore.js';
 
 // Actual metadata/root/quarantine files and exact in-memory lease. Candidate,
 // main reservation and the repeated foreign-conflict check are explicitly modeled.
@@ -97,6 +103,107 @@ it.for(['backup', 'next'] as const)('actual cold import preserves interrupted in
   expect((await f.journal.inspectRecoverySelection(() => {})).source).toBeUndefined();
   expect(await f.registry.read()).toEqual(f.original);
 });
+
+for (const entry of ['current', 'backup', 'next', 'currentBackup', 'currentNext', 'backupNext', 'threeSlots', 'tornSibling', 'oversizedSibling',
+  'mixedOperations', 'reversedTransition', 'v1Rejected', 'mixedLocalTarget', 'mixedLocalOther', 'mixedLocalNone'] as const) {
+  it.for([entry])(
+  'actual normal cold import remains byte-equivalent after discovery for %s',
+  ['current', 'backup', 'next', 'currentBackup', 'currentNext', 'backupNext', 'threeSlots', 'tornSibling', 'oversizedSibling', 'mixedOperations', 'reversedTransition'].includes(entry)
+    ? { timeout: 10_000 } : {}, async (shape, test) => {
+    let pending: Promise<unknown> | undefined;
+    let reservation: Awaited<ReturnType<typeof acquireWorkspaceProcessReservation>> | undefined;
+    test.onTestFinished(async () => {
+      await Promise.allSettled([pending]);
+      await reservation?.release();
+    });
+    const run = async () => {
+      const mixed = shape === 'mixedLocalTarget' || shape === 'mixedLocalOther' || shape === 'mixedLocalNone';
+      const input = mixed ? { bound: true, state: 'candidateValidated' as const } : {};
+      const direct = await fixture(test, input), observed = await fixture(test, input);
+      const build = { schemaVersion: 1, appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
+        buildCreatedAt: '2026-11-07T00:00:00.000Z', buildDirty: false } as const;
+      const release = { schemaVersion: 1, appIdentity: 'Eky', appVersion: build.appVersion,
+        msiProductVersion: build.appVersion, buildRevision: build.buildRevision,
+        platform: 'win32', architecture: 'x64', releaseChannel: 'pilot',
+        upgradeCode: '11111111-1111-4111-8111-111111111111' } as const;
+      for (const f of [direct, observed]) {
+        test.signal.throwIfAborted();
+        const paths = createLocalUpdateRuntimePaths({ userDataPath: f.root, legacyRuntimeRoot: createDesktopProfilePaths(f.root).runtimeRoot });
+        await mkdir(dirname(paths.acceptedBuildMetadataPath), { recursive: true });
+        await writeFile(paths.acceptedBuildMetadataPath, JSON.stringify({ formatVersion: 1, acceptedAt: build.buildCreatedAt,
+          appVersion: build.appVersion, buildRevision: build.buildRevision, releaseChannel: 'pilot' }) + '\n', { flag: 'wx' });
+        const originalBytes = await readFile(f.journalPaths.currentPath);
+        const bytes = shape === 'v1Rejected' ? Buffer.from(JSON.stringify({ ...JSON.parse(originalBytes.toString()), formatVersion: 1 }) + '\n') : originalBytes;
+        await rm(f.journalPaths.currentPath);
+        const slots: readonly ('current' | 'backup' | 'next')[] = shape === 'backup' ? ['backup'] : shape === 'next' ? ['next']
+          : shape === 'currentBackup' || shape === 'reversedTransition' ? ['current', 'backup'] : shape === 'currentNext' ? ['current', 'next']
+            : shape === 'backupNext' ? ['backup', 'next'] : shape === 'threeSlots' ? ['current', 'backup', 'next']
+              : shape === 'current' || shape === 'v1Rejected' || mixed ? ['current'] : ['current', 'next'];
+        for (const slot of slots) await writeFile(f.journalPaths[`${slot}Path`],
+          slot === 'next' && shape === 'tornSibling' ? '{' : slot === 'next' && shape === 'oversizedSibling'
+            ? Buffer.alloc(16 * 1024 + 1, 32) : slot === 'next' && shape === 'mixedOperations'
+              ? JSON.stringify({ ...JSON.parse(bytes.toString()), operationId: '55555555-5555-4555-8555-555555555555' }) + '\n'
+              : slot === 'backup' && shape === 'reversedTransition' ? JSON.stringify({ ...JSON.parse(bytes.toString()), state: 'candidateRootCreated' }) + '\n'
+                : bytes, { flag: 'wx' });
+        if (shape === 'reversedTransition') {
+          const validSlots = await f.journal.inspectSlots(() => test.signal.throwIfAborted());
+          expect(validSlots.backup?.value.state).toBe('candidateRootCreated');
+          expect(validSlots.current?.value.state).toBe('prepared');
+          expect(() => assertWorkspaceBackupImportJournalTransition(validSlots.backup!.value, validSlots.current!.value)).toThrow();
+        }
+        if (mixed) {
+          await f.registry.write({ ...f.expected, activeWorkspaceId: shape === 'mixedLocalTarget' ? f.binding.workspaceId
+            : shape === 'mixedLocalNone' ? null : f.original.activeWorkspaceId });
+          const localPath = createProfileSnapshotRuntimePaths(createDesktopProfilePaths(f.paths.finalRoot).runtimeRoot).restoreActivationJournalPath;
+          await new ProfileRestoreActivationJournalStore(localPath).write({ formatVersion: 1,
+            operationId: '55555555-5555-4555-8555-555555555555', phase: 'prepared', revision: 0,
+            hadActiveDatabase: true, hadActiveDocuments: true });
+        }
+      }
+      const expectedRegistry = await observed.registry.read();
+      const before = await snapshotImportBindingFiles(observed.root);
+      reservation = await acquireWorkspaceProcessReservation({ userDataRoot: observed.root, signal: test.signal });
+      const owned = reservation;
+      const result = await discoverRecoveryTargetExperiment({ root: observed.root, buildInfo: build, releaseInfo: release,
+        authority: { assertCurrent() { test.signal.throwIfAborted(); owned.invalidated.throwIfAborted(); }, assertOwned: () => owned.assertOwned() } });
+      if (mixed) {
+        expect(result.mode).toBe('offered');
+        if (result.mode !== 'offered') throw new Error('SYNTHETIC_DISCOVERY_NOT_OFFERED');
+        expect(result.owners).toEqual(['workspaceImport', 'localRestore']);
+        expect(Object.keys(result)).not.toContain('delete'); result.revoke();
+      } else expect(result).toEqual({ mode: 'notOffered', reason: 'unboundImport' });
+      expect(await snapshotImportBindingFiles(observed.root)).toEqual(before);
+      test.signal.throwIfAborted();
+      const directAdmission = vi.spyOn(direct.options, 'assertRecoveryAdmission');
+      const observedAdmission = vi.spyOn(observed.options, 'assertRecoveryAdmission');
+      const directPresence = vi.spyOn(direct.rootStore, 'readPresence');
+      const observedPresence = vi.spyOn(observed.rootStore, 'readPresence');
+      if (shape === 'v1Rejected' || mixed) {
+        await expect(direct.createRecovery().recover()).rejects.toBeInstanceOf(WorkspaceManagementRecoveryRequiredError);
+        test.signal.throwIfAborted();
+        await expect(observed.createRecovery().recover()).rejects.toBeInstanceOf(WorkspaceManagementRecoveryRequiredError);
+        expect(directAdmission).toHaveBeenCalledOnce(); expect(observedAdmission).toHaveBeenCalledOnce();
+        expect(directPresence).not.toHaveBeenCalled(); expect(observedPresence).not.toHaveBeenCalled();
+        expect(await snapshotImportBindingFiles(observed.root)).toEqual(before);
+      } else {
+        await expect(direct.createRecovery().recover()).resolves.toBe('discardedBeforePublication');
+        test.signal.throwIfAborted();
+        await expect(observed.createRecovery().recover()).resolves.toBe('discardedBeforePublication');
+      }
+      await reservation.release(); reservation = undefined;
+      expect(await snapshotImportBindingFiles(observed.root)).toEqual(await snapshotImportBindingFiles(direct.root));
+      expect(await observed.registry.read()).toEqual(expectedRegistry);
+      if (shape === 'v1Rejected' || mixed) {
+        expect(observed.failures).toHaveLength(1); expect(direct.failures).toHaveLength(1);
+        expect(observed.failures[0]).toBeInstanceOf(WorkspaceManagementRecoveryRequiredError);
+        expect(direct.failures[0]).toBeInstanceOf(WorkspaceManagementRecoveryRequiredError);
+      } else { expect(observed.failures).toEqual([]); expect(direct.failures).toEqual([]); }
+    };
+    pending = run();
+    await pending;
+  },
+);
+}
 
 it('lost binding-clear reply preserves the journal and permits only a new independently admitted cold owner', async test => {
   const f = await fixture(test, { bound: true }); const first = new Error('SYNTHETIC_BINDING_REPLY_LOST');

@@ -6,6 +6,7 @@ import { gunzipSync, gzipSync } from 'node:zlib';
 import { describe, expect, it, vi, type TestContext } from 'vitest';
 
 import { createDesktopOperationalEvent } from '../observability/createDesktopOperationalEvent.js';
+import { validateDesktopOnlySupportBundleDocument } from '../main/packagedSupportBundleSmoke.js';
 import { workspaceDeletionFailureCodes } from '../observability/workspaceManagementFailureContext.js';
 import { createDesktopOnlySupportBundleArchive } from './supportBundleArchive.js';
 import { readSupportBundleDesktopData } from './supportBundleDesktopData.js';
@@ -200,6 +201,8 @@ describe('desktop-only support file and official reader', () => {
     writeSupportBundleAtomically({ archive: archive.compressed, runtimeRoot, targetPath });
     const inspector = await import(new URL('../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
     const inspected = inspector.inspectSupportBundle(targetPath);
+    expect(validateDesktopOnlySupportBundleDocument(inspected.document, readSupportBundleDesktopData(data()).system))
+      .toEqual(readSupportBundleDesktopData(data(observation)));
     expect(readFileSync(targetPath)).toEqual(archive.compressed);
     expect(inspected.document).toEqual(JSON.parse(gunzipSync(archive.compressed).toString('utf8')));
     expect(inspected.summary).toMatchObject({ formatVersion: 3, kind: 'desktopOnly', backend: 'exitUnconfirmed',
@@ -231,7 +234,7 @@ describe('desktop-only support file and official reader', () => {
     { operationId: 'workspace.import' }, { retryable: true }, { sideEffectState: 'none' },
     { operationId: 'workspace.create', stage: 'operation', errorCode: ['WORKSPACE_MANAGEMENT_CREATE_FAILED'] },
   ].entries()) {
-    it(`rejects the same unsafe event on both runtime and wire boundaries ${index}`, async (context) => {
+    it(`rejects the same unsafe event on runtime, official and packaged boundaries ${index}`, async (context) => {
     const root = retainedRoot(context);
     const input = data({ scope: 'currentOperation', status: 'available',
       firstError: { ...managementFailure(), ...patch }, cleanupError: null });
@@ -244,6 +247,8 @@ describe('desktop-only support file and official reader', () => {
     writeFileSync(path, gzipSync(JSON.stringify(document)));
     const inspector = await import(new URL('../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
     expect(() => inspector.inspectSupportBundle(path)).toThrow('SUPPORT_BUNDLE_JSON_INVALID');
+    expect(() => validateDesktopOnlySupportBundleDocument(document, readSupportBundleDesktopData(data()).system))
+      .toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
     });
   }
 
@@ -257,6 +262,8 @@ describe('desktop-only support file and official reader', () => {
     writeFileSync(path, gzipSync(JSON.stringify(document)));
     const inspector = await import(new URL('../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
     const inspected = inspector.inspectSupportBundle(path);
+    expect(validateDesktopOnlySupportBundleDocument(inspected.document, readSupportBundleDesktopData(data()).system))
+      .toEqual(readSupportBundleDesktopData(data()));
     expect(Object.keys(inspected.document.system)).toEqual(Object.keys(document.system));
     const replay = join(root, 'replay.json.gz');
     writeFileSync(replay, gzipSync(JSON.stringify(inspected.document)));
@@ -264,7 +271,24 @@ describe('desktop-only support file and official reader', () => {
     document.availability.backend = 'notRunning';
     writeFileSync(path, gzipSync(JSON.stringify(document)));
     expect(() => inspector.inspectSupportBundle(path)).toThrow('SUPPORT_BUNDLE_CHECKSUM_FAILED');
+    expect(() => validateDesktopOnlySupportBundleDocument(document, readSupportBundleDesktopData(data()).system))
+      .toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_CHECKSUM_FAILED');
   });
+
+  for (const [index, value] of [null, 1, [], 'A'.repeat(64), 'a'.repeat(63)].entries()) {
+    it(`rejects the same malformed checksum before integrity comparison ${index}`, async (context) => {
+      const root = retainedRoot(context);
+      const document = JSON.parse(gunzipSync(createDesktopOnlySupportBundleArchive({ desktopData: data(), createdAt,
+        creationCorrelationId: correlationId }).compressed).toString('utf8'));
+      document.manifest.sectionChecksums.system = value;
+      const path = join(root, 'invalid-checksum.json.gz');
+      writeFileSync(path, gzipSync(JSON.stringify(document)));
+      const inspector = await import(new URL('../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+      expect(() => inspector.inspectSupportBundle(path)).toThrow('SUPPORT_BUNDLE_JSON_INVALID');
+      expect(() => validateDesktopOnlySupportBundleDocument(document, readSupportBundleDesktopData(data()).system))
+        .toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    });
+  }
 });
 
 function retainedRoot(context: TestContext): string {

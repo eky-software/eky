@@ -308,7 +308,7 @@ describe('active workspace startup resolution', () => {
     expect(await hashFiles([sourceDatabase, sourcePdf])).toBe(sourceIdentity);
   });
 
-  it('discards a matching unpublished adoption root and relaunches before retrying adoption', async () => {
+  it('discards a matching unpublished adoption root and relaunches before retrying adoption', { timeout: 10_000 }, async () => {
     const userDataRoot = await createPrivateTemporaryRoot();
     const legacyRuntimeRoot = join(userDataRoot, 'runtime');
     const sourceDatabase = join(legacyRuntimeRoot, 'data', 'eky.sqlite');

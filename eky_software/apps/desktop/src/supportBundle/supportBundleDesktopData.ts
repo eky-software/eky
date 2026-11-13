@@ -54,7 +54,7 @@ export function isSupportBundleTechnicalId(value: unknown): value is string {
 export function readSupportBundleDesktopData(value: unknown): Readonly<SupportBundleDesktopData> {
   try {
     const data = record(value, desktopOnlySupportBundleSections);
-    const system = readSystem(data.system);
+    const system = readSupportBundleDesktopSystem(data.system);
     return Object.freeze({ system, availability: readAvailability(data.availability),
       observation: readObservation(data.observation, system) });
   } catch {
@@ -62,7 +62,7 @@ export function readSupportBundleDesktopData(value: unknown): Readonly<SupportBu
   }
 }
 
-function readSystem(value: unknown): Readonly<SupportBundleDesktopSystem> {
+export function readSupportBundleDesktopSystem(value: unknown): Readonly<SupportBundleDesktopSystem> {
   const data = record(value, ['appVersion', 'architecture', 'buildRevision', 'electronVersion', 'platform']);
   if (!version(data.appVersion) || !version(data.electronVersion) ||
       typeof data.buildRevision !== 'string' ||

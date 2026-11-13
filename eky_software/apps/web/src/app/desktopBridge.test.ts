@@ -245,6 +245,30 @@ describe('desktop bridge', () => {
     expect(createSupportBundle).toHaveBeenCalledWith();
   });
 
+  it('preserves explicit support export cancellation', async () => {
+    const createBundle = getDesktopSupportBundleCreator({ ekyDesktop: createDesktopApi() });
+    await expect(createBundle?.()).resolves.toBe('cancelled');
+  });
+
+  it.each([undefined, null, true, 1, 'prepared', '/private/support.json.gz', { status: 'created' }])(
+    'rejects an invalid support export result %#', async (result) => {
+      const createBundle = getDesktopSupportBundleCreator({
+        ekyDesktop: createDesktopApi({
+          createSupportBundle: vi.fn(async () => result) as unknown as EkyDesktopApi['createSupportBundle'],
+        }),
+      });
+      await expect(createBundle?.()).rejects.toThrow('Invalid support bundle result.');
+    },
+  );
+
+  it('preserves the original support export rejection', async () => {
+    const cause = new Error('SYNTHETIC_SUPPORT_EXPORT_FAILURE');
+    const createBundle = getDesktopSupportBundleCreator({
+      ekyDesktop: createDesktopApi({ createSupportBundle: async () => { throw cause; } }),
+    });
+    await expect(createBundle?.()).rejects.toBe(cause);
+  });
+
   it('exposes the narrow invoice PDF archive capability', async () => {
     const chooseInvoicePdfArchiveDirectory = vi.fn(async () => enabledStatus);
     const disableInvoicePdfArchive = vi.fn(async () => disabledStatus);

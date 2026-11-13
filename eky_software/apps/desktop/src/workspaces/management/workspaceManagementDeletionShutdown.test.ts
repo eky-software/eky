@@ -6,11 +6,13 @@ import {
   type WorkspaceMaintenanceLeaseHandle,
 } from '../maintenance/workspaceMaintenanceLease.js';
 import { DeferredWorkspaceRuntimeRelaunch } from '../runtime/deferredWorkspaceRuntimeRelaunch.js';
+import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
 import {
   WorkspaceManagementService,
   type WorkspaceDeletionCompletion,
   type WorkspaceDeletionFailureOutcomeHandler,
   type WorkspaceDeletionWorkAuthority,
+  type WorkspaceManagementOrdinaryServiceOptions,
   type WorkspaceManagementServiceOptions,
 } from './workspaceManagementService.js';
 import type { WorkspaceDeletionPreparationOutcome } from './workspaceManagementTypes.js';
@@ -456,6 +458,159 @@ describe('workspace deletion durable result lifetime', () => {
   });
 });
 
+describe('recovery management status boundary experiment with the existing service', () => {
+  it.each(['registry', 'recovery'] as const)('keeps the durable owner independent from a failed parallel %s status read', async failingReader => {
+    const entered = deferred(), finish = deferred();
+    const cause = new Error('SYNTHETIC_EXPIRED_STATUS_SELECTION');
+    const f = durableFixture({
+      async readRegistry() {
+        if (failingReader === 'registry') throw cause;
+        return { formatVersion: 2, activeWorkspaceId: null, workspaces: [] };
+      },
+      async readRecoveryState() {
+        if (failingReader === 'recovery') throw cause;
+        return 'clear';
+      },
+      async resume(_operationId, authority) {
+        entered.resolve(); await finish.promise;
+        await authority.assertOwned(); authority.recordRemoved(f.receipt);
+        return f.completion;
+      },
+    });
+    const work = observe(f.startDurable());
+    try {
+      await entered.promise;
+      await expect(f.service.getStatus()).rejects.toMatchObject({
+        code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', cause,
+      });
+      await expect(f.service.rename('11111111-1111-4111-8111-111111111111', 'Other'))
+        .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_BUSY' });
+      await expect(f.workAuthority().assertOwned()).resolves.toBeUndefined();
+      await expectStillPending(work);
+      expect(f.acquire).toHaveBeenCalledOnce();
+      expect(f.release).not.toHaveBeenCalled();
+      expect(f.lease.readState()).toBe('busy');
+      finish.resolve();
+      await expect(work.result).resolves.toEqual(f.completion);
+      expect(f.recordRemoved).toHaveBeenCalledExactlyOnceWith(f.receipt);
+      expect(f.release).toHaveBeenCalledOnce();
+      expect(f.relaunch).not.toHaveBeenCalled();
+    } finally { finish.resolve(); await Promise.allSettled([work.result, f.service.shutdown()]); }
+  });
+
+  it('does not infer terminal success from an empty registry during terminal work or lease release', async () => {
+    const removed = deferred(), finishTerminal = deferred(), finishRelease = deferred();
+    const f = durableFixture({
+      async resume(_operationId, authority) {
+        authority.recordRemoved(f.receipt); removed.resolve();
+        await finishTerminal.promise; return f.completion;
+      },
+      async release() { await finishRelease.promise; },
+    });
+    const work = observe(f.startDurable());
+    try {
+      await removed.promise;
+      await expect(f.service.getStatus()).resolves.toEqual({
+        formatVersion: 1, activeWorkspaceId: null, operationState: 'busy', workspaces: [],
+      });
+      await expectStillPending(work);
+      expect(f.release).not.toHaveBeenCalled();
+      finishTerminal.resolve(); await f.releaseEntered.promise;
+      await expect(f.service.getStatus()).resolves.toMatchObject({ operationState: 'busy', workspaces: [] });
+      await expectStillPending(work);
+      expect(f.lease.readState()).toBe('busy');
+      finishRelease.resolve();
+      await expect(work.result).resolves.toEqual(f.completion);
+      await expect(f.service.getStatus()).resolves.toMatchObject({ operationState: 'idle' });
+      expect(f.recordRemoved).toHaveBeenCalledOnce();
+    } finally {
+      finishTerminal.resolve(); finishRelease.resolve();
+      await Promise.allSettled([work.result, f.service.shutdown()]);
+    }
+  });
+
+  it('characterizes the unversioned v1 projection when a status read crosses deletion admission', async () => {
+    const reading = deferred(), finishRead = deferred(), deleting = deferred(), finishDelete = deferred();
+    const workspaceId = validateWorkspaceId('11111111-1111-4111-8111-111111111111');
+    const snapshot = { formatVersion: 2 as const, activeWorkspaceId: workspaceId, workspaces: [{
+      workspaceId, workspaceLabel: 'Synthetic company', layoutVersion: 1 as const,
+      createdAt: '2026-11-06T00:00:00.000Z', lifecycleState: 'ready' as const,
+      lineageIdentity: { formatVersion: 1 as const, profileId: 'a'.repeat(64) },
+    }] };
+    const f = durableFixture({
+      async readRegistry() { reading.resolve(); await finishRead.promise; return snapshot; },
+      async resume(_operationId, authority) {
+        deleting.resolve(); await finishDelete.promise;
+        authority.recordRemoved(f.receipt); return f.completion;
+      },
+    });
+    const oldObservation = f.service.captureOperationContext();
+    const status = observe(f.service.getStatus());
+    let work: ReturnType<typeof observe<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>> | undefined;
+    try {
+      await reading.promise;
+      work = observe(f.startDurable()); await deleting.promise;
+      expect(() => oldObservation.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+      finishRead.resolve();
+      // V1 is a display projection, not a phase-bound selection or delete grant.
+      await expect(status.result).resolves.toEqual({
+        formatVersion: 1, activeWorkspaceId: workspaceId, operationState: 'busy',
+        workspaces: [{ availability: 'ready', isActive: true, workspaceId, workspaceLabel: 'Synthetic company' }],
+      });
+      await expectStillPending(work);
+      expect(f.recordRemoved).not.toHaveBeenCalled();
+      expect(f.acquire).toHaveBeenCalledOnce();
+      finishDelete.resolve(); await expect(work.result).resolves.toEqual(f.completion);
+    } finally {
+      finishRead.resolve(); finishDelete.resolve();
+      await Promise.allSettled([status.result, ...(work === undefined ? [] : [work.result]), f.service.shutdown()]);
+    }
+  });
+
+  it.each(['registry', 'recovery'] as const)('joins a held status sibling after the durable command settles without replacing the first %s error', async firstReader => {
+    const deleting = deferred(), finishDelete = deferred(), siblingStarted = deferred(), finishSibling = deferred();
+    const failed = deferred(), cause = new Error('SYNTHETIC_FIRST_STATUS_FAILURE');
+    const first = async (): Promise<never> => { failed.resolve(); throw cause; };
+    const sibling = async () => { siblingStarted.resolve(); await finishSibling.promise; };
+    const f = durableFixture({
+      async readRegistry() {
+        if (firstReader === 'registry') await first(); else await sibling();
+        return { formatVersion: 2, activeWorkspaceId: null, workspaces: [] };
+      },
+      async readRecoveryState() {
+        if (firstReader === 'recovery') await first(); else await sibling();
+        return 'clear';
+      },
+      async resume(_operationId, authority) {
+        deleting.resolve(); await finishDelete.promise;
+        authority.recordRemoved(f.receipt); return f.completion;
+      },
+    });
+    const work = observe(f.startDurable());
+    let status: ReturnType<typeof observe<Awaited<ReturnType<typeof f.service.getStatus>>>> | undefined;
+    let closing: ReturnType<typeof observe<void>> | undefined;
+    try {
+      await deleting.promise;
+      status = observe(f.service.getStatus());
+      await Promise.all([failed.promise, siblingStarted.promise]);
+      await expectStillPending(status);
+      finishDelete.resolve(); await expect(work.result).resolves.toEqual(f.completion);
+      expect(f.lease.readState()).toBe('idle');
+      closing = observe(f.service.shutdown());
+      await expectStillPending(closing);
+      finishSibling.resolve();
+      await expect(status.result).rejects.toMatchObject({ cause });
+      await expect(closing.result).resolves.toBeUndefined();
+      expect(f.recordRemoved).toHaveBeenCalledOnce();
+      expect(f.relaunch).not.toHaveBeenCalled();
+    } finally {
+      finishDelete.resolve(); finishSibling.resolve();
+      await Promise.allSettled([work.result, ...(status === undefined ? [] : [status.result]),
+        ...(closing === undefined ? [] : [closing.result]), f.service.shutdown()]);
+    }
+  });
+});
+
 describe('main-only deletion failure outcome', () => {
   it('reports malformed input without entering the admitted command and preserves the exact rejection', async () => {
     const f = durableFixture();
@@ -619,6 +774,8 @@ describe('main-only deletion failure outcome', () => {
 
 function fixture(options: {
   admission?(): Promise<void>;
+  readRegistry?: WorkspaceManagementOrdinaryServiceOptions['registry']['read'];
+  readRecoveryState?: WorkspaceManagementOrdinaryServiceOptions['operationGuard']['readRecoveryState'];
   observer?: WorkspaceManagementServiceOptions['observer'];
   prepare?(): Promise<WorkspaceDeletionPreparationOutcome>;
   complete?(): void;
@@ -649,8 +806,9 @@ function fixture(options: {
     createEmpty: { create: unexpected }, importBackup: { import: unexpected },
     renameWorkspace: { rename: unexpected }, switchWorkspace: { switchTo: unexpected },
     maintenanceState: lease,
-    registry: { async read() { return { formatVersion: 2, activeWorkspaceId: null, workspaces: [] }; } },
-    operationGuard: { assertNoUnresolvedOperations: options.admission ?? (async () => {}), async readRecoveryState() { return 'clear'; } },
+    registry: { read: options.readRegistry ?? (async () => ({ formatVersion: 2, activeWorkspaceId: null, workspaces: [] })) },
+    operationGuard: { assertNoUnresolvedOperations: options.admission ?? (async () => {}),
+      readRecoveryState: options.readRecoveryState ?? (async () => 'clear') },
     ...(options.observer === undefined ? {} : { observer: options.observer }),
     runtimeRelaunchCompletion: { complete },
     ...(options.continuation === undefined ? {} : { deletionContinuation: options.continuation }),
@@ -689,6 +847,8 @@ function fixture(options: {
 
 function durableFixture(options: {
   admission?(): Promise<void>;
+  readRegistry?: WorkspaceManagementOrdinaryServiceOptions['registry']['read'];
+  readRecoveryState?: WorkspaceManagementOrdinaryServiceOptions['operationGuard']['readRecoveryState'];
   observer?: WorkspaceManagementServiceOptions['observer'];
   complete?(): void;
   prepare?(): Promise<WorkspaceDeletionPreparationOutcome>;

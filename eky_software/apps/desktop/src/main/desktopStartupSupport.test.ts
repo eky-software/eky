@@ -3,10 +3,13 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate as nextTurn } from 'node:timers/promises';
 
 import { expect, it, vi, type TestContext } from 'vitest';
 
-import type { StartDesktopCompositionOptions, DesktopWorkspaceStartupSupportReceipt } from './desktopComposition.js';
+import type { DesktopLifecycleHandle, StartDesktopCompositionOptions, DesktopWorkspaceStartupSupportReceipt } from './desktopComposition.js';
+import { createRecoveryObservationExperiment } from './desktopRecoveryStartupExperimentTestSupport.js';
+import { selectDesktopWorkspaceRecoveryChoice } from './desktopWorkspaceRecoveryChoice.js';
 import type { runSafeDesktopStartup } from './earlyStartup.js';
 import { readPackagedSmokeResult } from './packagedSmoke.js';
 import { parseW6b2PackagedProofResult, W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
@@ -200,6 +203,158 @@ it.for(['smoke', 'proof'] as const)('index preserves %s failure output without g
   expect(existsSync(f.targetPath)).toBe(false);
 });
 
+it.for([0, 1, 2])('index joins the native choice before quit and rejects late response %s, including synchronous abort reentry', async (response, context) => {
+  const gate = deferred(), observation = createRecoveryObservationExperiment();
+  const acceptChoice = vi.fn();
+  const showMessageBox = vi.fn(async (_options: unknown) => { await gate.wait(); return { response }; });
+  // This index contract controls the dialog and source boundary, not native ownership.
+  const ownership = { assertCurrent: observation.assertCurrent,
+    async assertOwned() { observation.assertCurrent(); } };
+  const readSelected = vi.fn(async (authority: typeof ownership) => {
+    authority.assertCurrent(); await authority.assertOwned(); authority.assertCurrent();
+  });
+  const f = await fixture(context, { gate, invalid: 'missing', async recoveryWork(input) {
+    input.recoveryStartup!.registerObservation(observation);
+    try {
+      const choice = await observation.run(() => selectDesktopWorkspaceRecoveryChoice({
+        selection: { target: { workspaceLabel: 'Synthetic interrupted recovery' },
+          assertCurrent: observation.assertCurrent, readSelected },
+        ownership, signal: observation.signal, showMessageBox,
+      }));
+      acceptChoice(choice);
+    }
+    catch (error) { if (error !== observation.signal.reason) throw error; }
+    finally { observation.closeAdmission(); await observation.waitForSettlement(); }
+    return undefined;
+  } });
+  try {
+    expect(await Promise.race([gate.entered.then(() => 'held'), f.finished().then(() => 'settled')])).toBe('held');
+    context.signal.throwIfAborted();
+    expect(showMessageBox).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      buttons: ['Jatka palautumista', 'Rajattu hallinta', 'Sulje'],
+      defaultId: 0, cancelId: 2, noLink: true, signal: observation.signal,
+    }));
+    expect(readSelected).toHaveBeenCalledOnce();
+    const repeated = { preventDefault: vi.fn() };
+    observation.signal.addEventListener('abort', () => f.app.emit('before-quit', repeated), { once: true });
+    const event = { preventDefault: vi.fn() };
+    f.app.emit('before-quit', event);
+    expect(event.preventDefault).toHaveBeenCalledOnce(); expect(repeated.preventDefault).toHaveBeenCalledOnce();
+    await nextTurn();
+    expect(f.app.quit).not.toHaveBeenCalled(); expect(f.exit).not.toHaveBeenCalled();
+    expect(observation.signal.aborted).toBe(true);
+    expect(acceptChoice).not.toHaveBeenCalled();
+    gate.release(); await f.finished(); await nextTurn();
+    expect(f.app.quit).toHaveBeenCalledOnce(); expect(f.exit).not.toHaveBeenCalled();
+    expect(acceptChoice).not.toHaveBeenCalled(); expect(readSelected).toHaveBeenCalledOnce();
+    expect(showMessageBox).toHaveBeenCalledOnce(); expect(f.app.relaunch).not.toHaveBeenCalled();
+    expect(f.showErrorBox).not.toHaveBeenCalled(); expect(f.showMessageBox).not.toHaveBeenCalled();
+    expect(f.showSaveDialog).not.toHaveBeenCalled();
+  } finally { gate.release(); await f.finished(); }
+});
+
+it('index drains a late lifecycle instead of publishing or focusing it after quit', async context => {
+  const construction = deferred(), stopping = deferred();
+  const lifecycle = syntheticLifecycle(() => stopping.wait());
+  const f = await fixture(context, { gate: construction, invalid: 'missing', async recoveryWork(input) {
+    input.recoveryStartup!.registerObservation({ closeAdmission() {}, waitForSettlement: async () => undefined });
+    await construction.wait(); return lifecycle;
+  } });
+  try {
+    await construction.entered;
+    f.app.emit('before-quit', { preventDefault: vi.fn() });
+    construction.release(); await stopping.entered;
+    expect(lifecycle.shutdown).toHaveBeenCalledOnce(); expect(f.app.quit).not.toHaveBeenCalled();
+    f.app.emit('activate'); f.app.emit('second-instance');
+    expect(lifecycle.focusApplicationWindow).not.toHaveBeenCalled();
+    stopping.release(); await f.finished(); await nextTurn();
+    expect(f.app.quit).toHaveBeenCalledOnce(); expect(f.exit).not.toHaveBeenCalled();
+  } finally { construction.release(); stopping.release(); await f.finished(); }
+});
+
+it('index preserves the first startup error and joins local failure before presentation and direct exit', async context => {
+  const gate = deferred();
+  const original = new Error('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', { cause: new Error('SYNTHETIC_FIRST_STARTUP_CAUSE') });
+  const cleanup = new Error('SYNTHETIC_STARTUP_CLOSE_CAUSE');
+  const f = await fixture(context, { gate, invalid: 'missing', async recoveryWork(input) {
+    const observation = createRecoveryObservationExperiment();
+    input.recoveryStartup!.registerObservation(observation);
+    void observation.run(async () => { await gate.wait(); throw cleanup; }).catch(() => undefined);
+    throw original;
+  } });
+  try {
+    await gate.entered;
+    expect(f.showErrorBox).not.toHaveBeenCalled(); expect(f.exit).not.toHaveBeenCalled();
+    gate.release(); await f.finished();
+    expect(f.exit).toHaveBeenCalledExactlyOnceWith(1);
+    expect(f.firstFailure()?.error).toMatchObject({ message: original.message,
+      cause: { errors: [original, { errors: [cleanup] }] } });
+    expect(JSON.stringify(f.showErrorBox.mock.calls)).not.toMatch(/SYNTHETIC_FIRST_STARTUP_CAUSE|SYNTHETIC_STARTUP_CLOSE_CAUSE/);
+  } finally { gate.release(); await f.finished(); }
+});
+
+it('index rejects a relaunch dispatched after external quit', async context => {
+  const gate = deferred();
+  const f = await fixture(context, { gate, invalid: 'missing', async recoveryWork(input) {
+    input.recoveryStartup!.registerObservation({ closeAdmission() {}, waitForSettlement: async () => undefined });
+    await gate.wait(); input.relaunchApplication(); return undefined;
+  } });
+  try {
+    await gate.entered; f.app.emit('before-quit', { preventDefault: vi.fn() });
+    gate.release(); await f.finished(); await nextTurn();
+    expect(f.app.relaunch).not.toHaveBeenCalled(); expect(f.app.quit).toHaveBeenCalledOnce();
+  } finally { gate.release(); await f.finished(); }
+});
+
+it('index permits a legitimate relaunch without confusing reporting invalidation with external stop', async context => {
+  const f = await fixture(context, { invalid: 'missing', async recoveryWork(input) {
+    input.recoveryStartup!.registerObservation({ closeAdmission() {}, waitForSettlement: async () => undefined });
+    input.relaunchApplication(); return undefined;
+  } });
+  await f.finished(); await nextTurn();
+  expect(f.app.relaunch).toHaveBeenCalledOnce(); expect(f.exit).not.toHaveBeenCalled();
+});
+
+it('index preserves the closing latch and single owner after a successful lifecycle handoff', async context => {
+  const lifecycle = syntheticLifecycle(async () => undefined);
+  const f = await fixture(context, { invalid: 'missing', async recoveryWork(input) {
+    input.recoveryStartup!.registerObservation({ closeAdmission() {}, waitForSettlement: async () => undefined });
+    return lifecycle;
+  } });
+  await f.finished();
+  f.app.emit('activate'); expect(lifecycle.focusApplicationWindow).toHaveBeenCalledOnce();
+  f.app.emit('before-quit', { preventDefault: vi.fn() }); await nextTurn();
+  f.app.emit('activate'); f.app.emit('second-instance');
+  expect(lifecycle.focusApplicationWindow).toHaveBeenCalledOnce();
+  expect(lifecycle.shutdown).toHaveBeenCalledOnce(); expect(f.app.quit).toHaveBeenCalledOnce();
+});
+
+function syntheticLifecycle(shutdown: () => Promise<void>) {
+  return { applicationWindow: {} as DesktopLifecycleHandle['applicationWindow'],
+    focusApplicationWindow: vi.fn(), shutdown: vi.fn(shutdown),
+    isInstallerHandoffPending: () => false, deferQuitForInstallerHandoff: () => false };
+}
+
+it('index does not latch recovery closure when installer handoff defers quit', async context => {
+  let installerPending = true;
+  const lifecycle = { ...syntheticLifecycle(async () => undefined),
+    isInstallerHandoffPending: () => installerPending, deferQuitForInstallerHandoff: () => installerPending };
+  const f = await fixture(context, { invalid: 'missing', async recoveryWork(input) {
+    input.recoveryStartup!.registerObservation({ closeAdmission() {}, waitForSettlement: async () => undefined });
+    return lifecycle;
+  } });
+  await f.finished();
+  const event = { preventDefault: vi.fn() };
+  f.app.emit('before-quit', event);
+  expect(event.preventDefault).toHaveBeenCalledOnce(); expect(lifecycle.shutdown).not.toHaveBeenCalled();
+  expect(f.compositionOptions().recoveryStartup!.isClosing()).toBe(false);
+  f.app.emit('activate'); expect(lifecycle.focusApplicationWindow).toHaveBeenCalledOnce();
+  installerPending = false;
+  f.app.emit('before-quit', { preventDefault: vi.fn() }); await nextTurn();
+  expect(f.compositionOptions().recoveryStartup!.isClosing()).toBe(true);
+  expect(lifecycle.shutdown).toHaveBeenCalledOnce();
+});
+
 async function fixture(context: TestContext, options: {
   status?: 'unavailable' | 'available';
   invalid?: 'missing' | 'runtime' | 'build' | 'eventRuntime' | 'rawObservation';
@@ -211,6 +366,7 @@ async function fixture(context: TestContext, options: {
   startupErrorCode?: string;
   excludedMode?: 'smoke' | 'proof';
   actualCompositionFailure?: boolean;
+  recoveryWork?(input: StartDesktopCompositionOptions): Promise<DesktopLifecycleHandle | undefined>;
 } = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-startup-support-'));
   const paths: Record<string, string> = { userData: join(root, 'user-data'), appData: root, temp: root };
@@ -385,6 +541,7 @@ async function fixture(context: TestContext, options: {
     // Controlled receipt cases exercise only index consumption, not build admission.
     return { async startDesktopComposition(input: StartDesktopCompositionOptions) {
     compositionInput = input;
+    if (options.recoveryWork !== undefined) return options.recoveryWork(input);
     await mkdir(join(app.getPath('userData'), 'runtime'), { recursive: true, mode: 0o700 });
     const operationalIdentity = { appVersion: input.appVersion, buildRevision: input.buildInfo.buildRevision,
       runtimeInstanceId: input.runtimeInstanceId };
@@ -428,7 +585,7 @@ async function fixture(context: TestContext, options: {
       });
     },
     excludedResultPath: () => excludedResultPath,
-    finished: () => startupWork!, receipt: () => originalReceipt!,
+    finished: () => startupWork!, receipt: () => originalReceipt!, firstFailure: () => firstStartupFailure,
     startupOptions: () => startupInput!, compositionOptions: () => compositionInput! };
 }
 

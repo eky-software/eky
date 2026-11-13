@@ -16,7 +16,7 @@ import { serializeWorkspaceRegistry, workspaceRegistryEntrySha256 } from '../reg
 import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
 import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { deletionTestId as id, deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
-import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
+import { createWorkspaceDeletionFinalizer, type WorkspaceDeletionTerminalPhaseObserver } from './workspaceDeletionFinalization.js';
 import { createWorkspaceDeletionMetadataCleaner } from './workspaceDeletionMetadataCleanup.js';
 import { captureDeletionInventoryHeader, captureDeletionInventoryPayloadRecord } from './workspaceDeletionInventoryCodec.js';
 import { readDeletionInventoryDirectoryIdentity as identity } from './workspaceDeletionInventoryFile.js';
@@ -29,13 +29,14 @@ import { WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js'
 import * as inventoryFiles from './workspaceDeletionInventoryFile.js';
 
 export async function createWorkspaceDeletionFinalizationTestFixture(test: TestContext, terminal = false, originalProof = false,
-  options: Readonly<{ coldSelection?: boolean; metadataBinding?: boolean }> = {}) {
+  options: Readonly<{ coldSelection?: boolean; metadataBinding?: boolean;
+    observeTerminalPhase?: WorkspaceDeletionTerminalPhaseObserver; onTerminalTestGuard?(kind: string): void }> = {}) {
   const root = await mkdtemp(join(tmpdir(), 'eky-delete-finalization-')); await chmod(root, 0o700);
   let active = true, asyncOwnerFailure: Error | undefined;
   const jobs: Promise<unknown>[] = [], releases: (() => void)[] = [];
   const first = new Error('SYNTHETIC_FINALIZATION_OWNER_LOST');
   const assertCurrent = () => { test.signal.throwIfAborted(); if (!active) throw first; };
-  const authority = { assertCurrent, async assertOwned() { assertCurrent(); if (asyncOwnerFailure !== undefined) throw asyncOwnerFailure; } };
+  const authority = { assertCurrent, async assertOwned() { options.onTerminalTestGuard?.('owned'); assertCurrent(); if (asyncOwnerFailure !== undefined) throw asyncOwnerFailure; } };
   const external = { assertAuthority: assertCurrent, async assertExternalSelection() { assertCurrent(); } };
   test.onTestFinished(async () => {
     active = false; for (const release of releases) release(); await Promise.allSettled(jobs); vi.restoreAllMocks();
@@ -106,8 +107,10 @@ export async function createWorkspaceDeletionFinalizationTestFixture(test: TestC
   await mkdir(other.workspaceRoot, { recursive: true, mode: 0o700 });
   const kept = join(other.workspaceRoot, 'kept'), backup = join(root, 'user-export.ekybackup');
   await writeFile(kept, 'other company', { mode: 0o600 }); await writeFile(backup, 'external backup', { mode: 0o600 });
-  const fullProof = vi.fn(async () => { authority.assertCurrent(); });
-  const command = createWorkspaceDeletionFinalizer({ userDataRoot: root, registry, async assertWritersAbsent() { assertCurrent(); },
+  const fullProof = vi.fn(async () => { options.onTerminalTestGuard?.('stable'); authority.assertCurrent(); });
+  const command = createWorkspaceDeletionFinalizer({ userDataRoot: root, registry,
+    ...(options.observeTerminalPhase === undefined ? {} : { observeTerminalPhase: options.observeTerminalPhase }),
+    async assertWritersAbsent() { options.onTerminalTestGuard?.('writers'); assertCurrent(); },
     ...(options.coldSelection ? { assertStableSelection: fullProof } : {}) });
   return { root, registry, registryPath, before, after, header, workspace, store, journal, journalPaths, inventoryPaths, journalBytes, inventoryBytes, originalPaths, originalBinding,
     authority, external, first, releases, fullProof, revoke() { active = false; }, failAsyncOwner(error: Error) { asyncOwnerFailure = error; },

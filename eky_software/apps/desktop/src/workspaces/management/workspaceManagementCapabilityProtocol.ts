@@ -8,8 +8,8 @@ import {
   hasExactDataKeys,
   isPlainDataRecord,
 } from '../registry/workspaceRegistryValueShape.js';
-import { parseWorkspaceManagementStatus } from './workspaceManagementStatus.js';
-import type { WorkspaceManagementStatusV1 } from './workspaceManagementTypes.js';
+import { parseWorkspaceManagementStatus, parseWorkspaceRecoveryManagementStatus } from './workspaceManagementStatus.js';
+import type { WorkspaceManagementStatusV1, WorkspaceRecoveryManagementStatusV2 } from './workspaceManagementTypes.js';
 
 export const workspaceManagementCapabilityProtocolVersion = 1 as const;
 
@@ -25,6 +25,8 @@ export const switchWorkspaceIpcChannel =
   'eky:workspace-management:v1:switch';
 export const renameWorkspaceIpcChannel =
   'eky:workspace-management:v1:rename';
+export const deleteWorkspaceIpcChannel =
+  'eky:workspace-management:v1:delete';
 
 export const workspaceManagementIpcChannels = Object.freeze([
   getWorkspaceManagementStatusIpcChannel,
@@ -33,6 +35,7 @@ export const workspaceManagementIpcChannels = Object.freeze([
   replaceActiveWorkspaceFromBackupIpcChannel,
   switchWorkspaceIpcChannel,
   renameWorkspaceIpcChannel,
+  deleteWorkspaceIpcChannel,
 ] as const);
 
 export interface WorkspaceLabelRequest {
@@ -195,6 +198,16 @@ export function parseWorkspaceStatusResult(
 ): Readonly<WorkspaceManagementStatusV1> {
   try {
     return parseWorkspaceManagementStatus(value);
+  } catch {
+    return invalidCapabilityValue();
+  }
+}
+
+export function parseWorkspaceRecoveryStatusResult(
+  value: unknown,
+): Readonly<WorkspaceRecoveryManagementStatusV2> {
+  try {
+    return parseWorkspaceRecoveryManagementStatus(value);
   } catch {
     return invalidCapabilityValue();
   }

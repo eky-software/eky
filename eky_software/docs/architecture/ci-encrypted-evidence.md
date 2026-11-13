@@ -162,6 +162,15 @@ hylkäykseksi, eivätkä raakasyyt kuulu julkiseen tulosteeseen tai
 salaamattomaan käyttäjän tukipakettiin. Tämä ei lisää aineistolajia eikä
 yksin todista ennen pääikkunaa toimivaa main-kytkentää tai hosted-toimitusta.
 
+Pakettismoken lähitestit ja nimetty OpenPGP-kuluttaja käyttävät samaa
+`packagedSupportBundleSmokeTestSupport`-kytkentää nykyiseen runner-sinkiin.
+Koe säilyttää alkuperäisen virheen ja erillisen siivousvirheen, vertaa
+raporttien tavut ja testi-/ajosidonnat purussa sekä vaatii salaisuuksien
+peiton ja julkisen tulosteen poissulun. Onnistuminen, odotettu poikkeus ja
+odotettu testihylkäys eivät tuota tätä keräystä. Testiapuri ei kuulu
+tuotannon käännösgraafiin; ohjattu ikkuna ei todista oikeaa IPC-, native-
+tai hosted-toimitusta. Uutta aineistolajia tai keräysrajaa ei lisätä.
+
 Saman kokeen nykyinen execution-projektio saa alkuperäisen virheen oikealta
 poissaololukijalta: synteettinen `lstat`-vastaus hylätään ennen omistajuuden
 menetystä. Purku varmentaa tämän viestin, pinon ja syyketjun sekä erilliset
@@ -211,6 +220,12 @@ puuttuvana, raportointivirhe ei muuta varsinaista tulosta ja uusi välitys
 todennetaan erikseen salaus/purku-ketjun läpi.
 Viestipohjainen tunniste säilyttää nykyisen projektion osittaisuusmerkinnän,
 koska sille ei kerätä pinoa. Täydellisyyslippua ei korjata keksimällä pinoa.
+Myös suoraan palvelun käynnistävät system-koostamistestit toimittavat tämän
+tunnisteen nykyiseen yksityiseen sinkiin vasta siivouksen jälkeen. Odotettu
+onnistuva kielteinen testi tai odotetusti epäonnistuva testi ei tuota uutta
+virhetietuetta. Jos kielteisen testin saama odottamaton käynnistyshylkäys
+johtaa väittämävirheeseen, tunniste voidaan säilyttää muuttamatta alkuperäistä
+väittämävirhettä tai sen siivoustulosta. Samat sisältö- ja julkaisurajat säilyvät.
 
 | Lähde | Kerättävä sisältö | Rajaus |
 | --- | --- | --- |
@@ -218,7 +233,8 @@ koska sille ei kerätä pinoa. Täydellisyyslippua ei korjata keksimällä pinoa
 | Playwrightin välitön virheote | Nykyinen turvallinen reporter tallentaa odottamattoman testituloksen ja runner-virheen niiden saapuessa, ennen koko ajon JSON-raportin valmistumista. | Sama yhteinen projektio kuin Node/Vitestissä. Jokaisen retry-yrityksen virhe säilyy erikseen; onnistunut uusinta ei korvaa ensivirhettä. |
 | Playwright system/web/Electron | Ajokohtaisen `results.private.json`-raportin virheet, testitulokset, stdout/stderr ja retry-yritykset. | Ennen salausta poistetaan konfiguraatio, metadata ja inline-liitteiden sisältö; alkuperäiset virhekentät säilyvät. Ei koko HTML-/attachment-hakemistoa tai siinä olevia SQLite-tiedostoja. Ennen runnerin raportin valmistumista katkennut ajo voi jäädä ilman tätä tiedostoa. |
 | Backend/web/Electron-fixture | Nykyisten redaktoitujen stdout/stderr-lukijoiden rajattu otos omassa suoritusyrityskohtaisessa tiedostossaan myös testin rungon tai siivouksen epäonnistuessa. | Otos säilyy ennen muistitiedon katoamista, tiedosto liitetään nykyisen fixturen jälkiraportoinnissa. Windows-Electronin lähde on natiivi omistajaprosessi; workloadin omaa putkea ei muuteta tällä työllä. Käynnistyksen tai siivouksen kriittiselle polulle ei lisätä tiedostokuittausta. |
-| Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
+| Electronin lifecycle-todiste | Fixturen jo kirjoittama `test-results/run-<uuid>/<testin suoritusyritys>/electron-lifecycle.json` muuttamattomina tavuina. | Vain tämä täsmällinen nimi ja syvyys; ei yleistä JSON- tai liitekansion keräystä. `attempt`, käynnistyssukupolvet, `publicCloseFailure`, `ownership` ja `cleanup` säilyvät erillisinä havaintoina. `startupCapture` sisältää yhteisen parserin hyväksymän v2-/v3-otteen; keräin säilyttää tavut, ei päättele vaiheista onnistumista. Vaihedata ei tule julkiseen projektioon. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
+| Nimetyn yrityspoistotestin vaihehavainto | `DESK-DELETE-RECOVERY-001`-testin ohjaimen `failure.private.json`: suljetut vaiheet, kutsumäärät, kestot ja keskeneräisyys. | Enintään 32 KiB samassa suoritusyrityshakemistossa; yksi yhteinen formaattiomistaja, riippumaton CI-/polkuvertailu, ei profiilia tai business-sisältöä. Kirjoituksen jälkeisen kelvollisen runtime-/testitiedon muokkauksen hyväksytty todistusraja ja osittaisen kattavuuden sopimus ovat [omistavassa suunnitelmassa](local-company-workspace-plan.md#w75-phase-binding-handoff-proposal). Raportti ei anna poistolupaa tai hyväksy testiä. |
 | Native-komennot ja supervisorin sopimustestit | Nimetyt vaihe-, worker- ja caller-tulokset sekä olemassa olevat yksityiset prosessitulosteet. | Ei request/config-tiedostoja, profiileja tai tietokantoja. Siivouksen raakatulos säilyy erillään alkuperäisestä hylkäyksestä. Tarkoituksella lukemattoman putken koe säilyttää oman sopimuksensa. |
 | Historical-legacy-käynnistyksen syyote | Legacy-komennon `fixtureCleanup/legacy-startup-terminal.json`-tiedostosta vain varmennettu ajosidonta ja `startupEvidence`-projektio. | Nykyinen terminal-kirjoitus säilyttää otteen ennen profiilin poistoa. Ei koko operational-lokia, profiilia, tietokantaa tai terminalin muuta sisältöä. Syykoodit ja vaiheet eivät tule julkiseen testitulosteeseen. |
 | Synteettinen MSI-versiopolitiikan koe | Oman supervisor-testijuuren `policy-result.json` sekä numeroidut `source`, `target` ja `uninstall` -MSI-lokit muuttamattomina tavuina. | Vain suoraan testijuuren alla olevat nimet; ei descriptor-, request-, profiili- tai tietokantatiedostoja. Keskeytyneen MSI-komennon osittainen loki voidaan säilyttää ilman workerin lopputulosta. Samat koko-, linkki- ja muuttumattomuusrajat kuin muilla lähteillä. |
@@ -226,6 +242,15 @@ koska sille ei kerätä pinoa. Täydellisyyslippua ei korjata keksimällä pinoa
 | Testin omistaman MSI-asiakkaan odotusikkuna | Otsikko, tavallinen ilmoitusteksti, painikkeen teksti ja enabled-tila sekä havainnon saatavuus. | Vain nykyisen skenaarion Jobin elävä järjestelmän `msiexec.exe` samassa istunnossa. Ei muiden sovellusten ikkunoita, lomakekenttiä, kuvakaappauksia tai automaattisia käyttöliittymätoimia. Tarkka rajaus alla. |
 | Packaged smoke | Rajattu prosessituloste, nykyinen smoke-tulos ja erikseen aktivoidun synteettisen käynnistyksen ensimmäinen alkuperäinen poikkeus ennen yleiseksi koodiksi muuntamista. | Poikkeus sidotaan ASAR-paketin build-identiteettiin, nonceen ja runtimeen. Epäonnistuneen testin juurta ei poisteta; keräin ei lue sen profiilia. Tyhjentynyt tuloste ei todista onnistunutta käynnistystä. |
 | Muut komennot ja valmistelu | Nykyinen turvallinen GitHub-komentoloki. | Salattu keräys ei palauta tulostetta, jota aliohjelma ei tuottanut tai säilyttänyt. Riippuvuustyökalun raakavirheet jäävät erikseen rajatuiksi pois. |
+
+Yrityspoiston vaiheotteen v2 lisää nykyisen komennon viimeistelyn,
+inventaarion siivouksen, terminal-journalin poiston ja jälkivarmennuksen
+suljetut alku-/loppuhavainnot. Yhteinen formaattiomistaja lukee edelleen
+v1:n seitsemän vaiheen sopimuksen ilman puuttuvien kenttien täydentämistä.
+Versiot eivät kelpaa toistensa muotoina. Samat 32 KiB:n, 64 tapahtuman ja
+16 aktiivisen kutsun rajat säilyvät; täysi tapahtumahistoria ei pysäytä
+laskureita tai aktiivisen työn havaintoa. Tämä ei muuta varmuuskopiota,
+poistojournalia, tavallisen sovelluskäytön keräystä tai poistolupaa.
 
 ### Asentimen rajattu ikkunahavainto
 

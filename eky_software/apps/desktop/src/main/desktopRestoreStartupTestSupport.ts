@@ -5,6 +5,26 @@ import type { TestContext } from 'vitest';
 type RestoreStartupTestPhase = 'fixturePreparation' | 'startup' | 'startupRollback' | 'restoredContentCheck';
 type ResourceCleanupStage = 'clientClose' | 'mockRestore' | 'environmentRestore';
 
+export async function runRestoreStartupTestWithShutdown(
+  body: () => Promise<void>,
+  shutdown: () => Promise<void>,
+): Promise<void> {
+  let firstFailure: { error: unknown } | undefined;
+  try {
+    await body();
+  } catch (error) {
+    firstFailure = { error };
+    throw error;
+  } finally {
+    try { await shutdown(); }
+    catch (cleanupFailure) {
+      if (firstFailure !== undefined) throw new AggregateError([firstFailure.error, cleanupFailure],
+        'RESTORE_STARTUP_TEST_AND_SHUTDOWN_FAILED', { cause: firstFailure.error });
+      throw cleanupFailure;
+    }
+  }
+}
+
 class RestoreStartupResourceCleanupError extends AggregateError {
   readonly stages: readonly ResourceCleanupStage[];
 

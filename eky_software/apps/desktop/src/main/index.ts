@@ -11,8 +11,9 @@ import type { DesktopLifecycleHandle, DesktopWorkspaceStartupSupportReceipt } fr
 import { createDesktopOnlySupportBundleExport, type NativeSupportBundleExport } from '../supportBundle/supportBundleCapability.js';
 import { readSupportBundleDesktopData, type SupportBundleDesktopData } from '../supportBundle/supportBundleDesktopData.js';
 import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
+import { createDesktopRecoveryStartup } from './desktopRecoveryStartup.js';
 import { resolveDesktopPackageUserDataOverride } from './desktopPackageProfile.js';
-import { runSafeDesktopStartup } from './earlyStartup.js';
+import { readSafeStartupFailureCode, runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
 import {
   readDesktopPackageMode,
@@ -140,6 +141,7 @@ if (!hasSingleInstanceLock && 'mode' in packageModeResult) {
 }
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
+let recoveryStartup: ReturnType<typeof createDesktopRecoveryStartup<DesktopLifecycleHandle>> | undefined;
 const runtimeInstanceId = randomUUID();
 let observeStartupException: ReturnType<typeof createStartupExceptionCapture>;
 let w6b2ProofConfiguration:
@@ -244,6 +246,7 @@ async function startDesktopRuntime(
       app.quit();
     },
     relaunchApplication() {
+      if (recoveryStartup?.port.isClosing()) return;
       invalidateStartupReporting();
       if (w6b2ProofConfiguration !== undefined) {
         w6b2ProofRelaunchRequested = true;
@@ -290,8 +293,19 @@ async function startDesktopRuntime(
           },
         }),
   };
+  const currentRecoveryStartup = createDesktopRecoveryStartup<DesktopLifecycleHandle>();
+  recoveryStartup = currentRecoveryStartup;
   try {
-    desktopLifecycle = await startDesktopComposition(compositionOptions);
+    const outcome = await currentRecoveryStartup.start(port => startDesktopComposition({ ...compositionOptions, recoveryStartup: port }));
+    if (outcome.status === 'rejected') {
+      if (outcome.cleanupError !== undefined) {
+        throw new Error(readSafeStartupFailureCode(outcome.reason), {
+          cause: new AggregateError([outcome.reason, outcome.cleanupError], 'DESKTOP_SHUTDOWN_FAILED', { cause: outcome.reason }),
+        });
+      }
+      throw outcome.reason;
+    }
+    if (!currentRecoveryStartup.port.isClosing()) desktopLifecycle = outcome.lifecycle;
     startupSupportReceipt = undefined;
   }
   finally { receiptAdmissionOpen = false; }
@@ -322,16 +336,17 @@ async function startDesktopRuntime(
 }
 
 app.on('activate', () => {
-  desktopLifecycle?.focusApplicationWindow();
+  if (!recoveryStartup?.port.isClosing()) desktopLifecycle?.focusApplicationWindow();
 });
 
 app.on('second-instance', () => {
-  desktopLifecycle?.focusApplicationWindow();
+  if (!recoveryStartup?.port.isClosing()) desktopLifecycle?.focusApplicationWindow();
 });
 
 const handleBeforeQuit = createDesktopBeforeQuitHandler({
   invalidateStartupReporting,
-  readLifecycle: () => desktopLifecycle,
+  closeStartupAdmission: () => recoveryStartup?.beforeQuit(),
+  readLifecycle: () => desktopLifecycle ?? recoveryStartup?.readLifecycle(),
   quitApplication: () => app.quit(),
 });
 

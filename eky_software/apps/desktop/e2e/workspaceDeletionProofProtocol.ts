@@ -17,11 +17,16 @@ export const workspaceDeletionProofScenarioIds = [
 
 export const workspaceDeletionProofChannel = 'eky:e2e:workspace-deletion-preparation';
 
+export const workspaceDeletionRecoveryProofScenarioId = 'DESK-DELETE-RECOVERY-001';
+export const workspaceDeletionPublicProofScenarioId = 'DESK-DELETE-UI-001';
+
 export const workspaceDeletionExecutionProofScenarioIds = [
   'DESK-DELETE-ACTIVE-001',
   'DESK-DELETE-LAST-001',
   'DESK-DELETE-PASSIVE-001',
   'DESK-DELETE-FAULT-001',
+  workspaceDeletionRecoveryProofScenarioId,
+  workspaceDeletionPublicProofScenarioId,
 ] as const;
 
 export const workspaceDeletionExecutionProofFailureCode = 'E2E_WORKSPACE_DELETION_EXECUTION_FAILED';
@@ -36,11 +41,12 @@ export function isWorkspaceDeletionProofScenario(scenarioId: string): boolean {
 
 // Appended only to the isolated test's copied preload, never the desktop build.
 export function workspaceDeletionProofPreload(scenarioId: string): string {
-  if (!isWorkspaceDeletionProofScenario(scenarioId)) return '';
+  const recovery = scenarioId === workspaceDeletionRecoveryProofScenarioId;
+  if (!recovery && !isWorkspaceDeletionProofScenario(scenarioId)) return '';
   return `\n;(() => {
     const { contextBridge, ipcRenderer } = require('electron');
     contextBridge.exposeInMainWorld('ekyWorkspaceDeletionProof', Object.freeze({
-      prepareDeletion: (...args) => ipcRenderer.invoke(${JSON.stringify(workspaceDeletionProofChannel)}, ...args),
+      ${recovery ? 'deleteWorkspace' : 'prepareDeletion'}: (...args) => ipcRenderer.invoke(${JSON.stringify(workspaceDeletionProofChannel)}, ...args),
     }));
   })();\n`;
 }

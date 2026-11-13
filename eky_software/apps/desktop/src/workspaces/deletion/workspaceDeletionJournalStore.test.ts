@@ -40,6 +40,18 @@ async function fixture(context: TestContext) {
   };
 }
 
+it('observes only its default Node adapter, never a supplied filesystem', async context => {
+  const f = await fixture(context), events: import('../persistence/crashSafeFileSlot.js').SlotIoEvent[] = [];
+  const supplied = new WorkspaceDeletionJournalStore(f.root, f.fs, event => { events.push(event); });
+  await supplied.publish(journal(), await f.select());
+  expect((await supplied.inspect(f.assertAuthority)).plan.mode).toBe('published');
+  expect(events).toEqual([]);
+  const own = new WorkspaceDeletionJournalStore(f.root, undefined, event => { events.push(event); });
+  expect((await own.inspect(f.assertAuthority)).plan.mode).toBe('published');
+  expect(events.some(event => event.scope === 'ioAttempt' && event.operation === 'fileRead')).toBe(true);
+  expect(await readFile(f.paths.currentPath)).toEqual(serializeWorkspaceDeletionJournal(journal()));
+});
+
 it('preserves version-2 commitments through every real phase write and a fresh store', async context => {
   const f = await fixture(context), initial = deletionTestJournalV2();
   await f.store.publish(initial, await f.select());
@@ -401,5 +413,457 @@ it('terminal prefix cannot authorize changed selected slot bytes', async (contex
   f.fs.removeSlot = async (...args) => { removes++; return remove(...args); };
   await expect(f.store.clearTerminal(selected, { async assertInventoryAndOperationRootAbsent() { } }, { async assertBeforeSlotRead() { f.assertAuthority(); } })).rejects.toThrow();
   expect(removes).toBe(0);
+  expect(await f.snapshot()).toEqual(before);
+});
+
+type InitialPublicationReadPort = import('../persistence/crashSafeByteSlotStore.js').CrashSafeByteSlotReadSelection;
+type InitialPublicationFixture = Awaited<ReturnType<typeof fixture>>;
+type InitialPublicationIdentity = Awaited<ReturnType<WorkspaceDeletionJournalStore['publish']>>;
+type InitialPublicationNativeBoundary = 'prepare' | 'create' | 'move' | 'sync';
+function initialPublicationPublish(f: InitialPublicationFixture, selection: WorkspaceDeletionJournalSelection, compare?: () => Promise<void>, readSelection?: InitialPublicationReadPort) {
+  return f.store.publish(journal(), selection, compare, readSelection);
+}
+function initialPublicationProbe(f: InitialPublicationFixture, beforeNative?: (boundary: InitialPublicationNativeBoundary) => Promise<void>) {
+  const events: string[] = [], completed: InitialPublicationNativeBoundary[] = [];
+  let writerClosed = false, createdIdentity: InitialPublicationIdentity | undefined;
+  const read = f.fs.readSlot.bind(f.fs);
+  f.fs.readSlot = async (...args) => { events.push(`slot:${args[0]}`); return read(...args); };
+  const prepare = f.fs.prepareDirectory.bind(f.fs);
+  f.fs.prepareDirectory = async (guard) => {
+    events.push('prepare:begin');
+    await beforeNative?.('prepare');
+    await prepare(guard);
+    completed.push('prepare');
+    events.push('prepare:end');
+  };
+  const create = f.fs.createNextWriter.bind(f.fs);
+  f.fs.createNextWriter = async (guard) => {
+    events.push('create:begin');
+    await beforeNative?.('create');
+    const writer = await create(guard);
+    completed.push('create');
+    events.push('create:end');
+    return {
+      write: (bytes: Uint8Array) => writer.write(bytes), sync: () => writer.sync(),
+      async readIdentity() {
+        if (writer.readIdentity === undefined)
+          throw new Error('SYNTHETIC_EXPECTED_WRITER_IDENTITY');
+        createdIdentity = await writer.readIdentity();
+        return createdIdentity;
+      },
+      async close() { await writer.close(); writerClosed = true; events.push('writer:closed'); },
+    };
+  };
+  const move = f.fs.moveSlot.bind(f.fs);
+  f.fs.moveSlot = async (...args) => {
+    events.push('move:begin');
+    await beforeNative?.('move');
+    await move(...args);
+    completed.push('move');
+    events.push('move:end');
+  };
+  const sync = f.fs.syncDirectory.bind(f.fs);
+  f.fs.syncDirectory = async (guard) => {
+    events.push('sync:begin');
+    await beforeNative?.('sync');
+    await sync(guard);
+    completed.push('sync');
+    events.push('sync:end');
+  };
+  const remove = f.fs.removeSlot.bind(f.fs);
+  f.fs.removeSlot = async (...args) => { events.push('remove:unexpected'); return remove(...args); };
+  return { events, completed, get writerClosed() { return writerClosed; },
+    get createdIdentity() { return createdIdentity; } };
+}
+function initialPublicationExpectedTrace(useReadPort: boolean) {
+  const round = [useReadPort ? 'readcheck' : 'fullcheck',
+    'slot:current', 'slot:next', 'slot:backup', 'fullcheck'];
+  return [
+    ...round,
+    'prepare:begin', ...round, 'prepare:end',
+    'create:begin', ...round, 'create:end', 'writer:closed', 'slot:next',
+    ...round,
+    ...round, 'publication', ...round,
+    'move:begin', ...round, 'move:end', 'slot:current',
+    'sync:begin', ...round, 'sync:end', ...round,
+  ];
+}
+async function initialPublicationOutcome<T>(work: Promise<T>) {
+  return work.then(value => ({ ok: true as const, value }), (error: unknown) => ({ ok: false as const, error }));
+}
+it('initial publication publishes exact bytes and tracked identity with no sibling slots', async (context) => {
+  const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+  let comparisons = 0, prefixes = 0;
+  const identity = await initialPublicationPublish(f, selected, async () => {
+    comparisons++;
+    expect(probe.writerClosed).toBe(true);
+    expect((await readFile(f.paths.nextPath)).equals(serializeWorkspaceDeletionJournal(journal()))).toBe(true);
+    expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  }, { async assertBeforeSlotRead() { prefixes++; f.assertAuthority(); } });
+  expect(comparisons).toBe(1);
+  expect(prefixes).toBe(9);
+  expect(identity.ino).not.toBe(0);
+  expect(identity.ino).toBe(probe.createdIdentity?.ino);
+  expect(identity.dev).toBe(probe.createdIdentity?.dev);
+  expect((await readFile(f.paths.currentPath)).equals(serializeWorkspaceDeletionJournal(journal()))).toBe(true);
+  expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json']);
+  const observed = await new WorkspaceDeletionJournalStore(f.root).inspect(f.assertAuthority);
+  expect(observed.slots.current?.identity).toEqual(identity);
+  expect(observed.slots.next).toBeUndefined();
+  expect(observed.slots.backup).toBeUndefined();
+  expect(observed.plan).toMatchObject({ mode: 'published', selected: journal() });
+});
+it('initial publication keeps the portless path and both full checks unchanged', async (context) => {
+  const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+  await initialPublicationPublish(f, { ...selected, async assertExternalSelection() {
+      probe.events.push('fullcheck');
+      await selected.assertExternalSelection();
+    } }, async () => { probe.events.push('publication'); });
+  expect(probe.events).toEqual(initialPublicationExpectedTrace(false));
+  expect(probe.completed).toEqual(['prepare', 'create', 'move', 'sync']);
+});
+it('initial publication orders leading readcheck and last fullcheck in intermediate and mutation rounds', async (context) => {
+  const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+  await initialPublicationPublish(f, { ...selected, async assertExternalSelection() {
+      probe.events.push('fullcheck');
+      await selected.assertExternalSelection();
+    } }, async () => { probe.events.push('publication'); }, {
+    async assertBeforeSlotRead() { probe.events.push('readcheck'); f.assertAuthority(); },
+  });
+  // The first round and the round after writer close are intermediate reads.
+  // Native prepare/create/move/sync, both publication guards and final are strict.
+  expect(probe.events).toEqual(initialPublicationExpectedTrace(true));
+  expect(probe.events.at(-1)).toBe('fullcheck');
+});
+it.for(['prepare', 'create', 'move', 'sync'] as const)('initial publication persistent external change blocks the next native %s', async (boundary, context) => {
+  const f = await fixture(context), selected = await f.select();
+  let changed = false, afterChange: Record<string, string> | undefined;
+  const probe = initialPublicationProbe(f, async (current) => {
+    if (current !== boundary)
+      return;
+    changed = true;
+    f.changeTarget();
+    afterChange = await f.snapshot();
+  });
+  const outcome = await initialPublicationOutcome(initialPublicationPublish(f, selected, async () => { }, {
+    async assertBeforeSlotRead() { f.assertAuthority(); },
+  }));
+  expect(changed).toBe(true);
+  expect(outcome.ok).toBe(false);
+  if (outcome.ok)
+    throw new Error('SYNTHETIC_EXPECTED_PUBLICATION_REJECTION');
+  // syncDirectory's guard is outside its native error-mapping try block.
+  if (boundary === 'sync')
+    expect(outcome.error).toMatchObject({ message: 'SYNTHETIC_TARGET_CHANGED' });
+  else
+    expect(outcome.error).toMatchObject({ name: 'CrashSafeFileSlotError', failure: 'unavailable' });
+  const preceding = { prepare: [], create: ['prepare'], move: ['prepare', 'create'],
+    sync: ['prepare', 'create', 'move'] };
+  expect(probe.completed).toEqual(preceding[boundary]);
+  expect(afterChange).toBeDefined();
+  expect(await f.snapshot()).toEqual(afterChange);
+  if (boundary === 'sync')
+    expect((await readFile(f.paths.currentPath)).equals(serializeWorkspaceDeletionJournal(journal()))).toBe(true);
+});
+it.for(['intermediate', 'mutation'] as const)('initial publication admits only the omitted leading %s transient window', async (boundary, context) => {
+  const f = await fixture(context), selected = await f.select();
+  const proofPath = join(f.root, 'initial-publication-external-proof');
+  await writeFile(proofPath, 'expected', { flag: 'wx', mode: 0o600 });
+  const first = new Error('SYNTHETIC_TRANSIENT_EXTERNAL_CHANGE');
+  let armed = false, restored = false, fullFailure = false;
+  const arm = async () => { armed = true; await writeFile(proofPath, 'changed'); };
+  const probe = initialPublicationProbe(f, async (current) => {
+    if (boundary === 'mutation' && current === 'prepare')
+      await arm();
+  });
+  const read = f.fs.readSlot.bind(f.fs);
+  f.fs.readSlot = async (...args) => {
+    // Restore before the first slot I/O, never after the trailing full check.
+    if (armed && !restored && args[0] === 'current') {
+      await writeFile(proofPath, 'expected');
+      restored = true;
+    }
+    return read(...args);
+  };
+  if (boundary === 'intermediate')
+    await arm();
+  const outcome = await initialPublicationOutcome(initialPublicationPublish(f, {
+    ...selected, async assertExternalSelection() {
+      if (await readFile(proofPath, 'utf8') !== 'expected') {
+        fullFailure = true;
+        throw first;
+      }
+      await selected.assertExternalSelection();
+    },
+  }, async () => { }, { async assertBeforeSlotRead() { f.assertAuthority(); } }));
+  expect(armed).toBe(true);
+  expect(outcome.ok).toBe(true);
+  expect(restored).toBe(true);
+  expect(fullFailure).toBe(false);
+  if (outcome.ok) {
+    expect(probe.completed).toEqual(['prepare', 'create', 'move', 'sync']);
+    expect(await readFile(proofPath, 'utf8')).toBe('expected');
+    expect((await readFile(f.paths.currentPath)).equals(serializeWorkspaceDeletionJournal(journal()))).toBe(true);
+  }
+  else {
+    if (boundary === 'intermediate')
+      expect(outcome.error).toBe(first);
+    else
+      expect(outcome.error).toMatchObject({ name: 'CrashSafeFileSlotError', failure: 'unavailable' });
+    expect(probe.completed).toEqual([]);
+    expect(await f.snapshot()).toEqual({});
+    expect(await readFile(proofPath, 'utf8')).toBe('changed');
+  }
+});
+it.for(['current', 'next', 'backup'] as const)('initial publication rejects changed %s bytes or an independent same-byte file (current and backup prove absence)', async (slot, context) => {
+  for (const kind of ['bytes', 'sameBytesNewFile'] as const) {
+    const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+    const { rename } = await import('node:fs/promises');
+    let changed: Record<string, string> | undefined, checked = false;
+    const outcome = await initialPublicationOutcome(initialPublicationPublish(f, selected, async () => {
+      checked = true;
+      const bytes = serializeWorkspaceDeletionJournal(journal());
+      const path = slot === 'current' ? f.paths.currentPath : slot === 'next' ? f.paths.nextPath : f.paths.backupPath;
+      const changedBytes = Buffer.from(bytes);
+      changedBytes[changedBytes.length - 1] = changedBytes[changedBytes.length - 1]! ^ 1;
+      if (slot === 'next') {
+        if (kind === 'sameBytesNewFile') {
+          // Keep the old inode alive; no hardlink, deletion or inode-reuse race.
+          await rename(path, join(f.root, 'retained-initial-publication-next'));
+          await writeFile(path, bytes, { flag: 'wx', mode: 0o600 });
+          let identity: InitialPublicationIdentity | undefined;
+          const actual = await f.fs.readSlot('next', value => { identity = value; });
+          expect(Buffer.from(actual!).equals(bytes)).toBe(true);
+          expect(identity).toBeDefined();
+          expect(probe.createdIdentity).toBeDefined();
+          expect(identity!.dev === probe.createdIdentity!.dev && identity!.ino === probe.createdIdentity!.ino).toBe(false);
+        }
+        else
+          await writeFile(path, changedBytes);
+      }
+      else {
+        // current/backup were selected absent: this proves absence, not a
+        // comparison with an identity that never existed in this publication.
+        await writeFile(path, kind === 'bytes' ? changedBytes : bytes, { flag: 'wx', mode: 0o600 });
+      }
+      changed = await f.snapshot();
+    }, { async assertBeforeSlotRead() { f.assertAuthority(); } }));
+    expect(checked).toBe(true);
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok)
+      throw new Error('SYNTHETIC_EXPECTED_SLOT_REJECTION');
+    expect(outcome.error).toBeInstanceOf(Error);
+    expect(changed).toBeDefined();
+    expect(await f.snapshot()).toEqual(changed);
+    expect(probe.completed).toEqual(['prepare', 'create']);
+    if (slot === 'next' && kind === 'sameBytesNewFile')
+      expect((await readFile(join(f.root, 'retained-initial-publication-next'))).equals(serializeWorkspaceDeletionJournal(journal()))).toBe(true);
+  }
+});
+it('initial publication retains strict authority and external guards after the publication callback', async (context) => {
+  for (const loss of ['authority', 'external'] as const) {
+    const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+    let comparisons = 0, afterChange: Record<string, string> | undefined;
+    const outcome = await initialPublicationOutcome(initialPublicationPublish(f, selected, async () => {
+      comparisons++;
+      if (loss === 'authority')
+        f.expire();
+      else
+        f.changeTarget();
+      afterChange = await f.snapshot();
+    }, { async assertBeforeSlotRead() { f.assertAuthority(); } }));
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok)
+      throw new Error('SYNTHETIC_EXPECTED_POST_CALLBACK_REJECTION');
+    expect(outcome.error).toMatchObject({ message: loss === 'authority' ? 'SYNTHETIC_LEASE_LOST' : 'SYNTHETIC_TARGET_CHANGED' });
+    expect(comparisons).toBe(1);
+    expect(probe.writerClosed).toBe(true);
+    expect(probe.completed).toEqual(['prepare', 'create']);
+    expect(afterChange).toBeDefined();
+    expect(await f.snapshot()).toEqual(afterChange);
+    expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  }
+});
+it('initial publication cannot replace the final full check with readport success', async (context) => {
+  const f = await fixture(context), selected = await f.select();
+  let afterSync: Record<string, string> | undefined, prefixes = 0;
+  const probe = initialPublicationProbe(f), sync = f.fs.syncDirectory.bind(f.fs);
+  f.fs.syncDirectory = async (guard) => {
+    await sync(guard);
+    f.changeTarget();
+    afterSync = await f.snapshot();
+  };
+  const outcome = await initialPublicationOutcome(initialPublicationPublish(f, selected, async () => { }, {
+    async assertBeforeSlotRead() { prefixes++; f.assertAuthority(); },
+  }));
+  expect(outcome.ok).toBe(false);
+  if (outcome.ok)
+    throw new Error('SYNTHETIC_EXPECTED_FINAL_REJECTION');
+  expect(outcome.error).toMatchObject({ message: 'SYNTHETIC_TARGET_CHANGED' });
+  expect(prefixes).toBe(9);
+  expect(probe.completed).toEqual(['prepare', 'create', 'move', 'sync']);
+  expect(afterSync).toBeDefined();
+  expect(await f.snapshot()).toEqual(afterSync);
+  // Publication already happened: rejection is not a claim of rollback.
+  expect((await readFile(f.paths.currentPath)).equals(serializeWorkspaceDeletionJournal(journal()))).toBe(true);
+  expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json']);
+});
+it.for(['read', 'close'] as const)('initial publication joins a held real next handle at %s after authority loss', async (stage, context) => {
+  const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+  const { open } = await import('node:fs/promises');
+  const { setImmediate } = await import('node:timers/promises');
+  let release!: () => void, enter!: () => void;
+  const held = new Promise<void>(resolve => { release = resolve; });
+  const entered = new Promise<void>(resolve => { enter = resolve; });
+  let handle: import('node:fs/promises').FileHandle | undefined;
+  let intercepted = false, closed = false, settled = false;
+  const bytes = serializeWorkspaceDeletionJournal(journal()), read = f.fs.readSlot.bind(f.fs);
+  f.fs.readSlot = async (...args) => {
+    if (args[0] !== 'next' || !probe.writerClosed || intercepted)
+      return read(...args);
+    intercepted = true;
+    handle = await open(f.paths.nextPath, 'r');
+    // A narrow adapter wrapper owns a real read/close, then delegates the
+    // normal validated slot read. No claim of a suspended kernel syscall.
+    try {
+      if (stage === 'read') {
+        enter();
+        await held;
+      }
+      const actual = Buffer.alloc(bytes.length);
+      expect((await handle.read(actual, 0, actual.length, 0)).bytesRead).toBe(bytes.length);
+      expect(actual.equals(bytes)).toBe(true);
+      if (stage === 'close') {
+        enter();
+        await held;
+      }
+    }
+    finally {
+      await handle.close();
+      closed = true;
+    }
+    return read(...args);
+  };
+  const work = initialPublicationOutcome(initialPublicationPublish(f, selected, async () => { }, {
+    async assertBeforeSlotRead() { f.assertAuthority(); },
+  })).then(outcome => { settled = true; return outcome; });
+  const abort = () => { f.expire(); release(); };
+  context.signal.addEventListener('abort', abort, { once: true });
+  try {
+    await Promise.race([entered, work.then(() => { throw new Error('SYNTHETIC_EXPECTED_HELD_HANDLE'); })]);
+    expect(handle?.fd).not.toBe(-1);
+    expect(closed).toBe(false);
+    f.expire();
+    await setImmediate();
+    expect(settled).toBe(false);
+    expect(probe.completed).toEqual(['prepare', 'create']);
+    expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  }
+  finally {
+    release();
+    await work;
+    context.signal.removeEventListener('abort', abort);
+  }
+  const outcome = await work;
+  expect(outcome.ok).toBe(false);
+  if (outcome.ok)
+    throw new Error('SYNTHETIC_EXPECTED_REVOKED_READ_REJECTION');
+  expect(outcome.error).toMatchObject({ message: 'SYNTHETIC_LEASE_LOST' });
+  expect(intercepted).toBe(true);
+  expect(closed).toBe(true);
+  expect(handle?.fd).toBe(-1);
+  expect(probe.completed).toEqual(['prepare', 'create']);
+  expect((await readFile(f.paths.nextPath)).equals(bytes)).toBe(true);
+  expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+});
+it('initial publication joins writer close and preserves original Error or undefined plus close failure', async (context) => {
+  for (const first of [new Error('SYNTHETIC_INITIAL_WRITE_FAILURE'), undefined]) {
+    const f = await fixture(context), selected = await f.select();
+    const later = new Error('SYNTHETIC_INITIAL_CLOSE_FAILURE');
+    let release!: () => void, enter!: () => void;
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const create = f.fs.createNextWriter.bind(f.fs);
+    let closed = false, settled = false;
+    f.fs.createNextWriter = async (guard) => {
+      const writer = await create(guard);
+      return {
+        async write(): Promise<number> { throw first; }, sync: () => writer.sync(),
+        async close() {
+          try {
+            enter();
+            await held;
+          }
+          finally {
+            await writer.close();
+            closed = true;
+          }
+          throw later;
+        },
+      };
+    };
+    const work = initialPublicationOutcome(initialPublicationPublish(f, selected, async () => { }, {
+      async assertBeforeSlotRead() { f.assertAuthority(); },
+    })).then(outcome => { settled = true; return outcome; });
+    const abort = () => { f.expire(); release(); };
+    context.signal.addEventListener('abort', abort, { once: true });
+    try {
+      await Promise.race([entered, work.then(() => { throw new Error('SYNTHETIC_EXPECTED_HELD_WRITER_CLOSE'); })]);
+      expect(settled).toBe(false);
+      expect(closed).toBe(false);
+    }
+    finally {
+      release();
+      await work;
+      context.signal.removeEventListener('abort', abort);
+    }
+    const outcome = await work;
+    expect(outcome.ok).toBe(false);
+    if (outcome.ok)
+      throw new Error('SYNTHETIC_EXPECTED_AGGREGATE_FAILURE');
+    expect(closed).toBe(true);
+    expect(outcome.error).toBeInstanceOf(AggregateError);
+    const errors = (outcome.error as AggregateError).errors as unknown[];
+    expect(errors).toHaveLength(2);
+    expect(errors[0]).toBe(first);
+    expect(errors[1]).toBe(later);
+    expect(await readFile(f.paths.nextPath)).toHaveLength(0);
+    expect(await readdir(f.paths.directoryPath)).toEqual(['workspace-deletion-journal-v1.json.next']);
+  }
+});
+it('initial publication rejects malformed read context before I/O', async (context) => {
+  for (const invalid of [null, {}, { assertBeforeSlotRead: false }]) {
+    const f = await fixture(context), selected = await f.select(), probe = initialPublicationProbe(f);
+    let comparisons = 0, fullChecks = 0;
+    const outcome = await initialPublicationOutcome(initialPublicationPublish(f, {
+      ...selected, async assertExternalSelection() { fullChecks++; await selected.assertExternalSelection(); },
+    }, async () => { comparisons++; }, invalid as unknown as InitialPublicationReadPort));
+    expect(outcome.ok).toBe(false);
+    {
+      expect(probe.events).toEqual([]);
+      expect(probe.completed).toEqual([]);
+      expect(comparisons).toBe(0);
+      expect(fullChecks).toBe(0);
+      expect(await f.snapshot()).toEqual({});
+      if (outcome.ok)
+        throw new Error('SYNTHETIC_EXPECTED_INVALID_CONTEXT_REJECTION');
+      expect(outcome.error).toBeInstanceOf(Error);
+    }
+  }
+});
+it('initial publication distinguishes competing full-selection and slot failures without mutation', async (context) => {
+  const f = await fixture(context), selected = await f.select();
+  await mkdir(f.paths.directoryPath, { mode: 0o700 });
+  await writeFile(f.paths.currentPath, serializeWorkspaceDeletionJournal(journal()), { flag: 'wx', mode: 0o600 });
+  const before = await f.snapshot(), first = new Error('SYNTHETIC_COMPETING_EXTERNAL_SELECTION_FAILURE');
+  const probe = initialPublicationProbe(f);
+  const result = await initialPublicationOutcome(initialPublicationPublish(f, {
+    ...selected, async assertExternalSelection() { throw first; },
+  }, async () => { }, { async assertBeforeSlotRead() { f.assertAuthority(); } }));
+  expect(result.ok).toBe(false);
+  if (result.ok)
+    throw new Error('SYNTHETIC_EXPECTED_COMPETING_FAILURE');
+  expect(result.error).toMatchObject({ name: 'CrashSafeByteSlotStoreError' });
+  expect(probe.completed).toEqual([]);
   expect(await f.snapshot()).toEqual(before);
 });

@@ -14,6 +14,7 @@ import type {
   WorkspaceManagementEntryV1,
   WorkspaceManagementOperationState,
   WorkspaceManagementStatusV1,
+  WorkspaceRecoveryManagementStatusV2,
 } from './workspaceManagementTypes.js';
 
 const MAX_STATUS_BYTES = 32 * 1024;
@@ -28,6 +29,13 @@ const entryKeys = [
   'isActive',
   'workspaceId',
   'workspaceLabel',
+] as const;
+const recoveryStatusKeys = [
+  'formatVersion',
+  'mode',
+  'runtimeState',
+  'maintenanceState',
+  'operationState',
 ] as const;
 const operationStates = new Set<WorkspaceManagementOperationState>([
   'idle',
@@ -146,6 +154,49 @@ export function parseWorkspaceManagementStatus(
     if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_STATUS_BYTES) {
       return invalidStatus();
     }
+    return result;
+  } catch {
+    return invalidStatus();
+  }
+}
+
+// Separate from the v1 parser; the main owner selects the format on one channel.
+export function parseWorkspaceRecoveryManagementStatus(
+  value: unknown,
+): WorkspaceRecoveryManagementStatusV2 {
+  try {
+    if (!isPlainDataRecord(value)) return invalidStatus();
+    const operation = Object.getOwnPropertyDescriptor(value, 'operationState');
+    if (operation === undefined || !('value' in operation)) return invalidStatus();
+    const idle = operation.value === 'idle';
+    if (!hasExactDataKeys(value, idle
+      ? [...recoveryStatusKeys, 'persistedActiveWorkspaceId', 'target']
+      : recoveryStatusKeys) || value.formatVersion !== 2 ||
+        value.mode !== 'recoveryManagement' || value.runtimeState !== 'absent') {
+      return invalidStatus();
+    }
+    const maintenanceState = value.maintenanceState;
+    if (maintenanceState !== 'idle' && maintenanceState !== 'busy') return invalidStatus();
+    const common = { formatVersion: 2 as const, mode: 'recoveryManagement' as const,
+      runtimeState: 'absent' as const, maintenanceState };
+    let result: WorkspaceRecoveryManagementStatusV2;
+    if (idle) {
+      if (maintenanceState !== 'idle' || !isPlainDataRecord(value.target) ||
+          !hasExactDataKeys(value.target, ['workspaceId', 'workspaceLabel'])) {
+        return invalidStatus();
+      }
+      const persistedActiveWorkspaceId = value.persistedActiveWorkspaceId === null
+        ? null : validateWorkspaceId(value.persistedActiveWorkspaceId);
+      const target = Object.freeze({ workspaceId: validateWorkspaceId(value.target.workspaceId),
+        workspaceLabel: validateWorkspaceLabel(value.target.workspaceLabel) });
+      result = Object.freeze({ ...common, maintenanceState, operationState: 'idle' as const,
+        persistedActiveWorkspaceId, target });
+    } else {
+      const operationState = value.operationState;
+      if (operationState !== 'busy' && operationState !== 'recoveryRequired') return invalidStatus();
+      result = Object.freeze({ ...common, maintenanceState, operationState });
+    }
+    if (Buffer.byteLength(JSON.stringify(result), 'utf8') > MAX_STATUS_BYTES) return invalidStatus();
     return result;
   } catch {
     return invalidStatus();

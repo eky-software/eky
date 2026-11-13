@@ -18,6 +18,7 @@ import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mj
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
 import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
+import { PHASE_WIRE_LIMITS, capturePhaseHandoffExpected } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -272,9 +273,10 @@ test('only matching hosted Windows or Linux contexts select their native Git', (
     assert.throws(() => jobEvidenceGit(env, 'darwin'), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
 });
-async function fixture(t) {
+async function fixture(t, preserveUntilComplete = false) {
   const root = await mkdtemp(join(tmpdir(), 'eky-evidence-test-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  let complete = !preserveUntilComplete;
+  t.after(() => complete ? rm(root, { recursive: true, force: true }) : undefined);
   const temp = join(root, 'temporary');
   const checkout = join(root, 'checkout');
   await mkdir(temp); await mkdir(checkout);
@@ -290,8 +292,54 @@ async function fixture(t) {
     await writeFile(destination, content);
     return destination;
   };
-  return { root, temp, checkout, env, put };
+  return { root, temp, checkout, env, put, complete() { complete = true; } };
 }
+
+test('phase observation owns only the exact failure filename before generic process output', () => {
+  const path = `${run}/synthetic-retry1/failure.private.json`;
+  assert.equal(evidenceSourceKind('results', path), 'workspaceDeletionPhaseObservation');
+  for (const name of ['backend-startup', 'process-output'])
+    assert.equal(evidenceSourceKind('results', `${run}/synthetic-retry1/${name}.private.json`), 'processOutput');
+  for (const area of ['reports', 'temporary']) assert.equal(evidenceSourceKind(area, path), null);
+  for (const value of [`${run}/synthetic-retry1/nested/failure.private.json`, `${path}.pending`,
+    `${run}/synthetic-retry1/failure.json`]) assert.equal(evidenceSourceKind('results', value), null);
+});
+
+test('phase collection independently checks current CI and path and never falls back to generic output', async t => {
+  const f = await fixture(t, true);
+  const requestedRun = join(f.checkout, 'eky_software/apps/e2e/test-results', run);
+  await mkdir(requestedRun, { recursive: true });
+  const runDirectory = await realpath(requestedRun);
+  const attemptDirectory = join(runDirectory, 'synthetic-retry1'); await mkdir(attemptDirectory);
+  const path = join(attemptDirectory, 'failure.private.json');
+  const captured = capturePhaseHandoffExpected({ runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    scenarioId: 'DESK-DELETE-RECOVERY-001', env: { ...f.env, GITHUB_ACTIONS: 'true' },
+    testInfo: { retry: 1, repeatEachIndex: 0, project: { outputDir: runDirectory }, outputPath: name => join(attemptDirectory, name) } });
+  const bytes = Buffer.from(JSON.stringify(captured.envelope));
+  const collect = async content => {
+    await writeFile(path, content);
+    const result = await collectJobFailureEvidence(f.env);
+    const archive = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+    assert.equal(archive.manifest.files.length, 1);
+    const entry = archive.manifest.files[0]; assert.equal(entry.kind, 'workspaceDeletionPhaseObservation');
+    return { archive, entry };
+  };
+  const success = await collect(bytes);
+  assert.equal(success.entry.status, 'retained');
+  assert.deepEqual(Buffer.from(success.archive.files[success.entry.name], 'base64'), bytes);
+  for (const content of [Buffer.from(JSON.stringify({ ...captured.envelope, delivery: { ...captured.expected.delivery,
+    binding: { ...captured.expected.delivery.binding, attempt: '2' } } })),
+    Buffer.from(JSON.stringify({ ...captured.envelope, delivery: { ...captured.expected.delivery,
+      relativePath: `${run}/other/failure.private.json` } })),
+    Buffer.from('{"operation":"generic","stderr":"SYNTHETIC_EXCLUDED"}'),
+    Buffer.alloc(PHASE_WIRE_LIMITS.bytes + 1, 32)]) {
+    const { archive, entry } = await collect(content);
+    assert.equal(entry.status, content.length > PHASE_WIRE_LIMITS.bytes ? 'tooLarge' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), false);
+    assert.deepEqual(await readFile(path), content);
+  }
+  f.complete();
+});
 
 test('MSI window records require the exact job and adjacent request without collecting the request', async t => {
   const { temp, env, put } = await fixture(t);
@@ -469,7 +517,7 @@ test('slow discovery leaves time to retain the already discovered first error', 
   const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
   sink.record({ runner: 'node', phase: 'testFailure', testName: 'discovery', attempt: 0,
     error: new Error('SYNTHETIC FIRST BEFORE SLOW DISCOVERY') });
-  await sink.flush();
+  assert.equal((await sink.flush()).status, 'recorded', 'discovery fixture evidence must be delivered before collection');
   const first = (await readdir(temp)).find(name => name.startsWith('eky-test-errors-'));
   const newest = new Date(Date.now() + 60_000);
   await utimes(join(temp, first), newest, newest);

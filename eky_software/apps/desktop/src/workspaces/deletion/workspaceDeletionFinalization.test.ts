@@ -7,7 +7,8 @@ import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../import/workspaceBa
 import { serializeWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalSerializer.js';
 import { validateWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalValidation.js';
 import { deletionTestId as id } from './workspaceDeletionDataTestSupport.js';
-import { createWorkspaceDeletionFinalizer } from './workspaceDeletionFinalization.js';
+import { createWorkspaceDeletionFinalizer, createWorkspaceDeletionTerminalPhaseProducer,
+  type WorkspaceDeletionTerminalPhaseEvent } from './workspaceDeletionFinalization.js';
 import { createWorkspaceDeletionFinalizationTestFixture as fixture } from './workspaceDeletionFinalizationTestSupport.js';
 import * as inventoryRetirement from './workspaceDeletionInventoryRetirement.js';
 import { WorkspaceDeletionInventoryStore, workspaceDeletionInventoryFileName } from './workspaceDeletionInventoryStore.js';
@@ -252,6 +253,108 @@ it.for([false, true])('keeps an unretired original journal and all deletion evid
   await expect(f.run()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
   expect(await readFile(path)).toEqual(Buffer.from(bytes)); expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);
   expect(await readFile(f.inventoryPaths.currentPath)).toEqual(f.inventoryBytes); await f.preserved();
+});
+
+it('observes terminal retirement, journal clear and post-clear proof without changing journal-last', { timeout: terminalChainTimeoutMs }, async test => {
+  const events: WorkspaceDeletionTerminalPhaseEvent[] = [];
+  const f = await fixture(test, false, true, { coldSelection: true, observeTerminalPhase: event => { events.push(event); } });
+  expect((await f.run()).phase).toBe('registryPublished');
+  expect(events.map(({ phase, event }) => [phase, event])).toEqual([
+    ['inventoryRetirement', 'entered'], ['inventoryRetirement', 'fulfilled'],
+    ['terminalJournalClear', 'entered'], ['terminalJournalClear', 'fulfilled'],
+    ['postClearVerification', 'entered'], ['postClearVerification', 'fulfilled'],
+  ]);
+  for (let index = 0; index < events.length; index += 2) {
+    expect(events[index]!.callId).toBe(events[index + 1]!.callId);
+    expect(Object.isFrozen(events[index])).toBe(true);
+    expect(Object.keys(events[index]!).sort()).toEqual(['callId', 'event', 'phase']);
+  }
+  expect(new Set(events.map(event => event.callId)).size).toBe(3);
+  expect((await f.store.inspect(f.authority.assertCurrent)).plan.mode).toBe('absent');
+  expect(await readdir(f.inventoryPaths.parentPath)).toEqual([]); await f.preserved();
+});
+
+it('preserves terminal guard cadence and bytes with absent or throwing observers', { timeout: terminalChainTimeoutMs }, async test => {
+  const traces: string[][] = [];
+  for (const observing of [false, true]) {
+    const trace: string[] = [];
+    const f = await fixture(test, true, true, { coldSelection: true,
+      onTerminalTestGuard: kind => { trace.push(kind); },
+      ...(observing ? { observeTerminalPhase() { throw new Error('SYNTHETIC_OBSERVER_ONLY'); } } : {}),
+    });
+    const clear = WorkspaceDeletionJournalStore.prototype.clearTerminal;
+    expect(vi.isMockFunction(clear)).toBe(false);
+    let externalCalls = 0, absenceCalls = 0, prefixes = 0;
+    const spy = vi.spyOn(WorkspaceDeletionJournalStore.prototype, 'clearTerminal').mockImplementation(function(this: WorkspaceDeletionJournalStore, selection, terminal, prefix) {
+      return clear.call(this, { ...selection, async assertExternalSelection() {
+        externalCalls++; await selection.assertExternalSelection();
+      } }, { async assertInventoryAndOperationRootAbsent() {
+        absenceCalls++; await terminal.assertInventoryAndOperationRootAbsent();
+      } }, prefix === undefined ? undefined : { async assertBeforeSlotRead() {
+        prefixes++; await prefix.assertBeforeSlotRead();
+      } });
+    });
+    try { expect((await f.run()).phase).toBe('registryPublished'); }
+    finally { spy.mockRestore(); }
+    expect({ externalCalls, absenceCalls, prefixes }).toEqual({ externalCalls: 8, absenceCalls: 4, prefixes: 4 });
+    await expect(readFile(f.journalPaths.currentPath)).rejects.toMatchObject({ code: 'ENOENT' });
+    await f.preserved(); traces.push(trace);
+  }
+  expect(traces[0]!.length).toBeGreaterThan(0); expect(traces[1]).toEqual(traces[0]);
+});
+
+it.for(['error', 'undefined'] as const)('retains terminal first %s and separate close failure with a throwing observer', { timeout: terminalChainTimeoutMs }, async (kind, test) => {
+  const events: WorkspaceDeletionTerminalPhaseEvent[] = [];
+  const first = kind === 'error' ? new Error('SYNTHETIC_TERMINAL_FIRST') : undefined;
+  const close = new Error('SYNTHETIC_TERMINAL_CLOSE');
+  const capture = await import('./workspaceDeletionFinalizationTestSupport.js');
+  const finalizers = await import('./workspaceDeletionFinalization.js');
+  const factory = finalizers.createWorkspaceDeletionFinalizer;
+  expect(vi.isMockFunction(factory)).toBe(false);
+  const spy = vi.spyOn(finalizers, 'createWorkspaceDeletionFinalizer').mockImplementation(input => factory({
+    ...input, observeTerminalPhase(event) { events.push(event); throw new Error('SYNTHETIC_OBSERVER_ONLY'); },
+  }));
+  let error: AggregateError;
+  try { error = await capture.captureWorkspaceDeletionRetirementReadTestFailure(test, first, close, true); }
+  finally { spy.mockRestore(); }
+  expect(error.errors[0]).toBe(first); expect(error.errors[1]).toBe(close);
+  expect(events.map(({ phase, event }) => [phase, event])).toEqual([
+    ['inventoryRetirement', 'entered'], ['inventoryRetirement', 'rejected'],
+  ]);
+});
+
+it('keeps terminal work promise identity and original rejection when observation fails', async () => {
+  for (const mode of ['absent', 'throwing', 'recording'] as const) {
+    const events: WorkspaceDeletionTerminalPhaseEvent[] = [];
+    const observer = mode === 'absent' ? undefined : (event: WorkspaceDeletionTerminalPhaseEvent) => {
+      events.push(event); if (mode === 'throwing') throw new Error('SYNTHETIC_OBSERVER_ONLY');
+    };
+    const observe = createWorkspaceDeletionTerminalPhaseProducer(observer);
+    const value = Object.freeze({ status: 'original' }), promise = Promise.resolve(value);
+    expect(observe('finalization', () => promise)).toBe(promise); expect(await promise).toBe(value);
+    const rejected = Promise.reject(undefined);
+    expect(observe('finalization', () => rejected)).toBe(rejected); await expect(rejected).rejects.toBeUndefined();
+    const first = new Error('SYNTHETIC_TERMINAL_SYNC_FAILURE');
+    expect(() => observe('finalization', () => { throw first; })).toThrow(first);
+    if (mode !== 'absent') expect(events.map(event => event.event))
+      .toEqual(['entered', 'fulfilled', 'entered', 'rejected', 'entered', 'rejected']);
+  }
+});
+
+it('wraps the actual command finalization await without changing completion', { timeout: terminalChainTimeoutMs }, async test => {
+  const { createWorkspaceDeletionCommand } = await import('./workspaceDeletionCommand.js');
+  const events: WorkspaceDeletionTerminalPhaseEvent[] = [];
+  const f = await fixture(test, true, true), removed = vi.fn();
+  const command = createWorkspaceDeletionCommand({ userDataRoot: f.root, registry: f.registry,
+    async assertWritersAbsent() { f.authority.assertCurrent(); }, observeTerminalPhase(event) { events.push(event); },
+  });
+  const result = await f.track(command.resumeSelected(f.journal, { ...f.authority, recordRemoved: removed }));
+  expect(result.status).toBe('completed'); expect(removed).toHaveBeenCalledTimes(1);
+  expect(events[0]).toMatchObject({ phase: 'finalization', event: 'entered' });
+  expect(events.at(-1)).toMatchObject({ phase: 'finalization', event: 'fulfilled' });
+  expect(events.filter(event => event.phase === 'finalization')).toHaveLength(2);
+  expect(events.filter(event => event.phase === 'terminalJournalClear').map(event => event.event)).toEqual(['entered', 'fulfilled']);
+  await f.preserved();
 });
 
 it.for(['registryIdentity', 'source', 'binding'] as const)(

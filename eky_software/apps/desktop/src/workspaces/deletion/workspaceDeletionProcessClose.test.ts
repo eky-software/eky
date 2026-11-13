@@ -138,12 +138,26 @@ it('retains an immutable completion wait before abort rather than calling close 
   const finishing = f.child.finish();
   f.close();
   expect(await finishing).toEqual({ stdout: '', stderr: '', closed: true });
-  expect(f.child.readEvidence()).toEqual({ atAbort: before.atAbort,
+  expect(f.child.readEvidence()).toEqual({ context: { testId: null, mode: null, cut: null }, atAbort: before.atAbort,
     after: { waiting: { cut: 0, completed: 0, failed: 0, termination: 0, exit: 0 },
       messages: [], closed: true, terminationRequested: true }, close: { code: null, signal: 'SIGKILL' } });
   expect(Object.isFrozen(before.atAbort)).toBe(true);
   expect(Object.isFrozen(before.atAbort!.waiting)).toBe(true);
   expect(Object.isFrozen(before.atAbort!.messages)).toBe(true);
+});
+
+it('captures test attribution before config mutation without retaining the whole config', async test => {
+  const f = fixture(test);
+  const config = { testId: test.task.id, mode: 'resumeCold', cut: 'after:purged',
+    root: 'SYNTHETIC_PRIVATE_ROOT', label: 'SYNTHETIC_COMPANY_LABEL' };
+  const child = startDeletionProcessChild(test, config);
+  config.testId = 'changed'; config.mode = 'publish'; config.cut = 'authorized';
+  const evidence = child.readEvidence();
+  expect(evidence.context).toEqual({ testId: test.task.id, mode: 'resumeCold', cut: 'after:purged' });
+  expect(Object.isFrozen(evidence.context)).toBe(true);
+  expect(JSON.stringify(evidence)).not.toContain('SYNTHETIC_PRIVATE_ROOT');
+  expect(JSON.stringify(evidence)).not.toContain('SYNTHETIC_COMPANY_LABEL');
+  f.close(); await child.finish(); await f.child.finish();
 });
 
 it('distinguishes completed IPC from pending successful process close at abort', async test => {
@@ -256,7 +270,8 @@ it('writes abort and close observations into the existing retained child receipt
   f.close(); await joined;
   const receipt = JSON.parse(await readFile(join(dirname(files.root), 'children.private.json'), 'utf8'));
   expect(receipt).toEqual([{ status: 'fulfilled', value: { stdout: '', stderr: '', closed: true },
-    observed: { atAbort: { waiting: { cut: 0, completed: 1, failed: 0, termination: 0, exit: 0 },
+    observed: { context: { testId: test.task.id, mode: 'resumeCold', cut: null },
+    atAbort: { waiting: { cut: 0, completed: 1, failed: 0, termination: 0, exit: 0 },
       messages: [], closed: false, terminationRequested: false },
     after: { waiting: { cut: 0, completed: 0, failed: 0, termination: 0, exit: 0 },
       messages: [], closed: true, terminationRequested: true }, close: { code: null, signal: 'SIGKILL' } },

@@ -23,6 +23,7 @@ interface InventoryRetirementFileSystem {
 
 export interface WorkspaceDeletionInventoryRetirementReadSelection {
   assertExternalSelection(): Promise<void>;
+  assertBeforeSlotRead?(): Promise<void>;
 }
 
 // This only retires technical inventory bytes. It never removes payloads, parent directories, or the journal.
@@ -35,10 +36,14 @@ export async function retireWorkspaceDeletionInventory(
   if (onReadFailure !== undefined && typeof onReadFailure !== 'function') return invalidDeletionData(invalidCode);
   const completedReadFailure = onReadFailure;
   let selectedRead: (() => Promise<void>) | undefined;
+  let selectedBeforeRead: (() => Promise<void>) | undefined;
   if (readSelection !== undefined) {
-    deletionDataRecord(readSelection, ['assertExternalSelection'], invalidCode);
-    if (typeof readSelection.assertExternalSelection !== 'function') return invalidDeletionData(invalidCode);
+    const hasPrefix = readSelection !== null && typeof readSelection === 'object' && Object.hasOwn(readSelection, 'assertBeforeSlotRead');
+    deletionDataRecord(readSelection, hasPrefix ? ['assertExternalSelection', 'assertBeforeSlotRead'] : ['assertExternalSelection'], invalidCode);
+    if (typeof readSelection.assertExternalSelection !== 'function' ||
+        (hasPrefix && typeof readSelection.assertBeforeSlotRead !== 'function')) return invalidDeletionData(invalidCode);
     selectedRead = readSelection.assertExternalSelection.bind(readSelection);
+    if (hasPrefix) selectedBeforeRead = readSelection.assertBeforeSlotRead!.bind(readSelection);
   }
   const read = selectedRead;
   const expected = captureWorkspaceDeletionJournal(value);
@@ -58,9 +63,9 @@ export async function retireWorkspaceDeletionInventory(
     await authority.assertExternalSelection();
     assertAuthority();
   };
-  const assertSelectedTerminal = async (external: () => Promise<void>) => {
-    await external();
-    const observed = await inspectWorkspaceDeletionJournal(journal, assertAuthority);
+  const assertSelectedTerminal = async (external: () => Promise<void>, before = external, check = assertAuthority) => {
+    await before();
+    const observed = await inspectWorkspaceDeletionJournal(journal, check);
     if (observed.plan.mode !== 'published' || !observed.plan.terminalOnly || observed.slots.current?.identity === undefined ||
         !serializeWorkspaceDeletionJournal(observed.plan.selected).equals(expectedBytes)) return invalidDeletionData(invalidCode);
     const current = observed.slots.current;
@@ -70,7 +75,27 @@ export async function retireWorkspaceDeletionInventory(
     journalBytes ??= Uint8Array.from(current.bytes);
     await external();
   };
-  const assertTerminal = () => assertSelectedTerminal(assertExternal);
+  const assertTerminal = selectedBeforeRead === undefined ? () => assertSelectedTerminal(assertExternal) : async () => {
+    let active = true, failed = false;
+    let firstFailure: unknown;
+    const retain = (error: unknown) => { if (!failed) { failed = true; firstFailure = error; } return firstFailure; };
+    const check = () => {
+      if (failed) throw firstFailure;
+      if (!active) return invalidDeletionData(invalidCode);
+      try { assertAuthority(); } catch (error) { throw retain(error); }
+    };
+    try {
+      await assertSelectedTerminal(assertExternal, async () => {
+        check();
+        try {
+          const result: unknown = await selectedBeforeRead!(); check();
+          if (result !== undefined) return invalidDeletionData(invalidCode);
+        } catch (error) { throw retain(error); }
+      }, check);
+      check();
+    } catch (error) { throw retain(error); }
+    finally { active = false; }
+  };
   let reading = false;
   const assertReadTerminal = read === undefined ? assertTerminal : async () => {
     const assertRead = async () => {

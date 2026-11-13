@@ -9,7 +9,7 @@ import styles from './WorkspaceSelector.module.css';
 
 interface WorkspaceOperationFormProps {
   readonly isBusy: boolean;
-  readonly mode: Exclude<WorkspaceSelectorMode, 'list'>;
+  readonly mode: Exclude<WorkspaceSelectorMode, 'list' | 'confirmDelete'>;
   readonly selectedWorkspace?: WorkspaceManagementEntry;
   readonly state: WorkspaceSelectorState;
   readonly onBack: () => void;
@@ -106,7 +106,7 @@ export function WorkspaceOperationForm({
   );
 }
 
-function operationTitle(mode: Exclude<WorkspaceSelectorMode, 'list'>): string {
+function operationTitle(mode: Exclude<WorkspaceSelectorMode, 'list' | 'confirmDelete'>): string {
   switch (mode) {
     case 'create':
       return uiText.workspaces.addWorkspace;
@@ -122,7 +122,7 @@ function operationTitle(mode: Exclude<WorkspaceSelectorMode, 'list'>): string {
 }
 
 function operationButtonLabel(
-  mode: Exclude<WorkspaceSelectorMode, 'list'>,
+  mode: Exclude<WorkspaceSelectorMode, 'list' | 'confirmDelete'>,
 ): string {
   switch (mode) {
     case 'create':

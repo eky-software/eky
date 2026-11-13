@@ -80,9 +80,11 @@ export interface CrashSafeFileSlotFileSystem {
 export function createNodeCrashSafeFileSlotFileSystem(
   paths: Readonly<CrashSafeFileSlotPaths>,
   maximumBytes: number,
+  observer?: SlotIoObserver,
 ): CrashSafeFileSlotFileSystem {
   assertMaximumBytes(maximumBytes);
-  return new NodeCrashSafeFileSlotFileSystem(paths, maximumBytes);
+  const observe = createSlotIoObservation(observer);
+  return observeSlotGroups(new NodeCrashSafeFileSlotFileSystem(paths, maximumBytes, observe), observe);
 }
 
 class NodeCrashSafeFileSlotFileSystem
@@ -90,6 +92,7 @@ class NodeCrashSafeFileSlotFileSystem
   constructor(
     private readonly paths: Readonly<CrashSafeFileSlotPaths>,
     private readonly maximumBytes: number,
+    private readonly observe: ReturnType<typeof createSlotIoObservation>,
   ) {}
 
   async inspectSlotIdentity(slot: CrashSafeFileSlot): Promise<Readonly<CrashSafeFileSlotIdentity> | undefined> {
@@ -145,9 +148,9 @@ class NodeCrashSafeFileSlotFileSystem
       if (!pathsAreEqual(await realpath(path), path)) {
         throw new CrashSafeFileSlotError('invalid');
       }
-      const file = await open(path, 'r');
+      const file = await this.observe('ioAttempt', 'fileOpen', () => open(path, 'r'));
       try {
-        const opened = await file.stat();
+        const opened = await this.observe('ioAttempt', 'fileStat', () => file.stat());
         assertSafeRegularFile(opened, this.maximumBytes, true, mode === 'allowEmptyObservation');
         if (!sameOpenedFile(before, opened)) {
           throw new CrashSafeFileSlotError('invalid');
@@ -155,24 +158,24 @@ class NodeCrashSafeFileSlotFileSystem
         const bytes = new Uint8Array(opened.size);
         let offset = 0;
         while (offset < bytes.byteLength) {
-          const result = await file.read(
+          const result = await this.observe('ioAttempt', 'fileRead', () => file.read(
             bytes,
             offset,
             bytes.byteLength - offset,
             offset,
-          );
+          ));
           if (result.bytesRead < 1) {
             throw new CrashSafeFileSlotError('invalid');
           }
           offset += result.bytesRead;
         }
         if (
-          (await file.read(new Uint8Array(1), 0, 1, bytes.byteLength))
+          (await this.observe('ioAttempt', 'fileRead', () => file.read(new Uint8Array(1), 0, 1, bytes.byteLength)))
             .bytesRead !== 0
         ) {
           throw new CrashSafeFileSlotError('invalid');
         }
-        const after = await file.stat();
+        const after = await this.observe('ioAttempt', 'fileStat', () => file.stat());
         if (!sameOpenedFile(opened, after) || after.size !== bytes.byteLength) {
           throw new CrashSafeFileSlotError('invalid');
         }
@@ -182,7 +185,7 @@ class NodeCrashSafeFileSlotFileSystem
         }
         return bytes;
       } finally {
-        await file.close();
+        await this.observe('ioAttempt', 'fileClose', () => file.close());
       }
     } catch (error) {
       if (isNodeError(error) && error.code === 'ENOENT') return undefined;
@@ -195,15 +198,18 @@ class NodeCrashSafeFileSlotFileSystem
       await assertRealDirectory(this.paths.directoryPath, true);
       if (guard !== undefined) {
         await guard.beforeMutation();
-        guard.assertAuthority();
       }
-      const file = await open(this.paths.nextPath, 'wx', 0o600);
-      try {
+      const file = await this.observe('ioAttempt', 'fileOpen', () => {
         guard?.assertAuthority();
-        if (process.platform !== 'win32') await file.chmod(0o600);
-        return new NodeCrashSafeFileSlotNextWriter(file, guard?.assertAuthority);
+        return open(this.paths.nextPath, 'wx', 0o600);
+      });
+      try {
+        if (process.platform !== 'win32') {
+          await this.observe('ioAttempt', 'fileChmod', () => { guard?.assertAuthority(); return file.chmod(0o600); });
+        } else guard?.assertAuthority();
+        return observeWriterGroups(new NodeCrashSafeFileSlotNextWriter(file, guard?.assertAuthority, this.observe), this.observe);
       } catch (error) {
-        await file.close();
+        await this.observe('ioAttempt', 'fileClose', () => file.close());
         throw error;
       }
     } catch (error) {
@@ -228,9 +234,11 @@ class NodeCrashSafeFileSlotFileSystem
         await guard.beforeMutation();
         await assertUnchangedMutationSlot(sourcePath, this.maximumBytes, selected);
         if (await pathExists(destinationPath)) throw new CrashSafeFileSlotError('invalid');
-        guard.assertAuthority();
       }
-      await rename(sourcePath, destinationPath);
+      await this.observe('ioAttempt', 'pathRename', () => {
+        guard?.assertAuthority();
+        return rename(sourcePath, destinationPath);
+      });
       await assertSafeSlotForMutation(destinationPath, this.maximumBytes);
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
@@ -247,9 +255,11 @@ class NodeCrashSafeFileSlotFileSystem
       if (guard !== undefined) {
         await guard.beforeMutation();
         await assertUnchangedMutationSlot(path, this.maximumBytes, selected);
-        guard.assertAuthority();
       }
-      await rm(path);
+      await this.observe('ioAttempt', 'pathRemove', () => {
+        guard?.assertAuthority();
+        return rm(path);
+      });
       return true;
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
@@ -264,12 +274,11 @@ class NodeCrashSafeFileSlotFileSystem
     if (process.platform === 'win32') return;
     try {
       await assertRealDirectory(this.paths.directoryPath, true);
-      const directory = await open(this.paths.directoryPath, 'r');
+      const directory = await this.observe('ioAttempt', 'fileOpen', () => open(this.paths.directoryPath, 'r'));
       try {
-        guard?.assertAuthority();
-        await directory.sync();
+        await this.observe('ioAttempt', 'fileSync', () => { guard?.assertAuthority(); return directory.sync(); });
       } finally {
-        await directory.close();
+        await this.observe('ioAttempt', 'fileClose', () => directory.close());
       }
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
@@ -287,12 +296,14 @@ class NodeCrashSafeFileSlotNextWriter
   implements CrashSafeFileSlotNextWriter {
   private closed = false;
 
-  constructor(private readonly file: FileHandle, private readonly assertAuthority?: () => void) {}
+  constructor(private readonly file: FileHandle, private readonly assertAuthority?: () => void,
+    private readonly observe = createSlotIoObservation()) {}
 
   async readIdentity(): Promise<CrashSafeFileSlotIdentity> {
     this.assertOpen();
-    this.assertAuthority?.();
-    const metadata = await this.file.stat();
+    const metadata = await this.observe('ioAttempt', 'fileStat', () => {
+      this.assertAuthority?.(); return this.file.stat();
+    });
     this.assertAuthority?.();
     assertSafeRegularFile(metadata, Number.MAX_SAFE_INTEGER, false);
     return fileIdentity(metadata);
@@ -301,8 +312,9 @@ class NodeCrashSafeFileSlotNextWriter
   async write(bytes: Uint8Array): Promise<number> {
     this.assertOpen();
     try {
-      this.assertAuthority?.();
-      return (await this.file.write(bytes, 0, bytes.byteLength, 0)).bytesWritten;
+      return (await this.observe('ioAttempt', 'fileWrite', () => {
+        this.assertAuthority?.(); return this.file.write(bytes, 0, bytes.byteLength, 0);
+      })).bytesWritten;
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
     }
@@ -311,8 +323,7 @@ class NodeCrashSafeFileSlotNextWriter
   async sync(): Promise<void> {
     this.assertOpen();
     try {
-      this.assertAuthority?.();
-      await this.file.sync();
+      await this.observe('ioAttempt', 'fileSync', () => { this.assertAuthority?.(); return this.file.sync(); });
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
     }
@@ -322,7 +333,7 @@ class NodeCrashSafeFileSlotNextWriter
     if (this.closed) return;
     this.closed = true;
     try {
-      await this.file.close();
+      await this.observe('ioAttempt', 'fileClose', () => this.file.close());
     } catch (error) {
       throw mapFileSystemError(error, 'unavailable');
     }
@@ -460,4 +471,59 @@ function pathsAreEqual(firstPath: string, secondPath: string): boolean {
 
 function isNodeError(error: unknown): error is NodeJS.ErrnoException {
   return error instanceof Error && 'code' in error;
+}
+
+export type SlotIoEvent = Readonly<{ operation: SlotIoOperation; scope: 'group' | 'ioAttempt';
+  event: 'entered' | 'fulfilled' | 'rejected'; callId: number }>;
+export type SlotIoObserver = (event: SlotIoEvent) => void;
+type SlotIoOperation = 'prepareDirectory' | 'inspectSlotIdentity' | 'readSlot' | 'createNextWriter' |
+  'moveSlot' | 'removeSlot' | 'syncDirectory' | 'writerReadIdentity' | 'writerWrite' | 'writerSync' |
+  'writerClose' | 'fileOpen' | 'fileStat' | 'fileRead' | 'fileWrite' | 'fileSync' | 'fileClose' | 'fileChmod' |
+  'pathRename' | 'pathRemove';
+
+function createSlotIoObservation(observer?: SlotIoObserver) {
+  let sequence = 0;
+  function observe<T>(scope: SlotIoEvent['scope'], operation: SlotIoOperation, work: () => Promise<T>): Promise<T> {
+    if (observer === undefined) return work();
+    const callId = ++sequence;
+    const emit = (event: SlotIoEvent['event']) => {
+      try { observer(Object.freeze({ operation, scope, event, callId })); }
+      catch { /* Observation does not own the work outcome. */ }
+    };
+    emit('entered');
+    let original: Promise<T>;
+    try { original = work(); }
+    catch (cause) { emit('rejected'); throw cause; }
+    try { void Promise.prototype.then.call(original, () => emit('fulfilled'), () => emit('rejected')); }
+    catch { /* A missing finish remains unknown. */ }
+    return original;
+  }
+  return Object.assign(observe, { enabled: observer !== undefined });
+}
+
+function observeSlotGroups(fs: CrashSafeFileSlotFileSystem, observe: ReturnType<typeof createSlotIoObservation>): CrashSafeFileSlotFileSystem {
+  if (!observe.enabled) return fs;
+  return {
+    prepareDirectory: guard => observe('group', 'prepareDirectory', () => fs.prepareDirectory(guard)),
+    ...(fs.inspectSlotIdentity === undefined ? {} : {
+      inspectSlotIdentity: (slot: CrashSafeFileSlot) => observe('group', 'inspectSlotIdentity', () => fs.inspectSlotIdentity!(slot)),
+    }),
+    readSlot: (slot, capture, mode) => observe('group', 'readSlot', () => fs.readSlot(slot, capture, mode)),
+    createNextWriter: guard => observe('group', 'createNextWriter', () => fs.createNextWriter(guard)),
+    moveSlot: (source, destination, guard) => observe('group', 'moveSlot', () => fs.moveSlot(source, destination, guard)),
+    removeSlot: (slot, guard) => observe('group', 'removeSlot', () => fs.removeSlot(slot, guard)),
+    syncDirectory: guard => observe('group', 'syncDirectory', () => fs.syncDirectory(guard)),
+  };
+}
+
+function observeWriterGroups(writer: CrashSafeFileSlotNextWriter, observe: ReturnType<typeof createSlotIoObservation>): CrashSafeFileSlotNextWriter {
+  if (!observe.enabled) return writer;
+  return {
+    write: bytes => observe('group', 'writerWrite', () => writer.write(bytes)),
+    sync: () => observe('group', 'writerSync', () => writer.sync()),
+    close: () => observe('group', 'writerClose', () => writer.close()),
+    ...(writer.readIdentity === undefined ? {} : {
+      readIdentity: () => observe('group', 'writerReadIdentity', () => writer.readIdentity!()),
+    }),
+  };
 }

@@ -1,5 +1,5 @@
 import { observeWorkspaceCandidateOperations } from './workspaceCandidateRemnantEnumeration.js';
-import { captureWorkspaceCandidateRemnantSelection } from './workspaceCandidateRemnantSelection.js';
+import { captureWorkspaceCandidateRemnantObservation } from './workspaceCandidateRemnantSelection.js';
 import { checkedDeletionAuthority, invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { workspaceInspectionRemnantReads } from './workspaceInspectionRemnantAbsence.js';
 import { observeWorkspaceInternalInspectionRemnants } from './workspaceInspectionRemnantEnumeration.js';
@@ -19,12 +19,15 @@ export const workspaceDeletionRemnantReads = Object.freeze({ ...workspaceLegacyR
 // Readonly paired sources, including foreign and payloadless owners. No metadata cleanup or deletion grant.
 // The publisher must compare a fresh complete pass AND the actual inventory through EOF before authorization.
 export async function* observeWorkspaceDeletionRemnants(
-  userDataRoot: string, authority: WorkspaceInspectionRemnantAuthority, reads = workspaceDeletionRemnantReads,
+  userDataRoot: string, authority: WorkspaceInspectionRemnantAuthority & { assertRecoverySourceReadCurrent?(): void },
+  reads = workspaceDeletionRemnantReads,
   targetWorkspaceId?: string,
 ) {
   const check = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
   const selection = authority.assertExternalSelection.bind(authority);
   const writers = authority.assertWritersAbsent.bind(authority);
+  const readCurrent = authority.assertRecoverySourceReadCurrent === undefined ? undefined :
+    checkedDeletionAuthority(authority.assertRecoverySourceReadCurrent.bind(authority), invalidCode);
   let active = true;
   const guard = () => { if (!active) return invalidDeletionData(invalidCode); check(); };
   const boundary = async () => {
@@ -35,7 +38,12 @@ export async function* observeWorkspaceDeletionRemnants(
   const readonlyAuthority = {
     assertAuthority: guard,
     async assertExternalSelection() { guard(); },
-    async assertWritersAbsent() { guard(); await writers(); guard(); },
+    async assertWritersAbsent() {
+      guard();
+      if (readCurrent === undefined) await writers();
+      else readCurrent();
+      guard();
+    },
   };
   try {
     await boundary();
@@ -99,7 +107,7 @@ async function* readWorkspaceDeletionRemnants(
           hasPayload: source.roots.some(root => root.rootIdentity !== null) });
         await source.assertSelected();
       } else if (binding.owner === 'workspaceImport' || binding.owner === 'workspaceLegacyAdoption') {
-        const source = await captureWorkspaceCandidateRemnantSelection(userDataRoot, binding.operationId, binding.workspaceId, authority, reads);
+        const source = await captureWorkspaceCandidateRemnantObservation(userDataRoot, binding.operationId, binding.workspaceId, authority, reads);
         if (source.bindingSha256 !== row.binding.bindingSha256) return invalidDeletionData(invalidCode);
         yield Object.freeze({ kind: 'metadataCandidate' as const, observation: row, selection: source,
           hasPayload: source.rootIdentity !== null || legacy.bindingSha256 === row.binding.bindingSha256 });

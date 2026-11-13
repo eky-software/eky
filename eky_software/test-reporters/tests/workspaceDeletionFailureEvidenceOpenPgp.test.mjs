@@ -1,14 +1,15 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
-import { mkdir, readFile, readdir, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 
 import { projectExceptionChain, STARTUP_EXCEPTION_LIMITS } from '../../apps/desktop/src/main/startupExceptionEvidence.ts';
-import { captureWorkspaceDeletionFailure } from '../../apps/e2e/src/fixtures/captureWorkspaceDeletionFailure.ts';
+import { captureWorkspaceDeletionFailure, selectWorkspaceDeletionPhaseObservation } from '../../apps/e2e/src/fixtures/captureWorkspaceDeletionFailure.ts';
+import { createWorkspaceDeletionRawPhaseRecorder, WORKSPACE_DELETION_MAIN_PHASE_COVERAGE } from '../../apps/desktop/e2e/workspaceDeletionPhaseObservation.ts';
 import { runElectronWorkspaceAdoptionAcceptanceProof, runElectronWorkspaceOriginalInspectionProof } from '../../apps/e2e/src/electron/electronMainCapabilities.ts';
 import { createRunnerFailureSink, RUNNER_FAILURE_ROOT_PREFIX, validateRunnerFailureEvidence } from '../runnerFailureEvidence.mjs';
 import { collectJobFailureEvidence } from '../../apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs';
@@ -165,6 +166,143 @@ test('synthetic publication identity failure', () => {
     assert.equal(failure.exception.chain[1].message, failure.exception.chain[0].message);
     assert.equal(failure.exception.chain[1].stack.includes('identity.test.mjs'), true);
     assert.equal(failure.binding.jobKey, binding.EKY_EVIDENCE_JOB_KEY);
+    completed = true;
+  } finally { await fixture.finish({ completed, failed: !completed }); }
+});
+
+test('support smoke capture retains original and cleanup through OpenPGP delivery', {
+  skip: !['win32', 'linux'].includes(process.platform), timeout: 30_000,
+}, async () => {
+  const fixture = await createOpenPgpTestFixture(root);
+  let completed = false;
+  try {
+    const temp = join(fixture.root, 'support-smoke-temp'), checkout = join(fixture.root, 'support-smoke-checkout');
+    const profile = join(temp, 'support-smoke-profile');
+    const sentinel = join(profile, 'retained-directory', 'sentinel.bin');
+    const sentinelBytes = Buffer.from('synthetic retained support smoke bytes\0');
+    const profileBytes = Buffer.from('synthetic unrelated profile bytes\0');
+    await mkdir(profile, { recursive: true }); await mkdir(checkout);
+    await writeFile(join(profile, 'profile.bin'), profileBytes, { flag: 'wx', mode: 0o600 });
+    const binding = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+      GITHUB_JOB: 'w75-support-smoke-proof', EKY_EVIDENCE_JOB_KEY: 'w75-support-smoke-proof-0', GITHUB_SHA: 'a'.repeat(40) };
+    const names = {
+      success: 'support smoke successful v3 archive',
+      expectedReject: 'support smoke expected bridge rejection',
+      expectedAssertion: 'support smoke expected assertion failure',
+      primary: 'support smoke unexpected bridge rejection',
+      combined: 'support smoke unexpected bridge and cleanup rejection',
+    };
+    await runSupportSmokeFailureWorker(fixture.root, temp, binding, names, sentinelBytes);
+    assert.equal((await readFile(sentinel)).equals(sentinelBytes), true, 'SUPPORT_SMOKE_SENTINEL_CHANGED');
+    assert.equal((await readFile(join(profile, 'profile.bin'))).equals(profileBytes), true, 'SUPPORT_SMOKE_PROFILE_CHANGED');
+    const originals = new Map();
+    const directories = (await readdir(temp)).filter(name => name.startsWith(RUNNER_FAILURE_ROOT_PREFIX));
+    assert.equal(directories.length, 3, 'SUPPORT_SMOKE_UNEXPECTED_CAPTURE_INVOCATIONS');
+    for (const directory of directories) {
+      for (const name of await readdir(join(temp, directory))) {
+        const bytes = await readFile(join(temp, directory, name));
+        originals.set(`temporary/${directory}/${name}`, { bytes, sha256: sha256(bytes) });
+      }
+    }
+    // Two reporter assertions, one primary capture, two combined captures and three summaries.
+    assert.equal(originals.size, 8, 'SUPPORT_SMOKE_REPORT_COUNT_INVALID');
+    const recipient = await fixture.generate('sm');
+    await fixture.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicPath = await fixture.exportKey(recipient, 'support-smoke-public.asc');
+    const collected = await collectJobFailureEvidence({ ...binding, RUNNER_TEMP: temp,
+      GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
+      EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') });
+    await encryptArchive(collected.root, collected);
+    const decrypted = await fixture.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    const expectedBinding = { runId: binding.GITHUB_RUN_ID, attempt: binding.GITHUB_RUN_ATTEMPT,
+      job: binding.GITHUB_JOB, jobKey: binding.EKY_EVIDENCE_JOB_KEY, sourceRevision: binding.GITHUB_SHA };
+    assert.deepEqual(archive.manifest.binding, expectedBinding);
+    assert.equal(archive.manifest.jobOutcome, 'failure');
+    assert.equal(archive.manifest.cleanup, 'notInferred');
+    assert.equal(archive.manifest.exclusions.includes('profiles'), true);
+    assert.equal(archive.manifest.files.length, originals.size);
+    assert.deepEqual(Object.keys(archive.files).sort(), archive.manifest.files.map(entry => entry.name).sort());
+    const delivered = archive.manifest.files.map(entry => {
+      assert.equal(entry.kind, 'runnerFailure'); assert.equal(entry.status, 'retained');
+      assert.equal(entry.source.startsWith(`temporary/${RUNNER_FAILURE_ROOT_PREFIX}`), true);
+      const original = originals.get(entry.source);
+      assert.equal(original !== undefined, true, 'SUPPORT_SMOKE_UNEXPECTED_COLLECTED_SOURCE');
+      const bytes = Buffer.from(archive.files[entry.name], 'base64');
+      assert.equal(bytes.length, entry.bytes);
+      assert.equal(sha256(bytes) === entry.sha256 && entry.sha256 === original.sha256, true, 'SUPPORT_SMOKE_HASH_CHANGED');
+      assert.equal(bytes.equals(original.bytes), true, 'SUPPORT_SMOKE_REPORT_BYTES_CHANGED');
+      assert.equal(bytes.includes(sentinelBytes) || bytes.includes(profileBytes), false, 'SUPPORT_SMOKE_PROFILE_COLLECTED');
+      assert.equal(bytes.includes(Buffer.from('SYNTHETIC_W75_SMOKE_LATE_SECRET')), false, 'SUPPORT_SMOKE_LATE_SECRET_LEAKED');
+      originals.delete(entry.source);
+      const record = validateRunnerFailureEvidence(JSON.parse(bytes));
+      assert.deepEqual(record.binding, { kind: 'github', ...expectedBinding, jobKeySource: 'explicit' });
+      const [, directory, name] = entry.source.split('/');
+      assert.equal(directory, RUNNER_FAILURE_ROOT_PREFIX + record.invocationId);
+      if (record.kind === 'runnerFailureSummary') assert.equal(name, record.invocationId + '.summary.private.json');
+      else assert.equal(name.startsWith(String(record.sequence).padStart(3, '0') + '-'), true);
+      return record;
+    });
+    assert.equal(originals.size, 0);
+    const records = delivered.filter(record => record.kind === 'runnerFailure');
+    const summaries = delivered.filter(record => record.kind === 'runnerFailureSummary');
+    assert.equal(records.length, 5); assert.equal(summaries.length, 3);
+    assert.equal(new Set(summaries.map(record => record.invocationId)).size, 3);
+    for (const summary of summaries) {
+      const members = records.filter(record => record.invocationId === summary.invocationId);
+      assert.equal(summary.status, 'recorded');
+      assert.equal(summary.observed, members.length); assert.equal(summary.recorded, members.length);
+      assert.equal(summary.rejected, 0); assert.equal(summary.omitted, 0); assert.equal(summary.limited, false);
+    }
+    assert.deepEqual(summaries.map(record => record.recorded).sort(), [1, 2, 2]);
+    for (const record of records) {
+      assert.equal(record.runner, 'vitest');
+      assert.equal([names.primary, names.combined].includes(record.test.name), true, 'SUPPORT_SMOKE_CONTROL_REPORTED');
+      assert.equal(typeof record.test.id === 'string' && record.test.id.length > 0, true);
+      assert.equal(record.test.file.replaceAll('\\', '/').endsWith('/support-smoke.test.mjs'), true);
+      assert.equal(Number.isInteger(record.test.line) && record.test.line > 0, true);
+      assert.equal(record.test.attempt, 0); assert.equal(record.test.retryCount, 0); assert.equal(record.test.repeatCount, 0);
+    }
+    const assertions = records.filter(record => record.phase === 'testFailure');
+    const primaries = records.filter(record => record.phase === 'supportBundleSmokeCatch');
+    const cleanups = records.filter(record => record.phase === 'supportBundleSmokeCleanupCatch');
+    assert.equal(assertions.length, 2); assert.equal(primaries.length, 2); assert.equal(cleanups.length, 1);
+    assert.equal(new Set(assertions.map(record => record.test.id)).size, 2);
+    for (const name of [names.primary, names.combined]) {
+      const matchingAssertions = assertions.filter(record => record.test.name === name);
+      const matchingPrimaries = primaries.filter(record => record.test.name === name);
+      assert.equal(matchingAssertions.length, 1); assert.equal(matchingPrimaries.length, 1);
+      const assertion = matchingAssertions[0], primary = matchingPrimaries[0];
+      assert.equal(assertion.exception.chain[0].name, 'AssertionError');
+      assert.equal(assertion.exception.chain[0].message.includes('SUPPORT_SMOKE_EXPECTED_SUCCESS'), true);
+      assert.equal(JSON.stringify(assertion.exception).includes('SYNTHETIC_W75_SMOKE'), false);
+      assert.deepEqual(primary.test, assertion.test);
+      assert.notEqual(primary.invocationId, assertion.invocationId);
+      assert.equal(primary.exception.incomplete, false); assert.equal(primary.exception.chain.length, 2);
+      for (const [index, marker] of ['SYNTHETIC_W75_SMOKE_ORIGINAL', 'SYNTHETIC_W75_SMOKE_CAUSE'].entries()) {
+        const part = primary.exception.chain[index];
+        // Plain Error inherits its name; the projector reads only own data fields.
+        assert.equal(part.name, null); assert.equal(part.message === marker, true, 'SUPPORT_SMOKE_ORIGINAL_CHANGED');
+        assert.equal(part.stack.includes(marker) && part.stack.includes('support-smoke.test.mjs'), true, 'SUPPORT_SMOKE_STACK_MISSING');
+        assert.equal(part.truncated, false);
+      }
+      assert.equal(JSON.stringify(primary.exception).includes('retained-directory'), false);
+      if (name === names.primary) {
+        assert.equal(primary.exception.chain[0].stack.includes('[redacted]'), true, 'SUPPORT_SMOKE_LATE_SECRET_NOT_REDACTED');
+      }
+    }
+    const cleanup = cleanups[0], combined = primaries.find(record => record.test.name === names.combined);
+    assert.deepEqual(cleanup.test, combined.test); assert.equal(cleanup.invocationId, combined.invocationId);
+    assert.equal(combined.sequence, 1); assert.equal(cleanup.sequence, 2);
+    assert.equal(cleanup.exception.incomplete, false); assert.equal(cleanup.exception.chain.length, 1);
+    assert.equal(cleanup.exception.chain[0].message.includes('retained-directory'), true);
+    assert.equal(cleanup.exception.chain[0].stack.includes('retained-directory'), true);
+    assert.equal(JSON.stringify(cleanup.exception).includes('SYNTHETIC_W75_SMOKE'), false);
+    assert.equal((await readFile(sentinel)).equals(sentinelBytes), true, 'SUPPORT_SMOKE_SENTINEL_CHANGED');
+    assert.equal((await readFile(join(profile, 'profile.bin'))).equals(profileBytes), true, 'SUPPORT_SMOKE_PROFILE_CHANGED');
     completed = true;
   } finally { await fixture.finish({ completed, failed: !completed }); }
 });
@@ -348,9 +486,255 @@ test('workspace main projections retain original causes and coverage through Ope
         assert.equal(record.test.id.endsWith(':11111111-1111-4111-8111-111111111111'), true);
       }
     }
+    await verifyPhaseObservationDelivery(fixture, recipient, publicPath, binding);
     completed = true;
   } finally { await fixture.finish({ completed, failed: !completed }); }
 });
+
+async function verifyPhaseObservationDelivery(fixture, recipient, publicPath, binding) {
+  const temp = join(fixture.root, 'phase-temporary'), checkout = join(fixture.root, 'phase-checkout');
+  const requestedRun = join(checkout, 'eky_software/apps/e2e/test-results/run-33333333-3333-4333-8333-333333333333');
+  await mkdir(temp); await mkdir(requestedRun, { recursive: true });
+  const runDirectory = await realpath(requestedRun), attempt = join(runDirectory, 'synthetic-retry1');
+  await mkdir(attempt);
+  const environment = { ...binding, RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout,
+    EKY_EVIDENCE_JOB_OUTCOME: 'failure', EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+    EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint, EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+  const saved = Object.fromEntries(Object.keys(binding).map(key => [key, process.env[key]]));
+  const runtime = '11111111-1111-4111-8111-111111111111';
+  const raw = createWorkspaceDeletionRawPhaseRecorder(runtime, () => 1, WORKSPACE_DELETION_MAIN_PHASE_COVERAGE);
+  raw.observePhase(runtime, { phase: 'preparation', event: 'entered', callId: 1 });
+  raw.observePhase(runtime, { phase: 'preparation', event: 'fulfilled', callId: 1 });
+  for (let callId = 1; callId <= 40; callId++) {
+    raw.observePhase(runtime, { phase: 'reservation', event: 'entered', callId });
+    raw.observePhase(runtime, { phase: 'reservation', event: 'fulfilled', callId });
+  }
+  const terminalPhases = ['finalization', 'inventoryRetirement', 'terminalJournalClear', 'postClearVerification'];
+  for (const phase of terminalPhases) {
+    raw.observePhase(runtime, { phase, event: 'entered', callId: 1 });
+    raw.observePhase(runtime, { phase, event: 'fulfilled', callId: 1 });
+  }
+  assert.equal(raw.snapshot().schemaVersion, 2);
+  const application = { evaluate: async () => raw.snapshot() };
+  let observer;
+  try {
+    Object.assign(process.env, binding);
+    observer = selectWorkspaceDeletionPhaseObservation({ application, runtimeInstanceId: runtime,
+      scenarioId: 'DESK-DELETE-RECOVERY-001', testInfo: { retry: 1, repeatEachIndex: 0,
+        project: { outputDir: runDirectory }, outputPath: name => join(attempt, name) } });
+  } finally {
+    for (const [key, value] of Object.entries(saved)) {
+      if (value === undefined) delete process.env[key]; else process.env[key] = value;
+    }
+  }
+  observer.beginClose(application, runtime);
+  await Promise.resolve();
+  observer.finishClose(application, runtime);
+  assert.equal(await observer.reportFailure(true), 'recorded');
+  const path = join(attempt, 'failure.private.json'), original = await readFile(path);
+  const report = JSON.parse(original);
+  assert.equal(report.schemaVersion, 2);
+  assert.equal(report.availability, 'captured'); assert.equal(report.snapshot.omissions.missingCoverage, true);
+  assert.equal(report.snapshot.omissions.eventLimit, true);
+  assert.equal(report.snapshot.events.length, 64);
+  for (const phase of terminalPhases) {
+    assert.deepEqual(report.snapshot.phases[phase], { entered: 1, fulfilled: 1, rejected: 0 });
+    assert.equal(report.snapshot.events.some(event => event.phase === phase), false);
+  }
+  const collector = join(fixture.root, 'phase-collector.mjs');
+  await writeFile(collector, `import { writeFile } from 'node:fs/promises';
+import { collectJobFailureEvidence } from ${JSON.stringify(new URL('../../apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs', import.meta.url).href)};
+const result = await collectJobFailureEvidence(process.env);
+await writeFile(process.argv[2], JSON.stringify({ root: result.root, archivePath: result.archivePath, fingerprint: result.fingerprint }), { flag: 'wx', mode: 0o600 });`, { flag: 'wx', mode: 0o600 });
+  for (const wrongAttempt of [false, true]) {
+    const resultPath = join(fixture.root, `phase-collection-${wrongAttempt}.private.json`);
+    const child = await fixture.run(process.execPath, [collector, resultPath], 30_000, {
+      cwd: root, env: { ...environment, ...(wrongAttempt ? { GITHUB_RUN_ATTEMPT: '2' } : {}) } });
+    assert.equal(child.error, undefined); assert.equal(child.signal, null); assert.equal(child.status, 0);
+    const collected = JSON.parse(await readFile(resultPath, 'utf8'));
+    const archiveBytes = await readFile(collected.archivePath);
+    await encryptArchive(collected.root, collected);
+    const decrypted = await fixture.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    assert.deepEqual(decrypted.stdout, archiveBytes);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    assert.equal(archive.manifest.files.length, 1);
+    const entry = archive.manifest.files[0]; assert.equal(entry.kind, 'workspaceDeletionPhaseObservation');
+    assert.equal(entry.status, wrongAttempt ? 'unverified' : 'retained');
+    if (wrongAttempt) assert.equal(Object.hasOwn(archive.files, entry.name), false);
+    else {
+      const recovered = Buffer.from(archive.files[entry.name], 'base64');
+      assert.deepEqual(recovered, original); assert.equal(recovered.length, entry.bytes); assert.equal(sha256(recovered), entry.sha256);
+    }
+    assert.deepEqual(await readFile(path), original);
+  }
+}
+
+async function runSupportSmokeFailureWorker(parent, temp, binding, names, sentinelBytes) {
+  const directory = join(parent, 'support-smoke-worker');
+  await mkdir(directory);
+  const moduleUrl = path => new URL(path, import.meta.url).href;
+  const file = join(directory, 'support-smoke.test.mjs'), config = join(directory, 'vitest.config.mjs');
+  const receiptPath = join(directory, 'worker.private.json');
+  await writeFile(config, `export default { resolve: { alias: {
+    vitest: ${JSON.stringify(fileURLToPath(new URL('../../node_modules/vitest/dist/index.js', import.meta.url)))}
+  } }, test: { include: ['support-smoke.test.mjs'],
+    maxWorkers: 1, fileParallelism: false, retry: 0, testTimeout: 5000,
+    hookTimeout: 2000, includeTaskLocation: true } };`, { flag: 'wx', mode: 0o600 });
+  await writeFile(file, `import { mkdir, readFile, writeFile } from 'node:fs/promises';
+import { join } from 'node:path';
+import { inspect } from 'node:util';
+import { gunzipSync } from 'node:zlib';
+import { afterAll, test, expect, vi } from 'vitest';
+import { runPackagedSupportBundleSmoke } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/main/packagedSupportBundleSmoke.ts'))};
+import { createSupportBundleSmokeFailureCapture } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/main/packagedSupportBundleSmokeTestSupport.ts'))};
+import { createDesktopOnlySupportBundleArchive } from ${JSON.stringify(moduleUrl('../../apps/desktop/src/supportBundle/supportBundleArchive.ts'))};
+
+const names = ${JSON.stringify(names)};
+const profile = join(process.env.TMPDIR, 'support-smoke-profile');
+const sentinelBytes = Buffer.from(${JSON.stringify(sentinelBytes.toString('base64'))}, 'base64');
+const system = { appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
+  architecture: 'x64', electronVersion: '43.8.1', platform: 'win32' };
+const completed = { success: false, expectedReject: false, expectedAssertion: false, primary: false, combined: false };
+afterAll(async () => {
+  delete process.env.SYNTHETIC_SUPPORT_SMOKE_SECRET;
+  await writeFile(${JSON.stringify(receiptPath)}, JSON.stringify(completed), { flag: 'wx', mode: 0o600 });
+});
+
+// Keep raw markers away from assertion code frames, including the intentional failures.
+function createSmokeBridgeError() {
+  return new Error('SYNTHETIC_W75_SMOKE_ORIGINAL', { cause: new Error('SYNTHETIC_W75_SMOKE_CAUSE') });
+}
+
+function smokeFixture(context, targetName, bridge) {
+  const observeFailure = vi.fn(createSupportBundleSmokeFailureCapture(context));
+  const execute = vi.fn(bridge);
+  const target = join(profile, targetName);
+  return { target, execute, observeFailure, options: { kind: 'desktopOnly', system,
+    mainWindow: { webContents: { executeJavaScript: execute } }, observeFailure, supportBundlePath: target } };
+}
+
+function rejectedBridgeFixture(context, targetName) {
+  const original = createSmokeBridgeError();
+  return { ...smokeFixture(context, targetName, async () => { throw original; }), original };
+}
+
+function assertOriginalObserved(fixture) {
+  expect(fixture.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+  expect(fixture.observeFailure.mock.calls[0]?.[0] === fixture.original).toBe(true);
+}
+
+function assertSafePrimary(error, original) {
+  expect(error).toBeInstanceOf(Error);
+  expect(error === original).toBe(false);
+  expect(error.message).toBe('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  expect(error.cause === undefined).toBe(true);
+  expect(inspect(error).includes(original.message)).toBe(false);
+  expect(inspect(error).includes(original.cause.message)).toBe(false);
+}
+
+test(names.success, async context => {
+  const archive = createDesktopOnlySupportBundleArchive({
+    createdAt: new Date('2026-07-27T12:30:00.000Z'),
+    creationCorrelationId: '22222222-2222-4222-8222-222222222222',
+    desktopData: { system, availability: { backend: 'exitUnconfirmed', database: 'notInspected',
+      diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+      observation: { scope: 'currentOperation', status: 'unavailable' } },
+  });
+  const fixture = smokeFixture(context, 'success.json.gz', async () => {
+    await writeFile(fixture.target, archive.compressed, { flag: 'wx', mode: 0o600 });
+    const bytes = await readFile(fixture.target);
+    expect(bytes.equals(archive.compressed)).toBe(true);
+    expect(JSON.parse(gunzipSync(bytes)).manifest.supportBundleFormatVersion).toBe(3);
+    return 'created';
+  });
+  await runPackagedSupportBundleSmoke(fixture.options);
+  expect(fixture.execute).toHaveBeenCalledExactlyOnceWith('window.ekyDesktop.createSupportBundle()', true);
+  expect(fixture.observeFailure).not.toHaveBeenCalled();
+  await expect(readFile(fixture.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  completed.success = true;
+});
+
+test(names.expectedReject, async context => {
+  const fixture = rejectedBridgeFixture(context, 'expected.json.gz');
+  await expect(runPackagedSupportBundleSmoke(fixture.options)).rejects.toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  assertOriginalObserved(fixture);
+  expect(fixture.observeFailure).toHaveBeenCalledOnce();
+  await expect(readFile(fixture.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  completed.expectedReject = true;
+});
+
+test.fails(names.expectedAssertion, async context => {
+  const fixture = rejectedBridgeFixture(context, 'expected-assertion.json.gz');
+  await expect(runPackagedSupportBundleSmoke(fixture.options)).rejects.toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  assertOriginalObserved(fixture);
+  expect(fixture.observeFailure).toHaveBeenCalledOnce();
+  await expect(readFile(fixture.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  completed.expectedAssertion = true;
+  expect(false, 'SUPPORT_SMOKE_EXPECTED_FAILURE_CONTROL').toBe(true);
+});
+
+test(names.primary, async context => {
+  const fixture = rejectedBridgeFixture(context, 'primary.json.gz');
+  process.env.SYNTHETIC_SUPPORT_SMOKE_SECRET = 'SYNTHETIC_W75_SMOKE_LATE_SECRET';
+  fixture.original.stack += '\\n' + process.env.SYNTHETIC_SUPPORT_SMOKE_SECRET;
+  const failure = await runPackagedSupportBundleSmoke(fixture.options).catch(error => error);
+  assertOriginalObserved(fixture); assertSafePrimary(failure, fixture.original);
+  expect(fixture.observeFailure).toHaveBeenCalledOnce();
+  await expect(readFile(fixture.target)).rejects.toMatchObject({ code: 'ENOENT' });
+  completed.primary = true;
+  expect(false, 'SUPPORT_SMOKE_EXPECTED_SUCCESS').toBe(true);
+});
+
+test(names.combined, async context => {
+  const fixture = rejectedBridgeFixture(context, 'retained-directory');
+  await mkdir(fixture.target);
+  const sentinel = join(fixture.target, 'sentinel.bin');
+  await writeFile(sentinel, sentinelBytes, { flag: 'wx', mode: 0o600 });
+  const failure = await runPackagedSupportBundleSmoke(fixture.options).catch(error => error);
+  assertOriginalObserved(fixture);
+  expect(fixture.observeFailure).toHaveBeenCalledTimes(2);
+  const cleanup = fixture.observeFailure.mock.calls[1]?.[0];
+  expect(cleanup).toBeInstanceOf(Error);
+  expect(cleanup === fixture.original).toBe(false);
+  expect(cleanup.message.includes('retained-directory')).toBe(true);
+  expect(cleanup.stack.includes('retained-directory')).toBe(true);
+  expect(failure).toBeInstanceOf(AggregateError);
+  expect(failure.message).toBe('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+  expect(failure.errors).toHaveLength(2);
+  expect(failure.cause === failure.errors[0]).toBe(true);
+  assertSafePrimary(failure.errors[0], fixture.original);
+  expect(failure.errors[1].message).toBe('DESKTOP_SMOKE_SUPPORT_BUNDLE_CLEANUP_FAILED');
+  expect(failure.errors[1] === cleanup).toBe(false);
+  expect(failure.errors[1].cause === undefined).toBe(true);
+  const publicFailure = inspect(failure);
+  expect(publicFailure.includes(fixture.original.message)).toBe(false);
+  expect(publicFailure.includes(fixture.original.cause.message)).toBe(false);
+  expect(publicFailure.includes('retained-directory')).toBe(false);
+  expect((await readFile(sentinel)).equals(sentinelBytes)).toBe(true);
+  completed.combined = true;
+  expect(false, 'SUPPORT_SMOKE_EXPECTED_SUCCESS').toBe(true);
+});`, { flag: 'wx', mode: 0o600 });
+  const env = { ...process.env, ...binding, CI: '1', NO_COLOR: '1', TEMP: temp, TMP: temp, TMPDIR: temp };
+  delete env.NODE_TEST_CONTEXT; delete env.FORCE_COLOR;
+  const child = spawnSync(process.execPath, [join(root, 'node_modules/vitest/vitest.mjs'),
+    'run', '--config', config,
+    '--reporter=' + fileURLToPath(new URL('../vitestFailureReporter.mjs', import.meta.url))], {
+    cwd: directory, env, encoding: 'utf8', timeout: 10_000, maxBuffer: 128 * 1024, windowsHide: true,
+  });
+  await writeFile(join(directory, 'output.private.json'), JSON.stringify({ status: child.status,
+    signal: child.signal, stdout: child.stdout, stderr: child.stderr, processError: child.error?.code ?? null }),
+  { flag: 'wx', mode: 0o600 });
+  assert.equal(child.error, undefined, 'SUPPORT_SMOKE_WORKER_PROCESS_FAILED');
+  assert.equal(child.signal, null); assert.equal(child.status, 1, 'SUPPORT_SMOKE_ASSERTIONS_MUST_FAIL');
+  const output = (child.stdout ?? '') + (child.stderr ?? '');
+  for (const marker of ['SYNTHETIC_W75_SMOKE_ORIGINAL', 'SYNTHETIC_W75_SMOKE_CAUSE',
+    'SYNTHETIC_W75_SMOKE_LATE_SECRET', 'retained-directory']) {
+    assert.equal(output.includes(marker), false, 'SUPPORT_SMOKE_ORIGINAL_LEAKED_TO_PUBLIC_OUTPUT');
+  }
+  assert.deepEqual(JSON.parse(await readFile(receiptPath, 'utf8')),
+    { success: true, expectedReject: true, expectedAssertion: true, primary: true, combined: true },
+    'SUPPORT_SMOKE_CONTROL_NOT_COMPLETED');
+}
 
 async function runInspectionFailureWorker(parent, temp, binding) {
   const directory = join(parent, 'inspection-worker');

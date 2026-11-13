@@ -1,10 +1,12 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { setImmediate as nextEventLoopTurn } from 'node:timers/promises';
 
 import { afterEach, beforeEach, describe, expect, it, vi, type TestContext } from 'vitest';
 
-import { createRestoreStartupTestLifetime, releaseRestoreStartupTestResources } from './desktopRestoreStartupTestSupport.js';
+import { createRestoreStartupTestLifetime, releaseRestoreStartupTestResources,
+  runRestoreStartupTestWithShutdown } from './desktopRestoreStartupTestSupport.js';
 
 let parents: string[];
 
@@ -19,6 +21,58 @@ beforeEach(context => {
   });
 });
 afterEach(() => vi.restoreAllMocks());
+
+describe('restore startup test shutdown evidence', () => {
+  it.for([
+    { bodyFails: false, shutdownFails: false, undefinedFailure: false },
+    { bodyFails: true, shutdownFails: false, undefinedFailure: false },
+    { bodyFails: true, shutdownFails: false, undefinedFailure: true },
+    { bodyFails: false, shutdownFails: true, undefinedFailure: false },
+    { bodyFails: false, shutdownFails: true, undefinedFailure: true },
+    { bodyFails: true, shutdownFails: true, undefinedFailure: false },
+    { bodyFails: true, shutdownFails: true, undefinedFailure: true },
+  ])('preserves body and shutdown outcomes (%j)', async ({ bodyFails, shutdownFails, undefinedFailure }) => {
+    const first = undefinedFailure ? undefined : new Error('synthetic test body failure');
+    const second = undefinedFailure ? undefined : new Error('synthetic test shutdown failure');
+    const order: string[] = [];
+    const outcome = await runRestoreStartupTestWithShutdown(async () => {
+      order.push('body'); if (bodyFails) throw first;
+    }, async () => {
+      order.push('shutdown'); if (shutdownFails) throw second;
+    }).then(() => ({ status: 'fulfilled' as const }), (error: unknown) => ({ status: 'rejected' as const, error }));
+    expect(order).toEqual(['body', 'shutdown']);
+    if (!bodyFails && !shutdownFails) expect(outcome).toEqual({ status: 'fulfilled' });
+    else {
+      expect(outcome.status).toBe('rejected');
+      if (outcome.status !== 'rejected') throw new Error('SYNTHETIC_TEST_FAILURE_LOST');
+      if (bodyFails && shutdownFails) {
+        expect(outcome.error).toBeInstanceOf(AggregateError);
+        const failure = outcome.error as AggregateError;
+        expect(failure.cause).toBe(first);
+        expect(failure.errors).toHaveLength(2);
+        expect(failure.errors[0]).toBe(first); expect(failure.errors[1]).toBe(second);
+      } else expect(outcome.error).toBe(bodyFails ? first : second);
+    }
+  });
+
+  it('waits for held shutdown before reporting the original failure', async () => {
+    const first = new Error('synthetic held test failure');
+    const entered = createGate(), release = createGate();
+    let settled = false;
+    const outcome = runRestoreStartupTestWithShutdown(async () => { throw first; }, async () => {
+      entered.resolve(); await release.promise;
+    }).then(() => ({ status: 'fulfilled' as const }), (error: unknown) => ({ status: 'rejected' as const, error }))
+      .finally(() => { settled = true; });
+    try {
+      await entered.promise;
+      await nextEventLoopTurn();
+      expect(settled).toBe(false);
+      release.resolve();
+      expect(await outcome).toEqual({ status: 'rejected', error: first });
+      expect(settled).toBe(true);
+    } finally { release.resolve(); await outcome; }
+  });
+});
 
 describe('restore startup test evidence ownership', () => {
   it.for(['prepare', 'run'] as const)('joins completion to the active %s invocation', async (method, context) => {
