@@ -490,6 +490,13 @@ sen sisällöstä. Keräys ottaa saman invokaation toimitusyhteenvedon ensin ja
 sitten otteet syntyjärjestyksessä, jotta myöhemmät virheet eivät syrjäytä
 ensivirhettä lähdekohtaisen tiedostorajan täyttyessä. Toimitusyhteenveto
 ilmoittaa hylätyt ja pois rajatut otteet.
+Samassa lähteessä kilpailevien invokaatioiden yhteenveto ja ensimmäinen ote
+priorisoidaan uusimmasta invokaatiosta alkaen ennen toistuvia otteita.
+Sen jälkeen myöhempiä otteita valitaan invokaatioista vuorotellen,
+säilyttäen kunkin oma syntyjärjestys. Näin yhden yleisvirheraportin toisto
+ei yksin täytä kiintiötä ennen erillistä teknistä ensisyytä. Rajallinen
+kiintiö tai hakubudjetti voi silti jättää invokaatioita tai otteita pois;
+tämä ei takaa kaikkien virheiden tai tietyn syyn löytymistä.
 Keräimen nykyiset tiedostomäärä-, kokonaiskoko- ja lähdekohtaiset rajat
 säilyvät; niiden täyttyminen näkyy osittaisena aineistona. Kattavuutta ei
 päätellä pelkästä salatun tiedoston syntymisestä.

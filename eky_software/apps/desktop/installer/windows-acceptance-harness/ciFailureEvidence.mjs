@@ -252,13 +252,21 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     try { await walk(start, '', 0); }
     catch (error) { source.status = error.code === 'ENOENT' ? 'missing' : 'unverified'; }
     // Reserve half the unchanged source budget for retaining already found evidence.
-    // Stable sorting retains first-error order within each invocation.
-    const priority = item => {
+    // Reserve each invocation's summary and first error before repeated errors.
+    const invocationOffsets = new Map();
+    const ordered = candidates.map(item => {
       const kind = evidenceSourceKind(area, item.rel);
-      return kind === 'runnerFailure' ? 0 : kind === 'msiWindowObservation' ? 1 : 2;
-    };
-    candidates.sort((left, right) => priority(left) - priority(right));
-    for (const { path, rel } of candidates) {
+      let round = 0;
+      if (kind === 'runnerFailure' && !basename(item.path).endsWith('.summary.private.json')) {
+        const invocation = dirname(item.path);
+        const offset = invocationOffsets.get(invocation) ?? 0;
+        invocationOffsets.set(invocation, offset + 1);
+        round = offset;
+      }
+      return { ...item, priority: kind === 'runnerFailure' ? 0 : kind === 'msiWindowObservation' ? 1 : 2, round };
+    });
+    ordered.sort((left, right) => left.priority - right.priority || left.round - right.round);
+    for (const { path, rel } of ordered) {
       if (exhausted() || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
       await select(base, path, area, location, rel);
     }
