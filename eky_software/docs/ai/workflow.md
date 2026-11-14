@@ -507,6 +507,15 @@ julkaisupäätös pyydetään edelleen silloin, kun sellainen tarvitaan.
 
 ### CI-ajon seuranta ja virhetodisteet
 
+Viimeistele lähde ja tuloksia ennakoimaton pakollinen dokumentaatio ennen
+viimeistä pitkää CI-kierrosta. Sido ajotulos tutkittuun revisioon nykyisessä
+hyväksyntänäytön paikassa, esimerkiksi PR:n tarkistuksissa ja kommentissa.
+Älä automaattisesti tee vihreän headin päälle uutta tulosraportticommittia,
+jos hyväksytty raportointipaikka riittää. Tämä ei jätä pakollista ohje- tai
+nykytilamuutosta tekemättä: uusi lähdemuutos, myös dokumenttimuutos, saa aina
+omat soveltuvat porttinsa. Aiemman headin läpäisy ei hyväksy uutta headia
+eikä korvaa mergen jälkeisen `main`-revision omia tarkistuksia.
+
 Ennen tehtävään kuuluvaa testi- tai CI-ajoa nimeä seurannan omistaja ja
 varmista käytettävissä oleva havainto- ja tallennusketju. Seuranta on
 pääagentin tai rajatun, vain lukevan aliagentin vastuulla koko ajon ajan,
