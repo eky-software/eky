@@ -8,12 +8,36 @@ import { fileURLToPath } from 'node:url';
 import { setupPackagedPilotSeries } from './packagedPilotSeriesSetup.mjs';
 import { packagedSeriesManifestVariable } from '../../desktop/scripts/packagedPilotSeries.mjs';
 import { createRunnerFailureSink } from '../../../test-reporters/runnerFailureEvidence.mjs';
+import { REPORT_PREFIX } from './safeCiReporter.mjs';
 
 const readManifest = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const root = readManifest('../../../package.json');
 const e2e = readManifest('../package.json');
 const desktop = readManifest('../../desktop/package.json');
 const backend = readManifest('../../backend/package.json');
+
+function assertDiscoveryOutput(output, ci) {
+  if (!ci) {
+    assert.match(output, /DESK-DELETE-RECOVERY-001/u);
+    assert.match(output, /Total: 1 test in 1 file/u);
+    return;
+  }
+  const reports = output.trimEnd().split(/\r?\n/u).map(line => {
+    assert.ok(line.startsWith(REPORT_PREFIX));
+    return JSON.parse(line.slice(REPORT_PREFIX.length));
+  });
+  assert.equal(reports.length, 3);
+  assert.deepEqual(reports[0], { schemaVersion: 1, event: 'begin', selected: 1 });
+  const { line, column, ...outcome } = reports[1];
+  assert.ok(Number.isSafeInteger(line) && line > 0);
+  assert.ok(Number.isSafeInteger(column) && column > 0);
+  assert.deepEqual(outcome, { schemaVersion: 1, event: 'testOutcome', caseIndex: 1,
+    project: 'electron-development', file: 'electron/workspaceDeletionExecution.spec.ts',
+    repeatEachIndex: 0, outcome: 'notRun', attempts: 0 });
+  assert.deepEqual(reports[2], { schemaVersion: 1, event: 'end', status: 'passed', selected: 1,
+    globalErrors: 0, expected: 0, unexpected: 0, flaky: 0, skipped: 0, notRun: 1, unknown: 0 });
+}
+
 test('the actual Playwright loader discovers the phase-observed deletion case without starting a runtime', { timeout: 5000 }, () => {
   const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
   const result = spawnSync(process.execPath, [fileURLToPath(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)),
@@ -27,8 +51,41 @@ test('the actual Playwright loader discovers the phase-observed deletion case wi
       cause: result.error ?? new Error((result.stderr || result.stdout).slice(0, 4096)),
     });
   }
-  assert.match(result.stdout, /DESK-DELETE-RECOVERY-001/u);
-  assert.match(result.stdout, /Total: 1 test in 1 file/u);
+  assertDiscoveryOutput(result.stdout, Boolean(env.CI));
+});
+
+test('discovery output distinguishes safe CI listing from executed or invalid results', () => {
+  const reports = [
+    { schemaVersion: 1, event: 'begin', selected: 1 },
+    { schemaVersion: 1, event: 'testOutcome', caseIndex: 1, project: 'electron-development',
+      file: 'electron/workspaceDeletionExecution.spec.ts', line: 235, column: 1,
+      repeatEachIndex: 0, outcome: 'notRun', attempts: 0 },
+    { schemaVersion: 1, event: 'end', status: 'passed', selected: 1, globalErrors: 0,
+      expected: 0, unexpected: 0, flaky: 0, skipped: 0, notRun: 1, unknown: 0 },
+  ];
+  const encode = values => values.map(value => REPORT_PREFIX + JSON.stringify(value)).join('\n') + '\n';
+  assertDiscoveryOutput(encode(reports), true);
+  const local = 'DESK-DELETE-RECOVERY-001\nTotal: 1 test in 1 file\n';
+  assertDiscoveryOutput(local, false);
+  assert.throws(() => assertDiscoveryOutput(local, true));
+  for (const change of [
+    values => { values[0].selected = 2; },
+    values => { values[1].file = 'electron/unrelated.spec.ts'; },
+    values => { values[1].project = 'web-chromium'; },
+    values => { values[1].outcome = 'expected'; values[1].attempts = 1; },
+    values => { values[1].line = 0; },
+    values => { values[1].column = null; },
+    values => { values[1].extra = 'unexpected'; },
+    values => { values[2].expected = 1; values[2].notRun = 0; },
+    values => { values[2].globalErrors = 1; },
+    values => { values[2].schemaVersion = 2; },
+    values => { values.reverse(); },
+    values => { values.push(values[2]); },
+  ]) {
+    const changed = structuredClone(reports);
+    change(changed);
+    assert.throws(() => assertDiscoveryOutput(encode(changed), true));
+  }
 });
 
 for (const kind of ['local', 'github']) {

@@ -172,6 +172,10 @@ Node-fixturetiedostojen kanssa. Muiden tiedostojen rinnakkaisuus, kaikkien
 testien valinta ja omat aikarajat säilyvät. Luettelointi tarvitsee nämä
 runtime-exportit myös puhtaassa lähdepuussa; vanha `dist` ei ole valmistelu.
 Tämä ei rakenna tai käynnistä backend-, selain- tai Electron-runtimea.
+Luettelointisuoja tarkistaa nykyisen reportterin: paikallisesti tekstilistan,
+CI:ssä turvallisen JSON-raportin yhden valinnan ja `notRun`-tilan ilman
+suoritettuja testejä. `--list` ei ole käyttäjäpolun ajonäyttö, eikä reportterin
+CI-suojausta tai nykyisiä luetteloinnin aikarajoja ohiteta.
 
 T1:n regressiosuoja hylkää puuttuvan testitiedoston, package-kutsun tai
 workflow-kytkennän, väärän ryhmän ja vaaditun sarjallisuuden puutteen.
