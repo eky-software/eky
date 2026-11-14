@@ -30,10 +30,11 @@ import {
   UPDATE_PACKAGE_MAX_BYTES,
   type LocalUnsignedPilotUpdatePackageManifest,
 } from './updatePackageManifest.js';
-import type {
-  LocalUpdateCacheSlotRole,
-  LocalUpdatePackageRole,
-  UpdatePackageTrustPolicy,
+import {
+  type LocalUpdateCacheSlotRole,
+  type LocalUpdatePackageRole,
+  type UpdatePackageTrustPolicy,
+  UpdatePackageTrustError,
 } from './updatePackageTrustPolicy.js';
 import { verifyLocalUnsignedPilotSharedIdentity } from './localUnsignedPilotUpdatePackageTrustPolicy.js';
 import type { WindowsInstallerIdentity } from './windowsInstallerIdentity.js';
@@ -105,7 +106,10 @@ export type LocalUpdatePackageCacheFailureStage =
   | 'slotValidation';
 
 export class LocalUpdatePackageCacheError extends Error {
-  constructor(readonly stage?: LocalUpdatePackageCacheFailureStage) {
+  constructor(
+    readonly stage?: LocalUpdatePackageCacheFailureStage,
+    readonly reason?: UpdatePackageTrustError['reason'],
+  ) {
     super('The local update package could not be stored safely.');
     this.name = 'LocalUpdatePackageCacheError';
   }
@@ -328,6 +332,8 @@ export class LocalUpdatePackageCache {
       } catch (error) {
         throw new LocalUpdatePackageCacheError(
           error instanceof LocalUpdatePackageCacheError ? error.stage ?? stage : stage,
+          stage === 'sourceValidation' && error instanceof LocalUpdatePackageCacheError &&
+            error.reason === 'versionNotNewer' ? error.reason : undefined,
         );
       }
     });
@@ -545,6 +551,7 @@ export class LocalUpdatePackageCache {
     packageBefore: Awaited<ReturnType<typeof readLocalUpdateSourceSnapshot>>;
     packagePath: string;
   }> {
+    let failureReason: UpdatePackageTrustError['reason'];
     try {
       if (!isAbsolute(input.manifestPath)) {
         throw new LocalUpdatePackageCacheError();
@@ -573,12 +580,21 @@ export class LocalUpdatePackageCache {
       }
       const installerIdentity = await this.options.inspectInstaller(packagePath);
       if (input.expectedIdentity === undefined) {
-        this.options.trustPolicy.verifyPackage({
-          installerIdentity,
-          manifest,
-          releaseInfo: this.options.releaseInfo,
-          role: input.role,
-        });
+        try {
+          this.options.trustPolicy.verifyPackage({
+            installerIdentity,
+            manifest,
+            releaseInfo: this.options.releaseInfo,
+            role: input.role,
+          });
+        } catch (error) {
+          // Inspection dependencies cannot supply the candidate policy's reason.
+          if (input.role === 'candidate' && error instanceof UpdatePackageTrustError &&
+            error.reason === 'versionNotNewer') {
+            failureReason = error.reason;
+          }
+          throw error;
+        }
       } else {
         verifyLocalUnsignedPilotSharedIdentity({
           installerIdentity,
@@ -596,7 +612,7 @@ export class LocalUpdatePackageCache {
       assertLocalUpdateSourceUnchanged(packageBefore, packageAfterVerification);
       return { manifest, manifestBytes, packageBefore, packagePath };
     } catch {
-      throw new LocalUpdatePackageCacheError();
+      throw new LocalUpdatePackageCacheError(undefined, failureReason);
     }
   }
 

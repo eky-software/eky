@@ -79,6 +79,9 @@ describe('local unsigned pilot update package trust policy', () => {
           role: 'current',
         }),
       ).toThrow(UpdatePackageTrustError);
+      expect(() => policy.verifyPackage({ installerIdentity,
+        manifest: changedManifest as LocalUnsignedPilotUpdatePackageManifest,
+        releaseInfo, role: 'current' })).toThrowError(expect.objectContaining({ reason: undefined }));
     }
   });
 
@@ -125,7 +128,7 @@ describe('local unsigned pilot update package trust policy', () => {
           releaseInfo,
           role: 'candidate',
         }),
-      ).toThrow(UpdatePackageTrustError);
+      ).toThrowError(expect.objectContaining({ name: 'UpdatePackageTrustError', reason: 'versionNotNewer' }));
     }
   });
 
@@ -152,5 +155,29 @@ describe('local unsigned pilot update package trust policy', () => {
         }),
       ).toThrow(UpdatePackageTrustError);
     }
+  });
+
+  it.each([
+    ['0.1.0-alpha.1', '0.1.1'],
+    ['0.0.9', '0.1.0'],
+    ['0.0.9', '0.1.2'],
+    ['0.1.0-alpha.2', '0.1.0'],
+  ])('retains the closed candidate reason for app %s and MSI %s', (appVersion, msiProductVersion) => {
+    expect(() => policy.verifyPackage({
+      installerIdentity: { ...installerIdentity, productVersion: msiProductVersion!,
+        productCode: `{${createExpectedWindowsInstallerProductCode(msiProductVersion!)}}` },
+      manifest: { ...manifest, appVersion: appVersion!, msiProductVersion: msiProductVersion!,
+        buildRevision: 'abcdef012345' },
+      releaseInfo, role: 'candidate',
+    })).toThrowError(expect.objectContaining({ reason: 'versionNotNewer' }));
+  });
+
+  it('keeps competing shared identity failures and comparator exceptions generic', () => {
+    expect(() => policy.verifyPackage({ installerIdentity: { ...installerIdentity, packageScope: 'perMachine' } as unknown as WindowsInstallerIdentity,
+      manifest, releaseInfo, role: 'candidate',
+    })).toThrowError(expect.objectContaining({ reason: undefined }));
+    expect(() => policy.verifyPackage({ installerIdentity,
+      manifest: { ...manifest, appVersion: 'not-a-version' }, releaseInfo, role: 'candidate',
+    })).toThrowError(expect.objectContaining({ reason: undefined }));
   });
 });

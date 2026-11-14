@@ -89,7 +89,7 @@ function assertNewerCandidate(
       input.releaseInfo.msiProductVersion,
     ) <= 0
   ) {
-    throw new UpdatePackageTrustError();
+    throw new UpdatePackageTrustError('versionNotNewer');
   }
 }
 

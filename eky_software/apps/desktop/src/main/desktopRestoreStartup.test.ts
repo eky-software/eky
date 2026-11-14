@@ -42,6 +42,9 @@ import { createBusinessAcceptedBuildMetadata, createSelectorAcceptedBuildMetadat
 import { createDirectSetupMigrationRecovery } from '../update/directSetupMigrationRecovery.js';
 import { createLocalUpdateRuntimePaths } from '../update/localUpdateRuntimePaths.js';
 import { LocalUpdatePackageCache } from '../update/localUpdatePackageCache.js';
+import { LocalUnsignedPilotUpdatePackageTrustPolicy } from '../update/localUnsignedPilotUpdatePackageTrustPolicy.js';
+import { selectLocalUpdateIpcChannel } from '../update/localUpdateSelectionTypes.js';
+import { createExpectedWindowsInstallerProductCode } from '../update/windowsInstallerProductCode.js';
 import * as updateFoundation from '../update/localUpdateFoundationComposition.js';
 import * as profileProtection from '../update/profileProtectionComposition.js';
 import * as updateObservation from '../update/updateOperationalObserver.js';
@@ -6359,6 +6362,99 @@ describe('desktop restore startup composition', () => {
     expect(observed[0]?.stopCount).toBe(0);
     expect(fixture.stop).not.toHaveBeenCalled();
   });
+  it.each(['version', 'hash'] as const)(
+    'wires real selected-candidate %s rejection to fixed native feedback', async (failure) => {
+      const fixture = await createFixture(originalProfileId, {
+        completeStartup: true, skipRestore: true, update: true,
+      });
+      electronBoundary.fetch.mockImplementation(async (url: string) => url.endsWith('/customers')
+        ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+      Object.assign(fixture.mainWindow, { isMinimized: () => false, isVisible: () => true, focus: vi.fn() });
+      Object.assign(fixture.mainWindow.webContents, { focus: vi.fn() });
+      vi.spyOn(updateFoundation, 'createLocalUpdatePackageCacheComposition').mockImplementation(options =>
+        new LocalUpdatePackageCache({
+          cacheRoot: join(options.userDataPath, 'update-cache'),
+          releaseInfo: options.releaseInfo,
+          trustPolicy: new LocalUnsignedPilotUpdatePackageTrustPolicy(),
+          getAvailableBytes: async () => 2_000_000_000n,
+          async inspectInstaller(path) {
+            const identity = JSON.parse(await readFile(path, 'utf8')) as { msiProductVersion: string };
+            return { architecture: 'x64', packageScope: 'perUser',
+              productCode: `{${createExpectedWindowsInstallerProductCode(identity.msiProductVersion)}}`,
+              productVersion: identity.msiProductVersion, upgradeCode: `{${options.releaseInfo.upgradeCode}}` };
+          },
+          async inspectRegularFile(path) {
+            const metadata = await stat(path);
+            return { length: metadata.size, lastWriteTimeUtcTicks: String(
+              621_355_968_000_000_000n + BigInt(Math.trunc(metadata.mtimeMs * 10_000))) };
+          },
+        }));
+      let feedback: Parameters<typeof updateFoundation.createLocalUpdateFoundationComposition>[0]['showSafeError'] | undefined;
+      const realFoundation = updateFoundation.createLocalUpdateFoundationComposition;
+      vi.spyOn(updateFoundation, 'createLocalUpdateFoundationComposition').mockImplementation(options => {
+        feedback = options.showSafeError;
+        return realFoundation(options);
+      });
+      async function writeSource(version: string, badHash = false) {
+        const source = join(fixture.root, 'feedback-sources', version);
+        await mkdir(source, { recursive: true });
+        const packageFilename = `Eky-${version}-x64.msi`;
+        const bytes = Buffer.from(JSON.stringify({ msiProductVersion: version, synthetic: true }));
+        await writeFile(join(source, packageFilename), bytes);
+        const manifestPath = join(source, 'package.manifest.json');
+        await writeFile(manifestPath, JSON.stringify({
+          appIdentity: 'Eky', appVersion: version, architecture: 'x64',
+          buildRevision: version === '0.2.8' ? 'a'.repeat(12) : 'b'.repeat(12),
+          manifestFormatVersion: 1, msiProductVersion: version, packageFilename,
+          packageKind: 'windows-installer-msi', packageSize: bytes.length,
+          packageSha256: badHash ? 'f'.repeat(64) : createHash('sha256').update(bytes).digest('hex'),
+          platform: 'win32', releaseChannel: 'pilot',
+          signing: { publisher: null, status: 'unsigned-prototype', thumbprint: null, timestamped: false },
+        }));
+        return manifestPath;
+      }
+      const currentPath = await writeSource('0.2.8');
+      const selectedPath = failure === 'version' ? currentPath : await writeSource('0.2.9', true);
+      let startupFailure: unknown;
+      const lifecycle = (await fixture.start(error => { startupFailure ??= error; })
+        .catch((error: unknown) => { throw startupFailure ?? error; }))!;
+      try {
+        const handler = [...electronBoundary.handle.mock.calls].reverse().find(([channel]) => channel === selectLocalUpdateIpcChannel)?.[1];
+        expect(handler).toBeTypeOf('function');
+        const origin = { sender: fixture.mainWindow.webContents, senderFrame: fixture.mainWindow.webContents.mainFrame };
+        fixture.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [currentPath] });
+        await expect(handler(origin)).resolves.toMatchObject({ status: 'currentRegistered' });
+        const journalBefore = await fixture.updateJournal.inspectSlots();
+        const currentBytes = await readFile(join(fixture.root, 'update-cache', 'current', 'slot-metadata.json'));
+        fixture.showMessageBox.mockClear();
+        fixture.showOpenDialog.mockResolvedValueOnce({ canceled: false, filePaths: [selectedPath] });
+        const result = await handler(origin).catch((error: unknown) => error);
+        expect(result).toEqual(new Error('LOCAL_UPDATE_OPERATION_FAILED'));
+        expect(result).not.toHaveProperty('cause');
+        expect(result).not.toHaveProperty('reason');
+        expect(fixture.showMessageBox).toHaveBeenCalledExactlyOnceWith(fixture.mainWindow, expect.objectContaining({
+          title: failure === 'version' ? 'Päivityspaketti ei ole uudempi' : 'Päivitystä ei voitu käsitellä',
+          message: failure === 'version'
+            ? 'Valitun paketin sovellusversio tai asennuspaketin versio ei ole käytössä olevaa uudempi. Samaa tai vanhempaa versiota ei voi asentaa päivityksenä. Valitse uudemman Eky-version päivityspaketti.'
+            : 'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',
+        }));
+        expect(await fixture.updateJournal.inspectSlots()).toEqual(journalBefore);
+        expect((await readFile(join(fixture.root, 'update-cache', 'current', 'slot-metadata.json'))).equals(currentBytes)).toBe(true);
+        expect(await readdir(join(fixture.root, 'update-cache'))).toEqual(['current']);
+        expect(launchWindowsInstallerForUpdate).not.toHaveBeenCalled();
+        expect(fixture.stopForUpdate).not.toHaveBeenCalled();
+        expect(fixture.stop).not.toHaveBeenCalled();
+        fixture.showMessageBox.mockClear();
+        feedback!('futureReason' as never);
+        expect(fixture.showMessageBox).toHaveBeenCalledExactlyOnceWith(fixture.mainWindow, expect.objectContaining({
+          title: 'Päivitystä ei voitu käsitellä', message: 'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',
+        }));
+      } finally {
+        await lifecycle.shutdown();
+      }
+    },
+  );
+
   it.each(['success', 'spawnFailure', 'dialogFailure'] as const)(
     'holds the closed-window handoff through installer settlement (%s)', async outcome => {
       const fixture = await createFixture(originalProfileId, {
@@ -6415,6 +6511,7 @@ describe('desktop restore startup composition', () => {
         { step: 'quit', state, guarded: false },
       ]);
       safeError();
+      safeError('versionNotNewer');
       expect(fixture.showErrorBox).toHaveBeenCalledTimes(outcome === 'success' ? 0 : 1);
       expect(fixture.showErrorBox.mock.calls.flat().join(' ')).not.toContain('synthetic-private');
       expect(ProfileSnapshotBrokerClient.prototype.endUpdateMaintenance).not.toHaveBeenCalled();

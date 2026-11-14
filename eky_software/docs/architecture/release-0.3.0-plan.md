@@ -24,15 +24,15 @@ Tämä roadmap omistaa julkaisun sisällön ja työjärjestyksen.
 | Tunnus | Tehtävä ja tavoite | Tila |
 | --- | --- | --- |
 | R030-01 | Yhtenäinen latausikoni tai odotusilmaisin näkyviin käyttäjälle havaittaviin odotustiloihin eri toiminnoissa. | M4.1 hyväksytty PR #317:n ja uuden mainin omilla porteilla 24.10.2026. Tarkka näyttö ja avoimeksi jäänyt ensimmäinen Electron-timeout ovat M1:n jatkamiskohdassa. |
-| R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | W7.0:n sopimus-/koevaihe valmis. W7.1:n nimirajat, W7.2:n yritysvalinta ja W7.3:n vahvistus-/sulkuketju hyväksytty PR #320/#321/#323:n ja mainin omilla porteilla. W7.4:n sisäinen lopullinen poisto ja keskeytysjatko hyväksytty PR #327:n ja mainin omilla porteilla 6.11.2026. W7.5:n näkyvä käyttöönotto ja näyttö avoinna. |
+| R030-02 / W7 | Yritystyötilan turvallinen poistaminen käyttöliittymästä. | W7.0:n sopimus-/koevaihe sekä W7.1-W7.4 hyväksytty aiemmilla omilla porteillaan. Myös W7.5:n näkyvä poisto, turvallinen lopputulos ja rajattu tukivienti on hyväksytty [PR #330:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021) ja uuden mainin omilla porteilla 14.11.2026. Vanhat syy- ja siivousepävarmuudet säilyvät avoimina, eivät korjattuina. |
 | R030-03 | Yrityksen nimi mukaan käyttäjän tallentaman varmuuskopion ehdotettuun tiedostonimeen päivämäärän lisäksi. | M4.2 hyväksytty PR #318:n ja uuden mainin omilla porteilla 24.10.2026. Nimeämis- ja palautusnäyttö sekä rajatun runtime-tietoturvapäivityksen hyväksyntä ovat M1:n jatkamiskohdassa. |
 | D029-01 | Työtilatoiminnon tarkka turvallinen virhesyy lokiin, esimerkiksi väärän yrityksen varmuuskopion hylkäys. | K:n syyketju ja G:n täydentävä kattavuus hyväksytty. G:n rajaus ja erilliset PR/main-portit: PR #314:n loppuhyväksyntä M1:n kautta. |
 | D029-02 | Päivitystapahtumat kulkemaan sovitusti diagnostiikan ja tukipaketin koko lukuketjussa. | G:n sovitut perhekohtaiset projektiot ja poissulut hyväksytty PR #314:n PR/main-porteilla. Ei yleinen lupa julkaista writerin kaikkea metadataa. |
 | D029-03 | Tukipaketin uusimpien tapahtumien valinta ajan mukaan eri lokilähteistä. | H3 hyväksytty PR #315:n ja uuden mainin omilla porteilla; loppuhyväksyntä M1:n kautta. |
 | D029-04 | Tyhjä, osittainen ja epäonnistunut lokin luku eroteltaviksi. | H4:n lukutilat ja todellinen lukuketju hyväksytty H:n PR/main-porteilla. Rajatun luvun kattavuutta ei väitetä koko historian terveydeksi. |
 | D029-05 | Desktopin lokikirjoituksen häiriö näkyväksi turvallisesti. | H5:n ei-estävä ilmoitus, incident-yritys ja todellinen main/preload/UI-ketju hyväksytty H:n PR/main-porteilla. |
-| R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | Tarkistettava ja rajattava; saman version torjunta ei itsessään ole vika. |
-| R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Suunniteltu; tarkistetaan toteutusten yhteydessä. |
+| R030-04 | Käyttäjäilmoitusten tarkennus, erityisesti odotetut estot ja saman version päivitysyrityksen palaute. | M5-valmistelussa täsmättävä nykyisiin toteutuksiin ja käyttäjäpolun näyttöön; ei vielä suljettu koko tehtävänä. Saman version torjunta ei itsessään ole vika. |
+| R030-05 | Muuttuvien toimintojen ohjeet ja lyhyt virhetilanteen tukiohje ajan tasalle. | Muuttuneiden alueiden ohjeita on päivitetty paketeissa; M5-valmistelussa todennettava kokonaiskattavuus ja lyhyt tukiohje. Ei vielä koko tehtävän loppuhyväksyntää. |
 | R030-08 | Diagnostiikan vanhempien tapahtumien selaaminen nykyisen yhden otoksen ulkopuolelle sekä paluu uudempiin tapahtumiin. Näytettävä aikaväli, jatkon saatavuus ja mahdolliset lukurajat näkyviin. | M4.3 hyväksytty [PR #319:n loppupäätöksellä](https://github.com/eky-software/eky/pull/319#issuecomment-6385011410), mukaan lukien samojen Windows-pakettitavujen selaus/palautus sekä täsmällisen PR:n ja uuden mainin omat portit. Avoimet ensihylkäykset säilyvät erillisinä. |
 
 Diagnostiikan `D029-*`-tunnukset ja sen vanha tiedostonimi säilytetään
@@ -84,14 +84,15 @@ luonti tai tuonti ilman automaattista oletusyritystä.
 Omistaja hyväksyi myös [yritysvalitsimen nimien yksilöllisyyden](local-company-workspace-plan.md#yritysvalitsimen-nimien-yksilöllisyys)
 luonnissa, tuonnissa ja nimenmuutoksessa kirjainkoko- ja välilyöntivariantteineen.
 Vanhat samannimiset säilytetään huomautuksella ilman automaattista
-nimeämistä, yhdistämistä tai poistoa; tekninen erottelu täsmennetään.
+nimeämistä, yhdistämistä tai poistoa; tekninen erottelu säilyy työtilasuunnitelman mukaan.
 Ulkoiset PDF-arkistokopiot ja käyttäjän vientibackupit säilyvät. Omistaja
 hyväksyi aloitettujen lopullisten poistojen automaattisen jatkamisen
 restartissa vain varmasti todetulle kohteelle, omistajuudelle ja
 keskeytystilalle; epävarma tilanne pysyy keskeneräisenä.
 Tarkka [poistoperiaate ja avoimet rajat](local-company-workspace-plan.md#w7n-hyväksytty-poistoperiaate)
 omistetaan työtilasuunnitelmassa, ei uutena rinnakkaisena sopimuksena täällä.
-Ennen toteutusta ratkaistaan vähintään:
+Hyväksytty W7-toteutus säilyttää vähintään seuraavat sopimukset;
+ne eivät ole uusi toteutusta edeltävä päätöslista:
 
 - aktiivisen, passiivisen, viimeisen ja vikatilaisen yrityksen poiston
   tekninen sopimus sekä keskeytys- ja virhepolut
@@ -257,8 +258,8 @@ Myös H/R21/R22/R24/R25/R26 ja D029-03/04/05 on hyväksytty
 [PR #315:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918).
 Myös I0-I3/R30/R31 on hyväksytty
 [PR #316:n loppuhyväksynnällä](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644).
-Nykyinen työ on M4:n käyttäjäkokemuksen suunnittelu; sen avoimet
-käyttäytymis-, API- ja turvallisuuspäätökset eivät ole toteutushyväksyntöjä.
+M4.1-M4.3 ja W7.0-W7.5 on tämän jälkeen hyväksytty omissa rajauksissaan;
+nykyinen työ on M5:n valmistelu, ei koko julkaisun hyväksyntä.
 Täsmällinen näyttö ja nykytila ovat
 [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 T/A/B/C/K/D/E/F/G/H/I:tä ei avata uudelleen ilman niiden omaa todennettua regressiota.
@@ -346,8 +347,8 @@ Vitest-tietoturvahuolto on hyväksytty PR #311:n ja PR #312:n kautta;
 [E:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460)
 erottaa korjatun revision PR/main-portit avoimista historiallisista syistä.
 [Asiakasinvarianttien suunnitelma](release-0.3.0-customer-invariants-plan.md)
-säilyttää E:n sopimukset. Nykyinen työ on
-[M4:n suunnittelu](release-0.3.0-m1-preparation-plan.md#m4--käyttäjäkokemuksen-valmistelu).
+säilyttää E:n sopimukset. Nykyinen työ luetaan
+[M1:n jatkamiskohdasta](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 H:n hyväksytyt lukutila- ja häiriöpalautesopimukset säilyvät; H ei toteuttanut
 M4:n historian selausta. I ei muuta testisisältöä tai mainin täysiä vaatimuksia.
 [D:n rajattu toteutussuunnitelma](release-0.3.0-company-settings-plan.md)
@@ -477,32 +478,226 @@ luottamusrajavalidoinnin poistamiseksi.
 
 ### M4: Sovittu 0.3.0-käyttäjäkokemus
 
-**Tila 6.11.2026:** M4.1-M4.3 hyväksytty omine PR/main-portteineen.
+**Tila 14.11.2026:** M4.1-M4.3 ja W7.0-W7.5 hyväksytty omissa
+rajauksissaan; R030-04/R030-05:n loppuvarmistus kuuluu M5-valmisteluun.
 W7.0:n tekninen sopimus ja pienet katselmoidut kokeet ovat valmiit:
 yritysvalinta ilman aktiivista backendia, poiston inventaario, vahvistuksen
 sidonta ja keskeytysrecovery. W7.1-W7.4 on hyväksytty omilla PR/main-porteillaan.
 [W7.4:n toteutussopimuksen](local-company-workspace-plan.md#w74n-toteutussopimus)
 A-F:n loppunäyttö on [PR #327:n hyväksynnässä](https://github.com/eky-software/eky/pull/327#issuecomment-6678341652).
-Seuraavaksi suunnitellaan W7.5:n näkyvä käyttöönotto ja tukivienti
-hyväksytyn W7-P4:n ehdoin. Sen tuotantokanavat pysyvät suljettuina,
-kunnes niiden oma toteutus ja näyttö hyväksytään; W7.4 ei hyväksy koko W7:ää
-tai 0.3.0-julkaisua.
+W7.5:n näkyvä käyttöönotto ja tukivienti on hyväksytty
+[PR #330:n loppupäätöksellä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021),
+mukaan lukien sen täsmällisen PR-headin ja uuden mainin omat portit.
+Tämä sulkee W7:n sovitun toteutuksen, ei 0.3.0-julkaisua. Hyväksyttyjä
+kanavia ei kuvata enää suunnittelun vuoksi suljetuiksi tai toteuteta uudelleen.
 Tarkka nykykoodikartta on
 [työtilasuunnitelmassa](local-company-workspace-plan.md#w70n-lähtökartta-24102026).
 [Omistava valmistelukohta](release-0.3.0-m1-preparation-plan.md#m4--käyttäjäkokemuksen-valmistelu)
 erottaa hyväksytyt palat ja vielä täsmennettävät sopimukset.
-Suositeltu toteutusjärjestys on odotuspalaute, backup-nimi, diagnostiikan
-selaus ja W7; W7:n päätökset valmistellaan ajoissa, eivät vasta lopuksi.
-Tämä ei hyväksy tuotantokytkentää tai muuta julkaisuun sovittua sisältöä.
+Toteutusjärjestys oli odotuspalaute, backup-nimi, diagnostiikan selaus ja W7.
+Tämä tilapäivitys ei muuta hyväksyttyjä sopimuksia tai julkaisun sisältöä.
 
-Toteuta korjatun pohjan päälle R030-01, R030-02/W7, R030-03 ja R030-08
-rajattuina muutoksina. Diagnostiikan selaus tarvitsee G/H:n oikean lukuketjun
+Säilytä hyväksytyt R030-01, R030-02/W7, R030-03 ja R030-08 nykyisten
+omistajiensa vastuulla. Diagnostiikan selaus tarvitsee G/H:n oikean lukuketjun
 ja kattavuustiedon; W7 tarvitsee C/K:n turvallisen lifecycle/recovery-pohjan.
 Ilmoitukset ja ohjeet R030-04/R030-05 valmistuvat jokaisen muutoksen mukana,
 eivät vasta lopun kosmeettisena vaiheena. Latausikoni tai UI-esto ei korvaa
 backendin invarianttia, atomista varausta tai prosessin exit-todistetta.
 
 ### M5: Uusi katselmus, Deep Scan ja julkaisuportti
+
+**Valmistelu 14.11.2026:** hyväksytty W7.5 ei vielä hyväksy koko 0.3.0:aa.
+Aktiivinen revisio ja seuraava rajattu työ ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Seuraava taulukko täsmentää alla jo sovittua järjestystä, ei lisää ominaisuuksia
+tai aloita katselmusta, skannausta, versionnostoa tai toimitusta:
+
+| Pala | Tulos ja portti seuraavaan vaiheeseen |
+| --- | --- |
+| M5.1: rajaus ja näyttökartta | Tunnuskohtainen R01-R31/S030-01-S030-05 sekä sovittujen R030-/D029-tehtävien toteutus-, testi-, revisio- ja hyväksyntäviite; erityisesti R030-04/R030-05:n loppuvarmistus. R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä, eivät automaattisina lisätöinä. |
+| M5.2: koko sovelluksen katselmus | Alla määritelty koodi-, arkkitehtuuri-, ylläpidettävyys- ja testirakennekatselmus. Jokaiselle löydökselle lähde, omistaja, vaikutus ja todiste; toimitusta estävät korjaukset erotetaan julkaisun jälkeisestä laajasta siivouksesta. Sovitut korjaukset ja niiden vaikutusalueen portit valmiiksi ennen skannausehdokkaan jäädytystä. |
+| M5.3: uusi Deep Scan | Tarkka puhdas ehdokasrevisio, sovittu kattavuus ja työbudjetti, käytössä olevan skannaustyökalun asetusten varmennus sekä loppuraportti. Löydökset ja aukot käsitellään; vanhaa keskeytettyä ajoa tai pelkkää lähdekatselmusta ei kirjata uudeksi läpäisyksi. |
+| M5.4: lopullinen release-ehdokas | Tarkoituksellinen 0.3.0-versionosto vasta edeltävien korjausten jälkeen; saman revision nykyiset testit, auditointi ja PR/main-portit sekä build-once-paketin backup/restore-, installer/update/rollback- ja soveltuvat endurance-portit. Pelkkä tavallinen PR/main-MSI ei ole toimitettava release candidate. |
+| M5.5: käyttäjätestaus ja toimitus | Nykyisen ehdokkaan synteettinen käyttäjätestiohje, todella raportoidut tulokset, käyttö-/tukiohje ja release security gate. Hyväksytty MSI/manifesti/checksum toimitetaan samoina tavuina nykyisen pilot-sopimuksen mukaan; ei rebuildiä tai automaattista asennusta. |
+
+Käytä nykyisiä testejä, tarkistimia ja hyväksyntäomistajia. Tunnuskohtainen
+näyttökartta ei ole kaikkien testien uudelleenkirjoitus. Vanha
+[0.2.8:n käyttäjätestausohje](../product/pilot-0.2.8-user-testing.md) on
+oman versionsa ohje, ei 0.3.0:n suoritus- tai hyväksyntätulos.
+Tavalliset checkpointit eivät käynnistä koko matriisia uudelleen; lopullisen
+muuttuneen revision ja toimitettavan paketin portit säilyvät alla kuvatusti.
+
+#### M5.1: Hyväksyntänäytön täsmäytys
+
+**Omistajan hyväksymä rajattu Goal 14.11.2026, toteutuksessa.** Lähtö on
+main `4646f6dbabb881a65c0987f9c73711061bae4725` ja
+[W7.5:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021).
+Näyttökartta täsmää nykyiseen lähteeseen erikseen R01-R31-, S030-01-S030-05-
+sekä sovitut R030-01/02/03/04/05/08- ja D029-01-05-kohdat.
+
+Jokainen rivi nimeää nykyisen omistajan ja tuotantopolun, vaatimusta todella
+suojaavan testiväitteen ja sen ajovalinnan, alkuperäisen PR/main-hyväksynnän
+sekä kattavuusrajan tai puuttuvan näytön. Nykyisen lähteen tarkistus ei ole
+uusi testiajo eikä vanhan paketin identiteetti muutu nykyiseksi mainiksi.
+Päällekkäisiä testivalintoja ei lasketa uutena kattavuutena. Jo hyväksyttyä
+pakettia ei toteuteta uudelleen ilman omaa todennettua löydöstä.
+
+R030-04:n tarkistus erottaa odotetun eston, peruutuksen, teknisen virheen ja
+epävarman lopputuloksen. Saman version päivityksen esto säilyy; sen
+käyttäjäpalaute arvioidaan erikseen eston oikeellisuudesta. R030-05:n tulos
+on nykyisiin toimintoihin perustuva löydettävä käyttöohje ja lyhyt
+virhetilanteen tukiohje. Sanitoitu käyttäjän tukipaketti ei ole varmuuskopio
+eikä salatun CI-virheaineiston vastine.
+
+Valmius vaatii tunnuskohtaisen kartan, osoitettujen puutteiden käsittelyn,
+rajatun riippumattoman katselmuksen, muuttuneiden linkkien ja historian
+säilymisen tarkistuksen sekä täsmällisen PR:n ja uuden mainin nykyiset
+soveltuvat portit ja auditoinnin. Puuttuvaa näyttöä, vanhaa ensihylkäystä tai
+tuntematonta siivoustilaa ei suljeta myöhemmän läpäisyn perusteella.
+M5.2:n koko sovelluksen katselmus, M5.3:n uusi Deep Scan, versionnosto,
+release-paketointi ja todellinen käyttäjätestaus eivät sisälly tähän Goaliin.
+R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä.
+
+##### M5.1:n näyttökartta
+
+**Lähdevertailu 14.11.2026, ei uusi testiajo tai koko sovelluksen katselmus.**
+Taulukon nykyiset lähteet ja erottavat testiväitteet on tarkistettu mainin
+`4646f6dbabb881a65c0987f9c73711061bae4725` puusta. Historiallinen hyväksyntä
+säilyttää oman revisionsa; nykyisen mainin 40 työn ja erillisen auditoinnin
+läpäisy ei muuta vanhoja paikallisia paketteja tämän revision ajoiksi.
+
+Polkujen lyhenteet sovellusjuuresta: `B = apps/backend/src/`,
+`D = apps/desktop/src/`, `W = apps/web/src/`, `T = apps/e2e/tests/`.
+`I = B/modules/invoicing/`, `C = B/modules/companySettings/`,
+`U = B/modules/customers/`, `Q = B/modules/diagnostics/infrastructure/`.
+`X.test.ts` tarkoittaa saman nimetyn tuotantotiedoston sisartestiä.
+Taulukko nimeää keskeisen invariantin, ei kaikkien tiedostojen call graphia.
+
+Ajovalinnat on luettu nykyisistä `package.json`- ja Playwright-sopimuksista:
+`UB/UD/UW/UA` = vastaavasti backendin/desktopin/webin/api-clientin nykyinen
+`pnpm --filter @eky/<paketti> test`; `WEB` =
+`pnpm --filter @eky/e2e e2e:web:critical`, `SYS` = saman paketin `e2e:system`,
+`EL` = `e2e:electron:critical`. Playwright-komennot sisältävät nykyiset
+valmistelunsa; suora Vitest-tiedostovalinta ei korvaa niitä tai native-porttia.
+`CI` = juuren `pnpm test:ci`, `ED` = desktopin `test`-skriptin nimetty
+Node-vaihe, `ET` = e2e-paketin `test`-skriptin nimetty Node-vaihe.
+Tämä on löydettävyyskartta, ei pyyntö käynnistää koko matriisia uudelleen.
+
+Hyväksyntäavaimen head/main-pari on alkuperäinen lähdecheckpoint.
+PR-linkki tai omistava historialinkki sisältää sen omat portit ja rajaukset.
+Tunnus voi viitata samaan toteutukseen kuin toinen tunnus; siitä ei synny
+toista korjausta tai lisätestimäärää.
+
+| Avain | Alkuperäinen hyväksyntä | PR-head → merge-main |
+| --- | --- | --- |
+| T1 | [PR #276](https://github.com/eky-software/eky/pull/276#issuecomment-5822861572) | `11b1ae70cf10347eb4ec18259f250b5bf8ddb748` → `da896643d5cc1895174e508bee4f6141f4489d56` |
+| T2 | [PR #277](https://github.com/eky-software/eky/pull/277#issuecomment-5826768078) | `6b323284bf671ad684e8b5774d22bc566cf709c2` → `5cc58b7139a6616bc9403a5724f93d929e90cf25` |
+| T3 | [T3:n integraatio](e2e-test-environment-history.md#t3n-integraatiohyväksyntä), PR #278 | `52cdaa1755ca2ed68318bd33fd52805a7753235e` → `816bc7755d5c13ec40e9cc9601bb9a662af8b785` |
+| A | [PR #294:n A1-A3-loppuhyväksyntä](https://github.com/eky-software/eky/pull/294#issuecomment-5980132408); A1/A2:n aiempi näyttö säilyy [historiassa](release-0.3.0-integration-history.md#m1-source-preparation-l10096) | `f05abc25efa480f33ef9d9baa310730ebea73cf9` → `082e187bb680b1c7a8dc5d0a5e967adf33403a7a` |
+| B12 | [B1/B2:n integraatio](release-0.3.0-invoice-revisions-history.md#m1-source-preparation-l8175), PR #297 | `5daac2545b3f6057a6e1763cda2377f398c6e425` → `8a08a6ea4a6d58eaed26b9b0de563bbe7271abc2` |
+| B345 | [PR #298](https://github.com/eky-software/eky/pull/298#issuecomment-6050339146) | `681297217fc5812ab39994af15732f0de1bc4076` → `bd67742f1df9cbf989ec3c1afd078e95af356b1b` |
+| C | [PR #299](https://github.com/eky-software/eky/pull/299#issuecomment-6081351779) | `447035fe2d0740d454ac79b32cf0e64c1c2906f9` → `250cd9c32914d1e6f35cea76f2b45055891534e2` |
+| K | [PR #305](https://github.com/eky-software/eky/pull/305#issuecomment-6181885500) | `1a0bb3cae78fa4adde44b4bd8102b7b5cf18bbbd` → `c717406484df0471df23165a7c13db9b3f74c1b6` |
+| D | [PR #309](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808), D1-D3 ja sulkukorjaus; CS-1/CS-2 säilyvät | `33fd0bdb19709329721a87838b3f7d933552d4b9` → `286cc3227ffe37dd44417750636ec30d460a61e1` |
+| E | Asiakaskorjaukset PR #311/main `d03e9a15`; [PR #312:n tietoturvajatkon loppuhyväksyntä](https://github.com/eky-software/eky/pull/312#issuecomment-6329634460) | `613a00c73f133e321beb7546126aebff74c5661a` → `d0d08bd182500c463fa06300978f06c295f3cac2` |
+| F | [PR #313](https://github.com/eky-software/eky/pull/313#issuecomment-6339105977) | `04f7a0f6d5ed56cca9cc95ba6e7f788c723f6d26` → `96b62944087bec64970e6233e57a730ab31ec1ea` |
+| G | [PR #314](https://github.com/eky-software/eky/pull/314#issuecomment-6356610094) | `9c5d3ffe08046c6be81e5e61de7852731ee22c98` → `80139f6dffc01f7df2ed0ef8779636d67c4ee23d` |
+| H | [PR #315](https://github.com/eky-software/eky/pull/315#issuecomment-6364180918) | `bc44ffc20552d81ae27e69f5376f8cfdef6bdf51` → `7e2dba840f4434eeb6049feda70852751343e134` |
+| I | [PR #316](https://github.com/eky-software/eky/pull/316#issuecomment-6370140644) | `a0bae6cea3f34f4c295903ce8ab7460da1becbd4` → `267bf6f2a1fc142d61308c7c2e730d2c0870eb11` |
+| M4.1 | [PR #317](https://github.com/eky-software/eky/pull/317#issuecomment-6376623066) | `f245aec8f5a02b3402b18e1841de9a2f4a167e0d` → `00764a41fb5043aa4822998561f1150ff2e28528` |
+| M4.2 | [PR #318](https://github.com/eky-software/eky/pull/318#issuecomment-6381002283) | `144f1dd0b000be5ff82c1a8ef46ae9d5bbcc68b6` → `7d47bc9e1cf3482ae165c07f77a4919e4a5a29d1` |
+| M4.3 | [PR #319](https://github.com/eky-software/eky/pull/319#issuecomment-6385011410) | `26f0dc762b3266373bc1c978c507df12e8d95f2d` → `f38c1f77e9d5db864a3624bc0a4e8277a446a02d` |
+| W7.5 | [PR #330](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021); viitatut W7.0-W7.4-sopimukset säilyvät | `dba386457f720923710c578d02f48bb5eeac73f4` → `4646f6dbabb881a65c0987f9c73711061bae4725` |
+
+| Tunnus | Nykyinen omistaja ja tuotantopolku | Erottava testiväite ja ajovalinta | Hyväksyntä ja kattavuusraja |
+| --- | --- | --- | --- |
+| R01 | Invoicing web: `W/features/invoicing/hooks/useInvoiceDraftEditor.ts`, keyed editor/save-session | `T/web/invoiceDraftOpeningJourneys.spec.ts`, INV-OPEN-001/002/003: viivästynyt A-vastaus ei muuta näkyvää B:tä tai sen tallennuskohdetta; A:n tavut säilyvät (`WEB`). | A; ohjatut GET-järjestykset, ei kaikkien ajoitusten todistus. |
+| R02 | Invoicing: `I/infrastructure/reserveInvoiceEmailDelivery.ts`, `completeReservedInvoiceEmailDelivery.ts` | `invoiceEmailCompletion.test.ts`: muuttunut yritys/lasku/revisio/dokumentti/hash/koko hylätään muuttamatta pysyvää tilaa (`UB`). | B345; SQLite-ketju, ei SMTP-verkkotoimituksen koe. |
+| R03 | Desktop lifecycle/update: `D/workspaces/runtime/mainOwnedActiveWorkspaceLifecycle.ts`, `D/update/localUpdateHandoffCoordinator.ts` | Lifecycle-sisartestin ordinary-stop exited/forced/unknown ei muutu strict-update-suluksi; handoff-testi estää asentimen epävarmassa sulussa (`UD`). | C; prosessiraja ohjattu, ei uusi MSI-sulkuajo. |
+| R04 | Päivityksen sama kirjoitussuoja: `D/update/localUpdateHandoffCoordinator.ts`, `profileProtectionComposition.ts` | Handoff-sisartestin menetetty fence estää shutdownin/installerin; `D/main/desktopRestoreStartup.test.ts` todentaa saman todellisen update-leasen lainauksen (`UD`). | C; unit/composition ei korvaa hyväksyttyä HTTP-/pakettitason jatkuvaa suojaa. Tämä ei ole R030-04. |
+| R05 | Invoicing web: `W/features/invoicing/state/invoiceDraftSaveSession.ts` ja `hooks/useSaveInvoiceDraft.ts` | `T/web/invoiceDraftSavingJourneys.spec.ts`, INV-SAVE-001/002/006: yksi POST, sama saatu ID ja tuoreemmat muokkaukset säilyvät; epävarman luontikuittauksen jälkeen ei uutta POSTia (`WEB`). | A; ei uutta backend-idempotenssiprotokollaa. |
+| R06 | Invoicing web: `W/features/invoicing/state/invoiceReadinessSession.ts`, `hooks/useInvoiceIssuanceReadiness.ts` | `T/web/invoiceReadinessJourneys.spec.ts`, INV-READY-001: vanha ready ei avaa uuden tallennetun revision hyväksyntää (`WEB`). | A; backendin oma hyväksyntävaltuus säilyy erillisenä. |
+| R07 | Company Settings: `W/features/companySettings/CompanySettingsPageView.tsx` | `T/web/companySettingsLoadingJourneys.spec.ts`, COMPANY-LOAD: virheellinen GET estää lomakkeen/PUTin, käsin tehty uusi luku sallii yhden tallennuksen; vanhat sessionvastaukset sivuutetaan (`WEB`). | D; selainvasteen ohjaus ei todista aidon backend-virheen lokitusta. |
+| R08 | Invoicing domain: `I/domain/calculateCreditInvoiceDraft.ts` | Sisartestin net/gross-veroryhmäpyöristys sekä kumulatiivinen osahyvitys käyttävät täsmällisen kapasiteetin ylittämättä senttirajaa (`UB`). | B12; ei historiallisten laskujen jälkilaskentaa. |
+| R09 | Customers: `U/domain/customerRules.ts`, `U/infrastructure/sqliteCustomerRepository.ts` | `sqliteCustomerInvariants.test.ts`: aktiivinen ja passiivinen taloyhtiöviite estävät isännöitsijän tyypin vaihdon samassa transaktiossa; asiakas/audit säilyvät (`UB`); CUS-REL-005 (`WEB`). | E; yritysraja ja molemmat ohjatut commit-järjestykset, ei pilvikilpailumalli. |
+| R10 | Customers: sama repository, tarkka merkkijononumerointi | `sqliteCustomerInvariants.test.ts`: yli JS:n tarkkuusrajan numerot kasvavat oikein; 50 numeromerkin ylitys ei kirjoita asiakasta/auditia (`UB`). | E; ei vanhojen numeroiden automaattista korjausta tai konfliktin uusintaa. |
+| R11 | Customers UI ja `W/i18n/fi.ts` | `T/web/customerInvariantJourneys.spec.ts`, CUS-ERROR-001: tuntematon API-teksti ja prototype-avaimet eivät vuoda; muokkaukset säilyvät (`WEB`); tunnetut käännökset `fi.test.ts` (`UW`). | E; tarkoituksella ohjatut API-virheet, ei alkuperäisen backend-syyn näyttö. |
+| R12 | SMTP: `B/infrastructure/email/smtp/smtpSession.ts` | Sisartestin lopullinen DATA-250 säilyy hyväksyttynä QUIT/deadline/close-virheestä huolimatta; hylätty/epävarma DATA ei muutu onnistumiseksi (`UB`). | B12; testiyhteys ei todista vastaanottajan postilaatikkoa tai DB-committia. |
+| R13 | SMTP: `B/infrastructure/email/smtp/smtpReplyParser.ts` | Sisartestin samat tavut kokonaisina, tavuittain ja kahteen osaan jaettuna antavat saman tuloksen; protokolla-/kokorajat säilyvät (`UB`). | B12; rajatut erottavat jaot, ei mielivaltaisten virtojen fuzzing. |
+| R14 | Company Settings/secret broker: `C/application/executeCompanyEmailSecretOperation.ts`, `D/secrets/secretBrokerClient.ts`, `secretBrokerMain.ts` | Broker-sisartesti sulkee uudet/jonossa olevat työt ennen timeout-vastausta; myöhäinen success ei elvytä. `T/system/secretAuditAdmission.spec.ts` ja `T/electron/companySecretShutdown.spec.ts` todentavat pending/audit/sulku/restart (`UD/SYS/EL`). | D; tuntematon vaikutus säilyy pendinginä, restart ei sovita historiaa. |
+| R15 | HTTP: `B/http/app.ts`, `handleUnexpectedHttpError.ts`, `operationalLogging.ts` | `appHttpErrorHandling.test.ts`: oikea createApp palauttaa turvallisen 500:n, yhden korreloidun eventin lukijoihin, ei raakavirhettä/konsolia; writer-virhe ei korvaa vastausta (`UB`). | F; synteettinen testireitti, ei uusi tuotantoendpoint tai kaikkien moduulivirheiden kartoitus. |
+| R16 | Company Settings composition: `B/composition/companySettingsComposition.ts`, `C/application/updateCompanySettings.ts` | Composition-sisartestin statusluvun virhe ei muuta dataa/auditia; precommit-status palautuu todellisen tallennetun rivin mukana ilman postcommit-lukua (`UB`). | D; hyväksytty statuspalvelun saatavuusriippuvuus säilyy. |
+| R17 | Desktop prosessi: `D/runtime/backendProcess.ts`, `D/main/desktopComposition.ts` | Prosessi-sisartestin viivästetty exit säilyttää ensisyyn, myöhäinen ready sivuutetaan; thrown fork ei todista poissaoloa (`UD`). | C; ohjattu prosessiraja, ei uusi OS-exit-todiste. |
+| R18 | Desktop kylmäpalautus: `D/main/desktopComposition.ts`, `D/workspaces/runtime/workspaceColdRecoveryAdmissionComposition.ts` | `desktopRestoreStartup.test.ts`: vartioitu create/import ratkeaa ennen backendia idempotentisti; journaliton plaintext säilyy ilman arvattua kirjoittajapoissaoloa (`UD`). | C; oikeat synteettiset tiedostot, backend/tarkistin ohjattu. |
+| R19 | Build/installer: `D/release/packageBuildInfo.ts`, `apps/desktop/installer/installerReleaseContext.mjs` | Build-sisartesti vaatii koko 40-merkkisen HEADin oletuksena ja hylkää puuttuvan identiteetin (`UD`). | C; nykyisen helperin testi, ei uusi manifesti-/pakettitavujen vertailu. |
+| R20 | Diagnostics/archive/update: `Q/diagnosticOperationalEventProjector.ts`, `diagnosticUpdateProjection.ts`, `D/supportBundle/supportBundleUpdateProjection.ts` | `T/system/diagnosticEventChain.spec.ts`, OBS-DIAGNOSTIC-CHAIN-001: writer→HTTP→strict-client→gzip→tarkastin, perhekohtaiset poissulut säilyvät (`SYS`). Projektorit torjuvat väärän vaiheen/tason/tuloksen (`UB`). | G; seedattu writer-ketju ei ole jokaisen oikean päivityksen uusi ajo. |
+| R21 | Backend/desktop operational- ja incident-retention, startup-kutsujat | `B/http/appOperationalLogMaintenance.test.ts` ja `D/main/desktopRestoreStartup.test.ts`: tunnetun log-juuren listausvirhe ei estä muuten tervettä startupia; turvaton config hylätään (`UB/UD`). | H; ei database-/omistajuus-/recovery-porttien ohitusta. |
+| R22 | Samat retention-omistajat: `B/observability/infrastructure/operationalLogRetention.ts`, desktop-vastineet | Retention-sisartesteissä tuleva kuukausi/vuosi ei syrjäytä kelvollista historiaa eikä muutu poistokohteeksi; kapasiteettilaskenta ei katoa (`UB/UD`). | H; osin ohjattu kokometadata, ei kaikkien lokien terveystodistus. |
+| R23 | Workspace observer: `D/workspaces/management/workspaceManagementService.ts`, `workspaceBackupOperationalObserver.ts` | Service-sisartestin todellinen väärän lineagen hylkäys kirjoittaa yhden tarkan turvallisen syyn ennen leasea/sulkua; tiedot ja alkuperäinen syy säilyvät (`UD`); downstream-ketju (`SYS`). | G; cleanup on erillinen; fixture ei ole koko live-IPC-ketju. |
+| R24 | Support-readerit: `Q/fileSystemSupportBundleDiagnosticEventReader.ts`, `fileSystemSupportBundleIncidentSummaryReader.ts` | Sisartestien limit=1 valitsee uusimman eri virroista ennen rajaa; incident-ryhmän määrä/ensimmäinen/viimeinen säilyvät (`UB`). | H; vain todella luettu rajattu aineisto, ei lukemattoman historian uusimman lupaus. |
+| R25 | Diagnostics: `Q/fileSystemDiagnosticEventReader.ts`, summary-reader, API-client ja `W/features/diagnostics/components/DiagnosticsPageView.tsx` | `Q/diagnosticReadCoverage.test.ts` erottaa tyhjän/osittaisen/puuttuvan; `T/web/diagnosticReadJourneys.spec.ts` säilyttää kelvolliset rivit eikä näytä väärää tyhjää (`UB/WEB`). | H; nykyinen browse-transport on myöhempi M4.3, lista/summary eivät ole atominen snapshot. |
+| R26 | Desktop failure sink/capability/main ja `W/app/DesktopOperationalLogNotice.tsx` | `incidentIndexDesktopLogFailureSink.test.ts`: oikea writer-virhe ei muuta business-tulosta, ei rekursiota. `T/electron/operationalLogFailure.spec.ts`, DESK-LOG-FAILURE-001/002: main/preload/UI-palkki, navigointi ja terve customer-create (`UD/EL`). | H; saman levyn incident on best effort, ei pysyvyyden takuu. |
+| R27 | Desktop/installer-testien ajokytkentä: `apps/desktop/scripts/test-command-wiring.test.mjs` | T1-tiedostot ja oma kytkentätesti kuuluvat oikeisiin komentoihin; puuttuva/epäonnistunut pakollinen askel hylätään vaikka workflow olisi success (`ED`). | T1; valinta-/hyväksyntäsopimus ei ole uusi native-testisuoritus. |
+| R28 | E2E omistettu prosessipuu: `apps/e2e/src/environment/startOwnedWindowsBackend.ts` ja nykyiset Windows/Linux-kuluttajat | `apps/e2e/experiments/processOwnership/adapterRootExitOrdering.test.mjs`: root-first ja portiton jälkeläinen, bridge ei valmistu ilman todistettua sulkua (`ET`); laajempi native-matriisi T3-checkpointissa. | T3; vanhaa pientä adapterikoetta ei nimetä koko nykyisen prosessipuun todistukseksi. |
+| R29 | E2E script/config/staging: `apps/e2e/package.json`, `playwright.config.ts`, desktopin `prepare-electron-e2e-backend.mjs` | `apps/e2e/scripts/e2e-command-wiring.test.mjs` ja `T/system/testProjectSelection.spec.ts`: security/fault sisältävät täydet valmistelut ja kolme standardiprojektia, eivät endurancea (`ET/SYS`). | T2; lähde-/valintakontrolli ei ole uusi clean-checkout-build. |
+| R30 | CI-riskipolitiikka: Git-juuren `.github/scripts/ciRiskPolicy.mjs`, `classifyCiChanges.mjs`, `ciRunAcceptance.mjs` | Sisartestit: vain neljä nimettyä customer-browser-tiedostoa saa fast-portit; tuntematon/sekamuutos ja main/schedule/manual säilyttävät täyden matriisin/toistot (`CI`). | I; fixturet eivät todista etärulesettiä tai oikeita ajoja. |
+| R31 | Omistavat moduuli-/integraatio-/E2E-ohjeet suhteessa composition rootiin | I:n lähde-/linkkivertailu, G-projektorien ja D/H:n oikean kytkennän kontrollit (`UB/UD/EL`); M5.1 korjaa havaitut D/M4.3/W7.5:n vanhentuneet nykytilalauseet. | I; ei koko dokumentaation semanttista testioraakkelia tai M5.2-katselmusta. |
+| S030-01 | K/schema: `B/database/migration/inspectAttestedMigrationHistory.ts`, `B/runtime/profileSnapshot/inspectSqliteProfileDatabase.ts` | Attestointi-sisartestin väärennetty view torjutaan ennen sen arviointia; muuttunut objekti ei kirjoita; historiallinen 038-prefix säilyy (`UB`). `T/electron/workspaceBackupSchemaRejection.spec.ts` import/replace (`EL`). | K; checksum/salaus ei korvaa schema-attestointia, ei uusi scan. |
+| S030-02 | K/eristys: `D/profileBackup/runProfileSnapshotInspection.ts`, `D/runtime/profileInspectionProcess.ts`, backendin `profileInspectionSqlite.ts` | Process-sisartestin terminal ei riitä ennen exit/reclaimia; kill-success ei ole poissaolo, myöhäinen viesti ei hyväksy (`UD`). [Toimitetun nativen positiivinen koe](release-0.3.0-profile-validation-history.md#m1-source-preparation-l3777) vaatii rajan ylittävän SQL-allokaation NOMEM-hylkäyksen ja sen jälkeen onnistuvan tavallisen kyselyn; readback ei yksin riitä. | K; 35 s työ ja 3+3 s sulku, SQLite/V8-rajat eivät lupaa koko prosessin RSS-rajaa. Historiallinen native-koe säilyttää oman buildinsa; unsupported-runtime-negatiivinen testi ei korvaa sitä. |
+| S030-03 | Invoicing revisio/toimitus: `I/infrastructure/reserveInvoiceEmailDelivery.ts`, `completeReservedInvoiceEmailDelivery.ts`, approval repository | `invoiceEmailReopen.test.ts`: attempted/outcomeUnknown estää reopenin myös uuden DB-yhteyden jälkeen, vanha revisio/PDF/event säilyvät (`UB`). | B345; oikea SQLite-reopen, ei OS-crash kaikissa SMTP/commit-väleissä. |
+| S030-04 | Invoicing PDF: `I/application/generateApprovedInvoicePdfDocument.ts`, document repository | `invoiceRevisionPdfGeneration.test.ts`: viivästynyt vanha renderöinti hylätään, uudemmat tavut säilyvät; saman revision kilpailussa vain voittajan tiedosto jää (`UB`). | B345; synteettiset renderöintitavut, ei uusi native-esikatselu. |
+| S030-05 | Invoicing cancel/reserve: `I/infrastructure/sqliteInvoiceCorrectionRepository.ts`, reserve ja SMTP application-polut | `B/composition/invoicingSmtpComposition.test.ts`: cancel-first ei kutsu provideria; reserve-first estää perumisen. `invoiceEmailCancel.test.ts`: kaksi yhteyttä ja pysyvä päätös reopenissa (`UB`). | B345; ohjatut järjestykset ja fake-provider, ei oikeaa SMTP:tä. |
+| D029-01 | Sama workspace-syyketju kuin R23, K:n tarkistussyy säilyy | Sama väärän lineagen testiväite ja OBS-DIAGNOSTIC-CHAIN-001 (`UD/SYS`). | G/K; päällekkäinen vaatimus, ei lisätestisuoritus. |
+| D029-02 | Sama update-projektio kuin R20 | Sama tapahtuma-/stage-matriisi ja writer→gzip-ketju (`UB/SYS`). | G; ei uusia version/channel/journal-raakametadatan kenttiä. |
+| D029-03 | Sama newest-selection kuin R24 | Samat eri lähteiden limit=1- ja incident-ryhmäväittämät (`UB`). | H; lähde- ja tulosrajat säilyvät. |
+| D029-04 | Sama rehellinen lukutila kuin R25; support-summaryn v2-projektio erillinen | Samat coverage/UI-kontrollit (`UB/WEB`); OBS-DIAGNOSTIC-CHAIN-001 tarkistaa täydellisen lukutilan projektion, gzipin osiot/checksumit ja v2-/legacy-tarkastimen (`SYS`). | H/M4.3; complete-tilan artifact-väite ei ole partial/unavailable-artifact-testi. Nämä tilat suojataan erillisillä reader/UI-väittämillä; ei D029-06:n lisäominaisuus. |
+| D029-05 | Sama H5-failure sink ja ilmoitus kuin R26 | Samat todellisen writer-virheen ja DESK-LOG-FAILURE-001/002:n väittämät (`UD/EL`). | H; käynnistyksen ilmoitus ei lupaa incidentin pysyvyyttä. |
+| R030-01 | Tilaton `W/shared/ui/LoadingStatus.tsx`, featureiden omat nykyiset tilat | Sisartesti: polite/atomic/escaping/tyhjä live-region. `T/web/loadingFeedbackJourneys.spec.ts`, UI-WAIT-001/002/003: ei tuplakutsua, peruutus/vanha vastaus, desktop/mobile/reduced-motion (`UW/WEB`). | M4.1; selainkomponenttiprobe ei ole kaikkien toimintojen native-todistus. |
+| R030-02 | Nykyinen workspace service/delete/resume, main/capability/preload ja `W/features/workspaces/WorkspaceDeletionForm.tsx` | `T/electron/workspaceDeletionExecution.spec.ts`, DESK-DELETE-UI-001 ja RECOVERY-001: oikea lomake, kaksi native-vahvistusta, SQLite/PDF/secret, kohteen poissaolo/restart ja vieraat tavut (`EL`). | W7.5; 23 rivin/10 roolin syväketju ja build-once-paketti säilyttävät omat erilliset lähdeidentiteettinsä. |
+| R030-03 | `D/profileBackup/portableProfileBackup.ts`, mainin tuore aktiivinen workspace-nimi saman backup-leasen sisällä | `portableProfileBackup.test.ts`: yritys+pvm, vaaralliset merkit, Unicode-raja ja date-only-fallback (`UD`); M4.2 sisältää native-/palautusnäytön. | M4.2; ehdotettu tiedostonimi ei ole omistajuus-/eheystodiste. |
+| R030-04 | Nykyinen i18n, featuret ja mainin native-palaute; update trust/cache/capability erillisinä omistajina | Nykyinen `LocalUpdatePanel.test.tsx` säilyttää yleisvirheen (`UW`). M5.1:n policy/cache/capability-regressiot todentavat syyn alkuperän, vaihe-/roolirajan ja myöhäisen palautteen eston; `desktopRestoreStartup.test.ts` todentaa oikean policy/cache-ketjun kontrolloituun native-palautteeseen (`UD`). Workspace ja secret epävarmuus erotellaan omissa nykyisissä poluissaan. | Paikallinen rajattu toteutus: 136 update-vaikutustestiä, 531 main-testiä, desktop-tyypitys ja rajattu riippumaton toteutuskatselmus läpäisivät. Pakotettu alkuperäinen virhe säilyi nykyisessä salaus/purku-kokeessa. Ei koko desktopin tai aidon Windows-dialogin näyttö. Puhtaan lähteen paketti- ja PR/main-portit avoinna; ensihylkäykset säilyvät. |
+| R030-05 | [Nykyinen käyttö- ja tukiohje](../product/local-desktop-user-guide.md), [ohjehakemisto](../README.md), omistavat moduuli-/support-ohjeet | Todelliset UI-tekstit/polut ja turvalliset virhetoimet täsmätty lähteeseen; linkki-/ankkuritarkistus ja rajattu riippumaton sisältökatselmus läpäisivät ohjeen kahden täsmennyksen jälkeen. Vanha 0.2.8-ohje ei muutu 0.3.0-testitulokseksi. | M5.1:n paikallinen dokumenttitoteutus; PR/main-portit vielä avoinna. |
+| R030-08 | Diagnosticsin nykyinen rajattu browse-reader, HTTP/strict-client ja `W/features/diagnostics/hooks/useDiagnostics.ts` | `T/web/diagnosticBrowsingJourneys.spec.ts`, OBS-DIAGNOSTIC-BROWSE-UI-001/002/003: molemmat suunnat, append vasta Uusimmat-haussa, vanhojen rivien säilytys ja truncated-lähteen vanheneminen (`WEB`). | M4.3; ei atominen lokisnapshot tai rajaton haku; summary/tukipaketti erillisiä. |
+
+**Jäljellä M5.1:ssä:** katselmoidun R030-04:n palautetäsmennyksen ja
+R030-05:n ohjeiden puhtaan lähteen soveltuva paketti- ja PR/main-integraatio.
+Vanhat ensivirheet ja tuntemattomat siivoustilat säilyvät alkuperäisissä
+checkpoint-rajoissaan. Nykyinen kartta ei nimeä niitä korjatuiksi eikä
+hyväksy M5.2:ta, uutta skannausta tai 0.3.0:n toimitusta.
+
+**R030-04:n rajattu toteutussopimus:** nykyinen candidate-versionvertailu
+tuottaa vain tunnetulle ei-uudemmalle versiolle suljetun sisäisen syyn.
+Se säilytetään cache-kääreiden yli vain kyseisen policy-kutsun alkuperästä
+ja todellisesta `sourceValidation`-vaiheesta. Main näyttää sille kiinteän
+suomenkielisen native-ilmoituksen. IPC DTO, julkinen yleiskoodi ja nykyiset
+diagnostiikkaprojektiot eivät muutu. Syytä ei päätellä viestistä, yleisestä
+cause-ketjusta tai muun riippuvuuden samantyyppisestä virheestä. Exact-current-
+palautuspaketin rekisteröinti ja journal-bound rollback säilyvät erillisinä.
+Hylkäys tapahtuu ennen hash-tarkistusta eikä todista paketin eheyttä.
+
+Muu palaute täsmätään tämän kartan nykyisiin polkuihin: perustietojen
+lukuesto ja käsinluku R07, asiakkaiden estot ja turvallinen fallback R09-R11,
+luonnoksen tallennus-/hyväksyntäesto R05-R06, salaisuusmuutoksen epävarmuus
+R14/R16, toimituksen epävarmuus B/S030-03, backupin peruutus R030-01,
+poiston lopputulos R030-02 ja diagnostiikan osittaisuus R25/R030-08.
+Näiden vanhaa hyväksyntää ei korvata pelkällä käännösavaimen löytymisellä;
+nykyiset erottavat testiväitteet ja kytkentärajat on nimetty niiden riveillä.
+
+Katselmuksen lisäehto on palautteen tuoreus: keskeneräisen valinnan hylkäys
+ei näytä myöhäistä ilmoitusta dispose-tilassa tai suljetun/väärän ikkunan tai
+framen kautta. Nykyiset sender-/frame- ja handoff-sulkusuojat säilyvät.
+Tämä ei peru alkanutta cache-I/O:ta tai anna uutta päivitysvaltuutta.
+Kohdetestit todentavat syyn alkuperän, kilpailijoiden virhejärjestyksen,
+current/candidate-erottelun, säilyvät slotit ja oikean main-liitoksen.
+Vaadittu kaksiprosessinen hardened Windows
+backup → inspect → restore → restart → compare -portti säilyy. Omistaja
+hyväksyi 14.11.2026 vain nykyisten turvaporttien vaatiman eristetyn
+synteettisen Windows-testipaketin valmistelun ja todennuksen osaksi M5.1:tä.
+Tämä täsmentää Goalin yleistä paketointirajausta: unit-testi ei korvaa
+pakollista porttia, mutta testipaketti ei avaa M5.4:n varsinaista versionnostoa,
+release-ehdokasta, jakelua tai M5.5:n käyttäjätestihyväksyntää. Samat puhtaan
+lähteen, build-once-artifactin, testieristyksen ja siivouksen ehdot säilyvät.
+
+#### Myöhemmät M5-portit
 
 Jokaisessa paketissa käytetään
 [toiminnon valmistumisporttia](../ai/workflow.md#toiminnon-valmistumisportti):
