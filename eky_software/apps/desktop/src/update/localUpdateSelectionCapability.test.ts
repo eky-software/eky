@@ -9,10 +9,12 @@ import {
   getLocalUpdateStatusIpcChannel,
   selectLocalUpdateIpcChannel,
 } from './localUpdateSelectionTypes.js';
-import type {
-  LocalUpdatePackageStatusSummary,
-  LocalUpdatePackageSummary,
+import {
+  LocalUpdatePackageCacheError,
+  type LocalUpdatePackageStatusSummary,
+  type LocalUpdatePackageSummary,
 } from './localUpdatePackageCache.js';
+import { UpdatePackageTrustError } from './updatePackageTrustPolicy.js';
 
 const releaseInfo: DesktopReleaseInfo = {
   appIdentity: 'Eky',
@@ -247,6 +249,92 @@ describe('local update selection capability', () => {
   });
 });
 
+describe('local update feedback lifetime', () => {
+  it.each((['live', 'disposed', 'destroyedWindow', 'replacedFrame', 'replacedOrigin'] as const)
+    .flatMap(state => [false, true].map(specific => [state, specific] as const)))(
+    'presents a deferred selection failure only to its live origin (%s, specific=%s)', async (state, specific) => {
+      const fixture = createFixture({ current: currentSummary });
+      let entered!: () => void;
+      let rejectStage!: (error: Error) => void;
+      const stageEntered = new Promise<void>((resolve) => { entered = resolve; });
+      fixture.stageSelectedPackage.mockImplementationOnce(() => new Promise((_, reject) => {
+        rejectStage = reject;
+        entered();
+      }));
+      const result = fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent)
+        .catch((error: unknown) => error);
+      await stageEntered;
+      if (state === 'disposed') fixture.capability.dispose();
+      if (state === 'destroyedWindow') fixture.mainWindow.isDestroyed.mockReturnValue(true);
+      if (state === 'replacedFrame' || state === 'replacedOrigin') {
+        fixture.mainWindow.webContents.mainFrame = {};
+        if (state === 'replacedOrigin') {
+          fixture.trustedEvent.senderFrame = fixture.mainWindow.webContents.mainFrame;
+        }
+      }
+      rejectStage(specific ? new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer')
+        : new Error('synthetic-private-selection-failure'));
+      expect(await result).toEqual(new Error('LOCAL_UPDATE_OPERATION_FAILED'));
+      expect(fixture.showSafeError).toHaveBeenCalledTimes(state === 'live' ? 1 : 0);
+      expect(fixture.prepareConfirmedUpdate).not.toHaveBeenCalled();
+      expect(fixture.handoffPreparedUpdate).not.toHaveBeenCalled();
+      if (state === 'live') expect(fixture.showSafeError).toHaveBeenCalledWith(specific ? 'versionNotNewer' : undefined);
+    },
+  );
+
+  it.each(['precise', 'otherStage', 'unknown', 'lookalike', 'trustOnly', 'cause'] as const)(
+    'keeps the public failure generic for %s selection errors', async (kind) => {
+      const fixture = createFixture({ current: currentSummary });
+      const exact = new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer');
+      const error = kind === 'precise' ? exact
+        : kind === 'otherStage' ? new LocalUpdatePackageCacheError('stagedValidation', 'versionNotNewer')
+        : kind === 'unknown' ? Object.assign(new LocalUpdatePackageCacheError('sourceValidation'), { reason: 'futureReason' })
+        : kind === 'lookalike' ? { name: exact.name, stage: exact.stage, reason: exact.reason }
+        : kind === 'trustOnly' ? new UpdatePackageTrustError('versionNotNewer')
+        : new Error('synthetic-private-failure', { cause: exact });
+      fixture.stageSelectedPackage.mockRejectedValueOnce(error);
+      const result = await fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent).catch((value: unknown) => value);
+      expect(result).toEqual(new Error('LOCAL_UPDATE_OPERATION_FAILED'));
+      expect(result).not.toHaveProperty('reason');
+      expect(result).not.toHaveProperty('cause');
+      expect(fixture.showSafeError).toHaveBeenCalledExactlyOnceWith(kind === 'precise' ? 'versionNotNewer' : undefined);
+      expect(fixture.operationFailed.mock.calls.map(([event]) => event)).toEqual([
+        expect.objectContaining({ stage: 'packageInspection', errorCode: 'LOCAL_UPDATE_OPERATION_FAILED', sideEffectState: 'unknown' }),
+        expect.objectContaining({ stage: 'packageStaging', errorCode: 'LOCAL_UPDATE_OPERATION_FAILED', sideEffectState: 'unknown' }),
+      ]);
+      expect(JSON.stringify(fixture.operationFailed.mock.calls)).not.toContain('versionNotNewer');
+      expect(fixture.prepareConfirmedUpdate).not.toHaveBeenCalled();
+      expect(fixture.handoffPreparedUpdate).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each(['currentRegistration', 'status', 'selectionPreflight', 'discard', 'confirm'] as const)(
+    'does not present a candidate reason from %s', async (source) => {
+      const fixture = createFixture({ ...(source === 'currentRegistration' ? {} : { current: currentSummary }),
+        candidate: candidateSummary, confirmResult: true });
+      const error = new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer');
+      if (source === 'status' || source === 'selectionPreflight') fixture.getPackageStatus.mockRejectedValueOnce(error);
+      if (source === 'currentRegistration') fixture.stageSelectedPackage.mockRejectedValueOnce(error);
+      if (source === 'discard') fixture.discardCandidate.mockRejectedValueOnce(error);
+      if (source === 'confirm') fixture.confirmUpdate.mockRejectedValueOnce(error);
+      const channel = source === 'status' ? getLocalUpdateStatusIpcChannel
+        : source === 'discard' ? discardSelectedLocalUpdateIpcChannel
+        : source === 'confirm' ? confirmLocalUpdateIpcChannel : selectLocalUpdateIpcChannel;
+      await expect(fixture.invoke(channel, fixture.trustedEvent)).rejects.toThrow('LOCAL_UPDATE_OPERATION_FAILED');
+      expect(fixture.showSafeError).toHaveBeenCalledExactlyOnceWith(undefined);
+    },
+  );
+
+  it('keeps the primary failure and clears busy when presentation and observers throw', async () => {
+    const fixture = createFixture({ current: currentSummary });
+    fixture.stageSelectedPackage.mockRejectedValueOnce(new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer'));
+    fixture.showSafeError.mockImplementationOnce(() => { throw new Error('synthetic-private-dialog'); });
+    fixture.operationFailed.mockImplementation(() => { throw new Error('synthetic-private-observer'); });
+    await expect(fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent)).rejects.toThrow('LOCAL_UPDATE_OPERATION_FAILED');
+    await expect(fixture.invoke(selectLocalUpdateIpcChannel, fixture.trustedEvent)).resolves.toMatchObject({ status: 'candidateReady' });
+  });
+});
+
 const allChannels = [
   getLocalUpdateStatusIpcChannel,
   selectLocalUpdateIpcChannel,
@@ -282,6 +370,7 @@ function createFixture(
   const removeHandler = vi.fn();
   const mainFrame = {};
   const webContents = { mainFrame };
+  const mainWindow = { isDestroyed: vi.fn(() => false), webContents };
   const getPackageStatus = vi.fn(async (role: 'candidate' | 'current') =>
     role === 'current' ? options.current : options.candidate,
   );
@@ -316,10 +405,7 @@ function createFixture(
     } as never,
     ipcMain: { handle, removeHandler } as never,
     journalStore: { read: vi.fn(async () => undefined) },
-    mainWindow: {
-      isDestroyed: () => false,
-      webContents,
-    } as never,
+    mainWindow: mainWindow as never,
     observer: {
       operationCompleted,
       operationFailed,
@@ -345,6 +431,7 @@ function createFixture(
       return handler(event, ...args);
     },
     mainFrame,
+    mainWindow,
     operationCompleted,
     operationFailed,
     operationStarted,

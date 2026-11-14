@@ -12,6 +12,7 @@ import type {
   LocalUpdatePackageCache,
   LocalUpdatePackageSummary,
 } from './localUpdatePackageCache.js';
+import { LocalUpdatePackageCacheError } from './localUpdatePackageCache.js';
 import {
   cancelLocalUpdateIpcChannel,
   confirmLocalUpdateIpcChannel,
@@ -52,7 +53,7 @@ interface LocalUpdateSelectionCapabilityOptions {
   operationIdFactory?(): string;
   releaseInfo: Readonly<DesktopReleaseInfo>;
   selectManifestPath(): Promise<string | null>;
-  showSafeError(): void;
+  showSafeError(reason?: LocalUpdatePackageCacheError['reason']): void;
 }
 
 export interface LocalUpdateSelectionCapability {
@@ -63,28 +64,38 @@ export function createLocalUpdateSelectionCapability(
   options: LocalUpdateSelectionCapabilityOptions,
 ): LocalUpdateSelectionCapability {
   let operationActive = false;
+  let disposed = false;
 
   registerHandler(getLocalUpdateStatusIpcChannel, async () =>
     readSafeStatus(options),
   );
-  registerHandler(selectLocalUpdateIpcChannel, async () => {
+  registerHandler(selectLocalUpdateIpcChannel, async (feedback) => {
     const current = await options.cache.getPackageStatus('current');
     const role = current === undefined ? 'current' : 'candidate';
     const manifestPath = await options.selectManifestPath();
     if (manifestPath === null) {
       return Object.freeze({ status: 'cancelled' });
     }
-    const summary = await runObservedStages(
-      options,
-      role === 'current'
-        ? [
-            'packageInspection',
-            'packageStaging',
-            'currentPackageRegistration',
-          ]
-        : ['packageInspection', 'packageStaging'],
-      () => options.cache.stageSelectedPackage({ manifestPath, role }),
-    );
+    let summary: Readonly<LocalUpdatePackageSummary>;
+    try {
+      summary = await runObservedStages(
+        options,
+        role === 'current'
+          ? [
+              'packageInspection',
+              'packageStaging',
+              'currentPackageRegistration',
+            ]
+          : ['packageInspection', 'packageStaging'],
+        () => options.cache.stageSelectedPackage({ manifestPath, role }),
+      );
+    } catch (error) {
+      if (role === 'candidate' && error instanceof LocalUpdatePackageCacheError &&
+        error.stage === 'sourceValidation' && error.reason === 'versionNotNewer') {
+        feedback.reason = error.reason;
+      }
+      throw error;
+    }
     return Object.freeze({
       package: toSafePackageSummary(summary),
       status: role === 'current' ? 'currentRegistered' : 'candidateReady',
@@ -133,14 +144,15 @@ export function createLocalUpdateSelectionCapability(
 
   function registerHandler(
     channel: string,
-    operation: () => Promise<unknown>,
+    operation: (feedback: { reason?: LocalUpdatePackageCacheError['reason'] }) => Promise<unknown>,
   ): void {
     options.ipcMain.removeHandler(channel);
     options.ipcMain.handle(
       channel,
       async (event, ...args: unknown[]): Promise<unknown> => {
+        const origin = { sender: event.sender, senderFrame: event.senderFrame };
         if (
-          !isTrustedMainWindowRequest(event, options.mainWindow) ||
+          disposed || !isTrustedMainWindowRequest(origin, options.mainWindow) ||
           args.length !== 0 ||
           operationActive
         ) {
@@ -148,8 +160,9 @@ export function createLocalUpdateSelectionCapability(
         }
 
         operationActive = true;
+        const feedback: Parameters<typeof operation>[0] = {};
         try {
-          return await operation();
+          return await operation(feedback);
         } catch (error) {
           if (
             error instanceof Error &&
@@ -159,7 +172,9 @@ export function createLocalUpdateSelectionCapability(
             throw error;
           }
           try {
-            options.showSafeError();
+            if (!disposed && isTrustedMainWindowRequest(origin, options.mainWindow)) {
+              options.showSafeError(feedback.reason);
+            }
           } catch {
             // The fixed capability error remains authoritative.
           }
@@ -173,6 +188,7 @@ export function createLocalUpdateSelectionCapability(
 
   return {
     dispose() {
+      disposed = true;
       for (const channel of localUpdateIpcChannels) {
         options.ipcMain.removeHandler(channel);
       }
@@ -327,7 +343,7 @@ function toSafePackageSummary(
 }
 
 function isTrustedMainWindowRequest(
-  event: IpcMainInvokeEvent,
+  event: Pick<IpcMainInvokeEvent, 'sender' | 'senderFrame'>,
   mainWindow: BrowserWindow,
 ): boolean {
   return (
