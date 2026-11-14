@@ -2700,7 +2700,13 @@ it.for(normalSlotCases)('keeps local payload source trial byte-equivalent to nor
     // Only the absent legacy journal uses strict slots; local payload does not.
     expect(strict).toHaveBeenCalledTimes(2);
     await selected.assertSelected();
-    expect(await snapshot(path)).toEqual(before);
+    const afterSelection = await snapshot(path);
+    expect(afterSelection).toHaveLength(before.length);
+    for (const [index, bytes] of afterSelection.entries()) {
+      const expected = before[index];
+      if (bytes === null || expected === null) expect(bytes).toBe(expected);
+      else expect(bytes.equals(expected!)).toBe(true);
+    }
     expect(Object.keys(selected).sort()).toEqual(['assertCurrent', 'assertSelected', 'handoff', 'mode', 'owners', 'persistedActiveWorkspaceId', 'readSelected', 'revoke', 'target']);
     selected.revoke();
     await expect(selected.assertSelected()).rejects.toThrow('SYNTHETIC_RECOVERY_DISCOVERY_CHANGED');

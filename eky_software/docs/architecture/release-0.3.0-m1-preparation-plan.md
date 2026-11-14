@@ -7,30 +7,37 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 ## Jatka tästä
 
-**14.11.2026: W7.5 A-E on toteutettu; viimeisen checkpointin PR-portit
-ja uuden main-revision omat portit ovat vielä tekemättä.**
+**14.11.2026: W7.5 A-E on toteutettu; viimeinen PR-kierros hylkäsi kaksi
+testityötä. Korjausrevision ja uuden mainin omat portit ovat avoinna.**
 Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330).
-Viimeksi todennettu PR-head on `e1511b131ad73d2b9651379bccf69a1623dea005`;
+Nykyinen julkaistu PR-head on `7d061671f17abf72224794725417cd23081140e8`;
 hyväksytty lähtö main `9657fdc1` ja PR #327/#328.
 [Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 ja hyväksytyt sidonta-/tuontijournalirajaukset säilyvät. Hyväksyttyjä paketteja
 ei avata uudelleen ilman omaa regressiota.
 
-[e151:n V2-ajo 43547267749](https://github.com/eky-software/eky/actions/runs/43547267749)
-ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43547267589)
-ovat päättyneet. Yksi supervisor-kohdeuusinta läpäisi 172 testiä ja uusi
-koonti läpäisi; muut 38 onnistunutta suoritusta sekä sovelluspaketit
-säilyivät ennallaan. Lopputila on 40 onnistunutta työtä ja kuusi
-tarkoituksella valitsematonta diagnostiikkatyötä. Myös oikea Linuxin
-eristetty profile inspection läpäisi. Uusi checkpoint-head ei peri näitä portteja.
+[7d:n V2-kierroksen](https://github.com/eky-software/eky/actions/runs/43589836127)
+core-työn palautusvertailun `oversizedSibling`-tapaus ylitti nykyisen viiden
+sekunnin testirajan. Alkuperäinen salattu virhe ja todellinen checkout on
+varmennettu; virhe ei nimeä odottavaa sisäkutsua tai todista resurssien
+loppusiivousta. [Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43589836115)
+läpäisi. Rajattu korjaus muuttaa vain testin suurten Buffer-tavujen vertailua,
+ei sovelluksen tarkistuksia, väittämiä tai aikarajaa. Vaikutustestit ja
+katselmus vaaditaan ennen uutta lähdejäädytystä. [Ensihylkäys](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-7d-core)
+säilyy erillään korjauksen todennuksesta.
 
-**Rajattu etenemispäätös 14.11.2026:** omistaja hyväksyi vain nimetyn
-MSI-ikkunatestin ensihylkäyksen osalta etenemisen normaaliin mergeen ja
-mainin omiin portteihin. Alkuperäisen aikakatkaisun syy ja native-alipuun
-erillinen loppusiivousnäyttö jäävät avoimiksi, eivät korjatuiksi tai
-jälkikäteen onnistuneiksi. [Ensihylkäys, todellinen checkout ja päätös](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-e151-msi)
-säilyvät historiassa. Päätös ei ohita yhtään uutta hylkäystä tai PR/main-porttia
-eikä anna lisäuusintaa. Stderr-, valmistelu-, turva-, aika- ja siivousehdot säilyvät.
+Sama kierros hylkäsi myös paketoidun keskeytyneen palautuksen toiston 2:
+MSI odotti sovelluksen sulkemispyyntöön vastausta. Alkuperäiset asennus- ja
+ikkunahavainnot säilyivät, ja ajon erillinen loppusiivous ilmoitti
+onnistumisesta. Pyynnön aiheuttajaa ei vielä luokitella. V2 päättyi
+36 onnistumiseen, kahteen ensihylkäykseen ja niiden koontihylkäykseen;
+kuusi diagnostiikkatyötä jäi tarkoituksella valitsematta ja core-verify estyi.
+Tämä uusi havainto tutkitaan erillään desktop-testikorjauksesta.
+
+[e151:n aiempi vihreä koonti ja rajattu MSI-etenemispäätös](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-e151-msi)
+säilyvät historiassa. Sen avoin aikakatkaisun syy ja native-alipuun
+loppusiivousnäyttö eivät sulkeudu. Päätös ei kata tämän kierroksen uusia
+hylkäyksiä, anna lisäuusintaa tai siirrä vanhoja portteja uudelle headille.
 
 Säilyvä näyttö: koko desktop ja sama 23 kohteen ketju, web/backend/HTTP,
 stress ja täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
@@ -41,8 +48,9 @@ korjausten kumulatiivinen koodi on katselmoitu riippumattomasti ilman avoimia
 löydöksiä; uusi koodikorjaus vaatii oman rajatun katselmuksensa.
 
 Seuraavaksi:
-1. Julkaise rajattu dokumentticheckpoint samaan PR:ään ja vaadi sen oman
-   täsmä-headin kaikki valitut/pakolliset portit sekä auditointi.
+1. Viimeistele rajattu testikorjaus ja nykytila, katselmoi muutos ja vaadi
+   uuden jäädytetyn headin kaikki valitut/pakolliset portit sekä auditointi.
+   Selvitä ensin uuden MSI-hylkäyksen säilynyt aineisto nykyisellä sopimuksella.
 2. Tee normaali suojattu merge vasta hyväksyttyjen porttien jälkeen;
    varmista sitten uuden main-revision omat portit.
 3. Säilytä ensivirheet ja käytetty kohdeuusinta erillään. Dokumenttimuutos

@@ -5,6 +5,55 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+<a id="m1-checkpoint-20261114-pr330-7d-core"></a>
+
+## PR330:n 7d-revision kaksi ensihylkäystä 14.11.2026
+
+PR-head `7d061671f17abf72224794725417cd23081140e8` käynnisti
+[V2-ajon 43589836127](https://github.com/eky-software/eky/actions/runs/43589836127).
+Core-työn `Run desktop tests` hylkäsi yhden tapauksen:
+`desktopWorkspaceRecoveryObservation.test.ts` / `keeps local payload source
+trial byte-equivalent to normal recovery for oversizedSibling`.
+Ensimmäinen Vitest-vaihe läpäisi 12 558 testiä, yksi hylkäsi ja neljä
+ohitettiin. Myöhemmät rooliketju- ja Node-vaiheet eivät käynnistyneet;
+niille ei siirretä aiempien ajojen läpäisyjä.
+
+Alkuperäinen salattu virhe ja kaikki kaksi payloadia varmennettiin.
+Todellinen checkout oli `689a784619329a71bfa10f5df23f32d526d75ef9`,
+jonka base/head-sidonta varmennettiin erikseen. Virhe on viiden sekunnin
+testiaikakatkaisu, ei todistettu sisäkutsun jumi tai sovellusvirhe.
+Ensihylkäyksen syy ja testiresurssien loppusiivous jäävät avoimiksi;
+salauksen purkuprosessin siivous ei todista testifixturen siivousta.
+[Riippuvuustarkistus 43589836115](https://github.com/eky-software/eky/actions/runs/43589836115)
+läpäisi.
+
+V2 päättyi 36 onnistuneeseen, kolmeen hylättyyn ja seitsemään ohitettuun
+työhön. Kuusi diagnostiikkatyötä jäi tarkoituksella valitsematta;
+core-verify estyi core-ensihylkäyksen vuoksi. Toinen ensihylkäys oli
+`workspace / Verify packaged workspace fault recovery run 2` / `Verify
+interrupted acceptance recovery and restart`. V2-koonti hylkäsi näiden
+seurauksena; se ei ole kolmas erillinen juurisyy.
+
+Palautustapauksen alkuperäinen tulos oli `supervisorDeadlineExceeded`.
+Säilynyt MSI-ikkunahavainto näytti odottavan sovellusten sulkemispyynnön;
+pyynnön aiheuttajaa tai sovellusvikaa ei päätellä pelkästä ikkunasta.
+Alkuperäinen salattu paketti ja kaikki 72 säilynyttä payloadia sekä sama
+todellinen checkout varmennettiin. Native-temp-keräys ilmoitti osittaisen
+kattavuuden, joten talteenottoa ei väitetä täydelliseksi. Tapauksen oma
+loppukäsittely ilmoitti prosessipuun poissaolon, semanttisen siivouksen,
+asennustuotteiden ja footprintin poissaolon sekä fixturen poiston;
+varsinainen palautusväite jäi tarkistamatta. Säilynyt aineisto tutkitaan
+erillään tavuvertailukorjauksesta; uusintaa tai mergeä ei ole hyväksytty
+tämän historiakirjauksen perusteella.
+
+Rajattu testikorjaus korvaa vain suuren tiedostopuskurin yleisen
+syvävertailun järjestetyllä, kaikki tavut vertaavalla Buffer-vertailulla.
+Slottimäärä, puuttuvan tiedoston erottelu ja kaikki muut väittämät säilyvät;
+tuotantokoodi, turvatarkistukset ja testin viiden sekunnin raja eivät muutu.
+Korjauksen oma vaikutustodennus ja katselmus sekä uuden PR-headin ja
+mainin portit vaaditaan. Aiempi e151:n MSI-etenemispäätös ei kata tätä
+uutta hylkäystä eikä nimeä sitä korjatuksi.
+
 <a id="m1-checkpoint-20261114-pr330-e151-msi"></a>
 
 ## PR330:n e151-revision MSI-ensihylkäys ja rajattu etenemispäätös 14.11.2026
