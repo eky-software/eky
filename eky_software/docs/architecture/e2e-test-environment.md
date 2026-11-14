@@ -352,6 +352,10 @@ varmentaa normaalit portit ja arvioi rajauksen uudelleen upstream-tuen,
 työkalurakenteen tai pakollisen tarkistuksen muuttuessa. Määräajat,
 komennot, testivalinta ja siivousvaatimukset säilyvät ennallaan.
 
+Runner-rajausta suojaavat sekä Git-juuren CI-sopimustestit että desktopin
+[T1-ajokytkentätesti](../../apps/desktop/scripts/test-command-wiring.test.mjs).
+Molempien nykyiset odotukset ja kielteiset rajakontrollit pidetään yhtäpitävinä.
+
 Omistaja käyttää kertakäyttöistä transient-unitia ja kiinteää
 systemd -> unshare -> setpriv -ketjua. Node, Playwright ja työkuorma
 käynnistyvät vasta oikeuksien pudotuksen jälkeen. Namespace-initin PID 1,

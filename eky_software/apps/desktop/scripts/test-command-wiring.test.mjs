@@ -272,7 +272,8 @@ function assertCiWiring({ core, caller, plan, coverage }) {
     property(header, 4, 'name', edge.name);
     property(header, 4, 'if', linuxCore ? "inputs.risk_plan != ''"
       : "inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts");
-    property(header, 4, 'runs-on', linuxCore ? 'ubuntu-latest' : 'windows-latest');
+    property(header, 4, 'runs-on', edge.job === 'verify' ? 'ubuntu-24.04'
+      : linuxCore ? 'ubuntu-latest' : 'windows-latest');
     property(header, 8, 'working-directory', 'eky_software');
     assert.doesNotMatch(header, /^    continue-on-error:/mu);
     assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n${edge.environment ?? ''}        run: ${edge.run}`);
@@ -331,6 +332,18 @@ function rejectsMutation(change) {
 test('T1 files and the wiring test reach their required commands and normal CI acceptance', () => {
   assertWiring(original);
 });
+
+for (const [job, expected, rejected] of [
+  ['verify', 'ubuntu-24.04', 'ubuntu-latest'],
+  ['verify', 'ubuntu-24.04', 'ubuntu-26.04'],
+  ['verify', 'ubuntu-24.04', 'self-hosted'],
+  ['test-packages', 'ubuntu-latest', 'ubuntu-24.04'],
+]) {
+  test(`rejects ${job} runner drift to ${rejected}`, () => rejectsMutation(fixture => {
+    const block = jobBlock(fixture.core, job);
+    fixture.core = fixture.core.replace(block, block.replace(`runs-on: ${expected}`, `runs-on: ${rejected}`));
+  }));
+}
 
 async function rejectDiscovery(result, sink = createRunnerFailureSink()) {
   sink.record({ runner: 'node', phase: 'testSelection', attempt: 0,
