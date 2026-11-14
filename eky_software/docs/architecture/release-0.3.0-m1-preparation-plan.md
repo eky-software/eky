@@ -9,67 +9,59 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 **14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
 Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
-ensimmäisen CI-kierroksen head `e2acc40e`. Hyväksytty lähtö on main `9657fdc1`
-ja PR #327/#328. Säilytä kaikki paikalliset korjaukset.
+edellisen PR-kierroksen head `908a7e1f`. Hyväksytty lähtö on main `9657fdc1`
+ja PR #327/#328. Säilytä paikalliset rajatut CI-/testivalmistelukorjaukset.
 [Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
-sekä [tuontijournalin](local-company-workspace-plan.md#w75-original-import-read-contract-20261112)
-ja [sidontatallentimen](local-company-workspace-plan.md#w75-binding-leading-read-20261113)
-hyväksytyt rajaukset säilyvät. Hyväksyttyjä paketteja ei avata ilman regressiota.
+ja hyväksytyt tuontijournalin/sidontatallentimen rajaukset säilyvät.
+Hyväksyttyjä paketteja ei avata ilman regressiota.
 
-**Ensimmäinen PR-kierros hylkäsi.**
-[V2-ajo 43517211792](https://github.com/eky-software/eky/actions/runs/43517211792)
-päättyi: 28 onnistui, viisi hylkäsi, yksi peruttiin ja kymmenen ohitettiin.
-Ohituksista kuusi oli tarkoituksella valitsemattomia diagnostiikkatöitä;
-neljä muuta ei ole hyväksyttyä kattavuutta. Todellinen checkout oli
-`b0326c603627e12cb901e8061fb899895aed5da2`, ei PR-head.
-[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43517211725)
-läpäisi. PR ei ole mergevalmis.
+**Korjausrevision normaali PR-kierros hylkäsi.**
+[V2-ajo 43530387558](https://github.com/eky-software/eky/actions/runs/43530387558)
+päättyi: 36 onnistui, neljä hylkäsi ja kuusi tarkoituksella valitsematonta
+diagnostiikkatyötä ohitettiin. Todellinen checkout oli
+`f7d5f6b5659e4407856a78488f26867350143ec2`, ei PR-head.
+[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43530387505)
+läpäisi. Windowsin Electron-, paketti-, workspace- ja installer/legacy-portit
+sekä Linuxin desktop-pakettisarja läpäisivät; PR ei ole mergevalmis.
 
-Nykyinen rajattu korjaus ja avoimet syyt:
-- Linuxin system/web pysähtyivät työkalujen `metadataInvalid`-ennakkotarkistukseen.
-  Alkuperäiset salatut paketit, ajosidonnat ja säilyneet tavut varmennettiin.
-  Tarkka hylännyt tarkistus puuttuu: lähdekiintiö säilytti yhden invokaation
-  toistovirheitä. Keräimen korjattu järjestys antaa eri invokaatioiden
-  yhteenvedoille ja ensimmäisille virheille etusijan toistoihin nähden.
-  Nykyiset rajat ja validoinnit säilyvät. Rajatut 79 kontrollia ja koko
-  nykyinen 371 testin salatun virheaineiston komento läpäisivät; joukot
-  ovat päällekkäisiä. Oikea salaus/purku, alkuperäisten tavujen vertailu
-  ja riippumaton katselmus läpäisivät.
-  Tämä korjaa todetun keräysaukon, ei tuntematonta Linuxin alisyytä.
-- Workspace-sopimustesti odotti vanhaa tukiviennin JavaScript-ilmaisua.
-  Kahden kontrolloidun fixtureväittämän korjaus ja salaus/purku läpäisivät;
-  todellisen valmiusodotuksen oma suorituskoe säilyy erillisenä.
-- Electronin alkuperäinen väittämä osoitti vain siltalistan puuttuvan
-  `deleteWorkspace`-metodin. Täsmällinen sallittujen metodien lista päivitettiin;
-  nimetty oikean Electronin rajatesti läpäisi ilman uusintaa.
-  Raakaa IPC:tä, Nodea tai tiedostopääsyä ei sallittu.
-- Desktopin Linux-sarja hylkäsi 87 testiä neljässä tiedostossa.
-  Rajatut fixturekorjaukset koskevat yksityisiä hakemisto-/tiedosto-oikeuksia
-  ja vanhaa smoke-odotusta. Kolmen tiedoston 868 testiä sekä erillisen
-  käynnistystiedoston 28 testiä ja tyypitys läpäisivät. Käynnistysfixture
-  valmistelee todellisen valitun juuren ja vaatii täsmälleen tarkoitetun
-  alkuperäisen virheen; sen vanhan CI-virheen puuttuvaa alisyytä ei arvata.
-  Windows-läpäisy ei yksin todista Linux-korjausta. Koontihylkäys on
-  seurannainen, ei erillinen juurisyy. Korjausten rajattu riippumaton
-  katselmus ei löytänyt uutta korjattavaa.
+Jäljellä on kaksi osoitettua valmistelu-/ympäristökorjausta:
+- System/web: korjattu salattu keräys säilytti tarkan hylkäyksen:
+  `sudo / tool / symbolicLink`. Nykyinen turvavartija toimi.
+  Vain palveluketjun kolme kuluttajaa (`verify`, `e2e-system-security`,
+  `e2e-web-critical`) rajataan ylläpidettyyn `ubuntu-24.04`-ympäristöön.
+  [Omistava ympäristösopimus](e2e-test-environment.md#linux-ci) säilyttää
+  linkkikiellon, komennot ja määräajat; muita töitä ei siirretä.
+- Core-verify: todellinen Playwright-luettelointi ei löytänyt puuttuvaa
+  auth-buildia. E2E:n normaali Node-testikomento rakentaa permissions/auth-
+  exportit ensin nykyisillä omistajilla. Vanha paikallinen `dist` ei ole
+  puhtaan valmistelun näyttö; runtimea ei käynnistetä tätä varten.
 
-Jo säilyvä lähdenäyttö: normaali koko desktop-komento ja sama 23 kohteen /
-kymmenen roolin ketju läpäisivät 240 sekunnin testirajassa; web-, backend-,
-HTTP- ja E2E-ajurien vaikutusportit sekä stress ja täysi soak läpäisivät.
-Oikeat Electronin poisto-/tukivientipolut läpäisivät ilman uusintoja.
+Nykyinen CI-sopimuskomento läpäisi 429 testiä. Kohdesarjat ovat sen kanssa
+osin päällekkäisiä. Puuttuvien buildien vastakoe vahvisti alkuperäisen virheen.
+Korjattu normaali E2E-komento rakensi molemmat tuotteet tyhjästä ja läpäisi
+86 + 789 + 515 testiä ilman ohituksia. Nykyinen ajokytkentätiedosto ajetaan
+ennen muita Node-fixturejä samoilla testi-/aliprosessirajoilla ja samalla
+kokonaisvalinnalla. Ensimmäisen rinnakkaisen koonnin luettelointitimeoutin
+tarkka syy säilyy avoimena; yksi erillisdiagnoosi ei todista sitä korjatuksi.
+Rajattu riippumaton katselmus ei löytänyt korjattavaa tästä korjausjoukosta.
+Paikallinen tarkistus ei vielä todenna uuden Linux-ympäristön oikeaa ajoa.
+Koontihylkäys on seurannainen, ei kolmas juurisyy. Alkuperäisen PR-kierroksen
+Linux-alisyytä ei selitetä jälkikäteen tämän kierroksen havainnolla.
+
+Säilyvä toiminnallinen näyttö: koko desktop-komento, sama 23 kohteen /
+kymmenen roolin ketju 240 sekunnissa, web/backend/HTTP-ajurit, stress ja
+täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
 Puhdas lähde `03f97967` rakennettiin kerran: tavallinen hardened smoke ja
 kaikki viisi paketoitua palautus/poistotapausta läpäisivät samoilla tavuilla.
-Myöhempi checkpoint-commit ei vaihda paketin build-identiteettiä.
-Koko A-E:n riippumaton koodikatselmus valmistui; muuttuneet korjaukset
-katselmoidaan erikseen. [Täsmällinen aiempi näyttö ja avoimet ensihylkäykset](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330)
-säilyvät historiassa, eivät rinnakkaisena työjonona.
+Myöhempi checkpoint ei muuta paketin build-identiteettiä.
+Koko A-E on riippumattomasti katselmoitu; muuttuneet korjaukset katselmoidaan
+erikseen. [Aiemmat kierrokset ja alkuperäiset avoimet havainnot](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-908)
+säilyvät historiassa.
 
 Seuraavaksi:
-1. Julkaise tarkistettu rajattu korjausjoukko normaalisti PR #330:een;
-   säilytä alkuperäiset virheet ja erilliset lähdesidonnat.
-2. Vaadi jäädytetyn korjausrevision normaalit PR-portit sekä auditointi.
-   Puuttuva Linux-alisyy tai uusi hylkäys käsitellään aineistosta; ei vihreyteen
-   tähtäävää uusintasilmukkaa tai aikarajojen/turvavartijoiden kevennystä.
+1. Julkaise tarkistettu rajattu korjausjoukko normaalisti PR #330:een.
+2. Vaadi uuden jäädytetyn headin kaikki normaalit PR-portit ja auditointi;
+   ei muuttumattoman lähteen uusintasilmukkaa tai turva-/aikarajojen lievennystä.
 3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
    main-revision omat tarkistukset. W7.5 tai koko 0.3.0 ei ole vielä hyväksytty.
 

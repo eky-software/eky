@@ -5,6 +5,84 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+<a id="m1-checkpoint-20261114-pr330-908"></a>
+
+## M1:n checkpoint ennen PR330:n ympäristö- ja valmistelukorjausta 14.11.2026
+
+Alla on edellinen aktiiviosuus muuttamattomana. Sen lähdeportit ja avoimet
+ensihylkäykset säilyvät; nykyinen työjono on M1:ssä.
+
+**14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
+Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
+ensimmäisen CI-kierroksen head `e2acc40e`. Hyväksytty lähtö on main `9657fdc1`
+ja PR #327/#328. Säilytä kaikki paikalliset korjaukset.
+[Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+sekä [tuontijournalin](local-company-workspace-plan.md#w75-original-import-read-contract-20261112)
+ja [sidontatallentimen](local-company-workspace-plan.md#w75-binding-leading-read-20261113)
+hyväksytyt rajaukset säilyvät. Hyväksyttyjä paketteja ei avata ilman regressiota.
+
+**Ensimmäinen PR-kierros hylkäsi.**
+[V2-ajo 43517211792](https://github.com/eky-software/eky/actions/runs/43517211792)
+päättyi: 28 onnistui, viisi hylkäsi, yksi peruttiin ja kymmenen ohitettiin.
+Ohituksista kuusi oli tarkoituksella valitsemattomia diagnostiikkatöitä;
+neljä muuta ei ole hyväksyttyä kattavuutta. Todellinen checkout oli
+`b0326c603627e12cb901e8061fb899895aed5da2`, ei PR-head.
+[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43517211725)
+läpäisi. PR ei ole mergevalmis.
+
+Nykyinen rajattu korjaus ja avoimet syyt:
+- Linuxin system/web pysähtyivät työkalujen `metadataInvalid`-ennakkotarkistukseen.
+  Alkuperäiset salatut paketit, ajosidonnat ja säilyneet tavut varmennettiin.
+  Tarkka hylännyt tarkistus puuttuu: lähdekiintiö säilytti yhden invokaation
+  toistovirheitä. Keräimen korjattu järjestys antaa eri invokaatioiden
+  yhteenvedoille ja ensimmäisille virheille etusijan toistoihin nähden.
+  Nykyiset rajat ja validoinnit säilyvät. Rajatut 79 kontrollia ja koko
+  nykyinen 371 testin salatun virheaineiston komento läpäisivät; joukot
+  ovat päällekkäisiä. Oikea salaus/purku, alkuperäisten tavujen vertailu
+  ja riippumaton katselmus läpäisivät.
+  Tämä korjaa todetun keräysaukon, ei tuntematonta Linuxin alisyytä.
+- Workspace-sopimustesti odotti vanhaa tukiviennin JavaScript-ilmaisua.
+  Kahden kontrolloidun fixtureväittämän korjaus ja salaus/purku läpäisivät;
+  todellisen valmiusodotuksen oma suorituskoe säilyy erillisenä.
+- Electronin alkuperäinen väittämä osoitti vain siltalistan puuttuvan
+  `deleteWorkspace`-metodin. Täsmällinen sallittujen metodien lista päivitettiin;
+  nimetty oikean Electronin rajatesti läpäisi ilman uusintaa.
+  Raakaa IPC:tä, Nodea tai tiedostopääsyä ei sallittu.
+- Desktopin Linux-sarja hylkäsi 87 testiä neljässä tiedostossa.
+  Rajatut fixturekorjaukset koskevat yksityisiä hakemisto-/tiedosto-oikeuksia
+  ja vanhaa smoke-odotusta. Kolmen tiedoston 868 testiä sekä erillisen
+  käynnistystiedoston 28 testiä ja tyypitys läpäisivät. Käynnistysfixture
+  valmistelee todellisen valitun juuren ja vaatii täsmälleen tarkoitetun
+  alkuperäisen virheen; sen vanhan CI-virheen puuttuvaa alisyytä ei arvata.
+  Windows-läpäisy ei yksin todista Linux-korjausta. Koontihylkäys on
+  seurannainen, ei erillinen juurisyy. Korjausten rajattu riippumaton
+  katselmus ei löytänyt uutta korjattavaa.
+
+Jo säilyvä lähdenäyttö: normaali koko desktop-komento ja sama 23 kohteen /
+kymmenen roolin ketju läpäisivät 240 sekunnin testirajassa; web-, backend-,
+HTTP- ja E2E-ajurien vaikutusportit sekä stress ja täysi soak läpäisivät.
+Oikeat Electronin poisto-/tukivientipolut läpäisivät ilman uusintoja.
+Puhdas lähde `03f97967` rakennettiin kerran: tavallinen hardened smoke ja
+kaikki viisi paketoitua palautus/poistotapausta läpäisivät samoilla tavuilla.
+Myöhempi checkpoint-commit ei vaihda paketin build-identiteettiä.
+Koko A-E:n riippumaton koodikatselmus valmistui; muuttuneet korjaukset
+katselmoidaan erikseen. [Täsmällinen aiempi näyttö ja avoimet ensihylkäykset](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330)
+säilyvät historiassa, eivät rinnakkaisena työjonona.
+
+Seuraavaksi:
+1. Julkaise tarkistettu rajattu korjausjoukko normaalisti PR #330:een;
+   säilytä alkuperäiset virheet ja erilliset lähdesidonnat.
+2. Vaadi jäädytetyn korjausrevision normaalit PR-portit sekä auditointi.
+   Puuttuva Linux-alisyy tai uusi hylkäys käsitellään aineistosta; ei vihreyteen
+   tähtäävää uusintasilmukkaa tai aikarajojen/turvavartijoiden kevennystä.
+3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
+   main-revision omat tarkistukset. W7.5 tai koko 0.3.0 ei ole vielä hyväksytty.
+
+`DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
+tulosodotus; globaali 10 sekunnin oletus ei muutu. Aiemmat timeoutit,
+tuntemattomat syyt ja siivousepävarmuudet säilyvät avoimina.
+Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
+
 <a id="m1-checkpoint-20261114-pr330"></a>
 
 ## M1:n checkpoint ennen PR330:n korjauskierrosta 14.11.2026
