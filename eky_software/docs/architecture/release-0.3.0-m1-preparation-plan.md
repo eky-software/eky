@@ -7,68 +7,52 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 ## Jatka tästä
 
-**14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
-Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
-edellisen PR-kierroksen head `5f11f2a2`. Hyväksytty lähtö on main
-`9657fdc1` ja PR #327/#328. Säilytä paikallinen luettelointiodotuksen korjaus.
+**14.11.2026: W7.5 A-E on toteutettu; viimeisen checkpointin PR-portit
+ja uuden main-revision omat portit ovat vielä tekemättä.**
+Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330).
+Viimeksi todennettu PR-head on `e1511b131ad73d2b9651379bccf69a1623dea005`;
+hyväksytty lähtö main `9657fdc1` ja PR #327/#328.
 [Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
-ja hyväksytyt tuontijournalin/sidontatallentimen rajaukset säilyvät.
-Hyväksyttyjä paketteja ei avata ilman regressiota.
+ja hyväksytyt sidonta-/tuontijournalirajaukset säilyvät. Hyväksyttyjä paketteja
+ei avata uudelleen ilman omaa regressiota.
 
-[V2-ajo 43542629431](https://github.com/eky-software/eky/actions/runs/43542629431)
-päättyi hylättynä: 38 onnistui, kaksi hylkäsi ja kuusi tarkoituksella
-valitsematonta diagnostiikkatyötä ohitettiin. Core-verify hylkäsi
-E2E-testikomentonsa luettelointiodotukseen; koontihylkäys on sen seuraus.
-Todellinen checkout hylänneessä työssä oli
-`86aab82cc50ba43a063dd86c8f059017ea4abb3c`, ei PR-head.
-[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43542629292)
-läpäisi. Edellisen kierroksen startup-v2/v3- ja desktopin runner-odotuskorjaukset
-läpäisivät nyt system- ja package-työt CI:ssä, samoin muut valitut portit.
-PR ei ole mergevalmis.
+[e151:n V2-ajo 43547267749](https://github.com/eky-software/eky/actions/runs/43547267749)
+ja [riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43547267589)
+ovat päättyneet. Yksi supervisor-kohdeuusinta läpäisi 172 testiä ja uusi
+koonti läpäisi; muut 38 onnistunutta suoritusta sekä sovelluspaketit
+säilyivät ennallaan. Lopputila on 40 onnistunutta työtä ja kuusi
+tarkoituksella valitsematonta diagnostiikkatyötä. Myös oikea Linuxin
+eristetty profile inspection läpäisi. Uusi checkpoint-head ei peri näitä portteja.
 
-Nykyinen rajattu korjaus on vain E2E-ajokytkentätestissä:
-- Oikea Playwright-`--list` onnistui, mutta testi odotti CI:ssäkin paikallista
-  tekstilistaa. Nykyinen turvallinen reportteri palauttaa tarkoituksella
-  kolme JSON-tilaa ilman testin nimeä. Alkuperäinen salattu poikkeus ja kaikki
-  kolme payloadia sekä lähdesidonta varmennettiin; kyse ei ollut timeoutista.
-- Testi tarkistaa nyt nykyisen reportterimuodon: paikallisesti sama tekstilista,
-  CI:ssä täsmällinen yksi valinta oikeasta projektista/tiedostosta,
-  `notRun: 1`, nolla yritystä ja nolla suoritettua testiä tai virhettä.
-  Luettelointi ei ole käyttäjäpolun ajonäyttö. Reportteria, ympäristön
-  CI-suojausta, 4/5 sekunnin rajoja tai 128 KiB:n tulostusrajaa ei muuteta.
-- Paikallinen koko tiedosto läpäisi 87 testiä, oikean CLI:n paikallinen
-  CI-reportterikoe yhden ja koko normaali E2E-komento paikallisessa CI-tilassa
-  87 + 789 + 515 testiä ilman ohituksia. Joukot ovat päällekkäisiä.
-  E2E-tyypitys läpäisi. Tämä ei vielä todenna hosted-Linux-kierrosta.
-  Yhden testiomistajan riippumaton katselmus ei löytänyt korjattavaa.
+**Rajattu etenemispäätös 14.11.2026:** omistaja hyväksyi vain nimetyn
+MSI-ikkunatestin ensihylkäyksen osalta etenemisen normaaliin mergeen ja
+mainin omiin portteihin. Alkuperäisen aikakatkaisun syy ja native-alipuun
+erillinen loppusiivousnäyttö jäävät avoimiksi, eivät korjatuiksi tai
+jälkikäteen onnistuneiksi. [Ensihylkäys, todellinen checkout ja päätös](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-e151-msi)
+säilyvät historiassa. Päätös ei ohita yhtään uutta hylkäystä tai PR/main-porttia
+eikä anna lisäuusintaa. Stderr-, valmistelu-, turva-, aika- ja siivousehdot säilyvät.
 
-[Kolmen Linux-kuluttajan ympäristörajaus](e2e-test-environment.md#linux-ci),
-eksplisiittiset permissions/auth-buildit ja ajokytkentätiedoston erillinen
-ajo säilyvät. Verifyn myöhempi oikea Linux-inspection jäi vielä ajamatta.
-Vanhat luettelointi- ja muut timeout-syyt pysyvät avoimina; niitä ei nimetä
-korjatuiksi onnistuneella erillisajolla.
-
-Säilyvä toiminnallinen näyttö: koko desktop ja sama 23 kohteen ketju,
-web/backend/HTTP, stress ja täysi soak sekä oikeat Electronin poisto-/
-tukivientipolut läpäisivät. Puhdas lähde `03f97967` rakennettiin kerran:
-hardened smoke ja kaikki viisi paketoitua palautus/poistotapausta läpäisivät
-samoilla tavuilla. Myöhempi checkpoint ei muuta paketin build-identiteettiä.
-Koko A-E:n riippumaton koodikatselmus on tehty; muuttuneet korjaukset
-katselmoidaan erikseen. [Aiemmat kierrokset ja avoimet havainnot](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-5f)
-säilyvät historiassa.
+Säilyvä näyttö: koko desktop ja sama 23 kohteen ketju, web/backend/HTTP,
+stress ja täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
+Puhdas lähde `03f97967` rakennettiin kerran; hardened smoke ja kaikki viisi
+paketoitua palautus-/poistotapausta läpäisivät samoilla tavuilla.
+Myöhempi checkpoint ei muuta build-identiteettiä. Koko A-E ja myöhempien
+korjausten kumulatiivinen koodi on katselmoitu riippumattomasti ilman avoimia
+löydöksiä; uusi koodikorjaus vaatii oman rajatun katselmuksensa.
 
 Seuraavaksi:
-1. Julkaise osoitettu katselmoitu testikorjaus ja lyhyt ohje normaalisti
-   samaan PR:ään; säilytä päättyneen kierroksen ensivirhe ja lähdesidonta.
-2. Vaadi uuden jäädytetyn headin kaikki normaalit portit sekä auditointi.
-3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
-   main-revision omat tarkistukset. Ei uusintasilmukkaa tai turva-/aikarajojen
-   lievennystä; W7.5 tai koko 0.3.0 ei ole vielä hyväksytty.
+1. Julkaise rajattu dokumentticheckpoint samaan PR:ään ja vaadi sen oman
+   täsmä-headin kaikki valitut/pakolliset portit sekä auditointi.
+2. Tee normaali suojattu merge vasta hyväksyttyjen porttien jälkeen;
+   varmista sitten uuden main-revision omat portit.
+3. Säilytä ensivirheet ja käytetty kohdeuusinta erillään. Dokumenttimuutos
+   ei nollaa [uusintarajaa](../ai/testing-rules.md#enintään-yksi-uusinta).
+   Uusi hylkäys käsitellään ennen etenemistä; ei turva-/aikarajojen lievennystä.
+   W7.5 ja koko 0.3.0 eivät ole vielä hyväksyttyjä.
 
 `DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
-tulosodotus; globaali 10 sekunnin oletus ei muutu. Aiemmat timeoutit,
-tuntemattomat syyt ja siivousepävarmuudet säilyvät avoimina.
-Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
+tulosodotus; globaali 10 sekunnin oletus säilyy. Vanhat timeout-syyt ja
+epävarmuudet jäävät avoimiksi. Poiston tiukka vartija ei saa periytyä luentavartijasta.
 
 ## Voimassa olevat sopimukset
 

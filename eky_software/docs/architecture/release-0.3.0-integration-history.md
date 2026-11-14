@@ -5,6 +5,106 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+<a id="m1-checkpoint-20261114-pr330-e151-msi"></a>
+
+## PR330:n e151-revision MSI-ensihylkäys ja rajattu etenemispäätös 14.11.2026
+
+PR-head oli `e1511b131ad73d2b9651379bccf69a1623dea005`, hyväksytty lähtö
+main `9657fdc17a5457bfaec7c6aa5ebf1661a5130f85`. V2-ajon
+[43547267749](https://github.com/eky-software/eky/actions/runs/43547267749)
+ensimmäinen yritys päättyi 38 onnistumiseen, kahteen hylkäykseen ja kuuteen
+tarkoituksella valitsemattomaan diagnostiikkatyöhön. Ainoa alkuperäinen
+hylkäys oli supervisorin toiston 2 synteettisen MSI-ikkunatestin
+`listProcessId / providerException / 0x80131505`; koontihylkäys oli sen seuraus.
+Todellinen checkout oli `4c3ec12517e4d0fb09cff65ede4e6825ede5c430`.
+Alkuperäinen salattu aineisto ja kaikki 24 payloadia varmennettiin.
+
+Rajattu lähde- ja kutsukohtainen tarkistus ei osoittanut korjattavaa vikaa.
+Yksi nykyisen työn kohdeuusinta samalla lähteellä ja todellisella checkoutilla
+läpäisi 172 testiä ilman ohituksia sekä omat sulkutarkistuksensa. Uusi koonti
+läpäisi. Muut 38 onnistunutta suoritusta ja valmiit sovelluspaketit säilyivät
+ennallaan; uusia varsinaisia suorituksia olivat vain supervisor ja koonti.
+Lopputilassa oli 40 onnistunutta työtä ja kuusi tarkoituksella valitsematonta
+diagnostiikkatyötä. Erillinen riippuvuustarkistus läpäisi samalla PR-headilla.
+
+Omistaja hyväksyi 14.11.2026 tämän nimenomaisen ensihylkäyksen osalta rajatun
+etenemisen normaaliin mergeen ja uuden mainin omiin portteihin. Alkuperäisen
+aikakatkaisun syy ja native-alipuun erillinen loppusiivousnäyttö säilyvät
+avoimina. Niitä ei merkitä korjatuiksi tai jälkikäteen onnistuneiksi.
+Päätös ei ohita uutta hylkäystä, uutta PR-headia koskevia portteja eikä
+mainin omia vaatimuksia. Se ei anna lisäuusintaa tai muuta stderr-,
+valmistelu-, turva-, aika- tai siivousehtoja. W7.5 ei sulkeudu tällä päätöksellä.
+
+<a id="m1-checkpoint-20261114-pr330-e151"></a>
+
+## M1:n checkpoint ennen PR330:n e151-kierroksen MSI-hylkäystä 14.11.2026
+
+Alla on edellinen aktiiviosuus muuttamattomana. Se kuvaa luettelointikorjauksen
+julkaisua edeltävää tilaa, ei nykyistä työjonoa tai uutta hyväksyntää.
+
+**14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
+Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
+edellisen PR-kierroksen head `5f11f2a2`. Hyväksytty lähtö on main
+`9657fdc1` ja PR #327/#328. Säilytä paikallinen luettelointiodotuksen korjaus.
+[Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+ja hyväksytyt tuontijournalin/sidontatallentimen rajaukset säilyvät.
+Hyväksyttyjä paketteja ei avata ilman regressiota.
+
+[V2-ajo 43542629431](https://github.com/eky-software/eky/actions/runs/43542629431)
+päättyi hylättynä: 38 onnistui, kaksi hylkäsi ja kuusi tarkoituksella
+valitsematonta diagnostiikkatyötä ohitettiin. Core-verify hylkäsi
+E2E-testikomentonsa luettelointiodotukseen; koontihylkäys on sen seuraus.
+Todellinen checkout hylänneessä työssä oli
+`86aab82cc50ba43a063dd86c8f059017ea4abb3c`, ei PR-head.
+[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43542629292)
+läpäisi. Edellisen kierroksen startup-v2/v3- ja desktopin runner-odotuskorjaukset
+läpäisivät nyt system- ja package-työt CI:ssä, samoin muut valitut portit.
+PR ei ole mergevalmis.
+
+Nykyinen rajattu korjaus on vain E2E-ajokytkentätestissä:
+- Oikea Playwright-`--list` onnistui, mutta testi odotti CI:ssäkin paikallista
+  tekstilistaa. Nykyinen turvallinen reportteri palauttaa tarkoituksella
+  kolme JSON-tilaa ilman testin nimeä. Alkuperäinen salattu poikkeus ja kaikki
+  kolme payloadia sekä lähdesidonta varmennettiin; kyse ei ollut timeoutista.
+- Testi tarkistaa nyt nykyisen reportterimuodon: paikallisesti sama tekstilista,
+  CI:ssä täsmällinen yksi valinta oikeasta projektista/tiedostosta,
+  `notRun: 1`, nolla yritystä ja nolla suoritettua testiä tai virhettä.
+  Luettelointi ei ole käyttäjäpolun ajonäyttö. Reportteria, ympäristön
+  CI-suojausta, 4/5 sekunnin rajoja tai 128 KiB:n tulostusrajaa ei muuteta.
+- Paikallinen koko tiedosto läpäisi 87 testiä, oikean CLI:n paikallinen
+  CI-reportterikoe yhden ja koko normaali E2E-komento paikallisessa CI-tilassa
+  87 + 789 + 515 testiä ilman ohituksia. Joukot ovat päällekkäisiä.
+  E2E-tyypitys läpäisi. Tämä ei vielä todenna hosted-Linux-kierrosta.
+  Yhden testiomistajan riippumaton katselmus ei löytänyt korjattavaa.
+
+[Kolmen Linux-kuluttajan ympäristörajaus](e2e-test-environment.md#linux-ci),
+eksplisiittiset permissions/auth-buildit ja ajokytkentätiedoston erillinen
+ajo säilyvät. Verifyn myöhempi oikea Linux-inspection jäi vielä ajamatta.
+Vanhat luettelointi- ja muut timeout-syyt pysyvät avoimina; niitä ei nimetä
+korjatuiksi onnistuneella erillisajolla.
+
+Säilyvä toiminnallinen näyttö: koko desktop ja sama 23 kohteen ketju,
+web/backend/HTTP, stress ja täysi soak sekä oikeat Electronin poisto-/
+tukivientipolut läpäisivät. Puhdas lähde `03f97967` rakennettiin kerran:
+hardened smoke ja kaikki viisi paketoitua palautus/poistotapausta läpäisivät
+samoilla tavuilla. Myöhempi checkpoint ei muuta paketin build-identiteettiä.
+Koko A-E:n riippumaton koodikatselmus on tehty; muuttuneet korjaukset
+katselmoidaan erikseen. [Aiemmat kierrokset ja avoimet havainnot](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-5f)
+säilyvät historiassa.
+
+Seuraavaksi:
+1. Julkaise osoitettu katselmoitu testikorjaus ja lyhyt ohje normaalisti
+   samaan PR:ään; säilytä päättyneen kierroksen ensivirhe ja lähdesidonta.
+2. Vaadi uuden jäädytetyn headin kaikki normaalit portit sekä auditointi.
+3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
+   main-revision omat tarkistukset. Ei uusintasilmukkaa tai turva-/aikarajojen
+   lievennystä; W7.5 tai koko 0.3.0 ei ole vielä hyväksytty.
+
+`DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
+tulosodotus; globaali 10 sekunnin oletus ei muutu. Aiemmat timeoutit,
+tuntemattomat syyt ja siivousepävarmuudet säilyvät avoimina.
+Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
+
 <a id="m1-checkpoint-20261114-pr330-5f"></a>
 
 ## M1:n checkpoint ennen PR330:n luettelointireportterin odotuskorjausta 14.11.2026
