@@ -599,15 +599,15 @@ function assertLinuxCoreSplit(source) {
     'Verify Linux isolated profile inspection': "        env:\n          EKY_E2E: '1'\n        run: pnpm --filter @eky/desktop inspection:proof:linux",
   };
   const jobs = {
-    'test-packages': { name: 'Package regression tests', steps: ['Run desktop tests'], key: 'core-tests' },
-    verify: { name: 'Test, typecheck and build', steps: Object.keys(commands).slice(1), key: 'core-verify' },
+    'test-packages': { name: 'Package regression tests', runner: 'ubuntu-latest', steps: ['Run desktop tests'], key: 'core-tests' },
+    verify: { name: 'Test, typecheck and build', runner: 'ubuntu-24.04', steps: Object.keys(commands).slice(1), key: 'core-verify' },
   };
   const setups = [];
   for (const [id, definition] of Object.entries(jobs)) {
     const job = workflowJob(source, id);
     assert.deepEqual(job.match(/^    name: .+$/gmu), [`    name: ${definition.name}`]);
     assert.deepEqual(job.match(/^    if: .+$/gmu), ["    if: inputs.risk_plan != ''"]);
-    assert.deepEqual(job.match(/^    runs-on: .+$/gmu), ['    runs-on: ubuntu-latest']);
+    assert.deepEqual(job.match(/^    runs-on: .+$/gmu), [`    runs-on: ${definition.runner}`]);
     assert.deepEqual(job.match(/^    timeout-minutes: .+$/gmu), ['    timeout-minutes: 15']);
     assert.deepEqual(job.match(/^    needs: .+$/gmu) ?? [], id === 'verify' ? ['    needs: [test-packages]'] : []);
     assert.match(job, /defaults:\n      run:\n        working-directory: eky_software/u);
@@ -631,7 +631,13 @@ test('Linux core split keeps mandatory sequential jobs and all original commands
   const core = await readFile(new URL('../workflows/ci.yml', import.meta.url), 'utf8');
   assertLinuxCoreSplit(core);
   const tests = workflowJob(core, 'test-packages'), build = workflowJob(core, 'verify');
+  const inspectionName = 'Verify Linux isolated profile inspection';
+  const inspection = `      - name: ${inspectionName}\n${workflowStep(build, inspectionName)}\n`;
+  assert.ok(build.includes(inspection));
   for (const [job, changed] of [
+    [tests, tests.replace('runs-on: ubuntu-latest', 'runs-on: ubuntu-24.04')],
+    ...['ubuntu-latest', 'ubuntu-26.04', 'self-hosted'].map(runner =>
+      [build, build.replace('runs-on: ubuntu-24.04', `runs-on: ${runner}`)]),
     [build, build.replace('    needs: [test-packages]\n', '')],
     [build, build.replace('    needs: [test-packages]', '    needs: []')],
     [tests, tests.replace("if: inputs.risk_plan != ''", 'if: always()')],
@@ -648,6 +654,10 @@ test('Linux core split keeps mandatory sequential jobs and all original commands
     [build, build.replace('run: pnpm typecheck', 'if: false\n        run: pnpm typecheck')],
     [build, build.replace('run: pnpm --filter @eky/desktop build', 'run: pnpm --filter @eky/desktop build || true')],
     [build, build.replace('name: Verify Linux isolated profile inspection', 'name: Missing Linux proof')],
+    [build, build.replace(inspection, '')],
+    ...['Build backend', 'Build web', 'Build desktop', 'Prepare Linux inspection Electron runtime'].map(name =>
+      [build, build.replace(inspection, '').replace(`      - name: ${name}\n`,
+        `${inspection}\n      - name: ${name}\n`)]),
     [tests, tests.replace('job-key: core-tests-', 'job-key: core-verify-')],
   ]) {
     assert.notEqual(changed, job);
@@ -688,7 +698,8 @@ test('core jobs preserve their exact approved preparation and execution budgets'
 
 function verifyLinuxDiagnostics(source, definition) {
   const section = workflowJob(source, definition.job);
-  assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-latest/u);
+  assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-24\.04/u);
+  assert.deepEqual(section.match(/^    runs-on: .+$/gmu), ['    runs-on: ubuntu-24.04']);
   assert.match(section, new RegExp(`    timeout-minutes: ${definition.timeout}\\n`, 'u'));
   assert.match(section, /working-directory: eky_software/u);
   const required = withoutOptionalEvidenceAllowance(section, 1, false, 'Linux')
@@ -763,6 +774,11 @@ test('Linux diagnostic wiring rejects ungated, unbound, reordered and swallowed-
   for (const definition of linuxConsumers) {
     const section = verifyLinuxDiagnostics(core, definition);
     const steps = linuxDiagnosticSteps(definition);
+    for (const runner of ['ubuntu-latest', 'ubuntu-26.04', 'self-hosted']) {
+      const changed = section.replace('runs-on: ubuntu-24.04', `runs-on: ${runner}`);
+      assert.notEqual(changed, section);
+      assert.throws(() => verifyLinuxDiagnostics(core.replace(section, changed), definition));
+    }
     for (const name of steps) {
       const original = workflowStep(section, name);
       for (const changed of [

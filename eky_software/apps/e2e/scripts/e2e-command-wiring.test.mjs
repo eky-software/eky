@@ -140,11 +140,13 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/e2e-command-wiring.test.mjs scripts/windowsBackendOwnerBuild.test.mjs scripts/safeCiReporter.test.mjs scripts/compositionPreflightRelay.test.mjs scripts/electronLifecycleProjection.test.mjs scripts/workspaceDeletionFailureEvidence.test.mjs scripts/workspaceAdoptionProofEvidence.test.mjs scripts/e2eRunArtifacts.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/playwrightElectronProcessKill.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs experiments/processOwnership/linuxServiceContract.test.mjs experiments/processOwnership/linuxServiceControl.test.mjs experiments/processOwnership/linuxServiceSession.test.mjs';
+const wiringContractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/e2e-command-wiring.test.mjs';
+const contractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/windowsBackendOwnerBuild.test.mjs scripts/safeCiReporter.test.mjs scripts/compositionPreflightRelay.test.mjs scripts/electronLifecycleProjection.test.mjs scripts/workspaceDeletionFailureEvidence.test.mjs scripts/workspaceAdoptionProofEvidence.test.mjs scripts/e2eRunArtifacts.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/playwrightElectronProcessKill.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs experiments/processOwnership/linuxServiceContract.test.mjs experiments/processOwnership/linuxServiceControl.test.mjs experiments/processOwnership/linuxServiceSession.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
-  assert.equal(e2eManifest.scripts.test, contractCommand + ' && pnpm test:consumer-loss');
+  assert.equal(e2eManifest.scripts.test,
+    [...preparations.slice(2, 4), wiringContractCommand, contractCommand, 'pnpm test:consumer-loss'].join(' && '));
   assert.equal(e2eManifest.scripts['test:consumer-loss'], consumerContractCommand);
   assert.equal(e2eManifest.scripts['linux:consumer:build'],
     'node experiments/processOwnership/linuxConsumerLossBuildCli.mjs');
@@ -165,6 +167,24 @@ function assertWiring(rootManifest, e2eManifest) {
     );
   }
 }
+
+test('Node contract discovery requires both shared builds before the real loader', () => {
+  const [permissionsBuild, authBuild] = preparations.slice(2, 4);
+  const command = e2e.scripts.test;
+  for (const changedCommand of [
+    command.replace(`${permissionsBuild} && `, ''),
+    command.replace(`${authBuild} && `, ''),
+    command.replace(`${permissionsBuild} && ${authBuild}`, `${authBuild} && ${permissionsBuild}`),
+    command.replace(`${authBuild} && ${wiringContractCommand}`, `${wiringContractCommand} && ${authBuild}`),
+    command.replace(`${wiringContractCommand} && `, ''),
+    command.replace(`${wiringContractCommand} && ${contractCommand}`, `${contractCommand} && ${wiringContractCommand}`),
+  ]) {
+    assert.notEqual(changedCommand, command);
+    const changed = structuredClone(e2e);
+    changed.scripts.test = changedCommand;
+    assert.throws(() => assertWiring(root, changed), assert.AssertionError);
+  }
+});
 
 test('packaged legacy recovery requires preparation and a fresh hardened package', () => {
   for (const removed of ['pnpm e2e:prepare && ', 'pnpm --filter @eky/desktop installer:supervisor:build && ',

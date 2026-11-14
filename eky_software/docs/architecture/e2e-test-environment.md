@@ -163,6 +163,16 @@ vanhentunut tai epäonnistunut valmistelu ei saa käyttää aiempaa buildia
 onnistumisena. Uusi testi lisätään matriisin lisäksi oikeaan ajovalintaan;
 pelkkä tiedoston olemassaolo tai `--list` ei ole testiläpäisy.
 
+E2E-paketin tavallinen `test` rakentaa nykyisillä build-omistajilla ensin
+`@eky/permissions`- ja `@eky/auth`-tuotteet. Nykyinen
+`e2e-command-wiring.test.mjs` ajetaan ensin erillisenä Node-komentona,
+sitten muut nykyiset Node-sopimustiedostot ja consumer-loss-koonti.
+Todellisen Playwright-luetteloinnin valmistelu ei näin kilpaile muiden
+Node-fixturetiedostojen kanssa. Muiden tiedostojen rinnakkaisuus, kaikkien
+testien valinta ja omat aikarajat säilyvät. Luettelointi tarvitsee nämä
+runtime-exportit myös puhtaassa lähdepuussa; vanha `dist` ei ole valmistelu.
+Tämä ei rakenna tai käynnistä backend-, selain- tai Electron-runtimea.
+
 T1:n regressiosuoja hylkää puuttuvan testitiedoston, package-kutsun tai
 workflow-kytkennän, väärän ryhmän ja vaaditun sarjallisuuden puutteen.
 Myös ajokytkennän suojatesti itse kuuluu kanoniseen komentoon. Tiedosto-
@@ -329,6 +339,18 @@ todentaa tämän erikseen stdoutille, stderrille ja molemmille yhdessä.
 Välittäjän poistuminen ei edelleenkään ole koko prosessipuun siivoustodiste.
 
 ### Linux-CI
+
+Nykyisen CI-palveluketjun tuettu GitHub-hosted-ympäristö on `ubuntu-24.04`
+vain `ci.yml`:n töille `verify`, `e2e-system-security` ja `e2e-web-critical`.
+Kolmas kuluttaja on `verify`:n todellinen eristetyn tarkistuksen koe.
+`test-packages` ja muiden töiden nykyiset labelit säilyvät. Rajaus säilyttää
+alla olevan työkalujen luottamussopimuksen; se ei salli linkkien seuraamista,
+työkalun vaihtoa tai hostin korjaamista. [GitHubin latest-siirtymä](https://github.com/actions/runner-images/issues/14748)
+ei yksin hyväksy uutta käyttöjärjestelmää tämän ketjun ympäristöksi.
+Label sitoo OS-perheen, ei muuttumattomia image-tavuja. Nykyinen CI-omistaja
+varmentaa normaalit portit ja arvioi rajauksen uudelleen upstream-tuen,
+työkalurakenteen tai pakollisen tarkistuksen muuttuessa. Määräajat,
+komennot, testivalinta ja siivousvaatimukset säilyvät ennallaan.
 
 Omistaja käyttää kertakäyttöistä transient-unitia ja kiinteää
 systemd -> unshare -> setpriv -ketjua. Node, Playwright ja työkuorma

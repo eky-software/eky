@@ -215,6 +215,10 @@ auth- ja backend-E2E-tuotteet sekä Windowsissa prosessiomistajan.
 buildit, desktop-E2E-buildin sekä backend-stagen. `security`, `fault` ja `all`
 käyttävät Electron-valmistelua ja tarvitsevat Windowsin. Pelkkä `pnpm test`
 ajaa workspace-testit, ei tätä Playwright-skenaariovalikoimaa.
+E2E-paketin Node-sopimuskomento rakentaa ensin permissions- ja auth-exportit
+todellista luettelointia varten. Nykyinen ajokytkentätiedosto ajetaan ennen
+muita Node-fixturetiedostoja; testivalinta ja aikarajat säilyvät, eikä
+sovellus-runtimea käynnistetä.
 
 Yksittäinen system- tai web-tiedosto valmistellaan ensin; suora `exec` ei buildaa:
 

@@ -212,6 +212,12 @@ Testien omat aikarajat, valmistelu, eristys ja uusintaehdot eivät muutu.
 Jaon ajotodennus vaatii uuden revision CI:n; lähdetarkistus ei yksin hyväksy
 sitä tai muuta ensimmäistä kokonaiskatkaisua onnistumiseksi.
 
+Todellisen Linux-palveluketjun OS-perheen omistaa
+[E2E-ympäristön kolmen työn rajaus](../architecture/e2e-test-environment.md#linux-ci).
+Sama valmistelukomento ei tarkoita samaa runner-labelia: desktopin
+`test-packages` säilyttää nykyisen labelinsa, `verify` käyttää palveluketjun
+ympäristöä. Työnjako, pakolliset vaiheet ja kokonaisbudjetit eivät muutu.
+
 ## Palautustestin erillinen valmistelu
 
 Omistajan hyväksymä pysyvä aikabudjetti koskee vain
