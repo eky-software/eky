@@ -60,8 +60,8 @@ Tavoite on vähentää päällekkäistä työtä, ei turvallisuutta tai tarkistu
   täysimittaista analyysia pelkkää odottamista tai muuttumatonta tilatietoa
   varten. Käytä CI:ssä [yhtä seurantavastuuta](#ci-ajon-seuranta-ja-virhetodisteet)
   ja olemassa olevia keräystyökaluja.
-  Omistajan mallirajaus koskee myös delegointia: älä kierrä oletusmallia
-  teettämällä työtä vahvemmalla aliagentilla ilman hyväksyttyä poikkeusta.
+  Omistajan hyväksymä mallijoukko ja työnjako koskevat myös delegointia;
+  vahvempi aliagentti ei laajenna tehtävän valtuuksia.
 - Kokoa toteutus ja katselmointi rajatuksi toiminnalliseksi checkpointiksi,
   älä automaattisesti omaksi kierrokseksi jokaista apufunktiota varten.
   Rajaa jatkokatselmus muuttuneeseen osaan ja sen vaikutuksiin; älä teetä
@@ -101,7 +101,7 @@ työnaikaisia riippumattomia katselmuksia, testejä tai PR/main-portteja eikä
 oikeuta laajaan sivurefaktorointiin. Jo hyväksyttyä kokonaisuutta ei
 katselmoida toistuvasti ilman muuttunutta vaikutusaluetta.
 
-Muuhun vahvemman mallin poikkeukseen kokoa ensin jo saadusta näytöstä
+Muuhun vahvemman mallin työvaiheeseen kokoa ensin jo saadusta näytöstä
 täsmällinen avoin kysymys, vastuurajat ja vaihtoehdot. Tavallinen toteutus,
 testiajot ja CI/Git-työ pysyvät oletusmallilla. Älä käynnistä samaa
 kokonaistutkimusta uudelleen tai jatka tuloksettomia koesilmukoita.
@@ -113,15 +113,14 @@ muuttaneesi asetusta ilman vahvistusta. Konekohtaiset mallitoiveet säilyvät
 paikallisissa ohjeissa, eivät tässä yhteisessä dokumentissa. Tarkista
 juuri-`AGENTS.md`:n osoittama paikallinen oletus, vaihtokynnys ja vähimmäistaso
 myös delegoinnissa.
-Omistaja säätää keskustelun mallin suosituksen perusteella; suositus tai
-ohjetiedoston muutos ei itsessään muuta ajonaikaista malliasetusta.
-
-Jos vaikeus tai riski muuttuu olennaisesti, anna uusi suositus ennen siihen
-liittyvää toteutusta. Jos työn turvallinen jatkaminen edellyttää suositeltua
-vaihtoa tai omistaja on pyytänyt vaihtosuosituksen yhteydessä taukoa,
-pysäytä kyseinen työ ja odota omistajan vaihtoa tai jatkopäätöstä.
-Muulloin lyhyt suositus riittää eikä samaan tehtävään tarvita toistuvia
-asetuskyselyjä. Kaikilla tasoilla noudatetaan samoja hyväksyntäportteja.
+Omistajan hyväksymän mallijoukon sisäinen tehtävävalinta ei tarvitse uutta
+lupaa eikä itsessään tauota Goalia. Kirjaa olennaisen vaihdon syy ja käytä
+vain varmennettua teknistä vaihtoreittiä tai rajattua delegointia; suositus
+tai ohjemuutos ei muuta aktiivisen keskustelun asetusta. Jos reitti puuttuu,
+rajaa mallia edellyttävä työ, raportoi tekninen este ja jatka soveltuvaa
+riippumatonta työtä. Hyväksytyn joukon ulkopuolinen valinta ja omistajan
+erillinen taukopyyntö säilyvät erillisinä päätöksinä. Kaikilla tasoilla
+noudatetaan samoja arkkitehtuuri-, turvallisuus- ja hyväksyntäportteja.
 
 ## Työn aloitusjärjestys
 
@@ -140,9 +139,15 @@ Tämä on jokaisen tehtävän pysyvä aloitusportti, ei julkaisukohtainen tarkis
 2. Tarkista pääohjeen osoittamat aihekohtaiset lukureitit ja kohdepolkujen
    soveltuvat `AGENTS.md`-tiedostot. Lue niiden osoittamat voimassa olevat
    vastuuohjeet, ADR:t ja tehtävän omistava suunnitelma.
+   Valitse tarkka tehtäväkohtainen reitti, älä koko ohjehistoriaa varmuuden
+   vuoksi. Jos tuloste katkeaa, lue puuttuva osa rajattuna uudelleen ennen
+   siihen tukeutumista. Tämä ei ohita lähteiden omia pakollisia lukureittejä.
 3. Tarkista myös vaikutusalueen testaus-, diagnostiikka-, tietoturva- ja
    palautettavuusohjeet. Kirjaa aloitukseen lyhyesti olennaiset luetut ohjeet
    ja avoimet päätökset; tiedostolista ei yksin osoita sisällön lukemista.
+   Jos tehtävä koskee poikkeusta tai valtuutta, nimeä lähteen perusteella sen
+   kohde ja käyttötilanne, sallittu ja kielletty käyttö sekä perustelu.
+   Varmista, että olennainen käyttöala ja perustelu näkyvät loppuvastauksessa.
 4. Jos tehtävän aikana sivutaan uutta osaa, toista tarkistus sen osalta ennen
    muutoksia. Anna aliagentille sama rajattu lukureitti; pääagentti tarkistaa
    tulosten ohjeenmukaisuuden.
@@ -157,25 +162,38 @@ rajataan ratkaistavaksi juuri-`AGENTS.md`:n etusija- ja pysäytyssäännöllä.
 
 ## Pienissä paloissa eteneminen
 
-AI:lle ei anneta liian suuria tehtäviä kerralla.
+Hyväksy yksi rajattu, toiminnallisesti valmis työpaketti: tavoite, omistajat,
+säilyvät sopimukset, toteutuspalat ja hyväksyntänäyttö. Toteuta sen sisällä
+pieniä katselmoitavia muutoksia ja kohdetestejä; apufunktio tai uusi tekninen
+selvitys ei itsessään tarvitse omaa omistajahyväksyntää. Rajaton moduulin tai
+koko ERP:n toteutus ei ole tällainen paketti.
 
-Vältä pyyntöjä kuten:
+Hyväksytty kokonaisuus kattaa suunnitelman sisäiset selvitykset, synteettiset
+kokeet, koodin ja testien korjaukset, sovitun sopimuksen säilyttävän kytkennän
+feature-haaran tuotantolähteeseen sekä kohdeajot ja pakolliset tarkistukset
+sovituissa aineisto- ja aikarajoissa. Tavallinen vaiheenvaihto ei ole uusi
+lupaportti. Kirjaa suunnitelmaan ehdollinen kytkentä, vaadittu näyttö sekä
+nimetty eristetty native-ajo rajoineen; suunnitelman sisäinen ajo ja sen
+valmistelu noudattavat alla olevaa [testausvaltuutta](#suunnitelman-sisältö-ja-hyväksyntä)
+ilman uutta rutiinilupaa.
+Lähdekytkentä ei ole julkaisu. Nimetyt kertaluvat, Goalin portit ja nykyinen
+mergevaltuus säilyvät; pelkkä koepäätös ei hyväksy uutta tuotannon
+havaintoikkunaa tai virhejärjestystä.
 
-- tee koko laskutusmoduuli
-- rakenna asiakashallinta
-- tee ERP:n backend
-- luo kaikki tietokantataulut
-- tee koko UI
+Omistajan nimenomainen laaja Goal-valtuus kattaa rajatun työpaketin tekniset
+ratkaisut, kokeet, korjaukset, kohdeajot ja näyttöön perustuvan ehdollisen
+lähdekytkennän feature-haaralla. Kirjaa delegoidun päätöksen kohde, tunnetut
+vaikutuserot, säilyvät rajat ja näyttöehdot omistavaan suunnitelmaan.
+Näiden sisäisiä teknisiä valintoja ei palauteta uusiksi lupakysymyksiksi;
+raportoi valinnat, näyttö, riskit ja eteneminen päivittäisessä tarkistuspisteessä.
+Valtuuden ulkopuolinen päätös eristetään raporttiin ja jatketaan hyödyllistä
+hyväksyttyä riippumatonta työtä. Varsinaiset hyväksyntä-, julkaisu- ja
+automaattitarkastusportit säilyvät; päiväpalaveri ei korvaa katselmusta.
 
-Suosi pieniä ja rajattuja tehtäviä:
-
-- luo customer-domainin alustavat tyypit
-- tee validointiskeema asiakkaan luonnille
-- lisää api-client-funktio asiakkaiden hakemiseen
-- kirjoita yksikkötestit laskun summalaskennalle
-- refaktoroi tämä tiedosto yhden vastuun periaatteen mukaiseksi
-
-Nollaa konteksti säännöllisesti. Kun siirryt täysin uuteen tehtävään tai moduuliin, aloita uusi chat-sessio.
+Jatka samaa työtä sen nykyisestä jatkamiskohdasta. Uusi chat on perusteltu
+aidosti itsenäiseen tehtävään, ei rutiininomainen kontekstin nollaus. Siirrä
+tarvittaessa tavoite, revisio, päätösperustelut, näyttö, avoimet asiat ja
+seuraava toimi nykyisten lähteiden viitteinä; älä kopioi koko keskustelua.
 
 ## Toteutussuunnitelma ennen koodaamista
 
@@ -187,10 +205,19 @@ Kirjaa lyhyesti tavoite, omistava vastuu, säilyvät sopimukset, rajauksen
 ulkopuoliset asiat ja avoimet kysymykset. Koko roadmapin hyväksyntä ei
 ratkaise sen erikseen päätettäviksi merkittyjä kysymyksiä.
 
-Ratkaise toteutukseen vaikuttavat avoimet kysymykset ja tarvittavat
-omistajapäätökset ennen koodimuutoksia. Jos uusi epäselvyys ilmenee työn
-aikana, pysäytä sen vaikutusalue ja päivitä suunnitelma; älä keksi sopimusta
-lennossa. Riippumaton, jo hyväksytty työ voi jatkua.
+Erota teknisesti selvitettävä fakta uudesta omistajapäätöksestä. Hyväksytty
+työpaketti kattaa sen sisäiset tutkimus-, synteettiset testi- ja korjauskierrokset
+päivällä ja yöllä ilman rutiinilupia. Uusi käyttäytymis-, arkkitehtuuri-,
+turvallisuus-, hyväksytyn sopimuksen ulkopuolinen tuotantokytkentä- tai julkaisupäätös
+ratkaistaan ennen sen vaikutusta; tekninen selvitys ei yksin ole tällainen
+päätös. Aja hyväksytyn työn testit suoraan. Esitä aito uusi omistajapäätös
+kerran näkyvänä valintana, rajaa sen vaikutus ja jatka nimettyä riippumatonta
+varatehtävää vain sen valmistumiseen asti; odota sen jälkeen uutta tietoa tai
+päätöstä. Päivitä omistava suunnitelma. Täsmällinen kertalupa ei laajene eikä
+muuttumattoman tilanteen uusintasilmukka muutu sallituksi työpaketin nojalla.
+Testiajoitusten itsenäisen muutoksen omistaa
+[aikabudjettiohje](testing-rules.md#testin-tuotannon-ja-cin-aikabudjetit);
+katso myös [testausvaltuus ja uusintaraja](testing-rules.md#hyväksytyn-työn-testausvaltuus).
 
 Valitse samalla tarvittava testinäyttö sekä arvioi ilmoitukset, lokitus,
 diagnostiikka, auditointi, dokumentointi, tietoturva ja palautettavuus
@@ -225,6 +252,19 @@ Koodaamista ei aloiteta ennen hyväksyntää, jos tehtävä:
 - koskee turvallisuutta
 - koskee laskutusta, käyttöoikeuksia tai audit trailia
 - koskee useita kerroksia yhtä aikaa
+
+Hyväksytyn työpaketin sisäiset suunnittelu-, toteutus-, korjaus- ja testivaiheet
+tehdään itsenäisesti sovituissa aineisto- ja aikarajoissa. Tämä kattaa myös
+turvallisuus- ja käyttäytymiserojen eristetyt synteettiset natiivikokeet sekä
+niiden välttämättömän paikallisen tilapäisen lähde-eristyksen: tavallinen
+valmistelutapa ei muodosta uutta omistajaporttia. Kanoninen lähdepuu,
+aiemmat todisteet ja käyttäjätiedot säilytetään; eristys ei ole uusi pysyvä
+kehityskopio. Kirjaa havaittu ero ja säilytä koetulos. Työkalujen nykyinen
+automaattitarkastus säilyy. Uusi turvallisuus- tai tuotantosopimus edellyttää
+ennen lähdekytkentää omistajan päätöstä tai omistavaan suunnitelmaan kirjattua
+[nimenomaista delegointia](#pienissä-paloissa-eteneminen) kyseiseen ehdokkaaseen
+ja sen vaikutuseroon. Omistajan nimenomaiset koerajaukset säilyvät; noudata
+[testausvaltuutta ja uusintarajaa](testing-rules.md#hyväksytyn-työn-testausvaltuus).
 
 Uusi riippuvuus vaatii aina oman hyväksyntänsä. Muun tehtävän tai kokonaisen
 toteutusvaiheen hyväksyntä ei riitä, ellei projektin omistaja hyväksy samalla
@@ -287,6 +327,9 @@ vähennetä ohjeiden lyhentämisen tai tokenisäästön vuoksi.
   nykytila on yhdessä omistavassa jatkamiskohdassa: täsmärevisio, vaihe,
   hyväksyntänäyttö, avoin päätös, seuraava työ ja käytettävissä oleva valtuus.
   Muut indeksit linkittävät siihen, eivät ylläpidä kilpailevaa tilajonoa.
+- Päätöksen käyttöala ja perustelu säilyvät sen omistavassa sopimuksessa;
+  lyhyt nykytila linkittää niihin. Historian erottaminen ei poista päätöstä
+  eikä käynnistä uutta rinnakkaista käsikirjaa tai laajaa dokumenttisiirtoa.
 - Valmistunut työ päivittää nykytilan. Päivätty tutkimusraportti säilytetään
   historiana; hyväksyntä sidotaan sen todelliseen revisioon. Avoin vanha syy
   ei muutu korjatuksi uuden ajon onnistumisella.
@@ -321,6 +364,67 @@ Esimerkkejä:
 - uusi työnkulku -> `docs/product/workflows.md`
 - uusi moduuli -> `docs/modules/`
 
+### Päivittäinen tarkistuspiste
+
+Omistajan sopima päivittäinen raporttiaika ja aikavyöhyke kirjataan paikalliseen
+jatkamiskohtaan. Aktiivinen työ huomioi ajan turvallisten vaiheiden välissä:
+älä aloita uutta pitkää ajoa rajan yli, vaan vie aloitettu työ turvalliseen
+rajaan, säilytä ensivirheet ja raportoi. Älä tapa prosessia tai vapauta sen
+resursseja työn jatkuessa. Omistajan sovitun tarkistuspisteen kohdalla
+keskeneräinen Goal tauotetaan palaveria varten; jatko perustuu palaveripäätökseen.
+Valmis Goal ei käynnistä uutta työtä ajastuksesta. Ajastettu muistutus ei
+takaa reaaliaikaista keskeytystä eikä jatka jo tauotettua Goalia.
+
+Sama katkaisuraja raportoidaan ja tauotetaan kerran. Kirjaa käsitelty raja
+ja omistajan jatkopäätös nykyiseen jatkamiskohtaan. Vanhan ajastusviestin
+uudelleentoimitus ei avaa suljettua raportti-ikkunaa tai tauota jo jatkettua
+Goalia uudelleen; seuraava sovittu tarkistuspiste ja erillinen taukopyyntö säilyvät.
+
+Raportoi aikaväli ja aikavyöhyke, Goal ja revisio. Nosta alkuun valmistuneet
+työpaketit ja hyväksyntänäyttö, estävä asia, päächatin vuoroaika sekä
+omistajapäätösten odotukset syineen. Laske vuorojen aikavälien yhdiste
+raportti-ikkunaan leikattuna: seinäkelloaika sisältää työkalut ja vuoronsisäiset
+odotukset. Näytä pitkien testiajojen ja raportoinnin oma aika sekä tarvittaessa
+aliagenttiaika erikseen; älä summaa rinnakkaisuutta päiväajan seinäkelloksi.
+Kerro kesken oleva työ, seuraava rajattu toimi, ensivirheet ja korjauskierrokset.
+
+Käytä työn alussa nimettyä työpakettia ja sen vuoro-/vastausviitteitä
+nykyisessä laskentapohjassa; älä luo joka raportissa uutta tehtäväjakoa.
+Yhdistä saman työpaketin osuudet. Liitä olennaisen työpaketin tai tunnetun
+vaiheen tulokseen tehtäväkohtainen malli/päättelytaso, rooli, kesto, input, sen
+cached-osuus, uusi input, output, vastausmäärä ja korjauskierrokset. Näytä
+tehtävä × toteutunut malli -taulukko ja tuloksen/ensivirheen viite; täsmäytä
+sen summat rooli- ja kokonaissummiin ja nimeä kohdistamaton osuus.
+Kohdista asetus tarkalla
+`turn_id`:llä ja deduplikoi `response_id`; erota pääagentti, aliagentit,
+katselmukset ja alustan automaattinen työkalutarkastus. Kerro kattavuus,
+epävarma vaihekohdistus ja puuttuvat ajat tai luvut, älä korvaa niitä nollalla.
+Näytä vertailun käyttöönoton lähtöraja erillään koko vuorokaudesta.
+
+Nosta lyhyeen raporttiin automaattitarkastuksen suurimmat tunnistetut
+käynnistäjät, toistuvat eskaloinnit ja niiden lopputulokset, kun lähde osoittaa
+kytkennän. Erota tarkastuspyyntöjen määrä tarkastajan vastausmäärästä; osuus
+ei yksin osoita syytä. Käytä sallittuja nykyisiä työkaluja ilman tarpeetonta
+toistoa; työvaltuus ei ohita sandboxia tai alustan review'ta.
+Käytä nykyisiä loki- ja ajokuitteja, älä uutta raportointijärjestelmää.
+Vajaa päivä tai eri tehtävät eivät osoita tokenisäästöä; API-hinta ja tilauksen
+kulutusmittari ovat eri asioita. Nykyinen jatkamiskohta omistaa tiiviin tilan;
+raakalaskurit, henkilökohtaiset asetukset ja konekohtainen aineisto jäävät paikallisiksi.
+
+Tarkista päiväraportin yhteydessä aktiivisten ohjeiden koko (`wc -l`): koko
+M1 ja sen `Jatka tästä` -osio, aktiivinen paikallinen runbook sekä
+työtilasuunnitelman W7.5-osio. Vertaa edellisen raportin mittaukseen;
+puuttuva vertailu on uusi baseline, ei nolla. Tarkista muuttunut sisältö:
+vanhentunut nykytila, valmistuneet ajoselostukset, päällekkäiset säännöt ja
+kilpailevat jatkamiskohdat. Siirrä vanhentunut näyttö olemassa oleviin
+historioihin säilyttäen voimassa olevat sopimukset, päätösperustelut,
+avoimet ensivirheet ja linkit; pelkkä koko ei oikeuta sopimuksen poistoon.
+Raportoi sekä päivämuutos että muutos arkistoinnin jälkeiseen baselineen,
+huollon ennen/jälkeen-rivit (puuttuva mittaus näkyviin), arkistoinnin
+peruste ja avoin huoltotarve.
+Rajattu päivittäinen dokumenttihuolto kuuluu raporttiin myös Goalin ollessa
+tauolla; se ei jatka sovellustyötä.
+
 ## AI ei saa kiertää arkkitehtuuria
 
 Kiellettyjä esimerkkejä:
@@ -335,7 +439,10 @@ Kiellettyjä esimerkkejä:
 - uusi kirjasto lisätään ilman perustelua
 - yleinen `utils.ts` luodaan epäselvyyden piilottamiseksi
 
-Jos oikea paikka on epäselvä, AI:n pitää pysähtyä ja kysyä.
+Selvitä epäselvä omistaja nykyisistä sopimuksista ja toteutuksesta ennen
+muutosta. Jos tarvitaan uusi vastuunjako tai ristiriita jää ratkaisematta,
+rajaa sen toteutus pois ja pyydä omistajapäätös; hyväksytty lähdeselvitys
+voi jatkua ilman uutta rutiinilupaa.
 
 ## Git on tekoälyn turvaverkko
 
@@ -399,6 +506,15 @@ hyväksyntäkäytäntöä. Erillinen riippuvuus-, arkkitehtuuri-, tietosuoja- ta
 julkaisupäätös pyydetään edelleen silloin, kun sellainen tarvitaan.
 
 ### CI-ajon seuranta ja virhetodisteet
+
+Viimeistele lähde ja tuloksia ennakoimaton pakollinen dokumentaatio ennen
+viimeistä pitkää CI-kierrosta. Sido ajotulos tutkittuun revisioon nykyisessä
+hyväksyntänäytön paikassa, esimerkiksi PR:n tarkistuksissa ja kommentissa.
+Älä automaattisesti tee vihreän headin päälle uutta tulosraportticommittia,
+jos hyväksytty raportointipaikka riittää. Tämä ei jätä pakollista ohje- tai
+nykytilamuutosta tekemättä: uusi lähdemuutos, myös dokumenttimuutos, saa aina
+omat soveltuvat porttinsa. Aiemman headin läpäisy ei hyväksy uutta headia
+eikä korvaa mergen jälkeisen `main`-revision omia tarkistuksia.
 
 Ennen tehtävään kuuluvaa testi- tai CI-ajoa nimeä seurannan omistaja ja
 varmista käytettävissä oleva havainto- ja tallennusketju. Seuranta on

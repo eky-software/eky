@@ -7,6 +7,7 @@ import { startOwnedWindowsChromium } from '../environment/startOwnedWindowsChrom
 import { startOwnedLinuxChromium } from '../environment/startOwnedLinuxChromium.js';
 import { claimChromiumWorker } from './chromiumWorkerAdmission.js';
 import { writeServiceProgress } from '../environment/serviceProgressDiagnostic.mjs';
+import { reportLinuxPreflightPrivateCheck } from './reportStartupProcessOutput.js';
 
 const defaults = { createE2eRunRoot, removeE2eRunRoot, claimChromiumWorker,
   startOwnedChromium: process.platform === 'win32' ? startOwnedWindowsChromium : startOwnedLinuxChromium,
@@ -50,6 +51,12 @@ export async function runOwnedChromiumWorker(input: {
       } catch { cleanupVerified = false; }
     }
     const startupFailure = failure?.error instanceof OwnedChromiumStartupFailure ? failure.error : undefined;
+    if (startupFailure !== undefined) {
+      await reportLinuxPreflightPrivateCheck(() => startupFailure.readPrivatePreflightCheck(), {
+        testName: 'chromium-worker-startup', testId: `worker-${String(workerInfo.workerIndex)}`,
+        file: 'apps/e2e/src/fixtures/runOwnedChromiumWorker.ts',
+      });
+    }
     let reportingFailed = false;
     try {
       dependencies.report({ schemaVersion: 1, operation: 'chromiumWorker',

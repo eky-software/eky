@@ -422,6 +422,11 @@ ketjuksi. Preload saa käyttää vain Electronin sandboxissa sallittua
 `require('electron')`-rajapintaa ja paljastaa nimetyt, yksittäiset toiminnot
 `contextBridge`-rajalla. Paketoitu Windows-smoke varmistaa, että preload-silta
 on oikeasti latautunut ennen PDF-esikatselun testaamista.
+Smoken tarkistus vaatii nykyisen nimetyn metodijoukon, myös W7.5:n
+`deleteWorkspace`-metodin, ja hylkää puuttuvan, väärätyyppisen tai
+ylimääräisen metodin. Tarkistus ei kutsu metodeja eikä myönnä poistolupaa;
+mainin [poistosopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+omistaa edelleen komennon valtuuden ja vahvistukset.
 
 ## Pakollinen Electron-Turvallisuuskonfiguraatio
 
@@ -636,6 +641,16 @@ ennen session luontia, turvalliseksi todetun palautuksen relaunchia ja
 asynkronisesti validoidun valitsintuloksen käyttöä. Myös backendin
 valmistelun jälkeen valtuus tarkistetaan ennen runtime-resurssien avausta.
 Vanha myöhäinen tulos ei anna uuden käynnistyksen valtuutta.
+
+Saman main-omistajan `captureMainOwnership()` kaappaa yhden omistusjakson ja
+pidetyn native-kahvan. Hyväksytty `bind` päättää vanhan kuitin pysyvästi myös
+silloin, kun takaisinotto säilyttää saman fyysisen kahvan. Synkronisen
+ulkopuolisen vartijan ja asynkronisen native-luvun jälkeen tarkistetaan sama
+jakso uudelleen; vanha myöhäinen hylkäys ei mitätöi seuraajaa. Nykyisen
+jakson todettu omistajuuden menetys pysyy suljettuna virheenä. Tämä
+muistissa oleva kuitti ei ole kirjoittajan exit, kohdevalinta tai muutoslupa.
+[W7.5:n yhteissopimus](local-company-workspace-plan.md#w75-recovery-writer-handoff-contract)
+omistaa sen vielä todentamattoman startup-/palautushallintakytkennän.
 
 `bind`in valinnainen `prepareMainOwned`-callback saa signaalin lisäksi saman
 `preparing`-vaiheen toistettavan synkronisen vartijan ja asynkronisen
@@ -972,6 +987,153 @@ sovitusta ja sen nykyistä lykättyä kirjoitusta rajaavaa
 ja scheduler säilyvät. Main-/marker-kohdekokeet eivät vielä hyväksy
 D:n todellista etenemisomistajaa tai paketoitua poistoa; ajantasainen näyttö
 on M1:n jatkamiskohdassa. Tavallisen sulun ja W7.3:n peruutuspaluun säännöt säilyvät.
+
+### W7.5:n poistotulos ja paluupyyntö
+
+Main-only-poistocapability odottaa nykyisen management-palvelun koko
+poistokomennon ja sen delete-varauksen vapautuksen. Onnistuneen tuloksen
+jälkeen nykyinen mainin `workspaceDeletionContinuation`-sovitus tarkistaa
+runtime-poissaolon, huoltovarauksen vapaan tilan ja mainin nykyisen fyysisen
+varauksen ennen nykyistä lykättyä paluupyyntöä. Se ei lainaa jo vapautettua
+operaatiovaltuutta eikä anna uutta poistolupaa. Pyyntö ei odota omasta
+capability-työstään sovelluksen sulkua; tavallinen quit-omistaja liittyy
+silti kaikkiin keskeneräisiin main-töihin ennen prosessin päättymistä.
+
+Vastausdokumentin vanheneminen estää vastauksen, ei palvelulle luovutetun
+poiston tai mainin turvallisesti varmennetun paluun valmistumista.
+Ulkoinen main-sulku estää paluupyynnön. Vapautuksen tai mainin jatkon
+epäonnistuminen ei tuota onnistunutta poistovastausta.
+
+Palvelun main-only-virhetodiste sitoo alkuperäisen poikkeuksen
+vaikutustilaan vasta loppukäsittelyn jälkeen. Capability hyväksyy vain
+yhden tämän kutsun täsmällisen todistuksen; puuttuva, ristiriitainen tai
+myöhäinen todiste ei oikeuta `none`-väitteeseen. Mainin virheprojektori
+saa alkuperäisen syyn ennen turvallista tulosta. Palvelun onnistumisen
+jälkeinen paluu-/vapautusvirhe ei lainaa aiempaa vaikutuksettomuutta.
+Todistetun ennen aloitusta hylätyn `BUSY`-/`INVALID`-pyynnön jatko vaatii
+myös nykyisen elävän runtimen; epävarma omistajuus estää sen silti.
+Projektorin lisävirhe säilyy erillisenä alkuperäisen syyn jälkeen.
+
+Peruutuksen jatkotoiminto luetaan nykyisestä runtimesta, ei peruutuskuitista.
+Elävä aktiivinen backend säilyttää oman varauksensa ja sen `assertRunning`
+tarkistetaan; suljetussa tilassa vaaditaan erikseen main-omistajuus.
+Selector-lifecyclen `readState` on vain havainto, ei main-varauksen tai
+kulutetun delete-leasen elvytys. Lykätyn paluun `hasDispatched` tarkoittaa
+vain onnistuneesti palautunutta synkronista käynnistyscallbackia, ei uuden
+prosessin käynnistys-/terveystulosta. Julkinen kanava, preload ja UI pysyvät
+vielä suljettuina. Nykyisen [W7.5-sopimuksen](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+muut näyttö- ja pakettiportit säilyvät.
+
+### W7.5:n käynnistyssulun liitos
+
+Indexin `desktopRecoveryStartup` on nykyisen `before-quit`-omistajan
+rajattu käynnistysliitos, ei uusi resurssi- tai palautusomistaja.
+Havaintotyön omistaja rekisteröi sulkukahvansa ennen omaa odottavaa
+työtään. Sulku estää uuden työn heti ja julkaisee jaetun sulkulupauksen
+ennen synkronisesti uudelleen kutsuvaa aborttia. Se odottaa raakaa
+composition-tulosta, ei itseään odottavaa startup- tai raportointikäärettä.
+Dialogin peruutus ja muiden paikallisten töiden päättyminen odotetaan
+erikseen. Sulku ei vapauta fyysistä varausta eikä mitätöi normaalin
+recoveryn nykyistä cleanup-valtuutta.
+
+Paikalliset työt päätetään ennen raakaa paluuta. Indexin puolustava
+liitos odottaa ne myös ennen lifecycle-kahvan julkaisua, virhepalautetta
+tai suoraa virhe-exitia. Sulun aikana palautuva lifecycle suljetaan
+nykyisen omistajansa kautta; sitä ei julkaista käyttöön. Onnistuneen
+luovutuksen jälkeen tavallinen lifecycle omistaa sulun, mutta käynnistyskerran
+ulkoinen sulkulippu jää pysyväksi. Myöhäinen ikkunan esitys, onnistumis-
+tapahtuma, fokuskutsu tai relaunch ei avaa sitä uudelleen. Asentimelle
+lykätty quit tarkistetaan ennen tätä lippua; raportointiluvan
+mitätöinti tai sallittu sisäinen relaunch ei yksin merkitse ulkoista sulkua.
+
+Alkuperäinen käynnistyssyy ja erillinen sulkuvirhe säilyvät ennen
+turvallista palautetta. Liitos ei lisää pysyvää tilaa, backup-sisältöä,
+lokikanavaa tai uutta aikarajaa. Nykyiset prosessin päättymisen,
+omistajuuden ja paketoidun palautuksen hyväksyntäportit säilyvät.
+Uuden palautushallinnan korjaamaton kohdeluku rekisteröidään nyt saman
+main-käynnistyksen build-admissionin jälkeen ja ennen korjaavaa palautusta.
+Se päättyy ennen normaalia recovery-jatkoa tai ulomman virhehaaran
+varauksen vapautusyritystä. Suljetussa main-koosteessa sama kohde voidaan
+nyt luovuttaa rajatulle hallinnalle nykyisen native-valitsijan kautta.
+Valintafunktio kuuluu nyt myös nykyisen koosteen oletusriippuvuuksiin;
+erillinen testikohtainen injektio ei enää avaa tätä haaraa. Havainto tai
+hallintaan siirtyminen ei anna poistolupaa. Lähdekytkentä ei yksin hyväksy
+sen oikeaa native-/pakettiketjua.
+Kohdeluvun päättyminen ei päätä käynnistyskerran sulkusuojaa. Erillinen
+uuden työn admission tarkistaa ulkoisen sulun ennen uutta tuonti-/luonti-
+tai FirstStart-palautusvaihetta ja niiden päätyttyä, yritysvalinnan molemmin
+puolin, ennen uuden sessionin tai relaunchin luontia sekä valitsimeen,
+FirstStart-valmisteluun ja runtimeen siirtyessä. Backendin viimeinen
+käynnistysraja tarkistaa sen uudelleen omien odotustensa jälkeen.
+Yleinen `assertStartupAuthority` jää näistä erilleen: olemassa olevan
+recoveryn ja virhehaaran siivous säilyttävät nykyisen valtuutensa.
+Myös siivouksen pyytämä relaunch kulkee saman mainin sulkulipun kautta.
+Suljettu käynnistyskerta sallii vanhan palautuksen valmistua mutta ei
+välitä uutta relaunch-pyyntöä; se ei heitä siivouksen ensisyyn päälle
+erillistä admission-virhettä.
+
+`createDesktopRecoveryObservation` on nyt saman startup-omistajan
+synkroninen paikallisen lukutyön sulkukahva. Rekisteröi se ennen ensimmäistä
+odotusta. `closeAdmission` sulkee uudet työt ennen aborttia ja on idempotentti;
+sen jälkeen `waitForSettlement` jakaa saman lupauksen ja odottaa kaikki
+aloitetut työt. Ensimmäinen varsinainen virhe säilyy erillään tarkoituksellisen
+sulun hylkäämistä myöhäisistä tuloksista. Paikallisen työn sisältä ei odoteta
+sen omaa sulkulupausta. Kahva ei peru jo siirrettyä itsenäistä main-omistajaa
+eikä anna fyysisen varauksen vapautus- tai muutosvaltuutta. Nykyinen
+`desktopWorkspaceRecoverySelection` rekisteröi saman kahvan ennen omaa
+lähdelukua; havaintotulos ei yksin ole guarded-writer- tai runtime-poissaolon
+todiste. [W7.5:n omistajuussopimus](local-company-workspace-plan.md#w75-recovery-writer-handoff-contract)
+sitoo suljetun startup-luovutuksen main-varauksen samaan omistusjaksoon;
+valinnan tuoreus säilyy kohdelukijan omana vastuuna. Oletuskytkennän oikean
+native-/SQLite-/pakettiketjun näyttö on vielä avoinna.
+Rajattu `selectDesktopWorkspaceRecoveryChoice` on toteutettu erikseen:
+sama alkuperäinen kohde ja fyysinen main-omistajuus tarkistetaan native-
+dialogin molemmin puolin, ja myös ulommat odotusjatkot tarkistavat sulun.
+Alkuperäinen dialogilupaus odotetaan loppuun myös keskeytyksessä.
+Valintatulos ei muuta rekisteriä tai anna poistolupaa. Oletusentryn
+[lähdekytkennän regressiot](release-0.3.0-integration-history.md#w75-default-choice-coupling-20261112)
+ja aiempi [kohdennettu näyttö](release-0.3.0-integration-history.md#w75-native-status-joint-20261107)
+eivät korvaa oikean Electron-/SQLite-/pakettiketjun portteja.
+Abort-signaalin `reason` on sama yksityinen peruutusolio kuin admissionin
+sulun hylkäys. Vain tämä täsmällinen syy erotetaan varsinaisesta virheestä;
+saman yleisen koodin sisältävä muu poikkeus ei ole peruutustodiste.
+Indexin sulkutesti käyttää nyt samaa valintafunktiota pelkän odotusportin
+sijaan. Kaikki kolme ulkoisen sulun jälkeen valmistuvaa dialogivastausta
+torjutaan ennen jatkoa; alkuperäinen lupaus odotetaan myös synkronisesti
+uudelleen kutsutussa quitissä. [Rajattu sopimusnäyttö](release-0.3.0-integration-history.md#w75-index-choice-close-20261108)
+käyttää kontrolloitua dialogia ja lähdevalintaa, ei todista fyysistä
+varausta, tuotannon oletusentryä tai oikeaa native-käyttäjäpolkua.
+
+### W7.5:n tukiviennin pyyntöelinikä
+
+Nykyinen tukivienticapability käyttää yhtä vientityötä v2:lle ja erilliselle
+`desktopOnly` v3:lle. Ikkuna-entry vaatii edelleen saman ikkunan,
+pääframen ja dokumentin; native-entry ei lainaa niitä eikä rekisteröi IPC:tä.
+Mainin native-lupa on kertakäyttöinen myös peruutuksen jälkeen.
+Tuore synkroninen omistajavartija tarkistetaan kummassakin entryssä kaikkien
+odotusten jälkeen ja ennen nykyistä synkronista tiedostokirjoittajaa.
+Dispose tai sukupolven muutos estää kirjoituksen ja vanhan virhedialogin.
+Ensimmäinen poikkeus on testissä yksityisen havaitsijan saatavilla ennen
+turvallista vastausta, mutta vastauksessa ei ole raakaa `cause`-ketjua.
+
+Sisältösopimuksen omistaa [tukipakettisuunnitelma](support-bundle-plan.md#w70n-rajattu-tukisopimusehdotus).
+V3:n valitsin-entry on haarassa sidottu todellisen hallintapalvelun
+pyyntökohtaiseen havaintokontekstiin ennen ensimmäistä native-odotusta.
+Startupin raportointiluvan kuluttaja on haarassa indexin ja before-quitin
+nykyisissä omistajissa. Sulku mitätöi sen heti myös ilman lifecycleä;
+onnistunut composition-kutsu poistaa aiemmankin kuitin. Compositionin
+tuottajaliitos sitoo kuitin nykyiseen build-porttiin ja nimettyyn vaiheeseen;
+myöhempi build-hylkäys tai onnistunut vaihe ei säilytä raportointilupaa.
+Pienet factory-/tiedostokokeet eivät todista mainin lupaa, prosessin
+poissaoloa tai packaged-ketjua. Vanha v2 säilyttää backend-permissioninsa;
+sen epäonnistuminen ei käynnistä v3:a fallbackina.
+
+Valitsimen nykyinen `selectorVerification`-smoke kutsuu nyt samaa v3-
+capabilityä ennen sulkua. Main kaappaa systemin ja havaitsijan ennen
+odotuksia; testikohde kuuluu vain nykyiseen smoke-juureen. Tavallisen
+käytön ja rajatun palautushallinnan dialogit ja valtuusvartijat säilyvät.
+[Smoken sopimus ja näyttöraja](support-bundle-plan.md#paketoitu-smoke)
+erottavat lähde-/Main-kontrollit vielä avoimesta uuden paketin näytöstä.
 
 Toteutusvaiheessa lisätään riskin mukaan vähintään:
 

@@ -5,6 +5,7 @@ import type { WorkspaceSelectorMode } from './workspaceSelectorState.js';
 import styles from './WorkspaceSelector.module.css';
 
 interface WorkspaceListProps {
+  readonly canDeleteWorkspace?: boolean;
   readonly canReplaceActiveWorkspace: boolean;
   readonly isBusy: boolean;
   readonly isRecoveryRequired: boolean;
@@ -17,6 +18,7 @@ interface WorkspaceListProps {
 }
 
 export function WorkspaceList({
+  canDeleteWorkspace = false,
   canReplaceActiveWorkspace,
   duplicateWorkspaceLabelIds,
   isBusy,
@@ -75,6 +77,12 @@ export function WorkspaceList({
                   </span>
                 </div>
                 <div className={styles.rowActions}>
+                  {canDeleteWorkspace ? (
+                    <button className="ghost-button" disabled={isBusy || isRecoveryRequired}
+                      onClick={() => onModeChange('confirmDelete', workspace)} type="button">
+                      {uiText.workspaces.deleteWorkspace}
+                    </button>
+                  ) : null}
                   {!workspace.isActive ? (
                     <button
                       disabled={unavailable}

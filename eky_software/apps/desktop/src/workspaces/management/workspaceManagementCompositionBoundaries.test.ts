@@ -120,10 +120,15 @@ describe('workspace management composition boundaries', () => {
     // Runtime ordering is covered by lifecycle and real composition shutdown tests.
   });
 
-  it('keeps both production preparation hooks dormant without the real journal consumer', async () => {
+  it('binds production preparation to the real journal consumer without registering IPC in composition', async () => {
     for (const file of ['desktopComposition.ts', 'desktopSelectorComposition.ts']) {
       const source = await readFile(join(desktopSourceRoot, 'main', file), 'utf8');
-      expect(source).toContain('options.workspaceDeletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({');
+      expect(source).toContain('options.workspaceDeletionCommand ?? (');
+      expect(source).toContain('options.workspaceDeletionPublisher === undefined');
+      expect(source).toContain('createWorkspaceDeletionCommand({');
+      expect(source).toContain('assertWritersAbsent: assertDeletionOwned');
+      expect(source).toContain('const deletionBinding = deletionCommand === undefined ? undefined : bindWorkspaceDeletionContinuation({');
+      expect(source).toContain('command: deletionCommand,');
       expect(source).toContain('const deletionPublisher = deletionBinding?.publish ?? options.workspaceDeletionPublisher;');
       expect(source).toContain('deletionBinding === undefined ? {} : { deletionContinuation: deletionBinding.continuation }');
       expect(source).toContain('deletionPublisher === undefined ? {} : { deletionPreparation: {');

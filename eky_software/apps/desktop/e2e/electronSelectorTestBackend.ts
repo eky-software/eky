@@ -2,7 +2,10 @@ import type { DesktopBackendHandle, StartDesktopBackendOptions } from '../src/ru
 
 // Observation only. The production starter retains migration, reservation and
 // process ownership; the existing fixture owns the enclosing Electron tree.
-export function observeSelectorTestBackend(start: (options: StartDesktopBackendOptions) => Promise<DesktopBackendHandle>) {
+export function observeSelectorTestBackend(
+  start: (options: StartDesktopBackendOptions) => Promise<DesktopBackendHandle>,
+  observeReady?: () => void,
+) {
   let starts = 0;
   let active: DesktopBackendHandle | undefined;
   return {
@@ -11,6 +14,7 @@ export function observeSelectorTestBackend(start: (options: StartDesktopBackendO
       starts++;
       const handle = await start(options);
       active = handle;
+      try { observeReady?.(); } catch { /* Observation cannot change the owned startup result. */ }
       const release = () => { if (active === handle) active = undefined; };
       return {
         assertRunning() { handle.assertRunning(); },

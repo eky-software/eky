@@ -9,6 +9,7 @@ lukea jokaisessa tehtävässä.
 ## Aloitus ja omistajuus
 
 - Työtapa, aloitus ja valmistuminen: [workflow](ai/workflow.md).
+  Sovittu päiväraportti ja turvallinen tauko: [päivittäinen tarkistuspiste](ai/workflow.md#päivittäinen-tarkistuspiste).
 - Moduulin sisäinen työ: [moduulihakemisto](modules/README.md), moduulin oma
   vastuudokumentti ja toteutuspolun paikallinen `AGENTS.md`.
 - Moduulirajan ylitys: molempien moduulien sopimukset sekä

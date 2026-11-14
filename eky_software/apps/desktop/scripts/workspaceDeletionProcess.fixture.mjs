@@ -51,6 +51,11 @@ async function run(config) {
   const { WorkspaceDeletionJournalStore } = await import('../src/workspaces/deletion/workspaceDeletionJournalStore.ts');
   const { join } = await import('node:path');
   const reservation = await acquireWorkspaceProcessReservation({ userDataRoot: config.root, signal: controller.signal });
+  if (config.cut === 'reservationAcquired') {
+    await holdAtCut(config.cut, 'reservationAcquired', () => {
+      controller.signal.throwIfAborted(); reservation.invalidated.throwIfAborted();
+    });
+  }
   const leases = new InMemoryWorkspaceMaintenanceLease();
   if (config.mode === 'resumeCold') {
     const { recoverDesktopWorkspaceDeletion } = await import('../src/main/recoverDesktopWorkspaceDeletion.ts');
@@ -145,6 +150,7 @@ process.once('message', async config => {
     assert.deepEqual(Object.keys(config).sort(), ['buildInfo', 'cut', 'label', 'mode', 'operationId', 'releaseInfo', 'root', 'testId', 'workspaceId']);
     assert.ok(['publish', 'resume', 'resumeCold'].includes(config.mode));
     assert.ok(['authorized', 'payloadAbsent', 'registryPublished', 'originalFailure', null].includes(config.cut) ||
+      (config.mode === 'publish' && config.cut === 'reservationAcquired') ||
       workspaceDeletionPhases.slice(1).some(phase => config.cut === `before:${phase}` || config.cut === `after:${phase}`));
     assert.equal(typeof config.testId, 'string');
     await run(config);

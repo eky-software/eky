@@ -22,6 +22,7 @@ import { STARTUP_EXCEPTION_CONTROL, STARTUP_EXCEPTION_SUFFIX, STARTUP_EXCEPTION_
 import { validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 import { readCommandPhaseJson } from './acceptanceCommandPhaseInput.mjs';
+import { PHASE_WIRE_LIMITS, validatePhaseHandoffCollector } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = EVIDENCE_FILE_MAX_BYTES;
@@ -39,6 +40,7 @@ const commandPhases = new Set(['publishFailure', ...Object.values(commandBudgets
 
 // Source names are test-tool contracts, not a glob over profiles or the runner.
 export function evidenceSourceKind(area, path) {
+  if (area === 'results' && /^run-[a-f0-9-]{36}\/[^/]+\/failure\.private\.json$/u.test(path)) return 'workspaceDeletionPhaseObservation';
   if (area === 'reports' && new RegExp(`^${runPattern}/results\\.private\\.json$`, 'u').test(path)) return 'playwrightReport';
   if (area === 'results' && new RegExp(`^${runPattern}/[^/]+/(?:backend-startup|process-output|failure)\\.private\\.json$`, 'u').test(path)) return 'processOutput';
   if (area === 'results' && new RegExp(`^${runPattern}/(?!\\.{1,2}/)[^/]+/electron-lifecycle\\.json$`, 'u').test(path)) return 'electronLifecycle';
@@ -105,13 +107,15 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
       const nativePreparation = kind === 'processOutput' && windowsCompilation &&
         relativePath.endsWith('/preparation/process-output.private.json');
-      const fileLimit = installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
+      const fileLimit = kind === 'workspaceDeletionPhaseObservation' ? PHASE_WIRE_LIMITS.bytes : installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
         kind === 'msiWindowObservation' ? msiWindowEvidenceContract.maximumBytes :
         nativePreparation ? nativePreparationRecordMaximumBytes :
           ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
       if (info.size > fileLimit) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
       let proof = await retain(base, path, join(stage, name), Math.min(fileLimit, MAX_TOTAL - total));
+      if (kind === 'workspaceDeletionPhaseObservation' &&
+          validatePhaseHandoffCollector(await readFile(join(stage, name)), binding, relativePath) === undefined) throw failure();
       if (kind === 'processOutput') {
         const bytes = await readFile(join(stage, name));
         const record = parseStrictJsonObjectBytes(bytes, { errorCode: 'nativePreparationEvidenceInvalid', maximumBytes: MAX_FILE });
@@ -248,13 +252,21 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     try { await walk(start, '', 0); }
     catch (error) { source.status = error.code === 'ENOENT' ? 'missing' : 'unverified'; }
     // Reserve half the unchanged source budget for retaining already found evidence.
-    // Stable sorting retains first-error order within each invocation.
-    const priority = item => {
+    // Reserve each invocation's summary and first error before repeated errors.
+    const invocationOffsets = new Map();
+    const ordered = candidates.map(item => {
       const kind = evidenceSourceKind(area, item.rel);
-      return kind === 'runnerFailure' ? 0 : kind === 'msiWindowObservation' ? 1 : 2;
-    };
-    candidates.sort((left, right) => priority(left) - priority(right));
-    for (const { path, rel } of candidates) {
+      let round = 0;
+      if (kind === 'runnerFailure' && !basename(item.path).endsWith('.summary.private.json')) {
+        const invocation = dirname(item.path);
+        const offset = invocationOffsets.get(invocation) ?? 0;
+        invocationOffsets.set(invocation, offset + 1);
+        round = offset;
+      }
+      return { ...item, priority: kind === 'runnerFailure' ? 0 : kind === 'msiWindowObservation' ? 1 : 2, round };
+    });
+    ordered.sort((left, right) => left.priority - right.priority || left.round - right.round);
+    for (const { path, rel } of ordered) {
       if (exhausted() || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
       await select(base, path, area, location, rel);
     }

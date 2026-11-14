@@ -148,7 +148,7 @@ export class WorkspaceRemnantBindingStore {
         }
       } };
       try {
-        return await this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected, scoped));
+        return await this.withCommittedCleanup(targetValue, proof, selected => this.clearObservedSlots(selected, scoped), scoped);
       } catch (error) {
         // Native removal may normalize a failed prefix; retain its known original.
         if (readFailed && error !== firstReadFailure) {
@@ -211,7 +211,8 @@ export class WorkspaceRemnantBindingStore {
   }
 
   private async withCommittedCleanup<Result>(targetValue: unknown, proof: CommittedCleanup,
-    work: (selected: Awaited<ReturnType<WorkspaceRemnantBindingStore['observe']>>) => Promise<Result>): Promise<Result> {
+    work: (selected: Awaited<ReturnType<WorkspaceRemnantBindingStore['observe']>>) => Promise<Result>,
+    readSelection?: CrashSafeByteSlotReadSelection): Promise<Result> {
     const assertSelectedSlots = this.captureCommittedInspection(targetValue, proof);
     if (proof.mode !== 'deletionPurged' || proof.expectedCurrentIdentity !== undefined || proof.expectedOwnerSlots !== undefined) {
       return invalidDeletionData(invalidCode);
@@ -232,7 +233,7 @@ export class WorkspaceRemnantBindingStore {
       } catch (error) { throw retain(error); }
     };
     try {
-      const selected = await this.observe({ assertAuthority, assertExternalSelection });
+      const selected = await this.observe({ assertAuthority, assertExternalSelection }, readSelection);
       assertSelectedSlots(selected.slots);
       const result = await work(selected);
       assertAuthority();
@@ -272,11 +273,16 @@ export class WorkspaceRemnantBindingStore {
     }
   }
 
-  private async observe(authority: WorkspaceRemnantBindingAuthority) {
+  private async observe(authority: WorkspaceRemnantBindingAuthority, readSelection?: CrashSafeByteSlotReadSelection) {
     const assertAuthority = checkedDeletionAuthority(authority.assertAuthority.bind(authority), invalidCode);
     const external = authority.assertExternalSelection.bind(authority);
     const assertExternalSelection = async () => { assertAuthority(); await external(); assertAuthority(); };
-    await assertExternalSelection();
+    if (readSelection === undefined) await assertExternalSelection();
+    else {
+      assertAuthority();
+      await readSelection.assertBeforeSlotRead();
+      assertAuthority();
+    }
     const slots: Record<CrashSafeFileSlot, ReadOnlyJournalSlots<WorkspaceRemnantBindingV1>['current']> = {
       current: undefined, next: undefined, backup: undefined,
     };

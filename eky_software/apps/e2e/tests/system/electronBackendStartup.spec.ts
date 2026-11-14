@@ -240,11 +240,17 @@ test.describe('SYS-ELECTRON-BACKEND-STARTUP-001 @critical @security', () => {
       });
       const snapshot = observation.snapshot();
       expect(snapshot).toEqual({
-        schemaVersion: 2, checkpoints: [], truncated: false,
+        schemaVersion: 3, checkpoints: [], truncated: false,
         backendStartup: { status: 'observed', stage, elapsedMs: clock },
+        mainStartup: { status: 'unobserved' },
       });
       expect(parseElectronE2eStartupObservation(snapshot)).toEqual(snapshot);
       expect(Object.isFrozen(snapshot.backendStartup)).toBe(true);
+      expect(Object.isFrozen(snapshot.mainStartup)).toBe(true);
+      const legacySnapshot = { schemaVersion: 2, checkpoints: [], truncated: false,
+        backendStartup: snapshot.backendStartup };
+      expect(parseElectronE2eStartupObservation(legacySnapshot)).toEqual(legacySnapshot);
+      expect(parseElectronE2eStartupObservation({ ...legacySnapshot, mainStartup: snapshot.mainStartup })).toBeUndefined();
       expect(parseElectronE2eBackendStatus({
         type: 'failed', stage, reason: 'unknown', brokerCleanupFailures: [],
       })).toBeUndefined();

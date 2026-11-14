@@ -112,10 +112,7 @@ describe('workspace management completion', () => {
     f.deferredReturn.complete();
     expect(f.relaunch).not.toHaveBeenCalled();
     expect(f.lease.readState()).toBe('idle');
-    expect(f.observer.record).toHaveBeenCalledTimes(1);
-    expect(f.observer.record).toHaveBeenCalledWith(expect.objectContaining({
-      errorCode: 'WORKSPACE_DELETE_FAILED', outcome: 'failed', sideEffectState: 'unknown', stage: 'deletePreparation',
-    }));
+    expectPreparationAndCleanupFailure(f.observer);
     expect(JSON.stringify(f.observer.record.mock.calls)).not.toMatch(/SYNTHETIC|SECRET|stack|errors/);
     await expect(f.service.createEmpty('Synthetic')).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
   });
@@ -132,7 +129,7 @@ describe('workspace management completion', () => {
     const f = fixture({ prepare: async () => 'prepared', release: () => { throw failure; } });
     await expect(f.start()).rejects.toMatchObject({ code: 'WORKSPACE_DELETE_FAILED', cause: failure });
     expect(f.relaunch).not.toHaveBeenCalled();
-    expect(f.observer.record).toHaveBeenCalledTimes(1);
+    expectPreparationAndCleanupFailure(f.observer);
     await expect(f.start()).rejects.toMatchObject({ code: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
   });
 
@@ -143,8 +140,7 @@ describe('workspace management completion', () => {
     const error = await f.start().catch((cause: unknown) => cause);
     expect(error).toMatchObject({ code: 'WORKSPACE_DELETE_FAILED', cause: { cause: first, errors: [first, later] } });
     expect(f.events.at(-1)).toBe('release');
-    expect(f.observer.record).toHaveBeenCalledTimes(1);
-    expect(f.observer.record.mock.calls[0]?.[0]).toMatchObject({ outcome: 'failed' });
+    expectPreparationAndCleanupFailure(f.observer);
     await expect(f.start()).rejects.toMatchObject({ code: 'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN' });
   });
 
@@ -234,6 +230,111 @@ describe('workspace management completion', () => {
     const next = await f.lease.acquire('delete');
     try { expect(retained!.assertCurrent).toThrow(); } finally { await next.release(); }
     expect(f.relaunch).not.toHaveBeenCalled();
+  });
+
+  it.each(['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'] as const)(
+    'reports the command %s failure stage without changing its original cause', async stage => {
+      const first = new Error('SYNTHETIC_DELETION_STAGE_FAILURE');
+      const f = fixture({ prepare: async () => 'prepared', continuation: {
+        captureAuthority: () => ({ assertCurrent() {}, async assertOwned() {} }),
+        async resume(_id, _authority, observeStage) {
+          observeStage?.(stage);
+          throw first;
+        },
+      } });
+      await expect(f.startDurable()).rejects.toMatchObject({ cause: first });
+      expect(f.observer.record).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+        operationKind: 'delete', errorCode: 'WORKSPACE_DELETE_FAILED',
+        sideEffectState: 'unknown', stage,
+      }));
+      expect(f.lease.readState()).toBe('idle');
+      expect(JSON.stringify(f.observer.record.mock.calls)).not.toContain('SYNTHETIC_DELETION_STAGE_FAILURE');
+    });
+
+  it('reports authorization when authority capture fails before command observation starts', async () => {
+    const first = new Error('SYNTHETIC_AUTHORITY_CAPTURE');
+    const resume = vi.fn(async (): Promise<never> => { throw new Error('UNEXPECTED_RESUME'); });
+    const f = fixture({ prepare: async () => 'prepared', continuation: {
+      captureAuthority() { throw first; }, resume,
+    } });
+    await expect(f.startDurable()).rejects.toMatchObject({ cause: first });
+    expect(resume).not.toHaveBeenCalled();
+    expect(f.observer.record).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ stage: 'deleteAuthorization' }));
+    expect(f.lease.readState()).toBe('idle');
+  });
+
+  it('freezes the first command stage before completion and a held failing release', async () => {
+    const first = new Error('SYNTHETIC_PURGE_FAILURE'), later = new Error('SYNTHETIC_RELEASE_FAILURE');
+    const entered = deferred(), finish = deferred();
+    let observe: NonNullable<Parameters<NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume']>[2]> | undefined;
+    const f = fixture({ prepare: async () => 'prepared',
+      beforeCompletion() { observe!('deleteRegistry'); },
+      async release() { entered.resolve(); await finish.promise; observe!('deleteCleanup'); throw later; },
+      continuation: {
+        captureAuthority: () => ({ assertCurrent() {}, async assertOwned() {} }),
+        async resume(_id, _owner, observeStage) {
+          observe = observeStage; observe!('deletePurge'); throw first;
+        },
+      },
+    });
+    const work = f.startDurable().catch((cause: unknown) => cause);
+    try {
+      await Promise.race([entered.promise, work.then(() => { throw new Error('RELEASE_NOT_ENTERED'); })]);
+      expect(f.lease.readState()).toBe('busy');
+      expect(f.observer.record).not.toHaveBeenCalled();
+      observe!('deleteAuthorization');
+      finish.resolve();
+      expect(await work).toMatchObject({ cause: { cause: first, errors: [first, later] } });
+      const events = f.observer.record.mock.calls.map(([event]) => event);
+      expect(events).toEqual([
+        expect.objectContaining({ stage: 'deletePurge', errorCode: 'WORKSPACE_DELETE_FAILED' }),
+        expect.objectContaining({ stage: 'deleteCleanup', errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED' }),
+      ]);
+      expect(events[0]!.correlationId).toBe(events[1]!.correlationId);
+      observe!('deleteRegistry');
+      expect(f.observer.record).toHaveBeenCalledTimes(2);
+      expect(f.lease.readState()).toBe('idle');
+      expect(JSON.stringify(events)).not.toMatch(/SYNTHETIC|stack|errors/);
+    } finally { finish.resolve(); await work; }
+  });
+
+  it('ignores a previous command stage callback during the next deletion', async () => {
+    let previous: NonNullable<Parameters<NonNullable<WorkspaceManagementServiceOptions['deletionContinuation']>['resume']>[2]> | undefined;
+    let attempts = 0;
+    const first = new Error('SYNTHETIC_FIRST_STAGE'), next = new Error('SYNTHETIC_NEXT_STAGE');
+    const f = fixture({ prepare: async () => 'prepared', continuation: {
+      captureAuthority: () => ({ assertCurrent() {}, async assertOwned() {} }),
+      async resume(_id, _owner, observeStage) {
+        if (attempts++ === 0) {
+          previous = observeStage; previous!('deletePurge'); throw first;
+        }
+        observeStage!('deleteRegistry'); previous!('deleteCleanup'); throw next;
+      },
+    } });
+    await expect(f.startDurable()).rejects.toMatchObject({ cause: first });
+    await expect(f.startDurable()).rejects.toMatchObject({ cause: next });
+    const events = f.observer.record.mock.calls.map(([event]) => event);
+    expect(events).toEqual([
+      expect.objectContaining({ stage: 'deletePurge' }), expect.objectContaining({ stage: 'deleteRegistry' }),
+    ]);
+    expect(events[0]!.correlationId).not.toBe(events[1]!.correlationId);
+    expect(f.lease.readState()).toBe('idle');
+  });
+
+  it('accepts only execution stages from the current command observer', async () => {
+    const first = new Error('SYNTHETIC_INVALID_STAGE');
+    const f = fixture({ prepare: async () => 'prepared', continuation: {
+      captureAuthority: () => ({ assertCurrent() {}, async assertOwned() {} }),
+      async resume(_id, _owner, observeStage) {
+        observeStage!('deletePurge');
+        for (const value of ['admission', 'deletePreparation', 'SYNTHETIC_PRIVATE_STAGE', undefined, {}]) {
+          observeStage!(value as never);
+        }
+        throw first;
+      },
+    } });
+    await expect(f.startDurable()).rejects.toMatchObject({ cause: first });
+    expect(f.observer.record).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ stage: 'deletePurge' }));
   });
 
   it('keeps the lease and consumer closed until preparation settlement', async () => {
@@ -393,6 +494,23 @@ describe('workspace management completion', () => {
     } finally { for (const cleanup of f.cleanups) await cleanup(); }
   });
 });
+
+function expectPreparationAndCleanupFailure(observer: ReturnType<typeof fixture>['observer']): void {
+  const events = observer.record.mock.calls.map(([event]) => event);
+  expect(events).toEqual([
+    expect.objectContaining({
+      errorCode: 'WORKSPACE_DELETE_FAILED', operationKind: 'delete', outcome: 'failed',
+      retryable: false, sideEffectState: 'unknown', stage: 'deletePreparation',
+    }),
+    expect.objectContaining({
+      errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED', operationKind: 'delete', outcome: 'failed',
+      retryable: false, sideEffectState: 'unknown', stage: 'deleteCleanup',
+    }),
+  ]);
+  expect(events[0]?.correlationId).toBeTruthy();
+  expect(events[1]?.correlationId).toBe(events[0]?.correlationId);
+  expect(JSON.stringify(events)).not.toMatch(/SYNTHETIC|SECRET|stack|errors/);
+}
 
 type PreparationInput = {
   service: WorkspaceManagementService;

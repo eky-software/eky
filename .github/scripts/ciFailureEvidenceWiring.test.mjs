@@ -65,6 +65,11 @@ const exclusions = {
 const diagnosticFamilies = {
   'windows-acceptance-supervisor-feasibility.yml': ['packaged-boundary-diagnostic'],
 };
+const linuxServiceRunners = {
+  'ci.yml/verify': 'ubuntu-24.04',
+  'ci.yml/e2e-system-security': 'ubuntu-24.04',
+  'ci.yml/e2e-web-critical': 'ubuntu-24.04',
+};
 
 function platformsFor(key) {
   if (key === 'cadence-contracts') return ['Windows', 'Linux'];
@@ -290,8 +295,8 @@ test('all normal Linux and Windows families collect last, independently of which
       const job = workflows.get(file).get(id);
       const platforms = platformsFor(key);
       const runner = platforms.length === 2 ? '${{ matrix.os }}'
-        : platforms[0] === 'Linux' ? 'ubuntu-latest' : 'windows-latest';
-      assert.ok(job.includes(`    runs-on: ${runner}\n`));
+        : linuxServiceRunners[`${file}/${id}`] ?? (platforms[0] === 'Linux' ? 'ubuntu-latest' : 'windows-latest');
+      assert.deepEqual(job.match(/^    runs-on: .+$/gmu), [`    runs-on: ${runner}`], `${file}/${id}`);
       const allSteps = steps(job, 6);
       const hooks = allSteps.filter(step => step.includes(`uses: ${actionUse}\n`));
       assert.equal(hooks.length, 1, `${file}/${id}`);

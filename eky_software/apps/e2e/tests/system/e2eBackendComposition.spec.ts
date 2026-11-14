@@ -26,6 +26,7 @@ import { E2eBackendStartupFailure, startE2eBackendProcess } from '../../src/envi
 import { waitForLoopbackPortRelease } from '../../src/environment/waitForLoopbackPortRelease.js';
 import { writeE2eBackendConfig } from '../../src/environment/writeE2eBackendConfig.js';
 import { finishServiceFixture } from '../../src/fixtures/finishServiceFixture.js';
+import { reportLinuxPreflightPrivateCheck } from '../../src/fixtures/reportStartupProcessOutput.js';
 
 test.describe('isolated E2E backend composition', () => {
   test('boots the real backend with an isolated database and local session', async ({}, testInfo) => {
@@ -104,6 +105,13 @@ test.describe('isolated E2E backend composition', () => {
         collectArtifacts: async () => {},
         removeRoot: () => removeE2eRunRoot(runRoot),
         report: async cleanup => {
+          const error = failure?.error;
+          if (testInfo.expectedStatus !== 'failed' && error instanceof E2eBackendStartupFailure) {
+            await reportLinuxPreflightPrivateCheck(() => error.readPrivatePreflightCheck(), {
+              testName: testInfo.title, testId: testInfo.testId, file: testInfo.file,
+              attempt: testInfo.retry, retryCount: testInfo.retry, repeatCount: testInfo.repeatEachIndex,
+            });
+          }
           if (failure !== undefined || cleanup.runRoot !== 'removed') {
             await testInfo.attach('backend-composition-cleanup', {
               body: JSON.stringify({ schemaVersion: 1, cleanup }), contentType: 'application/json',

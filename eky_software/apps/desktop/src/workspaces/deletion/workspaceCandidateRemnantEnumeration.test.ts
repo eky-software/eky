@@ -1,9 +1,12 @@
-import { mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rename, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it, type TestContext } from 'vitest';
 import { deriveWorkspaceBackupImportPaths } from '../import/workspaceBackupImportPaths.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
+import { sameCrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
 import { observeWorkspaceCandidateRemnants as observe } from './workspaceCandidateRemnantEnumeration.js';
+import { candidateObservationEofFixture, candidateObservationOwners,
+  candidateObservationTree as tree } from './workspaceCandidateRemnantObservationTestSupport.js';
 import { deletionTestId as id } from './workspaceDeletionDataTestSupport.js';
 import { workspaceDeletionDirectoryReads } from './workspaceDeletionDirectoryEntries.js';
 import { workspaceInspectionRemnantReads } from './workspaceInspectionRemnantAbsence.js';
@@ -150,3 +153,60 @@ it('has no open directory handle when the consumer stops after one candidate', a
   await source.return(undefined);
   expect(opened).toBeGreaterThan(0); expect(opened).toBe(closed);
 });
+
+it.for(candidateObservationOwners)(
+  'rejects original %s enumeration EOF after a late R2 same-byte root replacement', async (owner, context) => {
+    const f = await candidateObservationEofFixture(context, owner);
+    const createSource = () => observe(f.root, f.binding.operationId, f.authority, f.reads);
+    let activeSource: ReturnType<typeof createSource> | undefined, activeWork: Promise<void> | undefined;
+    context.onTestFinished(async () => {
+      await activeWork?.catch(() => undefined);
+      await activeSource?.return(undefined);
+    });
+    const drain = async (source: ReturnType<typeof createSource>, faulted: boolean) => {
+      let targetRows = 0;
+      for await (const row of source) {
+        if (row.binding.operationId !== f.binding.operationId || row.binding.workspaceId !== f.binding.workspaceId) continue;
+        targetRows++;
+        expect(targetRows).toBe(1);
+        expect(row.rootIdentity).toBe(f.initialRootIdentity);
+        expect(row.rootPath).toBe(f.candidate.candidateRoot);
+        expect(row.binding).toEqual(f.binding);
+        expect('assertPayloadsAbsent' in row).toBe(false); expect('ownerSlots' in row).toBe(false);
+        expect(f.fault.injected).toBe(faulted);
+        if (faulted) staleRows++;
+      }
+      expect(targetRows).toBe(1);
+    };
+    let staleRows = 0;
+    activeSource = createSource(); activeWork = drain(activeSource, false);
+    await activeWork; await activeSource.return(undefined);
+    expect(f.handles.length).toBeGreaterThan(0);
+    expect(f.handles.every(handle => handle.closed && handle.closeCalls === 1 && handle.pendingReads === 0)).toBe(true);
+    expect(await tree(f.root)).toEqual(f.before);
+    const normalHandleCount = f.handles.length;
+    f.fault.armed = true;
+    activeSource = createSource();
+    let successfulFaultEOF = false;
+    activeWork = (async () => { await drain(activeSource!, true); successfulFaultEOF = true; })();
+    await expect(activeWork).rejects.toThrow('WORKSPACE_REMNANT_BINDING_INVALID');
+    // Join the SAME iterator after its own rejection, not a new iterator or an early return.
+    await activeSource.return(undefined);
+    expect(successfulFaultEOF).toBe(false); expect(staleRows).toBe(1);
+    expect(f.fault.injected).toBe(true); expect(f.fault.observedIdentity).toBe(f.initialRootIdentity);
+    expect(f.fault.replacementIdentity).toBeDefined();
+    expect(f.fault.replacementIdentity).not.toBe(f.initialRootIdentity);
+    expect(await nativeReads.directoryIdentity(f.candidate.candidateRoot, f.authority.assertAuthority)).toBe(f.fault.replacementIdentity);
+    expect(await nativeReads.directoryIdentity(f.retained, f.authority.assertAuthority)).toBe(f.initialRootIdentity);
+    expect(f.handles.length).toBeGreaterThan(normalHandleCount);
+    expect(f.handles.every(handle => handle.closed && handle.closeCalls === 1 && handle.pendingReads === 0)).toBe(true);
+    expect(f.fault.changedTree).toEqual(f.expectedChangedTree);
+    expect(await tree(f.root)).toEqual(f.expectedChangedTree);
+    expect((await readFile(f.paths.currentPath)).equals(f.originalBinding)).toBe(true);
+    expect(sameCrashSafeFileSlotIdentity(f.bindingIdentity, await lstat(f.paths.currentPath))).toBe(true);
+    expect((await readFile(f.foreignBindingPaths.currentPath)).equals(f.foreignBinding)).toBe(true);
+    expect(await readFile(join(f.retained, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+    expect(await readFile(join(f.candidate.candidateRoot, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+    expect(await readFile(join(f.foreignPaths.candidateRoot, 'keep'), 'utf8')).toBe('foreign-candidate');
+    expect(await readFile(join(f.root, 'unrelated'), 'utf8')).toBe('unrelated-bytes');
+  });

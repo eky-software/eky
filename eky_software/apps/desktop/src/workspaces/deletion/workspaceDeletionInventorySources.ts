@@ -5,7 +5,7 @@ import { workspaceDeletionDirectoryEntryPageSize } from './workspaceDeletionDire
 import { captureDeletionInventoryHeader, captureDeletionInventoryRecord, deletionInventoryRecordKey,
   type WorkspaceDeletionInventoryHeader, type WorkspaceDeletionInventoryRecord } from './workspaceDeletionInventoryCodec.js';
 import { observeWorkspaceDeletionRemnants, workspaceDeletionRemnantReads } from './workspaceDeletionRemnantCensus.js';
-import { captureWorkspaceDeletionRemnantCensus, prepareWorkspaceDeletionRemnantBindings } from './workspaceDeletionRemnantCensusSelection.js';
+import { captureWorkspaceDeletionRemnantCensus, prepareWorkspaceDeletionRemnantBindings, type WorkspaceDeletionSourceReadAuthority } from './workspaceDeletionRemnantCensusSelection.js';
 import type { WorkspaceDeletionOriginalJournalProof } from './workspaceDeletionJournalCodec.js';
 import type { WorkspaceDeletionOriginalJournalSelection } from './workspaceDeletionOriginalJournalSelection.js';
 import type { WorkspaceInspectionRemnantAuthority } from './workspaceInspectionRemnantObservation.js';
@@ -63,7 +63,7 @@ export async function captureWorkspaceDeletionInventorySources(
       if (originals !== undefined) await assertOriginalSelected();
     } catch (error) { failed = true; throw error; }
   };
-  async function* records(): AsyncGenerator<WorkspaceDeletionInventoryRecord, void> {
+  async function* legacyRecords(): AsyncGenerator<WorkspaceDeletionInventoryRecord, void> {
     let complete = false;
     try {
       guard();
@@ -90,7 +90,114 @@ export async function captureWorkspaceDeletionInventorySources(
       if (!complete) failed = true;
     }
   }
-  return Object.freeze({ target, workspace, records, assertUnchanged });
+  let consumers = 0, scopedConsumer = false, retained = false;
+  let firstFailure: unknown;
+  const retain = (error: unknown) => {
+    if (!retained) { retained = true; firstFailure = error; }
+    failed = true;
+    return firstFailure;
+  };
+  const assertUnchangedInternal = async (readAuthority?: WorkspaceDeletionSourceReadAuthority,
+    censusReadAuthority = readAuthority) => {
+    if (readAuthority === undefined) return assertUnchanged();
+    const checkParents = async () => {
+      await captureWorkspaceRemnantParents([userDataRoot, paths.workspacesRoot, paths.workspaceRoot],
+        readAuthority, reads, parents.identities);
+    };
+    try {
+      readAuthority.assertAuthority();
+      if (originals !== undefined) await assertOriginalSelected();
+      await checkParents();
+      await census.assertUnchanged(censusReadAuthority);
+      await checkParents();
+      if (originals !== undefined) await assertOriginalSelected();
+      readAuthority.assertAuthority();
+    } catch (error) { retain(error); throw error; }
+  };
+  async function* records(port?: WorkspaceDeletionSourceReadAuthority): AsyncGenerator<WorkspaceDeletionInventoryRecord, void> {
+    if (retained) throw firstFailure;
+    if (consumers !== 0 && (port !== undefined || scopedConsumer)) return invalidDeletionData(invalidCode);
+    consumers++;
+    const scoped = port !== undefined;
+    if (scoped) scopedConsumer = true;
+    let reading = true, complete = false;
+    const fail = (error: unknown) => {
+      const reason = retain(error);
+      reading = false;
+      try { port?.onFailure(reason); } catch { /* Keep the original read failure. */ }
+      return reason;
+    };
+    let local!: WorkspaceDeletionSourceReadAuthority;
+    try {
+      if (port === undefined) {
+        yield* legacyRecords();
+        complete = true;
+        return;
+      }
+      if (typeof port.onFailure !== 'function' ||
+          (port.assertRecoverySourceReadCurrent !== undefined &&
+            typeof port.assertRecoverySourceReadCurrent !== 'function')) return invalidDeletionData(invalidCode);
+      const checkRead = checkedDeletionAuthority(port.assertAuthority.bind(port), invalidCode);
+      const checkRecoveryReadCurrent = port.assertRecoverySourceReadCurrent === undefined ? undefined :
+        checkedDeletionAuthority(port.assertRecoverySourceReadCurrent.bind(port), invalidCode);
+      const localGuard = () => {
+        if (retained) throw firstFailure;
+        if (!reading) return invalidDeletionData(invalidCode);
+        try { guard(); checkRead(); } catch (error) { throw fail(error); }
+      };
+      const awaited = async (work: () => Promise<void>) => {
+        try {
+          localGuard(); const result: unknown = await work(); localGuard();
+          if (result !== undefined) return invalidDeletionData(invalidCode);
+        } catch (error) { fail(error); throw error; }
+      };
+      local = { assertAuthority: localGuard, onFailure: fail,
+        assertExternalSelection: () => awaited(port.assertExternalSelection.bind(port)),
+        assertWritersAbsent: () => awaited(selectedAuthority.assertWritersAbsent) };
+      const censusReadAuthority = checkRecoveryReadCurrent === undefined ? local : {
+        ...local, assertRecoverySourceReadCurrent: () => {
+          try {
+            localGuard(); checkRecoveryReadCurrent(); localGuard();
+          } catch (error) { throw fail(error); }
+        } };
+      localGuard();
+      await selectedAuthority.assertExternalSelection(); localGuard();
+      let cursor: string | undefined;
+      while (true) {
+        await captureWorkspaceRemnantParents([userDataRoot, paths.workspacesRoot, paths.workspaceRoot],
+          local, reads, parents.identities);
+        const captured = cursor === undefined ? expectedPage ?? firstPage?.page : firstPage?.page;
+        firstPage = undefined;
+        const page = captured ?? await readPage(userDataRoot, target, workspace, local, reads, cursor, originalProofs);
+        await captureWorkspaceRemnantParents([userDataRoot, paths.workspacesRoot, paths.workspaceRoot],
+          local, reads, parents.identities);
+        if (page.length === 0) break;
+        for (const record of page) {
+          localGuard(); yield record; localGuard(); cursor = deletionInventoryRecordKey(record);
+        }
+        if (page.length < workspaceDeletionDirectoryEntryPageSize) break;
+      }
+      await assertUnchangedInternal(local, censusReadAuthority);
+      await selectedAuthority.assertExternalSelection(); localGuard();
+      complete = true;
+    } catch (error) { if (scoped) fail(error); throw error; }
+    finally {
+      if (!complete && scoped && !retained) {
+        try { invalidDeletionData(invalidCode); } catch (error) { fail(error); }
+      }
+      reading = false;
+      consumers--;
+      if (scoped) scopedConsumer = false;
+    }
+  }
+  const assertPublicUnchanged = async () => {
+    if (scopedConsumer) return invalidDeletionData(invalidCode);
+    if (retained) throw firstFailure;
+    consumers++;
+    try { await assertUnchanged(); }
+    finally { consumers--; }
+  };
+  return Object.freeze({ target, workspace, records, assertUnchanged: assertPublicUnchanged });
 }
 
 function createPage(workspace: WorkspaceDeletionInventoryRecord, cursor?: string) {
@@ -126,7 +233,12 @@ async function readPage(
       if (next.done) break;
       for (const record of project(root, target, workspace, next.value, originalProofs)) consider(record);
     }
-  } catch (error) { failed = true; failure = error; }
+  } catch (error) {
+    failed = true; failure = error;
+    if ('onFailure' in authority && typeof authority.onFailure === 'function') {
+      try { authority.onFailure(error); } catch { /* Preserve read cause before iterator close. */ }
+    }
+  }
   try { await source.return(undefined); }
   catch (error) {
     if (failed) throw new AggregateError([failure, error], invalidCode);

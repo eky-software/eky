@@ -55,6 +55,11 @@ Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
 edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
 checkpoint-jaosta.
 
+Nimetyn kohdeajon hyväksyntä vaatii näytön juuri valitun testitapauksen
+suorituksesta. Pelkkä exit 0 tai testitiedoston latauksen läpäisy ei riitä;
+sisäisen testin nimi esimerkiksi generoidussa lähdetekstissä ei ole ulomman
+testiajurin valittava tapaus.
+
 Raskaan acceptance-matriisin CI-kadenssi erotetaan tavallisesta moduuli-PR:n
 palautesyklistä. Nopeiden porttien pitää antaa palaute jokaisesta muutoksesta,
 mutta installer-, packaged-, legacy- ja fault-matriisit ajetaan vain niiden
@@ -79,11 +84,40 @@ tarkistaa samaa nimettyä ehtoa ja sen pitää palautua heti ehdon toteutuessa.
 Erillinen enimmäisaika säilytetään fail-closed-turvarajana; sen täyttyminen on
 virhe eikä valmis-signaali.
 
+Jaettuja Vitest-mokkeja käyttävän ketjusarjan uusi testialustus saa tyhjentää
+historiat vasta edellisen työn, loppuväittämien, loppuhookien ja
+resurssisiivouksen todetun päättymisen jälkeen. `restoreAllMocks()` palauttaa
+spy-kytkennät, mutta ei korvaa `clearAllMocks()`-kutsun historian vapautusta.
+Tyhjennys ei saa nollata säilytettävää toteutusfunktiota tai kadottaa
+ensivirheen aineistoa. Se ei myöskään yksin todista yksittäisen testin
+muistihuippua rajatuksi.
+
 Windows-prosessipuun omistajuus ei saa perustua pelkkään parent PID -ketjuun,
 koska poistuneen prosessin PID voidaan käyttää uudelleen. Omistetun lapsen
 pitää kuulua samaan täsmälliseen creation identity -ketjuun ja sen syntymäajan
 pitää olla sama tai myöhempi kuin todistetun vanhemman. Ennen omistettua juurta
 syntynyt prosessi ja sen jälkeläiset torjutaan siivouksesta fail closed.
+
+### Testin, tuotannon ja CI:n aikabudjetit
+
+Testin timeout, valmistelun ja sulun rajat, tuotannon operaation määräaika
+sekä CI-työn kokonaisbudjetti ovat eri sopimuksia. Yhden muutos ei muuta
+muita eikä pidempi testi todista viivettä korjatuksi. Käytä muuttuvan ketjun
+nykyistä elinikäapuria: keskeneräinen työ ja sulku odotetaan todetusti loppuun,
+ja ensivirhe säilyy erillään siivousvirheestä. Odota tapahtumaa tai täsmällistä
+tilaehtoa, älä lisää kiinteää unta. Hyväksytyn työpaketin paikallisessa
+diagnostiikassa ja todennuksessa agentti saa ilman uutta lupaa muuttaa nimetyn
+testin mitattavan väittämän odotusta, testiajurin aikarajaa tai testikohtaista
+kokonaisrajaa tilapäisesti sekä perustellusti pysyvästi.
+Kirjaa kysymys, lähtö- ja koeraja, työ- ja siivousrajat sekä ensivirheen säilytys;
+pysyvän muutoksen perustelu ja näyttö kuuluvat samaan omistavaan kohtaan.
+Palauta tilapäisen kokeen normaali raja ja varmista palautus myös virheessä.
+Raportoi diagnostinen tulos erillään normaalista hyväksyntänäytöstä: pidempi
+odotus ei yksin todista viivettä korjatuksi. Nykyinen seuranta ja uusintaraja
+säilyvät, eikä ajoitusvaltuus salli muuttumattomia uusintoja vihreään asti.
+Sovelluksen aikarajat, CI:n kokonaisbudjetti sekä turva-, siivous- ja
+julkaisuportit ovat erillisiä päätöksiä. Valmistelun siirto ei saa piilottaa
+kokonaisajan kasvua.
 
 ## Web-CI:n kokonaisbudjetti
 
@@ -122,11 +156,26 @@ Desktopin tavallinen `test`-komento ajaa lisäksi pakollisen
 Vitest-poolista, ja koko tiedosto ajetaan sen jälkeen yhdellä työntekijällä
 ilman tiedostorinnakkaisuutta. Molemmat nykyiset Vitest-reporterit säilyvät.
 Vaiheita yhdistää `&&`: epäonnistunutta vaihetta ei ohiteta. Muut testit,
-Vitestin oletusasetukset, ketjutestin 180 sekunnin raja ja CI:n kokonaisrajat
-eivät muutu. Ajokytkennän kielteiset kontrollit ja Vitestin todellisen
+Vitestin oletusasetukset ja CI:n kokonaisrajat eivät muutu. Ketjutestin
+nykyisen budjetin omistaa [nimetty testibudjetti](#rooliketjun-yhdistelmätestin-aikabudjetti).
+Ajokytkennän kielteiset kontrollit ja Vitestin todellisen
 tiedostovalinnan vertailu todentavat, ettei jako jätä testejä pois tai aja
 niitä kahdesti. Luettelointi ei korvaa koko komennon ajotodistusta, eikä
 sarjallistuksen läpäisy ratkaise aiemman aikakatkaisun syytä.
+
+### Rooliketjun yhdistelmätestin aikabudjetti
+
+12.11.2026:n delegoidulla testiajoitusvaltuudella vain
+`workspaceDeletionRolesCommand.test.ts`:n
+`deletes all ten roles and every legacy member through one actual file command, preserving foreign owners`
+saa 240 sekuntia aiemman 180 sekunnin sijaan. Koko 23 kohteen valmistelu,
+aloitusjulkaisu, fyysinen poisto, rekisteri, metadata, viimeistely ja
+säilyvien tavujen loppuväittämät sisältyvät samaan rajaan. Vaihemittaus erotti
+etenevät tarkistukset yhdestä odottavasta kutsusta, ja valmistumisdiagnoosi
+läpäisi kaikki alkuperäiset väittämät. Normaali kohdetodennus vaaditaan erikseen.
+Muiden testien, sovelluksen, siivouksen ja CI:n rajat eivät muutu.
+Ensihylkäykset säilyvät; budjetti ei osoita nopeuskorjausta tai salli lisänostoja
+automaattisesti. Yhden työntekijän ajokytkentä ja nykyiset reporterit säilyvät.
 
 ## Core-CI:n pakettisarjojen ajo
 
@@ -162,6 +211,12 @@ toisen työn vihreä vaihe ei korvaa puuttuvaa, peittynyttä tai ohitettua vaihe
 Testien omat aikarajat, valmistelu, eristys ja uusintaehdot eivät muutu.
 Jaon ajotodennus vaatii uuden revision CI:n; lähdetarkistus ei yksin hyväksy
 sitä tai muuta ensimmäistä kokonaiskatkaisua onnistumiseksi.
+
+Todellisen Linux-palveluketjun OS-perheen omistaa
+[E2E-ympäristön kolmen työn rajaus](../architecture/e2e-test-environment.md#linux-ci).
+Sama valmistelukomento ei tarkoita samaa runner-labelia: desktopin
+`test-packages` säilyttää nykyisen labelinsa, `verify` käyttää palveluketjun
+ympäristöä. Työnjako, pakolliset vaiheet ja kokonaisbudjetit eivät muutu.
 
 ## Palautustestin erillinen valmistelu
 
@@ -220,8 +275,10 @@ sekä kaikki tarkistukset säilyvät. Rajattu mittaus läpäisi, mutta aiemman
 aikakatkaisun syy jää avoimeksi eikä mittaus yksin hyväksy laajaa sarjaa.
 
 Omistajan 30.10.2026 hyväksymä sama kymmenen sekunnin testiraja koskee
-myös vain tämän yhdistelmätestin `contentFailure`-varianttia. Näin ryhmän
-kolme nimettyä varianttia käyttävät samaa nykyistä testibudjettia.
+myös vain tämän yhdistelmätestin `contentFailure`-varianttia.
+`completed`-variantin myöhemmän budjetin omistaa
+[16 tapauksen kohta](#w75-current-sixteen-case-budgets); nämä kaksi
+virhevarianttia säilyttävät kymmenen sekuntia.
 Valmistelu ja kaikki sisältö-, omistajuus- ja sulkutarkistukset sisältyvät
 rajaan. Sovelluksen, muiden testien ja CI:n aikarajat säilyvät.
 Aiemmat aikakatkaisut eivät muutu tällä korjatuiksi tai hyväksytyiksi;
@@ -234,6 +291,288 @@ Kummankin kaksi käynnistystä, valmistelu sekä kaikki tiedosto-, palautus- ja
 sulkutarkistukset sisältyvät tähän rajaan. Sovelluksen, muiden testien ja
 CI:n aikarajat säilyvät. Alkuperäinen aikakatkaisu jää avoimeksi; kahden
 variantin kohdetodennus ja yksi normaali Main-sarja vaaditaan erikseen.
+
+Omistajan 7.11.2026 hyväksymä sama kymmenen sekunnin testiraja koskee
+lisäksi vain seuraavien neljän Main-yhdistelmätestin `replacement: true`
+-variantteja samassa `desktopRestoreStartup.test.ts`-tiedostossa:
+
+- `logs terminal preparation failure before a successful rollback relaunch`
+- `uses cold content admission across actual forward moves`
+- `checks fresh original content after writer stop before rollback`
+- `keeps one restore owner from isolated rejection through stopped rollback`
+
+Testien valmistelu, palautus ja kaikki lopputarkistukset kuuluvat samaan
+rajaan. Näiden neljän yhteinen enimmäisvara kasvaa 20:stä 40 sekuntiin;
+`replacement: false` -variantit säilyttävät viiden sekunnin oletusrajan.
+Nykyinen testiapurin sulku sekä sovelluksen ja CI:n aikarajat säilyvät.
+Yksi erikseen hyväksytty mittaus läpäisi alkuperäiset väittämät, mutta ei
+selitä vanhojen aikakatkaisujen juurisyytä tai hyväksy niitä jälkikäteen.
+Pysyvän muutoksen kohdetodennus ja yksi normaali Main-sarja vaaditaan.
+
+Omistajan 8.11.2026 hyväksymä kymmenen sekunnin testiraja koskee vain
+`desktopWorkspaceRecoveryObservation.test.ts`:n `publication handoff keeps
+the selected last company and never rereads discovery after its own journal`
+-yhteistestiä. Valmistelu, todellinen main-varaus, julkaisun valintasiirto,
+kaikki neljä sisältövertailua, säilyvien tavujen tarkistukset ja sulku
+kuuluvat samaan budjettiin. Muiden testien, sovelluksen ja CI:n aikarajat
+säilyvät. Kertamittauksen läpäisy ei selitä aiempien viiden sekunnin
+hylkäysten syytä tai korvaa pysyvän asetuksen kohde- ja vaikutustodennusta.
+
+Samana päivänä hyväksytty kymmenen sekunnin raja koskee lisäksi vain kolmea
+`workspaceDeletionPublication.test.ts`:n kontrollia:
+
+- `hands the exact prejournal selection through the publisher once without changing payloads`
+- `hands the exact prejournal selection through the command once without changing payloads`
+- `keeps three independent finite authorities out of the original source and writes`
+
+Valmistelu, julkaisun kaikki alkuperäiset tarkistukset, säilyvien tavujen
+väittämät ja sulku kuuluvat samaan rajaan. Näiden kolmen yhteinen
+enimmäisvara kasvaa 15:stä 30 sekuntiin; muut testit sekä sovelluksen ja
+CI:n rajat säilyvät. Yksi hyväksytty vaihemittaus läpäisi alkuperäiset
+väittämät, mutta ei selitä aiempaa vaihtelua tai hyväksy hylkäyksiä
+jälkikäteen. Pysyvä asetus todennetaan yhdellä normaalilla kolmen
+vaikutustiedoston sarjalla ilman mittausmuunninta.
+
+Nykyisen ajoitusvaltuuden mukaan sama kymmenen sekunnin testibudjetti koskee
+lisäksi vain saman tiedoston `initial publication cannot use a failed old
+callback to poison the next publication` -yhdistelmätestiä. Se tekee kaksi
+erillistä valmistelua ja julkaisuyritystä sekä tarkistaa molempien säilyvät
+tavut ja päättyneet luentavaltuudet. Vaihemittaus todensi kaikkien alkuperäisten
+väittämien valmistuvan, mutta kahden julkaisun yhteinen työ ylitti viiden
+sekunnin oletusrajan. Testirunko, väittämät ja sulku säilyvät; vain tämä
+nimetty testibudjetti muuttuu. Sovelluksen, muiden testien ja CI:n rajat
+eivät muutu. Normaali kohde- ja tiedostotodennus vaaditaan ilman mittausta;
+vanhat aikakatkaisut jäävät avoimiksi, eikä pidempi testi ole nopeuskorjaus.
+
+Sama nimetty kymmenen sekunnin raja koskee myös tämän tiedoston kuutta
+kokonaista julkaisijatapausta:
+
+- `publishes the real %s source selection in the approved order without deleting data`
+  vain varianteilla `active` ja `selector`.
+- `rejects postpublication %s changes and preserves the committed journal`
+  vain varianteilla `source`, `identity` ja `sideSlot`.
+- `initial publication preserves the portless path without a writer-only fallback`.
+
+Vaihemittaus erotti valmistelun, varsinaisen julkaisun ja loppuväittämät;
+kaikki alkuperäiset tarkistukset valmistuivat, mutta julkaisutyö ylitti
+viiden sekunnin oletusrajan. Vain näiden kuuden testitapauksen raja muuttuu:
+väittämät, sulku sekä sovelluksen, muiden testien ja CI:n rajat säilyvät.
+Koko julkaisijatiedosto varmennetaan ilman mittausmuunninta. Aiemmat hylkäykset
+ja aikavaihtelun syyt jäävät avoimiksi; tämä ei ole tuotannon nopeuskorjaus.
+
+<a id="w75-fixed-eight-case-budgets"></a>
+
+Lukitun kahdeksan tapauksen kokonaiskeston kalibrointi perustelee lisäksi
+seuraavat nimetyt testibudjetit. Mittaus sisälsi kaikki alkuperäiset
+väittämät ja sulut; pysyvä asetus varmennetaan tavallisilla tiedostokomennoilla.
+
+- `workspaceDeletionProcess.test.ts`: vain `cold restart joins a real terminated
+  owner before:purgeAuthorized without replaying consent` ja `joins a real
+  terminated owner and resumes the same file command in a fresh process
+  (authorized)` saavat 90 sekuntia aiemman 60 sekunnin sijaan. Molemmat kattavat
+  todellisen prosessikatkon ja uuden omistajan cold-jatkon. Muut myöhemmät
+  nimetyt budjetit omistavat [seitsemän](#w75-current-seven-case-budgets) ja
+  [16 tapauksen](#w75-current-sixteen-case-budgets) kohdat; oletusraja ei muutu.
+- `workspaceDeletionPublication.test.ts`: `cleans only proven target metadata
+  before capturing sources and preserves foreign metadata` saa 20 sekuntia
+  aiemman kymmenen sijaan. Se yhdistää kohdemetadatan siivouksen ja uuden
+  inventaarion julkaisun sekä vieraan aineiston loppuvertailun.
+- Samassa tiedostossa 10 sekuntia aiemman viiden sijaan saavat
+  `phase observation preserves publisher comparisons and journal bytes: %s`
+  varianteilla `off`, `on`, `throwing`, `confines the inventory callback during
+  source-owned wait: success` sekä `rejects a registry side slot added during
+  the final inventory close`. `sourceFailure`-naapurivariantin raja ei muutu.
+
+Budjetti jättää mitattuun kokonaiseen ketjuun perustellun liikkumavaran;
+se ei poista tarkistuksia, muuta tuotannon tai CI:n määräaikoja eikä todista
+nopeuskorjausta tai selitä aiempaa vaihtelua. Katkenneen mittausyrityksen
+puuttuvat tulokset ja siivous sekä aiemmat aikakatkaisut säilyvät avoimina.
+Testien nimet, järjestys, rungot, odotukset ja siivous säilytetään.
+Näiden kahdeksan tapauksen yhteenlaskettu enimmäisvara kasvaa 155 sekunnista
+250 sekuntiin; tämä ei ole kiinteä odotus eikä CI-työn kokonaisrajan nosto.
+
+<a id="w75-fixed31-case-budgets"></a>
+
+Erillisen lukitun 31 tapauksen kalibroinnin perusteella seuraavat nimetyt
+yhdistelmätestit saavat alla olevat budjetit. Valmistelu, todellinen
+tiedostotyö, kaikki loppuväittämät sekä omistetun työn päättyminen sisältyvät
+samaan rajaan. Muut variantit säilyttävät nykyisen rajansa; oletusrajaa ei
+muuteta yleisesti eikä aiempaan kahdeksan tapauksen joukkoon lisätä tapauksia.
+
+- `desktopRestoreStartup.test.ts`: `captures cold admission and real service
+  projections ($stage, cleanup failure: $cleanupFailure)` saa 10 sekuntia
+  vain parilla `deleteAuthorization` / `true`. `publishes the recovery main
+  selection before a controlled durable stop without rereading discovery`
+  saa 30 sekuntia. `recovers an interrupted selector return through main: $0`
+  saa 10 sekuntia vain arvoilla `returnNext` ja `registryReturnBackup`.
+  `waits for candidate exit after $terminal from $state (historical duplicate:
+  $duplicateLabel)` saa 10 sekuntia vain `cold import production wiring`
+  -ryhmän parilla `completed` / `candidateValidated`, `duplicateLabel: true`.
+  Vastaava creation-ryhmä ja muut yhdistelmät eivät muutu.
+- `workspaceDeletionPayloadExecutor.test.ts`: `rejects concurrent execution
+  and joins a pending rename before reporting owner loss` saa 10 sekuntia.
+- `workspaceDeletionInventorySources.test.ts`: `orders more than one page
+  from real owners without dropping or repeating a root: %s` saa 45 sekuntia
+  molemmilla arvoilla `default` ja `recoveryProof`.
+- `workspaceBackupImportColdFiles.test.ts`: `actual normal cold import
+  remains byte-equivalent after discovery for %s` saa 10 sekuntia arvoilla
+  `current`, `backup`, `next`, `backupNext`, `threeSlots`, `oversizedSibling`,
+  `mixedOperations` ja `reversedTransition`.
+- `workspaceDeletionRegistryPublication.test.ts`: `cold main actual service
+  owner and native selection reject %s before mutation` saa 10 sekuntia vain
+  arvoilla `heldBuild` ja `original`.
+- `workspaceLegacyAdoptionPhaseSelection.test.ts`: `recovers a bound %s
+  interruption with the same journal identity` saa 10 sekuntia arvoilla
+  `empty`, `candidate` ja `published`.
+- `workspaceDeletionPostClearReadSelection.test.ts`: `retains the %s path
+  and evidence` saa 10 sekuntia vain arvolla `cold.present.v2`.
+- `workspaceDeletionMetadataCleanup.test.ts`: `retires payloadless original
+  %s proof metadata from a committed V2 purged fixture` saa 45 sekuntia vain
+  arvolla `workspaceLegacyAdoption`. `preflight characterizes the approved
+  transient observation difference` saa 10 sekuntia. `post-clear preserves
+  returned %s slot before its read` saa 10 sekuntia vain arvolla
+  `foreignWorkspace`.
+- `workspaceDeletionManagementComposition.test.ts`: `preserves %s published
+  slots without live handoff when final preparation loses its requester`
+  saa 10 sekuntia vain arvolla `selector`.
+- `workspaceReplacementRemnantEnumeration.test.ts`: `merges real 64/65-name
+  directory pages with a controlled selection reader` saa 20 sekuntia.
+- `workspaceActivationMigrationBindingIntegration.test.ts`: `publishes before
+  snapshot and uses guarded real activation (selector: false)` saa 10 sekuntia
+  ja `selector: true` -vastinpari 20 sekuntia.
+- `workspaceSelectorManagementComposition.test.ts`: `keeps a late import-return
+  failure sticky after the released lease and terminal callback` saa 10 sekuntia.
+- `workspaceBackupImportCoordinatorFiles.test.ts`: `publishes real payload and
+  registry bytes, retires metadata, then returns only after lease release`
+  saa 10 sekuntia.
+
+Näiden 31 tapauksen yhteinen enimmäisvara kasvaa 255 sekunnista 455 sekuntiin.
+Kalibrointi todensi alkuperäisten tarkistusten valmistumisen; budjetti jättää
+liikkumavaraa yhdistetylle tiedosto- ja elinkaarityölle poistamatta tarkistuksia.
+Se ei osoita tuotannon nopeuskorjausta tai aiempien aikakatkaisujen syytä.
+Sovelluksen, CI:n ja siivouksen rajat säilyvät. Pysyvä asetus varmennetaan
+normaalissa kohde- ja tiedostosarjassa ilman koemuunnoksia tai komentorivin
+timeout-poikkeusta; laajemmat nykyiset hyväksyntäportit säilyvät pakollisina.
+
+<a id="w75-recovery-resume-test-budget"></a>
+
+`desktopRestoreStartup.test.ts`:n `actual recovery startup resumes the existing
+recovery exactly once with %s selection` saa lisäksi 10 sekuntia vain arvolla
+`startup`. `injected`-vastinvariantin myöhemmän budjetin omistaa
+[16 tapauksen kohta](#w75-current-sixteen-case-budgets). Todellisen
+oletusvalinnan, palautuksen, uuden omistajuuden, tiedostovertausten ja hallitun
+sulun sama ketju kuuluu tähän rajaan; sitä ei korvata injektoidulla valinnalla.
+Alkuperäinen aikakatkaisu ja startup-virhehavainto säilyvät erillisinä,
+eikä kohdeläpäisy ratkaise niiden syytä. Normaali parin todennus ja sitä
+seuraava koko desktop-komento vaaditaan; ylimääräistä muuttumatonta
+13 tiedoston uusintaa ei ajeta näiden lisäksi. Tämä yksittäinen budjetti
+ei kuulu yllä olevaan 31 tapauksen joukkoon. Sovelluksen, muiden testien,
+CI:n ja siivouksen rajat säilyvät.
+
+<a id="w75-current-seven-case-budgets"></a>
+
+13.11.2026:n normaalin desktop-ajon seitsemälle aikakatkaisseelle tapaukselle
+tehtiin yksi erillinen, lähdesidottu valmistumismittaus. Kaikki alkuperäiset
+väittämät ja sulut valmistuivat; tämä ei ratkaise vanhojen aikakatkaisujen
+syytä. Delegoidulla testiajoitusvaltuudella vain seuraavat budjetit muuttuvat:
+
+- `desktopRestoreStartup.test.ts`: `captures cold admission and real service
+  projections ($stage, cleanup failure: $cleanupFailure)` saa 10 sekuntia
+  myös yhdistelmille `deleteAuthorization/false`, `deleteCleanup/false` ja
+  `deleteCleanup/true`. Neljännen variantin aiempi 10 sekuntia säilyy.
+- Saman tiedoston `does not relaunch another workspace after rollback restores
+  original database absence (replacement: %s)` saa 10 sekuntia vain arvolla
+  `true`. Arvon `false` oletusraja säilyy.
+- `workspaceBackupImportColdFiles.test.ts`: `actual normal cold import remains
+  byte-equivalent after discovery for %s` saa 10 sekuntia myös arvolla
+  `tornSibling`; muiden varianttien nykyiset rajat säilyvät.
+- `workspaceDeletionInventorySources.test.ts`: `projects all ten roles once,
+  excludes foreign sources, and preserves every source byte` saa 30 sekuntia
+  aiemman 20 sekunnin sijaan.
+- `workspaceDeletionProcess.test.ts`: `returns to the empty selector after a
+  real process restart deletes the final faulty workspace` saa 90 sekuntia
+  aiemman 60 sekunnin sijaan. Muiden prosessitapausten myöhemmät nimetyt
+  budjetit ovat [16 tapauksen kohdassa](#w75-current-sixteen-case-budgets).
+
+Näiden seitsemän yhteinen enimmäisvara kasvaa 105:stä 170 sekuntiin. Testin
+valmistelu, todellinen työ, loppuväittämät ja nykyinen sulku sisältyvät samaan
+rajaan. Testirungot sekä sovelluksen, CI:n ja siivouksen aikarajat säilyvät.
+Käänteisvertailu, normaalin testivalinnan vertailu, tyypitys, kohdeajo ja
+laaja integraatioportti vaaditaan erikseen; mittaus ei ole nopeuskorjaus
+eikä normaali hyväksyntä. Tämä erä ei muuta kahdeksan tai 31 tapauksen
+aiempia nimettyjä budjetteja tai sulje niiden ensihylkäyksiä.
+
+<a id="w75-current-sixteen-case-budgets"></a>
+
+Seuraavan normaalin desktop-kokonaisajon 16 aikakatkaisulle tehtiin yksi
+erillinen lukittu valmistumismittaus. Alkuperäiset rungot ja kaikki väittämät
+valmistuivat. Nykyinen cold-vaiheapuri erotti etenevän palautus-, tiedosto-
+ja viimeistelytyön; tämä ei ratkaise alkuperäisiä viiveen syitä. Delegoidun
+testiajoitusvaltuuden perusteella vain alla nimetyt 16 budjettia muuttuvat.
+
+- `workspaceDeletionRemnantPreparation.test.ts`: `acknowledges exact payloadless
+  %s slots and preserves every foreign slot` saa 10 sekuntia vain arvolla
+  `profileInspection`; muut omistajat säilyttävät oletusrajansa.
+- `workspaceDeletionMetadataCleanup.test.ts`: `post-clear returned chain
+  includes outer close after %s` saa 10 sekuntia vain arvolla `undefined`.
+  `post-clear detects %s payload after completed clear` saa 10 sekuntia
+  arvoilla `persistent` ja `restored`. `post-clear detects %s cold selection
+  after completed clear` saa 10 sekuntia vain arvolla `restored`.
+  Näiden aiempi raja oli viisi sekuntia; naapurivariantit eivät muutu.
+- `resolveActiveWorkspaceStartup.test.ts`: `discards a matching unpublished
+  adoption root and relaunches before retrying adoption` saa 10 sekuntia
+  aiemman viiden sijaan.
+- `workspaceBackupImportColdFiles.test.ts`: `actual normal cold import
+  remains byte-equivalent after discovery for %s` saa 10 sekuntia myös
+  arvoilla `currentBackup` ja `currentNext`; muiden varianttien rajat säilyvät.
+- `desktopRestoreStartup.test.ts`: `validates '%s' with the existing cold
+  owner before returning from the main callback` saa 10 sekuntia myös
+  arvolla `anchorReleaseFailure`. `actual recovery startup resumes the existing
+  recovery exactly once with %s selection` saa 10 sekuntia myös arvolla
+  `injected`. `recovers an interrupted selector return through main: $0`
+  saa 10 sekuntia myös arvolla `completeReturn`. Näiden aiempi raja oli viisi.
+  `settles the selected source-null replacement through real rollback before
+  selector return ('%s')` saa 20 sekuntia vain arvolla `completed`, aiemman
+  kymmenen sijaan. Muut saman ryhmän variantit säilyttävät kymmenen sekuntia.
+- `workspaceDeletionProcess.test.ts`: `cold restart joins a real terminated
+  owner %s without replaying consent` saa 90 sekuntia aiemman 60 sekunnin
+  sijaan vain katkoilla `before:quarantined`, `after:quarantined`,
+  `after:purgeAuthorized` ja `before:purged`. Näiden todellinen ensimmäisen
+  lapsen katkaisu, uusi cold-omistaja, loppuväittämät ja molempien lasten
+  sulku sisältyvät samaan rajaan. Muiden katkojen nykyiset rajat säilyvät.
+
+Näiden 16 tapauksen yhteinen enimmäisvara kasvaa 305:stä 490 sekuntiin.
+Mitattu valmistuminen perustelee rajatun liikkumavaran, ei suorituskykyvian
+korjausta tai testin ulkopuolista häiriötä. Sovelluksen, CI:n, siivouksen ja
+muiden testien aikarajat, kaikki turvaväittämät sekä alkuperäiset hylkäykset
+säilyvät. Käänteisvertailu, vaikutustiedostojen kaikkien 788 testinimen ja
+järjestyksen vertailu, tyypitys ja tavallinen kohdetodennus vaaditaan.
+Mittaus tai osasarja ei korvaa normaalia desktop-kokonaiskomentoa.
+
+<a id="w75-main-composition-test-budgets"></a>
+
+Omistajan 8.11.2026 hyväksymä alkuperäinen 20 sekunnin testiraja koski vain
+`desktopRestoreStartup.test.ts`:n `publishes the recovery main selection
+before a controlled durable stop without rereading discovery` -yhteistestiä.
+Sen nykyisen rajan omistaa [31 tapauksen nimetty budjetti](#w75-fixed31-case-budgets).
+Sen nykyinen valmistelu, todellinen journalijulkaisu, hallittu jatkon
+hylkäys, tiedostoväittämät ja sulku sisältyvät samaan testibudjettiin.
+Tämä testi ei väitä suorittavansa fyysistä poistoa.
+
+Samalla hyväksytty kymmenen sekunnin raja koskee samassa tiedostossa vain
+kahta aiemmin mitattua varianttia:
+
+- `uses original cold admission across startup rollback` vain `replacement: true`.
+- `retires the observed cold import binding through main` vain `rootPublished`.
+
+Vastinvariantit `replacement: false` ja `prepared` säilyttävät viiden sekunnin
+oletusrajan. Alkuperäinen päätös kasvatti näiden kolmen nimetyn tapauksen
+yhteisen enimmäisvaran 15:stä 40 sekuntiin; myöhempi nimetty muutos yllä
+koskee vain recovery-julkaisijaa. Kaikki alkuperäiset testirungot, väittämät, testin
+omistajuus ja siivous sekä muiden testien, sovelluksen ja CI:n rajat säilyvät.
+Kohdetodennus ja yksi normaali Main-sarja vaaditaan ilman mittausmuunninta.
+Kertamittausten läpäisy ei yksin sulje alkuperäisiä hylkäyksiä eikä hyväksy
+koko W7.5:n integraatiota.
 
 Omistajan 31.10.2026 antaman rajattujen testibudjettikorjausten valtuuden
 perusteella kymmenen sekunnin raja koskee myös vain
@@ -265,20 +604,23 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   20 sekuntia. Mukana ovat kaikki kymmenen roolia, vieraat lähteet, oikeat
   tiedostotavut ja luennan jälkeinen tuore lähdevertailu.
 - Saman tiedoston `orders more than one page from real owners without
-  dropping or repeating a root` saa 30 sekuntia. Valmistelu, 17 operaation
+  dropping or repeating a root` -testin alkuperäisen 30 sekunnin rajan korvaa
+  [nykyinen nimetty budjetti](#w75-fixed31-case-budgets). Valmistelu, 17 operaation
   68 juurta, workspace-rivi, kaksi avainsivua ja täydellinen EOF-vertailu
   kuuluvat samaan testiin. Yksityinen mittaus on erillinen todiste;
   nimetty testi on läpäistävä myös tavallisessa vaikutusalueen sarjassa.
 - `workspaceReplacementRemnantEnumeration.test.ts`:n `merges real
-  64/65-name directory pages with a controlled selection reader` saa
-  10 sekuntia. Se todentaa oikeiden nimisivujen yhdistämisen ohjatulla
+  64/65-name directory pages with a controlled selection reader` -testin
+  alkuperäisen 10 sekunnin rajan korvaa [nykyinen nimetty budjetti](#w75-fixed31-case-budgets).
+  Se todentaa oikeiden nimisivujen yhdistämisen ohjatulla
   omistajavalinnalla, eikä korvaa edellisen testin oikeaa omistajaketjua.
-- Omistajan 31.10.2026 erikseen hyväksymä
+- Omistajan 31.10.2026 erikseen hyväksymän
   `workspaceDeletionPublication.test.ts`:n `cleans only proven target
-  metadata before capturing sources and preserves foreign metadata` saa
-  10 sekuntia. Valmistelu, metadatan omistajakohtainen siivous, täydellisen
+  metadata before capturing sources and preserves foreign metadata` -testin
+  alkuperäisen 10 sekunnin rajan korvaa [nykyinen nimetty budjetti](#w75-fixed-eight-case-budgets).
+  Valmistelu, metadatan omistajakohtainen siivous, täydellisen
   inventaarion ja poiston aloituskirjauksen julkaisu sekä jälkivertailut
-  kuuluvat samaan budjettiin. Muut julkaisijatapaukset säilyttävät rajansa.
+  kuuluvat samaan budjettiin; tästä kohdasta ei johdeta muiden testien rajoja.
 - Omistajan 2.11.2026 hyväksymä E:n neljän julkaisukokeen 10 sekunnin
   budjetti koskee `workspaceDeletionRemnantPreparation.test.ts`:n tapauksia
   `publishes selected original proof through all three comparisons without
@@ -320,7 +662,8 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   sisältyvät tähän rajaan. Rajattu vaihemittaus todensi työn ja kaikkien
   väittämien valmistumisen, mutta aiemmat viiden sekunnin aikakatkaisut
   säilyvät avoimina. Muut testit, sovelluksen määräajat, CI:n kokonaisrajat
-  ja kaikkien roolien 180 sekunnin ketjuraja säilyvät. Budjettimuutos ei
+  säilyvät. Rooliketjun erillistä nykyistä budjettia ei muuteta tällä
+  poikkeuksella. Budjettimuutos ei
   osoita sovelluksen nopeutumista tai hyväksy vaikutusalueen sarjaa.
 - Omistajan 4.11.2026 jatkovaltuuden perusteella saman tiedoston uusi
   `post-clear stops before the next real key after a returned payload`
@@ -329,9 +672,10 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   säilyvien tavujen vertailu sisältyvät tähän rajaan. Yksi hyväksytty
   vaihemittaus läpäisi alkuperäiset väittämät. Aiemmat viiden sekunnin
   aikakatkaisut jäävät avoimiksi; muiden testien, sovelluksen ja CI:n
-  aikarajat sekä kaikkien roolien 180 sekunnin raja säilyvät.
-- Omistajan 2.11.2026 erikseen hyväksymä 30 sekunnin budjetti koskee vain
-  saman metadata-tiedoston seitsemää uutta E-yhdistelmätestiä:
+  aikarajat säilyvät. Rooliketjun erillistä nykyistä budjettia ei muuteta
+  tällä poikkeuksella.
+- Omistajan 2.11.2026 erikseen hyväksymä alkuperäinen 30 sekunnin budjetti
+  koski saman metadata-tiedoston seitsemää uutta E-yhdistelmätestiä:
   `retires payloadless original %s proof metadata from a committed V2
   purged fixture` neljällä omistajalla (`workspaceImport`,
   `workspaceLegacyAdoption`, `workspaceReplacement`, `workspaceActivationMigration`),
@@ -339,7 +683,8 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   metadata owner`, `rejects returning payload after original and binding
   retirement instead of completing from proof alone` ja `preserves
   original-current when payload returns during the final activation alias
-  read`. Valmistelu, oikeat slotit, mahdollinen uusi metadata-omistaja ja
+  read`. Näistä vain `workspaceLegacyAdoption` käyttää nyt [uutta nimettyä budjettia](#w75-fixed31-case-budgets);
+  muiden kuuden raja säilyy 30 sekunnissa. Valmistelu, oikeat slotit, mahdollinen uusi metadata-omistaja ja
   säilyvien tavujen vertailu kuuluvat samaan budjettiin. Synteettinen
   purged-fixture ei korvaa main-/cold-käynnistystä tai prosessikatkoa.
   Kuuden ensimmäisen tapauksen aiemmat viiden sekunnin hylkäykset säilyvät;
@@ -421,11 +766,12 @@ sovelluksen määräaikoja, muiden testien rajoja tai CI:n kokonaisrajoja.
   säilytetään. Jokainen ryhmä omistaa virheolionsa ja testisidontansa;
   kaikkien ryhmien tietueet ja alkuperäiset tavut tarkistetaan erikseen.
 - `workspaceDeletionRolesCommand.test.ts`:n uusi kaikkien roolien
-  yhdistelmätesti käyttää enintään 180 sekuntia. Samaan budjettiin kuuluvat
+  yhdistelmätesti käyttää [omistavan kohdan nykyistä budjettia](#rooliketjun-yhdistelmätestin-aikabudjetti).
+  Samaan budjettiin kuuluvat
   kymmenen roolia, vanhan layoutin kaikki 13 sallittua jäsentä, 23 rivin
   aloitusjulkaisu, yhteinen fyysinen jatko ja kaikkien säilyvien tavujen
   jälkivertailu. Muiden testien tai tuotannon ja CI:n rajoja ei muuteta.
-  Ensimmäinen kokonaisajo ylitti tämänkin rajan ja säilyy hylättynä;
+  Ensimmäinen kokonaisajo ylitti silloisen 180 sekunnin rajan ja säilyy hylättynä;
   rajattu tarkistuskutsujen mittaus ei korvaa koko ketjun hyväksyntää.
 
 - Omistajan 4.11.2026 hyväksymä kymmenen sekunnin budjetti koskee vain
@@ -456,8 +802,9 @@ saa kymmenen sekuntia. Valmistelu, aito backup-kuittaus, inventaario,
 aloitusjulkaisu, säilyvien tavujen loppuväittämät ja sulku kuuluvat samaan
 budjettiin. Rajattu vaihemittaus erotti aidon ketjun valmistelusta ja
 siivouksesta; läpäisy ei sulje aiempaa aikakatkaisua tai todista
-suorituskykyvikaa korjatuksi. Muiden testien, sovelluksen, kaikkien roolien
-180 sekunnin ketjun ja CI:n rajat sekä kaikki turvaväittämät säilyvät.
+suorituskykyvikaa korjatuksi. Muiden testien, sovelluksen ja CI:n rajat sekä
+kaikki turvaväittämät säilyvät. Rooliketjun erillistä nykyistä budjettia
+ei muuteta tällä poikkeuksella.
 
 Sama kattava jatkovaltuus hyväksyy vain uuden
 `workspaceDeletionMetadataCleanup.test.ts`:n
@@ -524,6 +871,15 @@ odotettu virhetesti ei tuota uutta virheraporttia. Sama virheketju todistetaan
 OpenPGP-purkukokeella. Tavalliseen käyttäjäprofiiliin ei kytketä raakakeräystä.
 Tämä ei todista alempien adapterien jo hävittämän syyn tai pakkokatkaisun
 talteenottoa: keräyksen kattavuus ilmoitetaan todennetun rajan mukaan.
+
+Tukiviennin `supportBundleCapability` tarjoaa synteettiselle testille
+nykyisen pyynnön ensimmäisen poikkeuksen ennen turvallista IPC-virhettä.
+Havaitsija kytketään vain testikoostamisessa; sen virhe tai puuttuminen
+ei muuta käyttäjätulosta. Alkuperäistä poikkeusta ei säilytetä IPC:stä
+heitettävän `Error`-olion `cause`-kentässä, koska se voisi vuotaa konsoliin.
+Nykyinen `workspaceDeletionFailureEvidenceOpenPgp`-koe vaatii alkuperäisen
+viestin, pinon ja syyketjun puretusta salatusta paketista sekä julkisen
+tulosteen poissulun. Käyttäjän sanitoitu tukipaketti pysyy tästä erillisenä.
 
 HTTP:n F/R15-raja käyttää `createHttpRequestFailureCapture`-testifixtureä
 ennen Honon turvallista muunnosta. Anna fixture nykyisen testin kontekstista
@@ -622,10 +978,24 @@ Omistajan 1.11.2026 täsmennys: hyväksyttyyn tehtävään kuuluvia rajattuja
 kohdetestejä, synteettisiä kokeita ja niiden nykyisen tiedonkeruusopimuksen
 mukaista diagnostiikkaa ei kysytä erikseen uudelleen hyväksyttäviksi.
 Nimeä silti kokeen kysymys, rajaus, aineiston säilytys ja seurannan omistaja.
-Yksittäisen luvan tarkat rajat säilyvät: kertamittaus ei hyväksy pysyvää
-testibudjettia, tuotantokytkentää, uutta aineistolajia tai hyväksyntäehdon
-muutosta. Alla oleva uusintaraja ja muut erilliset päätösportit säilyvät;
+Valtuus kattaa saman työpaketin teknisen vianrajauksen, osoitetut korjaukset
+ja niiden muuttuneeseen vaikutusalueeseen kohdistuvan todennuksen myös yöllä.
+Uusi tekninen havainto ei yksin ole uusi lupaportti. Kohdeajot seuraavat
+[checkpoint-kadenssia](#checkpoint-pohjainen-testikadenssi); pakolliset
+integraatio-, packaged-, PR- ja main-portit säilyvät oikeissa kohdissaan.
+Hyväksytyn kokonaisuuden sopimuksen säilyttävä lähdekytkentä ja sen
+tarkistukset kuuluvat [samaan työpakettivaltuuteen](workflow.md#pienissä-paloissa-eteneminen),
+eivät erilliseen rutiinilupaan. Kirjaa ehdollinen kytkentä ja nimetty
+natiiviajo rajoineen suunnitelmaan nykyisen
+[testausvaltuuden](workflow.md#suunnitelman-sisältö-ja-hyväksyntä) mukaisesti,
+ilman uutta lupaa tavalliseen valmisteluun tai suunnitelman sisäiseen ajoon.
+Testin tilapäinen ja perusteltu pysyvä ajoitusmuutos kuuluvat
+[aikabudjettiohjeen](#testin-tuotannon-ja-cin-aikabudjetit) valtuuteen.
+Kertamittaus ei itsessään hyväksy tuotantokytkentää, uutta aineistolajia
+tai muuta hyväksyntäehdon muutosta. Alla oleva uusintaraja ja muut erilliset päätösportit säilyvät;
 testausvaltuus ei tarkoita uusintoja vihreään asti.
+Eristetyn turvallisuusvertailun ja uuden sovelluskytkennän hyväksyntäraja
+on [nykyisessä hyväksyntäkohdassa](workflow.md#suunnitelman-sisältö-ja-hyväksyntä).
 
 ### Enintään yksi uusinta
 

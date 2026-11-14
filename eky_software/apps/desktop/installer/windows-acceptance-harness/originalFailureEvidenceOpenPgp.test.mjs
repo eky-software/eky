@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, realpath, utimes, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
@@ -10,6 +10,7 @@ import { collectJobFailureEvidence } from './ciFailureEvidence.mjs';
 import { prepareSmokeExceptionEvidence } from '../../scripts/packagedSmokeFailureEvidence.mjs';
 import { writeLegacyDatabaseBuildInfoFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
 import { createOpenPgpTestFixture } from './openPgpTestFixture.mjs';
+import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -113,6 +114,70 @@ test('original failure evidence: installed runners and packaged ASAR through iso
         assert.equal(value.manifest.cleanup, 'notInferred');
       });
     }
+    await check('an independent private check survives a repetitive runner quota through real decryption', async () => {
+      const directory = join(root, 'runner-quota');
+      const temp = join(directory, 'temporary');
+      const native = join(directory, 'native');
+      const checkout = join(directory, 'checkout');
+      await mkdir(temp, { recursive: true }); await mkdir(native); await mkdir(checkout);
+      const env = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1',
+        GITHUB_JOB: 'tests', EKY_EVIDENCE_JOB_KEY: 'tests-0', GITHUB_SHA: 'a'.repeat(40),
+        EKY_EVIDENCE_JOB_OUTCOME: 'failure', RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout,
+        REPORTER_TEST_SECRET: 'synthetic-quota-secret',
+        EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') };
+      const privateCheck = 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:writePermissions';
+      const diagnostic = createRunnerFailureSink({ tempRoot: native, env });
+      diagnostic.record({ runner: 'playwright', phase: 'linuxHostPreflight', testName: 'synthetic preflight',
+        error: { message: privateCheck } });
+      assert.equal((await diagnostic.flush()).status, 'recorded');
+      const diagnosticDirectory = (await readdir(native))[0];
+      const reporter = createRunnerFailureSink({ tempRoot: native, env });
+      for (let index = 0; index < 70; index++) {
+        reporter.record({ runner: 'playwright', phase: 'testFailure', testName: `synthetic-${index}`,
+          error: new Error(`SYNTHETIC-QUOTA-ORIGINAL ${env.REPORTER_TEST_SECRET}`) });
+      }
+      assert.equal((await reporter.flush()).status, 'recorded');
+      const reporterDirectory = (await readdir(native)).find(name => name !== diagnosticDirectory);
+      await utimes(join(native, diagnosticDirectory), new Date('2020-01-01'), new Date('2020-01-01'));
+      await utimes(join(native, reporterDirectory), new Date('2030-01-01'), new Date('2030-01-01'));
+      const originals = new Map();
+      for (const directory of [diagnosticDirectory, reporterDirectory]) {
+        for (const file of await readdir(join(native, directory))) {
+          const path = join(native, directory, file);
+          originals.set(`temporary/${directory}/${file}`, { path, bytes: await readFile(path) });
+        }
+      }
+      const collected = await collectJobFailureEvidence(env, { nativeTemp: native });
+      await encryptArchive(collected.root, collected);
+      const ciphertext = await readFile(join(collected.root, 'evidence.json.gz.gpg'));
+      assert.equal(ciphertext.includes(Buffer.from(privateCheck)), false);
+      const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+      const value = JSON.parse(gunzipSync(decrypted.stdout));
+      const source = value.manifest.sources.find(item => item.location === 'nativeTemp');
+      assert.equal(source.fileLimit, 64);
+      assert.equal(source.status, 'limited');
+      const entries = value.manifest.files.filter(file => file.kind === 'runnerFailure');
+      assert.equal(entries.length, 64);
+      assert.ok(entries.every(entry => entry.status === 'retained'));
+      const records = entries.map(entry => {
+        const bytes = Buffer.from(value.files[entry.name], 'base64');
+        assert.equal(bytes.length, entry.bytes);
+        assert.equal(createHash('sha256').update(bytes).digest('hex'), entry.sha256);
+        assert.deepEqual(bytes, originals.get(entry.source)?.bytes, 'OPENPGP_QUOTA_SOURCE_BYTES_CHANGED');
+        return JSON.parse(bytes);
+      });
+      assert.ok(records.some(record => record.phase === 'linuxHostPreflight' &&
+        record.exception.chain[0].message === privateCheck), 'OPENPGP_QUOTA_PRIVATE_CHECK_MISSING');
+      assert.ok(records.some(record => record.sequence === 1 &&
+        record.exception.chain[0].message.startsWith('SYNTHETIC-QUOTA-ORIGINAL')));
+      assert.equal(JSON.stringify(value).includes(env.REPORTER_TEST_SECRET), false);
+      assert.equal((await readdir(join(native, diagnosticDirectory))).length, 2);
+      assert.equal((await readdir(join(native, reporterDirectory))).length, 71);
+      for (const original of originals.values()) assert.deepEqual(await readFile(original.path), original.bytes);
+      assert.equal(value.manifest.cleanup, 'notInferred');
+    });
     await check('workspace initial shutdown reason survives message-only transport and decryption', async () => {
       const directory = join(root, 'shutdown-reason');
       const temp = join(directory, 'temporary');

@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { isProxy } from 'node:util/types';
 
+import type { IpcMainInvokeEvent } from 'electron';
 import type { DesktopCompositionDependencies } from '../src/main/desktopComposition.js';
 import { projectExceptionChain, STARTUP_EXCEPTION_LIMITS } from '../src/main/startupExceptionEvidence.js';
 import { assertUpdateJournalAuthority } from '../src/update/updateJournalStore.js';
@@ -9,9 +10,12 @@ import { createWorkspaceManagementCapability } from '../src/workspaces/managemen
 import type { WorkspaceManagementCapability } from '../src/workspaces/management/workspaceManagementCapability.js';
 import type { WorkspaceManagementService } from '../src/workspaces/management/workspaceManagementService.js';
 import type { WorkspaceDeletionPreparationLifetime } from '../src/workspaces/management/workspaceManagementTypes.js';
+import { parseWorkspaceIdRequest } from '../src/workspaces/management/workspaceManagementCapabilityProtocol.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
-import { isWorkspaceDeletionExecutionProofScenario, workspaceDeletionExecutionProofFailureCode } from './workspaceDeletionProofProtocol.js';
+import { isWorkspaceDeletionExecutionProofScenario, workspaceDeletionExecutionProofFailureCode,
+  workspaceDeletionProofChannel, workspaceDeletionPublicProofScenarioId, workspaceDeletionRecoveryProofScenarioId } from './workspaceDeletionProofProtocol.js';
+import { createWorkspaceDeletionRawPhaseRecorder, WORKSPACE_DELETION_MAIN_PHASE_COVERAGE } from './workspaceDeletionPhaseObservation.js';
 
 interface WorkspaceDeletionExecutionFailures {
   execution: ReturnType<typeof projectExceptionChain> | undefined;
@@ -25,13 +29,22 @@ export function createWorkspaceDeletionExecutionProof(input: Readonly<{
   sessionSecret: string;
   assertMainCurrent(): void;
   backendIsRunning(): boolean;
+  observationRuntimeInstanceId?: string;
 }>) {
   if (!isWorkspaceDeletionExecutionProofScenario(input.scenarioId)) {
     throw new Error('E2E_WORKSPACE_DELETION_SCENARIO_INVALID');
   }
   const assertMain = input.assertMainCurrent.bind(input), running = input.backendIsRunning.bind(input);
   const current = () => assertUpdateJournalAuthority(assertMain);
+  if (input.observationRuntimeInstanceId !== undefined && input.scenarioId !== workspaceDeletionRecoveryProofScenarioId) {
+    throw new Error('INVALID_PHASE_RUNTIME');
+  }
+  const observationRuntimeInstanceId = input.observationRuntimeInstanceId;
+  const phaseRecorder = observationRuntimeInstanceId === undefined ? undefined : createWorkspaceDeletionRawPhaseRecorder(
+    observationRuntimeInstanceId, () => performance.now(), WORKSPACE_DELETION_MAIN_PHASE_COVERAGE);
   const secret = input.sessionSecret;
+  const recovery = input.scenarioId === workspaceDeletionRecoveryProofScenarioId;
+  const publicCommand = input.scenarioId === workspaceDeletionPublicProofScenarioId;
   const registry = new WorkspaceRegistryStore({ installationRoot: input.userDataRoot,
     filePath: join(input.userDataRoot, WORKSPACE_REGISTRY_FILE_NAME) });
   const command = createWorkspaceDeletionCommand({ userDataRoot: input.userDataRoot, registry,
@@ -42,6 +55,10 @@ export function createWorkspaceDeletionExecutionProof(input: Readonly<{
   let service: Pick<WorkspaceManagementService, 'deleteWorkspace'> | undefined;
   let capability: WorkspaceManagementCapability | undefined;
   let ready = false, sealed = false, used = false;
+  let preparedRecovery = false;
+  let recoveryOptions: Parameters<NonNullable<DesktopCompositionDependencies['createWorkspaceManagementCapability']>>[0] | undefined;
+  let registered = false;
+  let preparationWork: Promise<void> | undefined;
   let state: 'notStarted' | 'pending' | 'completed' | 'failed' = 'notStarted';
   let firstFailure: { error: unknown } | undefined;
   const assertCurrent = () => {
@@ -55,12 +72,53 @@ export function createWorkspaceDeletionExecutionProof(input: Readonly<{
       throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_SERVICE_INVALID');
     }
     service = options.service as typeof options.service & Pick<WorkspaceManagementService, 'deleteWorkspace'>;
-    capability = createWorkspaceManagementCapability(options);
+    const resultRuntime = options.deletionRuntime;
+    capability = createWorkspaceManagementCapability(resultRuntime === undefined ? options : { ...options,
+      deletionRuntime: {
+        readNextAction: resultRuntime.readNextAction.bind(resultRuntime),
+        complete: resultRuntime.complete.bind(resultRuntime),
+        projectFailure(outcome) {
+          // The capability can fulfill a safe failure DTO instead of rejecting.
+          firstFailure ??= { error: outcome.cause };
+          state = 'failed';
+          return resultRuntime.projectFailure(outcome);
+        },
+      },
+    });
+    if (recovery && options.statusMode === 'recoveryManagement') recoveryOptions = options;
     return capability;
+  };
+  const closeChannel = () => {
+    if (registered) recoveryOptions!.ipcMain.removeHandler(workspaceDeletionProofChannel);
+    registered = false;
+  };
+  const executeRecovery = async (event: IpcMainInvokeEvent, ...args: unknown[]) => {
+    if (used) throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_UNAVAILABLE');
+    used = true; state = 'pending';
+    try {
+      assertCurrent();
+      if (!recovery || !ready || recoveryOptions === undefined || capability === undefined) {
+        throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_UNAVAILABLE');
+      }
+      const result = await capability.deleteWorkspace(event, ...args);
+      state = result.status === 'failed' || result.status === 'recoveryRequired' ? 'failed' : 'completed';
+      return result;
+    } catch (error) {
+      firstFailure ??= { error }; state = 'failed';
+      throw new Error(workspaceDeletionExecutionProofFailureCode);
+    }
   };
   return Object.freeze({
     command: Object.freeze({ publish: command.publish, resume: command.resume }),
     createCapability,
+    observePhase(event: import('../src/main/desktopSelectorComposition.js').WorkspaceDeletionPhaseEvent) {
+      phaseRecorder?.observePhase(observationRuntimeInstanceId!, event);
+    },
+    observeSlotIo(event: import('../src/workspaces/persistence/crashSafeFileSlot.js').SlotIoEvent) {
+      phaseRecorder?.observeSlotIo(observationRuntimeInstanceId!, event);
+    },
+    markPhaseShutdown() { phaseRecorder?.markShutdown(observationRuntimeInstanceId!); },
+    readPhaseObservation() { return phaseRecorder?.snapshot(); },
     ready() {
       assertCurrent();
       if (ready || service === undefined || capability === undefined) {
@@ -68,9 +126,44 @@ export function createWorkspaceDeletionExecutionProof(input: Readonly<{
       }
       ready = true;
     },
-    close() { sealed = true; ready = false; service = undefined; capability = undefined; },
+    registerRecoveryChannel() {
+      assertCurrent();
+      if (!recovery || !ready) throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_UNAVAILABLE');
+      // The first ordinary selector has no recovery target and gets no channel.
+      if (recoveryOptions === undefined) return;
+      if (registered) throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_UNAVAILABLE');
+      recoveryOptions.ipcMain.handle(workspaceDeletionProofChannel, executeRecovery);
+      registered = true;
+    },
+    async prepareRecovery(request: unknown, shutdown: () => Promise<void>) {
+      try {
+        assertCurrent();
+        if (!recovery || !ready || preparedRecovery || used || recoveryOptions !== undefined) {
+          throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_UNAVAILABLE');
+        }
+        const selected = parseWorkspaceIdRequest(request);
+        preparedRecovery = true; ready = false;
+        closeChannel();
+        // Publish before shutdown or the first file callback can request quit.
+        preparationWork = Promise.resolve().then(async () => {
+          await shutdown();
+          assertCurrent();
+          const { prepareWorkspaceRecoveryDeletionFixture } = await import('./workspaceRecoveryDeletionFixture.js');
+          await prepareWorkspaceRecoveryDeletionFixture({ userDataRoot: input.userDataRoot,
+            workspaceId: selected.workspaceId, assertMainCurrent: current,
+            assertAdmissionCurrent: assertCurrent, backendIsRunning: running });
+          assertCurrent();
+        }).catch(error => { firstFailure ??= { error }; throw error; });
+        await preparationWork;
+      } catch (error) {
+        firstFailure ??= { error };
+        throw new Error(workspaceDeletionExecutionProofFailureCode);
+      }
+    },
+    waitForPreparation() { return preparationWork ?? Promise.resolve(); },
+    close() { sealed = true; ready = false; closeChannel(); service = undefined; capability = undefined; },
     async execute(request: unknown) {
-      if (used) {
+      if (used || recovery || publicCommand) {
         throw new Error('E2E_WORKSPACE_DELETION_EXECUTION_UNAVAILABLE');
       }
       used = true; state = 'pending';

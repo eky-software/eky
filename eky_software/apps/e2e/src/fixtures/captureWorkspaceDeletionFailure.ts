@@ -3,6 +3,12 @@ import type { ElectronApplication, TestInfo } from '@playwright/test';
 import { createRunnerFailureSink, RUNNER_FAILURE_DELIVERY_TIMEOUT_MS } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import type { createWorkspaceDeletionProof } from '../../../desktop/e2e/workspaceDeletionProof.js';
 import type { createWorkspaceDeletionExecutionProof } from '../../../desktop/e2e/workspaceDeletionExecutionProof.js';
+import type { PhaseHandoffEnvelope } from '../../../desktop/e2e/workspaceDeletionPhaseHandoff.js';
+
+// Use ESM for both Playwright's source loader and direct Node execution.
+const { bindPhaseHandoffCapture, capturePhaseHandoffExpected, deliverPhaseHandoffObservation } =
+  await import(new URL('../../../desktop/e2e/workspaceDeletionPhaseHandoff.ts', import.meta.url).href) as
+    typeof import('../../../desktop/e2e/workspaceDeletionPhaseHandoff.js');
 
 type FailureSet = Partial<ReturnType<ReturnType<typeof createWorkspaceDeletionProof>['readFailures']> &
   ReturnType<ReturnType<typeof createWorkspaceDeletionExecutionProof>['readFailures']>>;
@@ -12,6 +18,42 @@ export function shouldCaptureWorkspaceDeletionFailure(
   actual: TestInfo['status'], expected: TestInfo['expectedStatus'], failureObserved: boolean,
 ): boolean {
   return failureObserved && !(actual === 'failed' && expected === 'failed');
+}
+
+export function selectWorkspaceDeletionPhaseObservation(input: Readonly<{
+  application: Pick<ElectronApplication, 'evaluate'>;
+  runtimeInstanceId: string;
+  scenarioId: 'DESK-DELETE-RECOVERY-001';
+  testInfo: Pick<TestInfo, 'retry' | 'repeatEachIndex' | 'project' | 'outputPath'>;
+}>) {
+  const application = input.application, runtimeInstanceId = input.runtimeInstanceId;
+  const captured = capturePhaseHandoffExpected({ ...input, env: process.env });
+  let started = false, frozen = false;
+  let envelope: PhaseHandoffEnvelope = captured.envelope;
+  return Object.freeze({
+    beginClose(current: Pick<ElectronApplication, 'evaluate'> | undefined, generation: string) {
+      if (started || frozen || current !== application || generation !== runtimeInstanceId) return;
+      started = true;
+      try {
+        const pending = application.evaluate(() => (globalThis as unknown as { __EKY_ELECTRON_E2E__?: {
+          workspaceDeletionExecutionProof?: { readPhaseObservation(): unknown };
+        } }).__EKY_ELECTRON_E2E__?.workspaceDeletionExecutionProof?.readPhaseObservation());
+        void pending.then(value => {
+          if (frozen) return;
+          const checked = bindPhaseHandoffCapture(value, captured.expected);
+          if (checked !== undefined) envelope = checked;
+        }).catch(() => undefined);
+      } catch { /* Missing observation must not hold or replace shutdown. */ }
+    },
+    finishClose(current: Pick<ElectronApplication, 'evaluate'> | undefined, generation: string) {
+      if (current === application && generation === runtimeInstanceId) frozen = true;
+    },
+    async reportFailure(failed: boolean) {
+      if (!failed || !frozen) return 'notRequired' as const;
+      try { return await deliverPhaseHandoffObservation({ ...captured, envelope, failed: true }); }
+      catch { return 'deliveryFailed' as const; }
+    },
+  });
 }
 
 // Read the original main-only failure before closing Electron. Reporting uses

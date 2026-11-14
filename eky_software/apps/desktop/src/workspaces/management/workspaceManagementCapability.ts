@@ -6,7 +6,8 @@ import type {
 
 import type { BackupPasswordWindowController } from '../../profileBackup/passwordWindow/backupPasswordWindow.js';
 import type { WorkspaceManagementService } from './workspaceManagementService.js';
-import { WorkspaceManagementError } from './workspaceManagementError.js';
+import type { WorkspaceDeletionCompletion, WorkspaceDeletionFailureOutcome } from './workspaceManagementService.js';
+import { mapWorkspaceManagementError, WorkspaceManagementError } from './workspaceManagementError.js';
 import type {
   WorkspaceDeletionPreparationLifetime,
   WorkspaceDeletionPreparationOutcome,
@@ -15,18 +16,33 @@ import type {
 import {
   createEmptyWorkspaceIpcChannel,
   createWorkspaceOperationResult,
+  deleteWorkspaceIpcChannel,
   getWorkspaceManagementStatusIpcChannel,
   importWorkspaceBackupAsNewIpcChannel,
   parseWorkspaceIdRequest,
   parseWorkspaceDeletionRequest,
+  parseWorkspaceDeletionOperationResult,
+  type WorkspaceDeletionRequest,
+  type WorkspaceDeletionOperationResult,
   parseWorkspaceLabelRequest,
   parseWorkspaceRenameRequest,
+  parseWorkspaceRecoveryStatusResult,
   parseWorkspaceStatusResult,
   replaceActiveWorkspaceFromBackupIpcChannel,
   renameWorkspaceIpcChannel,
   switchWorkspaceIpcChannel,
   workspaceManagementIpcChannels,
+  workspaceManagementCapabilityProtocolVersion,
 } from './workspaceManagementCapabilityProtocol.js';
+import { hasExactDataKeys, isPlainDataRecord } from '../registry/workspaceRegistryValueShape.js';
+import { isWorkspaceDeletionFailureCode } from '../../observability/workspaceManagementFailureContext.js';
+import { assertUpdateJournalAuthority } from '../../update/updateJournalStore.js';
+
+export interface WorkspaceDeletionResultRuntime {
+  readNextAction(): Extract<WorkspaceDeletionOperationResult, { status: 'cancelled' }>['nextAction'];
+  complete(completion: Readonly<WorkspaceDeletionCompletion>): Promise<void>;
+  projectFailure(outcome: Readonly<WorkspaceDeletionFailureOutcome>): WorkspaceDeletionOperationResult;
+}
 
 interface WorkspaceManagementCapabilityOptions {
   readonly ipcMain: Pick<IpcMain, 'handle' | 'removeHandler'>;
@@ -40,7 +56,10 @@ interface WorkspaceManagementCapabilityOptions {
     | 'rename'
     | 'replaceActiveFromBackup'
     | 'switchTo'
-  > & Partial<Pick<WorkspaceManagementService, 'prepareDeletion'>>;
+  > & Partial<Pick<WorkspaceManagementService, 'prepareDeletion' | 'deleteWorkspace' | 'getRecoveryManagementStatus'>>;
+  readonly statusMode?: 'ordinary' | 'recoveryManagement';
+  readonly captureStatusPublication?: () => Readonly<{ assertCurrent(): void }>;
+  readonly deletionRuntime?: Readonly<WorkspaceDeletionResultRuntime>;
   confirmActiveWorkspaceReplacement(workspaceLabel: string): Promise<boolean>;
   selectBackupSource(): Promise<string | null>;
   selectReplacementBackupSource(): Promise<string | null>;
@@ -48,11 +67,15 @@ interface WorkspaceManagementCapabilityOptions {
 }
 
 export interface WorkspaceManagementCapability {
-  // Main-only until W7.4 supplies the real journal/purge consumer.
+  // Preparation remains main-only. The command has a separate safe IPC wrapper.
   prepareDeletion(
     event: IpcMainInvokeEvent,
     ...args: unknown[]
   ): Promise<WorkspaceDeletionPreparationOutcome>;
+  deleteWorkspace(
+    event: IpcMainInvokeEvent,
+    ...args: unknown[]
+  ): Promise<WorkspaceDeletionOperationResult>;
   closeAdmission(): void;
   dispose(): void;
   shutdown(): Promise<void>;
@@ -70,6 +93,15 @@ interface WorkspaceManagementCapabilityState {
 export function createWorkspaceManagementCapability(
   options: Readonly<WorkspaceManagementCapabilityOptions>,
 ): WorkspaceManagementCapability {
+  if (options.statusMode !== undefined && options.statusMode !== 'ordinary' &&
+      options.statusMode !== 'recoveryManagement') {
+    throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+  }
+  const recoveryStatus = options.statusMode === 'recoveryManagement';
+  if (recoveryStatus && (options.service.getRecoveryManagementStatus === undefined ||
+      options.captureStatusPublication === undefined)) {
+    throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+  }
   const state: WorkspaceManagementCapabilityState = {
     disposed: false,
     admissionClosed: false,
@@ -78,152 +110,181 @@ export function createWorkspaceManagementCapability(
     pendingWork: new Set(),
   };
   let shutdownTask: Promise<void> | undefined;
+  const deletionRuntime = options.deletionRuntime === undefined ? undefined : Object.freeze({
+    readNextAction: options.deletionRuntime.readNextAction.bind(options.deletionRuntime),
+    complete: options.deletionRuntime.complete.bind(options.deletionRuntime),
+    projectFailure: options.deletionRuntime.projectFailure.bind(options.deletionRuntime),
+  });
   for (const channel of workspaceManagementIpcChannels) {
     options.ipcMain.removeHandler(channel);
   }
 
   options.ipcMain.handle(
     getWorkspaceManagementStatusIpcChannel,
-    (event, ...args: unknown[]) =>
-      runCapability(options, state, event, args, 0, async assertCurrent => {
+    (event, ...args: unknown[]) => {
+      let publication: Readonly<{ assertCurrent(): void }> | undefined;
+      let servicePublication: Readonly<{ assertCurrent(): void }> | undefined;
+      return runCapability(options, state, event, args, 0, async assertCurrent => {
+        publication = options.captureStatusPublication?.();
+        if (recoveryStatus) {
+          const observed = await options.service.getRecoveryManagementStatus!();
+          servicePublication = observed;
+          assertCurrent();
+          observed.assertCurrent();
+          return parseWorkspaceRecoveryStatusResult(observed.value);
+        }
         const result = await options.service.getStatus();
         assertCurrent();
         return parseWorkspaceStatusResult(result);
-      }),
-  );
-  options.ipcMain.handle(
-    createEmptyWorkspaceIpcChannel,
-    (event, ...args: unknown[]) =>
-      runCapability(options, state, event, args, 1, () =>
-        runMutation(state, 'create', async () => {
-          const request = parseWorkspaceLabelRequest(args[0]);
-          await options.service.createEmpty(request.workspaceLabel);
-          return createWorkspaceOperationResult('relaunching');
-        }),
-      ),
-  );
-  options.ipcMain.handle(
-    importWorkspaceBackupAsNewIpcChannel,
-    (event, ...args: unknown[]) =>
-      runCapability(options, state, event, args, 1, assertCurrent =>
-        runMutation(state, 'import', async () => {
-          const request = parseWorkspaceLabelRequest(args[0]);
-          const containerPath = await options.selectBackupSource();
-          assertCurrent();
-          if (containerPath === null) {
-            return createWorkspaceOperationResult('cancelled');
+      }, options.captureStatusPublication === undefined ? undefined : () => {
+        if (publication === undefined) {
+          throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+        }
+        assertUpdateJournalAuthority(publication.assertCurrent.bind(publication));
+        if (recoveryStatus) {
+          if (servicePublication === undefined) {
+            throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
           }
-          const password =
-            await options.passwordWindow.requestPassword('enter');
-          assertCurrent();
-          if (password === null) {
-            return createWorkspaceOperationResult('cancelled');
-          }
-          await options.service.importBackupAsNew({
-            containerPath,
-            password,
-            workspaceLabel: request.workspaceLabel,
-          });
-          return createWorkspaceOperationResult('relaunching');
-        }),
-      ),
+          assertUpdateJournalAuthority(servicePublication.assertCurrent.bind(servicePublication));
+        }
+      });
+    },
   );
-  options.ipcMain.handle(
-    replaceActiveWorkspaceFromBackupIpcChannel,
-    (event, ...args: unknown[]) =>
-      runCapability(options, state, event, args, 0, assertCurrent =>
-        runMutation(state, 'replace', async () => {
-          const status = parseWorkspaceStatusResult(
-            await options.service.getStatus(),
-          );
-          assertCurrent();
-          if (status.operationState === 'busy') {
-            throw new WorkspaceManagementError(
-              'WORKSPACE_MANAGEMENT_BUSY',
-              'replace',
+  if (!recoveryStatus) {
+    options.ipcMain.handle(
+      createEmptyWorkspaceIpcChannel,
+      (event, ...args: unknown[]) =>
+        runCapability(options, state, event, args, 1, () =>
+          runMutation(state, 'create', async () => {
+            const request = parseWorkspaceLabelRequest(args[0]);
+            await options.service.createEmpty(request.workspaceLabel);
+            return createWorkspaceOperationResult('relaunching');
+          }),
+        ),
+    );
+    options.ipcMain.handle(
+      importWorkspaceBackupAsNewIpcChannel,
+      (event, ...args: unknown[]) =>
+        runCapability(options, state, event, args, 1, assertCurrent =>
+          runMutation(state, 'import', async () => {
+            const request = parseWorkspaceLabelRequest(args[0]);
+            const containerPath = await options.selectBackupSource();
+            assertCurrent();
+            if (containerPath === null) {
+              return createWorkspaceOperationResult('cancelled');
+            }
+            const password =
+              await options.passwordWindow.requestPassword('enter');
+            assertCurrent();
+            if (password === null) {
+              return createWorkspaceOperationResult('cancelled');
+            }
+            await options.service.importBackupAsNew({
+              containerPath,
+              password,
+              workspaceLabel: request.workspaceLabel,
+            });
+            return createWorkspaceOperationResult('relaunching');
+          }),
+        ),
+    );
+    options.ipcMain.handle(
+      replaceActiveWorkspaceFromBackupIpcChannel,
+      (event, ...args: unknown[]) =>
+        runCapability(options, state, event, args, 0, assertCurrent =>
+          runMutation(state, 'replace', async () => {
+            const status = parseWorkspaceStatusResult(
+              await options.service.getStatus(),
             );
-          }
-          if (status.operationState === 'recoveryRequired') {
-            throw new WorkspaceManagementError(
-              'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
-              'replace',
+            assertCurrent();
+            if (status.operationState === 'busy') {
+              throw new WorkspaceManagementError(
+                'WORKSPACE_MANAGEMENT_BUSY',
+                'replace',
+              );
+            }
+            if (status.operationState === 'recoveryRequired') {
+              throw new WorkspaceManagementError(
+                'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+                'replace',
+              );
+            }
+            const activeWorkspace = status.workspaces.find(
+              (workspace) =>
+                workspace.isActive &&
+                workspace.workspaceId === status.activeWorkspaceId,
             );
-          }
-          const activeWorkspace = status.workspaces.find(
-            (workspace) =>
-              workspace.isActive &&
-              workspace.workspaceId === status.activeWorkspaceId,
-          );
-          if (
-            activeWorkspace === undefined ||
-            activeWorkspace.availability !== 'ready'
-          ) {
-            throw new WorkspaceManagementError(
-              'WORKSPACE_MANAGEMENT_INVALID',
-              'replace',
+            if (
+              activeWorkspace === undefined ||
+              activeWorkspace.availability !== 'ready'
+            ) {
+              throw new WorkspaceManagementError(
+                'WORKSPACE_MANAGEMENT_INVALID',
+                'replace',
+              );
+            }
+            const containerPath =
+              await options.selectReplacementBackupSource();
+            assertCurrent();
+            if (containerPath === null) {
+              return createWorkspaceOperationResult('cancelled');
+            }
+            const password =
+              await options.passwordWindow.requestPassword('enter');
+            assertCurrent();
+            if (password === null) {
+              return createWorkspaceOperationResult('cancelled');
+            }
+            const confirmed = await options.confirmActiveWorkspaceReplacement(
+              activeWorkspace.workspaceLabel,
             );
-          }
-          const containerPath =
-            await options.selectReplacementBackupSource();
-          assertCurrent();
-          if (containerPath === null) {
-            return createWorkspaceOperationResult('cancelled');
-          }
-          const password =
-            await options.passwordWindow.requestPassword('enter');
-          assertCurrent();
-          if (password === null) {
-            return createWorkspaceOperationResult('cancelled');
-          }
-          const confirmed = await options.confirmActiveWorkspaceReplacement(
-            activeWorkspace.workspaceLabel,
-          );
-          assertCurrent();
-          if (!confirmed) {
-            return createWorkspaceOperationResult('cancelled');
-          }
-          await options.service.replaceActiveFromBackup({
-            containerPath,
-            password,
-            targetWorkspaceId: activeWorkspace.workspaceId,
-          });
-          return createWorkspaceOperationResult('relaunching');
-        }),
-      ),
-  );
-  options.ipcMain.handle(
-    switchWorkspaceIpcChannel,
-    (event, ...args: unknown[]) =>
-      runCapability(options, state, event, args, 1, assertCurrent =>
-        runMutation(state, 'switch', async () => {
-          const request = parseWorkspaceIdRequest(args[0]);
-          const before = parseWorkspaceStatusResult(
-            await options.service.getStatus(),
-          );
-          assertCurrent();
-          if (before.activeWorkspaceId === request.workspaceId) {
+            assertCurrent();
+            if (!confirmed) {
+              return createWorkspaceOperationResult('cancelled');
+            }
+            await options.service.replaceActiveFromBackup({
+              containerPath,
+              password,
+              targetWorkspaceId: activeWorkspace.workspaceId,
+            });
+            return createWorkspaceOperationResult('relaunching');
+          }),
+        ),
+    );
+    options.ipcMain.handle(
+      switchWorkspaceIpcChannel,
+      (event, ...args: unknown[]) =>
+        runCapability(options, state, event, args, 1, assertCurrent =>
+          runMutation(state, 'switch', async () => {
+            const request = parseWorkspaceIdRequest(args[0]);
+            const before = parseWorkspaceStatusResult(
+              await options.service.getStatus(),
+            );
+            assertCurrent();
+            if (before.activeWorkspaceId === request.workspaceId) {
+              return createWorkspaceOperationResult('completed');
+            }
+            await options.service.switchTo(request.workspaceId);
+            return createWorkspaceOperationResult('relaunching');
+          }),
+        ),
+    );
+    options.ipcMain.handle(
+      renameWorkspaceIpcChannel,
+      (event, ...args: unknown[]) =>
+        runCapability(options, state, event, args, 1, () =>
+          runMutation(state, 'rename', async () => {
+            const request = parseWorkspaceRenameRequest(args[0]);
+            const result = await options.service.rename(
+              request.workspaceId,
+              request.workspaceLabel,
+            );
+            void result;
             return createWorkspaceOperationResult('completed');
-          }
-          await options.service.switchTo(request.workspaceId);
-          return createWorkspaceOperationResult('relaunching');
-        }),
-      ),
-  );
-  options.ipcMain.handle(
-    renameWorkspaceIpcChannel,
-    (event, ...args: unknown[]) =>
-      runCapability(options, state, event, args, 1, () =>
-        runMutation(state, 'rename', async () => {
-          const request = parseWorkspaceRenameRequest(args[0]);
-          const result = await options.service.rename(
-            request.workspaceId,
-            request.workspaceLabel,
-          );
-          void result;
-          return createWorkspaceOperationResult('completed');
-        }),
-      ),
-  );
+          }),
+        ),
+    );
+  }
 
   const sealAdmission = () => {
     if (state.admissionClosed) return;
@@ -260,61 +321,137 @@ export function createWorkspaceManagementCapability(
     documentEvents.off('destroyed', invalidateDocument);
     options.mainWindow.off('close', invalidateDocument);
   };
-  return Object.freeze({
+  const runDeletionRequest = <Result>(
+    event: IpcMainInvokeEvent,
+    args: readonly unknown[],
+    execute: (request: Readonly<WorkspaceDeletionRequest>, lifetime: WorkspaceDeletionPreparationLifetime) => Promise<unknown>,
+    validate: (result: unknown, assertCurrent: () => void) => Result | Promise<Result>,
+  ): Promise<Result> => {
+    let privateFailure: { cause: unknown } | undefined;
+    const work = runCapability(options, state, event, args, 1, () =>
+      runMutation(state, 'delete', async () => {
+        const request = parseWorkspaceDeletionRequest(args[0]);
+        const epoch = state.documentEpoch;
+        let active = true;
+        const lifetime: WorkspaceDeletionPreparationLifetime = Object.freeze({
+          assertCurrent() {
+            if (
+              !active || state.disposed || state.documentEpoch !== epoch ||
+              options.mainWindow.isDestroyed() || options.mainWindow.webContents.isDestroyed() ||
+              event.sender !== options.mainWindow.webContents ||
+              event.senderFrame !== options.mainWindow.webContents.mainFrame ||
+              (state.admissionClosed && state.retainedDeletion !== lifetime)
+            ) {
+              active = false;
+              throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
+            }
+          },
+          closeAdmissionForOwnStop() {
+            lifetime.assertCurrent();
+            state.retainedDeletion = lifetime;
+            sealAdmission();
+            lifetime.assertCurrent();
+          }
+        });
+        try {
+          lifetime.assertCurrent();
+          const outcome = await execute(request, lifetime);
+          lifetime.assertCurrent();
+          return await validate(outcome, lifetime.assertCurrent.bind(lifetime));
+        } finally {
+          active = false;
+          if (state.retainedDeletion === lifetime) delete state.retainedDeletion;
+        }
+      }).catch((cause: unknown) => {
+        privateFailure = { cause };
+        throw cause;
+      }),
+    );
+    // These entries stay in main; renderer handlers retain their safe-only errors.
+    return work.catch((error: unknown) => {
+      if (privateFailure !== undefined && error instanceof Error) {
+        throw new Error(error.message, { cause: privateFailure.cause });
+      }
+      throw error;
+    });
+  };
+  const capability: WorkspaceManagementCapability = Object.freeze({
     closeAdmission,
     prepareDeletion(event: IpcMainInvokeEvent, ...args: unknown[]) {
-      let privateFailure: { cause: unknown } | undefined;
-      const work = runCapability(options, state, event, args, 1, () =>
-        runMutation(state, 'delete', async () => {
-          const request = parseWorkspaceDeletionRequest(args[0]);
-          const epoch = state.documentEpoch;
-          let active = true;
-          const lifetime: WorkspaceDeletionPreparationLifetime = Object.freeze({
-            assertCurrent() {
-              if (
-                !active || state.disposed || state.documentEpoch !== epoch ||
-                options.mainWindow.isDestroyed() || options.mainWindow.webContents.isDestroyed() ||
-                event.sender !== options.mainWindow.webContents ||
-                event.senderFrame !== options.mainWindow.webContents.mainFrame ||
-                (state.admissionClosed && state.retainedDeletion !== lifetime)
-              ) {
-                active = false;
-                throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');
-              }
-            },
-            closeAdmissionForOwnStop() {
-              lifetime.assertCurrent();
-              state.retainedDeletion = lifetime;
-              sealAdmission();
-              lifetime.assertCurrent();
-            },
-          });
-          try {
-            lifetime.assertCurrent();
-            if (options.service.prepareDeletion === undefined) {
-              throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
-            }
-            const outcome = await options.service.prepareDeletion(request, lifetime);
-            lifetime.assertCurrent();
-            if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
-              throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
-            }
-            return outcome;
-          } finally {
-            active = false;
-            if (state.retainedDeletion === lifetime) delete state.retainedDeletion;
-          }
-        }).catch((cause: unknown) => {
-          privateFailure = { cause };
-          throw cause;
-        }),
-      );
-      // This entry stays in main; renderer handlers retain their safe-only errors.
-      return work.catch((error: unknown) => {
-        if (privateFailure !== undefined && error instanceof Error) {
-          throw new Error(error.message, { cause: privateFailure.cause });
+      return runDeletionRequest(event, args, async (request, lifetime) => {
+        if (options.service.prepareDeletion === undefined) {
+          throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
         }
-        throw error;
+        return options.service.prepareDeletion(request, lifetime);
+      }, outcome => {
+        if (outcome !== 'prepared' && outcome !== 'cancelled' && outcome !== 'returnRequested') {
+          throw new Error('WORKSPACE_DELETION_PREPARATION_RESULT_INVALID');
+        }
+        return outcome;
+      });
+    },
+    deleteWorkspace(event: IpcMainInvokeEvent, ...args: unknown[]) {
+      return runDeletionRequest(event, args, async (request, lifetime) => {
+        if (options.service.deleteWorkspace === undefined || deletionRuntime === undefined) {
+          throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
+        }
+        let reports = 0;
+        let acceptingProof = true;
+        let proof: Readonly<WorkspaceDeletionFailureOutcome> | undefined;
+        try {
+          const outcome = await options.service.deleteWorkspace(request, lifetime, value => {
+            if (!acceptingProof) return;
+            reports += 1;
+            if (reports === 1 && isPlainDataRecord(value) && hasExactDataKeys(value, ['cause', 'sideEffectState']) &&
+                (value.sideEffectState === 'none' || value.sideEffectState === 'unknown')) {
+              proof = Object.freeze({ cause: value.cause, sideEffectState: value.sideEffectState });
+            }
+          });
+          acceptingProof = false;
+          proof = undefined;
+          if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
+              outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
+            return outcome;
+          }
+          const completed = parseWorkspaceDeletionOperationResult(outcome);
+          if (completed.status !== 'completed') throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+          // Main completion outlives the reply document. Service fulfillment joins
+          // the durable command and lease release; the main owner rechecks runtime.
+          await deletionRuntime.complete(completed);
+          return completed;
+        } catch (cause) {
+          // Only one report bound to this exact rejection proves no effect.
+          const sideEffectState = acceptingProof && reports === 1 && proof !== undefined &&
+            proof.cause === cause && proof.sideEffectState === 'none' ? 'none' : 'unknown';
+          acceptingProof = false;
+          proof = undefined;
+          try {
+            const projected = parseWorkspaceDeletionOperationResult(
+              deletionRuntime.projectFailure(Object.freeze({ cause, sideEffectState })),
+            );
+            if ((projected.status !== 'failed' && projected.status !== 'recoveryRequired') ||
+                (sideEffectState === 'unknown' && projected.status !== 'recoveryRequired')) {
+              throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_INVALID');
+            }
+            return projected;
+          } catch (projectionFailure) {
+            const first = mapWorkspaceManagementError(cause, 'delete');
+            throw new WorkspaceManagementError(first.code, 'delete', { cause: new AggregateError(
+              [cause, projectionFailure], 'WORKSPACE_DELETE_RESULT_UNCERTAIN', { cause },
+            ) });
+          }
+        }
+      }, (outcome, assertCurrent) => {
+        if (isPlainDataRecord(outcome) && hasExactDataKeys(outcome, ['formatVersion', 'status']) &&
+            outcome.formatVersion === workspaceManagementCapabilityProtocolVersion && outcome.status === 'cancelled') {
+          assertCurrent();
+          const nextAction = deletionRuntime!.readNextAction();
+          assertCurrent();
+          return parseWorkspaceDeletionOperationResult({ formatVersion: workspaceManagementCapabilityProtocolVersion,
+            status: 'cancelled', nextAction });
+        }
+        const parsed = parseWorkspaceDeletionOperationResult(outcome);
+        return parsed;
       });
     },
     dispose,
@@ -324,6 +461,19 @@ export function createWorkspaceManagementCapability(
       return shutdownTask;
     },
   });
+  if (options.service.deleteWorkspace !== undefined && deletionRuntime !== undefined) {
+    options.ipcMain.handle(deleteWorkspaceIpcChannel, async (event, ...args: unknown[]) => {
+      try { return await capability.deleteWorkspace(event, ...args); }
+      catch (error) {
+        // Keep main's cause/stack private and reject an unexpected inner code.
+        const code = error instanceof Error ? error.message : undefined;
+        throw new Error(code === 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN' ||
+          code === 'WORKSPACE_MANAGEMENT_CAPABILITY_INVALID' || isWorkspaceDeletionFailureCode(code)
+          ? code : 'WORKSPACE_MANAGEMENT_CAPABILITY_FAILED');
+      }
+    });
+  }
+  return capability;
 }
 
 async function runCapability<Result>(
@@ -333,6 +483,7 @@ async function runCapability<Result>(
   args: readonly unknown[],
   expectedArgumentCount: number,
   operation: (assertCurrent: () => void) => Promise<Result>,
+  assertPublication?: () => void,
 ): Promise<Result> {
   const epoch = state.documentEpoch;
   const assertCurrent = () => {
@@ -354,7 +505,12 @@ async function runCapability<Result>(
   const completion = new Promise<void>(resolve => { settle = resolve; });
   state.pendingWork.add(completion);
   try {
-    return await operation(assertCurrent);
+    const result = await operation(assertCurrent);
+    if (assertPublication !== undefined) {
+      assertCurrent();
+      assertPublication();
+    }
+    return result;
   } catch (error) {
     if (error instanceof Error && error.message === 'WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN') {
       throw new Error('WORKSPACE_MANAGEMENT_CAPABILITY_FORBIDDEN');

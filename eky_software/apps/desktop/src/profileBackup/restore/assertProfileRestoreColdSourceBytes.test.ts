@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { promises as fileSystem } from 'node:fs';
+import { promises as fileSystem, type BigIntStats } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 
@@ -12,9 +12,14 @@ import type { ProfileRestoreColdInspectionResult } from './runProfileRestoreCold
 import { assertProfileRestoreColdSourceBytes as assertBytes } from './assertProfileRestoreColdSourceBytes.js';
 
 const roots: string[] = [];
-afterEach(async () => {
+afterEach(context => {
   vi.restoreAllMocks();
-  for (const root of roots.splice(0)) await fileSystem.rm(root, { recursive: true, force: true });
+  const owned = roots.splice(0);
+  context.onTestFinished(async () => {
+    if (context.task.result?.state === 'pass') {
+      for (const root of owned) await fileSystem.rm(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe('fresh cold source byte revalidation without SQLite', () => {
@@ -61,6 +66,67 @@ describe('fresh cold source byte revalidation without SQLite', () => {
       await fileSystem.writeFile(f.pdfPath, Buffer.alloc(f.pdf.length, 66));
     } })).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
     expect(await fileSystem.readFile(f.databasePath)).toEqual(f.database);
+  });
+
+  it.each(['pdf', 'database'] as const)('rejects rewritten %s bytes after final authority when timestamps stay unchanged', async kind => {
+    const f = await fixture();
+    const path = kind === 'pdf' ? f.pdfPath : f.databasePath;
+    const initial = await fileSystem.lstat(path, { bigint: true });
+    const lstat = fileSystem.lstat.bind(fileSystem);
+    const open = fileSystem.open.bind(fileSystem);
+    const changed = Buffer.from(kind === 'pdf' ? f.pdf : f.database);
+    changed[changed.length - 1] = changed[changed.length - 1]! ^ 1;
+    let rewritten = false;
+    let revalidationBytes = 0;
+    const sameTimestamps = (current: BigIntStats) => Object.assign(
+      Object.create(Object.getPrototypeOf(current)) as BigIntStats, current,
+      { mtimeNs: initial.mtimeNs, ctimeNs: initial.ctimeNs },
+    );
+    vi.spyOn(fileSystem, 'lstat').mockImplementation(async (...args: Parameters<typeof fileSystem.lstat>) => {
+      const current = await lstat(...args);
+      if (rewritten && args[0] === path && typeof current.ino === 'bigint') {
+        return sameTimestamps(current as BigIntStats);
+      }
+      return current;
+    });
+    vi.spyOn(fileSystem, 'open').mockImplementation(async (...args: Parameters<typeof fileSystem.open>) => {
+      const handle = await open(...args);
+      if (args[0] === path) {
+        const stat = handle.stat.bind(handle);
+        const read = handle.read.bind(handle);
+        vi.spyOn(handle, 'stat').mockImplementation(async (...options: Parameters<typeof handle.stat>) => {
+          const current = await stat(...options);
+          return rewritten && typeof current.ino === 'bigint' ? sameTimestamps(current as BigIntStats) : current;
+        });
+        vi.spyOn(handle, 'read').mockImplementation((async (buffer: Buffer, offset: number, length: number, position: number) => {
+          const result = await read(buffer, offset, length, position);
+          if (rewritten) revalidationBytes += result.bytesRead;
+          return result;
+        }) as typeof handle.read);
+      }
+      return handle;
+    });
+    await expect(assertBytes({ ...f.input, async assertFinalAuthority() {
+      await fileSystem.writeFile(path, changed);
+      rewritten = true;
+    } })).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+    expect(rewritten).toBe(true);
+    expect(revalidationBytes).toBeGreaterThan(0);
+    expect(await fileSystem.readFile(path)).toEqual(changed);
+    expect(await fileSystem.readFile(kind === 'pdf' ? f.databasePath : f.pdfPath))
+      .toEqual(kind === 'pdf' ? f.database : f.pdf);
+  });
+
+  it('rejects a replaced workspace root before opening files for final revalidation', async () => {
+    const f = await fixture();
+    const open = vi.spyOn(fileSystem, 'open');
+    await expect(assertBytes({ ...f.input, async assertFinalAuthority() {
+      await fileSystem.rename(f.input.sources.workspaceRoot, join(f.root, 'original-workspace'));
+      await fileSystem.mkdir(f.input.sources.workspaceRoot, { mode: 0o700 });
+    } })).rejects.toThrow('PROFILE_INSPECTION_PROTOCOL_INVALID');
+    expect(open).toHaveBeenCalledTimes(2);
+    expect(await fileSystem.readFile(f.databasePath)).toEqual(f.database);
+    expect(await fileSystem.readFile(f.pdfPath)).toEqual(f.pdf);
   });
 
   it('does not fall back to files outside the canonical workspace runtime', async () => {

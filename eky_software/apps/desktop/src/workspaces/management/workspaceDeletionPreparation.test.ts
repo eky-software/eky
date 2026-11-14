@@ -357,11 +357,20 @@ it('rechecks request and reservation in the final deferred return callback', asy
     expect(f.relaunch).not.toHaveBeenCalled();
     expect(f.events).toContain('return.revoked');
     expect(f.base.lease.readState()).toBe('idle');
-    expect(f.observer.record).toHaveBeenCalledTimes(1);
-    expect(f.observer.record).toHaveBeenCalledWith(expect.objectContaining({
-      outcome: 'failed', retryable: false, sideEffectState: 'unknown', stage: 'deletePreparation',
-    }));
-    expect(JSON.stringify(f.observer.record.mock.calls)).not.toContain('SYNTHETIC_RESERVATION_LOST');
+    const observations = f.observer.record.mock.calls.map(([event]) => event);
+    expect(observations).toEqual([
+      expect.objectContaining({
+        errorCode: 'WORKSPACE_DELETE_FAILED', operationKind: 'delete',
+        outcome: 'failed', retryable: false, sideEffectState: 'unknown', stage: 'deletePreparation',
+      }),
+      expect.objectContaining({
+        errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED', operationKind: 'delete',
+        outcome: 'failed', retryable: false, sideEffectState: 'unknown', stage: 'deleteCleanup',
+      }),
+    ]);
+    expect(observations[0]?.correlationId).toBeTruthy();
+    expect(observations[1]?.correlationId).toBe(observations[0]?.correlationId);
+    expect(JSON.stringify(observations)).not.toMatch(/SYNTHETIC|stack|cause|errors/);
   });
 });
 
@@ -723,7 +732,9 @@ async function fixture(options: Options) {
         async confirmDeletion() { events.push('confirm.delete'); if (options.failConfirmation) throw firstFailure; return !options.cancel; },
         async confirmReturn() { entered.return.resolve(); if (options.holdReturn) await gates.return.promise; return options.returnChoice ?? false; },
         setReturnGuard(value) { returnGuard = value; },
-        async publish(check, selection, target, context, assertPreparationCurrent, assertPreparationReadOwned) {
+        async publish(check, selection, target, context, assertPreparationCurrent, assertPreparationReadOwned,
+          assertRecoverySourceReadCurrent) {
+          expect(assertRecoverySourceReadCurrent).toBeUndefined();
           if (options.checkReadOwnership !== undefined) {
             if (assertPreparationReadOwned === undefined) throw new Error('MISSING_READ_PROOF');
             await options.checkReadOwnership(assertPreparationReadOwned, assertPreparationCurrent, check);

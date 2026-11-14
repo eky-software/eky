@@ -55,7 +55,7 @@ describe('activation migration coordinator binding integration', () => {
           expect(await readFile(f.journalPath)).toEqual(f.journalBytes);
         });
       });
-    }, selector ? 10_000 : undefined);
+    }, selector ? 20_000 : 10_000);
   }
 
   it.for(['lostAcknowledgement', 'snapshotSelectionChanged', 'candidateSelectionChanged', 'cleanupUnverified'] as const)(

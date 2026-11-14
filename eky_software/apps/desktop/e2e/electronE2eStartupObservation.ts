@@ -2,6 +2,8 @@ import {
   isElectronE2eBackendObservationStage,
   type ElectronE2eBackendObservationStage,
 } from './electronE2eBackendStatus.js';
+import { desktopStartupStagePhases, isDesktopStartupStage,
+  type DesktopStartupSignal } from '../src/main/desktopStartupObservation.js';
 
 const checkpoints = [
   'waitingForAppReady',
@@ -34,7 +36,7 @@ export type ElectronE2eBackendStartupObservation =
       elapsedMs: number;
     }>;
 
-export interface ElectronE2eStartupObservation {
+export interface ElectronE2eLegacyStartupObservation {
   readonly schemaVersion: 2;
   readonly backendStartup: ElectronE2eBackendStartupObservation;
   readonly checkpoints: readonly Readonly<{
@@ -44,18 +46,31 @@ export interface ElectronE2eStartupObservation {
   readonly truncated: boolean;
 }
 
+export type ElectronE2eMainStartupObservation =
+  | Readonly<{ status: 'unobserved' }>
+  | Readonly<DesktopStartupSignal & { status: 'observed'; elapsedMs: number }>;
+
+export interface ElectronE2eCurrentStartupObservation extends Omit<ElectronE2eLegacyStartupObservation, 'schemaVersion'> {
+  readonly schemaVersion: 3;
+  readonly mainStartup: ElectronE2eMainStartupObservation;
+}
+
+export type ElectronE2eStartupObservation = ElectronE2eLegacyStartupObservation | ElectronE2eCurrentStartupObservation;
+
 // Test-only memory. No logger, filesystem, readiness signal or process owner.
 export function createElectronE2eStartupObservation(
   now: () => number = () => performance.now(),
 ): {
   record(checkpoint: ElectronE2eStartupCheckpoint): void;
   recordBackendStartupStage(stage: ElectronE2eBackendObservationStage): void;
-  snapshot(): ElectronE2eStartupObservation;
+  recordMainStartup(signal: DesktopStartupSignal): void;
+  snapshot(): ElectronE2eCurrentStartupObservation;
 } {
   const started = now();
   const observations: ElectronE2eStartupObservation['checkpoints'][number][] = [];
   let backendStartup: ElectronE2eBackendStartupObservation =
     Object.freeze({ status: 'unobserved' });
+  let mainStartup: ElectronE2eMainStartupObservation = Object.freeze({ status: 'unobserved' });
   let truncated = false;
   return {
     record(checkpoint) {
@@ -78,9 +93,19 @@ export function createElectronE2eStartupObservation(
         // A failed observation cannot change the backend startup path.
       }
     },
+    recordMainStartup(signal) {
+      try {
+        if (!isMainStartupSignal(signal) || Object.keys(signal).sort().join(',') !== 'event,phase,stage') return;
+        const elapsedMs = Math.max(0, Math.floor(now() - started));
+        if (!Number.isSafeInteger(elapsedMs)) return;
+        mainStartup = Object.freeze({ status: 'observed', stage: signal.stage,
+          phase: signal.phase, event: signal.event, elapsedMs });
+      } catch { /* Failed observations cannot change startup. */ }
+    },
     snapshot: () => Object.freeze({
-      schemaVersion: 2,
+      schemaVersion: 3,
       backendStartup,
+      mainStartup,
       checkpoints: Object.freeze([...observations]),
       truncated,
     }),
@@ -90,9 +115,11 @@ export function createElectronE2eStartupObservation(
 export function parseElectronE2eStartupObservation(
   value: unknown,
 ): ElectronE2eStartupObservation | undefined {
-  if (!isRecord(value) ||
-      Object.keys(value).sort().join(',') !== 'backendStartup,checkpoints,schemaVersion,truncated' ||
-      value.schemaVersion !== 2 || typeof value.truncated !== 'boolean' ||
+  if (!isRecord(value) || (value.schemaVersion !== 2 && value.schemaVersion !== 3) ||
+      Object.keys(value).sort().join(',') !== (value.schemaVersion === 2
+        ? 'backendStartup,checkpoints,schemaVersion,truncated'
+        : 'backendStartup,checkpoints,mainStartup,schemaVersion,truncated') ||
+      typeof value.truncated !== 'boolean' ||
       !Array.isArray(value.checkpoints) || value.checkpoints.length > MAX_CHECKPOINTS) {
     return undefined;
   }
@@ -112,12 +139,33 @@ export function parseElectronE2eStartupObservation(
       elapsedMs: entry.elapsedMs,
     }));
   }
-  return Object.freeze({
-    schemaVersion: 2,
+  const common = {
     backendStartup,
     checkpoints: Object.freeze(observations),
     truncated: value.truncated,
-  });
+  };
+  if (value.schemaVersion === 2) return Object.freeze({ schemaVersion: 2, ...common });
+  const mainStartup = parseMainStartupObservation(value.mainStartup);
+  if (mainStartup === undefined) return undefined;
+  return Object.freeze({ schemaVersion: 3, ...common, mainStartup });
+}
+
+function isMainStartupSignal(value: unknown): value is DesktopStartupSignal & Record<string, unknown> {
+  return isRecord(value) && isDesktopStartupStage(value.stage) &&
+    value.phase === desktopStartupStagePhases[value.stage] &&
+    (value.event === 'entered' || value.event === 'returned');
+}
+
+function parseMainStartupObservation(value: unknown): ElectronE2eMainStartupObservation | undefined {
+  if (!isRecord(value)) return undefined;
+  if (Object.keys(value).join(',') === 'status' && value.status === 'unobserved') {
+    return Object.freeze({ status: 'unobserved' });
+  }
+  if (Object.keys(value).sort().join(',') !== 'elapsedMs,event,phase,stage,status' ||
+      value.status !== 'observed' || !isMainStartupSignal(value) ||
+      typeof value.elapsedMs !== 'number' || !Number.isSafeInteger(value.elapsedMs) || value.elapsedMs < 0) return undefined;
+  return Object.freeze({ status: 'observed', stage: value.stage, phase: value.phase,
+    event: value.event, elapsedMs: value.elapsedMs });
 }
 
 function parseBackendStartupObservation(

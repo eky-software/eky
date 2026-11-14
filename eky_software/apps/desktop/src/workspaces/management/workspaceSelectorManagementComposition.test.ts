@@ -1,3 +1,5 @@
+import { EventEmitter } from 'node:events';
+import { existsSync, mkdirSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -31,14 +33,442 @@ import { MainOwnedSelectorWorkspaceLifecycle } from '../runtime/mainOwnedSelecto
 import { createWorkspaceSwitchJournalPaths, WorkspaceSwitchJournalStore } from '../switch/workspaceSwitchJournal.js';
 import { createSwitchRegistry, TEST_TARGET_WORKSPACE_ID } from '../switch/workspaceSwitchTestSupport.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
-import { createWorkspaceManagementComposition } from './workspaceManagementComposition.js';
+import { createWorkspaceManagementComposition, type RecoveryWorkspaceManagementCompositionOptions } from './workspaceManagementComposition.js';
 import { MainOwnedWorkspaceManagementOperationGuard } from './mainOwnedWorkspaceManagementOperationGuard.js';
+import * as backupObserver from './workspaceBackupOperationalObserver.js';
+import { WorkspaceBackupImportError } from '../import/workspaceBackupImportError.js';
+import { readSupportBundleDesktopData } from '../../supportBundle/supportBundleDesktopData.js';
+import { createDesktopOperationalEvent } from '../../observability/createDesktopOperationalEvent.js';
+import { createDesktopOnlySupportBundleCapability } from '../../supportBundle/supportBundleCapability.js';
+import { writeSupportBundleAtomically } from '../../supportBundle/supportBundleFileStore.js';
 
 vi.mock('electron', () => ({ utilityProcess: { fork: vi.fn() } }));
 
 const selectorRegistry: Readonly<LocalWorkspaceRegistry> = {
   ...createSwitchRegistry(), formatVersion: 2, activeWorkspaceId: null,
 };
+
+const restrictedStatus = Object.freeze({ formatVersion: 2 as const, mode: 'recoveryManagement' as const,
+  operationState: 'idle' as const, runtimeState: 'absent' as const, maintenanceState: 'idle' as const,
+  persistedActiveWorkspaceId: TEST_TARGET_WORKSPACE_ID,
+  target: { workspaceId: TEST_TARGET_WORKSPACE_ID, workspaceLabel: 'Synthetic restricted target' },
+});
+
+it('constructs restricted composition before reading any ordinary dependency', async () => {
+  const forbidden = vi.fn((): never => { throw new Error('SYNTHETIC_ORDINARY_DEPENDENCY_READ'); });
+  const selected = vi.fn(async () => undefined), log = vi.fn();
+  const options: RecoveryWorkspaceManagementCompositionOptions = { mode: 'recoveryManagement',
+    operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+    operationalLogger: { write: log }, recoveryManagement: { targetWorkspaceId: TEST_TARGET_WORKSPACE_ID,
+      assertCurrent() {}, assertSelected: selected,
+      async readStatus(context) { return { value: restrictedStatus, assertCurrent: context.assertCurrent }; },
+    },
+    deletionPreparation: { maintenanceLease: { acquire: forbidden, captureCurrentOwner: forbidden }, prepare: forbidden },
+    deletionContinuation: { captureAuthority: forbidden, resume: forbidden },
+  };
+  // Fault getters, not ordinary dependencies supplied by the production caller.
+  for (const key of ['resourcesPath', 'reservationOwner', 'userDataRoot', 'importOwner', 'replacementOwner',
+    'activeWorkspaceLifecycle', 'maintenanceLease', 'runtimeRelaunch', 'localUpdateRuntimePaths', 'activeWorkspaceId']) {
+    Object.defineProperty(options, key, { get: forbidden });
+  }
+  const composition = await createWorkspaceManagementComposition(options);
+  try {
+    const result = await composition.service.getRecoveryManagementStatus();
+    result.assertCurrent(); expect(result.value).toEqual(restrictedStatus);
+    await expect(composition.service.createEmpty('Synthetic forbidden')).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    expect(selected).not.toHaveBeenCalled(); expect(forbidden).not.toHaveBeenCalled();
+    expect(utilityProcess.fork).not.toHaveBeenCalled();
+    const observation = composition.captureOperationObservation();
+    expect(observation.readObservation()).toMatchObject({ status: 'available',
+      firstError: { eventName: 'workspaceManagement.operationFailed', operationId: 'workspace.create' } });
+    expect(log).toHaveBeenCalledOnce();
+    composition.dispose(); expect(observation.assertCurrent).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  } finally { await composition.shutdown(); }
+});
+
+it.for(['preparation', 'continuation'] as const)('rejects incomplete restricted %s wiring before acquiring a lease', async kind => {
+  const forbidden = vi.fn((): never => { throw new Error('SYNTHETIC_INCOMPLETE_DELETION_PORT_USED'); });
+  const composition = await createWorkspaceManagementComposition({ mode: 'recoveryManagement',
+    operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+    operationalLogger: { write() {} }, recoveryManagement: { targetWorkspaceId: TEST_TARGET_WORKSPACE_ID,
+      assertCurrent() {}, async assertSelected() {},
+      async readStatus(context) { return { value: restrictedStatus, assertCurrent: context.assertCurrent }; },
+    },
+    ...(kind === 'preparation'
+      ? { deletionPreparation: { maintenanceLease: { acquire: forbidden, captureCurrentOwner: forbidden }, prepare: forbidden } }
+      : { deletionContinuation: { captureAuthority: forbidden, resume: forbidden } }),
+  });
+  const request = { formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+    typedLabel: restrictedStatus.target.workspaceLabel, backupChoice: 'explicitDataLoss' };
+  const lifetime = { assertCurrent() {}, closeAdmissionForOwnStop() {} };
+  try {
+    await expect(composition.service.deleteWorkspace(request, lifetime)).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_INVALID' });
+    await expect(composition.service.prepareDeletion(request, lifetime)).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    expect(forbidden).not.toHaveBeenCalled();
+    expect(utilityProcess.fork).not.toHaveBeenCalled();
+  } finally { await composition.shutdown(); }
+});
+
+it('pins restricted deletion collaborators before returning the composition and keeps one real lease', async () => {
+  type Preparation = NonNullable<RecoveryWorkspaceManagementCompositionOptions['deletionPreparation']>;
+  type Continuation = NonNullable<RecoveryWorkspaceManagementCompositionOptions['deletionContinuation']>;
+  const maintenance = new InMemoryWorkspaceMaintenanceLease();
+  const handles: Awaited<ReturnType<typeof maintenance.acquire>>[] = [];
+  const acquire = vi.fn<Preparation['maintenanceLease']['acquire']>(async purpose => {
+    const handle = await maintenance.acquire(purpose); handles.push(handle); return handle;
+  });
+  const captureCurrentOwner = vi.fn(maintenance.captureCurrentOwner.bind(maintenance));
+  let preparedLease: (() => void) | undefined, preparedOperation: string | undefined;
+  const prepare = vi.fn<Preparation['prepare']>(async (_request, lifetime, assertLease, operationId) => {
+    lifetime.assertCurrent(); assertLease(); preparedLease = assertLease; preparedOperation = operationId; return 'prepared';
+  });
+  const preparation: Preparation = { maintenanceLease: { acquire, captureCurrentOwner }, prepare };
+  const completion = Object.freeze({ formatVersion: 1 as const, status: 'completed' as const, navigation: 'selector' as const });
+  const recordRemoved = vi.fn(() => completion);
+  const captureAuthority = vi.fn<Continuation['captureAuthority']>((operationId, assertLease) => {
+    expect(operationId).toBe(preparedOperation); expect(assertLease).toBe(preparedLease); assertLease();
+    return { assertCurrent: assertLease, async assertOwned() { assertLease(); }, recordRemoved };
+  });
+  const resume = vi.fn<Continuation['resume']>(async (operationId, authority) => {
+    expect(operationId).toBe(preparedOperation); authority.assertCurrent(); await authority.assertOwned();
+    authority.recordRemoved({ synthetic: true }); return completion;
+  });
+  const continuation: Continuation = { captureAuthority, resume };
+  const options: RecoveryWorkspaceManagementCompositionOptions = { mode: 'recoveryManagement',
+    operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+    operationalLogger: { write() {} }, recoveryManagement: { targetWorkspaceId: TEST_TARGET_WORKSPACE_ID,
+      assertCurrent() {}, async assertSelected() {},
+      async readStatus(context) { return { value: restrictedStatus, assertCurrent: context.assertCurrent }; },
+    }, deletionPreparation: preparation, deletionContinuation: continuation,
+  };
+  const pendingComposition = createWorkspaceManagementComposition(options);
+  const forbidden = vi.fn((): never => { throw new Error('SYNTHETIC_REPLACED_DELETION_PORT_USED'); });
+  Object.assign(preparation.maintenanceLease, { acquire: forbidden, captureCurrentOwner: forbidden });
+  Object.assign(preparation, { prepare: forbidden });
+  Object.assign(continuation, { captureAuthority: forbidden, resume: forbidden });
+  Object.assign(options, { deletionPreparation: undefined, deletionContinuation: undefined });
+  const composition = await pendingComposition;
+  try {
+    await expect(composition.service.deleteWorkspace({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+      typedLabel: restrictedStatus.target.workspaceLabel, backupChoice: 'explicitDataLoss' },
+    { assertCurrent() {}, closeAdmissionForOwnStop() {} })).resolves.toEqual(completion);
+    expect(acquire).toHaveBeenCalledExactlyOnceWith('delete');
+    expect(captureCurrentOwner).toHaveBeenCalledExactlyOnceWith(['delete'], handles[0]);
+    expect(prepare).toHaveBeenCalledOnce(); expect(captureAuthority).toHaveBeenCalledOnce(); expect(resume).toHaveBeenCalledOnce();
+    expect(prepare.mock.contexts[0]).toBe(preparation); expect(captureAuthority.mock.contexts[0]).toBe(continuation);
+    expect(resume.mock.contexts[0]).toBe(continuation);
+    expect(recordRemoved).toHaveBeenCalledExactlyOnceWith({ synthetic: true });
+    expect(preparedLease).toBeDefined(); expect(preparedLease).toThrow('WORKSPACE_MAINTENANCE_BUSY');
+    expect(maintenance.readState()).toBe('idle'); expect(forbidden).not.toHaveBeenCalled();
+    expect(utilityProcess.fork).not.toHaveBeenCalled();
+  } finally {
+    await composition.shutdown();
+    for (const handle of handles) await handle.release();
+  }
+});
+
+it.for(['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'] as const)(
+  'preserves the live %s stage through the real restricted observer and current support reader', async stage => {
+    const lease = new InMemoryWorkspaceMaintenanceLease(), log = vi.fn();
+    const first = new Error('SYNTHETIC_RESTRICTED_STAGE_FAILURE');
+    const options: RecoveryWorkspaceManagementCompositionOptions = { mode: 'recoveryManagement',
+      operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+      operationalLogger: { write: log }, recoveryManagement: { targetWorkspaceId: TEST_TARGET_WORKSPACE_ID,
+        assertCurrent() {}, async assertSelected() {},
+        async readStatus(context) { return { value: restrictedStatus, assertCurrent: context.assertCurrent }; },
+      },
+      deletionPreparation: { maintenanceLease: lease, async prepare() { return 'prepared'; } },
+      deletionContinuation: {
+        captureAuthority: (_id, assertLease) => ({ assertCurrent: assertLease, async assertOwned() { assertLease(); },
+          recordRemoved(): never { throw new Error('UNEXPECTED_REMOVAL_RECEIPT'); } }),
+        async resume(_id, owner, observeStage) { await owner.assertOwned(); observeStage!(stage); throw first; },
+      },
+    };
+    const composition = await createWorkspaceManagementComposition(options);
+    try {
+      await expect(composition.service.deleteWorkspace({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+        typedLabel: restrictedStatus.target.workspaceLabel, backupChoice: 'explicitDataLoss' },
+      { assertCurrent() {}, closeAdmissionForOwnStop() {} })).rejects.toMatchObject({ cause: first });
+      expect(log).toHaveBeenCalledOnce();
+      expect(log.mock.calls[0]![0]).toMatchObject({ eventName: 'workspaceManagement.operationFailed',
+        operationId: 'workspace.delete', stage, errorCode: 'WORKSPACE_DELETE_FAILED', sideEffectState: 'unknown' });
+      const observation = composition.captureOperationObservation().readObservation();
+      if (stage === 'deleteCleanup') {
+        // A primary cleanup-phase error is not the separately eligible lease-cleanup event.
+        expect(observation).toEqual({ scope: 'currentOperation', status: 'unavailable' });
+      } else {
+        expect(observation).toEqual({ scope: 'currentOperation', status: 'available',
+          firstError: log.mock.calls[0]![0], cleanupError: null });
+      }
+      const validated = readSupportBundleDesktopData({ observation,
+        system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+        availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+      });
+      expect(validated.observation).toEqual(observation);
+      expect(JSON.stringify(log.mock.calls)).not.toMatch(/SYNTHETIC|stack|cause|workspaceId/);
+      expect(lease.readState()).toBe('idle'); expect(utilityProcess.fork).not.toHaveBeenCalled();
+    } finally { await composition.shutdown(); }
+  },
+);
+
+it('restricted composition joins a started status read before shutdown without manufacturing success', async context => {
+  let enter!: () => void, release!: () => void;
+  const entered = new Promise<void>(resolve => { enter = resolve; }), held = new Promise<void>(resolve => { release = resolve; });
+  const abort = () => { enter(); release(); };
+  context.signal.addEventListener('abort', abort, { once: true });
+  const composition = await createWorkspaceManagementComposition({ mode: 'recoveryManagement',
+    operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+    operationalLogger: { write() {} }, recoveryManagement: {
+      targetWorkspaceId: TEST_TARGET_WORKSPACE_ID, assertCurrent() {}, async assertSelected() {},
+      async readStatus(context) { enter(); await held; return { value: restrictedStatus, assertCurrent: context.assertCurrent }; },
+    },
+  });
+  const reading = composition.service.getRecoveryManagementStatus();
+  void reading.catch(() => undefined);
+  let settled = false;
+  let closing: Promise<void> | undefined;
+  try {
+    await entered;
+    closing = composition.shutdown().then(() => { settled = true; });
+    await new Promise<void>(resolve => setImmediate(resolve));
+    expect(settled).toBe(false);
+    release();
+    await expect(reading).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    await closing; expect(settled).toBe(true);
+    expect(() => composition.captureOperationObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  } finally {
+    release(); await Promise.allSettled([reading, closing]); await composition.shutdown();
+    context.signal.removeEventListener('abort', abort);
+  }
+});
+
+it('captures only the settled current operation through the real observer even when logging fails', async test => {
+  const f = await fixture(test);
+  const initial = f.composition.captureOperationObservation();
+  expect(initial.readObservation()).toEqual({ scope: 'currentOperation', status: 'unavailable' });
+  f.log.mockImplementation(() => { throw new Error('SYNTHETIC_LOGGING_FAILURE'); });
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+    .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+  expect(() => initial.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  expect(observation).toMatchObject({ scope: 'currentOperation', status: 'available', cleanupError: null,
+    firstError: { eventName: 'workspaceManagement.operationFailed', operationId: 'workspace.rename',
+      errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' } });
+  if (observation.status !== 'available') throw new Error('MISSING_CURRENT_OBSERVATION');
+  expect(observation.firstError).toBe(f.log.mock.calls[0]![0]);
+  expect(Object.isFrozen(observation)).toBe(true);
+  expect(Object.isFrozen(observation.firstError)).toBe(true);
+  await f.composition.service.getStatus();
+  expect(selected.readObservation()).toEqual(observation);
+  await f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, 'New successful operation');
+  expect(() => selected.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  expect(f.composition.captureOperationObservation().readObservation()).toEqual({
+    scope: 'currentOperation', status: 'unavailable',
+  });
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+});
+
+it('allows a fresh observation after admission closure but never after composition disposal', async test => {
+  const f = await fixture(test);
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+    .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+  const old = f.composition.captureOperationObservation();
+  f.composition.service.closeAdmission();
+  expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  const fresh = f.composition.captureOperationObservation();
+  expect(fresh.readObservation()).toMatchObject({ status: 'available' });
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, 'Forbidden')).rejects.toMatchObject({
+    code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED',
+  });
+  f.composition.dispose();
+  expect(() => fresh.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  expect(() => f.composition.captureOperationObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+});
+
+it('retains both safe import roles across its own admission closure before failing logger writes', async test => {
+  const f = await fixture(test);
+  const failure = new WorkspaceBackupImportError('WORKSPACE_IMPORT_VALIDATION_FAILED', 'candidateValidation', {
+    cause: new AggregateError([new Error('PROFILE_INSPECTION_LIMIT_EXCEEDED'), new Error('PROFILE_INSPECTION_CLEANUP_UNVERIFIED')]),
+  });
+  vi.spyOn(WorkspaceBackupImportCoordinator.prototype, 'import').mockImplementation(async () => {
+    f.composition.service.closeAdmission();
+    throw failure;
+  });
+  f.log.mockImplementation(() => { throw new Error('SYNTHETIC_LOGGING_FAILURE'); });
+  await expect(f.composition.service.importBackupAsNew({ workspaceLabel: 'Synthetic', password: 'synthetic',
+    containerPath: join(f.root, 'synthetic.ekybackup') })).rejects.toMatchObject({
+    code: 'WORKSPACE_MANAGEMENT_IMPORT_FAILED', cause: failure,
+  });
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  expect(observation).toMatchObject({ status: 'available',
+    firstError: { eventName: 'workspaceBackup.operationFailed', errorCode: 'PROFILE_INSPECTION_LIMIT_EXCEEDED' },
+    cleanupError: { eventName: 'workspaceBackup.cleanupFailed', errorCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED' },
+  });
+  const validated = readSupportBundleDesktopData({ observation,
+    system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+    availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+  });
+  expect(validated.observation).toEqual(observation);
+  expect(f.log).toHaveBeenCalledTimes(2);
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+  const support = createSelectorSupportExport(f, test);
+  await expect(support.create()).resolves.toBe('created');
+  const inspector = await import(new URL('../../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+  const inspected = inspector.inspectSupportBundle(support.targetPath);
+  expect(inspected.summary).toMatchObject({ formatVersion: 3, kind: 'desktopOnly', observationStatus: 'available',
+    backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' });
+  expect(inspected.document.observation).toEqual(observation);
+  expect(support.loadDesktopData).toHaveBeenCalledOnce();
+  expect(support.writeArchive).toHaveBeenCalledOnce();
+  expect(utilityProcess.fork).not.toHaveBeenCalled();
+  await f.composition.shutdown();
+  expect(() => selected.readObservation()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+});
+
+it.for(['confirmation', 'target'] as const)(
+  'binds the real settled selector generation before the %s dialog', async (heldAt, test) => {
+    const f = await fixture(test);
+    let enter!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>(resolve => { enter = resolve; });
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    const hold = async () => { enter(); await pending; };
+    const support = createSelectorSupportExport(f, test, {
+      async confirmCreation() { if (heldAt === 'confirmation') await hold(); return true; },
+      async selectTargetPath() { if (heldAt === 'target') await hold(); return join(f.root, 'support.json.gz'); },
+    });
+    const first = support.create().catch((cause: unknown) => cause);
+    try {
+      await entered;
+      test.signal.throwIfAborted();
+      await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+        .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+      expect((await f.composition.service.getStatus()).operationState).toBe('idle');
+      release();
+      expect(await first).toMatchObject({ message: 'SUPPORT_BUNDLE_CREATION_FAILED' });
+      expect(support.loadDesktopData).not.toHaveBeenCalled();
+      expect(support.writeArchive).not.toHaveBeenCalled();
+      expect(support.showSafeError).not.toHaveBeenCalled();
+      expect(existsSync(support.targetPath)).toBe(false);
+      await expect(support.create()).resolves.toBe('created');
+      const inspector = await import(new URL('../../../scripts/inspect-support-bundle.mjs', import.meta.url).href);
+      expect(inspector.inspectSupportBundle(support.targetPath).document.observation)
+        .toEqual(f.composition.captureOperationObservation().readObservation());
+      expect(support.loadDesktopData).toHaveBeenCalledOnce();
+      expect(support.writeArchive).toHaveBeenCalledOnce();
+      expect(utilityProcess.fork).not.toHaveBeenCalled();
+      expect(await readFile(f.registryPath)).toEqual(Buffer.from(serializeWorkspaceRegistry(selectorRegistry)));
+    } finally { release(); await first; support.capability.dispose(); }
+  },
+);
+
+it('rejects foreign and late projected events without replacing the first current failure', async test => {
+  const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
+  let receive: Parameters<typeof createObserver>[0]['observeProjectedEvent'];
+  vi.spyOn(backupObserver, 'createWorkspaceBackupOperationalObserver').mockImplementation(options => {
+    receive = options.observeProjectedEvent;
+    return createObserver({ ...options, observeProjectedEvent(event) {
+      if (event.eventName !== 'workspaceManagement.operationFailed') return;
+      receive!({ ...event, correlationId: '11111111-1111-4111-8111-111111111111' });
+      receive!({ ...event, runtimeInstanceId: '11111111-1111-4111-8111-111111111111' });
+      receive!({ ...event, operationId: 'workspace.create' });
+      receive!({ ...event, appVersion: '0.1.0' });
+      receive!({ ...event, buildRevision: 'b'.repeat(40) });
+      receive!(event);
+    } });
+  });
+  const f = await fixture(test);
+  await expect(f.composition.service.rename(TEST_TARGET_WORKSPACE_ID, selectorRegistry.workspaces[0]!.workspaceLabel))
+    .rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' });
+  const selected = f.composition.captureOperationObservation();
+  const first = selected.readObservation();
+  expect(first).toMatchObject({ status: 'available', firstError: { errorCode: 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' } });
+  if (first.status !== 'available') throw new Error('MISSING_CURRENT_OBSERVATION');
+  expect(first.firstError).toBe(f.log.mock.calls[0]![0]);
+  receive!(f.log.mock.calls[0]![0]);
+  expect(selected.readObservation()).toEqual(first);
+  expect(f.log).toHaveBeenCalledOnce();
+});
+
+it('rejects a matching late cleanup event while the current cleanup role is still empty', async test => {
+  const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
+  let receive: Parameters<typeof createObserver>[0]['observeProjectedEvent'];
+  vi.spyOn(backupObserver, 'createWorkspaceBackupOperationalObserver').mockImplementation(options => {
+    receive = options.observeProjectedEvent;
+    return createObserver(options);
+  });
+  const f = await fixture(test);
+  vi.spyOn(WorkspaceBackupImportCoordinator.prototype, 'import').mockRejectedValueOnce(
+    new WorkspaceBackupImportError('WORKSPACE_IMPORT_VALIDATION_FAILED', 'candidateValidation', {
+      cause: new Error('PROFILE_INSPECTION_LIMIT_EXCEEDED'),
+    }),
+  );
+  await expect(f.composition.service.importBackupAsNew({ workspaceLabel: 'Synthetic', password: 'synthetic',
+    containerPath: join(f.root, 'synthetic.ekybackup') })).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_IMPORT_FAILED' });
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  if (observation.status !== 'available' || observation.firstError === null) throw new Error('MISSING_CURRENT_OBSERVATION');
+  expect(observation.cleanupError).toBeNull();
+  const first = observation.firstError;
+  receive!(createDesktopOperationalEvent({ eventName: 'workspaceBackup.cleanupFailed',
+    correlationId: first.correlationId, durationMs: 1, errorCode: 'PROFILE_INSPECTION_CLEANUP_UNVERIFIED',
+    retryable: false, sideEffectState: 'unknown', stage: 'import',
+  }, { appVersion: first.appVersion, buildRevision: first.buildRevision, runtimeInstanceId: first.runtimeInstanceId }));
+  expect(selected.readObservation()).toEqual(observation);
+});
+
+it.for([false, true])('ignores an ineligible delete cleanup projection without blocking genuine cleanup (present: %s)', async (includeCleanup, test) => {
+  const createObserver = backupObserver.createWorkspaceBackupOperationalObserver;
+  let receive: Parameters<typeof createObserver>[0]['observeProjectedEvent'];
+  let actualDeleteFailure: { correlationId: string; operationId: string } | undefined;
+  let genuineCleanup: ReturnType<typeof createDesktopOperationalEvent> | undefined;
+  const projected: ReturnType<typeof createDesktopOperationalEvent>[] = [];
+  vi.spyOn(backupObserver, 'createWorkspaceBackupOperationalObserver').mockImplementation(options => {
+    receive = options.observeProjectedEvent;
+    return createObserver({ ...options, observeProjectedEvent(event) {
+      if (event.eventName !== 'workspaceManagement.operationFailed' || event.operationId !== 'workspace.delete') {
+        receive!(event); return;
+      }
+      actualDeleteFailure = event;
+      const fields = { eventName: 'workspaceManagement.operationFailed', correlationId: event.correlationId,
+        durationMs: 1, retryable: false, sideEffectState: 'unknown', stage: 'deleteCleanup', operationId: 'workspace.delete' } as const;
+      const identity = { appVersion: event.appVersion, buildRevision: event.buildRevision, runtimeInstanceId: event.runtimeInstanceId };
+      const ineligible = createDesktopOperationalEvent({ ...fields, errorCode: 'WORKSPACE_DELETE_FAILED' }, identity);
+      genuineCleanup = createDesktopOperationalEvent({ ...fields, errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED' }, identity);
+      projected.push(ineligible); receive!(ineligible);
+      if (includeCleanup) { projected.push(genuineCleanup); receive!(genuineCleanup); }
+    } });
+  });
+  const f = await fixture(test);
+  // Enter the real delete operation without enabling destructive preparation; only projections are controlled.
+  await expect(f.composition.service.prepareDeletion({ formatVersion: 1, workspaceId: TEST_TARGET_WORKSPACE_ID,
+    typedLabel: selectorRegistry.workspaces[1]!.workspaceLabel, backupChoice: 'explicitDataLoss' }, {
+    assertCurrent() { if (!f.state.current) throw new Error('SELECTOR_EXPIRED'); }, closeAdmissionForOwnStop() {},
+  })).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_INVALID' });
+  expect(actualDeleteFailure).toMatchObject({ operationId: 'workspace.delete', correlationId: expect.any(String) });
+  expect(f.log).toHaveBeenCalledOnce(); expect(f.log.mock.calls[0]![0]).toBe(actualDeleteFailure);
+  expect(projected).toHaveLength(includeCleanup ? 2 : 1);
+  expect(genuineCleanup).toMatchObject({ operationId: 'workspace.delete', correlationId: actualDeleteFailure!.correlationId });
+  const selected = f.composition.captureOperationObservation();
+  const observation = selected.readObservation();
+  if (includeCleanup) {
+    expect(observation).toEqual({ scope: 'currentOperation', status: 'available', firstError: null, cleanupError: genuineCleanup });
+    if (observation.status !== 'available') throw new Error('MISSING_CURRENT_OBSERVATION');
+    expect(observation.cleanupError).toBe(genuineCleanup);
+  } else {
+    expect(observation).toEqual({ scope: 'currentOperation', status: 'unavailable' });
+  }
+  const validated = readSupportBundleDesktopData({ observation,
+    system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+    availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+  });
+  expect(validated.observation).toEqual(observation);
+  receive!(genuineCleanup!); expect(selected.readObservation()).toEqual(observation);
+  expect(f.lease.readState()).toBe('idle'); expect(utilityProcess.fork).not.toHaveBeenCalled();
+  expect(await readFile(f.registryPath)).toEqual(Buffer.from(serializeWorkspaceRegistry(selectorRegistry)));
+});
 
 it.for(['ready', 'empty', 'recoveryOnly'] as const)(
   'reads %s selector status without creating a runtime or active context', async (kind, test) => {
@@ -363,7 +793,7 @@ it('joins started import work during shutdown and retains its real evidence with
   expect(f.lease.readState()).toBe('idle');
 });
 
-it('keeps a late import-return failure sticky after the released lease and terminal callback', async test => {
+it('keeps a late import-return failure sticky after the released lease and terminal callback', { timeout: 10_000 }, async test => {
   const f = await importFixture(test);
   const run = WorkspaceBackupImportCoordinator.prototype.import;
   vi.spyOn(WorkspaceBackupImportCoordinator.prototype, 'import').mockImplementation(async function (this: WorkspaceBackupImportCoordinator, value) {
@@ -471,6 +901,57 @@ it('closes admission immediately and waits for a started selector slot read', as
   expect(settled).toBe(true);
   expect(await f.registry.inspect()).toEqual(selectorRegistry);
 });
+
+function createSelectorSupportExport(f: Awaited<ReturnType<typeof fixture>>, test: TestContext,
+  dialogs: Partial<Pick<Parameters<typeof createDesktopOnlySupportBundleCapability>[0], 'confirmCreation' | 'selectTargetPath'>> = {},
+) {
+  const targetPath = join(f.root, 'support.json.gz');
+  mkdirSync(join(f.root, 'runtime'), { recursive: true, mode: 0o700 });
+  const webContents = Object.assign(new EventEmitter(), { isDestroyed: () => false, mainFrame: {} });
+  const mainWindow = Object.assign(new EventEmitter(), { isDestroyed: () => false, webContents });
+  let invoke!: (event: unknown) => Promise<unknown>;
+  let firstFailure: { error: unknown } | undefined;
+  test.onTestFailed(async () => {
+    const observed = firstFailure;
+    if (observed === undefined) return;
+    try {
+      const { createRunnerFailureSink } = await import('../../../../../test-reporters/runnerFailureEvidence.mjs');
+      const sink = createRunnerFailureSink();
+      const task = test.task;
+      const retryCount = task.result?.retryCount ?? 0;
+      const repeatCount = task.result?.repeatCount ?? 0;
+      sink.record({ runner: 'vitest', phase: 'supportBundleCreationCatch', error: observed.error,
+        testName: task.fullTestName, testId: task.id, file: task.file.filepath,
+        ...(task.location === undefined ? {} : { line: task.location.line, column: task.location.column }),
+        ...(retryCount === 0 && repeatCount === 0 ? { attempt: 0 } : {}), retryCount, repeatCount });
+      await sink.flush();
+    } catch { /* Evidence must not replace the original test failure. */ }
+  });
+  const loadDesktopData = vi.fn((readObservation: () => unknown) => readSupportBundleDesktopData({
+    system: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), electronVersion: '43.8.1', platform: 'win32', architecture: 'x64' },
+    availability: { backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+    observation: readObservation(),
+  }));
+  const writeArchive = vi.fn(writeSupportBundleAtomically);
+  const showSafeError = vi.fn();
+  const capability = createDesktopOnlySupportBundleCapability({
+    ipcMain: { handle(_channel, handler) { invoke = handler as never; }, removeHandler: vi.fn() }, mainWindow: mainWindow as never,
+    assertCurrent() { if (!f.state.current) throw new Error('SELECTOR_EXPIRED'); },
+    captureRequest() {
+      const selected = f.composition.captureOperationObservation();
+      return { assertCurrent: selected.assertCurrent, loadDesktopData: () => loadDesktopData(selected.readObservation) };
+    },
+    confirmCreation: dialogs.confirmCreation ?? (async () => true),
+    selectTargetPath: dialogs.selectTargetPath ?? (async () => targetPath),
+    runtimeRoot: join(f.root, 'runtime'), writeArchive, showSafeError,
+    observeFailure(error) { firstFailure ??= { error }; },
+    operationalIdentity: { appVersion: '0.3.0', buildRevision: 'a'.repeat(40), runtimeInstanceId: '99999999-9999-4999-8999-999999999999' },
+    operationalLogger: { write: f.log },
+  });
+  test.onTestFinished(() => capability.dispose());
+  return { capability, targetPath, loadDesktopData, writeArchive, showSafeError,
+    create() { firstFailure = undefined; return invoke({ sender: webContents, senderFrame: webContents.mainFrame }); } };
+}
 
 async function fixture(test: TestContext, value = selectorRegistry) {
   const root = await mkdtemp(join(tmpdir(), 'eky-selector-composition-'));

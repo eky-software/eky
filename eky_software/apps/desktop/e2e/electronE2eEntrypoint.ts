@@ -3,6 +3,8 @@ import { resolve } from 'node:path';
 import { app, BrowserWindow, ipcMain, MessageChannelMain, protocol, utilityProcess } from 'electron';
 
 import { createDesktopBeforeQuitHandler } from '../src/main/desktopBeforeQuit.js';
+import { createDesktopRecoveryStartup, type DesktopRecoveryStartupPort } from '../src/main/desktopRecoveryStartup.js';
+import { readElectronE2eQuitLifecycle, startElectronE2eRecoveryComposition } from './electronE2eRecoveryComposition.js';
 import {
   startDesktopComposition,
   type DesktopLifecycleHandle,
@@ -34,7 +36,8 @@ import { createElectronE2eRuntimeSessionFactory } from './electronE2eRuntimeSess
 import { observeSelectorTestBackend } from './electronSelectorTestBackend.js';
 import { createWorkspaceDeletionProof } from './workspaceDeletionProof.js';
 import { createWorkspaceDeletionExecutionProof } from './workspaceDeletionExecutionProof.js';
-import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario } from './workspaceDeletionProofProtocol.js';
+import { isWorkspaceDeletionExecutionProofScenario, isWorkspaceDeletionProofScenario,
+  workspaceDeletionPublicProofScenarioId, workspaceDeletionRecoveryProofScenarioId } from './workspaceDeletionProofProtocol.js';
 
 protocol.registerSchemesAsPrivileged([
   {
@@ -55,6 +58,8 @@ if (configPath === undefined) {
   throw new Error('ELECTRON_E2E_CONFIG_MISSING');
 }
 const config = readElectronE2eConfig(configPath);
+const recoveryStartup = config.scenarioId === workspaceDeletionRecoveryProofScenarioId
+  ? createDesktopRecoveryStartup<DesktopLifecycleHandle>() : undefined;
 const startupException = createElectronE2eStartupExceptionCapture(configPath);
 app.setPath('userData', config.paths.userDataPath);
 const selectorTestRelease = readSelectorTestRelease(config.scenarioId);
@@ -87,9 +92,10 @@ const deletionProof = isWorkspaceDeletionProofScenario(config.scenarioId)
     showMessageBox: nativeAdapters.showMessageBox, sessionSecret: config.backend.sessionSecret })
   : undefined;
 const selectorBackend = usesSelectorTestBackend(config.scenarioId)
-  ? observeSelectorTestBackend(startDesktopBackend) : undefined;
+  ? observeSelectorTestBackend(startDesktopBackend, () => startupObservation.record('backendReady')) : undefined;
 const deletionExecutionProof = isWorkspaceDeletionExecutionProofScenario(config.scenarioId)
   ? createWorkspaceDeletionExecutionProof({ scenarioId: config.scenarioId, userDataRoot: config.paths.userDataPath,
+    ...(config.scenarioId === workspaceDeletionRecoveryProofScenarioId ? { observationRuntimeInstanceId: config.runtimeInstanceId } : {}),
     sessionSecret: config.backend.sessionSecret, assertMainCurrent: assertProofSingleInstanceOwnership,
     backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning() })
   : undefined;
@@ -184,7 +190,9 @@ if (hasSingleInstanceLock) {
     },
     async startRuntime() {
       startupObservation.record('compositionStarted');
-      lifecycle = await startDesktopComposition({
+      const compose = (recoveryPort?: DesktopRecoveryStartupPort) => startDesktopComposition({
+        observeStartupStage: signal => startupObservation.recordMainStartup(signal),
+        ...(recoveryPort === undefined ? {} : { recoveryStartup: recoveryPort }),
         observeStartupException: (error, stage, secrets) => startupException?.(error, stage, secrets),
         assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
         appVersion: e2eAppVersion,
@@ -258,6 +266,10 @@ if (hasSingleInstanceLock) {
         },
         resourcesPath: config.paths.resourcesPath,
         runtimeInstanceId: config.runtimeInstanceId,
+        ...(config.scenarioId === workspaceDeletionRecoveryProofScenarioId && deletionExecutionProof !== undefined
+          ? { observeWorkspaceDeletionPhase: deletionExecutionProof.observePhase,
+            observeWorkspaceDeletionDetail: deletionExecutionProof.observePhase,
+            observeWorkspaceDeletionSlotIo: deletionExecutionProof.observeSlotIo } : {}),
         reportSmokeStage: async () => undefined,
         smokeConfiguration: {
           enabled: false,
@@ -267,11 +279,18 @@ if (hasSingleInstanceLock) {
         },
         userDataPath: config.paths.userDataPath,
         ...(deletionProof === undefined ? {} : { workspaceDeletionPublisher: deletionProof.publish }),
-        ...(deletionExecutionProof === undefined ? {} : { workspaceDeletionCommand: deletionExecutionProof.command }),
+        ...(deletionExecutionProof === undefined || config.scenarioId === workspaceDeletionPublicProofScenarioId
+          ? {} : { workspaceDeletionCommand: deletionExecutionProof.command }),
       });
-      deletionProof?.register();
-      deletionExecutionProof?.ready();
-      startupObservation.record('compositionCompleted');
+      const publish = (value: DesktopLifecycleHandle | undefined) => {
+        lifecycle = value;
+        deletionProof?.register();
+        deletionExecutionProof?.ready();
+        if (recoveryStartup !== undefined) deletionExecutionProof?.registerRecoveryChannel();
+        startupObservation.record('compositionCompleted');
+      };
+      if (recoveryStartup === undefined) publish(await compose());
+      else await startElectronE2eRecoveryComposition({ startup: recoveryStartup, compose, publish });
     },
     async waitUntilReady() {
       startupObservation.record('waitingForAppReady');
@@ -291,10 +310,13 @@ app.on('second-instance', () => {
   lifecycle?.focusApplicationWindow();
 });
 const handleBeforeQuit = createDesktopBeforeQuitHandler({
-  readLifecycle: () => lifecycle,
+  closeStartupAdmission: () => recoveryStartup?.beforeQuit(),
+  readLifecycle: () => readElectronE2eQuitLifecycle(lifecycle ?? recoveryStartup?.readLifecycle(),
+    recoveryStartup === undefined ? undefined : deletionExecutionProof?.waitForPreparation),
   quitApplication: () => app.quit(),
 });
 app.on('before-quit', (event) => {
+  deletionExecutionProof?.markPhaseShutdown();
   deletionProof?.closeChannel();
   deletionExecutionProof?.close();
   void handleBeforeQuit(event);
@@ -307,6 +329,11 @@ Object.assign(globalThis, {
       execute: deletionExecutionProof.execute,
       snapshot: deletionExecutionProof.snapshot,
       readFailures: deletionExecutionProof.readFailures,
+      readPhaseObservation: deletionExecutionProof.readPhaseObservation,
+      prepareRecovery(request: unknown) {
+        if (lifecycle === undefined) throw new Error('E2E_WORKSPACE_DELETION_LIFECYCLE_MISSING');
+        return deletionExecutionProof.prepareRecovery(request, () => shutdownBeforeWorkspaceProof(lifecycle!));
+      },
     }),
     workspaceDeletionProof: deletionProof === undefined ? undefined : Object.freeze({
       arm: deletionProof.arm,

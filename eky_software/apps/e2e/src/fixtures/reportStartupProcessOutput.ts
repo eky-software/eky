@@ -2,6 +2,8 @@ import { writeFile } from 'node:fs/promises';
 import type { TestInfo } from '@playwright/test';
 
 import { defaultProcessOutputLimitBytes } from '../environment/boundedProcessOutput.js';
+import { linuxPreflightPrivateCheck } from '../../experiments/processOwnership/linuxServiceDiagnostic.mjs';
+import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 
 type StartupOutputKind = 'backend-startup' | 'electron-launch';
 type StartupOutput = Readonly<{ stdout: string; stderr: string }>;
@@ -11,6 +13,20 @@ interface FixtureOutputSource {
   role: 'current' | 'firstLaunchFailure' | 'lastStarted';
   generation: number | null;
   read(): StartupOutput | undefined;
+}
+
+// Post-cleanup private delivery only; never attach this text to public reports.
+export async function reportLinuxPreflightPrivateCheck(read: () => unknown,
+  context: { testName: string; testId?: string; file?: string; attempt?: number; retryCount?: number; repeatCount?: number },
+  sink?: ReturnType<typeof createRunnerFailureSink>,
+): Promise<void> {
+  try {
+    const check = linuxPreflightPrivateCheck(read());
+    if (check === undefined) return;
+    const delivery = sink ?? createRunnerFailureSink();
+    delivery.record({ ...context, runner: 'playwright', phase: 'linuxHostPreflight', error: { message: check } });
+    await delivery.flush();
+  } catch { /* Preserve the original startup result, even when delivery fails. */ }
 }
 
 // Call only from post-cleanup reporting, using existing redacted process readers.

@@ -126,6 +126,30 @@ test('refuses paths, duplicate attachments, invalid JSON, wrong media and oversi
   assert.deepEqual(projectElectronLifecycle(duplicate), { status: 'invalid' });
 });
 
+test('private startup v3 detail cannot expand public output or upgrade uncertain cleanup', () => {
+  const value = evidence();
+  value.cleanup.port = 'unverified';
+  value.cleanup.runRoot = 'retained';
+  const baseline = projectElectronLifecycle(result(value));
+  for (const startupCapture of [
+    { status: 'unavailable' },
+    { status: 'captured', observation: { schemaVersion: 2, backendStartup: { status: 'unobserved' },
+      checkpoints: [], truncated: false } },
+    { status: 'captured', observation: { schemaVersion: 3, backendStartup: { status: 'unobserved' },
+      checkpoints: [], truncated: false,
+      mainStartup: { status: 'observed', phase: 'cleanup', stage: 'backendStop', event: 'returned', elapsedMs: 12 } } },
+    { status: 'captured', observation: { schemaVersion: 3, privateDetail: secret } },
+  ]) {
+    // The private shared parser validates detail; the public projector excludes it.
+    const projected = projectElectronLifecycle(result({ ...value, startupCapture }));
+    assert.deepEqual(projected, baseline);
+    assert.equal(Object.hasOwn(projected, 'startupCapture'), false);
+    assert.equal(JSON.stringify(projected).includes(secret), false);
+    assert.equal(projected.cleanup.port, 'unverified');
+    assert.equal(projected.cleanup.runRoot, 'retained');
+  }
+});
+
 test('secondary report failures use closed per-attempt metadata, never a raw exception', () => {
   const info = { annotations: [{ type: 'private', description: secret }] };
   for (const kind of ['captureFailed', 'reportFailed', 'fileWriteFailed', 'attachmentFailed']) {

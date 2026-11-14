@@ -31,11 +31,15 @@ import {
   WorkspaceManagementError,
 } from './workspaceManagementError.js';
 import type { WorkspaceManagementOperationGuard } from './workspaceManagementOperationGuard.js';
-import { createWorkspaceManagementStatus } from './workspaceManagementStatus.js';
+import { createWorkspaceManagementStatus, parseWorkspaceRecoveryManagementStatus } from './workspaceManagementStatus.js';
 import type {
   WorkspaceManagementObserver,
+  WorkspaceManagementOperationContext,
+  WorkspaceManagementOperationIdentity,
   WorkspaceManagementOperationKind,
   WorkspaceManagementStatusV1,
+  WorkspaceRecoveryManagementStatusV2,
+  WorkspaceManagementStatusReadContext,
   WorkspaceDeletionPreparationLifetime,
   WorkspaceDeletionPreparationOutcome,
 } from './workspaceManagementTypes.js';
@@ -94,6 +98,15 @@ export interface WorkspaceDeletionCompletion {
   readonly navigation: 'selector' | 'reopenPrevious';
 }
 
+// Main-only outcome of this exact rejected call, never a serialized event.
+export interface WorkspaceDeletionFailureOutcome {
+  readonly cause: unknown;
+  readonly sideEffectState: 'none' | 'unknown';
+}
+
+export type WorkspaceDeletionFailureOutcomeHandler =
+  (outcome: Readonly<WorkspaceDeletionFailureOutcome>) => void;
+
 export interface WorkspaceDeletionRecoverySelection {
   readonly journal: WorkspaceDeletionJournal;
   assertSelected(): Promise<void>;
@@ -121,18 +134,19 @@ export interface WorkspaceDeletionRecoveryOptions {
   readonly now?: () => number;
 }
 
-export interface WorkspaceManagementServiceOptions {
-  readonly createEmpty: EmptyWorkspaceCreationCommand;
-  readonly importBackup: WorkspaceBackupImportCommand;
-  readonly maintenanceState: WorkspaceMaintenanceStateReader;
+export interface WorkspaceRecoveryManagementAdmission {
+  readonly targetWorkspaceId: WorkspaceId;
+  assertCurrent(): void;
+  assertSelected(): Promise<void>;
+  readStatus(context: Readonly<WorkspaceManagementStatusReadContext>): Promise<Readonly<{
+    value: Readonly<WorkspaceRecoveryManagementStatusV2>;
+    assertCurrent(): void;
+  }>>;
+}
+
+interface WorkspaceManagementSharedServiceOptions {
   readonly now?: () => number;
   readonly observer?: WorkspaceManagementObserver;
-  readonly operationGuard: WorkspaceManagementOperationGuard;
-  readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
-  readonly renameWorkspace: WorkspaceLabelRenameCommand;
-  readonly replaceActive?: WorkspaceBackupReplacementCommand;
-  readonly runtimeRelaunchCompletion?: WorkspaceRuntimeRelaunchCompletion;
-  readonly switchWorkspace: WorkspaceSwitchCommand;
   readonly deletionPreparation?: {
     readonly maintenanceLease: Pick<InMemoryWorkspaceMaintenanceLease, 'acquire' | 'captureCurrentOwner'>;
     prepare(
@@ -144,21 +158,59 @@ export interface WorkspaceManagementServiceOptions {
   };
   readonly deletionContinuation?: {
     captureAuthority(operationId: string, assertLease: () => void): WorkspaceDeletionContinuationOwner;
-    resume(operationId: string, authority: WorkspaceDeletionWorkAuthority): Promise<WorkspaceDeletionCompletion>;
+    resume(operationId: string, authority: WorkspaceDeletionWorkAuthority,
+      observeStage?: (stage: WorkspaceDeletionExecutionStage) => void): Promise<WorkspaceDeletionCompletion>;
   };
 }
+
+export interface WorkspaceManagementOrdinaryServiceOptions extends WorkspaceManagementSharedServiceOptions {
+  readonly recoveryManagement?: undefined;
+  readonly createEmpty: EmptyWorkspaceCreationCommand;
+  readonly importBackup: WorkspaceBackupImportCommand;
+  readonly maintenanceState: WorkspaceMaintenanceStateReader;
+  readonly operationGuard: WorkspaceManagementOperationGuard;
+  readonly registry: Pick<WorkspaceRegistryPort, 'read'>;
+  readonly renameWorkspace: WorkspaceLabelRenameCommand;
+  readonly replaceActive?: WorkspaceBackupReplacementCommand;
+  readonly runtimeRelaunchCompletion?: WorkspaceRuntimeRelaunchCompletion;
+  readonly switchWorkspace: WorkspaceSwitchCommand;
+}
+
+export interface WorkspaceManagementRecoveryServiceOptions extends WorkspaceManagementSharedServiceOptions {
+  readonly recoveryManagement: Readonly<WorkspaceRecoveryManagementAdmission>;
+  readonly createEmpty?: never;
+  readonly importBackup?: never;
+  readonly maintenanceState?: never;
+  readonly operationGuard?: never;
+  readonly registry?: never;
+  readonly renameWorkspace?: never;
+  readonly replaceActive?: never;
+  readonly runtimeRelaunchCompletion?: never;
+  readonly switchWorkspace?: never;
+}
+
+export type WorkspaceManagementServiceOptions =
+  | WorkspaceManagementOrdinaryServiceOptions
+  | WorkspaceManagementRecoveryServiceOptions;
 
 interface DeletionPreparationCompletion {
   assertRelaunch(): void;
   release(): Promise<void>;
+  readFailureStage?(): WorkspaceDeletionFailureStage;
+  readonly onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler;
 }
 
 export class WorkspaceManagementService {
+  private readonly recoveryManagement: Readonly<WorkspaceRecoveryManagementAdmission> | undefined;
+  private recoveryManagementFailure: { readonly cause: unknown } | undefined;
   private activeOperation = false;
   private admissionClosed = false;
   private readonly pendingWork = new Set<Promise<void>>();
   private shutdownTask: Promise<void> | undefined;
   private shutdownRequested = false;
+  private observationGeneration: object = {};
+  private statusPublicationGeneration: object = {};
+  private observedOperation: Readonly<WorkspaceManagementOperationIdentity> | null = null;
   private readonly deletionCompletionFailures: unknown[] = [];
   private readonly now: () => number;
 
@@ -166,6 +218,13 @@ export class WorkspaceManagementService {
     private readonly options: Readonly<WorkspaceManagementServiceOptions>,
   ) {
     this.now = options.now ?? Date.now;
+    const recovery = options.recoveryManagement;
+    this.recoveryManagement = recovery === undefined ? undefined : Object.freeze({
+      targetWorkspaceId: validateWorkspaceId(recovery.targetWorkspaceId),
+      assertCurrent: recovery.assertCurrent.bind(recovery),
+      assertSelected: recovery.assertSelected.bind(recovery),
+      readStatus: recovery.readStatus.bind(recovery),
+    });
   }
 
   // Main-only cold entry, deliberately separate from ordinary unresolved admission.
@@ -179,6 +238,7 @@ export class WorkspaceManagementService {
     const assertInitial = input.selection.assertSelected.bind(input.selection);
     const releases = [input.selection.revoke.bind(input.selection)];
     const correlationId = randomUUID(), failures: unknown[] = [];
+    const observedOperation = Object.freeze({ correlationId, operationKind: 'deleteResume' as const });
     let startedAt: number | undefined;
     let active = true, observing = true, primaryFailed = false, cleanupReported = false;
     let authorityFailure: { cause: unknown } | undefined;
@@ -221,6 +281,7 @@ export class WorkspaceManagementService {
         });
       } catch { /* Optional timing must not replace the first failure or prevent close. */ }
     };
+    WorkspaceManagementService.observeOperation(observer, 'operationStarted', observedOperation);
     try {
       try {
         startedAt = now();
@@ -278,15 +339,113 @@ export class WorkspaceManagementService {
         throw WorkspaceManagementService.mapOperationFailure(first, 'deleteResume', failures);
       }
       return result!;
-    } finally { active = false; observing = false; }
+    } finally {
+      active = false; observing = false;
+      WorkspaceManagementService.observeOperation(observer, 'operationSettled', observedOperation);
+    }
+  }
+
+  captureStatusReadContext(): Readonly<WorkspaceManagementStatusReadContext> {
+    this.assertAdmissionOpen('status');
+    const generation = this.statusPublicationGeneration;
+    const operationState = this.activeOperation ? 'busy' as const : 'idle' as const;
+    let current = true;
+    return Object.freeze({ operationState, assertCurrent: () => {
+      if (!current || this.admissionClosed || generation !== this.statusPublicationGeneration) {
+        current = false;
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+    } });
   }
 
   getStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
-    return this.trackWork('status', () => this.readStatus());
+    return this.trackWork('status', () => {
+      if (this.recoveryManagement !== undefined) {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+      return this.readStatus();
+    });
+  }
+
+  getRecoveryManagementStatus() {
+    return this.trackWork('status', async () => {
+      const mode = this.recoveryManagement;
+      if (mode === undefined) throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'status');
+      const phase = this.captureStatusReadContext();
+      this.assertRecoveryManagementCurrent();
+      let firstFailure: { readonly cause: unknown } | undefined;
+      let guard: (() => void) | undefined;
+      const assertCurrent = () => {
+        if (firstFailure !== undefined) throw firstFailure.cause;
+        try {
+          this.assertRecoveryManagementCurrent();
+          phase.assertCurrent();
+          if (guard === undefined) throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+          assertUpdateJournalAuthority(guard);
+          this.assertRecoveryManagementCurrent();
+          phase.assertCurrent();
+        } catch (cause) { firstFailure ??= { cause }; throw firstFailure.cause; }
+      };
+      const projection = await mode.readStatus(phase);
+      guard = projection.assertCurrent.bind(projection);
+      const value = parseWorkspaceRecoveryManagementStatus(projection.value);
+      if ((phase.operationState === 'busy' && value.operationState !== 'busy') ||
+          (value.operationState === 'idle' && value.target.workspaceId !== mode.targetWorkspaceId)) {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+      assertCurrent();
+      return Object.freeze({ value, assertCurrent });
+    });
+  }
+
+  private assertRecoveryManagementCurrent(): void {
+    if (this.recoveryManagement === undefined) return;
+    if (this.recoveryManagementFailure !== undefined) throw this.recoveryManagementFailure.cause;
+    try {
+      if (this.shutdownRequested) throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      assertUpdateJournalAuthority(this.recoveryManagement.assertCurrent);
+    } catch (cause) {
+      this.recoveryManagementFailure ??= { cause };
+      this.closeAdmission();
+      throw this.recoveryManagementFailure.cause;
+    }
+  }
+
+  private async assertRecoveryManagementSelected(): Promise<void> {
+    const mode = this.recoveryManagement;
+    if (mode === undefined) throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'delete');
+    try {
+      this.assertRecoveryManagementCurrent();
+      const result: unknown = await mode.assertSelected();
+      if (result !== undefined) throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'delete');
+      this.assertRecoveryManagementCurrent();
+    } catch (cause) {
+      this.recoveryManagementFailure ??= { cause };
+      this.closeAdmission();
+      throw this.recoveryManagementFailure.cause;
+    }
   }
 
   closeAdmission(): void {
+    if (!this.admissionClosed) {
+      this.observationGeneration = {};
+      this.statusPublicationGeneration = {};
+    }
     this.admissionClosed = true;
+  }
+
+  captureOperationContext(): Readonly<WorkspaceManagementOperationContext> {
+    const generation = this.observationGeneration;
+    let current = true;
+    const assertCurrent = () => {
+      if (!current || this.shutdownRequested || this.activeOperation ||
+          this.pendingWork.size !== 0 || this.observationGeneration !== generation) {
+        current = false;
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'status');
+      }
+    };
+    assertCurrent();
+    return Object.freeze({ operation: this.observedOperation, assertCurrent });
   }
 
   shutdown(): Promise<void> {
@@ -302,8 +461,16 @@ export class WorkspaceManagementService {
     return this.shutdownTask;
   }
 
+  private ordinaryOptions(operation: WorkspaceManagementOperationKind): Readonly<WorkspaceManagementOrdinaryServiceOptions> {
+    if (this.recoveryManagement !== undefined || this.options.recoveryManagement !== undefined) {
+      throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', operation);
+    }
+    return this.options;
+  }
+
   private async readStatus(): Promise<Readonly<WorkspaceManagementStatusV1>> {
     try {
+      const options = this.ordinaryOptions('status');
       let firstFailure: { cause: unknown } | undefined;
       const read = <T>(operation: () => Promise<T>) => Promise.resolve().then(() => {
         this.assertAdmissionOpen('status');
@@ -313,8 +480,8 @@ export class WorkspaceManagementService {
         throw cause;
       });
       const [registryResult, recoveryResult] = await Promise.allSettled([
-        read(() => this.options.registry.read()),
-        read(() => this.options.operationGuard.readRecoveryState()),
+        read(() => options.registry.read()),
+        read(() => options.operationGuard.readRecoveryState()),
       ]);
       if (firstFailure !== undefined) throw firstFailure.cause;
       if (registryResult.status === 'rejected') throw registryResult.reason;
@@ -329,7 +496,7 @@ export class WorkspaceManagementService {
         );
       }
       return createWorkspaceManagementStatus({
-        maintenanceState: this.options.maintenanceState.readState(),
+        maintenanceState: options.maintenanceState.readState(),
         operationRecoveryRequired: recoveryState === 'recoveryRequired',
         registry,
       });
@@ -340,20 +507,21 @@ export class WorkspaceManagementService {
 
   createEmpty(workspaceLabel: unknown) {
     return this.run('create', () =>
-      this.options.createEmpty.create(workspaceLabel),
+      this.ordinaryOptions('create').createEmpty.create(workspaceLabel),
     );
   }
 
   importBackupAsNew(input: Readonly<WorkspaceBackupImportInput>) {
-    return this.run('import', () => this.options.importBackup.import(input));
+    return this.run('import', () => this.ordinaryOptions('import').importBackup.import(input));
   }
 
   replaceActiveFromBackup(input: Readonly<WorkspaceBackupReplacementInput>) {
     return this.run('replace', () => {
-      if (this.options.replaceActive === undefined) {
+      const options = this.ordinaryOptions('replace');
+      if (options.replaceActive === undefined) {
         throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'replace');
       }
-      return this.options.replaceActive.replace(input);
+      return options.replaceActive.replace(input);
     });
   }
 
@@ -368,7 +536,7 @@ export class WorkspaceManagementService {
           'switch',
         );
       }
-      await this.options.switchWorkspace.switchTo(workspaceId);
+      await this.ordinaryOptions('switch').switchWorkspace.switchTo(workspaceId);
     });
   }
 
@@ -377,7 +545,7 @@ export class WorkspaceManagementService {
     workspaceLabel: unknown,
   ): Promise<Readonly<WorkspaceLabelRenameResult>> {
     return this.run('rename', () =>
-      this.options.renameWorkspace.rename(workspaceId, workspaceLabel),
+      this.ordinaryOptions('rename').renameWorkspace.rename(workspaceId, workspaceLabel),
     );
   }
 
@@ -385,6 +553,9 @@ export class WorkspaceManagementService {
     requestInput: unknown,
     lifetime: WorkspaceDeletionPreparationLifetime,
   ): Promise<WorkspaceDeletionPreparationOutcome> {
+    if (this.recoveryManagement !== undefined) {
+      return Promise.reject(new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', 'delete'));
+    }
     return this.runDeletion(requestInput, lifetime, false);
   }
 
@@ -392,30 +563,55 @@ export class WorkspaceManagementService {
   deleteWorkspace(
     requestInput: unknown,
     lifetime: WorkspaceDeletionPreparationLifetime,
+    onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler,
   ): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>> {
-    return this.runDeletion(requestInput, lifetime, true);
+    return this.runDeletion(requestInput, lifetime, true, onFailureOutcome);
   }
 
   private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
     durable: false): Promise<WorkspaceDeletionPreparationOutcome>;
   private runDeletion(requestInput: unknown, lifetime: WorkspaceDeletionPreparationLifetime,
-    durable: true): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>;
+    durable: true, onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler): Promise<WorkspaceDeletionCompletion | Readonly<{ formatVersion: 1; status: 'cancelled' }>>;
   private runDeletion(
     requestInput: unknown,
-    lifetime: WorkspaceDeletionPreparationLifetime,
+    callerLifetime: WorkspaceDeletionPreparationLifetime,
     durable: boolean,
+    onFailureOutcome?: WorkspaceDeletionFailureOutcomeHandler,
   ) {
+    const lifetime = this.recoveryManagement === undefined ? callerLifetime : (() => {
+      const current = callerLifetime.assertCurrent.bind(callerLifetime);
+      const close = callerLifetime.closeAdmissionForOwnStop.bind(callerLifetime);
+      return Object.freeze({
+        assertCurrent: () => {
+          this.assertRecoveryManagementCurrent();
+          assertUpdateJournalAuthority(current);
+          this.assertRecoveryManagementCurrent();
+        },
+        closeAdmissionForOwnStop: close,
+      });
+    })();
     let request: Readonly<WorkspaceDeletionRequest>;
     try {
       request = parseWorkspaceDeletionRequest(requestInput);
+      if (this.recoveryManagement !== undefined && request.workspaceId !== this.recoveryManagement.targetWorkspaceId) {
+        throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_INVALID', 'delete');
+      }
     } catch (cause) {
-      return Promise.reject(new WorkspaceManagementError(
+      const failure = new WorkspaceManagementError(
         'WORKSPACE_MANAGEMENT_INVALID', 'delete', { cause },
-      ));
+      );
+      WorkspaceManagementService.reportDeletionFailure(onFailureOutcome, failure, 'none');
+      return Promise.reject(failure);
     }
     let lease: WorkspaceMaintenanceLeaseHandle | undefined;
     let assertLease: (() => void) | undefined;
     let returnRequested = false;
+    let stage: WorkspaceDeletionFailureStage = 'deletePreparation';
+    let observing = false;
+    const observeStage = (value: WorkspaceDeletionExecutionStage) => {
+      if (observing && workspaceDeletionFailureStages.some(allowed =>
+        allowed !== 'admission' && allowed !== 'deletePreparation' && allowed === value)) stage = value;
+    };
     return this.run('delete', async () => {
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       const preparation = this.options.deletionPreparation;
@@ -429,6 +625,11 @@ export class WorkspaceManagementService {
       lease = await preparation.maintenanceLease.acquire('delete');
       this.assertAdmissionOpen('delete');
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      if (this.recoveryManagement !== undefined) {
+        await this.assertRecoveryManagementSelected();
+        this.assertAdmissionOpen('delete');
+        assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
+      }
       assertLease = preparation.maintenanceLease.captureCurrentOwner(['delete'], lease);
       const capturedLease = assertLease;
       const outcome = await preparation.prepare(request, lifetime, capturedLease, operationId);
@@ -440,14 +641,20 @@ export class WorkspaceManagementService {
       returnRequested = outcome === 'returnRequested';
       if (!durable) return outcome;
       if (outcome !== 'prepared') return Object.freeze({ formatVersion: 1 as const, status: 'cancelled' as const });
+      stage = 'deleteAuthorization';
       const captured = captureAuthority!(operationId, capturedLease);
       const owner = Object.freeze({ assertCurrent: captured.assertCurrent.bind(captured),
         assertOwned: captured.assertOwned.bind(captured), recordRemoved: captured.recordRemoved.bind(captured) });
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       assertUpdateJournalAuthority(capturedLease);
-      return WorkspaceManagementService.continueDeletion(operationId, owner, capturedLease,
-        () => this.shutdownRequested, resume!);
+      observing = true;
+      try {
+        return await WorkspaceManagementService.continueDeletion(operationId, owner, capturedLease,
+          () => this.shutdownRequested, (id, authority) => resume!(id, authority, observeStage));
+      } finally { observing = false; }
     }, {
+      ...(onFailureOutcome === undefined ? {} : { onFailureOutcome }),
+      readFailureStage: () => stage,
       assertRelaunch: () => {
         if (!returnRequested || assertLease === undefined) {
           throw new WorkspaceManagementError('WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'delete');
@@ -540,6 +747,7 @@ export class WorkspaceManagementService {
         'WORKSPACE_MANAGEMENT_BUSY',
         operationKind,
       );
+      WorkspaceManagementService.reportDeletionFailure(deletionCompletion?.onFailureOutcome, busyError, 'none');
       this.record({
         correlationId,
         durationMs: Math.max(0, this.now() - startedAt),
@@ -553,12 +761,22 @@ export class WorkspaceManagementService {
       throw busyError;
     }
     this.activeOperation = true;
+    this.observationGeneration = {};
+    this.statusPublicationGeneration = {};
+    const observedOperation = Object.freeze({ correlationId, operationKind });
+    this.observedOperation = observedOperation;
+    this.observeOperation('operationStarted', observedOperation);
     let operationStarted = false;
+    let deletionCleanupFailed = false;
     const failures: unknown[] = [];
     try {
       let result!: T;
       try {
-        await this.options.operationGuard.assertNoUnresolvedOperations();
+        if (this.recoveryManagement === undefined) await this.ordinaryOptions(operationKind).operationGuard.assertNoUnresolvedOperations();
+        else {
+          if (operationKind !== 'delete') throw new WorkspaceManagementError('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED', operationKind);
+          await this.assertRecoveryManagementSelected();
+        }
         this.assertAdmissionOpen(operationKind);
         operationStarted = true;
         result = await operation();
@@ -568,9 +786,9 @@ export class WorkspaceManagementService {
       // Completion borrows the exact lease; pending work includes its release.
       if (deletionCompletion !== undefined) {
         await WorkspaceManagementService.completeDeletion(deletionCompletion,
-          () => this.options.runtimeRelaunchCompletion?.complete(deletionCompletion.assertRelaunch), failures,
-          cause => { this.deletionCompletionFailures.push(cause); this.closeAdmission(); });
-      } else {
+          () => { if (this.recoveryManagement === undefined) this.options.runtimeRelaunchCompletion?.complete(deletionCompletion.assertRelaunch); }, failures,
+          cause => { deletionCleanupFailed = true; this.deletionCompletionFailures.push(cause); this.closeAdmission(); });
+      } else if (this.recoveryManagement === undefined) {
         try { this.options.runtimeRelaunchCompletion?.complete(undefined); }
         catch (cause) { failures.push(cause); this.closeAdmission(); }
       }
@@ -591,7 +809,10 @@ export class WorkspaceManagementService {
         ? classifyWorkspaceManagementFailure(error, operationKind)
         : { lineageMismatch: false };
       const mapped = WorkspaceManagementService.mapOperationFailure(error, operationKind, failures);
+      const deletionSideEffectState = !operationStarted && failures.length === 1 ? 'none' : 'unknown';
+      WorkspaceManagementService.reportDeletionFailure(deletionCompletion?.onFailureOutcome, mapped, deletionSideEffectState);
       const cleanupCauseCode = operationStarted ? readWorkspaceCandidateCleanupCause(error) : undefined;
+      const durationMs = Math.max(0, this.now() - startedAt);
       this.record({
         ...((operationKind === 'import' || operationKind === 'replace')
           ? {
@@ -601,25 +822,32 @@ export class WorkspaceManagementService {
             }
           : {}),
         correlationId,
-        durationMs: Math.max(0, this.now() - startedAt),
+        durationMs,
         errorCode: classification.lineageMismatch ? 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH' : mapped.code,
         operationKind,
         outcome: 'failed',
         retryable: !this.admissionClosed && mapped.code === 'WORKSPACE_MANAGEMENT_BUSY',
         sideEffectState:
           (operationKind === 'delete'
-            ? !operationStarted
+            ? deletionSideEffectState === 'none'
             : mapped.code === 'WORKSPACE_MANAGEMENT_INVALID' ||
               mapped.code === 'WORKSPACE_MANAGEMENT_BUSY')
             ? 'none'
             : 'unknown',
         stage: operationKind === 'delete'
-          ? operationStarted ? 'deletePreparation' : 'admission'
+          ? operationStarted ? deletionCompletion?.readFailureStage?.() ?? 'deletePreparation' : 'admission'
           : classification.lineageMismatch ? 'lineageCheck' : 'operation',
       });
+      if (operationKind === 'delete' && deletionCleanupFailed) {
+        this.record({ correlationId, durationMs, operationKind, outcome: 'failed',
+          errorCode: 'WORKSPACE_DELETE_CLEANUP_FAILED', retryable: false,
+          sideEffectState: 'unknown', stage: 'deleteCleanup' });
+      }
       throw mapped;
     } finally {
+      this.observeOperation('operationSettled', observedOperation);
       this.activeOperation = false;
+      this.statusPublicationGeneration = {};
     }
   }
 
@@ -657,6 +885,26 @@ export class WorkspaceManagementService {
     WorkspaceManagementService.recordObservation(this.options.observer, event);
   }
 
+  private observeOperation(
+    phase: 'operationStarted' | 'operationSettled',
+    operation: Readonly<WorkspaceManagementOperationIdentity>,
+  ): void {
+    WorkspaceManagementService.observeOperation(this.options.observer, phase, operation);
+  }
+
+  private static observeOperation(
+    observer: WorkspaceManagementObserver | undefined,
+    phase: 'operationStarted' | 'operationSettled',
+    operation: Readonly<WorkspaceManagementOperationIdentity>,
+  ): void {
+    try {
+      const result: unknown = observer?.[phase]?.(operation);
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // Observation callbacks cannot grant authority or change command settlement.
+    }
+  }
+
   private static mapOperationFailure(error: unknown, operationKind: WorkspaceManagementOperationKind,
     failures: readonly unknown[]): WorkspaceManagementError {
     const primary = mapWorkspaceManagementError(error, operationKind);
@@ -672,6 +920,16 @@ export class WorkspaceManagementService {
       if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
     } catch {
       // Observability is intentionally non-authoritative.
+    }
+  }
+
+  private static reportDeletionFailure(handler: WorkspaceDeletionFailureOutcomeHandler | undefined,
+    cause: unknown, sideEffectState: WorkspaceDeletionFailureOutcome['sideEffectState']): void {
+    try {
+      const result: unknown = handler?.(Object.freeze({ cause, sideEffectState }));
+      if (result !== undefined) void Promise.resolve(result).catch(() => undefined);
+    } catch {
+      // The original rejection, not a failed callback, remains authoritative.
     }
   }
 }

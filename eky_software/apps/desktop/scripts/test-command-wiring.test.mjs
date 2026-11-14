@@ -54,9 +54,12 @@ const REQUIRED_FILES = [
   ['e2e/workspaceProofBackendDecorators.test.ts', 'vitest'],
   ['e2e/workspaceDeletionProof.test.ts', 'vitest'],
   ['e2e/workspaceDeletionExecutionProof.test.ts', 'vitest'],
+  ['e2e/workspaceDeletionPhaseObservation.test.ts', 'vitest'],
   ['../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs', 'encrypted'],
+  ['../../test-reporters/tests/electronStartupObservationOpenPgp.test.mjs', 'encrypted'],
   ['e2e/electronE2eBackendRunner.test.ts', 'vitest'],
   ['e2e/electronE2eStartupHold.test.ts', 'vitest'],
+  ['e2e/electronE2eStartupObservation.test.ts', 'vitest'],
   ['e2e/electronE2eRuntimeSession.test.ts', 'vitest'],
   ['e2e/electronSecretReplyHold.test.ts', 'vitest'],
   ['e2e/workspaceProofInitialShutdown.test.ts', 'vitest'],
@@ -138,12 +141,24 @@ test('ordinary Linux inspection uses one scoped sandbox proof around the existin
 test('startup exception exit proof uses the existing compiled owner and explicit opt-in failure wait', async () => {
   const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
   assert.equal(desktop.scripts['installer:proof:startup-exception-exit'],
-    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
+    'pnpm build && pnpm e2e:prepare-electron-runtime && pnpm installer:supervisor:build && node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs installer/windows-acceptance-harness/startupSupportElectron.test.mjs');
   const index = await readFile(new URL('src/main/index.ts', DESKTOP_ROOT), 'utf8');
   assert.match(index, /if \(app.commandLine.hasSwitch\(STARTUP_EXCEPTION_SWITCH\)\)/u);
   const failure = index.slice(index.indexOf('async onFailure(errorCode)'));
   assert.match(failure, /if \(observeStartupException !== undefined\) await observeStartupException.waitForDelivery\(\);/u);
   assert.ok(failure.indexOf('waitForDelivery()') < failure.indexOf('dialog.showErrorBox('));
+});
+
+test('startup support proof is selected once by the explicit native command, not ordinary or encrypted tests', async () => {
+  const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
+  const proof = 'installer/windows-acceptance-harness/startupSupportElectron.test.mjs';
+  const command = desktop.scripts['installer:proof:startup-exception-exit'].split(' && ').at(-1).split(' ');
+  assert.equal(command.filter(value => value === proof).length, 1);
+  assert.equal(command.at(-2), 'installer/windows-acceptance-harness/startupExceptionElectronExit.test.mjs');
+  assert.equal(command.at(-1), proof);
+  assert.equal(desktop.scripts.test.includes(proof), false);
+  assert.equal(desktop.scripts['installer:test:encrypted-evidence'].includes(proof), false);
+  assert.equal((await lstat(new URL(proof, DESKTOP_ROOT))).isFile(), true);
 });
 
 async function readFixture() {
@@ -257,7 +272,8 @@ function assertCiWiring({ core, caller, plan, coverage }) {
     property(header, 4, 'name', edge.name);
     property(header, 4, 'if', linuxCore ? "inputs.risk_plan != ''"
       : "inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.windowsContracts");
-    property(header, 4, 'runs-on', linuxCore ? 'ubuntu-latest' : 'windows-latest');
+    property(header, 4, 'runs-on', edge.job === 'verify' ? 'ubuntu-24.04'
+      : linuxCore ? 'ubuntu-latest' : 'windows-latest');
     property(header, 8, 'working-directory', 'eky_software');
     assert.doesNotMatch(header, /^    continue-on-error:/mu);
     assert.equal(stepBlock(job, edge.step), `      - name: ${edge.step}\n${edge.environment ?? ''}        run: ${edge.run}`);
@@ -316,6 +332,18 @@ function rejectsMutation(change) {
 test('T1 files and the wiring test reach their required commands and normal CI acceptance', () => {
   assertWiring(original);
 });
+
+for (const [job, expected, rejected] of [
+  ['verify', 'ubuntu-24.04', 'ubuntu-latest'],
+  ['verify', 'ubuntu-24.04', 'ubuntu-26.04'],
+  ['verify', 'ubuntu-24.04', 'self-hosted'],
+  ['test-packages', 'ubuntu-latest', 'ubuntu-24.04'],
+]) {
+  test(`rejects ${job} runner drift to ${rejected}`, () => rejectsMutation(fixture => {
+    const block = jobBlock(fixture.core, job);
+    fixture.core = fixture.core.replace(block, block.replace(`runs-on: ${expected}`, `runs-on: ${rejected}`));
+  }));
+}
 
 async function rejectDiscovery(result, sink = createRunnerFailureSink()) {
   sink.record({ runner: 'node', phase: 'testSelection', attempt: 0,

@@ -70,6 +70,17 @@ erottaa hyväksytyn toteutuksen ja sen omat PR/main-portit myöhemmästä työst
 | Mobile Sync | planned | open | Ei saa ohittaa module application-, permission- tai tenant-rajoja | open | open | open | open | open | open | open | open | open | open | open | open | open | open | open | mobile planned | open |
 | AI Agent Coordination | planned | Agenttien rajattu toimijuus ja jäljitettävä orchestration päätetään myöhemmin | Ei saa ohittaa domain-, permission-, tenant-, audit- tai API-rajoja | open | open | open | open | Vain omistavan moduulin application-sopimusten kautta | open | open | open | open | open | open | open | open | open | open | backend/cloud planned | open |
 
+W7.5:n tukiviennin rajattu haarakytkentä yhdistää Desktop Shellin,
+workspace-managementin ja nykyisen support bundle -omistajan. Management
+tarjoaa vain nykyisen operaation turvallisen havaintoparin ja synkronisen
+sukupolvivartijan; observer ei anna vienti- tai muutosvaltuutta. Valitsimen
+main omistaa native-vahvistuksen, tallennuskohteen ja sulussa tapahtuvan
+disposen. V3 ei lue Diagnosticsin backend-projektiota, SQLitetä tai historiaa;
+v2:n permission säilyy. Paketti ja sen väliaikaistiedostot eivät kuulu
+business-backupiin. [Tarkka sopimus](support-bundle-plan.md#w75n-nykyisen-operaation-ja-varhaisen-viennin-omistajuus)
+ja [nykyinen osanäyttö](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+eivät vielä hyväksy W7.5:n julkista poistoa tai varhaista startup-vientiä.
+
 W7.3:n mainin sisäinen poistovalmistelu yhdistää rekisterin täsmällisen
 kohteen, saman huoltovarauksen, caller-owned backupin kertakäytön ja
 nykyiset lifecycle-omistajat. Backupin sisältösääntöä ei kopioida:

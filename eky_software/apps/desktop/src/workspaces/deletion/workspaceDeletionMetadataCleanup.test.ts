@@ -12,6 +12,7 @@ import { WorkspaceBackupImportJournalStore } from '../import/workspaceBackupImpo
 import { serializeWorkspaceBackupImportJournal } from '../import/workspaceBackupImportJournalSerializer.js';
 import { WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME, createWorkspaceBackupImportJournalPaths } from '../import/workspaceBackupImportJournalPaths.js';
 import { createNodeWorkspaceBackupImportJournalFileSystem } from '../import/workspaceBackupImportJournalFileSystem.js';
+import type { CrashSafeByteSlotReadSelection } from '../persistence/crashSafeByteSlotStore.js';
 import { createNodeCrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
 import { deriveWorkspaceBackupImportPaths } from '../import/workspaceBackupImportPaths.js';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
@@ -188,6 +189,139 @@ async function originalMetadataFixture(test: TestContext, owner: FixtureOwner = 
   })());
 }
 
+function observeImportDeletionRead() {
+  let selected: CrashSafeByteSlotReadSelection | undefined;
+  let inRead = false;
+  let clearSettled = false;
+  const clear = WorkspaceBackupImportJournalStore.prototype.clearAfterDeletionPurged;
+  vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'clearAfterDeletionPurged').mockImplementationOnce(function (
+    this: WorkspaceBackupImportJournalStore, value, authority, readSelection,
+  ) {
+    expect(readSelection).toBeDefined(); selected = readSelection;
+    return clear.call(this, value, authority, { async assertBeforeSlotRead() {
+      inRead = true;
+      try { return await readSelection!.assertBeforeSlotRead(); } finally { inRead = false; }
+    } }).finally(() => { clearSettled = true; });
+  });
+  return { selected: () => selected, inRead: () => inRead, clearSettled: () => clearSettled };
+}
+
+it.for(['firstOwned', 'writers', 'lastOwned'] as const)(
+  'import journal read caller retains Error and undefined at %s without retiring evidence',
+  { timeout: 30_000 }, async (boundary, test) => {
+    for (const first of [undefined, new Error('SYNTHETIC_W75_CALLER_READ_FIRST')]) {
+      const create = metadataCleanup.createWorkspaceDeletionMetadataCleaner;
+      let measured: ReturnType<typeof observeImportDeletionRead>;
+      vi.spyOn(metadataCleanup, 'createWorkspaceDeletionMetadataCleaner').mockImplementationOnce(input => {
+        const writers = input.assertWritersAbsent.bind(input);
+        return create({ ...input, async assertWritersAbsent() {
+          if (measured?.inRead()) {
+            sequence.push('writers'); if (boundary === 'writers') throw first;
+          }
+          await writers();
+        } });
+      });
+      const f = await originalMetadataFixture(test), before = await originalMetadataSlots(f);
+      const sequence: string[] = [];
+      measured = observeImportDeletionRead();
+      const owned = f.authority.assertOwned;
+      vi.spyOn(f.authority, 'assertOwned').mockImplementation(async () => {
+        if (measured.inRead()) {
+          sequence.push('owned');
+          if (sequence.length === (boundary === 'firstOwned' ? 1 : boundary === 'lastOwned' ? 3 : -1)) throw first;
+        }
+        await owned();
+      });
+      await expect(f.run()).rejects.toBe(first);
+      expect(sequence).toEqual(boundary === 'firstOwned' ? ['owned'] : boundary === 'writers' ? ['owned', 'writers'] : ['owned', 'writers', 'owned']);
+      expect(await originalMetadataSlots(f)).toEqual(before); await f.preservedOriginal();
+      vi.restoreAllMocks();
+    }
+  },
+);
+
+it('import journal read caller waits its held owner after revocation and keeps cleanup exclusive', { timeout: 30_000 }, async test => {
+  const create = metadataCleanup.createWorkspaceDeletionMetadataCleaner;
+  let measured: ReturnType<typeof observeImportDeletionRead>;
+  const sequence: string[] = [];
+  vi.spyOn(metadataCleanup, 'createWorkspaceDeletionMetadataCleaner').mockImplementationOnce(input => {
+    const writers = input.assertWritersAbsent.bind(input);
+    return create({ ...input, async assertWritersAbsent() {
+      if (measured?.inRead()) sequence.push('writers');
+      await writers();
+    } });
+  });
+  const f = await originalMetadataFixture(test), before = await originalMetadataSlots(f);
+  let entered!: () => void, release!: () => void;
+  const started = new Promise<void>(resolve => { entered = resolve; });
+  const held = new Promise<void>(resolve => { release = resolve; }); f.releases.push(release);
+  measured = observeImportDeletionRead();
+  const owned = f.authority.assertOwned;
+  let heldOnce = false, settled = false;
+  vi.spyOn(f.authority, 'assertOwned').mockImplementation(async () => {
+    if (measured.inRead() && !heldOnce) {
+      heldOnce = true; sequence.push('heldOwner'); entered(); await held;
+      // Resolve despite revocation so only the caller can stop the next boundary.
+      return;
+    }
+    if (measured.inRead()) sequence.push('nextOwner');
+    await owned();
+  });
+  const result = f.run().then(value => { settled = true; return { value }; }, error => { settled = true; return { error }; });
+  try {
+    await Promise.race([started, result.then(() => { throw new Error('W75_CALLER_READ_NOT_HELD'); })]);
+    f.revoke(); await setImmediate(); expect(settled).toBe(false);
+    await expect(f.run()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    expect(await originalMetadataSlots(f)).toEqual(before);
+  } finally { release(); await result; }
+  expect(await result).toEqual({ error: f.first });
+  expect(sequence).toEqual(['heldOwner']);
+  expect(await originalMetadataSlots(f)).toEqual(before); await f.preservedOriginal();
+});
+
+it.for(['success', 'failure'] as const)('import journal read caller expires after %s before phase teardown and during a fresh cleanup', { timeout: 30_000 }, async (outcome, test) => {
+  const f = await originalMetadataFixture(test), measured = observeImportDeletionRead();
+  const first = new Error('SYNTHETIC_W75_CALLER_EXPIRY_FIRST'), original = f.authority.assertOwned;
+  let failOnce = outcome === 'failure', holdFresh = false;
+  let entered!: () => void, release!: () => void;
+  const freshEntered = new Promise<void>(resolve => { entered = resolve; });
+  const freshHeld = new Promise<void>(resolve => { release = resolve; }); f.releases.push(release);
+  const owned = vi.spyOn(f.authority, 'assertOwned').mockImplementation(async () => {
+    if (measured.inRead() && failOnce) { failOnce = false; throw first; }
+    if (holdFresh) { holdFresh = false; entered(); await freshHeld; }
+    await original();
+  }), reads = vi.spyOn(f.registry, 'inspectSlots');
+  const assertExpired = async () => {
+    const ownerCalls = owned.mock.calls.length, registryCalls = reads.mock.calls.length;
+    await expect(measured.selected()!.assertBeforeSlotRead()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    expect(owned).toHaveBeenCalledTimes(ownerCalls); expect(reads).toHaveBeenCalledTimes(registryCalls);
+  };
+  const inspect = WorkspaceBackupImportJournalStore.prototype.inspectSlots;
+  let checkedWhileLive = false;
+  vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'inspectSlots').mockImplementation(async function (
+    this: WorkspaceBackupImportJournalStore, check,
+  ) {
+    if (outcome === 'success' && measured.clearSettled() && !checkedWhileLive) {
+      checkedWhileLive = true; expect(check).toBeTypeOf('function'); check!();
+      await assertExpired(); check!();
+    }
+    return inspect.call(this, check);
+  });
+  if (outcome === 'failure') await expect(f.run()).rejects.toBe(first);
+  else await f.run();
+  expect(checkedWhileLive).toBe(outcome === 'success');
+  expect(measured.selected()).toBeDefined(); await assertExpired();
+  holdFresh = true; let freshSettled = false;
+  const fresh = f.freshRun().then(value => { freshSettled = true; return { value }; }, error => { freshSettled = true; return { error }; });
+  try {
+    await Promise.race([freshEntered, fresh.then(() => { throw new Error('W75_FRESH_CLEANUP_NOT_HELD'); })]);
+    expect(freshSettled).toBe(false); await assertExpired();
+    expect(freshSettled).toBe(false);
+  } finally { release(); await fresh; }
+  expect(await fresh).not.toHaveProperty('error');
+  await f.preservedOriginal();
+});
+
 const originalMetadataOptions = { timeout: 30_000 };
 async function originalMetadataSlots(f: Awaited<ReturnType<typeof originalMetadataFixture>>) {
   const paths = [f.ownerJournalPath, f.bindingPath].flatMap(path => ['', '.backup', '.next'].map(suffix => path + suffix));
@@ -295,8 +429,9 @@ it.for(['current', 'sync'] as const)('keeps the V2 original journal native %s mu
   expect((await readFile(f.bindingPath)).equals(f.bindingBytes)).toBe(true); await f.preservedOriginal();
 });
 
-it.for(['workspaceImport', 'workspaceLegacyAdoption', 'workspaceReplacement', 'workspaceActivationMigration'] as const)(
-  'retires payloadless original %s proof metadata from a committed V2 purged fixture', originalMetadataOptions, async (owner, test) => {
+for (const originalOwner of ['workspaceImport', 'workspaceLegacyAdoption', 'workspaceReplacement', 'workspaceActivationMigration'] as const) it.for([originalOwner])(
+  'retires payloadless original %s proof metadata from a committed V2 purged fixture',
+  originalOwner === 'workspaceLegacyAdoption' ? { ...originalMetadataOptions, timeout: 45_000 } : originalMetadataOptions, async (owner, test) => {
     const f = await originalMetadataFixture(test, owner);
     await f.track((async () => {
       const mutations = [vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'clearAfterDeletionPurged'),
@@ -1186,7 +1321,7 @@ it('preflight characterizes the approved transient observation difference', asyn
   });
   expect((await f.run()).phase).toBe('purged');
   expect(once).toBe(false); await f.preserved();
-});
+}, 10_000);
 it('preflight keeps the last retirement read strict after its outer purged proof', async test => {
   const f = await fixture(test), before = await readFile(f.importPath);
   const fs = createNodeWorkspaceBackupImportJournalFileSystem(createWorkspaceBackupImportJournalPaths(f.root, f.importPath));
@@ -1211,7 +1346,8 @@ it('preflight keeps the last retirement read strict after its outer purged proof
   };
   const injectedStore = new WorkspaceBackupImportJournalStore({ installationRoot: f.root, filePath: f.importPath, fileSystem: fs });
   const retire = WorkspaceBackupImportJournalStore.prototype.clearAfterDeletionPurged;
-  vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'clearAfterDeletionPurged').mockImplementation(function(binding, selection) {
+  vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'clearAfterDeletionPurged').mockImplementation(function(binding, selection, readSelection) {
+    expect(readSelection).toBeDefined();
     return retire.call(injectedStore, binding, { ...selection, async assertDeletionPurged() {
       if (injected) outerPurgedAfterInjection++;
       await selection.assertDeletionPurged();
@@ -1224,7 +1360,7 @@ it('preflight keeps the last retirement read strict after its outer purged proof
           await writeFile(join(f.paths.candidateRoot, 'retained'), 'retirement-boundary payload', { mode: 0o600, flag: 'wx' });
         };
       }
-    } });
+    } }, readSelection);
   });
   await expect(f.run()).rejects.toThrow();
   expect(currentRemoveAttempts).toBe(1); expect(selectedSlots).toEqual(['current', 'next', 'backup']);
@@ -1373,7 +1509,8 @@ it.for((['workspaceImport', 'workspaceLegacyAdoption', 'workspaceReplacement'] a
       ? new WorkspaceBackupImportJournalStore({ installationRoot: f.root, filePath: f.importPath, fileSystem: fs })
       : owner === 'workspaceLegacyAdoption' ? new WorkspaceLegacyAdoptionJournalStore(f.root, fs)
         : new ProfileRestoreActivationJournalStore(f.ownerJournalPath, fs);
-    vi.spyOn(prototype, 'clearAfterDeletionPurged').mockImplementationOnce((...args) => clear.apply(selectedOwner, args));
+    vi.spyOn(prototype, 'clearAfterDeletionPurged').mockImplementationOnce((...args: Parameters<WorkspaceBackupImportJournalStore['clearAfterDeletionPurged']>) =>
+      (clear as WorkspaceBackupImportJournalStore['clearAfterDeletionPurged']).apply(selectedOwner, args));
     await expect(f.run()).rejects.toBe(first); expect(injected).toBe(true);
     if (boundary !== 'sync') expect(await readFile(selectedPath)).toEqual(original);
     else await expect(readFile(f.ownerJournalPath)).rejects.toMatchObject({ code: 'ENOENT' });
@@ -1464,7 +1601,8 @@ async function metadataPostClearFixture(test: TestContext, cold = false, twoKeys
   return { f, hooks, postDone: () => postDone };
 }
 
-it.for(['error', 'undefined'] as const)('post-clear returned chain includes outer close after %s', async (kind, test) => {
+for (const failureKind of ['error', 'undefined'] as const) it.for([failureKind])('post-clear returned chain includes outer close after %s',
+  failureKind === 'undefined' ? { timeout: 10_000 } : {}, async (kind, test) => {
   const first = kind === 'error' ? new Error('SYNTHETIC_POSTREAD_FIRST') : undefined;
   const later = new Error('SYNTHETIC_OUTER_INVENTORY_CLOSE');
   const error = await captureWorkspaceDeletionMetadataPostClearTestFailure(test, first, later);
@@ -1472,7 +1610,7 @@ it.for(['error', 'undefined'] as const)('post-clear returned chain includes oute
   expect(leaves[0]).toBe(first); expect(leaves).toContain(later);
 });
 
-it.for(['persistent', 'restored'] as const)('post-clear detects %s payload after completed clear', async (mode, test) => {
+it.for(['persistent', 'restored'] as const)('post-clear detects %s payload after completed clear', { timeout: 10_000 }, async (mode, test) => {
   const t = await metadataPostClearFixture(test), { f } = t;
   const kept = join(f.paths.candidateRoot, 'postread-payload'); let entered = false;
   t.hooks.read = async run => {
@@ -1486,7 +1624,8 @@ it.for(['persistent', 'restored'] as const)('post-clear detects %s payload after
   await expect(readFile(f.bindingPath)).rejects.toMatchObject({ code: 'ENOENT' }); await f.preserved();
 });
 
-it.for(['persistent', 'restored'] as const)('post-clear detects %s cold selection after completed clear', async (mode, test) => {
+for (const selectionMode of ['persistent', 'restored'] as const) it.for([selectionMode])('post-clear detects %s cold selection after completed clear',
+  selectionMode === 'restored' ? { timeout: 10_000 } : {}, async (mode, test) => {
   const t = await metadataPostClearFixture(test, true), { f } = t; let changed = false, observed = false;
   const first = new Error('SYNTHETIC_POSTREAD_STABLE_CHANGED');
   f.fullProof.mockImplementation(async () => { f.authority.assertCurrent(); if (changed) { observed = true; throw first; } });
@@ -1497,8 +1636,8 @@ it.for(['persistent', 'restored'] as const)('post-clear detects %s cold selectio
   await f.preserved();
 });
 
-it.for(['current', 'next', 'backup', 'foreignWorkspace', 'foreignLineage', 'digest', 'invalidJson'] as const)(
-  'post-clear preserves returned %s slot before its read', async (kind, test) => {
+for (const returnedKind of ['current', 'next', 'backup', 'foreignWorkspace', 'foreignLineage', 'digest', 'invalidJson'] as const) it.for([returnedKind])(
+  'post-clear preserves returned %s slot before its read', returnedKind === 'foreignWorkspace' ? { timeout: 10_000 } : {}, async (kind, test) => {
     const t = await metadataPostClearFixture(test), { f } = t;
     const path = f.bindingPath + (kind === 'current' ? '' : kind === 'next' ? '.next' : '.backup');
     const bytes = kind === 'foreignWorkspace' ? serializeWorkspaceRemnantBinding(captureWorkspaceRemnantBinding({ ...f.binding, workspaceId: id(211) }))

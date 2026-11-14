@@ -40,6 +40,7 @@ describe('App root composition', () => {
       importWorkspaceBackupAsNew: vi.fn(),
       renameWorkspace: vi.fn(),
       switchWorkspace: vi.fn(),
+      createSupportBundle: vi.fn(async () => 'created' as const),
     } : undefined;
     const forbiddenCapabilityRead = vi.fn(() => {
       throw new Error('Business capability is forbidden');
@@ -47,7 +48,7 @@ describe('App root composition', () => {
     if (desktop !== undefined) {
       for (const name of [
         'getLocalUpdateStatus', 'getProfileBackupStatus', 'openInvoicePdf',
-        'chooseInvoicePdfArchiveDirectory', 'createSupportBundle',
+        'chooseInvoicePdfArchiveDirectory',
         'openOperationalLogFolder',
       ]) {
         Object.defineProperty(desktop, name, { get: forbiddenCapabilityRead });
@@ -69,6 +70,12 @@ describe('App root composition', () => {
     expect(html).toContain(available ? uiText.workspaces.loading : uiText.workspaces.safeError);
     expect(html).not.toContain(uiText.workspaces.close);
     expect(html).not.toContain('Business customers');
+    if (desktop !== undefined) {
+      expect(html).toContain(uiText.diagnostics.createSupportBundle);
+      expect(desktop.createSupportBundle).not.toHaveBeenCalled();
+    } else {
+      expect(html).not.toContain(uiText.diagnostics.createSupportBundle);
+    }
     for (const consumer of [AppLayout, CustomerPage, CompanySettingsPage,
       InvoicingPage, ActivityPage, DiagnosticsPage]) {
       expect(consumer).not.toHaveBeenCalled();

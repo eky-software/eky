@@ -12,6 +12,10 @@ import { WorkspaceRegistryStore } from '../workspaces/registry/workspaceRegistry
 import { captureColdWorkspaceDeletionAdmissionFromRoot } from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
 import { createWorkspaceDeletionColdContinuation } from './workspaceDeletionContinuation.js';
 
+type ColdDeletionBuildAdmission = NonNullable<Awaited<
+  ReturnType<typeof captureColdWorkspaceDeletionAdmissionFromRoot>
+>>['buildAdmission'];
+
 // Called while main still owns the installation, before any repairing startup.
 export async function recoverDesktopWorkspaceDeletion(input: {
   userDataRoot: string;
@@ -22,6 +26,7 @@ export async function recoverDesktopWorkspaceDeletion(input: {
   work: { pending: boolean; uncertainty?: { reason: unknown } };
   assertStartupCurrent(): void;
   observer: WorkspaceManagementObserver;
+  observeBuildAdmission?(admission: ColdDeletionBuildAdmission): void;
 }): Promise<WorkspaceDeletionCompletion | undefined> {
   const root = input.userDataRoot, buildInfo = Object.freeze({ ...input.buildInfo });
   const releaseInfo = input.releaseInfo === undefined ? undefined : Object.freeze({ ...input.releaseInfo });
@@ -41,6 +46,10 @@ export async function recoverDesktopWorkspaceDeletion(input: {
   try {
     const selection = await captureColdWorkspaceDeletionAdmissionFromRoot(selectionInput);
     if (selection === undefined) { assertCurrent(); return undefined; }
+    try {
+      const notification: unknown = input.observeBuildAdmission?.(selection.buildAdmission);
+      if (notification !== undefined) void Promise.resolve(notification).catch(() => undefined);
+    } catch { /* Reporting cannot replace admission, command failure or cleanup. */ }
     return await WorkspaceManagementService.recoverDeletionBeforeRuntime({
       selection, maintenanceLease: lease, observer, assertCurrent, isStopping: () => false,
       captureSelection: assertLease => captureColdWorkspaceDeletionAdmissionFromRoot({ ...selectionInput,

@@ -182,6 +182,27 @@ describe('Electron E2E startup mode config admission', () => {
 });
 
 describe('Electron E2E startup hold structure boundary', () => {
+  it('connects main stage collection only in the E2E entrypoint through the existing controller', () => {
+    const source = readFileSync(join(desktopRoot, 'e2e', 'electronE2eEntrypoint.ts'), 'utf8');
+    expect(source).toMatch(/startDesktopComposition\(\{\s*observeStartupStage: signal => startupObservation\.recordMainStartup\(signal\),/);
+    expect(source).toContain('startupObservation: () => startupObservation.snapshot()');
+    const production = readFileSync(join(desktopRoot, 'src', 'main', 'index.ts'), 'utf8');
+    expect(production).not.toMatch(/observeStartupStage|recordMainStartup|createElectronE2eStartupObservation/);
+  });
+
+  it('wires selector readiness to the existing checkpoint without bypassing the selector decorator', () => {
+    const source = readFileSync(join(desktopRoot, 'e2e', 'electronE2eEntrypoint.ts'), 'utf8');
+    expect(source).toMatch(
+      /const selectorBackend = usesSelectorTestBackend\(config\.scenarioId\)\s*\? observeSelectorTestBackend\(startDesktopBackend, \(\) => startupObservation\.record\('backendReady'\)\) : undefined;/,
+    );
+    expect(source).toMatch(
+      /async startBackend\(options\) \{\s*startupObservation\.record\('backendStartRequested'\);\s*if \(selectorBackend !== undefined\) return selectorBackend\.startBackend\(options\);/,
+    );
+    expect(source).toMatch(
+      /handle = await backendController\.startBackend\(options\); \}\s*catch \(error\) \{ secretReplyHold\?\.dispose\(\); throw error; \}\s*startupObservation\.record\('backendReady'\);/,
+    );
+  });
+
   it('keeps the hold and test controller out of production source and build inputs', () => {
     for (const path of listProductionSources(join(desktopRoot, 'src'))) {
       const source = readFileSync(path, 'utf8');

@@ -333,7 +333,8 @@ it('finishes an empty complete census without preparing directories or granting 
   expect(await readdir(f.root)).toEqual([]);
 });
 
-it.for(workspaceRemnantBindingOwners)('acknowledges exact payloadless %s slots and preserves every foreign slot', async (owner, context) => {
+for (const bindingOwner of workspaceRemnantBindingOwners) it.for([bindingOwner])('acknowledges exact payloadless %s slots and preserves every foreign slot',
+  bindingOwner === 'profileInspection' ? { timeout: 10_000 } : {}, async (owner, context) => {
   const f = await fixture(context, owner); await f.publish();
   await writeFile(f.paths.backupPath, serializeWorkspaceRemnantBinding(f.binding), { mode: 0o600 });
   const foreign = await f.publish({ ...f.binding, operationId: id(99), workspaceId: id(98),

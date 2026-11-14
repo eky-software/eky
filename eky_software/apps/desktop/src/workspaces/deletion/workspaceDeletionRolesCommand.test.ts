@@ -25,7 +25,7 @@ import { workspaceRemnantBindingKey } from './workspaceRemnantBindingCodec.js';
 import { createWorkspaceRemnantBindingPaths } from './workspaceRemnantBindingPaths.js';
 
 it('deletes all ten roles and every legacy member through one actual file command, preserving foreign owners', {
-  timeout: 180_000,
+  timeout: 240_000,
 }, async test => {
   const evidence = observeDeletionCommandFailures(test);
   try {

@@ -1,7 +1,8 @@
 import { readFileSync } from 'node:fs';
-import { mkdir, mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import type { BrowserWindow } from 'electron';
 
 import { afterEach, describe, expect, it, vi, type TestContext } from 'vitest';
 
@@ -18,9 +19,13 @@ import {
   readPackagedSmokeResult,
   resolvePackagedSmokeTempPath,
   reportPackagedSmokeBackend,
+  resolvePackagedSmokeSupportBundlePath,
   runPackagedSelectorSmoke,
   type PackagedSmokeStage,
 } from './packagedSmoke.js';
+import { createDesktopOnlySupportBundleArchive } from '../supportBundle/supportBundleArchive.js';
+import { createSupportBundleSmokeFailureCapture } from './packagedSupportBundleSmokeTestSupport.js';
+import { readSafeStartupFailureCode } from './earlyStartup.js';
 
 const acceptedBuild = {
   acceptedAt: '2026-08-21T10:00:00.000Z',
@@ -331,7 +336,7 @@ describe('packaged smoke progress', () => {
       root: join(resolvePackagedSmokeTempPath(tmpdir()), 'eky-desktop-smoke', 'd'.repeat(32)), userDataPath: undefined });
   });
 
-  it('restricts selector verification to startup and settled shutdown', async () => {
+  it('requires selector support verification between startup and settled shutdown', async () => {
     const options = { hasSmokeSwitch: true, hasSelectorVerificationSwitch: true,
       tempPath: tmpdir(), tokenValue: 'd'.repeat(32) };
     const reporter = createPackagedSmokeProgressReporter({ ...createPackagedSmokeConfiguration(options), enabled: false });
@@ -339,6 +344,9 @@ describe('packaged smoke progress', () => {
     await reporter.reportStage('startup');
     await expect(reporter.reportStage('backend')).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
     await expect(reporter.reportStage('startup')).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
+    await expect(reporter.reportStage('shutdown')).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
+    await reporter.reportStage('supportBundle');
+    await expect(reporter.reportStage('supportBundle')).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
     await reporter.reportStage('shutdown');
     await expect(reporter.reportStage('shutdown')).rejects.toThrow('DESKTOP_SMOKE_STAGE_INVALID');
   });
@@ -480,7 +488,11 @@ describe('packaged selector smoke shutdown', () => {
   it('writes success and quits only after the original selector closes', async context => {
     const f = await selectorFixture(context);
     await f.run();
-    expect(f.events).toEqual(['shutdown', 'close', 'destroy', 'quit']);
+    expect(f.events).toEqual(['supportBundle', 'export', 'shutdown', 'close', 'destroy', 'quit']);
+    expect(f.execute).toHaveBeenCalledOnce();
+    expect(f.execute.mock.calls[0]?.[0]).toContain('window.ekyDesktop.createSupportBundle()');
+    expect(f.execute.mock.calls[0]?.[1]).toBe(true);
+    await expect(stat(f.supportBundlePath)).rejects.toMatchObject({ code: 'ENOENT' });
     expect(await readResult(f.root)).toEqual({ stage: 'shutdown', status: 'ok', electronVersion: '0.0.0' });
     expect(f.close).toHaveBeenCalledOnce();
   });
@@ -518,10 +530,10 @@ describe('packaged selector smoke shutdown', () => {
     expect(await readResult(f.root)).toMatchObject({ status: 'started' });
   });
 
-  it.for(['report', 'close'] as const)('joins held %s work before accepting the result', async (kind, context) => {
+  it.for(['report', 'export', 'close'] as const)('joins held %s work before accepting the result', async (kind, context) => {
     const f = await selectorFixture(context);
     await duringSelectorWork(f, kind, async () => {
-      if (kind === 'report') expect(f.close).not.toHaveBeenCalled();
+      if (kind !== 'close') expect(f.close).not.toHaveBeenCalled();
       expect(f.destroy).not.toHaveBeenCalled(); expect(f.quit).not.toHaveBeenCalled();
       expect(await readResult(f.root)).toMatchObject({ status: 'started' });
     });
@@ -533,8 +545,9 @@ describe('packaged selector smoke shutdown', () => {
     const otherClose = vi.fn(async () => {}), otherDestroy = vi.fn(), otherQuit = vi.fn();
     await duringSelectorWork(f, 'report', async () => {
       f.options.configuration = { ...f.options.configuration, phase: 'initial', root: join(f.root, 'wrong') };
-      f.options.electronVersion = 'invalid';
-      f.options.lifecycle = { shutdown: otherClose, applicationWindow: { destroy: otherDestroy } };
+      Object.assign(f.options.system, { electronVersion: 'invalid' });
+      f.options.lifecycle = { shutdown: otherClose, applicationWindow: {
+        destroy: otherDestroy, webContents: f.options.lifecycle.applicationWindow.webContents } };
       f.options.quitApplication = otherQuit;
     });
     expect(f.close).toHaveBeenCalledOnce(); expect(f.destroy).toHaveBeenCalledOnce(); expect(f.quit).toHaveBeenCalledOnce();
@@ -550,11 +563,63 @@ describe('packaged selector smoke shutdown', () => {
     expect(await readResult(f.root)).toMatchObject({ status: 'started' });
   });
 
-  it('does not quit when existing result validation fails', async context => {
-    const f = await selectorFixture(context); f.options.electronVersion = 'invalid';
-    await expect(f.run()).rejects.toThrow('DESKTOP_SMOKE_RESULT_INVALID');
-    expect(f.close).toHaveBeenCalledOnce(); expect(f.destroy).toHaveBeenCalledOnce(); expect(f.quit).not.toHaveBeenCalled();
+  it('rejects invalid runtime identity before exporting but still joins shutdown', async context => {
+    const f = await selectorFixture(context);
+    Object.assign(f.options.system, { electronVersion: 'invalid' });
+    await expect(f.run()).rejects.toThrow('SUPPORT_BUNDLE_DESKTOP_DATA_INVALID');
+    expect(f.execute).not.toHaveBeenCalled();
+    expect(f.close).toHaveBeenCalledOnce(); expect(f.destroy).not.toHaveBeenCalled(); expect(f.quit).not.toHaveBeenCalled();
     expect(await readResult(f.root)).toMatchObject({ status: 'started' });
+  });
+
+  it.for(['cancelled', 'wrongIdentity', 'rejected'] as const)(
+    'does not accept %s support verification and still joins selector shutdown', async (variant, context) => {
+      const f = await selectorFixture(context), original = new Error('SYNTHETIC_SELECTOR_SUPPORT_FAILURE');
+      if (variant === 'cancelled') f.execute.mockResolvedValueOnce('cancelled');
+      if (variant === 'rejected') f.execute.mockRejectedValueOnce(original);
+      if (variant === 'wrongIdentity') Object.assign(f.options.system, { buildRevision: 'b'.repeat(40) });
+      await expect(f.run()).rejects.toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_');
+      expect(f.close).toHaveBeenCalledOnce();
+      expect(f.destroy).not.toHaveBeenCalled(); expect(f.quit).not.toHaveBeenCalled();
+      expect(await readResult(f.root)).toEqual({ stage: 'supportBundle', status: 'started' });
+      await expect(stat(f.supportBundlePath)).rejects.toMatchObject({ code: 'ENOENT' });
+      if (variant === 'rejected') expect(f.observeFailure).toHaveBeenCalledExactlyOnceWith(original);
+    },
+  );
+
+  it('keeps a failed export first when selector shutdown also fails', async context => {
+    const f = await selectorFixture(context), original = new Error('SYNTHETIC_SELECTOR_SUPPORT_FAILURE');
+    const close = new Error('SYNTHETIC_SELECTOR_CLOSE_FAILURE');
+    f.execute.mockRejectedValueOnce(original); f.close.mockRejectedValueOnce(close);
+    const result = await f.run().catch(error => error);
+    expect(result).toBeInstanceOf(AggregateError);
+    expect(result.errors).toEqual([expect.objectContaining({ message: 'DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID' }), close]);
+    expect(result.cause).toBe(result.errors[0]);
+    expect(readSafeStartupFailureCode(result)).toBe('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    expect(f.observeFailure).toHaveBeenCalledExactlyOnceWith(original);
+    expect(f.quit).not.toHaveBeenCalled();
+  });
+
+  it('retains the captured observer after reporting starts', async context => {
+    const f = await selectorFixture(context), original = new Error('SYNTHETIC_SELECTOR_CAPTURED_FAILURE');
+    const late = vi.fn();
+    f.execute.mockRejectedValueOnce(original);
+    await expect(duringSelectorWork(f, 'report', async () => {
+      f.options.observeFailure = late;
+    })).rejects.toThrow('DESKTOP_SMOKE_SUPPORT_BUNDLE_INVALID');
+    expect(f.observeFailure).toHaveBeenCalledExactlyOnceWith(original);
+    expect(late).not.toHaveBeenCalled(); expect(f.close).toHaveBeenCalledOnce();
+  });
+
+  it('retains an undefined first rejection beside a close failure without success', async context => {
+    const f = await selectorFixture(context), close = new Error('SYNTHETIC_SELECTOR_LATER_CLOSE');
+    f.report.mockRejectedValueOnce(undefined); f.close.mockRejectedValueOnce(close);
+    const error = await f.run().catch(error => error);
+    expect(error).toBeInstanceOf(AggregateError);
+    expect(error.errors).toEqual([undefined, close]);
+    expect(error.cause).toBeUndefined();
+    expect(readSafeStartupFailureCode(error)).toBe('DESKTOP_START_FAILED');
+    expect(f.execute).not.toHaveBeenCalled(); expect(f.quit).not.toHaveBeenCalled(); expect(f.destroy).not.toHaveBeenCalled();
   });
 
   it.for(['disabled', 'phase', 'scenario', 'root', 'userData'] as const)('rejects %s before taking ownership of a lifecycle', async (variant, context) => {
@@ -590,12 +655,16 @@ describe('packaged selector smoke shutdown', () => {
 });
 
 async function duringSelectorWork(
-  f: Awaited<ReturnType<typeof selectorFixture>>, kind: 'report' | 'close', inspect: () => Promise<void>,
+  f: Awaited<ReturnType<typeof selectorFixture>>, kind: 'report' | 'export' | 'close', inspect: () => Promise<void>,
 ) {
   let enter!: () => void, finish!: () => void;
   const entered = new Promise<void>(resolve => { enter = resolve; });
   const held = new Promise<void>(resolve => { finish = resolve; });
   if (kind === 'report') f.report.mockImplementationOnce(async stage => { enter(); await held; await f.baseReport(stage); });
+  else if (kind === 'export') {
+    const execute = f.execute.getMockImplementation()!;
+    f.execute.mockImplementationOnce(async () => { enter(); await held; return execute(); });
+  }
   else f.close.mockImplementationOnce(async () => { enter(); await held; });
   const outcome = f.run().then(() => ({ ok: true as const }), error => ({ ok: false as const, error }));
   let first: { error: unknown } | undefined;
@@ -624,6 +693,21 @@ async function selectorFixture(context: TestContext) {
   const reporter = createPackagedSmokeProgressReporter(configuration);
   await reporter.reportStage('startup');
   const events: string[] = [];
+  const system = { appVersion: '0.2.81', buildRevision: 'a'.repeat(40),
+    architecture: 'x64', platform: 'win32', electronVersion: '0.0.0' } as const;
+  const supportBundlePath = resolvePackagedSmokeSupportBundlePath(configuration)!;
+  const execute = vi.fn(async (_source?: string, _userGesture?: boolean): Promise<unknown> => {
+    events.push('export');
+    const archive = createDesktopOnlySupportBundleArchive({ createdAt: new Date('2026-11-09T12:00:00.000Z'),
+      creationCorrelationId: '22222222-2222-4222-8222-222222222222', desktopData: {
+        system, availability: { backend: 'exitUnconfirmed', database: 'notInspected',
+          diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+        observation: { scope: 'currentOperation', status: 'unavailable' },
+      } });
+    await writeFile(supportBundlePath, archive.compressed, { flag: 'wx' });
+    return 'created';
+  });
+  const observeFailure = vi.fn(createSupportBundleSmokeFailureCapture(context));
   const baseReport = async (stage: PackagedSmokeStage) => { events.push(stage); await reporter.reportStage(stage); };
   const report = vi.fn(baseReport), close = vi.fn(async () => { events.push('close'); });
   const destroy = vi.fn(() => { events.push('destroy'); });
@@ -632,9 +716,12 @@ async function selectorFixture(context: TestContext) {
     expect(readPackagedSmokeResult(JSON.parse(bytes))).toEqual({ stage: 'shutdown', status: 'ok', electronVersion: '0.0.0' });
     events.push('quit');
   });
-  const options: Parameters<typeof runPackagedSelectorSmoke>[0] = { configuration, electronVersion: '0.0.0',
-    lifecycle: { shutdown: close, applicationWindow: { destroy } }, reportStage: report, quitApplication: quit };
+  const options: Parameters<typeof runPackagedSelectorSmoke>[0] = { configuration, system: { ...system }, observeFailure,
+    lifecycle: { shutdown: close, applicationWindow: { destroy,
+      webContents: { executeJavaScript: execute } as unknown as BrowserWindow['webContents'] } },
+    reportStage: report, quitApplication: quit };
   return { options, root: configuration.root!, events, baseReport, report, close, destroy, quit,
+    execute, observeFailure, supportBundlePath,
     run: () => runPackagedSelectorSmoke(options) };
 }
 

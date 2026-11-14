@@ -7,6 +7,7 @@ import { InMemoryWorkspaceMaintenanceLease } from '../workspaces/maintenance/wor
 import * as admissionModule from '../workspaces/runtime/workspaceColdRecoveryAdmissionComposition.js';
 import * as continuationModule from './workspaceDeletionContinuation.js';
 import { recoverDesktopWorkspaceDeletion } from './recoverDesktopWorkspaceDeletion.js';
+import type { WorkspaceManagementOperationIdentity } from '../workspaces/management/workspaceManagementTypes.js';
 
 function gate() {
   let resolve!: () => void;
@@ -52,19 +53,22 @@ function fixture(test: TestContext) {
     publish: vi.fn(async () => { throw new Error('SYNTHETIC_UNEXPECTED_PUBLISH'); }),
     resume: vi.fn(async () => { throw new Error('SYNTHETIC_UNEXPECTED_LIVE_RESUME'); }) });
   const record = vi.fn(), time = '2026-10-25T12:00:00.000Z';
+  const operationStarted = vi.fn<(operation: Readonly<WorkspaceManagementOperationIdentity>) => void>();
+  const operationSettled = vi.fn<(operation: Readonly<WorkspaceManagementOperationIdentity>) => void>();
+  const observeBuildAdmission = vi.fn<NonNullable<Parameters<typeof recoverDesktopWorkspaceDeletion>[0]['observeBuildAdmission']>>();
   const input = { userDataRoot: join(tmpdir(), 'eky-controlled-startup'),
     buildInfo: { schemaVersion: 1 as const, appVersion: '0.2.81', buildRevision: 'a'.repeat(40), buildCreatedAt: time, buildDirty: false },
     releaseInfo: { schemaVersion: 1 as const, appIdentity: 'Eky' as const, appVersion: '0.2.81', msiProductVersion: '0.2.81',
       buildRevision: 'a'.repeat(40), platform: 'win32' as const, architecture: 'x64' as const,
       releaseChannel: 'pilot' as const, upgradeCode: deletionTestId(50) },
     maintenanceLease, reservation: { assertMainCurrent: check, assertMainOwned: owned, invalidate },
-    work, assertStartupCurrent: check, observer: { record } };
+    work, assertStartupCurrent: check, observer: { record, operationStarted, operationSettled }, observeBuildAdmission };
   test.onTestFinished(async () => {
     for (const held of gates) held.resolve(); await Promise.allSettled(jobs);
     for (const held of handles) await held.release(); vi.restoreAllMocks();
   });
   return { input, work, lease, maintenanceLease, release, selection, read, createOwner, owner, beforeMetadata,
-    createCommand, resume, record, invalidate, completion, assertReservationOwned,
+    createCommand, resume, record, operationStarted, operationSettled, observeBuildAdmission, invalidate, completion, assertReservationOwned,
     hold() { const held = gate(); gates.push(held); return held; },
     run() { const job = recoverDesktopWorkspaceDeletion(input); jobs.push(job); return job; },
   };
@@ -76,6 +80,7 @@ describe('main deletion startup composition', () => {
     await expect(f.run()).resolves.toBeUndefined();
     expect(f.maintenanceLease.acquire).not.toHaveBeenCalled(); expect(f.createOwner).not.toHaveBeenCalled();
     expect(f.createCommand).not.toHaveBeenCalled(); expect(f.invalidate).not.toHaveBeenCalled();
+    expect(f.observeBuildAdmission).not.toHaveBeenCalled(); expect(f.operationStarted).not.toHaveBeenCalled();
     expect(f.work).toEqual({ pending: false });
   });
 
@@ -94,6 +99,39 @@ describe('main deletion startup composition', () => {
     const f = fixture(test), first = new Error('SYNTHETIC_MALFORMED_DELETION'); f.read.mockRejectedValueOnce(first);
     await expect(f.run()).rejects.toBe(first);
     expect(f.createCommand).not.toHaveBeenCalled(); expect(f.work.pending).toBe(false);
+    expect(f.observeBuildAdmission).not.toHaveBeenCalled(); expect(f.operationStarted).not.toHaveBeenCalled();
+  });
+
+  it.for(['exactAcceptedBuild', 'authorizedNewerBuild'] as const)('reports only the selected %s admission before cold service work', async (buildAdmission, test) => {
+    const f = fixture(test);
+    f.read.mockResolvedValue({ ...f.selection, buildAdmission });
+    await expect(f.run()).resolves.toEqual(f.completion);
+    expect(f.read).toHaveBeenCalledTimes(2);
+    expect(f.observeBuildAdmission).toHaveBeenCalledExactlyOnceWith(buildAdmission);
+    expect(f.observeBuildAdmission.mock.invocationCallOrder[0]).toBeGreaterThan(f.read.mock.invocationCallOrder[0]!);
+    expect(f.observeBuildAdmission.mock.invocationCallOrder[0]).toBeLessThan(f.operationStarted.mock.invocationCallOrder[0]!);
+    expect(f.operationStarted.mock.invocationCallOrder[0]).toBeLessThan(f.maintenanceLease.acquire.mock.invocationCallOrder[0]!);
+    expect(f.operationSettled).toHaveBeenCalledExactlyOnceWith(f.operationStarted.mock.calls[0]![0]);
+    expect(f.owner.close).toHaveBeenCalledOnce(); expect(f.release).toHaveBeenCalledOnce();
+    expect(f.lease.readState()).toBe('idle'); expect(f.work).toEqual({ pending: false });
+  });
+
+  it.for(['sync', 'async'] as const)('ignores a failed %s admission notification and preserves command/close causes', async (mode, test) => {
+    const f = fixture(test), original = new Error('SYNTHETIC_COMMAND_FIRST'), cleanup = new Error('SYNTHETIC_CLOSE_SECOND');
+    f.observeBuildAdmission.mockImplementation(() => {
+      const error = new Error('SYNTHETIC_ADMISSION_REPORTING');
+      if (mode === 'async') return Promise.reject(error);
+      throw error;
+    });
+    f.resume.mockRejectedValueOnce(original); f.owner.close.mockRejectedValueOnce(cleanup);
+    const error = await f.run().catch(error => error);
+    expect(f.observeBuildAdmission).toHaveBeenCalledExactlyOnceWith(f.selection.buildAdmission);
+    expect(error.cause.errors).toEqual([original, cleanup]);
+    expect(f.resume).toHaveBeenCalledOnce(); expect(f.owner.close).toHaveBeenCalledOnce();
+    expect(f.release).not.toHaveBeenCalled(); expect(f.lease.readState()).toBe('busy');
+    expect(f.work).toEqual({ pending: false, uncertainty: { reason: cleanup } });
+    expect(f.invalidate).toHaveBeenCalledOnce(); expect(f.record).toHaveBeenCalledTimes(2);
+    expect(f.operationSettled).toHaveBeenCalledExactlyOnceWith(f.operationStarted.mock.calls[0]![0]);
   });
 
   it('keeps main work pending until the actual owner close settles', async test => {

@@ -10,6 +10,12 @@ import { runWorkspaceFirstStartMigrationProof } from './workspaceFirstStartMigra
 import { runWorkspaceActivationMigrationProof } from './workspaceActivationMigrationProof.js';
 import { provePublishedWorkspaceColdRecovery } from './workspacePublishedColdRecoveryProof.js';
 import { ProofActiveWorkspaceLifecycle, ProofRuntimeRelaunch } from './workspaceManagementCompositionProofRuntime.js';
+import { prepareWorkspaceRecoveryDeletionFixture } from './workspaceRecoveryDeletionFixture.js';
+import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
+import { WorkspaceBackupImportJournalStore } from '../src/workspaces/import/workspaceBackupImportJournalStore.js';
+import { createWorkspaceBackupImportJournalPaths, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME } from '../src/workspaces/import/workspaceBackupImportJournalPaths.js';
+import { createNodeWorkspaceBackupImportJournalFileSystem, type WorkspaceBackupImportJournalFileSystem } from '../src/workspaces/import/workspaceBackupImportJournalFileSystem.js';
 
 const hooks = vi.hoisted(() => ({
   acquire: vi.fn(),
@@ -101,9 +107,150 @@ beforeEach(async () => {
   });
 });
 
-afterEach(async () => {
+afterEach(async context => {
   // No processes or real reservations are created in this orchestration fixture.
-  await rm(root, { recursive: true, force: true });
+  if (context.task.result?.state !== 'fail') await rm(root, { recursive: true, force: true });
+});
+
+describe('recovery deletion interruption metadata fixture', () => {
+  async function prepareMetadata(activeIsTarget = false) {
+    const target = '11111111-1111-4111-8111-111111111111', previous = '22222222-2222-4222-8222-222222222222';
+    const registryPath = join(root, WORKSPACE_REGISTRY_FILE_NAME);
+    const registry = new WorkspaceRegistryStore({ installationRoot: root, filePath: registryPath });
+    await registry.write({ formatVersion: 2, activeWorkspaceId: activeIsTarget ? target : previous,
+      workspaces: [target, previous].map((workspaceId, index) => ({ workspaceId,
+        workspaceLabel: `Synthetic recovery ${index}`, createdAt: '2026-01-01T00:00:00.000Z',
+        layoutVersion: 1, lifecycleState: 'ready', lineageIdentity: { formatVersion: 1, profileId: (index ? 'b' : 'a').repeat(64) } })) });
+    let admission = true, main = true;
+    const lost = new Error('SYNTHETIC_METADATA_PREPARATION_REVOKED');
+    const input = { userDataRoot: root, workspaceId: target, backendIsRunning: () => false,
+      assertAdmissionCurrent() { if (!admission) throw lost; }, assertMainCurrent() { if (!main) throw lost; } };
+    const paths = createWorkspaceBackupImportJournalPaths(root, join(root, WORKSPACE_BACKUP_IMPORT_JOURNAL_FILE_NAME));
+    return { input, paths, target, previous, lost, registryPath,
+      revoke(kind: 'admission' | 'ownership') { if (kind === 'admission') admission = false; else main = false; } };
+  }
+
+  it('publishes only reachable import metadata while preserving registry bytes', async () => {
+    const f = await prepareMetadata();
+    const before = await readFile(f.registryPath);
+    await prepareWorkspaceRecoveryDeletionFixture(f.input);
+    const slots = await new WorkspaceBackupImportJournalStore({ installationRoot: root, filePath: f.paths.currentPath }).inspectSlots();
+    expect(slots.current?.value).toMatchObject({ formatVersion: 2, state: 'registryPublished',
+      workspaceId: f.target, previousActiveWorkspaceId: f.previous });
+    expect(slots.next).toBeUndefined(); expect(slots.backup).toBeUndefined();
+    expect(await readFile(f.registryPath)).toEqual(before);
+    expect(owner.close).toHaveBeenCalledOnce();
+  });
+
+  it('refuses a target that is its own previous active import workspace before journal creation', async () => {
+    const f = await prepareMetadata(true);
+    await expect(prepareWorkspaceRecoveryDeletionFixture(f.input)).rejects.toThrow('E2E_RECOVERY_DELETION_SELF_IMPORT');
+    expect(await readFile(f.paths.currentPath).catch(() => undefined)).toBeUndefined();
+    expect(owner.close).toHaveBeenCalledOnce();
+  });
+
+  it.each(['admission', 'ownership'] as const)('fences real store publication after %s is lost during its inner read', async kind => {
+    const f = await prepareMetadata();
+    const base = createNodeWorkspaceBackupImportJournalFileSystem(f.paths);
+    let reads = 0, entered!: () => void, release!: () => void;
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const mutate = vi.fn();
+    const fileSystem: WorkspaceBackupImportJournalFileSystem = {
+      async readSlot(...args) {
+        const value = await base.readSlot(...args);
+        // Initial census, selected census, then the real store's guarded read.
+        if (++reads === 7) { entered(); await held; }
+        return value;
+      },
+      async prepareDirectory(guard) { mutate(); await base.prepareDirectory(guard); },
+      async createNextWriter(guard) { mutate(); return base.createNextWriter(guard); },
+      async moveSlot(...args) { mutate(); await base.moveSlot(...args); },
+      async removeSlot(...args) { mutate(); return base.removeSlot(...args); },
+      async syncDirectory(guard) { mutate(); await base.syncDirectory(guard); },
+    };
+    const work = prepareWorkspaceRecoveryDeletionFixture({ ...f.input, journalFileSystem: fileSystem });
+    void work.catch(() => undefined);
+    try {
+      await Promise.race([began, work]);
+      expect(reads).toBe(7);
+      f.revoke(kind); release();
+      const result = await work.catch(error => error);
+      if (kind === 'admission') expect(result).toBe(f.lost);
+      else expect(result).toMatchObject({ cause: f.lost, errors: [f.lost, f.lost] });
+      expect(mutate).not.toHaveBeenCalled();
+      for (const path of [f.paths.currentPath, f.paths.nextPath, f.paths.backupPath]) {
+        expect(await readFile(path).catch(() => undefined)).toBeUndefined();
+      }
+      expect(owner.close).toHaveBeenCalledTimes(kind === 'admission' ? 1 : 0);
+    } finally { release(); await work.catch(() => undefined); }
+  });
+
+  it.each(['none', 'reservation', 'writer'] as const)('closes an already started real slot write before native release (close failure: %s)', async closeFailure => {
+    const f = await prepareMetadata();
+    const base = createNodeWorkspaceBackupImportJournalFileSystem(f.paths);
+    let entered!: () => void, release!: () => void, writerClosed = false;
+    const began = new Promise<void>(resolve => { entered = resolve; });
+    const held = new Promise<void>(resolve => { release = resolve; });
+    const cleanup = new Error('SYNTHETIC_METADATA_RESERVATION_CLOSE');
+    const writerClose = new Error('SYNTHETIC_METADATA_WRITER_CLOSE');
+    owner.close.mockImplementation(async () => {
+      expect(writerClosed).toBe(true);
+      if (closeFailure === 'reservation') throw cleanup;
+    });
+    const fileSystem: WorkspaceBackupImportJournalFileSystem = {
+      readSlot: base.readSlot.bind(base), prepareDirectory: base.prepareDirectory.bind(base),
+      moveSlot: base.moveSlot.bind(base), removeSlot: base.removeSlot.bind(base), syncDirectory: base.syncDirectory.bind(base),
+      async createNextWriter(guard) {
+        const writer = await base.createNextWriter(guard);
+        return {
+          async write(bytes) { const count = await writer.write(bytes); entered(); await held; return count; },
+          sync: writer.sync.bind(writer), readIdentity: writer.readIdentity!.bind(writer),
+          async close() {
+            await writer.close(); writerClosed = true;
+            // The caller cannot assume this acknowledgement means the handle closed.
+            if (closeFailure === 'writer') throw writerClose;
+          },
+        };
+      },
+    };
+    const work = prepareWorkspaceRecoveryDeletionFixture({ ...f.input, journalFileSystem: fileSystem });
+    void work.catch(() => undefined);
+    try {
+      await Promise.race([began, work]);
+      f.revoke('admission');
+      expect(owner.close).not.toHaveBeenCalled(); expect(writerClosed).toBe(false);
+      release();
+      const result = await work.catch(error => error);
+      if (closeFailure !== 'none') expect(result).toMatchObject({ cause: f.lost,
+        errors: [f.lost, closeFailure === 'writer' ? writerClose : cleanup] });
+      else expect(result).toBe(f.lost);
+      expect(writerClosed).toBe(true);
+      expect(owner.close).toHaveBeenCalledTimes(closeFailure === 'writer' ? 0 : 1);
+      expect(await readFile(f.paths.currentPath).catch(() => undefined)).toBeUndefined();
+      expect(await readFile(f.paths.backupPath).catch(() => undefined)).toBeUndefined();
+      expect(JSON.parse((await readFile(f.paths.nextPath)).toString()).state).toBe('prepared');
+    } finally { release(); await work.catch(() => undefined); }
+  });
+
+  it('retains the reservation when writer creation rejects without a returned close acknowledgement', async () => {
+    const f = await prepareMetadata();
+    const base = createNodeWorkspaceBackupImportJournalFileSystem(f.paths);
+    const primary = new Error('SYNTHETIC_METADATA_WRITER_CREATION');
+    const fileSystem: WorkspaceBackupImportJournalFileSystem = {
+      readSlot: base.readSlot.bind(base), prepareDirectory: base.prepareDirectory.bind(base),
+      moveSlot: base.moveSlot.bind(base), removeSlot: base.removeSlot.bind(base), syncDirectory: base.syncDirectory.bind(base),
+      async createNextWriter(guard) {
+        const writer = await base.createNextWriter(guard);
+        // The fixture closes its handle; the caller receives no proof of that.
+        await writer.close(); throw primary;
+      },
+    };
+    await expect(prepareWorkspaceRecoveryDeletionFixture({ ...f.input, journalFileSystem: fileSystem })).rejects.toBe(primary);
+    expect(owner.close).not.toHaveBeenCalled();
+    expect(await readFile(f.paths.currentPath).catch(() => undefined)).toBeUndefined();
+    expect((await readFile(f.paths.nextPath)).length).toBe(0);
+  });
 });
 
 describe('candidate proof reservation scopes', () => {
@@ -292,6 +439,7 @@ function prepare() {
 
 function createOwner() {
   return {
+    assertMainCurrent: vi.fn(() => {}),
     assertMainOwned: vi.fn(async () => {}),
     close: vi.fn(async () => {}),
     bind: vi.fn((generationId: string, assertAuthority: () => void) => {

@@ -3,10 +3,14 @@ import { join } from 'node:path';
 
 import { request as requestFactory } from '@playwright/test';
 
+import { inspectSupportBundle } from '../../../desktop/scripts/inspect-support-bundle.mjs';
+import { uiText } from '../../../web/src/i18n/fi.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../../../desktop/src/workspaces/registry/workspaceRegistryPaths.js';
 import { acceptedBuildMetadataFileName } from '../../../desktop/src/update/acceptedBuildMetadataStore.js';
+import { readElectronOperationalEvents } from '../../src/assertions/readElectronOperationalEvents.js';
 import { createSyntheticCustomerInput } from '../../src/data/syntheticBusinessInputs.js';
-import { readSelectorTestBackendPort } from '../../src/electron/readElectronMainState.js';
+import { readElectronNativeAdapterSnapshot } from '../../src/electron/electronMainCapabilities.js';
+import { readElectronMainState, readSelectorTestBackendPort } from '../../src/electron/readElectronMainState.js';
 import { readElectronE2eActiveWorkspace } from '../../src/environment/readElectronE2eActiveWorkspace.js';
 import { expect, test, type IsolatedElectronHarness } from '../../src/fixtures/isolatedElectronTest.js';
 import { readWorkspaceBackupInvoiceDocument, resolveWorkspaceBackupStoragePath, sha256File } from '../../src/workspaces/workspaceBackupSystemTestSupport.js';
@@ -56,6 +60,97 @@ for (const state of ['empty', 'ready', 'recoveryRequired'] as const) {
     });
   });
 }
+
+test.describe('selector desktop-only support export', () => {
+  test.use({ e2eSelectorProfile: 'empty' });
+
+  test.beforeEach(async ({ e2eElectron }) => {
+    await expect(e2eElectron.page.getByText('Ekyssä ei ole vielä paikallisia yrityksiä.', { exact: true })).toBeVisible();
+    await expect(e2eElectron.page.getByRole('button', { name: 'Lisää yritys Ekyyn', exact: true })).toBeEnabled();
+  });
+
+  for (const observation of ['unavailable', 'available'] as const) {
+    test(`DESK-SUPPORT-DESKTOPONLY-${observation === 'unavailable' ? '001' : '002'} @critical @security exports the real selector ${observation} observation through its support button`, async ({ e2eElectron }) => {
+      const registryBefore = readRegistry(e2eElectron);
+      await assertNoBusinessRuntime(e2eElectron);
+      const stateBefore = await readElectronMainState(e2eElectron.electronApp);
+      if (observation === 'available') {
+        await expect(e2eElectron.page.evaluate(async () => {
+          const bridge = (window as typeof window & { ekyDesktop?: {
+            renameWorkspace(input: { workspaceId: string; workspaceLabel: string }): Promise<unknown>;
+          } }).ekyDesktop;
+          if (bridge === undefined) throw new Error('Desktop bridge is unavailable.');
+          return bridge.renameWorkspace({ workspaceId: '11111111-1111-4111-8111-111111111111',
+            workspaceLabel: 'Synthetic absent support target' });
+        })).rejects.toThrow('WORKSPACE_MANAGEMENT_INVALID');
+      }
+
+      const exportButton = e2eElectron.page.getByRole('button', { name: uiText.diagnostics.createSupportBundle, exact: true });
+      await expect(exportButton).toBeEnabled();
+      await exportButton.click();
+      await expect(e2eElectron.page.getByText(uiText.diagnostics.supportBundleCreated, { exact: true })).toBeVisible();
+      await expect(exportButton).toBeEnabled();
+      await expect(e2eElectron.page.getByRole('alert')).toHaveCount(0);
+      const inspected = inspectSupportBundle(e2eElectron.runtime.supportBundlePath);
+      expect(inspected.summary).toMatchObject({ formatVersion: 3, kind: 'desktopOnly',
+        backend: 'exitUnconfirmed', database: 'notInspected', diagnosticHistory: 'notCollected',
+        incidentHistory: 'notCollected', observationStatus: observation });
+      expect(Object.keys(inspected.document as object).sort()).toEqual(['availability', 'manifest', 'observation', 'system']);
+      const events = readElectronOperationalEvents(join(e2eElectron.runtime.userDataPath, 'runtime', 'logs', 'desktop'));
+      if (observation === 'available') {
+        const failures = events.filter(event => event.eventName === 'workspaceManagement.operationFailed');
+        expect(failures).toHaveLength(1);
+        expect(failures[0]).toMatchObject({ operationId: 'workspace.rename', stage: 'operation',
+          errorCode: 'WORKSPACE_MANAGEMENT_INVALID', sideEffectState: 'none' });
+        expect(inspected.document).toMatchObject({ observation: {
+          scope: 'currentOperation', status: 'available', firstError: failures[0], cleanupError: null,
+        } });
+      } else {
+        expect(inspected.document).toMatchObject({ observation: { scope: 'currentOperation', status: 'unavailable' } });
+      }
+      expect(events.filter(event => event.eventName?.startsWith('supportBundle.')).map(event => event.eventName))
+        .toEqual(['supportBundle.creationStarted', 'supportBundle.creationCompleted']);
+      const serialized = JSON.stringify(inspected.document);
+      for (const value of [e2eElectron.runtime.sessionSecret, e2eElectron.runtime.userDataPath,
+        'Synthetic absent support target']) {
+        expect(serialized.includes(value)).toBe(false);
+      }
+      expect(serialized).not.toMatch(/databasePath|companyId|workspaceId|profileId|sessionSecret|journal|stack/);
+      expect(await readElectronNativeAdapterSnapshot(e2eElectron.electronApp)).toMatchObject({
+        errorBoxCount: 0, messageBoxCount: 1, saveDialogCount: 1, openDialogCount: 0, openedPaths: [],
+      });
+      await assertNoBusinessRuntime(e2eElectron);
+      expect(await readElectronMainState(e2eElectron.electronApp)).toEqual(stateBefore);
+      expect(readRegistry(e2eElectron)).toBe(registryBefore);
+      await expect(e2eElectron.page.getByRole('heading', { name: 'Yritykset', exact: true })).toBeVisible();
+    });
+  }
+
+  test.describe('confirmation cancellation', () => {
+    test.use({ e2eDialogMode: 'cancel' });
+
+    test('DESK-SUPPORT-DESKTOPONLY-CANCEL-001 @critical @security cancels without saving or opening a company', async ({ e2eElectron }) => {
+      const registryBefore = readRegistry(e2eElectron);
+      const stateBefore = await readElectronMainState(e2eElectron.electronApp);
+      const exportButton = e2eElectron.page.getByRole('button', { name: uiText.diagnostics.createSupportBundle, exact: true });
+      await expect(exportButton).toBeEnabled();
+      await exportButton.click();
+      await expect.poll(() => readElectronNativeAdapterSnapshot(e2eElectron.electronApp)).toMatchObject({ messageBoxCount: 1 });
+      await expect(exportButton).toBeEnabled();
+      await expect(e2eElectron.page.getByText(uiText.diagnostics.supportBundleCreated, { exact: true })).toHaveCount(0);
+      await expect(e2eElectron.page.getByRole('alert')).toHaveCount(0);
+      expect(existsSync(e2eElectron.runtime.supportBundlePath)).toBe(false);
+      expect(await readElectronNativeAdapterSnapshot(e2eElectron.electronApp)).toMatchObject({
+        errorBoxCount: 0, messageBoxCount: 1, saveDialogCount: 0, openDialogCount: 0, openedPaths: [],
+      });
+      expect(readElectronOperationalEvents(join(e2eElectron.runtime.userDataPath, 'runtime', 'logs', 'desktop'))
+        .filter(event => event.eventName?.startsWith('supportBundle.'))).toEqual([]);
+      await assertNoBusinessRuntime(e2eElectron);
+      expect(await readElectronMainState(e2eElectron.electronApp)).toEqual(stateBefore);
+      expect(readRegistry(e2eElectron)).toBe(registryBefore);
+    });
+  });
+});
 
 test.describe('selector business opening', () => {
   test.use({ e2eSelectorProfile: 'empty' });

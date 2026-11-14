@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { basename, join, resolve } from 'node:path';
 import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
 import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit } from './ciFailureEvidence.mjs';
@@ -16,8 +16,9 @@ import { executeUpgradeRollbackLifecycle } from './upgradeRollbackLifecycle.mjs'
 import { executeLegacyUpgradeLifecycle } from './legacyUpgradeLifecycle.mjs';
 import { executeWorkspaceSuccessLifecycle } from './workspaceSuccessLifecycle.mjs';
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
-import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
+import { createRunnerFailureSink, RUNNER_FAILURE_ROOT_PREFIX } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
+import { PHASE_WIRE_LIMITS, capturePhaseHandoffExpected } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -272,9 +273,10 @@ test('only matching hosted Windows or Linux contexts select their native Git', (
     assert.throws(() => jobEvidenceGit(env, 'darwin'), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
 });
-async function fixture(t) {
+async function fixture(t, preserveUntilComplete = false) {
   const root = await mkdtemp(join(tmpdir(), 'eky-evidence-test-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
+  let complete = !preserveUntilComplete;
+  t.after(() => complete ? rm(root, { recursive: true, force: true }) : undefined);
   const temp = join(root, 'temporary');
   const checkout = join(root, 'checkout');
   await mkdir(temp); await mkdir(checkout);
@@ -290,8 +292,54 @@ async function fixture(t) {
     await writeFile(destination, content);
     return destination;
   };
-  return { root, temp, checkout, env, put };
+  return { root, temp, checkout, env, put, complete() { complete = true; } };
 }
+
+test('phase observation owns only the exact failure filename before generic process output', () => {
+  const path = `${run}/synthetic-retry1/failure.private.json`;
+  assert.equal(evidenceSourceKind('results', path), 'workspaceDeletionPhaseObservation');
+  for (const name of ['backend-startup', 'process-output'])
+    assert.equal(evidenceSourceKind('results', `${run}/synthetic-retry1/${name}.private.json`), 'processOutput');
+  for (const area of ['reports', 'temporary']) assert.equal(evidenceSourceKind(area, path), null);
+  for (const value of [`${run}/synthetic-retry1/nested/failure.private.json`, `${path}.pending`,
+    `${run}/synthetic-retry1/failure.json`]) assert.equal(evidenceSourceKind('results', value), null);
+});
+
+test('phase collection independently checks current CI and path and never falls back to generic output', async t => {
+  const f = await fixture(t, true);
+  const requestedRun = join(f.checkout, 'eky_software/apps/e2e/test-results', run);
+  await mkdir(requestedRun, { recursive: true });
+  const runDirectory = await realpath(requestedRun);
+  const attemptDirectory = join(runDirectory, 'synthetic-retry1'); await mkdir(attemptDirectory);
+  const path = join(attemptDirectory, 'failure.private.json');
+  const captured = capturePhaseHandoffExpected({ runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
+    scenarioId: 'DESK-DELETE-RECOVERY-001', env: { ...f.env, GITHUB_ACTIONS: 'true' },
+    testInfo: { retry: 1, repeatEachIndex: 0, project: { outputDir: runDirectory }, outputPath: name => join(attemptDirectory, name) } });
+  const bytes = Buffer.from(JSON.stringify(captured.envelope));
+  const collect = async content => {
+    await writeFile(path, content);
+    const result = await collectJobFailureEvidence(f.env);
+    const archive = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+    assert.equal(archive.manifest.files.length, 1);
+    const entry = archive.manifest.files[0]; assert.equal(entry.kind, 'workspaceDeletionPhaseObservation');
+    return { archive, entry };
+  };
+  const success = await collect(bytes);
+  assert.equal(success.entry.status, 'retained');
+  assert.deepEqual(Buffer.from(success.archive.files[success.entry.name], 'base64'), bytes);
+  for (const content of [Buffer.from(JSON.stringify({ ...captured.envelope, delivery: { ...captured.expected.delivery,
+    binding: { ...captured.expected.delivery.binding, attempt: '2' } } })),
+    Buffer.from(JSON.stringify({ ...captured.envelope, delivery: { ...captured.expected.delivery,
+      relativePath: `${run}/other/failure.private.json` } })),
+    Buffer.from('{"operation":"generic","stderr":"SYNTHETIC_EXCLUDED"}'),
+    Buffer.alloc(PHASE_WIRE_LIMITS.bytes + 1, 32)]) {
+    const { archive, entry } = await collect(content);
+    assert.equal(entry.status, content.length > PHASE_WIRE_LIMITS.bytes ? 'tooLarge' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, entry.name), false);
+    assert.deepEqual(await readFile(path), content);
+  }
+  f.complete();
+});
 
 test('MSI window records require the exact job and adjacent request without collecting the request', async t => {
   const { temp, env, put } = await fixture(t);
@@ -469,7 +517,7 @@ test('slow discovery leaves time to retain the already discovered first error', 
   const sink = createRunnerFailureSink({ tempRoot: temp, env: { ...env, GITHUB_ACTIONS: 'true' } });
   sink.record({ runner: 'node', phase: 'testFailure', testName: 'discovery', attempt: 0,
     error: new Error('SYNTHETIC FIRST BEFORE SLOW DISCOVERY') });
-  await sink.flush();
+  assert.equal((await sink.flush()).status, 'recorded', 'discovery fixture evidence must be delivered before collection');
   const first = (await readdir(temp)).find(name => name.startsWith('eky-test-errors-'));
   const newest = new Date(Date.now() + 60_000);
   await utimes(join(temp, first), newest, newest);
@@ -514,6 +562,115 @@ test('runner originals and delivery summaries require the current job, revision 
     assert.equal(Object.hasOwn(archive.files, entry.name), expected);
   }
 });
+
+test('runner quota preserves the first private check from an independent invocation', async t => {
+  const f = await fixture(t, true);
+  const native = await realpath(await mkdir(join(f.temp, 'native-errors'), { recursive: true }));
+  const environment = { ...f.env, GITHUB_ACTIONS: 'true' };
+  const check = 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:writePermissions';
+  const diagnostic = createRunnerFailureSink({ tempRoot: native, env: environment });
+  diagnostic.record({ runner: 'playwright', phase: 'linuxHostPreflight', testName: 'synthetic preflight',
+    error: { message: check } });
+  assert.equal((await diagnostic.flush()).status, 'recorded');
+  const diagnosticDirectory = (await readdir(native))[0];
+  const reporter = createRunnerFailureSink({ tempRoot: native, env: environment });
+  for (let index = 0; index < 70; index++) {
+    reporter.record({ runner: 'playwright', phase: 'testFailure', testName: `synthetic-${index}`,
+      error: new Error(index === 0 ? 'synthetic first public failure' : 'synthetic repeated failure') });
+  }
+  assert.equal((await reporter.flush()).status, 'recorded');
+  const reporterDirectory = (await readdir(native)).find(name => name !== diagnosticDirectory);
+  await utimes(join(native, diagnosticDirectory), new Date('2020-01-01'), new Date('2020-01-01'));
+  await utimes(join(native, reporterDirectory), new Date('2030-01-01'), new Date('2030-01-01'));
+  const collected = await collectJobFailureEvidence(f.env, { nativeTemp: native });
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const source = archive.manifest.sources.find(value => value.location === 'nativeTemp');
+  assert.equal(source.fileLimit, 64);
+  assert.equal(source.status, 'limited');
+  const entries = archive.manifest.files.filter(file => file.kind === 'runnerFailure');
+  assert.equal(entries.length, 64);
+  assert.ok(entries.every(entry => entry.status === 'retained'));
+  const records = entries.map(entry => JSON.parse(Buffer.from(archive.files[entry.name], 'base64')));
+  assert.ok(records.some(record => record.phase === 'linuxHostPreflight' && record.exception.chain[0].message === check),
+    'one repetitive invocation must not crowd out the independent first private check');
+  assert.ok(records.some(record => record.sequence === 1 &&
+    record.exception.chain[0].message === 'synthetic first public failure'));
+  for (const invocation of new Set(records.map(record => record.invocationId))) {
+    const own = records.filter(record => record.invocationId === invocation);
+    assert.equal(own[0].kind, 'runnerFailureSummary');
+    assert.deepEqual(own.slice(1).map(record => record.sequence),
+      Array.from({ length: own.length - 1 }, (_, index) => index + 1));
+  }
+  assert.equal((await readdir(join(native, reporterDirectory))).length, 71);
+  assert.equal((await readdir(join(native, diagnosticDirectory))).length, 2);
+  f.complete();
+});
+
+test('missing runner summaries cannot give repeated errors priority over independent first errors', async t => {
+  const f = await fixture(t, true);
+  const native = await realpath(await mkdir(join(f.temp, 'native-errors'), { recursive: true }));
+  const check = 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:writePermissions';
+  const diagnostic = await runnerInvocation(native, f.env, [check]);
+  await utimes(diagnostic.directory, new Date('2020-01-01'), new Date('2020-01-01'));
+  for (let index = 0; index < 32; index++) {
+    const invocation = await runnerInvocation(native, f.env, [`first-${index}`, `later-${index}`]);
+    await rm(join(invocation.directory, `${invocation.id}.summary.private.json`));
+    await utimes(invocation.directory, new Date('2030-01-01'), new Date('2030-01-01'));
+  }
+  const collected = await collectJobFailureEvidence(f.env, { nativeTemp: native });
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  const source = archive.manifest.sources.find(item => item.location === 'nativeTemp');
+  assert.equal(source.fileLimit, 64);
+  assert.equal(source.status, 'limited');
+  assert.equal(archive.manifest.files.length, 64);
+  assert.ok(archive.manifest.files.every(entry => entry.kind === 'runnerFailure' && entry.status === 'retained'));
+  const records = archive.manifest.files.map(entry => JSON.parse(Buffer.from(archive.files[entry.name], 'base64')));
+  assert.equal(records.filter(record => record.kind === 'runnerFailureSummary').length, 1);
+  assert.equal(records.filter(record => record.sequence === 1).length, 33,
+    'all discovered first errors fit before any repetition at this quota');
+  assert.equal(records.filter(record => record.sequence === 2).length, 30);
+  assert.ok(records.some(record => record.kind === 'runnerFailure' && record.invocationId === diagnostic.id &&
+    record.exception.chain[0].message === check));
+  assert.equal((await readdir(diagnostic.directory)).length, 2);
+  f.complete();
+});
+
+test('runner rounds preserve sparse sequences and summary-only invocations without renumbering', async t => {
+  const f = await fixture(t, true);
+  const native = await realpath(await mkdir(join(f.temp, 'native-errors'), { recursive: true }));
+  const first = await runnerInvocation(native, f.env, ['a1', 'a2', 'a3', 'a4']);
+  const second = await runnerInvocation(native, f.env, ['b1', 'b2', 'b3']);
+  const summaryOnly = await runnerInvocation(native, f.env, ['c1']);
+  await rm(join(first.directory, (await readdir(first.directory)).find(name => name.startsWith('002-'))));
+  await rm(join(second.directory, `${second.id}.summary.private.json`));
+  await rm(join(summaryOnly.directory, (await readdir(summaryOnly.directory)).find(name => name.startsWith('001-'))));
+  for (const [invocation, date] of [[first, '2030-01-01'], [second, '2029-01-01'], [summaryOnly, '2028-01-01']]) {
+    await utimes(invocation.directory, new Date(date), new Date(date));
+  }
+  const collected = await collectJobFailureEvidence(f.env, { nativeTemp: native });
+  const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+  assert.ok(archive.manifest.files.every(entry => entry.kind === 'runnerFailure' && entry.status === 'retained'));
+  const records = archive.manifest.files.map(entry => JSON.parse(Buffer.from(archive.files[entry.name], 'base64')));
+  const aliases = new Map([[first.id, 'a'], [second.id, 'b'], [summaryOnly.id, 'c']]);
+  assert.deepEqual(records.map(record => [aliases.get(record.invocationId),
+    record.kind === 'runnerFailureSummary' ? 'summary' : record.sequence]),
+  [['a', 'summary'], ['a', 1], ['b', 1], ['c', 'summary'], ['a', 3], ['b', 2], ['a', 4], ['b', 3]]);
+  assert.equal(archive.manifest.sources.find(item => item.location === 'nativeTemp').status, 'complete');
+  f.complete();
+});
+
+async function runnerInvocation(native, env, messages) {
+  const before = new Set(await readdir(native));
+  const sink = createRunnerFailureSink({ tempRoot: native, env: { ...env, GITHUB_ACTIONS: 'true' } });
+  for (const message of messages) {
+    sink.record({ runner: 'playwright', phase: 'testFailure', testName: 'synthetic competing invocation', error: { message } });
+  }
+  assert.equal((await sink.flush()).status, 'recorded');
+  const created = (await readdir(native)).filter(name => !before.has(name) && name.startsWith(RUNNER_FAILURE_ROOT_PREFIX));
+  assert.equal(created.length, 1);
+  const directory = join(native, created[0]);
+  return { directory, id: basename(directory).slice(RUNNER_FAILURE_ROOT_PREFIX.length) };
+}
 
 test('runner collection retains its first error and summary before the per-source file quota', async t => {
   const { temp, env } = await fixture(t);

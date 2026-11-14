@@ -3,6 +3,8 @@ import test from 'node:test';
 import { inspectManagedHost } from './managedNamespacePreflight.mjs';
 import { budgets, createDeadline } from './pidNamespaceContract.mjs';
 import { managedSystemTools } from './managedNamespaceLaunchContract.mjs';
+import { readLinuxServicePreflightCheck } from './linuxServiceDiagnostic.mjs';
+import { OwnedLinuxServiceStartupFailure } from './linuxServiceSession.mjs';
 
 function fixture() {
   let elapsed = 0;
@@ -134,6 +136,97 @@ test('tools must be regular executable files, with setuid permitted only for sud
     if (name === 'sudo') f.records.get(path).mode &= ~0o4000;
     else f.records.get(path).mode |= 0o4000;
     await rejects(inspectManagedHost(f.input), 'metadataInvalid', 'tools');
+  }
+});
+
+test('private tool diagnostics contain only the fixed role, scope and rejecting check', async () => {
+  const variants = [
+    ['symbolicLink', s => { s.isSymbolicLink = () => true; }],
+    ['entryKind', s => { s.isFile = () => false; }],
+    ['rootOwner', s => { s.uid = 1001; }],
+    ['modeRange', s => { s.mode = NaN; }],
+    ['writePermissions', s => { s.mode |= 0o020; }],
+    ['specialBits', s => { s.mode |= 0o2000; }],
+    ['deviceIdentity', s => { s.dev = -1; }],
+    ['inodeIdentity', s => { s.ino = 0; }],
+    ['executable', s => { s.mode &= ~0o111; }],
+  ];
+  for (const [role, path] of Object.entries(managedSystemTools)) {
+    for (const [check, mutate] of variants) {
+      const plain = fixture(), detailed = fixture();
+      mutate(plain.records.get(path)); mutate(detailed.records.get(path));
+      await rejects(inspectManagedHost(plain.input), 'metadataInvalid', 'tools');
+      await assert.rejects(inspectManagedHost({ ...detailed.input, privateDiagnostics: true }), error => {
+        assert.equal(error.message, 'Managed namespace host metadata unverified');
+        assert.equal(error.reason, 'metadataInvalid'); assert.equal(error.stage, 'tools');
+        assert.deepEqual(Object.keys(error).sort(), ['reason', 'stage']);
+        assert.equal(error.cause.message, `MANAGED_NAMESPACE_PREFLIGHT_CHECK:${role}:tool:${check}`);
+        assert.equal(error.cause.stack, undefined); assert.equal(error.cause.cause, undefined);
+        assert.ok(!error.cause.message.includes(path) && !error.cause.message.includes('1001'));
+        return true;
+      });
+      assert.deepEqual(detailed.calls, plain.calls); assert.equal(detailed.timers.size, 0);
+    }
+  }
+});
+
+test('private ancestor and canonical-path checks never contain the observed path', async () => {
+  for (const path of ['/', '/usr', '/usr/bin', managedSystemTools.sudo]) {
+    const f = fixture(); f.aliases.set(path, '/PRIVATE/replacement');
+    await assert.rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), error => {
+      assert.equal(error.cause.message,
+        `MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:${path === managedSystemTools.sudo ? 'tool' : 'ancestor'}:canonicalPath`);
+      assert.equal(error.cause.stack, undefined); assert.ok(!JSON.stringify(error).includes('PRIVATE'));
+      return true;
+    });
+    assert.equal(f.timers.size, 0);
+  }
+});
+
+test('real preflight rejection relays only its fixed check through the Linux owner cause', async () => {
+  const f = fixture();
+  f.records.get(managedSystemTools.sudo).uid = 1001;
+  await assert.rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), error => {
+    const owner = new OwnedLinuxServiceStartupFailure('backend', {
+      startupFailure: 'preparationFailed', processTree: 'stopped', spawnObserved: false, exitedBeforeCleanup: false,
+    }, { readStdout: () => '', readStderr: () => '' }, { cause: error });
+    assert.equal(readLinuxServicePreflightCheck(owner), 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:rootOwner');
+    assert.ok(!JSON.stringify(owner).includes('MANAGED_NAMESPACE_PREFLIGHT_CHECK'));
+    assert.ok(!JSON.stringify(owner).includes('1001'));
+    assert.equal(error.cause.stack, undefined);
+    assert.equal(f.timers.size, 0);
+    return true;
+  });
+});
+
+test('private diagnostics do not expose read errors or enable for non-true options', async () => {
+  for (const privateDiagnostics of [undefined, false, 'true', 1]) {
+    const f = fixture(); f.records.get(managedSystemTools.sudo).uid = 1001;
+    await rejects(inspectManagedHost({ ...f.input, privateDiagnostics }), 'metadataInvalid', 'tools');
+  }
+  const f = fixture();
+  f.errors.set(`lstat:${managedSystemTools.sudo}`, Object.assign(Error('PRIVATE host information'),
+    { code: 'EACCES', path: '/PRIVATE' }));
+  await rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), 'metadataReadFailed', 'tools');
+});
+
+test('private check selection preserves short-circuit access and cannot escape the tool stage', async () => {
+  for (const privateDiagnostics of [false, true]) {
+    const f = fixture(), stat = f.records.get(managedSystemTools.sudo);
+    stat.isSymbolicLink = () => true;
+    stat.isFile = () => { throw new Error('PRIVATE later predicate must not be evaluated'); };
+    Object.defineProperty(stat, 'uid', { get() { throw new Error('PRIVATE later value must not be read'); } });
+    await assert.rejects(inspectManagedHost({ ...f.input, privateDiagnostics }), error => {
+      assert.equal(error.reason, 'metadataInvalid'); assert.equal(error.stage, 'tools');
+      assert.equal(error.cause?.message,
+        privateDiagnostics ? 'MANAGED_NAMESPACE_PREFLIGHT_CHECK:sudo:tool:symbolicLink' : undefined);
+      return true;
+    });
+  }
+  for (const path of ['/run/systemd/private', '/sys/fs/cgroup']) {
+    const f = fixture(); f.records.get(path).uid = 1001;
+    await rejects(inspectManagedHost({ ...f.input, privateDiagnostics: true }), 'metadataInvalid',
+      path.startsWith('/run') ? 'manager' : 'cgroup');
   }
 });
 

@@ -27,6 +27,7 @@ export function AppLayout({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const workspaceManagement = useWorkspaceManagement(
     workspaceManagementCapability,
+    true,
   );
   const toggleLabel = isSidebarCollapsed
     ? uiText.layout.expandSidebar
@@ -65,6 +66,9 @@ export function AppLayout({
       {workspaceManagementCapability !== undefined &&
       workspaceManagement.state.isDialogOpen ? (
         <WorkspaceManagementDialog
+          canDeleteWorkspace={workspaceManagement.canDeleteWorkspace}
+          backupAvailableForSelectedWorkspace={workspaceManagement.backupAvailableForSelectedWorkspace}
+          onBackupChoiceChange={workspaceManagement.setBackupChoice}
           canReplaceActiveWorkspace={
             workspaceManagement.canReplaceActiveWorkspace
           }

@@ -36,6 +36,7 @@ test('DESK-BRIDGE-001 @critical @security isolates the renderer bridge', async (
       'createEncryptedProfileBackup',
       'createManualRecoveryPoint',
       'createSupportBundle',
+      'deleteWorkspace',
       'disableInvoicePdfArchive',
       'discardSelectedLocalUpdate',
       'getInvoicePdfArchiveStatus',

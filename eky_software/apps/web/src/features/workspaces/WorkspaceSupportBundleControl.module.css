@@ -1,0 +1,29 @@
+.control {
+  display: grid;
+  min-inline-size: 0;
+  justify-items: start;
+  gap: 8px;
+  margin-block-start: 24px;
+  border-block-start: 1px solid var(--color-border);
+  padding-block-start: 16px;
+  overflow-wrap: anywhere;
+}
+
+.control button {
+  min-block-size: 44px;
+  max-inline-size: 100%;
+  white-space: normal;
+}
+
+.status,
+.error {
+  margin: 0;
+}
+
+.status {
+  color: var(--color-text-muted);
+}
+
+.error {
+  color: var(--color-danger);
+}

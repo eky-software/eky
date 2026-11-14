@@ -1,17 +1,190 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { setupPackagedPilotSeries } from './packagedPilotSeriesSetup.mjs';
 import { packagedSeriesManifestVariable } from '../../desktop/scripts/packagedPilotSeries.mjs';
+import { createRunnerFailureSink } from '../../../test-reporters/runnerFailureEvidence.mjs';
+import { REPORT_PREFIX } from './safeCiReporter.mjs';
 
 const readManifest = (path) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
 const root = readManifest('../../../package.json');
 const e2e = readManifest('../package.json');
 const desktop = readManifest('../../desktop/package.json');
 const backend = readManifest('../../backend/package.json');
+
+function assertDiscoveryOutput(output, ci) {
+  if (!ci) {
+    assert.match(output, /DESK-DELETE-RECOVERY-001/u);
+    assert.match(output, /Total: 1 test in 1 file/u);
+    return;
+  }
+  const reports = output.trimEnd().split(/\r?\n/u).map(line => {
+    assert.ok(line.startsWith(REPORT_PREFIX));
+    return JSON.parse(line.slice(REPORT_PREFIX.length));
+  });
+  assert.equal(reports.length, 3);
+  assert.deepEqual(reports[0], { schemaVersion: 1, event: 'begin', selected: 1 });
+  const { line, column, ...outcome } = reports[1];
+  assert.ok(Number.isSafeInteger(line) && line > 0);
+  assert.ok(Number.isSafeInteger(column) && column > 0);
+  assert.deepEqual(outcome, { schemaVersion: 1, event: 'testOutcome', caseIndex: 1,
+    project: 'electron-development', file: 'electron/workspaceDeletionExecution.spec.ts',
+    repeatEachIndex: 0, outcome: 'notRun', attempts: 0 });
+  assert.deepEqual(reports[2], { schemaVersion: 1, event: 'end', status: 'passed', selected: 1,
+    globalErrors: 0, expected: 0, unexpected: 0, flaky: 0, skipped: 0, notRun: 1, unknown: 0 });
+}
+
+test('the actual Playwright loader discovers the phase-observed deletion case without starting a runtime', { timeout: 5000 }, () => {
+  const env = { ...process.env }; delete env.NODE_TEST_CONTEXT;
+  const result = spawnSync(process.execPath, [fileURLToPath(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)),
+    'test', '--project=electron-development', 'tests/electron/workspaceDeletionExecution.spec.ts',
+    '--grep', 'DESK-DELETE-RECOVERY-001', '--list'], {
+    cwd: fileURLToPath(new URL('../', import.meta.url)), env, encoding: 'utf8', windowsHide: true,
+    timeout: 4000, maxBuffer: 128 * 1024,
+  });
+  if (result.error !== undefined || result.signal !== null || result.status !== 0) {
+    throw new Error('WORKSPACE_DELETION_PLAYWRIGHT_DISCOVERY_FAILED', {
+      cause: result.error ?? new Error((result.stderr || result.stdout).slice(0, 4096)),
+    });
+  }
+  assertDiscoveryOutput(result.stdout, Boolean(env.CI));
+});
+
+test('discovery output distinguishes safe CI listing from executed or invalid results', () => {
+  const reports = [
+    { schemaVersion: 1, event: 'begin', selected: 1 },
+    { schemaVersion: 1, event: 'testOutcome', caseIndex: 1, project: 'electron-development',
+      file: 'electron/workspaceDeletionExecution.spec.ts', line: 235, column: 1,
+      repeatEachIndex: 0, outcome: 'notRun', attempts: 0 },
+    { schemaVersion: 1, event: 'end', status: 'passed', selected: 1, globalErrors: 0,
+      expected: 0, unexpected: 0, flaky: 0, skipped: 0, notRun: 1, unknown: 0 },
+  ];
+  const encode = values => values.map(value => REPORT_PREFIX + JSON.stringify(value)).join('\n') + '\n';
+  assertDiscoveryOutput(encode(reports), true);
+  const local = 'DESK-DELETE-RECOVERY-001\nTotal: 1 test in 1 file\n';
+  assertDiscoveryOutput(local, false);
+  assert.throws(() => assertDiscoveryOutput(local, true));
+  for (const change of [
+    values => { values[0].selected = 2; },
+    values => { values[1].file = 'electron/unrelated.spec.ts'; },
+    values => { values[1].project = 'web-chromium'; },
+    values => { values[1].outcome = 'expected'; values[1].attempts = 1; },
+    values => { values[1].line = 0; },
+    values => { values[1].column = null; },
+    values => { values[1].extra = 'unexpected'; },
+    values => { values[2].expected = 1; values[2].notRun = 0; },
+    values => { values[2].globalErrors = 1; },
+    values => { values[2].schemaVersion = 2; },
+    values => { values.reverse(); },
+    values => { values.push(values[2]); },
+  ]) {
+    const changed = structuredClone(reports);
+    change(changed);
+    assert.throws(() => assertDiscoveryOutput(encode(changed), true));
+  }
+});
+
+for (const kind of ['local', 'github']) {
+  test(`the real Playwright loader invokes parent phase capture and private delivery with ${kind} binding`, { timeout: 5000 }, async t => {
+    const fixtureRoot = realpathSync(mkdtempSync(join(tmpdir(), 'eky-phase-loader-')));
+    let complete = false;
+    t.after(() => { if (complete) rmSync(fixtureRoot, { recursive: true, force: true }); });
+    try {
+      const job = { runId: '98765', attempt: '3', job: 'phase-loader', jobKey: 'phase-loader-0', sourceRevision: 'a'.repeat(40) };
+      const binding = kind === 'local' ? { kind } : { kind, ...job, jobKeySource: 'explicit' };
+      const env = { ...process.env, EKY_E2E: '1', TEMP: fixtureRoot, TMP: fixtureRoot, TMPDIR: fixtureRoot };
+      for (const name of Object.keys(env)) {
+        if (/^(?:NODE_TEST_CONTEXT|CI|GITHUB_.*|EKY_EVIDENCE_JOB_KEY|DEBUG.*|PW.*|PLAYWRIGHT_.*)$/iu.test(name)) delete env[name];
+      }
+      if (kind === 'github') Object.assign(env, { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: job.runId,
+        GITHUB_RUN_ATTEMPT: job.attempt, GITHUB_JOB: job.job, EKY_EVIDENCE_JOB_KEY: job.jobKey, GITHUB_SHA: job.sourceRevision });
+      writeFileSync(join(fixtureRoot, 'package.json'), JSON.stringify({ private: true, type: 'module' }));
+      writeFileSync(join(fixtureRoot, 'playwright.config.mjs'), [
+        'export default { testDir: ".", testMatch: "phase.spec.ts", workers: 1, retries: 0, timeout: 1000,',
+        'outputDir: "./run-33333333-3333-4333-8333-333333333333",',
+        `reporter: [[${JSON.stringify(fileURLToPath(new URL('./safeCiReporter.mjs', import.meta.url)))}, { silent: true }]] };`,
+      ].join('\n'));
+      writeFileSync(join(fixtureRoot, 'phase.spec.ts'), [
+        'import assert from "node:assert/strict";',
+        'import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";',
+        'import { basename, dirname, join } from "node:path";',
+        `import { test } from ${JSON.stringify(new URL('../node_modules/@playwright/test/index.mjs', import.meta.url).href)};`,
+        `import { selectWorkspaceDeletionPhaseObservation } from ${JSON.stringify(new URL('../src/fixtures/captureWorkspaceDeletionFailure.ts', import.meta.url).href)};`,
+        `import { createWorkspaceDeletionRawPhaseRecorder, WORKSPACE_DELETION_MAIN_PHASE_COVERAGE } from ${JSON.stringify(new URL('../../desktop/e2e/workspaceDeletionPhaseObservation.ts', import.meta.url).href)};`,
+        `import { parsePhaseHandoffEnvelope, validatePhaseHandoffCollector, PHASE_WIRE_LIMITS } from ${JSON.stringify(new URL('../../desktop/e2e/workspaceDeletionPhaseHandoff.ts', import.meta.url).href)};`,
+        'test("synthetic parent phase loader contract, not a worker or Electron journey", () => {',
+        '  throw new Error("PHASE_LOADER_CONTRACT_BODY_MUST_NOT_RUN");',
+        '});',
+        // Top-level awaits execute under the real transform hooks without starting a test worker.
+        '{',
+        `  const outputDir = ${JSON.stringify(join(fixtureRoot, 'run-33333333-3333-4333-8333-333333333333'))};`,
+        '  const attemptDirectory = join(outputDir, "synthetic-loader-retry0");',
+        '  mkdirSync(attemptDirectory, { recursive: true });',
+        '  const info = { retry: 0, repeatEachIndex: 0, project: { outputDir },',
+        '    outputPath: name => join(attemptDirectory, name) };',
+        '  const runtimeInstanceId = "11111111-1111-4111-8111-111111111111";',
+        '  const recorder = createWorkspaceDeletionRawPhaseRecorder(runtimeInstanceId, () => 1, WORKSPACE_DELETION_MAIN_PHASE_COVERAGE);',
+        '  recorder.observePhase(runtimeInstanceId, { phase: "preparation", event: "entered", callId: 1 });',
+        '  const raw = recorder.freeze();',
+        '  let releaseCapture, reads = 0;',
+        '  const pending = new Promise(resolve => { releaseCapture = resolve; });',
+        '  const application = { evaluate() { reads++; return pending; } };',
+        '  const selected = selectWorkspaceDeletionPhaseObservation({ application, runtimeInstanceId,',
+        '    scenarioId: "DESK-DELETE-RECOVERY-001", testInfo: info });',
+        '  selected.beginClose(application, runtimeInstanceId);',
+        '  assert.equal(reads, 1);',
+        '  releaseCapture(raw);',
+        '  await pending;',
+        '  selected.finishClose(application, runtimeInstanceId);',
+        '  const destination = info.outputPath("failure.private.json");',
+        '  assert.equal(await selected.reportFailure(false), "notRequired");',
+        '  assert.equal(existsSync(destination), false);',
+        '  assert.equal(await selected.reportFailure(true), "recorded");',
+        '  const bytes = readFileSync(destination);',
+        '  assert.equal(bytes.length <= PHASE_WIRE_LIMITS.bytes, true);',
+        '  const envelope = parsePhaseHandoffEnvelope(bytes);',
+        '  assert.equal(envelope?.availability, "captured");',
+        '  assert.deepEqual(envelope.snapshot, raw.snapshot);',
+        '  assert.deepEqual(envelope.selection, { runtimeInstanceId, scenarioId: "DESK-DELETE-RECOVERY-001",',
+        '    testAttempt: info.retry, repeatEachIndex: info.repeatEachIndex });',
+        `  assert.deepEqual(envelope.delivery.binding, ${JSON.stringify(binding)});`,
+        '  const relativePath = `${basename(info.project.outputDir)}/${basename(dirname(destination))}/failure.private.json`;',
+        '  assert.equal(envelope.delivery.relativePath, relativePath);',
+        `  const job = ${JSON.stringify(job)};`,
+        kind === 'github'
+          ? '  assert.deepEqual(validatePhaseHandoffCollector(bytes, job, relativePath), envelope);'
+          : '  assert.equal(validatePhaseHandoffCollector(bytes, job, relativePath), undefined);',
+        '  assert.equal(validatePhaseHandoffCollector(bytes, { ...job, attempt: "4" }, relativePath), undefined);',
+        '  assert.equal(await selected.reportFailure(true), "deliveryFailed");',
+        '  assert.deepEqual(readFileSync(destination), bytes);',
+        `  writeFileSync(${JSON.stringify(join(fixtureRoot, 'loader-complete.private.json'))}, JSON.stringify({ binding: ${JSON.stringify(kind)}, invocation: "loader" }));`,
+        '}',
+      ].join('\n'));
+      const result = spawnSync(process.execPath, [fileURLToPath(new URL('../node_modules/@playwright/test/cli.js', import.meta.url)),
+        'test', '--config', join(fixtureRoot, 'playwright.config.mjs'), '--list'], {
+        cwd: fixtureRoot, env, encoding: 'utf8', windowsHide: true, timeout: 4000, maxBuffer: 128 * 1024,
+      });
+      if (result.error !== undefined || result.signal !== null || result.status !== 0) {
+        throw new Error('WORKSPACE_DELETION_PHASE_LOADER_CHILD_FAILED', {
+          cause: result.error ?? new Error((result.stderr || result.stdout).slice(0, 4096)),
+        });
+      }
+      // Import-only discovery cannot produce this receipt after the actual parent calls.
+      assert.deepEqual(JSON.parse(readFileSync(join(fixtureRoot, 'loader-complete.private.json'), 'utf8')),
+        { binding: kind, invocation: 'loader' });
+      complete = true;
+    } catch (error) {
+      const sink = createRunnerFailureSink();
+      sink.record({ runner: 'node', phase: 'workspaceDeletionPhaseLoader', testName: t.name, attempt: 0, error });
+      await sink.flush();
+      throw new Error('WORKSPACE_DELETION_PLAYWRIGHT_LOADER_FAILED');
+    }
+  });
+}
 const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-electron-runtime',
   'pnpm --filter @eky/e2e e2e:prepare-owner',
@@ -24,11 +197,13 @@ const preparations = [
   'pnpm --filter @eky/desktop e2e:prepare-backend',
 ];
 const projects = '--project=system-api --project=web-chromium --project=electron-development';
-const contractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/e2e-command-wiring.test.mjs scripts/windowsBackendOwnerBuild.test.mjs scripts/safeCiReporter.test.mjs scripts/electronLifecycleProjection.test.mjs scripts/workspaceDeletionFailureEvidence.test.mjs scripts/workspaceAdoptionProofEvidence.test.mjs scripts/e2eRunArtifacts.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/playwrightElectronProcessKill.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs experiments/processOwnership/linuxServiceContract.test.mjs experiments/processOwnership/linuxServiceControl.test.mjs experiments/processOwnership/linuxServiceSession.test.mjs';
+const wiringContractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/e2e-command-wiring.test.mjs';
+const contractCommand = 'node --test --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/windowsBackendOwnerBuild.test.mjs scripts/safeCiReporter.test.mjs scripts/compositionPreflightRelay.test.mjs scripts/electronLifecycleProjection.test.mjs scripts/workspaceDeletionFailureEvidence.test.mjs scripts/workspaceAdoptionProofEvidence.test.mjs scripts/e2eRunArtifacts.test.mjs experiments/processOwnership/playwrightElectronLaunch.test.mjs experiments/processOwnership/playwrightElectronProcessKill.test.mjs experiments/processOwnership/adapterContract.test.mjs experiments/processOwnership/adapterControl.test.mjs experiments/processOwnership/adapterRootExitOrdering.test.mjs experiments/processOwnership/boundedChildOutput.test.mjs experiments/processOwnership/pidNamespaceContract.test.mjs experiments/processOwnership/runPidNamespaceExperiment.test.mjs experiments/processOwnership/managedNamespaceContract.test.mjs experiments/processOwnership/managedNamespaceControl.test.mjs experiments/processOwnership/managedNamespaceObservation.test.mjs experiments/processOwnership/managedNamespacePreflight.test.mjs experiments/processOwnership/managedNamespaceCommand.test.mjs experiments/processOwnership/managedNamespaceSession.test.mjs experiments/processOwnership/managedNamespaceResult.test.mjs experiments/processOwnership/runManagedNamespaceExperiment.test.mjs experiments/processOwnership/managedChromiumFailure.test.mjs experiments/processOwnership/managedChromiumActor.test.mjs experiments/processOwnership/linuxServiceContract.test.mjs experiments/processOwnership/linuxServiceControl.test.mjs experiments/processOwnership/linuxServiceSession.test.mjs';
 
 function assertWiring(rootManifest, e2eManifest) {
   assert.equal(rootManifest.scripts.test, 'pnpm --recursive test');
-  assert.equal(e2eManifest.scripts.test, contractCommand + ' && pnpm test:consumer-loss');
+  assert.equal(e2eManifest.scripts.test,
+    [...preparations.slice(2, 4), wiringContractCommand, contractCommand, 'pnpm test:consumer-loss'].join(' && '));
   assert.equal(e2eManifest.scripts['test:consumer-loss'], consumerContractCommand);
   assert.equal(e2eManifest.scripts['linux:consumer:build'],
     'node experiments/processOwnership/linuxConsumerLossBuildCli.mjs');
@@ -49,6 +224,24 @@ function assertWiring(rootManifest, e2eManifest) {
     );
   }
 }
+
+test('Node contract discovery requires both shared builds before the real loader', () => {
+  const [permissionsBuild, authBuild] = preparations.slice(2, 4);
+  const command = e2e.scripts.test;
+  for (const changedCommand of [
+    command.replace(`${permissionsBuild} && `, ''),
+    command.replace(`${authBuild} && `, ''),
+    command.replace(`${permissionsBuild} && ${authBuild}`, `${authBuild} && ${permissionsBuild}`),
+    command.replace(`${authBuild} && ${wiringContractCommand}`, `${wiringContractCommand} && ${authBuild}`),
+    command.replace(`${wiringContractCommand} && `, ''),
+    command.replace(`${wiringContractCommand} && ${contractCommand}`, `${contractCommand} && ${wiringContractCommand}`),
+  ]) {
+    assert.notEqual(changedCommand, command);
+    const changed = structuredClone(e2e);
+    changed.scripts.test = changedCommand;
+    assert.throws(() => assertWiring(root, changed), assert.AssertionError);
+  }
+});
 
 test('packaged legacy recovery requires preparation and a fresh hardened package', () => {
   for (const removed of ['pnpm e2e:prepare && ', 'pnpm --filter @eky/desktop installer:supervisor:build && ',
@@ -333,6 +526,7 @@ const mutations = [
   ['missing Linux service lifecycle', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/linuxServiceSession.test.mjs', ''); }],
   ['missing process-only kill regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' experiments/processOwnership/playwrightElectronProcessKill.test.mjs', ''); }],
   ['missing reporter regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' scripts/safeCiReporter.test.mjs', ''); }],
+  ['missing direct composition preflight relay regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' scripts/compositionPreflightRelay.test.mjs', ''); }],
   ['missing lifecycle projection regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' scripts/electronLifecycleProjection.test.mjs', ''); }],
   ['missing artifact retention regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' scripts/e2eRunArtifacts.test.mjs', ''); }],
   ['missing deletion failure evidence regression', (r, e) => { e.scripts.test = e.scripts.test.replace(' scripts/workspaceDeletionFailureEvidence.test.mjs', ''); }],

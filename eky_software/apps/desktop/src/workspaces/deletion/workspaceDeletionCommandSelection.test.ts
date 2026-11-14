@@ -4,7 +4,7 @@ import { afterEach, expect, it, vi, type Mock } from 'vitest';
 import { createSwitchRegistry } from '../switch/workspaceSwitchTestSupport.js';
 import { createWorkspaceDeletionCommand } from './workspaceDeletionCommand.js';
 import { deletionTestJournal } from './workspaceDeletionDataTestSupport.js';
-import type { WorkspaceDeletionWorkAuthority } from '../management/workspaceManagementService.js';
+import type { WorkspaceDeletionExecutionStage, WorkspaceDeletionWorkAuthority } from '../management/workspaceManagementService.js';
 import * as phase from './workspaceDeletionPhaseSelection.js';
 import * as payload from './workspaceDeletionPayloadExecutor.js';
 import * as registry from './workspaceDeletionRegistryPublication.js';
@@ -57,6 +57,84 @@ it.for(['authorized', 'registryPublished'] as const)('uses the same stages for t
   expect(f.observeStage.mock.calls.map(([stage]) => stage)).toEqual(state === 'registryPublished'
     ? ['deleteAuthorization', 'deleteCleanup']
     : ['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup']);
+});
+
+it.for(['authorized', 'registryPublished'] as const)('reports current live %s stages only to the invocation observer and retains the cold observer', async state => {
+  const f = fixture(state);
+  const observeStage = vi.fn<(stage: WorkspaceDeletionExecutionStage) => void>();
+  const selection = f.select.getMockImplementation()!;
+  f.select.mockImplementationOnce(async input => {
+    expect(observeStage.mock.calls.at(-1)).toEqual(['deleteAuthorization']);
+    return selection(input);
+  });
+  const checkStage = <T>(name: WorkspaceDeletionExecutionStage,
+    stage: Mock<(...args: Parameters<typeof f.execute>) => Promise<T>>) => {
+    const original = stage.getMockImplementation()!;
+    stage.mockImplementationOnce(async (...args) => {
+      expect(observeStage.mock.calls.at(-1)).toEqual([name]);
+      return original(...args);
+    });
+  };
+  checkStage('deletePurge', f.execute); checkStage('deleteRegistry', f.publishRegistry);
+  checkStage('deleteCleanup', f.clean); checkStage('deleteCleanup', f.finish);
+  const expected = state === 'registryPublished' ? ['deleteAuthorization', 'deleteCleanup']
+    : ['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'];
+  await expect(f.command.resume(f.journal.target.operationId, f.authority, observeStage)).resolves.toEqual({
+    formatVersion: 1, status: 'completed', navigation: 'selector',
+  });
+  expect(observeStage.mock.calls.map(([stage]) => stage)).toEqual(expected);
+  expect(f.observeStage).not.toHaveBeenCalled();
+  expect(f.authority.recordRemoved).toHaveBeenCalledExactlyOnceWith({ status: 'removed', journal: f.terminal });
+  await expect(f.command.resumeSelected(f.journal, f.authority)).resolves.toMatchObject({ status: 'completed' });
+  expect(f.observeStage.mock.calls.map(([stage]) => stage)).toEqual(expected);
+  expect(observeStage.mock.calls.map(([stage]) => stage)).toEqual(expected);
+});
+
+it.for([
+  { port: 'select', stages: ['deleteAuthorization'] },
+  { port: 'execute', stages: ['deleteAuthorization', 'deletePurge'] },
+  { port: 'publishRegistry', stages: ['deleteAuthorization', 'deletePurge', 'deleteRegistry'] },
+  { port: 'clean', stages: ['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'] },
+  { port: 'finish', stages: ['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup'] },
+] as const)('retains the current live stage and original failure at $port', async ({ port, stages }) => {
+  const f = fixture(), original = new Error('SYNTHETIC_LIVE_STAGE_FAILED');
+  const observeStage = vi.fn<(stage: WorkspaceDeletionExecutionStage) => void>();
+  f[port].mockImplementationOnce(async () => {
+    expect(observeStage.mock.calls.at(-1)).toEqual([stages.at(-1)]);
+    throw original;
+  });
+  await expect(f.command.resume(f.journal.target.operationId, f.authority, observeStage)).rejects.toBe(original);
+  expect(observeStage.mock.calls.map(([stage]) => stage)).toEqual(stages);
+  expect(f.observeStage).not.toHaveBeenCalled(); expect(f.authority.recordRemoved).not.toHaveBeenCalled();
+  const ports = [f.select, f.execute, f.publishRegistry, f.clean, f.finish];
+  for (const later of ports.slice(ports.indexOf(f[port]) + 1)) expect(later).not.toHaveBeenCalled();
+});
+
+it.for(['sync', 'async'] as const)('isolates a failed %s live observer without falling back or replacing the original failure', async mode => {
+  const failObservation = () => {
+    const error = new Error('SYNTHETIC_LIVE_OBSERVER_FAILED');
+    if (mode === 'async') return Promise.reject(error);
+    throw error;
+  };
+  const f = fixture(), observeSuccess = vi.fn(failObservation);
+  await expect(f.command.resume(f.journal.target.operationId, f.authority, observeSuccess)).resolves.toMatchObject({ status: 'completed' });
+  expect(observeSuccess.mock.calls).toHaveLength(4); expect(f.observeStage).not.toHaveBeenCalled();
+  expect(f.authority.recordRemoved).toHaveBeenCalledExactlyOnceWith({ status: 'removed', journal: f.terminal });
+  const g = fixture(), original = new Error('SYNTHETIC_LIVE_REGISTRY_FAILED'), observeFailure = vi.fn(failObservation);
+  g.publishRegistry.mockRejectedValueOnce(original);
+  await expect(g.command.resume(g.journal.target.operationId, g.authority, observeFailure)).rejects.toBe(original);
+  expect(observeFailure.mock.calls).toEqual([['deleteAuthorization'], ['deletePurge'], ['deleteRegistry']]);
+  expect(g.observeStage).not.toHaveBeenCalled(); expect(g.clean).not.toHaveBeenCalled();
+  expect(g.finish).not.toHaveBeenCalled(); expect(g.authority.recordRemoved).not.toHaveBeenCalled();
+});
+
+it.for(['authorized', 'registryPublished'] as const)('falls back to the construction observer for live %s execution without an invocation observer', async state => {
+  const f = fixture(state);
+  await expect(f.command.resume(f.journal.target.operationId, f.authority)).resolves.toMatchObject({ status: 'completed' });
+  expect(f.observeStage.mock.calls.map(([stage]) => stage)).toEqual(state === 'registryPublished'
+    ? ['deleteAuthorization', 'deleteCleanup']
+    : ['deleteAuthorization', 'deletePurge', 'deleteRegistry', 'deleteCleanup']);
+  expect(f.authority.recordRemoved).toHaveBeenCalledExactlyOnceWith({ status: 'removed', journal: f.terminal });
 });
 
 it.for(['sync', 'async'] as const)('does not let a failed %s stage observation replace command success or its original error', async mode => {

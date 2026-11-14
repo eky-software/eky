@@ -8,6 +8,7 @@ import { WorkspaceManagementError } from './workspaceManagementError.js';
 import {
   createWorkspaceManagementStatus,
   parseWorkspaceManagementStatus,
+  parseWorkspaceRecoveryManagementStatus,
 } from './workspaceManagementStatus.js';
 
 const activeId = '00000000-0000-4000-8000-000000000001' as WorkspaceId;
@@ -207,6 +208,68 @@ describe('workspace management status', () => {
     Object.assign(customPrototype, createStatusInput());
     expectInvalid(() => parseWorkspaceManagementStatus(customPrototype));
   });
+});
+
+describe('recovery management status projection, not runtime admission', () => {
+  const idleInput = (persistedActiveWorkspaceId: unknown = activeId) => ({
+    formatVersion: 2, mode: 'recoveryManagement', runtimeState: 'absent',
+    maintenanceState: 'idle', operationState: 'idle', persistedActiveWorkspaceId,
+    target: { workspaceId: inactiveId, workspaceLabel: 'Synthetic recovery company' },
+  });
+  const blockedInput = (operationState: 'busy' | 'recoveryRequired', maintenanceState: 'idle' | 'busy') => ({
+    formatVersion: 2, mode: 'recoveryManagement', runtimeState: 'absent', operationState, maintenanceState,
+  });
+
+  it.each([activeId, inactiveId, null])('keeps persisted selection %s distinct from the absent runtime and exact target', persisted => {
+    const status = parseWorkspaceRecoveryManagementStatus(idleInput(persisted));
+    expect(status).toEqual(idleInput(persisted));
+    expect(Object.isFrozen(status)).toBe(true);
+    expect('target' in status && Object.isFrozen(status.target)).toBe(true);
+    expect(Object.hasOwn(status, 'activeWorkspaceId')).toBe(false);
+    expect(JSON.stringify(status)).not.toMatch(/availability|isActive|lineage|profileId|path|token|journal/);
+    expectInvalid(() => parseWorkspaceManagementStatus(status));
+  });
+
+  it.each([
+    ['busy', 'idle'], ['busy', 'busy'], ['recoveryRequired', 'idle'], ['recoveryRequired', 'busy'],
+  ] as const)('returns only the %s projection with actual %s maintenance', (operation, maintenance) => {
+    const input = blockedInput(operation, maintenance);
+    expect(parseWorkspaceRecoveryManagementStatus(input)).toEqual(input);
+    expect(() => parseWorkspaceRecoveryManagementStatus({ ...input, target: idleInput().target })).toThrow();
+    expect(() => parseWorkspaceRecoveryManagementStatus({ ...input, persistedActiveWorkspaceId: activeId })).toThrow();
+  });
+
+  it.each([
+    { formatVersion: 1 }, { formatVersion: 3 }, { mode: 'selector' }, { runtimeState: 'running' },
+    { operationState: 'completed' }, { maintenanceState: 'busy' },
+    { persistedActiveWorkspaceId: 'invalid' }, { target: null },
+    { target: { workspaceId: 'invalid', workspaceLabel: 'Synthetic' } },
+    { target: { workspaceId: inactiveId, workspaceLabel: 'x'.repeat(81) } },
+    { target: { workspaceId: inactiveId, workspaceLabel: 'Synthetic', path: 'excluded' } },
+    { workspaces: [] },
+  ])('rejects a contradictory or extra field in %j', change => {
+    expect(() => parseWorkspaceRecoveryManagementStatus({ ...idleInput(), ...change })).toThrow();
+  });
+
+  it('copies the bounded target instead of retaining mutable input', () => {
+    const input = idleInput();
+    const status = parseWorkspaceRecoveryManagementStatus(input);
+    input.target.workspaceLabel = 'Changed';
+    expect('target' in status && status.target?.workspaceLabel).toBe('Synthetic recovery company');
+    expect(() => parseWorkspaceRecoveryManagementStatus(Object.assign(Object.create({ inherited: true }), idleInput()))).toThrow();
+  });
+
+  it.each(['operationState', 'runtimeState', 'target', 'workspaceLabel'] as const)(
+    'does not execute the %s accessor while rejecting the projection', key => {
+      const input = idleInput();
+      const record = key === 'workspaceLabel' ? input.target : input;
+      let reads = 0;
+      Object.defineProperty(record, key, { enumerable: true, configurable: true,
+        get() { reads++; throw new Error('SYNTHETIC_UNEXPECTED_GETTER'); } });
+      expect(() => parseWorkspaceRecoveryManagementStatus(input)).toThrow();
+      expect(reads).toBe(0);
+    },
+  );
 });
 
 function createRegistry(): Readonly<LocalWorkspaceRegistryV1> {

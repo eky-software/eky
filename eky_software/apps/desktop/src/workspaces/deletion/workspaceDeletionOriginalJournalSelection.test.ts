@@ -21,8 +21,229 @@ import { captureWorkspaceRemnantBinding, workspaceRemnantBindingKey, workspaceRe
 import { createWorkspaceRemnantBindingPaths } from './workspaceRemnantBindingPaths.js';
 import { WorkspaceRemnantBindingStore } from './workspaceRemnantBindingStore.js';
 import { remnantBindingFixture } from './workspaceRemnantBindingTestSupport.js';
+import { WORKSPACE_REGISTRY_FILE_NAME } from '../registry/workspaceRegistryPaths.js';
+import { WorkspaceRegistryStore } from '../registry/workspaceRegistryStore.js';
+import { serializeWorkspaceRegistry, workspaceRegistryEntrySha256 } from '../registry/workspaceRegistrySerializer.js';
+import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
+import { sameCrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
+import { assertNoSelectorWorkspaceRecoveryFromRoot } from '../runtime/workspaceColdRecoveryAdmissionComposition.js';
+import { profileRestoreActivationPhases } from '../../profileBackup/restore/profileRestoreActivationJournal.js';
+import { WORKSPACE_BACKUP_IMPORT_JOURNAL_STATES, getWorkspaceBackupImportStateIndex } from '../import/workspaceBackupImportJournalValidation.js';
+import type { WorkspaceLegacyAdoptionJournalState } from '../adoption/workspaceLegacyAdoptionJournal.js';
 
 type Owner = WorkspaceDeletionOriginalJournalProof['owner'];
+
+// Experiment only: pins a real registry around the existing reader, not startup or deletion authority.
+async function registryBoundObservation(test: TestContext, owner: Owner) {
+  const f = await fixture(test, owner);
+  const registry = validateWorkspaceRegistry({ formatVersion: 2, activeWorkspaceId: f.target.workspaceId,
+    workspaces: [{ workspaceId: f.target.workspaceId, workspaceLabel: 'Synthetic recovery observation',
+      layoutVersion: 1, lifecycleState: 'ready', createdAt: '2026-11-06T00:00:00.000Z',
+      lineageIdentity: f.target.lineageIdentity }] });
+  const path = join(f.root, WORKSPACE_REGISTRY_FILE_NAME);
+  const store = new WorkspaceRegistryStore({ installationRoot: f.root, filePath: path });
+  await f.run(() => store.write(registry));
+  const initial = await f.run(() => store.inspectSlots(f.authority.assertAuthority));
+  const registryError = new Error('SYNTHETIC_OBSERVED_REGISTRY_CHANGED');
+  const receipts: WorkspaceDeletionOriginalJournalSelection[] = [];
+  test.onTestFinished(() => { for (const receipt of receipts) receipt.revoke(); });
+  const assertRegistry = async () => {
+    await f.authority.assertExternalSelection();
+    const current = await store.inspectSlots(f.authority.assertAuthority);
+    if (initial.current?.identity === undefined || current.current?.identity === undefined ||
+        current.next !== undefined || current.backup !== undefined ||
+        !sameCrashSafeFileSlotIdentity(initial.current.identity, current.current.identity) ||
+        !Buffer.from(initial.current.bytes).equals(Buffer.from(current.current.bytes))) throw registryError;
+    f.authority.assertAuthority();
+  };
+  const target = captureDeletionInventoryHeader({ ...f.target,
+    registryEntrySha256: workspaceRegistryEntrySha256(registry.workspaces[0]!) });
+  const capture = () => f.run(async () => {
+    const receipt = await captureWorkspaceDeletionOriginalJournals(f.root, target,
+      { ...f.authority, assertExternalSelection: assertRegistry });
+    receipts.push(receipt);
+    return receipt;
+  });
+  return { ...f, registry, registryPath: path, registryError, store, capture };
+}
+
+it.for(workspaceDeletionOriginalJournalOwners)(
+  'observes a bound %s journal with a retained active pointer but no selector admission', async (owner, test) => {
+    const f = await registryBoundObservation(test, owner);
+    await f.run(async () => {
+      const before = await f.snapshot(), registryBytes = await readFile(f.registryPath);
+      const publish = vi.spyOn(f.store, 'write');
+      const selected = await f.capture();
+      await selected.assertSelected();
+      expect(selected.proofs.map(proof => proof.owner)).toEqual([owner]);
+      expect((await f.store.inspect())?.activeWorkspaceId).toBe(f.target.workspaceId);
+      await expect(assertNoSelectorWorkspaceRecoveryFromRoot(f.root, f.registry))
+        .rejects.toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+      expect(publish).not.toHaveBeenCalled();
+      expect(await f.snapshot()).toEqual(before);
+      expect(await readFile(f.registryPath)).toEqual(registryBytes);
+      selected.revoke();
+      await expect(selected.assertSelected()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
+    });
+  },
+);
+
+it.for(['activeSelection', 'identity', 'next', 'backup'] as const)(
+  'expires the readonly observation after a real registry %s change without repairing it', async (change, test) => {
+    const f = await registryBoundObservation(test, 'workspaceImport');
+    await f.run(async () => {
+      const selected = await f.capture(), original = await readFile(f.registryPath);
+      if (change === 'activeSelection') {
+        await writeFile(f.registryPath, serializeWorkspaceRegistry({ ...f.registry, activeWorkspaceId: null }));
+      } else if (change === 'identity') {
+        await rename(f.registryPath, f.registryPath + '.retained');
+        await writeFile(f.registryPath, original, { flag: 'wx', mode: 0o600 });
+      } else await writeFile(f.registryPath + '.' + change, original, { flag: 'wx', mode: 0o600 });
+      const changed = await readFile(f.registryPath), journals = await f.snapshot();
+      await expect(selected.assertSelected()).rejects.toBe(f.registryError);
+      f.stop();
+      await expect(selected.assertSelected()).rejects.toBe(f.registryError);
+      expect(await readFile(f.registryPath)).toEqual(Buffer.from(changed));
+      expect(await f.snapshot()).toEqual(journals);
+      if (change === 'identity') expect(await readFile(f.registryPath + '.retained')).toEqual(original);
+      if (change === 'next' || change === 'backup') expect(await readFile(f.registryPath + '.' + change)).toEqual(original);
+    });
+  },
+);
+
+it.for(['lease', 'writer'] as const)(
+  'joins a registry-bound delayed read before rejecting lost %s authority', async (lost, test) => {
+    const f = await registryBoundObservation(test, 'workspaceImport');
+    await f.run(async () => {
+      const before = await f.snapshot(), registryBytes = await readFile(f.registryPath);
+      const inspect = WorkspaceBackupImportJournalStore.prototype.inspectSlots;
+      let release!: () => void, entered!: () => void;
+      const held = new Promise<void>(resolve => { release = resolve; });
+      const started = new Promise<void>(resolve => { entered = resolve; });
+      const events: string[] = [];
+      f.releases.push(release);
+      vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'inspectSlots').mockImplementationOnce(async function(this: WorkspaceBackupImportJournalStore, ...args) {
+        const result = await inspect.apply(this, args); events.push('readHeld'); entered(); await held;
+        events.push('readReturned'); return result;
+      });
+      let settled = false;
+      const result = f.capture().then(() => undefined, error => { events.push('captureRejected'); return error as unknown; })
+        .finally(() => { settled = true; });
+      try {
+        await Promise.race([started, result.then(() => { throw new Error('ORIGINAL_READ_NOT_HELD'); })]);
+        if (lost === 'lease') f.stop(); else f.addWriter();
+        events.push('authorityLost');
+        await new Promise<void>(resolve => setImmediate(resolve));
+        expect(settled).toBe(false);
+        expect(events).toEqual(['readHeld', 'authorityLost']);
+      } finally { release(); }
+      expect(await result).toBe(lost === 'lease' ? f.first : f.writerError);
+      expect(events).toEqual(['readHeld', 'authorityLost', 'readReturned', 'captureRejected']);
+      expect(await f.snapshot()).toEqual(before);
+      expect(await readFile(f.registryPath)).toEqual(registryBytes);
+    });
+  },
+);
+
+it.for(['foreignLineage', 'missingBinding'] as const)(
+  'refuses registry-bound %s evidence without repairing the original owner', async (change, test) => {
+    const f = await registryBoundObservation(test, 'workspaceImport');
+    await f.run(async () => {
+      const bindingPath = f.bindingPath('workspaceImport');
+      if (change === 'missingBinding') await rename(bindingPath, bindingPath + '.retained');
+      else await writeFile(bindingPath, JSON.stringify({ ...f.binding('workspaceImport'),
+        lineageIdentity: { formatVersion: 1, profileId: 'f'.repeat(64) } }) + '\n');
+      const before = await f.snapshot(), registryBytes = await readFile(f.registryPath);
+      await expect(f.capture()).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(before);
+      expect(await readFile(f.registryPath)).toEqual(registryBytes);
+      if (change === 'missingBinding') expect(await readFile(bindingPath + '.retained')).toBeDefined();
+    });
+  },
+);
+
+it.for(['selection', 'identity'] as const)(
+  'rejects a real registry %s change during the initial journal capture', async (change, test) => {
+    const f = await registryBoundObservation(test, 'workspaceImport');
+    await f.run(async () => {
+      const journals = await f.snapshot(), before = await readFile(f.registryPath);
+      const inspect = WorkspaceBackupImportJournalStore.prototype.inspectSlots;
+      const changed = change === 'selection'
+        ? serializeWorkspaceRegistry({ ...f.registry, activeWorkspaceId: null }) : before;
+      const injected = vi.spyOn(WorkspaceBackupImportJournalStore.prototype, 'inspectSlots').mockImplementationOnce(async function(this: WorkspaceBackupImportJournalStore, ...args) {
+        const result = await inspect.apply(this, args);
+        if (change === 'identity') await rename(f.registryPath, f.registryPath + '.retained');
+        await writeFile(f.registryPath, changed, { mode: 0o600 });
+        return result;
+      });
+      await expect(f.capture()).rejects.toBe(f.registryError);
+      expect(injected).toHaveBeenCalledTimes(1);
+      expect(await readFile(f.registryPath)).toEqual(Buffer.from(changed));
+      expect(await f.snapshot()).toEqual(journals);
+      if (change === 'identity') expect(await readFile(f.registryPath + '.retained')).toEqual(before);
+    });
+  },
+);
+
+it.for(workspaceDeletionOriginalJournalOwners)(
+  'rejects a foreign target in the registry-bound %s journal selection', async (owner, test) => {
+    const f = await registryBoundObservation(test, owner);
+    await f.run(async () => {
+      await writeFile(f.bindingPath(owner), JSON.stringify({ ...f.binding(owner),
+        workspaceId: '00000000-0000-4000-8000-000000000099' }) + '\n');
+      const journals = await f.snapshot(), registryBytes = await readFile(f.registryPath);
+      await expect(f.capture()).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(journals);
+      expect(await readFile(f.registryPath)).toEqual(registryBytes);
+    });
+  },
+);
+
+it.for(['workspaceReplacement', 'workspaceActivationMigration'] as const)(
+  'rejects both activation aliases while retaining the registry-bound %s bytes', async (owner, test) => {
+    const f = await registryBoundObservation(test, owner);
+    await f.run(async () => {
+      await f.publishBinding(owner === 'workspaceReplacement' ? 'workspaceActivationMigration' : 'workspaceReplacement');
+      const journals = await f.snapshot(), registryBytes = await readFile(f.registryPath);
+      await expect(f.capture()).rejects.toThrow();
+      expect(await f.snapshot()).toEqual(journals);
+      expect(await readFile(f.registryPath)).toEqual(registryBytes);
+    });
+  },
+);
+
+const adoptionObservationStates = ['prepared', 'candidatePrepared', 'rootPublished',
+  'registryPublished', 'recoveryRequired'] as const satisfies readonly WorkspaceLegacyAdoptionJournalState[];
+const originalObservationStates = [
+  ...WORKSPACE_BACKUP_IMPORT_JOURNAL_STATES.map(state => ({ owner: 'workspaceImport' as const, state })),
+  ...adoptionObservationStates.map(state => ({ owner: 'workspaceLegacyAdoption' as const, state })),
+  ...(['workspaceReplacement', 'workspaceActivationMigration'] as const).flatMap(owner =>
+    profileRestoreActivationPhases.map(state => ({ owner, state }))),
+];
+
+// Current-slot state coverage only; not reconstructed historical transitions or recovery admission.
+it.for(originalObservationStates)(
+  'observes registry-bound $owner state $state without promotion or cleanup', async ({ owner, state }, test) => {
+    const f = await registryBoundObservation(test, owner);
+    await f.run(async () => {
+      const path = f.journalPath(owner), original = JSON.parse(await readFile(path, 'utf8'));
+      const value = owner === 'workspaceImport' ? { ...original, state,
+        lineageIdentity: getWorkspaceBackupImportStateIndex(state as typeof WORKSPACE_BACKUP_IMPORT_JOURNAL_STATES[number]) >=
+          getWorkspaceBackupImportStateIndex('candidateValidated') ? f.target.lineageIdentity : null }
+        : owner === 'workspaceLegacyAdoption' ? { ...original, state } : { ...original, phase: state,
+          revision: state === 'rollbackStarting' ? 1 : state === 'rolledBack' || state === 'failedSafe' ? 2
+            : profileRestoreActivationPhases.indexOf(state as typeof profileRestoreActivationPhases[number]) };
+      await writeFile(path, JSON.stringify(value) + '\n');
+      const journals = await f.snapshot(), registryBytes = await readFile(f.registryPath);
+      const selected = await f.capture();
+      expect(selected.proofs.map(proof => proof.owner)).toEqual([owner]);
+      await selected.assertSelected();
+      expect(await f.snapshot()).toEqual(journals);
+      expect(await readFile(f.registryPath)).toEqual(registryBytes);
+    });
+  },
+);
+
 async function fixture(test: TestContext, owner?: Owner) {
   const base = await remnantBindingFixture(test);
   const target = captureDeletionInventoryHeader({ ...deletionTestJournal().target,

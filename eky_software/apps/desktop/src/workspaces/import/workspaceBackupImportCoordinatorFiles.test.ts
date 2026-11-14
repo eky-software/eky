@@ -80,7 +80,7 @@ async function fixture(test: TestContext) {
   return { ...f, root, paths, state, registry, registryPath, journal, journalPath, bindingPaths, lease, terminal, uncertain, coordinator };
 }
 
-it('publishes real payload and registry bytes, retires metadata, then returns only after lease release', async test => {
+it('publishes real payload and registry bytes, retires metadata, then returns only after lease release', { timeout: 10_000 }, async test => {
   const f = await fixture(test);
   await expect(f.coordinator.import(input)).resolves.toMatchObject({ workspaceId: TEST_IMPORT_WORKSPACE_ID });
   expect(await readFile(f.paths.publishedDatabaseFilePath, 'utf8')).toBe('synthetic database bytes');

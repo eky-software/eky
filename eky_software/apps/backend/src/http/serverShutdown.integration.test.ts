@@ -107,6 +107,32 @@ async function readHttpResponse(port: number, options: Pick<RequestOptions, 'pat
 }
 
 describe('backend HTTP adapter compatibility', () => {
+  it.each(['/public\\private', '/\\private', '/public\\private?query=value'])(
+    'rejects a raw path backslash before application dispatch: %s', async path => {
+      boundary.fetch.mockResolvedValue(new Response('synthetic accepted'));
+      const server = await startServer({ port: 0 });
+      const response = await readHttpResponse(server.port, { path });
+      expect(response.status).toBe(400);
+      expect(response.body.toString()).not.toContain('synthetic accepted');
+      expect(boundary.fetch).not.toHaveBeenCalled();
+      await expectClosed(server.close());
+    },
+  );
+
+  it.each(['/public?query=\\value', '/public%5Cprivate'])(
+    'preserves query or encoded backslashes without changing the request path: %s', async path => {
+      boundary.fetch.mockResolvedValue(new Response('synthetic accepted'));
+      const server = await startServer({ port: 0 });
+      const response = await readHttpResponse(server.port, { path });
+      expect(response.status).toBe(200);
+      expect(response.body.toString()).toBe('synthetic accepted');
+      expect(boundary.fetch).toHaveBeenCalledTimes(1);
+      const request = boundary.fetch.mock.calls[0]![0];
+      expect(new URL(request.url).pathname).toBe(path.split('?')[0]);
+      await expectClosed(server.close());
+    },
+  );
+
   it('rejects double-decoded static paths without bypassing protected middleware', async () => {
     const root = await mkdtemp(join(tmpdir(), 'eky-http-static-contract-'));
     roots.push(root);

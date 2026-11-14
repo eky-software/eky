@@ -15,6 +15,7 @@ import { OwnedLinuxServiceStartupFailure, startOwnedLinuxVite } from './startOwn
 import { waitForHttpHealth } from './waitForHttpHealth.js';
 import { waitForLoopbackPortRelease } from './waitForLoopbackPortRelease.js';
 import { beforeViteOwnerDeadline } from './windowsViteServiceControl.js';
+import { readLinuxServicePreflightCheck } from '../../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 
 export { E2eWebStartupFailure } from './e2eWebStartupLifecycle.js';
 
@@ -71,6 +72,7 @@ export async function startE2eWebProcess(input: {
     workload = owned.workload;
     stopProcessTree = owned.stop;
   } catch (error) {
+    const preflightCheck = error instanceof OwnedLinuxServiceStartupFailure ? readLinuxServicePreflightCheck(error) : undefined;
     const owned = error instanceof OwnedWindowsViteStartupFailure || error instanceof OwnedLinuxServiceStartupFailure
       ? error : undefined;
     const output = readWebStartupOutput(owned);
@@ -88,7 +90,7 @@ export async function startE2eWebProcess(input: {
         : code === 'workloadExited' ? 'E2E_WEB_CHILD_EXITED_BEFORE_HEALTH' : 'E2E_WEB_PROCESS_SPAWN_FAILED',
       spawnObserved: owned?.evidence.spawnObserved ?? false,
       exitedBeforeCleanup: owned?.evidence.exitedBeforeCleanup ?? false, cleanup,
-    }, output);
+    }, output, preflightCheck);
   }
 
   await waitForE2eWebStartup({

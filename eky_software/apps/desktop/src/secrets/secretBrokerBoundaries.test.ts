@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
 import { invoicePdfPreviewIpcChannel } from '../pdf/invoicePdfPreviewTypes.js';
+import { deleteWorkspaceIpcChannel } from '../workspaces/management/workspaceManagementCapabilityProtocol.js';
 
 const sourceRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -17,7 +18,7 @@ describe('desktop secret broker boundaries', () => {
 
     expect(preloadSource).not.toMatch(/safeStorage|secretBroker|MessagePort/i);
     expect(preloadSource).not.toMatch(/node:fs|shell|process\.|openUrl|openFile|rawIpc/i);
-    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(24);
+    expect(preloadSource.match(/ipcRenderer\.invoke/g)).toHaveLength(25);
     expect(preloadSource).toContain('getOperationalLogFailureStatus');
     expect(preloadSource).toContain('onOperationalLogFailure');
     expect(preloadSource).toContain('invoicePdfPreviewIpcChannel');
@@ -48,10 +49,12 @@ describe('desktop secret broker boundaries', () => {
     expect(preloadSource).toContain('replaceActiveWorkspaceFromBackup');
     expect(preloadSource).toContain('switchWorkspace');
     expect(preloadSource).toContain('renameWorkspace');
-    expect(preloadSource).toContain('eky:workspace-management:v1:get-status');
-    expect(preloadSource).not.toMatch(
-      /deleteWorkspace|invokeWorkspaceOperation/,
+    expect(preloadSource).toContain('deleteWorkspace');
+    expect(preloadSource).toContain(
+      `deleteWorkspaceIpcChannel = '${deleteWorkspaceIpcChannel}'`,
     );
+    expect(preloadSource).toContain('eky:workspace-management:v1:get-status');
+    expect(preloadSource).not.toContain('invokeWorkspaceOperation');
     expect(preloadSource).toContain('createManualRecoveryPoint');
   });
 

@@ -7,10 +7,13 @@ import {
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 
-import type { DesktopLifecycleHandle } from './desktopComposition.js';
+import type { DesktopLifecycleHandle, DesktopWorkspaceStartupSupportReceipt } from './desktopComposition.js';
+import { createDesktopOnlySupportBundleExport, type NativeSupportBundleExport } from '../supportBundle/supportBundleCapability.js';
+import { readSupportBundleDesktopData, type SupportBundleDesktopData } from '../supportBundle/supportBundleDesktopData.js';
 import { createDesktopBeforeQuitHandler } from './desktopBeforeQuit.js';
+import { createDesktopRecoveryStartup } from './desktopRecoveryStartup.js';
 import { resolveDesktopPackageUserDataOverride } from './desktopPackageProfile.js';
-import { runSafeDesktopStartup } from './earlyStartup.js';
+import { readSafeStartupFailureCode, runSafeDesktopStartup } from './earlyStartup.js';
 import { readDesktopBuildInfo } from '../release/desktopBuildInfoReader.js';
 import {
   readDesktopPackageMode,
@@ -138,6 +141,7 @@ if (!hasSingleInstanceLock && 'mode' in packageModeResult) {
 }
 
 let desktopLifecycle: DesktopLifecycleHandle | undefined;
+let recoveryStartup: ReturnType<typeof createDesktopRecoveryStartup<DesktopLifecycleHandle>> | undefined;
 const runtimeInstanceId = randomUUID();
 let observeStartupException: ReturnType<typeof createStartupExceptionCapture>;
 let w6b2ProofConfiguration:
@@ -147,6 +151,18 @@ let w6b2ProofQuitRequested = false;
 let w6b2ProofRelaunchRequested = false;
 let w6b2ProofResultWritten = false;
 let w6b2ProofShutdownCompleted = false;
+let startupReportingClosed = false;
+let startupSupportExport: NativeSupportBundleExport | undefined;
+let startupSupportReceipt: Readonly<{
+  data: Readonly<SupportBundleDesktopData>;
+  logger: DesktopWorkspaceStartupSupportReceipt['operationalLogger'];
+  runtimeRoot: string;
+}> | undefined;
+
+function invalidateStartupReporting(): void {
+  startupReportingClosed = true;
+  startupSupportExport?.dispose();
+}
 
 async function startDesktopRuntime(
   startDesktopComposition: StartDesktopComposition,
@@ -188,7 +204,9 @@ async function startDesktopRuntime(
       resourcesPath: process.resourcesPath,
     });
   const currentProofConfiguration = w6b2ProofConfiguration;
-  desktopLifecycle = await startDesktopComposition({
+  let receiptAdmissionOpen = true;
+  const supportRuntimeRoot = join(app.getPath('userData'), 'runtime');
+  const compositionOptions: Parameters<StartDesktopComposition>[0] = {
     assertSingleInstanceOwnership() {
       if (!app.hasSingleInstanceLock()) {
         throw new Error('WORKSPACE_PROCESS_RESERVATION_FAILED');
@@ -198,7 +216,29 @@ async function startDesktopRuntime(
     applicationPath: app.getAppPath(),
     buildInfo,
     releaseInfo,
+    observeWorkspaceStartupFailure(receipt) {
+      if (!receiptAdmissionOpen || startupReportingClosed || startupSupportReceipt !== undefined ||
+          smokeConfiguration.enabled || currentProofConfiguration !== undefined) return;
+      try {
+        const identity = receipt.operationalIdentity;
+        if (!app.hasSingleInstanceLock() || identity.runtimeInstanceId !== runtimeInstanceId ||
+            identity.appVersion !== buildInfo.appVersion || identity.buildRevision !== buildInfo.buildRevision ||
+            typeof receipt.operationalLogger.write !== 'function') return;
+        const data = readSupportBundleDesktopData({
+          system: { appVersion: buildInfo.appVersion, buildRevision: buildInfo.buildRevision,
+            architecture: process.arch, platform: process.platform, electronVersion: process.versions.electron },
+          availability: { backend: receipt.backendState, database: 'notInspected',
+            diagnosticHistory: 'notCollected', incidentHistory: 'notCollected' },
+          observation: receipt.observation,
+        });
+        if (data.observation.status === 'available' &&
+            [data.observation.firstError, data.observation.cleanupError].some(
+              event => event !== null && event.runtimeInstanceId !== runtimeInstanceId)) return;
+        startupSupportReceipt = Object.freeze({ data, logger: receipt.operationalLogger, runtimeRoot: supportRuntimeRoot });
+      } catch { /* An invalid reporting receipt cannot replace the original startup failure. */ }
+    },
     quitApplication() {
+      invalidateStartupReporting();
       if (w6b2ProofConfiguration !== undefined) {
         w6b2ProofQuitRequested = true;
         return;
@@ -206,6 +246,8 @@ async function startDesktopRuntime(
       app.quit();
     },
     relaunchApplication() {
+      if (recoveryStartup?.port.isClosing()) return;
+      invalidateStartupReporting();
       if (w6b2ProofConfiguration !== undefined) {
         w6b2ProofRelaunchRequested = true;
         return;
@@ -250,7 +292,23 @@ async function startDesktopRuntime(
             },
           },
         }),
-  });
+  };
+  const currentRecoveryStartup = createDesktopRecoveryStartup<DesktopLifecycleHandle>();
+  recoveryStartup = currentRecoveryStartup;
+  try {
+    const outcome = await currentRecoveryStartup.start(port => startDesktopComposition({ ...compositionOptions, recoveryStartup: port }));
+    if (outcome.status === 'rejected') {
+      if (outcome.cleanupError !== undefined) {
+        throw new Error(readSafeStartupFailureCode(outcome.reason), {
+          cause: new AggregateError([outcome.reason, outcome.cleanupError], 'DESKTOP_SHUTDOWN_FAILED', { cause: outcome.reason }),
+        });
+      }
+      throw outcome.reason;
+    }
+    if (!currentRecoveryStartup.port.isClosing()) desktopLifecycle = outcome.lifecycle;
+    startupSupportReceipt = undefined;
+  }
+  finally { receiptAdmissionOpen = false; }
   if (currentProofConfiguration !== undefined) {
     if (!w6b2ProofResultWritten) {
       await writeW6b2PackagedProofResult(
@@ -278,20 +336,22 @@ async function startDesktopRuntime(
 }
 
 app.on('activate', () => {
-  desktopLifecycle?.focusApplicationWindow();
+  if (!recoveryStartup?.port.isClosing()) desktopLifecycle?.focusApplicationWindow();
 });
 
 app.on('second-instance', () => {
-  desktopLifecycle?.focusApplicationWindow();
+  if (!recoveryStartup?.port.isClosing()) desktopLifecycle?.focusApplicationWindow();
 });
 
 const handleBeforeQuit = createDesktopBeforeQuitHandler({
-  readLifecycle: () => desktopLifecycle,
+  invalidateStartupReporting,
+  closeStartupAdmission: () => recoveryStartup?.beforeQuit(),
+  readLifecycle: () => desktopLifecycle ?? recoveryStartup?.readLifecycle(),
   quitApplication: () => app.quit(),
 });
 
 app.on('before-quit', (event) => {
-  if (w6b2ProofShutdownCompleted) return;
+  if (w6b2ProofShutdownCompleted) { invalidateStartupReporting(); return; }
   void handleBeforeQuit(event);
 });
 
@@ -307,7 +367,7 @@ app.on('window-all-closed', () => {
 
 if (hasSingleInstanceLock) {
   void runSafeDesktopStartup({
-    exitApplication: (code) => app.exit(code),
+    exitApplication: (code) => { invalidateStartupReporting(); app.exit(code); },
     async loadRuntime() {
       if (app.commandLine.hasSwitch(STARTUP_EXCEPTION_SWITCH)) {
         try {
@@ -343,12 +403,52 @@ if (hasSingleInstanceLock) {
         return;
       }
 
+      if (startupReportingClosed) return;
       if (errorCode === 'PROFILE_RESTORE_RECOVERY_REQUIRED') {
         await showProfileRestoreRecoveryDialog({
           logsRoot: join(app.getPath('userData'), 'runtime', 'logs'),
           openPath: (path) => shell.openPath(path),
           showMessageBox: (options) => dialog.showMessageBox(options),
         });
+        return;
+      }
+      const receipt = startupSupportReceipt;
+      startupSupportReceipt = undefined;
+      if (receipt !== undefined) {
+        const assertCurrent = () => {
+          if (startupReportingClosed) throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+          try {
+            if (!app.hasSingleInstanceLock()) throw new Error('SUPPORT_BUNDLE_FORBIDDEN');
+          } catch (error) { invalidateStartupReporting(); throw error; }
+        };
+        const exporter = createDesktopOnlySupportBundleExport({
+          assertCurrent, loadDesktopData: () => receipt.data,
+          operationalIdentity: { appVersion: receipt.data.system.appVersion,
+            buildRevision: receipt.data.system.buildRevision, runtimeInstanceId },
+          operationalLogger: receipt.logger, runtimeRoot: receipt.runtimeRoot,
+          observeFailure: error => observeStartupException?.(error, 'earlyStartup'),
+          async confirmCreation() {
+            const result = await dialog.showMessageBox({
+              buttons: ['Sulje', 'Luo tukipaketti'], cancelId: 0, defaultId: 0, noLink: true, type: 'warning',
+              title: 'Eky ei käynnistynyt', message: 'Paikallista sovellusta ei voitu käynnistää turvallisesti.',
+              detail: 'Voit tallentaa rajatun tukipaketin luotetulle tukihenkilölle. Paketti ei ole salattu.\n\nSe sisältää sovellusversiot ja saatavilla olevat turvalliset virhetiedot, ei yrityksen tietoja, PDF:iä, salasanoja tai lokihistoriaa. Tietokantaa ei tarkisteta.',
+            });
+            return result.response === 1;
+          },
+          async selectTargetPath(defaultFileName) {
+            const result = await dialog.showSaveDialog({ defaultPath: defaultFileName,
+              title: 'Tallenna Eky-tukipaketti',
+              filters: [{ extensions: ['json.gz'], name: 'Eky-tukipaketti, GZip-pakattu JSON' }],
+            });
+            return result.canceled || result.filePath === '' ? null : result.filePath;
+          },
+          showSafeError() {
+            dialog.showErrorBox('Tukipakettia ei voitu luoda', 'Eky-tukipakettia ei voitu luoda turvallisesti.');
+          },
+        });
+        startupSupportExport = exporter;
+        try { await exporter.create(); }
+        finally { exporter.dispose(); startupSupportExport = undefined; }
         return;
       }
 

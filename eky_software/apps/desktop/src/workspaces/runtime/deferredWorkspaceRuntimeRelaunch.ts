@@ -7,6 +7,7 @@ export class DeferredWorkspaceRuntimeRelaunch
 {
   private requested = false;
   private completed = false;
+  private dispatched = false;
 
   constructor(private readonly relaunchApplication: () => void) {}
 
@@ -24,9 +25,14 @@ export class DeferredWorkspaceRuntimeRelaunch
       throw new Error('WORKSPACE_RELAUNCH_AUTHORITY_ASYNC');
     }
     this.relaunchApplication();
+    this.dispatched = true;
   }
 
   isRequested(): boolean {
     return this.requested;
+  }
+
+  hasDispatched(): boolean {
+    return this.dispatched;
   }
 }

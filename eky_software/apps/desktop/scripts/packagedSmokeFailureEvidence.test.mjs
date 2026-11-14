@@ -42,6 +42,15 @@ test('packaged comparison helpers load in the Node runner without Electron', asy
     for (const name of ['readSmokeState', 'writeSmokeState', 'captureActiveProfileEntries']) {
       assert.equal(typeof helpers[name], 'function');
     }
+    const smoke = await import('../src/main/packagedSmoke.ts');
+    assert.equal(typeof smoke.runPackagedSelectorSmoke, 'function');
+    assert.equal(typeof smoke.resolvePackagedSmokeSupportBundlePath, 'function');
+    const reporter = smoke.createPackagedSmokeProgressReporter({ enabled: false,
+      phase: smoke.packagedSelectorVerificationPhase, root: undefined, userDataPath: undefined });
+    await reporter.reportStage('startup');
+    await assert.rejects(reporter.reportStage('shutdown'), { message: 'DESKTOP_SMOKE_STAGE_INVALID' });
+    await reporter.reportStage('supportBundle');
+    await reporter.reportStage('shutdown');
   } finally { hooks.deregister(); }
 });
 

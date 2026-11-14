@@ -225,6 +225,7 @@ export function createInvoicePdfPreviewWindowController(
           typeof window.ekyDesktop.createEmptyWorkspace === 'function' &&
           typeof window.ekyDesktop.cancelLocalUpdate === 'function' &&
           typeof window.ekyDesktop.confirmLocalUpdate === 'function' &&
+          typeof window.ekyDesktop.deleteWorkspace === 'function' &&
           typeof window.ekyDesktop.disableInvoicePdfArchive === 'function' &&
           typeof window.ekyDesktop.discardSelectedLocalUpdate === 'function' &&
           typeof window.ekyDesktop.getInvoicePdfArchiveStatus === 'function' &&
@@ -243,7 +244,7 @@ export function createInvoicePdfPreviewWindowController(
           typeof window.ekyDesktop.retryPendingInvoicePdfArchiveTasks === 'function' &&
           typeof window.ekyDesktop.selectLocalUpdate === 'function' &&
           typeof window.ekyDesktop.switchWorkspace === 'function' &&
-          Object.keys(window.ekyDesktop).length === 25`,
+          Object.keys(window.ekyDesktop).length === 26`,
         true,
       );
     },

@@ -16,6 +16,7 @@ import { WorkspaceBackupReplacementError } from '../replacement/workspaceBackupR
 import { createWorkspaceBackupReplacementFixture, TEST_REPLACEMENT_WORKSPACE_ID } from '../replacement/workspaceBackupReplacementTestSupport.js';
 import { JsonLineDesktopOperationalLogger } from '../../observability/infrastructure/jsonLineDesktopOperationalLogger.js';
 import { createWorkspaceBackupOperationalObserver } from './workspaceBackupOperationalObserver.js';
+import type { WorkspaceManagementObserver } from './workspaceManagementTypes.js';
 
 const activeId = '00000000-0000-4000-8000-000000000001' as WorkspaceId;
 const logRoots: string[] = [];
@@ -466,6 +467,126 @@ describe('workspace management service', () => {
     await expect(result).resolves.toMatchObject({ workspaceId: activeId });
     await closing;
   });
+
+  it('captures immutable observation freshness without reading a workspace or granting admission', async () => {
+    const readRegistry = vi.fn(async () => ({ formatVersion: 2 as const, activeWorkspaceId: null, workspaces: [] }));
+    const service = createService({ readRegistry });
+    const context = service.captureOperationContext();
+    expect(context.operation).toBeNull();
+    expect(Object.isFrozen(context)).toBe(true);
+    expect(readRegistry).not.toHaveBeenCalled();
+    await service.getStatus();
+    expect(() => context.assertCurrent()).not.toThrow();
+    service.closeAdmission();
+    expect(() => context.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    const closed = service.captureOperationContext();
+    expect(() => closed.assertCurrent()).not.toThrow();
+    await expect(service.createEmpty('Synthetic')).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' });
+    await service.shutdown();
+    expect(() => closed.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(() => service.captureOperationContext()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  });
+
+  it('invalidates an old context before the first command await and never restores it on idle', async () => {
+    const admission = deferred<void>();
+    const service = createService({ assertNoUnresolvedOperations: () => admission.promise });
+    const old = service.captureOperationContext();
+    const operation = service.createEmpty('Synthetic');
+    try {
+      expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+      expect(() => service.captureOperationContext()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    } finally { admission.resolve(); await operation; }
+    expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    const current = service.captureOperationContext();
+    expect(current.operation).toMatchObject({ operationKind: 'create', correlationId: expect.any(String) });
+    expect(Object.isFrozen(current.operation)).toBe(true);
+    expect(() => current.assertCurrent()).not.toThrow();
+  });
+
+  it('does not replace the active command identity with a BUSY request or status read', async () => {
+    const started = deferred<void>();
+    const finish = deferred<{ workspaceId: WorkspaceId; workspaceLabel: string }>();
+    const identities: unknown[] = [], events: unknown[] = [];
+    const service = createService({
+      create: () => { started.resolve(); return finish.promise; },
+      observer: { operationStarted: value => identities.push(value), record: value => events.push(value) },
+    });
+    const work = service.createEmpty('Synthetic');
+    try {
+      await started.promise;
+      await expect(service.rename(activeId, 'Other')).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_BUSY' });
+      await service.getStatus();
+      expect(identities).toHaveLength(1);
+      expect(events).toContainEqual(expect.objectContaining({ operationKind: 'rename', stage: 'admission' }));
+    } finally { finish.resolve({ workspaceId: activeId, workspaceLabel: 'Synthetic' }); await work; }
+    expect(service.captureOperationContext().operation).toBe(identities[0]);
+    await service.getStatus();
+    expect(service.captureOperationContext().operation).toBe(identities[0]);
+  });
+
+  it('retains the same failure correlation through its own admission closure and settlement', async () => {
+    const cause = new Error('synthetic first command failure');
+    const identities: unknown[] = [], settled: unknown[] = [], events: unknown[] = [];
+    let publishedBeforeSettlement = false;
+    const service = createService({
+      create: async () => { service.closeAdmission(); throw cause; },
+      observer: { operationStarted: value => identities.push(value), record: value => events.push(value),
+        operationSettled(value) {
+          try { service.captureOperationContext(); publishedBeforeSettlement = true; } catch { /* Still pending. */ }
+          settled.push(value);
+        } },
+    });
+    const old = service.captureOperationContext();
+    await expect(service.createEmpty('Synthetic')).rejects.toMatchObject({ cause });
+    expect(settled).toEqual(identities);
+    expect(publishedBeforeSettlement).toBe(false);
+    const context = service.captureOperationContext();
+    expect(context.operation).toBe(identities[0]);
+    expect(events).toContainEqual(expect.objectContaining({ correlationId: context.operation!.correlationId, outcome: 'failed' }));
+    expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(() => context.assertCurrent()).not.toThrow();
+  });
+
+  it('replaces failed-command observation selection after a successful new command', async () => {
+    const service = createService({ create: async () => { throw new Error('synthetic failure'); } });
+    await expect(service.createEmpty('Synthetic')).rejects.toMatchObject({ code: 'WORKSPACE_MANAGEMENT_CREATE_FAILED' });
+    const old = service.captureOperationContext();
+    await service.rename(activeId, 'Renamed');
+    const current = service.captureOperationContext();
+    expect(current.operation!.operationKind).toBe('rename');
+    expect(current.operation!.correlationId).not.toBe(old.operation!.correlationId);
+    expect(() => old.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+  });
+
+  it.each(['operationStarted', 'operationSettled'] as const)(
+    'preserves the command failure when the %s observer throws or rejects', async phase => {
+      for (const asyncFailure of [false, true]) {
+        const cause = new Error('synthetic command first cause');
+        const service = createService({ create: async () => { throw cause; },
+          observer: { record() {}, [phase]() {
+            if (asyncFailure) return Promise.reject(new Error('synthetic observation rejection'));
+            throw new Error('synthetic observation failure');
+          } } });
+        await expect(service.createEmpty('Synthetic')).rejects.toMatchObject({ cause });
+        expect(() => service.captureOperationContext().assertCurrent()).not.toThrow();
+      }
+    },
+  );
+
+  it('does not publish an observation context while the existing status work is pending', async () => {
+    const read = deferred<Awaited<ReturnType<WorkspaceRegistryPort['read']>>>();
+    const started = deferred<void>();
+    const service = createService({ readRegistry: () => { started.resolve(); return read.promise; } });
+    const context = service.captureOperationContext();
+    const status = service.getStatus();
+    try {
+      await started.promise;
+      expect(() => service.captureOperationContext()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+      expect(() => context.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    } finally { read.resolve({ formatVersion: 2, activeWorkspaceId: null, workspaces: [] }); await status; }
+    expect(() => context.assertCurrent()).toThrow('WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED');
+    expect(service.captureOperationContext().operation).toBeNull();
+  });
 });
 
 function createService(overrides: {
@@ -479,7 +600,7 @@ function createService(overrides: {
     workspaceId: WorkspaceId;
     workspaceLabel: string;
   }>;
-  observer?: { record(event: unknown): void };
+  observer?: WorkspaceManagementObserver;
   recoveryState?: 'clear' | 'recoveryRequired';
   readRegistry?: WorkspaceRegistryPort['read'];
   readRecoveryState?: () => Promise<'clear' | 'recoveryRequired'>;

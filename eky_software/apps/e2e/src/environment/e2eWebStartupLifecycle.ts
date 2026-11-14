@@ -2,6 +2,7 @@ import type { ProcessOutput } from './boundedProcessOutput.js';
 import type { E2eProcessStartupObservation } from './e2eProcessStartupObservation.js';
 import { OwnedWindowsViteStartupFailure } from './startOwnedWindowsVite.js';
 import { waitForObservedProcessHealth } from './waitForObservedProcessHealth.js';
+import { linuxPreflightPrivateCheck } from '../../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 
 export type E2eWebStartupErrorCode = 'E2E_WEB_PROCESS_SPAWN_FAILED' | 'E2E_WEB_HEALTH_TIMEOUT'
   | 'E2E_WEB_WORKLOAD_OBSERVATION_LOST' | 'E2E_WEB_CHILD_EXITED_BEFORE_HEALTH';
@@ -19,9 +20,12 @@ export interface E2eWebStartupFailureEvidence {
 export class E2eWebStartupFailure extends Error {
   readonly evidence: Readonly<E2eWebStartupFailureEvidence>;
   readonly #output: Readonly<{ stdout: string; stderr: string }> | undefined;
+  readonly #preflightCheck: string | undefined;
 
-  constructor(evidence: E2eWebStartupFailureEvidence, output?: Readonly<{ stdout: string; stderr: string }>) {
+  constructor(evidence: E2eWebStartupFailureEvidence, output?: Readonly<{ stdout: string; stderr: string }>,
+    preflightCheck?: string) {
     super(evidence.errorCode);
+    this.#preflightCheck = linuxPreflightPrivateCheck(preflightCheck);
     this.evidence = Object.freeze({ ...evidence, cleanup: Object.freeze({ ...evidence.cleanup }) });
     this.#output = output === undefined ? undefined : Object.freeze({ stdout: output.stdout, stderr: output.stderr });
   }
@@ -29,6 +33,7 @@ export class E2eWebStartupFailure extends Error {
   readPrivateOutput(): Readonly<{ stdout: string; stderr: string }> | undefined {
     return this.#output;
   }
+  readPrivatePreflightCheck() { return this.#preflightCheck; }
 }
 
 export async function waitForE2eWebStartup(input: {

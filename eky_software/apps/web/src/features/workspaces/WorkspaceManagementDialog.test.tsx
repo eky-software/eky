@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
 
 import type { WorkspaceManagementStatus } from '../../app/desktopWorkspaceManagement.js';
+import { uiText } from '../../i18n/fi.js';
 import { WorkspaceManagementDialog } from './WorkspaceManagementDialog.js';
 import type { WorkspaceSelectorState } from './workspaceSelectorState.js';
 
@@ -35,6 +36,37 @@ const status: WorkspaceManagementStatus = {
 };
 
 describe('WorkspaceManagementDialog', () => {
+  it('renders conditional deletion actions alongside the existing availability blocks', () => {
+    const html = renderToStaticMarkup(<WorkspaceManagementDialog
+      canDeleteWorkspace canReplaceActiveWorkspace={false} state={createState()}
+      onBackupChoiceChange={() => {}} onLabelChange={() => {}} onModeChange={() => {}} onSubmit={() => {}} />);
+    expect(html.match(/>Poista yritys<\/button>/g)).toHaveLength(3);
+    expect(html.match(/disabled=""/g)).toHaveLength(2);
+  });
+
+  it('requires both the conditional capability and choice callback before showing deletion confirmation', () => {
+    const selected = createState({ mode: 'confirmDelete', selectedWorkspaceId: activeWorkspaceId });
+    for (const props of [{}, { canDeleteWorkspace: true }, { onBackupChoiceChange: () => {} }]) {
+      const html = renderToStaticMarkup(<WorkspaceManagementDialog
+        {...props} canReplaceActiveWorkspace={false} state={selected}
+        onLabelChange={() => {}} onModeChange={() => {}} onSubmit={() => {}} />);
+      expect(html).toContain(uiText.workspaces.safeError);
+      expect(html).not.toContain('<form');
+    }
+  });
+
+  it('shows restart uncertainty without a pending spinner or new mutation controls', () => {
+    const html = renderToStaticMarkup(<WorkspaceManagementDialog
+      canDeleteWorkspace canReplaceActiveWorkspace={false}
+      state={createState({ requiresRestart: true, errorMessage: uiText.workspaces.deleteOutcomeUnknown })}
+      onBackupChoiceChange={() => {}} onLabelChange={() => {}} onModeChange={() => {}} onSubmit={() => {}} />);
+    expect(html).toContain(uiText.workspaces.deleteOutcomeUnknown);
+    expect(html).not.toContain('role="status"');
+    expect(html).not.toContain('<form');
+    expect(html).not.toContain(uiText.workspaces.deleteWorkspace);
+    expect(html).not.toContain(uiText.workspaces.addWorkspace);
+  });
+
   it('lists active, duplicate-labelled and recovery workspaces without destructive actions', () => {
     const html = renderDialog(createState());
 
@@ -178,6 +210,10 @@ function createState(
   overrides: Partial<WorkspaceSelectorState> = {},
 ): WorkspaceSelectorState {
   return {
+    backupChoice: null,
+    deletionCompleted: false,
+    progressMessage: null,
+    requiresRestart: false,
     errorMessage: null,
     isDialogOpen: true,
     isSubmitting: false,

@@ -3,7 +3,7 @@ import { deriveWorkspaceBackupImportOperationPaths, deriveWorkspaceBackupImportO
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { workspaceBackupPlaintextQuarantineDirectoryName } from '../import/workspaceBackupPlaintextQuarantine.js';
 import { validateWorkspaceId } from '../registry/workspaceIdValidation.js';
-import { captureWorkspaceCandidateRemnantSelection } from './workspaceCandidateRemnantSelection.js';
+import { captureWorkspaceCandidateRemnantObservation } from './workspaceCandidateRemnantSelection.js';
 import { invalidDeletionData } from './workspaceDeletionDataValidation.js';
 import { observeWorkspaceDeletionDirectoryEntries, workspaceDeletionDirectoryReads,
   type WorkspaceDeletionDirectoryReads } from './workspaceDeletionDirectoryEntries.js';
@@ -16,7 +16,7 @@ import { captureWorkspaceRemnantParents as captureParents } from './workspaceRem
 const nativeReads = Object.freeze({ ...workspaceDeletionDirectoryReads, ...workspaceInspectionRemnantReads });
 type CandidateReads = WorkspaceDeletionDirectoryReads & WorkspaceInspectionRemnantReads;
 
-type CandidateSelection = Awaited<ReturnType<typeof captureWorkspaceCandidateRemnantSelection>>;
+type CandidateSelection = Awaited<ReturnType<typeof captureWorkspaceCandidateRemnantObservation>>;
 type CandidateOperationObservation =
   | Readonly<{ kind: 'operationsParent'; rootPath: string; ancestorIdentities: readonly (string | null)[] }>
   | Readonly<{ kind: 'operation'; operationId: string; rootPath: string; rootIdentity: string }>
@@ -90,7 +90,7 @@ async function* observeCandidateEntries(
   const candidateAuthority = { ...guarded, assertWritersAbsent: authority.assertWritersAbsent.bind(authority) };
   for await (const name of observeWorkspaceDeletionDirectoryEntries(operationRoot, guarded, reads)) {
     const workspaceId = validateWorkspaceId(name);
-    const candidate = await captureWorkspaceCandidateRemnantSelection(userDataRoot, operationId, workspaceId, candidateAuthority, reads);
+    const candidate = await captureWorkspaceCandidateRemnantObservation(userDataRoot, operationId, workspaceId, candidateAuthority, reads);
     // A name returned from the actual parent is not a payload absence observation.
     if (candidate.rootIdentity === null) return invalidDeletionData(invalidCode);
     await selected.assertSelected();

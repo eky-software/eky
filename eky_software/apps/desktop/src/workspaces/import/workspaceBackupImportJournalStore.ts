@@ -2,6 +2,7 @@ import {
   CrashSafeByteSlotStore,
   CrashSafeByteSlotStoreError,
   type CrashSafeByteSlotSelection,
+  type CrashSafeByteSlotReadSelection,
   type ObservedRecoveryAuthority,
   type ObservedRecoverySelection,
 } from '../persistence/crashSafeByteSlotStore.js';
@@ -119,7 +120,7 @@ export class WorkspaceBackupImportJournalStore
   // Metadata only. The caller proves the committed binding, purged deletion, after-registry and all payload/writer absence.
   clearAfterDeletionPurged(bindingValue: unknown, selection: CrashSafeByteSlotSelection & ObservedRecoveryAuthority & {
     assertDeletionPurged(): Promise<void>;
-  }): Promise<void> {
+  }, readSelection?: CrashSafeByteSlotReadSelection): Promise<void> {
     return this.runExclusive(async () => {
       const onUncertain = selection.onUncertain.bind(selection);
       let failed = false;
@@ -131,6 +132,13 @@ export class WorkspaceBackupImportJournalStore
         const current = selection.assertAuthority.bind(selection);
         const external = selection.assertExternalSelection.bind(selection);
         const purged = selection.assertDeletionPurged.bind(selection);
+        let readOwned: (() => Promise<void>) | undefined;
+        if (readSelection !== undefined) {
+          if (readSelection === null || typeof readSelection !== 'object') throw new WorkspaceBackupImportJournalValidationError();
+          const supplied = readSelection.assertBeforeSlotRead;
+          if (typeof supplied !== 'function') throw new WorkspaceBackupImportJournalValidationError();
+          readOwned = supplied.bind(readSelection);
+        }
         const assertAuthority = () => {
           if (failed) throw firstFailure;
           try { assertSynchronousAuthority(current); } catch (error) { throw retain(error); }
@@ -138,7 +146,14 @@ export class WorkspaceBackupImportJournalStore
         const assertBeforeSlotRead = async () => {
           assertReading();
           try {
-            assertAuthority(); await external(); assertReading(); assertAuthority();
+            assertAuthority();
+            if (readOwned === undefined) await external();
+            else {
+              const result: unknown = await readOwned();
+              assertReading(); assertAuthority();
+              if (result !== undefined) throw new WorkspaceBackupImportJournalValidationError();
+            }
+            assertReading(); assertAuthority();
           } catch (error) { throw retain(error); }
         };
         const assertExternalSelection = async () => {

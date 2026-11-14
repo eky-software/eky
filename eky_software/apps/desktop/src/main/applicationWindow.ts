@@ -18,6 +18,7 @@ export function createApplicationWindow(
   applicationPath: string,
   showWhenReady = true,
   observer?: ApplicationWindowObserver,
+  canShow: () => boolean = () => true,
 ): BrowserWindow {
   const preloadPath = join(applicationPath, 'dist/preload/index.cjs');
   const window = new BrowserWindow(createSecureWindowOptions(preloadPath));
@@ -42,7 +43,7 @@ export function createApplicationWindow(
   );
 
   if (showWhenReady) {
-    window.once('ready-to-show', () => window.show());
+    window.once('ready-to-show', () => { if (canShow()) window.show(); });
   }
 
   return window;

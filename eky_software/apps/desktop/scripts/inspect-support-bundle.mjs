@@ -43,6 +43,55 @@ const knownTruncatedSections = new Set([
   'incidentSummaries',
 ]);
 
+// Independent Node-only mirror of supportBundleDesktopData.ts and its named
+// desktopBuildInfo, desktopOperationalEventValidator, workspaceManagementFailureContext
+// and workspaceCandidateMessages/profileInspectionFailure owners. No runtime imports.
+const desktopOnlySupportBundleFormatVersion = 3;
+const desktopOnlySupportBundleKind = 'desktopOnly';
+const desktopOnlySupportBundleSections = ['system', 'availability', 'observation'];
+const desktopFailureFields = [
+  'appVersion', 'buildRevision', 'category', 'component', 'correlationId',
+  'durationMs', 'errorCode', 'eventId', 'eventName', 'level', 'outcome',
+  'retryable', 'runtimeInstanceId', 'schemaVersion', 'sideEffectState', 'stage', 'timestamp',
+];
+const technicalUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const operationalUuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const desktopSemVerPattern = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[a-zA-Z-][0-9A-Za-z-]*))*)?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/;
+const workspaceManagementOperationIds = [
+  'workspace.create', 'workspace.import', 'workspace.replace', 'workspace.switch',
+  'workspace.rename', 'workspace.delete', 'workspace.deleteResume',
+];
+const workspaceDeletionFailureStages = [
+  'admission', 'deletePreparation', 'deleteAuthorization',
+  'deletePurge', 'deleteRegistry', 'deleteCleanup',
+];
+const workspaceDeletionFailureCodes = [
+  'WORKSPACE_MANAGEMENT_BUSY', 'WORKSPACE_MANAGEMENT_INVALID',
+  'WORKSPACE_DELETE_STALE_CONFIRMATION', 'WORKSPACE_DELETE_BACKUP_UNAVAILABLE',
+  'WORKSPACE_DELETE_OWNERSHIP_UNCERTAIN', 'WORKSPACE_DELETE_INVENTORY_INVALID',
+  'WORKSPACE_DELETE_JOURNAL_CONFLICT', 'WORKSPACE_DELETE_IO_FAILED',
+  'WORKSPACE_DELETE_CLEANUP_FAILED', 'WORKSPACE_DELETE_FAILED',
+];
+const failureOperationIds = {
+  WORKSPACE_CREATION_LABEL_EXISTS: 'workspace.create',
+  WORKSPACE_IMPORT_LABEL_EXISTS: 'workspace.import',
+  WORKSPACE_MANAGEMENT_CREATE_FAILED: 'workspace.create',
+  WORKSPACE_MANAGEMENT_IMPORT_FAILED: 'workspace.import',
+  WORKSPACE_MANAGEMENT_REPLACE_FAILED: 'workspace.replace',
+  WORKSPACE_MANAGEMENT_SWITCH_FAILED: 'workspace.switch',
+  WORKSPACE_MANAGEMENT_RENAME_FAILED: 'workspace.rename',
+};
+const workspaceCandidateFailureCauses = [
+  'unknown',
+  'PROFILE_SCHEMA_UNSUPPORTED', 'PROFILE_INSPECTION_LIMIT_EXCEEDED',
+  'PROFILE_INSPECTION_TIMEOUT', 'PROFILE_INSPECTION_PROTOCOL_INVALID',
+  'PROFILE_INSPECTION_CLEANUP_UNVERIFIED', 'MIGRATION_HISTORY_INVALID',
+  'PROFILE_SNAPSHOT_DATABASE_INVALID', 'PROFILE_SNAPSHOT_MIGRATIONS_INVALID',
+  'PROFILE_SNAPSHOT_ARTIFACTS_INVALID', 'WORKSPACE_CANDIDATE_SOURCE_MISMATCH',
+  'WORKSPACE_CANDIDATE_DATABASE_CHANGED', 'WORKSPACE_CANDIDATE_DATABASE_INVALID',
+  'WORKSPACE_CANDIDATE_DATABASE_CLOSE_FAILED', 'WORKSPACE_CANDIDATE_OPERATION_CANCELLED',
+];
+
 export const supportBundleInspectorErrorCodes = Object.freeze({
   checksumFailed: 'SUPPORT_BUNDLE_CHECKSUM_FAILED',
   fileInvalid: 'SUPPORT_BUNDLE_FILE_INVALID',
@@ -153,6 +202,22 @@ export function writeSupportBundleJson(document, targetPath, options = {}) {
 }
 
 export function formatSupportBundleSummary(summary) {
+  if (summary.kind === desktopOnlySupportBundleKind) {
+    return [
+      `Tukipaketin formaatti: ${summary.formatVersion} (${summary.kind})`,
+      `Luotu: ${summary.createdAt}`,
+      `Sovellusversio: ${summary.appVersion}`,
+      `Build-revisio: ${summary.buildRevision}`,
+      `Backend: ${summary.backend}`,
+      `Tietokannan tila: ${summary.database}`,
+      `Diagnostiikkahistoria: ${summary.diagnosticHistory}`,
+      `Incident-historia: ${summary.incidentHistory}`,
+      `Nykyisen operaation havainto: ${summary.observationStatus}`,
+      ...(summary.firstErrorCode === undefined ? [] : [`Ensivirheen koodi: ${summary.firstErrorCode}`]),
+      ...(summary.cleanupErrorCode === undefined ? [] : [`Siivousvirheen koodi: ${summary.cleanupErrorCode}`]),
+      'Checksumit: kunnossa',
+    ].join('\n');
+  }
   return [
     `Tukipaketin formaatti: ${summary.formatVersion}`,
     `Luotu: ${summary.createdAt}`,
@@ -305,6 +370,11 @@ function parseJsonDocument(uncompressed) {
 }
 
 function validateDocument(value) {
+  if (isRecord(value) && isRecord(value.manifest) &&
+      value.manifest.kind === desktopOnlySupportBundleKind) {
+    validateDesktopOnlyDocument(value);
+    return;
+  }
   if (!isRecord(value) || !hasOnlyKeys(value, topLevelKeys)) {
     throw new SupportBundleInspectorError(
       supportBundleInspectorErrorCodes.jsonInvalid,
@@ -380,7 +450,153 @@ function validateDocument(value) {
   }
 }
 
+function validateDesktopOnlyDocument(value) {
+  const manifest = value.manifest;
+  if (Number.isSafeInteger(manifest.supportBundleFormatVersion) &&
+      manifest.supportBundleFormatVersion !== desktopOnlySupportBundleFormatVersion) {
+    throw new SupportBundleInspectorError(supportBundleInspectorErrorCodes.formatUnsupported);
+  }
+  if (!hasOnlyKeys(value, ['manifest', ...desktopOnlySupportBundleSections]) ||
+      !hasOnlyKeys(manifest, [
+        'supportBundleFormatVersion', 'kind', 'createdAt', 'creationCorrelationId', 'sectionChecksums',
+      ]) || manifest.supportBundleFormatVersion !== desktopOnlySupportBundleFormatVersion ||
+      !isCanonicalTimestamp(manifest.createdAt) ||
+      !isUuid(manifest.creationCorrelationId, technicalUuidPattern) ||
+      !hasExactRecordKeys(manifest.sectionChecksums, desktopOnlySupportBundleSections) ||
+      Object.values(manifest.sectionChecksums).some(item => typeof item !== 'string' || !/^[0-9a-f]{64}$/.test(item)) ||
+      !isDesktopSystemSection(value.system) || !isDesktopAvailability(value.availability) ||
+      !isDesktopObservation(value.observation, value.system)) {
+    throw new SupportBundleInspectorError(supportBundleInspectorErrorCodes.jsonInvalid);
+  }
+  if (desktopOnlySupportBundleSections.some(name => manifest.sectionChecksums[name] !== checksum(value[name]))) {
+    throw new SupportBundleInspectorError(supportBundleInspectorErrorCodes.checksumFailed);
+  }
+  // Validation deliberately leaves the parsed sections and their key order intact.
+}
+
+function isDesktopSystemSection(value) {
+  return hasExactRecordKeys(value, ['appVersion', 'architecture', 'buildRevision', 'electronVersion', 'platform']) &&
+    isDesktopVersion(value.appVersion) && isDesktopVersion(value.electronVersion) &&
+    typeof value.buildRevision === 'string' && /^(?:[0-9a-f]{7,40}|development)$/.test(value.buildRevision) &&
+    ['x64', 'arm64'].includes(value.architecture) && ['win32', 'linux', 'darwin'].includes(value.platform);
+}
+
+function isDesktopAvailability(value) {
+  return hasExactRecordKeys(value, ['backend', 'database', 'diagnosticHistory', 'incidentHistory']) &&
+    ['notRunning', 'exitUnconfirmed'].includes(value.backend) && value.database === 'notInspected' &&
+    value.diagnosticHistory === 'notCollected' && value.incidentHistory === 'notCollected';
+}
+
+function isDesktopObservation(value, system) {
+  if (hasExactRecordKeys(value, ['scope', 'status']) &&
+      value.scope === 'currentOperation' && value.status === 'unavailable') return true;
+  if (!hasExactRecordKeys(value, ['scope', 'status', 'firstError', 'cleanupError']) ||
+      value.scope !== 'currentOperation' || value.status !== 'available') return false;
+  const { firstError, cleanupError } = value;
+  if ((firstError === null && cleanupError === null) ||
+      !isDesktopFailure(firstError, 'firstError', system) ||
+      !isDesktopFailure(cleanupError, 'cleanupError', system)) return false;
+  return firstError === null || cleanupError === null || (
+    firstError.correlationId === cleanupError.correlationId &&
+    firstError.runtimeInstanceId === cleanupError.runtimeInstanceId &&
+    desktopOperationKey(firstError) === desktopOperationKey(cleanupError) &&
+    firstError.eventId !== cleanupError.eventId
+  );
+}
+
+function isDesktopFailure(value, role, system) {
+  if (value === null) return true;
+  if (!isRecord(value)) return false;
+  const management = value.eventName === 'workspaceManagement.operationFailed';
+  const backup = value.eventName === 'workspaceBackup.operationFailed' || value.eventName === 'workspaceBackup.cleanupFailed';
+  if ((!management && !backup) ||
+      !hasOnlyKeys(value, management ? [...desktopFailureFields, 'operationId'] : desktopFailureFields) ||
+      Object.values(value).some(field => typeof field === 'string' &&
+        field.replace(/[\u0000-\u001f\u007f-\u009f]/g, '').trim() !== field) ||
+      value.schemaVersion !== 1 || value.component !== 'desktop' ||
+      value.category !== (management ? 'workspaceManagement' : 'backup') ||
+      value.level !== 'error' || value.outcome !== 'failure' ||
+      !isUuid(value.eventId, technicalUuidPattern) ||
+      !isUuid(value.correlationId, operationalUuidPattern) ||
+      !isUuid(value.runtimeInstanceId, operationalUuidPattern) ||
+      !isTimestamp(value.timestamp) || value.appVersion !== system.appVersion ||
+      !isBoundedString(value.appVersion, 80) || value.buildRevision !== system.buildRevision ||
+      !Number.isSafeInteger(value.durationMs) || value.durationMs < 0 ||
+      !['none', 'unknown'].includes(value.sideEffectState) ||
+      Buffer.byteLength(JSON.stringify(value), 'utf8') > 16 * 1024) return false;
+  const cleanup = value.eventName === 'workspaceBackup.cleanupFailed' || (management && value.stage === 'deleteCleanup');
+  if ((role === 'cleanupError') !== cleanup ||
+      (management && cleanup && value.errorCode !== 'WORKSPACE_DELETE_CLEANUP_FAILED')) return false;
+  if (management) return isWorkspaceManagementFailureContext(value);
+  return ['import', 'replace'].includes(value.stage) && value.retryable === false &&
+    workspaceCandidateFailureCauses.includes(value.errorCode);
+}
+
+function isWorkspaceManagementFailureContext(value) {
+  if (typeof value.errorCode !== 'string' || !workspaceManagementOperationIds.includes(value.operationId)) return false;
+  if (value.operationId === 'workspace.delete' || value.operationId === 'workspace.deleteResume') {
+    if (!workspaceDeletionFailureStages.includes(value.stage) ||
+        !workspaceDeletionFailureCodes.includes(value.errorCode)) return false;
+    if (value.sideEffectState === 'none' && (value.operationId === 'workspace.deleteResume' ||
+        (value.stage !== 'admission' &&
+          !(value.stage === 'deletePreparation' && value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY')))) return false;
+    return value.retryable === (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY');
+  }
+  if (value.errorCode === 'WORKSPACE_MANAGEMENT_BUSY') {
+    return ['admission', 'operation'].includes(value.stage) && value.retryable === true;
+  }
+  if (value.retryable !== false) return false;
+  if (value.errorCode === 'WORKSPACE_REPLACEMENT_LINEAGE_MISMATCH') {
+    return value.operationId === 'workspace.replace' && value.stage === 'lineageCheck';
+  }
+  return value.stage === 'operation' && (
+    (value.errorCode === 'WORKSPACE_MANAGEMENT_LABEL_EXISTS' &&
+      ['workspace.create', 'workspace.import', 'workspace.rename'].includes(value.operationId)) ||
+    value.errorCode === 'WORKSPACE_MANAGEMENT_INVALID' || value.errorCode === 'WORKSPACE_MANAGEMENT_RECOVERY_REQUIRED' ||
+    (Object.hasOwn(failureOperationIds, value.errorCode) && failureOperationIds[value.errorCode] === value.operationId)
+  );
+}
+
+function desktopOperationKey(event) {
+  return event.eventName === 'workspaceManagement.operationFailed' ? event.operationId : `workspace.${event.stage}`;
+}
+
+function hasExactRecordKeys(value, keys) {
+  return isRecord(value) && hasOnlyKeys(value, keys);
+}
+
+function isDesktopVersion(value) {
+  return isBoundedString(value, 100) && desktopSemVerPattern.test(value);
+}
+
+function isUuid(value, pattern) {
+  return typeof value === 'string' && pattern.test(value);
+}
+
+function isCanonicalTimestamp(value) {
+  if (typeof value !== 'string') return false;
+  const time = Date.parse(value);
+  return Number.isFinite(time) && new Date(time).toISOString() === value;
+}
+
 function createSafeSummary(document) {
+  if (document.manifest.kind === desktopOnlySupportBundleKind) {
+    return Object.freeze({
+      appVersion: document.system.appVersion,
+      buildRevision: document.system.buildRevision,
+      createdAt: document.manifest.createdAt,
+      formatVersion: document.manifest.supportBundleFormatVersion,
+      kind: desktopOnlySupportBundleKind,
+      ...document.availability,
+      observationStatus: document.observation.status,
+      ...(document.observation.firstError == null ? {} : {
+        firstErrorCode: document.observation.firstError.errorCode,
+      }),
+      ...(document.observation.cleanupError == null ? {} : {
+        cleanupErrorCode: document.observation.cleanupError.errorCode,
+      }),
+    });
+  }
   return Object.freeze({
     appVersion: document.system.appVersion,
     appliedMigrationCount:

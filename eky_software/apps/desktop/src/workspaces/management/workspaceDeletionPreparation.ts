@@ -36,6 +36,16 @@ type SelectorDeletionRuntime = Readonly<{
     'quiesceWrites' | 'stopAndProveHandlesClosed' | 'assertStoppedCurrent' | 'assertNoActiveWorkspaceRuntime' | 'ensurePreviousWorkspaceRunning'>;
 }>;
 
+type RecoveryManagementDeletionRuntime = Readonly<{
+  kind: 'recoveryManagement';
+  workspaceId: WorkspaceId;
+  persistedActiveWorkspaceId: WorkspaceId | null;
+  lifecycle: Pick<MainOwnedSelectorWorkspaceLifecycle,
+    'quiesceWrites' | 'stopAndProveHandlesClosed' | 'assertStoppedCurrent' | 'assertNoActiveWorkspaceRuntime' | 'assertRecoveryPreparationOwned'>;
+  assertCurrent(): void;
+  assertSelected(): Promise<void>;
+}>;
+
 export interface WorkspaceDeletionPreparationOptions {
   readonly operationId: string;
   readonly request: unknown;
@@ -43,7 +53,7 @@ export interface WorkspaceDeletionPreparationOptions {
   readonly runtimeGeneration: string;
   readonly lifetime: WorkspaceDeletionPreparationLifetime;
   readonly registry: Pick<WorkspaceRegistryStore, 'inspectSlots'>;
-  readonly runtime: ActiveDeletionRuntime | SelectorDeletionRuntime;
+  readonly runtime: ActiveDeletionRuntime | SelectorDeletionRuntime | RecoveryManagementDeletionRuntime;
   assertLease(): void;
   assertMainReservation(): Promise<void>;
   assertMainReservationCurrent(): void;
@@ -56,7 +66,7 @@ export interface WorkspaceDeletionPreparationOptions {
   // Recheck after publication awaits; the backup branch also rereads its bytes.
   publish(assertAuthority: () => void, assertPublicationCurrent: () => Promise<void>, target: DeletionTarget,
     context: Readonly<WorkspaceDeletionPublicationContext>, assertPreparationCurrent: () => Promise<void>,
-    assertPreparationReadOwned?: () => Promise<void>): Promise<void>;
+    assertPreparationReadOwned?: () => Promise<void>, assertRecoverySourceReadCurrent?: () => void): Promise<void>;
 }
 
 export class WorkspaceDeletionPreparationFailure extends Error {
@@ -73,7 +83,25 @@ export async function prepareWorkspaceDeletion(
   if (!isOperationId(input.operationId) || !isOperationId(input.runtimeGeneration)) {
     throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
   }
-  const { operationId, runtime, lifetime } = input;
+  const { operationId, lifetime } = input;
+  const originalRuntime = input.runtime;
+  const runtime = originalRuntime.kind === 'recoveryManagement' ? (() => {
+    const lifecycle = originalRuntime.lifecycle;
+    return Object.freeze({
+      kind: 'recoveryManagement' as const,
+      workspaceId: originalRuntime.workspaceId,
+      persistedActiveWorkspaceId: originalRuntime.persistedActiveWorkspaceId,
+      assertCurrent: originalRuntime.assertCurrent.bind(originalRuntime),
+      assertSelected: originalRuntime.assertSelected.bind(originalRuntime),
+      lifecycle: Object.freeze({
+        quiesceWrites: lifecycle.quiesceWrites.bind(lifecycle),
+        stopAndProveHandlesClosed: lifecycle.stopAndProveHandlesClosed.bind(lifecycle),
+        assertStoppedCurrent: lifecycle.assertStoppedCurrent.bind(lifecycle),
+        assertRecoveryPreparationOwned: lifecycle.assertRecoveryPreparationOwned.bind(lifecycle),
+        assertNoActiveWorkspaceRuntime: lifecycle.assertNoActiveWorkspaceRuntime.bind(lifecycle),
+      }),
+    });
+  })() : originalRuntime;
   let phase: 'live' | 'closing' | 'stopped' | 'invalid' = 'live';
   let preparationStarted = false;
   let publishing = false;
@@ -85,16 +113,22 @@ export async function prepareWorkspaceDeletion(
     try {
       assertUpdateJournalAuthority(lifetime.assertCurrent.bind(lifetime));
       assertUpdateJournalAuthority(input.assertLease.bind(input));
+      if (runtime.kind === 'recoveryManagement') assertUpdateJournalAuthority(runtime.assertCurrent);
     } catch (error) { phase = 'invalid'; throw error; }
   };
+  assertRequest();
+  if (runtime.kind === 'recoveryManagement') { await runtime.assertSelected(); assertRequest(); }
   const selection = await captureDeletionTarget({
     installationRoot: input.installationRoot, workspaceId: request.workspaceId,
     typedLabel: request.typedLabel, registry: input.registry, assertAuthority: assertRequest,
   });
   assertRequest();
+  if (runtime.kind === 'recoveryManagement') { await runtime.assertSelected(); assertRequest(); }
   const previous = selection.target.previousActiveWorkspaceId;
   if ((runtime.kind === 'active' && previous !== runtime.workspaceId) ||
-      (runtime.kind === 'selector' && previous !== null)) {
+      (runtime.kind === 'selector' && previous !== null) ||
+      (runtime.kind === 'recoveryManagement' && (previous !== runtime.persistedActiveWorkspaceId ||
+        request.workspaceId !== runtime.workspaceId))) {
     throw new Error('WORKSPACE_DELETE_RUNTIME_MISMATCH');
   }
   if (request.backupChoice === 'createBackup' &&
@@ -125,16 +159,19 @@ export async function prepareWorkspaceDeletion(
       if (phase === 'live' && preparationStarted && runtime.kind === 'active') {
         await runtime.broker.assertDeleteMaintenance(operationId);
       } else if (phase === 'stopped') {
-        await runtime.lifecycle.assertNoActiveWorkspaceRuntime();
-        assertContinuity();
-        await input.assertMainReservation();
+        if (runtime.kind === 'recoveryManagement') await runtime.lifecycle.assertRecoveryPreparationOwned();
+        else {
+          await runtime.lifecycle.assertNoActiveWorkspaceRuntime();
+          assertContinuity();
+          await input.assertMainReservation();
+        }
       }
       assertContinuity();
     } catch (error) { phase = 'invalid'; throw error; }
   };
   const stop = async () => {
     if (runtime.kind === 'active') await runtime.lifecycle.stopForDelete(runtime.workspaceId, operationId);
-    else await runtime.lifecycle.stopAndProveHandlesClosed(null);
+    else await runtime.lifecycle.stopAndProveHandlesClosed(previous);
   };
   const assertInspection = (binding: InspectedDeletionBackupBinding) => {
     if (inspectedContent === undefined) throw new Error('WORKSPACE_DELETE_INSPECTION_UNFINISHED');
@@ -165,7 +202,7 @@ export async function prepareWorkspaceDeletion(
         Promise.resolve().then(() => runtime.broker.beginDeleteMaintenance(operationId)),
       ].map(task => task.catch(error => { firstFailure ??= { error }; throw error; })));
       if (firstFailure !== undefined) throw firstFailure.error;
-    } else await runtime.lifecycle.quiesceWrites(null);
+    } else await runtime.lifecycle.quiesceWrites(previous);
     await assertCurrent();
     assertContinuity();
 
@@ -210,6 +247,7 @@ export async function prepareWorkspaceDeletion(
     assertContinuity();
     if (!confirmed) {
       proof?.invalidate();
+      if (runtime.kind === 'recoveryManagement') return 'cancelled';
       const returnConfirmed = await input.confirmReturn(selection.target);
       await assertCurrent();
       assertContinuity();
@@ -250,14 +288,26 @@ export async function prepareWorkspaceDeletion(
         if (!readActive) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
         assertPublication();
       };
+      const assertRecoverySourceReadCurrent = runtime.kind !== 'recoveryManagement' ? undefined : () => {
+        try { assertReadCurrent(); }
+        catch (error) {
+          if (!readFailed) { readFailed = true; firstReadFailure = error; }
+          readActive = false; phase = 'invalid';
+          throw firstReadFailure;
+        }
+      };
       const assertPreparationReadOwned = async () => {
         if (readFailed) throw firstReadFailure;
         if (!readActive) throw new Error('WORKSPACE_DELETE_AUTHORITY_INVALID');
         try {
           assertReadCurrent();
           await selection.assertRootCurrent(); assertReadCurrent();
-          await runtime.lifecycle.assertNoActiveWorkspaceRuntime(); assertReadCurrent();
-          await input.assertMainReservation(); assertReadCurrent();
+          if (runtime.kind === 'recoveryManagement') {
+            await runtime.lifecycle.assertRecoveryPreparationOwned(); assertReadCurrent();
+          } else {
+            await runtime.lifecycle.assertNoActiveWorkspaceRuntime(); assertReadCurrent();
+            await input.assertMainReservation(); assertReadCurrent();
+          }
         } catch (error) {
           if (!readFailed) { readFailed = true; firstReadFailure = error; }
           readActive = false; phase = 'invalid';
@@ -268,7 +318,7 @@ export async function prepareWorkspaceDeletion(
         await input.publish(assertPublication, assertPublicationSelection, selection.target, Object.freeze({
           operationId, target: selection.target,
           backupDisposition: receipt === undefined ? 'explicitDataLoss' : 'verifiedBackup',
-        }), assertPreparationCurrent, assertPreparationReadOwned);
+        }), assertPreparationCurrent, assertPreparationReadOwned, assertRecoverySourceReadCurrent);
       } finally { readActive = false; }
       await assertSelection(); assertPublication();
     };

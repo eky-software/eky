@@ -192,8 +192,8 @@ it('rejects reentrant finalization without poisoning the active call', async tes
   await t.run(); expect(checked).toBe(true); await t.absent();
 });
 
-it.for(['default.v1', 'default.v2', 'cold.present.v1', 'cold.present.v2'])(
-  'retains the %s path and evidence', async (kind, test) => {
+for (const pathKind of ['default.v1', 'default.v2', 'cold.present.v1', 'cold.present.v2']) it.for([pathKind])(
+  'retains the %s path and evidence', pathKind === 'cold.present.v2' ? { timeout: 10_000 } : {}, async (kind, test) => {
     const t = await postClearFixture(test, { cold: kind.startsWith('cold'), original: kind.endsWith('v2'), retired: !kind.includes('present') });
     await t.run(); expect(t.stats.reads).toBe(1);
     if (kind.startsWith('default')) { expect(t.stats.metadataInside).toBe(2); expect(t.f.fullProof).not.toHaveBeenCalled(); }

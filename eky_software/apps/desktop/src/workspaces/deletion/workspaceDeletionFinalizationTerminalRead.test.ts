@@ -4,6 +4,7 @@ import { expect, it, vi, type TestContext as TerminalContext } from 'vitest';
 import { createNodeCrashSafeFileSlotFileSystem } from '../persistence/crashSafeFileSlot.js';
 import { deletionTestJournal as terminalFulfilledJournal } from './workspaceDeletionDataTestSupport.js';
 import * as terminalFinalizers from './workspaceDeletionFinalization.js';
+import type { WorkspaceDeletionTerminalPhaseEvent } from './workspaceDeletionFinalization.js';
 import { createWorkspaceDeletionFinalizationTestFixture as fixture, captureWorkspaceDeletionTerminalPrefixTestFailure } from './workspaceDeletionFinalizationTestSupport.js';
 import { maximumWorkspaceDeletionJournalBytes } from './workspaceDeletionJournalCodec.js';
 import { WorkspaceDeletionJournalStore } from './workspaceDeletionJournalStore.js';
@@ -23,11 +24,13 @@ vi.mock('node:fs/promises', async (importOriginal) => {
     } };
 });
 async function terminalFixture(test: TerminalContext, original = false) {
-  const f = await fixture(test, true, original, { coldSelection: true });
+  const terminalEvents: WorkspaceDeletionTerminalPhaseEvent[] = [];
+  const f = await fixture(test, true, original, { coldSelection: true,
+    observeTerminalPhase(event) { terminalEvents.push(event); } });
   await unlink(f.inventoryPaths.currentPath);
   await rmdir(f.inventoryPaths.directoryPath);
   test.onTestFinished(() => { terminalNative.opened = undefined; });
-  return f;
+  return { ...f, terminalEvents };
 }
 function terminalGate() {
   let release!: () => void;
@@ -178,6 +181,7 @@ for (const mode of ['read', 'close'] as const) {
       await Promise.race([entered.promise, outcome.then(() => { throw new Error('TERMINAL_NATIVE_IO_NOT_HELD'); })]);
       expect(settled).toBe(false);
       expect(closed).toBe(0);
+      expect(f.terminalEvents.filter(event => event.phase === 'terminalJournalClear').map(event => event.event)).toEqual(['entered']);
       expect(handle!.fd).toBeGreaterThanOrEqual(0);
       f.revoke();
       await expect(f.run()).rejects.toThrow('WORKSPACE_DELETE_JOURNAL_CONFLICT');
@@ -192,6 +196,7 @@ for (const mode of ['read', 'close'] as const) {
       error: unknown;
     }).error).toBe(f.first);
     expect(closed).toBe(1);
+    expect(f.terminalEvents.filter(event => event.phase === 'terminalJournalClear').map(event => event.event)).toEqual(['entered', 'rejected']);
     expect(handle!.fd).toBe(-1);
     terminalNative.opened = undefined;
     expect(await readFile(f.journalPaths.currentPath)).toEqual(f.journalBytes);

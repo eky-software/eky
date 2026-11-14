@@ -25,21 +25,54 @@ querya, `companyId`:tä tai runtime-sessionia.
 
 ## W7:n hyväksytty jatkosuunta
 
+W7.5:n kytkentäjärjestyksen ja avoimet elinkaariliitokset omistaa
+[nykyinen toteutussuunnitelma](local-company-workspace-plan.md#w75-toteutussuunnitelma).
+V3:n tiedostoraja, valitsimen vienti ja varhaisen virheen native-entry ovat
+W7.5-työhaarassa. Alla olevat päivätyt W7.0:n lähtötilat ja kokeet eivät
+tarkoita, että nämä toteutukset pitäisi aloittaa uudelleen. Niiden rajattu
+kehitysketjun näyttö kuvataan W7.5-kohdissa; paketoidun viennin ja koko
+W7.5:n integraatiohyväksyntä ovat edelleen avoinna. Tukireitti ei ohita
+startup-portteja.
+Omistaja hyväksyi 6.11.2026 myös W7.5-suunnitelman rajatun native-viennin
+ennen yritysvalinnan/pääikkunan valmistumista, vasta kokeiden ja katselmuksen
+jälkeen. Sen kertakäyttöinen valtuus kuuluu virhettä käsittelevälle mainille;
+alla oleva IPC-entryn ikkuna-/frame-/hallintasessiosuoja säilyy ennallaan.
+Runtime-/build-identiteetti on ensin validoitava. Ilman sitä nykyinen
+virheilmoitus ja poistuminen säilyvät, eikä yleistä startup-fallbackia avata.
+Havainto otetaan ennen turvallista koodimuunnosta; puuttuva jää puuttuvaksi.
+
+**W7.5:n nykyisen v2-entryn elinikäkorjaus:** sama capability tarkistaa
+ikkunan, pääframen, dokumenttisukupolven ja dispose-tilan myös vahvistuksen,
+tallennusvalinnan ja backend-haun jälkeen sekä juuri ennen synkronista
+tiedostokirjoittajaa. Mainin erillisen tilavartijan on valmistuttava
+synkronisesti; Promise ei ole valtuustodiste. Vanhentunut pyyntö ei kirjoita
+eikä avaa vanhaa virhedialogia. Dispose poistaa omat kuuntelijat ja estää
+myös jo odottavan pyynnön jatkon, ei vain uutta IPC-kutsua.
+
+Alkuperäinen poikkeus tarjotaan synteettisen testin nimenomaisesti kytkemälle
+yksityiselle havaitsijalle ennen turvallista virhemuunnosta. IPC:stä
+heitetty virhe ei sisällä `cause`-ketjua tai raakaa metadataa: myös
+Electronin konsoliraja on julkaisuraja. Havaitsijan, lokituksen tai
+virheilmoituksen häiriö ei korvaa ensisyytä eikä muuta onnistunutta vientiä
+epäonnistumiseksi. Tuotannon main ei kytke raakakeräystä tällä muutoksella.
+Tämä korjaus ei vielä toteuta v3:a, hallintaoperaation varsinaista
+sukupolvikytkentää tai ennen ensimmäistä ikkunaa käytettävää native-entryä.
+
 Omistaja hyväksyi 24.10.2026 yritysvalintaan rajatun desktop-tukipaketin
 nykyisen keräyksen pohjalta myös ilman business-backendia.
 [W7:n sopimus](local-company-workspace-plan.md#palaute-vastuut-ja-todennus)
-omistaa tämän vielä toteuttamattoman suunnan ja kytkentäportin. Ennen
-kytkentää tähän ohjeeseen täsmennetään sallittu sisältö, puuttuvien
+omistaa tämän suunnan ja kytkentäportin. Sallittu sisältö, puuttuvien
 backend-/DB-tietojen esitys, mainin capability- ja vahvistusraja sekä
-formaatin luku ja testit. Puuttuvaa tietoa ei esitetä terveenä eikä yritystä
-avata vain paketin muodostamiseksi. Nykyisen täyden tukipaketin
-backend-permissionia, sisältöä tai formaattia ei tällä kirjauksella muuteta.
+formaatin luku ja testit on täsmennetty alla. Puuttuvaa tietoa ei esitetä
+terveenä eikä yritystä avata vain paketin muodostamiseksi. Nykyisen täyden
+tukipaketin backend-permission, sisältö ja formaatti säilyvät erillisinä.
 
 ### W7.0:n rajattu tukisopimusehdotus
 
-Tämä on toteutusta edeltävä ehdotus, ei käytössä oleva formaatti tai
-valmis keräysketju. Nykyinen `supportBundleBackendData` vaatii backend-version
-ja onnistuneen tietokantayhteenvedon. `supportBundleArchive` tuottaa formaatin
+Seuraava lähtötilan kuvaus kuuluu W7.0:n valmisteluun. W7.5:n haaratoteutus
+ja sen näyttörajat kuvataan tämän kohdan jälkeen; alla oleva sisältösopimus
+säilyy. Täyden v2-paketin `supportBundleBackendData` vaatii backend-version
+ja onnistuneen tietokantayhteenvedon. V2:n arkistohaara tuottaa formaatin
 2, jonka virallinen tarkastin vaatii kaikki kuusi dataosiota. Näitä ei
 korvata tyhjällä, nollalla tai `health: ok` -oletuksella yritysvalinnassa.
 Update-recovery-ikkunan nykyinen pieni `formatVersion: 1` -tiedosto on eri
@@ -62,6 +95,270 @@ ei koko käynnistyksen virhehistoria tai 30 päivän tapahtumakeräys.
 | `observation` | Scope `currentOperation`; saatavuus `available` tai `unavailable`. Nykyisen käyttötapausomistajan ensimmäinen turvallinen virhe ja erillinen siivoushavainto vain, jos ne todella on havaittu. Puuttuva ei ole onnistunut, eikä aiemman käynnistyksen syytä rekonstruoida journalista. Enintään nämä kaksi tapahtumaprojektiota, ei kasvavaa tapahtumajoukkoa. |
 | Virheprojektio | Nykyinen katalogi ja tukipaketin tapahtumakohtaiset tarkistukset omistavat sallitut kentät, koodit ja vaiheet. W7-delete/resume laajentaa samaa katalogia ennen kytkentää. Raaka Error, viesti, stack, journal, company/workspace/lineage-ID, polku ja salaisuus ovat kiellettyjä. Vapaata merkkijonoa ei muuteta turvalliseksi vain katkaisemalla tai isolla kirjainkoolla. |
 | Puuttuva syy | Sallittu `unavailable`-havainto voi tuottaa rajatun tukipaketin, mutta käyttöliittymä ja tarkastin ilmoittavat sen puuttuvaksi. Historiallinen vika ei muutu selitetyksi eikä paketin luonti ratkaise recovery-tilaa. |
+
+**W7.5:n toteutettu tiedostoraja (6.11.2026):**
+`supportBundleDesktopData.ts` omistaa kolmen osion suljetun projektion;
+nykyinen arkisto-omistaja tuottaa v3:n ja virallisessa tarkastimessa on
+sen erillinen Node-only-lukija. System-version on oltava nykyisen omistajan
+mukainen SemVer, enintään 100 merkkiä; buildRevision on 7-40 pientä
+heksamerkkiä tai kehitysruntimen eksplisiittinen `development`, ei puuttuvan
+packaged-identiteetin oletus. Platformin metadata-arvot ovat `win32`,
+`linux`, `darwin` ja arkkitehtuurin `x64`, `arm64`; tämä ei laajenna
+tuettuja toimituksia tai anna runtimen avaamislupaa.
+
+Saatavilla oleva havainto sisältää täsmälleen `firstError`- ja
+`cleanupError`-kentät, joista vähintään yksi on nykyinen turvallinen
+tapahtuma. Sallitut perheet ovat nykyiset `workspaceManagement.operationFailed`,
+`workspaceBackup.operationFailed` ja `workspaceBackup.cleanupFailed`.
+Poiston `deleteCleanup` kuuluu erilliseen siivouskenttään vain koodilla
+`WORKSPACE_DELETE_CLEANUP_FAILED`. Tapahtumapari sidotaan samaan operaatioon,
+korrelaatioon ja runtimeen eri tapahtumatunnisteilla. Nykyinen tapahtuma-
+katalogi omistaa koodi-/vaiheyhdistelmät; tunnisteet ovat teknisiä UUID-arvoja,
+aika kanoninen UTC ja app/build täsmälleen paketin suorittajan identiteetti.
+Projektio ei siivoa vapaata tekstiä turvalliseksi tapahtumaksi.
+
+Viiden kokonaisen tukipakettilähitiedoston 179 testiä, virallisen tarkastimen
+21 testiä ja desktopin tyypitys läpäisivät. Oikea gzip -> nykyinen
+tiedostokirjoittaja -> virallinen tarkastin sekä JSONin uusintaluku säilyttivät
+checksumit ja avainjärjestyksen. V2/legacy-regressiot ja puuttuvan historian
+rehellinen esitys säilyivät. Tarkastimen ei-merkkijonoisen virhekoodin
+hyväksyntäaukko toistettiin ja korjattiin kielteisine regressioineen.
+Tämä on sisältö-/tiedostorajan näyttö, ei mainin, IPC:n, native-viennin,
+observer-kytkennän tai paketoidun sovelluksen hyväksyntä.
+
+**W7.5:n yhteinen vientiomistaja:** `supportBundleCapability.ts` käyttää
+samaa vahvistus-, kohdevalinta-, arkistointi-, kirjoitus- ja virhepolkua
+täydelle v2:lle ja rajatulle v3:lle. Muoto valitaan eri main-factoreissa,
+ei rendererin parametrilla tai täyden viennin virheen perusteella.
+Ikkuna-entry säilyttää omat sender-/frame-/dokumenttivartijansa.
+Mainin erillinen native-export kuluttaa kertakäyttöisen lupansa jo
+ensimmäisellä kutsulla, myös peruutuksessa; sillä ei ole IPC-lähettäjää tai
+keinotekoista ikkunaa. Molemmat tarkistavat omistajan synkronisen valtuuden
+odotusten jälkeen ja ennen kirjoitusta. Suljettu tai vanhentunut lupa ei
+kirjoita eikä avaa vanhan tilan virheilmoitusta.
+
+V3:n tietolähde on synkroninen nykyisen mainin projektio. Väärä
+asynkroninen palautus hylätään heti: sen dataa ei odoteta tai hyväksytä ja
+mahdollinen Promise-hylkäys käsitellään ilman julkista raakavirhettä.
+App/build tarkistetaan myös viejän suorittajan identiteettiin. Nämä pienet
+entry-kokeet eivät vielä todista todellisen mainin hallintasukupolvea,
+build-luottamuksen myöntämiskohtaa tai käyttöliittymää edeltävää vientiä.
+Kytkentä näihin omistajiin odottaa omaa näyttöporttia.
+
+### W7.5:n nykyisen operaation ja varhaisen viennin omistajuus
+
+**6.11.2026: toteutussopimus ennen B3/B4-kokeita, ei ajonaikainen näyttö.**
+Tämä täsmentää hyväksyttyä native-entryä, ei avaa yleistä startup-fallbackia.
+Toteutuspalat ja portit ovat [W7.5-suunnitelmassa](local-company-workspace-plan.md#w75-b3b4n-omistajuussopimus).
+V2:n sisältö, permission ja kutsusopimus sekä B1:n v3-formaatti säilyvät.
+
+**B3a:n haaratoteutus:** palvelun `captureOperationContext` ja compositionin
+`captureOperationObservation` ovat sisäisiä vain luku -portteja. Jälkimmäinen
+palauttaa tuoreusvartijan ja erillisen synkronisen `readObservation`-luvun.
+Palvelun `operationStarted`/`operationSettled`-ilmoitukset rajaavat enintään
+kaksi turvallista projektiota; ne eivät ole uusia lokitapahtumia tai
+valtuuksia. `observeProjectedEvent` toimittaa saman validoidun muuttumattoman
+tapahtuman vastaanottajalle ennen loggeria. Näyttö ja seuraava portti ovat
+[M1:n nykytilassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Valitsimen vientipyyntö käyttää haarassa alla kuvattua B3b-kaappausta;
+startupin erillisen raportointiluvan nykytila on B4-kohdassa alla.
+Tavallisen delete-komennon todettu loppukäsittely-/vapautusvirhe tuottaa
+nykyisen ensitapahtuman lisäksi saman katalogin `deleteCleanup`-tapahtuman
+samalla korrelaatiolla, enintään kerran. Se ei muuta heitettyä ensivirhettä,
+varauksen vapautusta tai sulun epävarmuutta. Cold-jatkon nykyinen erillinen
+siivoustapahtuma säilyy eikä sitä kahdenneta tässä liitoksessa.
+
+**Valitsimen sukupolvi.** Nykyinen `WorkspaceManagementService` omistaa
+sisäisen, vain lukuun tarkoitetun operaatiokontekstin: sukupolven,
+korrelaation ja operaatiolajin. Sukupolvi vaihtuu ennen hyväksytyn
+muuttavan komennon ensimmäistä odotusta; myös pääsyn sulkeminen ja shutdown
+mitätöivät aiemman vientipyynnön. `status` tai rinnakkaisena hylätty
+`BUSY`-pyyntö ei korvaa käynnissä olevan komennon havaintoa. Uusi komento,
+myös onnistuva tai peruttu, syrjäyttää aiemman komennon virhetiedon.
+Samaa sukupolvea ei palauteta tilan palatessa `idle`-tilaan.
+
+Palvelun lukuportti palauttaa muuttumattoman kontekstin ja synkronisen
+tuoreusvartijan vasta komennon, loppukäsittelyn ja varauksen vapautusyrityksen
+päätyttyä. Se ei myönnä muutos-, sulku- tai uudelleenkäynnistysvaltuutta.
+`closeAdmission` ei yksin tarkoita shutdownia: pääsyn sulkemisen jälkeen
+asettunut virhe voidaan lukea **uudella** vientipyynnöllä, jos mainin
+nykyiset omistajuusvartijat sallivat sen. Vanha pyyntö ei elvy.
+Pääsyn sulku vaihtaa viennin sukupolven, ei keskeneräisen komennon
+korrelaatiota; sen myöhempi ensivirhe-/siivoushavainto säilytetään saman
+komennon loppuun asti.
+Epävarma vapautus ei ole onnistunut vapautus tai backendin poistumistodiste.
+Palvelun shutdown, compositionin vaihto tai mainin sulku estää uudenkin
+viennin. Vain statusluvun onnistuminen ei muodosta raportointivaltuutta.
+
+**Kaksi turvallista havaintoa.** `workspaceManagementComposition` sitoo
+nykyisen `workspaceBackupOperationalObserver`-projektion yllä olevaan
+kontekstiin. Observer muodostaa nykyisen katalogin tapahtuman kerran ja
+tarjoaa sen erilliselle synkroniselle vastaanottajalle ennen lokikirjoitusta.
+Vastaanottajan ja loggerin virheet eristetään toisistaan ja ensisyystä.
+Composition säilyttää enintään nykyisen operaation ensimmäisen turvallisen
+virheen ja erillisen siivousvirheen; ei raakaa poikkeusta tai historiapuskuria.
+Runtime, korrelaatio, operaatiolaji ja tapahtumarooli tarkistetaan.
+Myöhäinen, vieras tai toistettu havainto ei korvaa ensimmäistä. Havaintojen
+vastaanotto päättyy komennon lopussa ennen uuden raportointikontekstin
+luovutusta. Puuttuva tai virheellinen projektio on `unavailable`, ei arvaus.
+Observer ei omista sukupolvea, vientilupaa tai palvelun tilasiirtymää.
+
+`supportBundleCapability` ottaa uuden v3-pyynnön kontekstin talteen
+**ennen ensimmäistä native-vahvistuksen odotusta**, ei factoryn luonnissa
+eikä vasta tallennusvalinnan jälkeen. B2:n injektoitu yleinen tilavartija
+ei yksin todista tätä. Kontekstin talteenotto ei lue havaintosisältöä;
+peruutus ei lataa sitä. Havainto ladataan synkronisesti vain saman talteen
+otetun kontekstin kautta vahvistuksen ja kohdevalinnan jälkeen. Nykyiset
+sender-, frame-, dokumentti- ja dispose-vartijat sekä mainin tuoreusvartija
+tarkistetaan edelleen kaikkien odotusten jälkeen ja ennen kirjoitusta.
+Vanha `idle -> busy -> idle` -pyyntö hylätään, vaikka ikkuna olisi sama.
+
+**B3b:n haaratoteutus:** v3-ikkuna-entryn `captureRequest` palauttaa
+pyyntökohtaisen synkronisen vartijan ja vasta myöhemmin käytettävän datalukijan.
+Kaappausvirhe jää nykyiselle yksityiselle havaitsijalle ennen turvallista
+vastausta; vahvistusta tai sisältölukua ei silloin aloiteta. Async-kaappausta
+ei odoteta tai hyväksytä, ja sen hylkäys käsitellään. Valitsimen composition
+sitoo kaappauksen todelliseen `captureOperationObservation`-kontekstiin ja
+main-varaukseen. Sulku disposeaa vienti-entryn synkronisesti; se ei odota
+omaa native-dialogiaan tai päättele sen peruuntuneen. Prosessin saatavuus
+on varovaisesti `exitUnconfirmed`, ei lifecycle-tilasta päätelty `notRunning`.
+V2:n option-, backend-permission- ja datamuoto sekä native-entryn nykyinen
+kertakäyttöinen sopimus säilyvät. Julkinen poistotoiminto ja B4 eivät kuulu
+tämän pyyntöliitoksen näyttöön; ajantasaiset testit ovat M1:ssä.
+
+**B3b:n Electron-kohdenäyttö 8.11.2026:** nykyinen backenditon valitsin
+vie v3:n oikean renderer/preload/IPC-/main-ketjun kautta nykyiseen
+tiedostokirjoittajaan ja viralliseen tarkastimeen. Kolme tapausta kattavat
+puuttuvan havainnon, oikean palveluvirheen turvallisen projektion ja
+vahvistuksen peruutuksen. Rekisteri, backend-käynnistysten nollamäärä ja
+tietokantojen poissaolo säilyvät. Native-vastaukset ovat nykyisen fixturen
+testisovituksia; OS-dialogia, ikkunatonta index-entryä tai pakettia ei
+väitetä todennetuksi. Erillinen nykyinen v2-/legacy-Electron-tapaus läpäisi
+samalla valmistellulla runtimella. [Näyttö ja ensihylkäykset](release-0.3.0-integration-history.md#w75-selector-support-electron-20261108)
+säilyvät erillisinä; aikarajoja tai sovelluslähdettä ei muutettu.
+
+**Valitsimen näkyvän tukiviennin liitos:** web-composition välittää nykyisen
+valinnaisen tukivientikomennon vain täsmälliseen valitsintilaan ja vain
+täydellisen hallintakyvykkyyden rinnalla. Workspaces omistaa painikkeen
+esityksen ja yhden keskeneräisen UI-pyynnön; main omistaa edelleen luvan,
+sukupolven, native-valinnat ja v3-muodon. Tilaluku, mutaatio ja relaunch
+estävät uuden viennin painikkeesta, mutta asettunut tilavirhe tai
+uudelleenkäynnistystarve eivät yksin piilota tukitoimintoa. Vienti ei
+nollaa workspace-estoja tai lukitse muita hallintakomentoja uudella
+yhteislukolla: mainin nykyinen sukupolvisuoja hylkää vanhentuneen viennin.
+Vain täsmällinen `created` näyttää onnistumisen; `cancelled` on neutraali.
+Silta hylkää muut vastausarvot. Callbackin vaihto tai unmount vanhentaa
+vanhan vastauksen, myös A–B–A-vaihdossa; busy-muutos ei peru aloitettua työtä.
+Tämä liitos ei avaa delete-IPC:tä tai palautushallinnan käynnistysvalintaa.
+Ajantasainen näyttö erotetaan [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Näkyvän painikkeen kuusi selainkontrollia, kolme nykyisen Electron-ketjun
+vienti-/peruutustapausta sekä koko web-sarja läpäisivät omat rajauksensa.
+[Nykyinen näyttö ja testifixturen avoin havainto](release-0.3.0-integration-history.md#w75-selector-support-ui-20261108)
+eivät hyväksy mainin poistojulkaisua, OS-dialogia tai pakettia.
+
+**B4:n raportointiluvan kuluttaja haarassa:** `DesktopWorkspaceStartupSupportReceipt`
+on main-only-kuittaus, ei build-hyväksyntä, prosessin poissaolotodiste tai
+muutosvaltuus. Index vertaa runtime-/build-identiteetin ja validoi vain B1:n
+rajatun datan; vieras tapahtuma ei kelpaa oikean otsakeidentiteetin alla.
+Kuittauksen vastaanotto päättyy composition-kutsun asettuessa, ja onnistunut
+käynnistys poistaa aiemmin vastaanotetunkin kuitin. Native-vienti kuluttaa
+epäonnistuneen käynnistyksen kuitin kerran. Quit ja relaunch mitätöivät luvan
+ennen mahdollista odotusta; `desktopBeforeQuit` tekee sen myös ilman
+lifecycle-kahvaa, eikä odota omaa vientidialogiaan. Vanha restore-recovery-
+dialogi säilyy ennen tätä vientipolkua. Kuluttajan hallittu tuottaja ei
+todista build-porttia, nimettyä virhevaihetta tai paketoitua käynnistystä.
+
+**B4:n tuottajaliitos haarassa:** composition rajaa kuittauksen alla
+nimettyihin workspace-kutsuihin. Cold-jatkon adapteri ilmoittaa vain
+nykyisen valinnan todellisen `buildAdmission`-tuloksen; palvelun sama
+muuttumaton operaatiotunniste rajaa projektiot alusta viimeisen sulku- ja
+vapautusyrityksen päättymiseen. Tavalliset nimetyt vaiheet alkavat vasta
+nykyisen `readBuildAdmission`-portin jälkeen. Onnistunut vaihe ei lainaa
+kuittausta seuraavalle virheelle. Uusi build-hylkäys myös sisäisessä
+syyketjussa estää kuittauksen; rajattu läpikäynti ei kutsu syyketjun
+accessoreita tai aggregate-taulukon iteraattoria. Epätuettu tai liian suuri
+ketju sulkee vain valinnaisen raportoinnin, ei muuta alkuperäistä virhettä.
+Kuittaus toimitetaan vasta nykyisen startup-sulun jälkeen eikä sisällä sen
+valtuutta. Saatavuus on varovaisesti `exitUnconfirmed`.
+
+**B4:n kehitysruntimen näyttö:** nykyisen erillisen
+`installer:proof:startup-exception-exit`-komennon startup-support-tapaus
+käyttää oikeaa `main/index`-entryä, kehitysbuildin hyväksyntää ja todellista
+puuttuvan workspace-juuren hylkäystä. Nykyinen exporter ja virallinen
+v3-tarkastin sekä Windows-prosessipuun päättyminen todennettiin ilman
+yrityksen backendia, SQLite-latausta tai ensimmäistä ikkunaa. Testin
+bootstrap eristää kaikki kuusi Electronin kirjoitusjuurta ennen indexiä;
+vahvistus- ja tallennusdialogien vastaukset ovat rajattuja testisovittimia.
+Näyttö ei korvaa puhtaan paketin hyväksyntää tai väitä OS-dialogien
+käyttäjäkuittausta todennetuksi. [Ajot ja ensihylkäys](release-0.3.0-integration-history.md#w75-startup-support-native-20261112)
+säilyvät erillisinä.
+
+Molemmat nykyisten operaatioprojektioiden kuluttajat hylkäävät
+`deleteCleanup`-vaiheen tapahtuman, jonka koodi ei ole
+`WORKSPACE_DELETE_CLEANUP_FAILED`; se ei saa vallata siivouspaikkaa tai
+muuttaa B1:n roolisääntöä. Myöhempi kelvollinen siivoustapahtuma säilyy
+vastaanotettavana. Puuttuva kelvollinen projektio on `unavailable`.
+Ajantasaiset kohde- ja yhteisketjutodisteet sekä avoimet portit ovat M1:ssä;
+lähdekytkentä tai hallittu jatkotyö ei yksin ole natiivi-/pakettihyväksyntä.
+
+**Ennen ensimmäistä ikkunaa.** `main/index.ts` omistaa yhden
+käynnistysyrityksen raportointieliniän. `desktopComposition` ei luovuta
+sen päättynyttä `assertStartupAuthority`-vartijaa myöhemmälle virhedialogille:
+nykyinen startup päättyy ja sulkee/mitätöi varauksen ennen
+`earlyStartup.onFailure(errorCode)`-kutsua. Virhekoodi ei ole vientilupa.
+
+Composition saa toimittaa indexille muuttumattoman, turvallisen
+virhekuittauksen vain nimetyn pre-business workspace-vaiheen hylkäyksestä:
+poiston cold-jatko, create/import-kylmäpalautus, nykyinen ensimmäisen avauksen
+palautus, työtilan ratkaisu/adoption tai yritysvalitsimen koostaminen.
+Kuittaus sidotaan samaan käynnistysyritykseen ja nykyiseen buildiin; sen
+vaihekohtainen keräys suljetaan onnistumisessa, eikä sitä lainata seuraavan
+tai yleisen startup-vaiheen virheelle. Business-runtimen, proof-/smoke-ajon,
+update-recovery-dialogin ja tavallisen v2-viennin nykyiset polut säilyvät.
+
+Kuittaus edellyttää jo olemassa olevan build-portin onnistumista:
+poiston cold-polussa `captureColdWorkspaceDeletionAdmissionFromRoot`-tuloksen
+`buildAdmission`, muissa nimetyissä poluissa mainin nykyinen
+`readBuildAdmission`. Pelkkä `readDesktopBuildInfo`/release-metadatan
+muotovalidointi ei riitä. Ennen tätä porttia sattuva virhe, uusi
+build-hylkäys tai epäselvä kuittauksen sidonta säilyttää nykyisen turvallisen
+ilmoituksen ja poistumisen ilman vientiä. Vienti ei tee uutta build-/journal-
+lukua tai siirrä cold-palautuksen järjestystä. Kehitystila on nykyisen
+runtime-portin eksplisiittinen tulos, ei puuttuvan pilot-metadatan oletus.
+Paketin identiteetti on suorittava build, ei hyväksyntämetadatan vanhempi build.
+
+Nykyinen cold-omistaja rajaa oman observerinsa vain tähän kutsuun ja sitoo
+sen korrelaation palvelun operaation alussa; myöhäiset tapahtumat hylätään
+kutsun loppukäsittelyn jälkeen. Index vastaanottaa vain B1:n turvallisen
+projektion, ei Erroria, journalia, polkuja tai workspace-tunnisteita.
+Puuttuva havainto voidaan ilmoittaa puuttuvaksi, jos itse build- ja
+käynnistysyrityssidonta on todistettu. `notRunning` vaatii nykyiseltä
+omistajalta erillisen todetun poissaolon; muuten `exitUnconfirmed`.
+Puuttuva lifecycle-kahva tai valmistunut Promise ei ole poistumistodiste.
+
+Varhainen vientityö lainaa saman compositionin nykyistä operationalLoggeria
+main-only-porttina; loggerin viite ei kuulu paketin dataan tai IPC:hen.
+Uutta loggeria tai historiahakua ei tehdä. Kuittauksen toimituksen tai
+vientilokin virhe ei korvaa alkuperäistä startup-virhettä. Jos kuittausta
+ei voida sitoa luotettavasti, nykyinen virheilmoitus ja poistuminen säilyvät.
+
+Index luovuttaa B2:n kerran käytettävälle native-exportille vain raportoinnin
+luvan: sama käynnistysyritys/build, single-instance-omistajuus ja ei sulkua
+tai relaunchia. Lupa ei palauta fyysistä workspace-varausta eikä salli
+yrityksen avaamista, siivoamista tai muuta tiedostomuutosta kuin nykyisen
+tukipakettikirjoittajan omat väliaikais-/kohdetiedostot. Sekä peruuttaminen,
+onnistuminen että virhe kuluttavat sen. Uutta yritystä ei tehdä automaattisesti.
+
+`desktopBeforeQuit` mitätöi tämän raportointiluvan synkronisesti myös silloin,
+kun `desktopLifecycle` puuttuu. Relaunch ja single-instance-omistajuuden
+menetys mitätöivät sen samoin. Vienti ei odota omaa before-quit-ketjua;
+before-quit ei odota omaan startupin virhekäsittelyyn sisältyvää dialogia.
+Native-dialogin peruuntumista ei oleteta: sen myöhäinen tulos käsitellään,
+mutta mitätöity lupa estää havainnon latauksen, tiedostokirjoituksen ja
+vanhan virhedialogin. Nykyinen kirjoittaja on synkroninen; sen eteen ei
+lisätä odotusta eikä sen valmistumista päätellä disposesta. Normaalisti
+`earlyStartup` odottaa virhekäsittelyn päättymisen ja poistuu edelleen
+virhekoodilla. Epäonnistunut käynnistys ei muutu onnistumiseksi tukiviennillä.
 
 Main valitsee polun luotetusta runtime-/selector-tilasta, ei rendererin
 parametrista. Nykyinen argumentiton `createSupportBundle()` ja mainin
@@ -125,7 +422,7 @@ läpäisivät erillisinä kohdennettuina tarkistuksina. Yksityinen v3-ehdokas
 kulkee todellisen gzipin ja nykyisen tiedostokirjoittajan kautta rajattuun
 ehdokastarkastimeen. Suljetut kentät, checksumit, pakatut/puretut kokorajat,
 ensivirheen ja siivoushavainnon erottelu sekä puuttuva havainto tarkistetaan.
-Nykyinen virallinen tarkastin hylkää edelleen v3:n; sitä ei ole muutettu.
+Tuon kokeen aikainen virallinen tarkastin hylkäsi v3:n; kokeessa sitä ei muutettu.
 Koe käyttää nykyisiä import/replace-virhetapahtumia, ei vielä W7-delete-
 tapahtumia. Lokikirjoittajan todellinen tiedostovirhe ei poista omistajalla
 jo olevaa turvallista havaintoa paketista. Tämä ei todista, että tulevan
@@ -145,9 +442,11 @@ myös syntymättä jäävää kohdetta ja naapuritiedoston säilyneitä tavuja.
 Tilat ja dialogit ovat injektoituja: tämä ei ole oikean Electron-IPC:n,
 backend-permissionin tai käyttöliittymän hyväksyntätodiste.
 
-Tuotantokytkennässä pitää vielä todentaa todellinen tilanomistaja ja
-sukupolvien vaihto, W7-observerin tapahtuma ja lukuketju, virallisen
-tarkastimen v3-haara sekä molemmat packaged-vientipolut. Ehdokas käyttää
+Tilanomistajan, sukupolvien ja W7-observerin liitosten rajattu kehitysnäyttö
+on kirjattu yllä W7.5:n B3/B4-kohdissa. Sitä ei korvata W7.0:n ehdokasnäytöllä
+eikä tulkita paketoidun runtimen hyväksynnäksi. Molemmat packaged-vientipolut
+ja koko W7.5:n integraatiohyväksyntä ovat edelleen avoinna. Virallisen
+tarkastimen v3-haara ei yksin todista niitä. W7.0:n ehdokas käyttää
 paketoitua build-identiteettiä ja rajattua platform/architecture-joukkoa;
 tuotannon tarkat sallitut arvot sidotaan omistavan runtimen sopimukseen,
 eikä kokeen arvojoukko muuta täyden v2-paketin hyväksyntää.
@@ -287,8 +586,8 @@ Työtilan poiston ja journalista jatkamisen
 loogiset toiminnot, vaiheet ja syykoodit sekä erillisen cleanup-tapahtuman
 samalla korrelaatiolla. Mainin nykyinen vastaanottaja validoi ne uudelleen;
 incident-projektio on edelleen minimoitu. Tämä täyden tukipaketin
-lukijasopimus ei toteuta yllä ehdotettua backenditonta v3-vientiä eikä
-yksin todista cold-kuluttajan kytkentää.
+lukijasopimus ei yksin hyväksy työhaaran backenditonta v3-vientiä tai
+todista cold-kuluttajan kytkentää; niiden erilliset näyttörajat säilyvät.
 
 Workspace-tuonnin ja korvauksen `workspaceBackup.operationFailed` sekä
 `workspaceBackup.cleanupFailed` käyttävät samaa rajattua teknistä
@@ -373,6 +672,77 @@ yhteenvedon, diagnostiikkatapahtumat, todelliset incident-yhteenvedot sekä
 katkaisutiedot. Smoke tarkistaa myös kiellettyjen salaisuuksien,
 henkilötietojen, business-datan, polkujen ja PDF-datan poissulut ja poistaa
 artifactin lopuksi.
+
+W7.5:n v3-lukuraja on haarassa samassa `packagedSupportBundleSmoke`-
+omistajassa erillisenä `validateDesktopOnlySupportBundleDocument`-funktiona.
+Se käyttää nykyistä `supportBundleDesktopData`-projektiota, ei rinnakkaisia
+tapahtumasääntöjä. Manifesti, kolme osiota ja checksumit tarkistetaan
+tarkasti; checksum lasketaan alkuperäisen dokumentin avainjärjestyksestä,
+ei uudelleen järjestetystä projektiosta. Suorittajan viisi system-arvoa
+verrataan kutsujan luotettuun runtime-/build-identiteettiin; `development`
+ei kelpaa paketoidun suorittajan revisioksi. Dokumentin oma identiteetti
+ei ole vertailuodotuksen lähde.
+
+Tämä lukuraja ei vielä muuta paketoidun valitsimen käynnistys-/sulkuketjua,
+lisää vientikutsua tai korvaa täyden v2-smoken tarkistusta. V3:n saatavuus-
+ja havaintokentät säilyvät tietona, eivät prosessin poissaolon, startupin,
+poiston tai business-hyväksynnän valtuutena. Oikean paketoidun viejän ja
+tarkastimen ketju on edelleen erillinen avoin näyttöportti.
+[Lukurajan näyttö](release-0.3.0-integration-history.md#w75-support-packaged-reader-20261109)
+kattaa kaksi kokonaista lähitestitiedostoa, tyypityksen ja checksum-
+muototarkistuksen korjauksen jälkikatselmuksineen, ei paketoitua vientiä.
+
+Nykyinen smoke-apuri hyväksyy haarassa myös mainin nimenomaisesti valitseman
+`desktopOnly`-tilan. Puuttuva valinta säilyttää täyden v2:n; formaattia ei
+päätellä tiedostosta eikä virhe käynnistä fallbackia. Vertailuidentiteetti
+ja kohde kaapataan ennen odotuksia. Tuntematon tila hylätään ennen I/O:ta
+ja siivousta. Ensivirhe säilyy myös siivousvirheessä, joka on erillinen
+turvallinen havainto. Molemmat raakapoikkeukset tarjotaan vain nykyiselle
+yksityiselle testihavaitsijalle. [Tiedostoketjun näyttö](release-0.3.0-integration-history.md#w75-support-smoke-file-mode-20261109)
+käyttää ohjattua ikkunaa ja todellista kirjoittajaa/lukijoita; se ei ole
+oikea IPC-/native-/pakettitodiste.
+
+Saman smoken testikytkentä käyttää nykyistä `onTestFailed`/runner-sinkiä
+yhden testiapurin kautta. Vain odottamattomasta hylkäyksestä toimitetaan
+enintään ensivirhe ja erillinen siivousvirhe; odotetut virheet ja onnistuminen
+eivät tuota tätä keräystä. [Pakotetun virheen toimituskoe](release-0.3.0-integration-history.md#w75-support-smoke-capture-20261109)
+varmensi alkuperäisen viestin, pinon ja syyketjun sekä erillisen
+siivousvirheen puretuista salatuista raporttitavuista. Salaisuuden peitto,
+julkisen tulosteen poissulku ja profiilitavujen säilyminen todentuivat.
+Tämä on ohjatun ikkunarajan nykyisen raportointiketjun näyttö; oikea
+paketoitu vienti ja hosted-toimitus ovat yhä avoinna.
+
+**W7.5:n valitsinsmoken liitos:** nykyinen `selectorVerification` käyttää
+vaiheita `startup` -> `supportBundle` -> `shutdown`. Main kaappaa suorittajan
+system-arvot ja yksityisen havaitsijan ennen startup-odotuksia. Sama
+smoke-apuri kutsuu valitsimen argumentitonta capabilityä mainin valitsemassa
+v3-tilassa. Yhteinen smoke-omistaja johtaa kiinteän testikohteen; v2 käyttää
+samaa polkusääntöä eikä vaihda formaattia.
+
+Valitsimen v3-smoke odottaa nykyisen `Luo tukipaketti` -painikkeen olevan
+yksikäsitteisesti saatavilla ja käytössä ennen yhtä bridge-kutsua. Odotus
+on enintään viisi sekuntia, tilaehto tarkistetaan 50 millisekunnin välein.
+Se kuluttaa nykyistä 120 sekunnin vaihe- ja 300 sekunnin kokonaisbudjettia,
+ei pidennä tai nollaa niitä. Puuttuva, estetty tai moniselitteinen ohjain
+ei käynnistä vientiä. Viennin virhettä ei yritetä uudelleen. Täyden v2:n
+kutsu, tavallinen käyttö ja palvelun keskeneräisen työn esto säilyvät.
+Tämä täsmentää smoke-ohjauksen ajoitusta, ei palvelun hyväksymisehtoa.
+
+Vain nykyisellä smoke-/token-/juuriportilla hyväksytyn tavallisen valitsimen
+testivienti ohittaa vahvistus-, tallennus- ja virhedialogit. Rajattu
+palautushallinta ja tavallinen käyttö säilyttävät nykyiset nativedialogit
+sekä ikkuna-/frame-/operaatiovartijat. Viennin tai raportoinnin virheessä
+sulku odotetaan, eikä tulosta, ikkunan tuhoamista tai quit-jatkoa hyväksytä.
+Ensimmäinen turvallinen syykoodi ja erillinen sulkuvirhe säilyvät myös
+kaksoisvirheessä. [Rajattu Main- ja lähitestinäyttö](release-0.3.0-integration-history.md#w75-selector-support-smoke-20261109)
+käyttää nykyistä capabilityä, oikeaa tiedostokirjoittajaa ja virallista
+tarkastinta ohjatun renderer-rajan läpi. Se ei vielä todista uuden puhtaan
+paketin renderer/preload-ketjua tai oikeita prosesseja.
+Liitoksen [laajempi regressiotodennus](release-0.3.0-integration-history.md#w75-selector-support-broad-20261109)
+kattaa normaalin Main-sarjan, desktopin tuotantokäännöksen ja nykyiset
+pakettiajurin sopimukset. Node-ajurin latauskontrolli käyttää myös nykyistä
+lähdeomistajaa Electron-tuonnin estävällä olemassa olevalla lataajalla;
+se ei korvaa oikean paketin hyväksyntää.
 
 ## Paikallinen tarkastin
 

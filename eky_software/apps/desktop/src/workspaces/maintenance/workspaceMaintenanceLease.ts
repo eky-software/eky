@@ -26,6 +26,12 @@ export interface WorkspaceMaintenanceStateReader {
   readState(): WorkspaceMaintenanceState;
 }
 
+// Read freshness only; this observation never grants a maintenance lease.
+export interface WorkspaceMaintenanceStatusObservation {
+  readonly state: WorkspaceMaintenanceState;
+  assertCurrent(): void;
+}
+
 export class WorkspaceMaintenanceLeaseBusyError extends Error {
   constructor() {
     super('WORKSPACE_MAINTENANCE_BUSY');
@@ -35,6 +41,7 @@ export class WorkspaceMaintenanceLeaseBusyError extends Error {
 
 export class InMemoryWorkspaceMaintenanceLease
   implements WorkspaceMaintenanceLease, WorkspaceMaintenanceStateReader {
+  private statusGeneration: object = {};
   private held: Readonly<{
     purpose: WorkspaceMaintenancePurpose;
     handle: WorkspaceMaintenanceLeaseHandle;
@@ -42,6 +49,18 @@ export class InMemoryWorkspaceMaintenanceLease
 
   readState(): WorkspaceMaintenanceState {
     return this.held ? 'busy' : 'idle';
+  }
+
+  captureStatusObservation(): Readonly<WorkspaceMaintenanceStatusObservation> {
+    const generation = this.statusGeneration;
+    const state = this.readState();
+    let current = true;
+    return Object.freeze({ state, assertCurrent: () => {
+      if (!current || generation !== this.statusGeneration) {
+        current = false;
+        throw new WorkspaceMaintenanceLeaseBusyError();
+      }
+    } });
   }
 
   captureCurrentOwner(
@@ -66,10 +85,14 @@ export class InMemoryWorkspaceMaintenanceLease
     }
     const owner = Object.freeze({ purpose, handle: Object.freeze({
       release: async () => {
-        if (this.held === owner) this.held = undefined;
+        if (this.held === owner) {
+          this.held = undefined;
+          this.statusGeneration = {};
+        }
       },
     }) });
     this.held = owner;
+    this.statusGeneration = {};
     return owner.handle;
   }
 }

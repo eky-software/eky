@@ -70,6 +70,101 @@ afterEach(context => {
 });
 
 describe('profile restore activation transaction', () => {
+  let readonlyComparison: Promise<void> | undefined;
+  afterEach(async () => {
+    await readonlyComparison?.catch(() => undefined);
+    readonlyComparison = undefined;
+  });
+
+  // Owner-local observation -> unchanged pre-backend recovery, not main admission or SQLite validation.
+  it.for(['prepared', 'tornSibling', 'backupNext', 'interruptedForward', 'interruptedRollback', 'failedSafe'] as const)(
+    'preserves actual pre-backend recovery and all file bytes after readonly observation (%s)', async (kind, context) => {
+      readonlyComparison = (async () => {
+        const assertCurrent = () => context.signal.throwIfAborted();
+        assertCurrent();
+        const interruptedPhase = kind === 'interruptedForward' ? 'currentDatabaseMoved'
+          : kind === 'interruptedRollback' ? 'rollbackStarting' : undefined;
+        const observed = await createFixture(interruptedPhase === undefined ? {} : { interruptedPhase });
+        const direct = await createFixture(interruptedPhase === undefined ? {} : { interruptedPhase });
+        const journalPath = (f: typeof observed) => join(dirname(dirname(f.activeDatabasePath)),
+          'profile-restore-state', profileRestoreActivationJournalFileName);
+        const captureFiles = async (f: typeof observed) => {
+          const result: { path: string; bytes?: Buffer }[] = [];
+          const root = dirname(dirname(f.activeDatabasePath));
+          const read = async (parts: string[]) => {
+            assertCurrent();
+            const entries = await readdir(join(root, ...parts), { withFileTypes: true });
+            for (const entry of entries.sort((a, b) => a.name.localeCompare(b.name))) {
+              const relative = [...parts, entry.name];
+              if (entry.isDirectory()) { result.push({ path: relative.join('/') + '/' }); await read(relative); }
+              else { expect(entry.isFile()).toBe(true); result.push({ path: relative.join('/'), bytes: await readFile(join(root, ...relative)) }); }
+            }
+          };
+          await read([]); return result;
+        };
+        for (const f of [observed, direct]) {
+          assertCurrent();
+          await f.transaction.prepare(operationId);
+          if (kind === 'interruptedForward') await expect(f.transaction.advanceToValidation()).rejects.toThrow('synthetic interruption');
+          if (kind === 'interruptedRollback') {
+            await f.transaction.advanceToValidation();
+            await expect(f.transaction.rollback()).rejects.toThrow('synthetic interruption');
+          }
+          if (kind === 'failedSafe') {
+            const initial = (await f.journalStore.peek())!;
+            await f.journalStore.write({ ...initial, phase: 'failedSafe', revision: initial.revision + 1 });
+          }
+          if (kind === 'tornSibling') await writeFile(journalPath(f) + '.backup', '{synthetic discarded sibling', { flag: 'wx' });
+          if (kind === 'backupNext') {
+            await rename(journalPath(f), journalPath(f) + '.backup');
+            await writeFile(journalPath(f) + '.next', await readFile(journalPath(f) + '.backup'), { flag: 'wx' });
+          }
+          assertCurrent();
+        }
+        const before = await captureFiles(observed);
+        expect(before).toEqual(await captureFiles(direct));
+        const normalSource = await observed.journalStore.peek(), mutations = mutationCounts();
+        const observation = await observed.journalStore.inspectRecoverySelection(assertCurrent);
+        expect(observation.value).toEqual(normalSource);
+        expect(Object.keys(observation).sort()).toEqual(['bytes', 'identities', 'source', 'value']);
+        expect(mutationCounts()).toEqual(mutations);
+        expect(await captureFiles(observed)).toEqual(before);
+
+        const resume = async (f: typeof observed) => {
+          assertCurrent();
+          const events: unknown[] = [];
+          const recovery = new ProfileRestoreStartupRecovery({ journalStore: f.journalStore,
+            transaction: f.createTransaction(), observer: { observe(event) {
+              events.push(Object.fromEntries(Object.entries(event).filter(([key]) => key !== 'durationMs')));
+            } } });
+          const outcome = await recovery.prepareBeforeBackend().then(mode => ({ status: 'fulfilled' as const, mode }),
+            cause => ({ status: 'rejected' as const, message: cause instanceof Error ? cause.message : 'unknown' }));
+          assertCurrent();
+          return { outcome, events };
+        };
+        const actual = await resume(observed);
+        expect(actual).toEqual(await resume(direct));
+        expect(await captureFiles(observed)).toEqual(await captureFiles(direct));
+        if (kind === 'failedSafe') {
+          expect(actual.outcome).toEqual({ status: 'rejected', message: 'PROFILE_RESTORE_RECOVERY_REQUIRED' });
+          expect(await captureFiles(observed)).toEqual(before);
+          expect(actual.events).toMatchObject([{ eventName: 'restore.recoveryRequired', stage: 'failedSafeJournal' }]);
+        } else {
+          expect(actual.outcome).toEqual({ status: 'fulfilled', mode: kind === 'interruptedRollback'
+            ? 'validateRolledBackProfile' : 'validateRestoredProfile' });
+          expect(await readFile(observed.activeDatabasePath)).toEqual(Buffer.from(kind === 'interruptedRollback' ? 'old database' : 'new database'));
+          expect(await readFile(observed.activePdfPath)).toEqual(Buffer.from(kind === 'interruptedRollback' ? 'old pdf' : 'new pdf'));
+          if (kind !== 'interruptedRollback') {
+            expect(await readFile(join(observed.rollbackRoot, operationId, 'data', 'eky.sqlite'))).toEqual(Buffer.from('old database'));
+            expect(await readFile(join(observed.rollbackRoot, operationId, 'storage', 'invoices', 'company-1', 'invoice-1', 'approved-invoice.pdf')))
+              .toEqual(Buffer.from('old pdf'));
+          }
+        }
+      })();
+      await readonlyComparison;
+    },
+  );
+
   for (const flow of ['forward', 'rollback'] as const) {
     it.each(['current', 'next', 'backup'] as const)(`guards ${flow} repair of %s before any live mutation`, async slot => {
       const f = await createFixture(); await f.transaction.prepare(operationId);

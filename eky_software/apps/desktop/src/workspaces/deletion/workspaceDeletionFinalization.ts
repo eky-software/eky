@@ -18,12 +18,14 @@ const invalidCode = 'WORKSPACE_DELETE_JOURNAL_CONFLICT';
 
 // Publishes durable completion, retires the inventory, and clears the journal last. No payload deletion.
 export function createWorkspaceDeletionFinalizer(input: {
+  observeTerminalPhase?: WorkspaceDeletionTerminalPhaseObserver;
   userDataRoot: string;
   registry: Pick<WorkspaceRegistryStore, 'inspectSlots'>;
   assertWritersAbsent(): Promise<void>;
   assertStableSelection?(): Promise<void>;
   assertColdReadOwned?(): Promise<void>;
 }) {
+  const observeTerminal = createWorkspaceDeletionTerminalPhaseProducer(input.observeTerminalPhase);
   const suppliedReadOwned = input.assertColdReadOwned;
   if (suppliedReadOwned !== undefined && typeof suppliedReadOwned !== 'function') return invalidDeletionData(invalidCode);
   const readOwned = suppliedReadOwned?.bind(input);
@@ -83,6 +85,11 @@ export function createWorkspaceDeletionFinalizer(input: {
             }
             if (stable !== undefined) { await stable(); assertCurrent(); }
           }
+          const assertOriginalAbsent = async () => {
+            try {
+              for (const absence of originalAbsences) { await absence.assertAbsent(); assertCurrent(); }
+            } catch (error) { throw retain(error); }
+          };
           const assertMetadataAbsent = async (readSelection?: () => Promise<void>) => {
             let reading = true;
             const assertReadCurrent = () => {
@@ -111,9 +118,7 @@ export function createWorkspaceDeletionFinalizer(input: {
               if (readSelection === undefined) { await phase.assertExternalSelection(); assertReadCurrent(); }
             } catch (error) { throw retain(error); }
             finally { reading = false; }
-            try {
-              for (const absence of originalAbsences) { await absence.assertAbsent(); assertCurrent(); }
-            } catch (error) { throw retain(error); }
+            await assertOriginalAbsent();
           };
           const assertPurged = async () => {
             try {
@@ -235,18 +240,29 @@ export function createWorkspaceDeletionFinalizer(input: {
           } };
           await phase.assertSelected();
           let retirementActive = true;
-          try { await retireWorkspaceDeletionInventory(root, journal, { assertAuthority: assertCurrent, async assertExternalSelection() {
+          try { await observeTerminal('inventoryRetirement', () => retireWorkspaceDeletionInventory(root, journal, { assertAuthority: assertCurrent, async assertExternalSelection() {
             try {
               await technical.assertExternalSelection(); await phase.assertSelected(); assertCurrent();
             } catch (error) { throw retain(error); }
           } }, undefined, { async assertExternalSelection() {
             try { await phase.assertSelected(); assertCurrent(); }
             catch (error) { throw retain(error); }
+          }, async assertBeforeSlotRead() {
+            if (!retirementActive) return invalidDeletionData(invalidCode);
+            const check = () => { assertCurrent(); phase.assertCurrent(); if (!retirementActive) return invalidDeletionData(invalidCode); };
+            try {
+              check(); if (stable !== undefined) { await stable(); check(); }
+              await phase.assertExternalSelection(); check();
+              await assertOriginalAbsent(); check();
+              await phase.assertExternalSelection(); check();
+              if (stable !== undefined) { await stable(); check(); }
+              await phase.assertSelected(); check();
+            } catch (error) { throw retain(error); }
           } }, error => {
             if (!retirementActive) return invalidDeletionData(invalidCode);
             completedRetirementReadFailure ??= { error };
             retain(error);
-          }); }
+          })); }
           finally { retirementActive = false; }
           const assertRetired = () => assertWorkspaceDeletionInventoryRetired(root, journal, technical);
           await phase.assertSelected(); await assertRetired();
@@ -269,7 +285,7 @@ export function createWorkspaceDeletionFinalizer(input: {
               throw slotReadFailure;
             }
           } };
-          try { await store.clearTerminal({ slots: phase.journalSlots, assertAuthority: assertCurrent,
+          try { await observeTerminal('terminalJournalClear', () => store.clearTerminal({ slots: phase.journalSlots, assertAuthority: assertCurrent,
             assertExternalSelection: technical.assertExternalSelection }, { async assertInventoryAndOperationRootAbsent() {
               let reading = true;
               const assertReadCurrent = () => {
@@ -291,35 +307,37 @@ export function createWorkspaceDeletionFinalizer(input: {
               try { await assertWorkspaceDeletionInventoryRetired(root, journal, scope); }
               catch (error) { throw retain(error); }
               finally { reading = false; }
-            } }, slotReadSelection); }
+            } }, slotReadSelection)); }
           finally { readingSlots = false; }
-          await technical.assertExternalSelection();
-          const after = await store.inspect(assertCurrent);
-          if (after.plan.mode !== 'absent') return invalidDeletionData(invalidCode);
-          if (stable === undefined) await assertRetired();
-          else {
-            let reading = true;
-            const assertReadCurrent = () => {
-              assertCurrent(); phase.assertCurrent();
-              if (!reading) return invalidDeletionData(invalidCode);
-            };
-            const scope = { assertAuthority: assertReadCurrent, async assertExternalSelection() {
-              if (readOwned !== undefined) {
-                assertReadCurrent();
-                const result: unknown = await readOwned();
-                assertReadCurrent();
-                if (result !== undefined) return invalidDeletionData(invalidCode);
-                return;
-              }
-              assertReadCurrent(); await owner.assertOwned(); assertReadCurrent();
-              await writers(); assertReadCurrent();
-              await owner.assertOwned(); assertReadCurrent();
-            } };
-            try { await assertWorkspaceDeletionInventoryRetired(root, journal, scope); }
-            catch (error) { throw retain(error); }
-            finally { reading = false; }
-          } await technical.assertExternalSelection(); assertCurrent();
-          return journal;
+          return await observeTerminal('postClearVerification', async () => {
+            await technical.assertExternalSelection();
+            const after = await store.inspect(assertCurrent);
+            if (after.plan.mode !== 'absent') return invalidDeletionData(invalidCode);
+            if (stable === undefined) await assertRetired();
+            else {
+              let reading = true;
+              const assertReadCurrent = () => {
+                assertCurrent(); phase.assertCurrent();
+                if (!reading) return invalidDeletionData(invalidCode);
+              };
+              const scope = { assertAuthority: assertReadCurrent, async assertExternalSelection() {
+                if (readOwned !== undefined) {
+                  assertReadCurrent();
+                  const result: unknown = await readOwned();
+                  assertReadCurrent();
+                  if (result !== undefined) return invalidDeletionData(invalidCode);
+                  return;
+                }
+                assertReadCurrent(); await owner.assertOwned(); assertReadCurrent();
+                await writers(); assertReadCurrent();
+                await owner.assertOwned(); assertReadCurrent();
+              } };
+              try { await assertWorkspaceDeletionInventoryRetired(root, journal, scope); }
+              catch (error) { throw retain(error); }
+              finally { reading = false; }
+            } await technical.assertExternalSelection(); assertCurrent();
+            return journal;
+          });
         } finally { phase.revoke(); }
       }
     } catch (error) {
@@ -328,5 +346,30 @@ export function createWorkspaceDeletionFinalizer(input: {
       throw retain(error);
     }
     finally { active = false; running = false; }
+  };
+}
+
+export type WorkspaceDeletionTerminalPhaseEvent = Readonly<{
+  phase: 'finalization' | 'inventoryRetirement' | 'terminalJournalClear' | 'postClearVerification';
+  event: 'entered' | 'fulfilled' | 'rejected'; callId: number;
+}>;
+export type WorkspaceDeletionTerminalPhaseObserver = (event: WorkspaceDeletionTerminalPhaseEvent) => void;
+
+export function createWorkspaceDeletionTerminalPhaseProducer(observer?: WorkspaceDeletionTerminalPhaseObserver) {
+  let nextCallId = 0;
+  return function observe<T>(phase: WorkspaceDeletionTerminalPhaseEvent['phase'], work: () => Promise<T>): Promise<T> {
+    if (observer === undefined) return work();
+    const callId = ++nextCallId;
+    const emit = (event: WorkspaceDeletionTerminalPhaseEvent['event']) => {
+      try { observer(Object.freeze({ phase, event, callId })); }
+      catch { /* Observation cannot replace the original outcome. */ }
+    };
+    emit('entered');
+    let originalPromise: Promise<T>;
+    try { originalPromise = work(); }
+    catch (cause) { emit('rejected'); throw cause; }
+    try { void Promise.prototype.then.call(originalPromise, () => emit('fulfilled'), () => emit('rejected')); }
+    catch { /* Missing observation is unknown, not a new work outcome. */ }
+    return originalPromise;
   };
 }

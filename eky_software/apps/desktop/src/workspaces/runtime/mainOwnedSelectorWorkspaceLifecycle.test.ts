@@ -39,6 +39,43 @@ async function stopped() {
 }
 
 describe('MainOwnedSelectorWorkspaceLifecycle', () => {
+  it('observes lifecycle state after release without reviving the old operation authority', async () => {
+    const f = await fixture('delete');
+    try {
+      expect(f.lifecycle.readState()).toBe('ready');
+      await f.lifecycle.quiesceWrites(null);
+      expect(f.lifecycle.readState()).toBe('quiesced');
+      await f.lifecycle.stopAndProveHandlesClosed(null);
+      expect(f.lifecycle.readState()).toBe('stopped');
+      await f.handle!.release();
+      expect(f.lifecycle.readState()).toBe('stopped');
+      expect(() => f.lifecycle.assertStoppedCurrent()).toThrow('WORKSPACE_MAINTENANCE_BUSY');
+      expect(f.lifecycle.readState()).toBe('stopFailed');
+      expect(f.runtimeRelaunch.isRequested()).toBe(false);
+      expect(f.relaunch).not.toHaveBeenCalled();
+    } finally { await f.handle?.release(); }
+  });
+
+  it('reports an in-flight or failed preparation without claiming a usable selector', async () => {
+    const f = await fixture('delete');
+    const entered = deferred();
+    const finish = deferred();
+    f.reservation.assertMainOwned.mockImplementationOnce(async () => {
+      entered.resolve(); await finish.promise;
+      throw new Error('SYNTHETIC_RESERVATION_LOST');
+    });
+    const work = f.lifecycle.quiesceWrites(null);
+    const outcome = work.catch(error => error);
+    try {
+      await entered.promise;
+      expect(f.lifecycle.readState()).toBe('quiescing');
+      finish.resolve();
+      expect(await outcome).toMatchObject({ message: 'SYNTHETIC_RESERVATION_LOST' });
+      expect(f.lifecycle.readState()).toBe('stopFailed');
+      expect(f.relaunch).not.toHaveBeenCalled();
+    } finally { finish.resolve(); await outcome; await f.handle?.release(); }
+  });
+
   it.each(['create', 'import', 'switch', 'delete'] as const)('requires real ownership for %s and defers relaunch to service completion', async purpose => {
     const f = await fixture(purpose);
     await f.lifecycle.quiesceWrites(null);

@@ -1,8 +1,11 @@
-import { mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, readFile, readdir, rename, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { expect, it, vi, type TestContext } from 'vitest';
 import { validateWorkspaceBackupImportOperationId } from '../import/workspaceBackupImportOperationId.js';
 import { deriveWorkspaceBackupImportPaths } from '../import/workspaceBackupImportPaths.js';
+import { sameCrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
+import { candidateObservationEofFixture, candidateObservationOwners,
+  candidateObservationTree as tree } from './workspaceCandidateRemnantObservationTestSupport.js';
 import { deletionTestDigest as hash, deletionTestId as id } from './workspaceDeletionDataTestSupport.js';
 import { workspaceDeletionRemnantReads as nativeReads } from './workspaceDeletionRemnantCensus.js';
 import * as census from './workspaceDeletionRemnantCensus.js';
@@ -134,3 +137,62 @@ it('joins and retains a source close failure when initial projection throws', as
     .rejects.toMatchObject({ errors: [projectionFailure, closeFailure] });
   expect(closed).toBe(true);
 });
+
+it.for(candidateObservationOwners)(
+  'rejects original %s census EOF after a late R2 same-byte root replacement', async (owner, context) => {
+    const f = await candidateObservationEofFixture(context, owner);
+    const createSource = () => census.observeWorkspaceDeletionRemnants(f.root, f.authority, f.reads);
+    let activeSource: ReturnType<typeof createSource> | undefined, activeWork: Promise<void> | undefined;
+    context.onTestFinished(async () => {
+      await activeWork?.catch(() => undefined);
+      await activeSource?.return(undefined);
+    });
+    const drain = async (source: ReturnType<typeof createSource>, faulted: boolean) => {
+      let targetRows = 0;
+      for await (const row of source) {
+        if (row.kind !== 'metadataCandidate') continue;
+        const selected = row.selection;
+        if (selected.binding.operationId !== f.binding.operationId || selected.binding.workspaceId !== f.binding.workspaceId) continue;
+        targetRows++;
+        expect(targetRows).toBe(1);
+        expect(selected.rootIdentity).toBe(f.initialRootIdentity);
+        expect(selected.rootPath).toBe(f.candidate.candidateRoot);
+        expect(selected.binding).toEqual(f.binding);
+        expect('assertPayloadsAbsent' in selected).toBe(false); expect('ownerSlots' in selected).toBe(false);
+        expect(f.fault.injected).toBe(faulted);
+        if (faulted) staleRows++;
+      }
+      expect(targetRows).toBe(1);
+    };
+    let staleRows = 0;
+    activeSource = createSource(); activeWork = drain(activeSource, false);
+    await activeWork; await activeSource.return(undefined);
+    expect(f.handles.length).toBeGreaterThan(0);
+    expect(f.handles.every(handle => handle.closed && handle.closeCalls === 1 && handle.pendingReads === 0)).toBe(true);
+    expect(await tree(f.root)).toEqual(f.before);
+    const normalHandleCount = f.handles.length;
+    f.fault.armed = true;
+    activeSource = createSource();
+    let successfulFaultEOF = false;
+    activeWork = (async () => { await drain(activeSource!, true); successfulFaultEOF = true; })();
+    await expect(activeWork).rejects.toThrow('WORKSPACE_REMNANT_BINDING_INVALID');
+    // Let the original census reject after its stale row; never call the row's receipt ourselves.
+    await activeSource.return(undefined);
+    expect(successfulFaultEOF).toBe(false); expect(staleRows).toBe(1);
+    expect(f.fault.injected).toBe(true); expect(f.fault.observedIdentity).toBe(f.initialRootIdentity);
+    expect(f.fault.replacementIdentity).toBeDefined();
+    expect(f.fault.replacementIdentity).not.toBe(f.initialRootIdentity);
+    expect(await nativeReads.directoryIdentity(f.candidate.candidateRoot, f.authority.assertAuthority)).toBe(f.fault.replacementIdentity);
+    expect(await nativeReads.directoryIdentity(f.retained, f.authority.assertAuthority)).toBe(f.initialRootIdentity);
+    expect(f.handles.length).toBeGreaterThan(normalHandleCount);
+    expect(f.handles.every(handle => handle.closed && handle.closeCalls === 1 && handle.pendingReads === 0)).toBe(true);
+    expect(f.fault.changedTree).toEqual(f.expectedChangedTree);
+    expect(await tree(f.root)).toEqual(f.expectedChangedTree);
+    expect((await readFile(f.paths.currentPath)).equals(f.originalBinding)).toBe(true);
+    expect(sameCrashSafeFileSlotIdentity(f.bindingIdentity, await lstat(f.paths.currentPath))).toBe(true);
+    expect((await readFile(f.foreignBindingPaths.currentPath)).equals(f.foreignBinding)).toBe(true);
+    expect(await readFile(join(f.retained, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+    expect(await readFile(join(f.candidate.candidateRoot, 'retained-data'), 'utf8')).toBe('synthetic-candidate');
+    expect(await readFile(join(f.foreignPaths.candidateRoot, 'keep'), 'utf8')).toBe('foreign-candidate');
+    expect(await readFile(join(f.root, 'unrelated'), 'utf8')).toBe('unrelated-bytes');
+  });

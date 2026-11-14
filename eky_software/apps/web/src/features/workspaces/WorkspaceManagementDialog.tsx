@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'react';
 
-import type { WorkspaceManagementEntry } from '../../app/desktopWorkspaceManagement.js';
+import type { WorkspaceDeletionRequest, WorkspaceManagementEntry } from '../../app/desktopWorkspaceManagement.js';
 import { uiText } from '../../i18n/fi.js';
 import { LoadingStatus } from '../../shared/ui/index.js';
 import { WorkspaceList } from './WorkspaceList.js';
 import { WorkspaceOperationForm } from './WorkspaceOperationForm.js';
+import { WorkspaceDeletionForm } from './WorkspaceDeletionForm.js';
 import {
   resolveWorkspaceDialogFocusTarget,
   shouldCloseWorkspaceDialog,
@@ -17,6 +18,9 @@ import {
 import styles from './WorkspaceSelector.module.css';
 
 interface WorkspaceManagementDialogProps {
+  readonly canDeleteWorkspace?: boolean;
+  readonly backupAvailableForSelectedWorkspace?: boolean;
+  readonly onBackupChoiceChange?: (value: WorkspaceDeletionRequest['backupChoice']) => void;
   readonly canReplaceActiveWorkspace: boolean;
   readonly state: WorkspaceSelectorState;
   readonly onClose?: () => void;
@@ -27,12 +31,16 @@ interface WorkspaceManagementDialogProps {
   ) => void;
   readonly onRetry?: () => void;
   readonly onSubmit: () => void;
+  readonly supportBundleControl?: React.ReactNode;
 }
 
 const focusableSelector =
   'button:not(:disabled), input:not(:disabled), [tabindex]:not([tabindex="-1"])';
 
 export function WorkspaceManagementDialog({
+  canDeleteWorkspace = false,
+  backupAvailableForSelectedWorkspace = false,
+  onBackupChoiceChange,
   canReplaceActiveWorkspace,
   onClose,
   onLabelChange,
@@ -40,6 +48,7 @@ export function WorkspaceManagementDialog({
   onRetry,
   onSubmit,
   state,
+  supportBundleControl,
 }: WorkspaceManagementDialogProps): React.JSX.Element {
   const dialogRef = useRef<HTMLDivElement>(null);
   const Container = onClose === undefined ? 'main' : 'div';
@@ -49,9 +58,14 @@ export function WorkspaceManagementDialog({
   busyRef.current = isBusy;
   const isRecoveryRequired =
     state.status?.operationState === 'recoveryRequired';
-  const selectedWorkspace = state.status?.workspaces.find(
+  const ordinaryStatus = state.status?.formatVersion === 1 ? state.status : undefined;
+  const recoveryStatus = state.status?.formatVersion === 2 ? state.status : undefined;
+  const ordinarySelectedWorkspace = ordinaryStatus?.workspaces.find(
     (workspace) => workspace.workspaceId === state.selectedWorkspaceId,
   );
+  const selectedWorkspace = recoveryStatus?.operationState === 'idle'
+    ? state.selectedWorkspaceId === recoveryStatus.target.workspaceId ? recoveryStatus.target : undefined
+    : ordinarySelectedWorkspace;
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -141,7 +155,8 @@ export function WorkspaceManagementDialog({
         <header className={styles.dialogHeader}>
           <div>
             <p className={styles.kicker}>{uiText.workspaces.kicker}</p>
-            <Heading id="workspace-selector-title">{uiText.workspaces.heading}</Heading>
+            <Heading id="workspace-selector-title">{recoveryStatus === undefined
+              ? uiText.workspaces.heading : uiText.workspaces.recoveryManagementHeading}</Heading>
           </div>
           {onClose !== undefined ? (
             <button
@@ -157,12 +172,14 @@ export function WorkspaceManagementDialog({
           ) : null}
         </header>
 
-        {state.loadState === 'loading' ? (
+        {state.deletionCompleted ? <p className={styles.statusMessage} role="status">{state.progressMessage}</p> : null}
+        {state.requiresRestart ? <p className={styles.operationError} role="alert">{state.errorMessage}</p> : null}
+        {!state.requiresRestart && state.loadState === 'loading' ? (
           <LoadingStatus className={styles.statusMessage}>
             {uiText.workspaces.loading}
           </LoadingStatus>
         ) : null}
-        {state.loadState === 'error' ? (
+        {!state.requiresRestart && state.loadState === 'error' ? (
           <div className={styles.loadError}>
             <p role="alert">{state.errorMessage}</p>
             {onRetry !== undefined ? (
@@ -172,27 +189,62 @@ export function WorkspaceManagementDialog({
             ) : null}
           </div>
         ) : null}
-        {state.loadState === 'ready' && state.mode === 'list' ? (
+        {!state.deletionCompleted && !state.requiresRestart && state.loadState === 'ready' && state.mode === 'list' && recoveryStatus !== undefined ? (
+          <>
+            <p className={styles.warning} role="status">{uiText.workspaces.recoveryManagementPending}</p>
+            {recoveryStatus.operationState === 'idle' ? (
+              <div className={styles.workspaceRow}>
+                <div className={styles.workspaceIdentity}><strong>{recoveryStatus.target.workspaceLabel}</strong></div>
+                {canDeleteWorkspace ? <button className="ghost-button" type="button"
+                  disabled={isBusy} onClick={() => onModeChange('confirmDelete')}>
+                  {uiText.workspaces.deleteWorkspace}
+                </button> : null}
+              </div>
+            ) : (
+              <>
+                {isRecoveryRequired ? <p className={styles.operationError} role="alert">{uiText.workspaces.recoveryRequired}</p>
+                  : <LoadingStatus className={styles.statusMessage}>{uiText.workspaces.processing}</LoadingStatus>}
+                {onRetry !== undefined && !state.isSubmitting ? <button className="ghost-button" type="button" onClick={onRetry}>
+                  {uiText.workspaces.retry}
+                </button> : null}
+              </>
+            )}
+          </>
+        ) : null}
+        {!state.deletionCompleted && !state.requiresRestart && state.loadState === 'ready' && state.mode === 'list' && ordinaryStatus !== undefined ? (
           <WorkspaceList
+            canDeleteWorkspace={canDeleteWorkspace}
             canReplaceActiveWorkspace={canReplaceActiveWorkspace}
-            duplicateWorkspaceLabelIds={state.status?.duplicateWorkspaceLabelIds ?? []}
+            duplicateWorkspaceLabelIds={ordinaryStatus.duplicateWorkspaceLabelIds ?? []}
             isBusy={isBusy}
             isRecoveryRequired={isRecoveryRequired}
             onModeChange={onModeChange}
-            workspaces={state.status?.workspaces ?? []}
+            workspaces={ordinaryStatus.workspaces}
           />
         ) : null}
-        {state.loadState === 'ready' && state.mode !== 'list' ? (
+        {!state.deletionCompleted && !state.requiresRestart && state.loadState === 'ready' && state.mode === 'confirmDelete' ? (
+          canDeleteWorkspace && onBackupChoiceChange !== undefined && selectedWorkspace !== undefined ? (
+            <WorkspaceDeletionForm target={selectedWorkspace}
+              backupAvailable={recoveryStatus === undefined && backupAvailableForSelectedWorkspace}
+              showWorkspaceIdentifier={ordinaryStatus?.duplicateWorkspaceLabelIds?.includes(selectedWorkspace.workspaceId) === true}
+              backupChoice={state.backupChoice} typedLabel={state.labelInput} isBusy={isBusy}
+              errorMessage={state.errorMessage} progressMessage={state.progressMessage}
+              onBack={() => onModeChange('list')} onBackupChoiceChange={onBackupChoiceChange}
+              onTypedLabelChange={onLabelChange} onSubmit={() => onSubmit()} />
+          ) : <p className={styles.operationError} role="alert">{uiText.workspaces.safeError}</p>
+        ) : null}
+        {!state.deletionCompleted && !state.requiresRestart && state.loadState === 'ready' && state.mode !== 'list' && state.mode !== 'confirmDelete' && ordinaryStatus !== undefined ? (
           <WorkspaceOperationForm
             isBusy={isBusy}
             mode={state.mode}
             onBack={() => onModeChange('list')}
             onLabelChange={onLabelChange}
             onSubmit={onSubmit}
-            {...(selectedWorkspace === undefined ? {} : { selectedWorkspace })}
+            {...(ordinarySelectedWorkspace === undefined ? {} : { selectedWorkspace: ordinarySelectedWorkspace })}
             state={state}
           />
         ) : null}
+        {supportBundleControl}
       </div>
     </Container>
   );

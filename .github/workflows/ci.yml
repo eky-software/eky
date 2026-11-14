@@ -96,7 +96,7 @@ jobs:
     name: Test, typecheck and build
     if: inputs.risk_plan != ''
     needs: [test-packages]
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 15
 
     defaults:
@@ -169,7 +169,7 @@ jobs:
   e2e-system-security:
     name: System security E2E
     if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
 
     defaults:
@@ -264,7 +264,7 @@ jobs:
   e2e-web-critical:
     name: Web critical E2E
     if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     defaults:

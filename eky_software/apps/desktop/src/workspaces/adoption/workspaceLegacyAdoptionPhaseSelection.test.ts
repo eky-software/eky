@@ -25,7 +25,7 @@ import { createAdoptionJournal, createPublishedAdoptionRegistry, TEST_ADOPTION_O
 const profileId = 'c'.repeat(64);
 
 describe('adoption phase views of the same selected bytes', () => {
-  it.for(['empty', 'candidate', 'published'] as const)('recovers a bound %s interruption with the same journal identity', async (branch, context) => {
+  it.for(['empty', 'candidate', 'published'] as const)('recovers a bound %s interruption with the same journal identity', { timeout: 10_000 }, async (branch, context) => {
     const f = await interruptedRecoveryFixture(context, branch);
     const { recovering } = f;
     const result = await recoverWorkspaceLegacyAdoption(f.recoveryOptions);

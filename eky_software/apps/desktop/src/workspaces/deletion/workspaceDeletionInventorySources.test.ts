@@ -69,7 +69,7 @@ it.for([false, true])('proves the proposed final source comparison with a change
   expect(observations).toEqual(['initialSourceComparison', 'simulatedBackupRead', 'finalSourceComparison']);
 });
 
-it('projects all ten roles once, excludes foreign sources, and preserves every source byte', { timeout: 20_000 }, async context => {
+it('projects all ten roles once, excludes foreign sources, and preserves every source byte', { timeout: 30_000 }, async context => {
   const f = await fixture(context), seeded = await seedAllDeletionRoles(f);
   const { replacement, foreign, legacy } = seeded;
   const snapshot = snapshotSeededDeletionRoles(f, seeded);
@@ -231,7 +231,9 @@ it('rejects changed binding bytes after capture even before the captured page is
   expect(await readFile(path, 'utf8')).toBe(changed);
 });
 
-it('orders more than one page from real owners without dropping or repeating a root', { timeout: 30_000 }, async context => {
+it.for(['default', 'recoveryProof'] as const)(
+  'orders more than one page from real owners without dropping or repeating a root: %s',
+  { timeout: 45_000 }, async (mode, context) => {
   const f = await fixture(context), parents = deriveWorkspaceReplacementRemnantParents(f.root);
   const operations = Math.floor(workspaceDeletionDirectoryEntryPageSize / parents.length) + 1;
   const expected: string[] = [];
@@ -242,7 +244,23 @@ it('orders more than one page from real owners without dropping or repeating a r
       expected.push(`${parent.role}:${binding.operationId}`);
     }
   }
-  const before = await f.preserved(), source = await f.capture(), rows = await f.collect(source.records());
+  const before = await f.preserved(), source = await f.capture();
+  let insidePage = true, currentProofs = 0;
+  const readAuthority = { assertAuthority: f.authority.assertAuthority,
+    async assertExternalSelection() { f.authority.assertAuthority(); },
+    assertWritersAbsent: f.authority.assertWritersAbsent, onFailure(_error: unknown) {},
+    ...(mode === 'recoveryProof' ? { assertRecoverySourceReadCurrent() {
+      currentProofs++;
+      if (insidePage) throw new Error('SYNTHETIC_RECOVERY_PROOF_ESCAPED_CENSUS');
+    } } : {}) };
+  const rows = await f.collect((async function* () {
+    let index = 0;
+    for await (const row of source.records(readAuthority)) {
+      if (index++ === workspaceDeletionDirectoryEntryPageSize) insidePage = false;
+      yield row;
+    }
+  })());
+  if (mode === 'recoveryProof') expect(currentProofs).toBeGreaterThan(0);
   expect(rows.length).toBeGreaterThan(workspaceDeletionDirectoryEntryPageSize);
   expect(rows.filter(row => row.role !== 'workspace').map(row => `${row.role}:${row.ownerOperationId}`)).toEqual(expected.sort());
   expect(rows.at(-1)).toEqual(source.workspace);

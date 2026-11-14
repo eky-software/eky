@@ -2,6 +2,7 @@ import { lstatSync, readFileSync } from 'node:fs';
 import { setTimeout as delay } from 'node:timers/promises';
 import type { Browser } from '@playwright/test';
 import { chromiumControlMaximumBytes, requireChromiumReady } from './chromiumWorkerContract.mjs';
+import { linuxPreflightPrivateCheck } from '../../experiments/processOwnership/linuxServiceDiagnostic.mjs';
 
 export interface StartedOwnedChromium {
   readonly browser: Browser;
@@ -20,10 +21,16 @@ export interface ChromiumConnectionOwner {
 }
 
 export class OwnedChromiumStartupFailure extends Error {
+  readonly #preflightCheck: string | undefined;
   constructor(readonly processTree: 'stopped' | 'unverified',
     readonly phase: 'ownerPreparation' | 'ownerLaunch' | 'browserReady' | 'browserConnect',
     readonly ownerFailure: string | null = null,
-  ) { super('E2E_CHROMIUM_START_FAILED'); }
+    preflightCheck?: string,
+  ) {
+    super('E2E_CHROMIUM_START_FAILED');
+    this.#preflightCheck = linuxPreflightPrivateCheck(preflightCheck);
+  }
+  readPrivatePreflightCheck() { return this.#preflightCheck; }
 }
 
 async function beforeCleanup<T>(operation: Promise<T>, owner: ChromiumConnectionOwner): Promise<T> {
