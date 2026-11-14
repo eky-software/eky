@@ -8,8 +8,7 @@ import test from 'node:test';
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const WORKFLOW = resolve(ROOT, '../../../../../.github/workflows/windows-acceptance-v2-workspace.yml');
 
-test('artifact-only preparation is explicit manual scope and cannot replace ordinary acceptance', async () => {
-  const source = await readFile(WORKFLOW, 'utf8');
+function assertArtifactOnlyScope(source) {
   const call = source.split('  workflow_call:')[1].split('  workflow_dispatch:')[0];
   assert.doesNotMatch(call, /artifact_only/);
   assert.match(source, /workflow_dispatch:\s+inputs:\s+artifact_only:\s+description: [^\n]+\s+type: boolean\s+default: false/);
@@ -19,6 +18,169 @@ test('artifact-only preparation is explicit manual scope and cannot replace ordi
   assert.ok(fault.includes("if: (github.event_name != 'workflow_dispatch' || inputs.artifact_only != true) && (inputs.risk_plan == '' || fromJSON(inputs.risk_plan).gates.workspaceFault)"));
   const preparation = source.split('jobs:')[1].split('  workspace_consumer:')[0];
   assert.doesNotMatch(preparation, /inputs\.artifact_only/);
+}
+
+test('artifact-only preparation is explicit manual scope and cannot replace ordinary acceptance', async () => {
+  assertArtifactOnlyScope(await readFile(WORKFLOW, 'utf8'));
+});
+
+function prerequisiteJob(source, name) {
+  const sections = source.split(`\n  ${name}:\n`);
+  assert.equal(sections.length, 2, `Missing or duplicate workspace job: ${name}`);
+  return sections[1].split(/\n  [\w-]+:\n/u)[0];
+}
+
+function assertWorkspacePrerequisites(source) {
+  assertArtifactOnlyScope(source);
+  assert.match(source, /workflow_call:\n    inputs:\n      risk_plan:\n        type: string\n        required: true\n  workflow_dispatch:/u);
+  const setup = ['Check out repository', 'Set up Node.js'];
+  const contracts = [
+    ...setup, 'Prepare locked package manager', 'Install dependencies',
+    'Verify workspace artifact behavior and workflow contract',
+    'Verify encrypted evidence contracts without MSI',
+    'Verify workspace lifecycle and read-only Windows adapters',
+    'Verify workspace fault lifecycle and terminal contracts',
+    'Set up .NET SDK for command contracts', 'Verify mandatory caller results and bounded phase writer',
+    'Preserve encrypted CI failure evidence',
+  ];
+  const producer = [
+    ...setup, 'Set up .NET SDK', 'Verify exact .NET SDK', 'Prepare locked package manager',
+    'Install dependencies', 'Verify packaged smoke driver contracts without MSI',
+    'Restore locked WiX toolchain', 'Build workspace artifact once',
+    'Verify produced workspace artifact', 'Upload exact workspace artifact',
+    'Preserve encrypted CI failure evidence',
+  ];
+  for (const [id, minutes, names] of [
+    ['workspace_artifact_contracts', 10, contracts], ['workspace_artifact_producer', 30, producer],
+  ]) {
+    const job = prerequisiteJob(source, id);
+    const header = job.split('    steps:\n')[0];
+    assert.deepEqual(header.match(/^    runs-on: .+$/gmu), ['    runs-on: windows-latest']);
+    assert.deepEqual(header.match(/^    timeout-minutes: .+$/gmu), [`    timeout-minutes: ${minutes}`]);
+    assert.deepEqual(header.match(/^        working-directory: .+$/gmu), ['        working-directory: eky_software']);
+    assert.deepEqual(header.match(/^    needs: .+$/gmu) ?? [],
+      id === 'workspace_artifact_producer' ? ['    needs: workspace_artifact_contracts'] : []);
+    assert.doesNotMatch(header, /^    (?:if|continue-on-error):/mu);
+    const required = withoutOptionalEvidenceAllowance(job, 1);
+    assert.doesNotMatch(required, /continue-on-error:/u);
+    const steps = job.split(/(?=^      - )/mu).slice(1).map(value => value.trimEnd());
+    assert.deepEqual(steps.map(step => step.split('\n')[0]), names.map(name => `      - name: ${name}`));
+    for (const step of steps.slice(0, -1)) {
+      assert.doesNotMatch(step, /^        if:|\|\||;\s*exit 0|\n\s+exit 0|\$LASTEXITCODE\s*=\s*0/mu);
+      if (!step.startsWith('      - name: Prepare locked package manager\n')) {
+        assert.doesNotMatch(step, /^        working-directory:/mu);
+      }
+    }
+    const step = name => steps[names.indexOf(name)];
+    assert.equal(step('Prepare locked package manager'),
+      '      - name: Prepare locked package manager\n        working-directory: .\n        run: node .github/scripts/prepareLockedPnpm.mjs');
+    assert.equal(step('Install dependencies'), '      - name: Install dependencies\n        run: pnpm install --frozen-lockfile');
+    assert.equal(step('Check out repository'), [
+      '      - name: Check out repository',
+      '        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1',
+      '        with:', '          persist-credentials: false',
+      ...(id === 'workspace_artifact_producer' ? ['          fetch-depth: 0'] : []),
+    ].join('\n'));
+    assert.equal(step('Set up Node.js'), [
+      '      - name: Set up Node.js',
+      '        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      '        with:', '          node-version-file: eky_software/.node-version',
+      '          package-manager-cache: false',
+    ].join('\n'));
+    const dotnet = id === 'workspace_artifact_producer' ? 'Set up .NET SDK' : 'Set up .NET SDK for command contracts';
+    assert.equal(step(dotnet), [
+      `      - name: ${dotnet}`,
+      '        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1',
+      '        with:', '          dotnet-version: 10.0.302',
+    ].join('\n'));
+    const commands = id === 'workspace_artifact_contracts' ? {
+      'Verify workspace artifact behavior and workflow contract': 'installer:test:windows-acceptance-workspace-artifact',
+      'Verify encrypted evidence contracts without MSI': 'installer:test:encrypted-evidence:core',
+      'Verify workspace lifecycle and read-only Windows adapters': 'installer:test:windows-acceptance-workspace',
+      'Verify workspace fault lifecycle and terminal contracts': 'installer:test:windows-acceptance-workspace-fault',
+      'Verify mandatory caller results and bounded phase writer': 'installer:test:windows-acceptance-phase-writer',
+    } : {
+      'Verify packaged smoke driver contracts without MSI': 'installer:test:packaged-smoke-driver',
+      'Restore locked WiX toolchain': 'installer:verify-restore-lock',
+    };
+    for (const [name, command] of Object.entries(commands)) assert.equal(step(name),
+      `      - name: ${name}\n        run: pnpm --filter @eky/desktop ${command}`);
+    if (id === 'workspace_artifact_producer') {
+      assert.equal(step('Verify exact .NET SDK'), [
+        '      - name: Verify exact .NET SDK', '        shell: pwsh', '        run: |',
+        "          if ((dotnet --version) -ne '10.0.302') { throw 'WINDOWS_ACCEPTANCE_WORKSPACE_DOTNET_SDK_INVALID' }",
+      ].join('\n'));
+      assert.deepEqual(step('Build workspace artifact once').match(/^        timeout-minutes: .+$/gmu),
+        ['        timeout-minutes: 22']);
+      assert.match(step('Build workspace artifact once'), /if \(\$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_BUILD_FAILED' \}/u);
+      assert.match(step('Verify produced workspace artifact'), /if \(\$LASTEXITCODE -ne 0\) \{ throw 'WINDOWS_ACCEPTANCE_WORKSPACE_ARTIFACT_VERIFICATION_FAILED' \}/u);
+    }
+  }
+  for (const id of ['workspace_consumer', 'workspace_fault_consumer']) {
+    assert.deepEqual(prerequisiteJob(source, id).match(/^    needs: .+$/gmu),
+      ['    needs: workspace_artifact_producer']);
+  }
+}
+
+test('workspace prerequisites require core then the prepared driver before WiX, build, verification and upload', async () => {
+  assertWorkspacePrerequisites((await readFile(WORKFLOW, 'utf8')).replaceAll('\r\n', '\n'));
+});
+
+test('workspace prerequisite wiring rejects omitted, masked, conditional and reordered 10+1 routes', async () => {
+  const source = (await readFile(WORKFLOW, 'utf8')).replaceAll('\r\n', '\n');
+  assertWorkspacePrerequisites(source);
+  const driver = '      - name: Verify packaged smoke driver contracts without MSI\n        run: pnpm --filter @eky/desktop installer:test:packaged-smoke-driver';
+  for (const id of ['workspace_artifact_contracts', 'workspace_artifact_producer']) {
+    const job = prerequisiteJob(source, id);
+    const marker = id === 'workspace_artifact_producer' ? driver :
+      '      - name: Verify encrypted evidence contracts without MSI\n        run: pnpm --filter @eky/desktop installer:test:encrypted-evidence:core';
+    for (const changed of [
+      job.replace(marker, ''), job.replace(marker, `${marker}\n${marker}`),
+      job.replace(marker, marker.replace('without MSI', 'renamed')),
+      job.replace('runs-on: windows-latest', 'runs-on: ubuntu-latest'),
+      job.replace('timeout-minutes: ' + (id === 'workspace_artifact_producer' ? 30 : 10), 'timeout-minutes: 60'),
+      job.replace('working-directory: eky_software', 'working-directory: .'),
+      ...['if: false', "if: inputs.risk_plan != ''", 'if: inputs.artifact_only != true',
+        "if: vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT != ''", 'continue-on-error: true']
+        .map(line => job.replace('    runs-on:', `    ${line}\n    runs-on:`)),
+      ...['Install dependencies', marker.split('\n')[0].slice('      - name: '.length),
+        ...(id === 'workspace_artifact_producer' ? ['Restore locked WiX toolchain', 'Build workspace artifact once',
+          'Verify produced workspace artifact', 'Upload exact workspace artifact'] : [])]
+        .flatMap(name => ['if: always()', 'if: false', 'continue-on-error: true'].map(line =>
+          job.replace(`      - name: ${name}\n`, `      - name: ${name}\n        ${line}\n`))),
+      job.replace(marker, `${marker} || true`), job.replace(marker, `${marker}\n          exit 0`),
+      job.replace(marker, marker.replace('        run:', '        working-directory: .\n        run:')),
+      job.replace('pnpm install --frozen-lockfile', 'pnpm install'),
+      job.replace('node .github/scripts/prepareLockedPnpm.mjs', 'node --version'),
+    ]) {
+      assert.notEqual(changed, job);
+      assert.throws(() => assertWorkspacePrerequisites(source.replace(job, changed)), { code: 'ERR_ASSERTION' });
+    }
+  }
+  const producer = prerequisiteJob(source, 'workspace_artifact_producer');
+  for (const name of ['Check out repository', 'Set up Node.js', 'Set up .NET SDK', 'Verify exact .NET SDK',
+    'Prepare locked package manager', 'Install dependencies', 'Build workspace artifact once',
+    'Verify produced workspace artifact', 'Upload exact workspace artifact']) {
+    const reordered = producer.replace(driver, '').replace(`      - name: ${name}\n`, `${driver}\n      - name: ${name}\n`);
+    assert.notEqual(reordered, producer);
+    assert.throws(() => assertWorkspacePrerequisites(source.replace(producer, reordered)), { code: 'ERR_ASSERTION' });
+  }
+  for (const [before, after] of [
+    ['needs: workspace_artifact_contracts', 'needs: []'],
+    ['    needs: workspace_artifact_contracts\n', ''],
+    ['timeout-minutes: 22', 'timeout-minutes: 30'],
+    ['installer:test:packaged-smoke-driver', 'installer:test:encrypted-evidence'],
+    ['dotnet-version: 10.0.302', 'dotnet-version: 10.0.x'],
+  ]) {
+    const changed = producer.replace(before, after);
+    assert.notEqual(changed, producer);
+    assert.throws(() => assertWorkspacePrerequisites(source.replace(producer, changed)), { code: 'ERR_ASSERTION' });
+  }
+  for (const id of ['workspace_consumer', 'workspace_fault_consumer']) {
+    const consumer = prerequisiteJob(source, id);
+    assert.throws(() => assertWorkspacePrerequisites(source.replace(consumer,
+      consumer.replace('needs: workspace_artifact_producer', 'needs: workspace_artifact_contracts'))), { code: 'ERR_ASSERTION' });
+  }
 });
 
 test('V2.6 contract checkpoint is a bounded read-only-permission Windows job with pinned actions', async () => {

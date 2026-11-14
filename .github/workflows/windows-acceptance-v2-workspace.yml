@@ -54,7 +54,7 @@ jobs:
         run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-artifact
 
       - name: Verify encrypted evidence contracts without MSI
-        run: pnpm --filter @eky/desktop installer:test:encrypted-evidence
+        run: pnpm --filter @eky/desktop installer:test:encrypted-evidence:core
 
       - name: Verify workspace lifecycle and read-only Windows adapters
         run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace
@@ -129,6 +129,8 @@ jobs:
         run: node .github/scripts/prepareLockedPnpm.mjs
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      - name: Verify packaged smoke driver contracts without MSI
+        run: pnpm --filter @eky/desktop installer:test:packaged-smoke-driver
       - name: Restore locked WiX toolchain
         run: pnpm --filter @eky/desktop installer:verify-restore-lock
       - name: Build workspace artifact once

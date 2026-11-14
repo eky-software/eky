@@ -1335,11 +1335,43 @@ Testi-, Playwright-, käynnistys- ja cleanup-rajat sekä retry-ehdot säilyvät.
 Molemmilla on nykyinen enintään kolmen minuutin ehdollinen salattu
 virhekeräys, erillisillä `core-electron-0`- ja `core-packaged-0`-sidonnoilla.
 Natiivikäännöksen raakalokipoikkeus pysyy vain development-työn sidonnassa.
-Jaon kokonaisajon ja cleanupin hyväksyntänäyttö on vielä avoin; jako ei
-korjaa aiempia hylkäyksiä tai puuttuvaa sulkutodistetta.
+Työnjaon aiemman integraation hyväksyntä löytyy [M1:n tilasta](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Sen aiemmat hylkäykset tai puuttuvat sulkutodisteet eivät muutu korjatuiksi;
+uusi lähderevisio tarvitsee edelleen omat porttinsa.
 Tämä rajattu diagnoosi ei tuota `V2 acceptance` -tulosta eikä korvaa normaalia
 kokonaiskierrosta. Reusable-kutsun pakollinen riskisuunnitelma säilyy;
 myös manuaalinen V2-kokonaisajo käyttää sitä muuttumattomana.
+
+### Workspace-paketoinnin valmistelutestit
+
+Omistajan 14.11.2026 hyväksymä jako säilyttää alkuperäisen
+`installer:test:encrypted-evidence`-komennon kaikki 11 tiedostoa,
+ajojärjestyksen, runner-liput ja raportoinnin täysille käsiajoille.
+Workspace-CI käyttää samaa tiedostojoukkoa kahdessa nykyisessä työssä:
+
+- `workspace_artifact_contracts` ajaa kymmenen tiedoston
+  `installer:test:encrypted-evidence:core`-valinnan muiden nykyisten
+  sopimustestiensä rinnalla. Vain `scripts/packagedSmokeFailureEvidence.test.mjs`
+  on erotettu tästä valinnasta.
+- `workspace_artifact_producer` ajaa koko erotetun tiedoston komennolla
+  `installer:test:packaged-smoke-driver`. Pakollinen järjestys on riippuvuuksien
+  valmistelu → ajuritesti → WiX-restore → build → tavujen varmennus → upload.
+  Testin virhe estää paketin rakentamisen; ehtoa tai virheen ohitusta ei lisätä.
+
+Nykyiset kytkentätestit varmentavat täyden 11 tiedoston joukon, kahden
+CI-valinnan erillisyyden ja täydellisyyden sekä väärän järjestyksen eston.
+Koonti vaatii core-askeleen sopimustyössä ja ajuriaskeleen tuottajassa;
+puuttuva, kahdentunut, väärän työn, ohitettu tai epäonnistunut askel ei kelpaa.
+Kumpikin komentovalinta säilyttää nykyisen `--test-concurrency=1`-rajan
+ja Node-virheraportoijan. Koko testitiedoston väittämiä tai testirajoja ei muuteta.
+
+Jaossa ei lisätä CI-työtä: sopimustyön 10 minuutin, tuottajan 30 minuutin
+ja sen build-askeleen 22 minuutin rajat säilyvät. Myös `workflow_call`-,
+`workflow_dispatch`- ja diagnostinen `artifact_only`-polku säilyttävät saman
+ennen buildia tehtävän tarkistuksen ja nykyiset riippuvuudet. Salattu keräys
+käyttää kunkin työn omia nykyisiä sidontoja. Jaon korjatun lähteen ajonäyttö
+ja alkuperäisten kokonaiskatkaisujen avoimet rajat kirjataan M1:een;
+työnjako ei yksin todista nopeutta, siivousta tai hyväksyntää.
 
 CI:n vähimmäisportti on:
 

@@ -10,6 +10,40 @@ const packages = ['package.json', 'apps/backend/package.json', 'apps/desktop/pac
   'apps/e2e/package.json', 'apps/web/package.json', 'packages/api-client/package.json',
   'packages/auth/package.json', 'packages/permissions/package.json'];
 
+function assertPreparedWorkspaceRunners(workflow) {
+  for (const [owner, name, script] of [
+    ['workspace_artifact_contracts', 'Verify encrypted evidence contracts without MSI', 'installer:test:encrypted-evidence:core'],
+    ['workspace_artifact_producer', 'Verify packaged smoke driver contracts without MSI', 'installer:test:packaged-smoke-driver'],
+  ]) {
+    const jobs = workflow.replaceAll('\r\n', '\n').split(`\n  ${owner}:\n`);
+    assert.equal(jobs.length, 2, `Missing or duplicate runner owner: ${owner}`);
+    const job = jobs[1].split(/\n  [\w-]+:\n/u)[0];
+    const steps = job.split(/(?=^      - )/mu);
+    const step = name => {
+      const matches = steps.filter(value => value.startsWith(`      - name: ${name}\n`));
+      assert.equal(matches.length, 1, `Missing or duplicate preparation: ${owner}:${name}`);
+      return matches[0].trimEnd();
+    };
+    assert.equal(step('Set up Node.js'), [
+      '      - name: Set up Node.js',
+      '        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020',
+      '        with:', '          node-version-file: eky_software/.node-version',
+      '          package-manager-cache: false',
+    ].join('\n'));
+    assert.equal(step('Prepare locked package manager'),
+      '      - name: Prepare locked package manager\n        working-directory: .\n        run: node .github/scripts/prepareLockedPnpm.mjs');
+    assert.equal(step('Install dependencies'),
+      '      - name: Install dependencies\n        run: pnpm install --frozen-lockfile');
+    assert.equal(step(name), `      - name: ${name}\n        run: pnpm --filter @eky/desktop ${script}`);
+    let previous = -1;
+    for (const value of ['Set up Node.js', 'Prepare locked package manager', 'Install dependencies', name]) {
+      const position = job.indexOf(step(value));
+      assert.ok(position > previous, `Runner preparation order changed: ${owner}`);
+      previous = position;
+    }
+  }
+}
+
 test('real runner fixtures run after locked dependencies, never in dependency-free cadence coverage', async () => {
   const cadence = await read('../.github/workflows/ci-cadence-contracts.yml');
   assert.ok(cadence.includes('test-reporters/runnerFailureWiring.test.mjs'));
@@ -19,15 +53,46 @@ test('real runner fixtures run after locked dependencies, never in dependency-fr
   assert.ok(desktop.scripts['installer:test:encrypted-evidence'].includes('installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs'));
   assert.ok(desktop.scripts['installer:test:encrypted-evidence'].includes('../../test-reporters/tests/d2SecretBrokerFailureEvidenceOpenPgp.test.mjs'));
   assert.ok(desktop.scripts['installer:test:encrypted-evidence'].includes('../../test-reporters/tests/fHttpFailureEvidenceOpenPgp.test.mjs'));
+  for (const path of ['../../test-reporters/runnerFailureReporters.test.mjs',
+    'installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs',
+    '../../test-reporters/tests/d2SecretBrokerFailureEvidenceOpenPgp.test.mjs',
+    '../../test-reporters/tests/fHttpFailureEvidenceOpenPgp.test.mjs']) {
+    assert.equal(desktop.scripts['installer:test:encrypted-evidence:core'].split(' ').filter(value => value === path).length, 1);
+  }
+  assert.equal(desktop.scripts['installer:test:packaged-smoke-driver'],
+    'node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs scripts/packagedSmokeFailureEvidence.test.mjs');
   const root = JSON.parse(await read('package.json'));
   assert.ok(root.scripts['test:ci'].includes('test-reporters/tests/d2SecretBrokerFailureEvidence.test.mjs'));
   assert.ok(root.scripts['test:ci'].includes('test-reporters/tests/fHttpFailureEvidence.test.mjs'));
   assert.ok(!cadence.includes('test-reporters/tests/d2SecretBrokerFailureEvidence.test.mjs'));
   assert.ok(!cadence.includes('test-reporters/tests/fHttpFailureEvidence.test.mjs'));
   const workflow = await read('../.github/workflows/windows-acceptance-v2-workspace.yml');
-  const install = workflow.indexOf('run: pnpm install --frozen-lockfile');
-  const fixture = workflow.indexOf('run: pnpm --filter @eky/desktop installer:test:encrypted-evidence');
-  assert.ok(install >= 0 && fixture > install);
+  assertPreparedWorkspaceRunners(workflow);
+});
+
+test('runner preparation rejects whole-workflow prefix matches and preparation borrowed from another job', async () => {
+  const source = (await read('../.github/workflows/windows-acceptance-v2-workspace.yml')).replaceAll('\r\n', '\n');
+  assertPreparedWorkspaceRunners(source);
+  for (const [owner, script] of [
+    ['workspace_artifact_contracts', 'installer:test:encrypted-evidence:core'],
+    ['workspace_artifact_producer', 'installer:test:packaged-smoke-driver'],
+  ]) {
+    const job = source.split(`\n  ${owner}:\n`)[1].split(/\n  [\w-]+:\n/u)[0];
+    for (const changed of [
+      job.replace('      - name: Install dependencies\n        run: pnpm install --frozen-lockfile', ''),
+      job.replace('run: pnpm install --frozen-lockfile', 'if: false\n        run: pnpm install --frozen-lockfile'),
+      job.replace('run: pnpm install --frozen-lockfile', 'run: pnpm install'),
+      job.replace('run: node .github/scripts/prepareLockedPnpm.mjs', 'run: node --version'),
+      job.replace(`run: pnpm --filter @eky/desktop ${script}`, 'run: pnpm --filter @eky/desktop installer:test:encrypted-evidence'),
+      job.replace(`run: pnpm --filter @eky/desktop ${script}`, `run: pnpm --filter @eky/desktop ${script}-unrelated`),
+      job.replace('      - name: Install dependencies\n        run: pnpm install --frozen-lockfile', '')
+        .replace(`        run: pnpm --filter @eky/desktop ${script}`,
+          `        run: pnpm --filter @eky/desktop ${script}\n      - name: Install dependencies\n        run: pnpm install --frozen-lockfile`),
+    ]) {
+      assert.notEqual(changed, job);
+      assert.throws(() => assertPreparedWorkspaceRunners(source.replace(job, changed)), { code: 'ERR_ASSERTION' });
+    }
+  }
 });
 
 test('Linux delivery keeps the old dependency-free crypto suite and excludes installed runner proofs', async () => {

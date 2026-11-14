@@ -514,7 +514,7 @@ tai aloita katselmusta, skannausta, versionnostoa tai toimitusta:
 | Pala | Tulos ja portti seuraavaan vaiheeseen |
 | --- | --- |
 | M5.1: rajaus ja näyttökartta | Tunnuskohtainen R01-R31/S030-01-S030-05 sekä sovittujen R030-/D029-tehtävien toteutus-, testi-, revisio- ja hyväksyntäviite; erityisesti R030-04/R030-05:n loppuvarmistus. R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä, eivät automaattisina lisätöinä. |
-| M5.2: koko sovelluksen katselmus | Alla määritelty koodi-, arkkitehtuuri-, ylläpidettävyys- ja testirakennekatselmus. Jokaiselle löydökselle lähde, omistaja, vaikutus ja todiste; toimitusta estävät korjaukset erotetaan julkaisun jälkeisestä laajasta siivouksesta. Sovitut korjaukset ja niiden vaikutusalueen portit valmiiksi ennen skannausehdokkaan jäädytystä. |
+| M5.2: koko sovelluksen katselmus | [Viiden vastuualueen ja niiden rajapintojen katselmus](#m52-koko-nykyisen-sovelluksen-katselmus) vasta M5.1:n hyväksynnän jälkeen. Todetut julkaisuesteet korjataan ja riippumattomasti tarkistetaan; muu avoin työ erotetaan julkaisun jälkeisestä siivouksesta ennen M5.3:lle luovutusta. |
 | M5.3: uusi Deep Scan | Tarkka puhdas ehdokasrevisio, sovittu kattavuus ja työbudjetti, käytössä olevan skannaustyökalun asetusten varmennus sekä loppuraportti. Löydökset ja aukot käsitellään; vanhaa keskeytettyä ajoa tai pelkkää lähdekatselmusta ei kirjata uudeksi läpäisyksi. |
 | M5.4: lopullinen release-ehdokas | Tarkoituksellinen 0.3.0-versionosto vasta edeltävien korjausten jälkeen; saman revision nykyiset testit, auditointi ja PR/main-portit sekä build-once-paketin backup/restore-, installer/update/rollback- ja soveltuvat endurance-portit. Pelkkä tavallinen PR/main-MSI ei ole toimitettava release candidate. |
 | M5.5: käyttäjätestaus ja toimitus | Nykyisen ehdokkaan synteettinen käyttäjätestiohje, todella raportoidut tulokset, käyttö-/tukiohje ja release security gate. Hyväksytty MSI/manifesti/checksum toimitetaan samoina tavuina nykyisen pilot-sopimuksen mukaan; ei rebuildiä tai automaattista asennusta. |
@@ -528,7 +528,7 @@ muuttuneen revision ja toimitettavan paketin portit säilyvät alla kuvatusti.
 
 #### M5.1: Hyväksyntänäytön täsmäytys
 
-**Omistajan hyväksymä rajattu Goal 14.11.2026, toteutuksessa.** Lähtö on
+**Omistajan hyväksymä M5.1 on kesken; aiempi Goal poistettiin tauolla.** Lähtö on
 main `4646f6dbabb881a65c0987f9c73711061bae4725` ja
 [W7.5:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021).
 Näyttökartta täsmää nykyiseen lähteeseen erikseen R01-R31-, S030-01-S030-05-
@@ -554,7 +554,10 @@ säilymisen tarkistuksen sekä täsmällisen PR:n ja uuden mainin nykyiset
 soveltuvat portit ja auditoinnin. Puuttuvaa näyttöä, vanhaa ensihylkäystä tai
 tuntematonta siivoustilaa ei suljeta myöhemmän läpäisyn perusteella.
 M5.2:n koko sovelluksen katselmus, M5.3:n uusi Deep Scan, versionnosto,
-release-paketointi ja todellinen käyttäjätestaus eivät sisälly tähän Goaliin.
+release-paketointi ja todellinen käyttäjätestaus eivät sisälly M5.1-osatyöhön.
+Uuden [M5.1 → M5.2-jatkogoalin](#m51-m52-jatkogoalin-tavoite) järjestys
+sallii M5.2:n vasta M5.1:n hyväksynnän jälkeen ilman uutta vaiheenvaihtolupaa;
+omistajan tauko ja myöhempien vaiheiden erilliset päätökset säilyvät.
 R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä.
 
 ##### M5.1:n näyttökartta
@@ -697,6 +700,177 @@ pakollista porttia, mutta testipaketti ei avaa M5.4:n varsinaista versionnostoa,
 release-ehdokasta, jakelua tai M5.5:n käyttäjätestihyväksyntää. Samat puhtaan
 lähteen, build-once-artifactin, testieristyksen ja siivouksen ehdot säilyvät.
 
+Omistaja hyväksyi 14.11.2026 integraatiota estäneen CI-kokonaiskatkaisun
+rajatuksi korjaukseksi [valmistelutestien 10+1-työnjaon](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit):
+core-valinta nykyiseen sopimustyöhön ja koko pakettiajurin tiedosto nykyiseen
+tuottajaan ennen WiX-restorea ja buildia. Täysi käsiajokomento, kaikkien
+tiedostojen väittämät, pakollisuus ja nykyiset aikarajat säilyvät.
+Kytkentä-, järjestys- ja raportointiregressiot sekä korjatun lähteen omat
+PR/main-portit vaaditaan. Vanhoja katkaisuja ja puuttuvaa siivousnäyttöä
+ei merkitä tällä päätöksellä korjatuiksi; M5.1 ei ole vielä hyväksytty.
+
+#### M5.2: Koko nykyisen sovelluksen katselmus
+
+**Lukukatselmoitu sopimus; Goal jatkettu M5.1:een, M5.2-katselmusta ei aloitettu.** Kokonaisuus sulkee
+ensin M5.1:n jäljellä olevat tarkistukset sekä täsmällisen PR #331:n ja sen
+merge-mainin omat portit. Vasta hyväksynnän jälkeen jäädytetään M5.2:n
+lähtörevisio. Suunnitelman tai uuden Goalin tallennus ei hyväksy M5.1:tä,
+jatka tauotettua työtä tai käynnistä myöhempiä M5-vaiheita.
+
+##### Lähtö ja kattavuus
+
+Kirjaa tarkka commit, hyväksyntäviite ja puhdas lähdepuu tai eksplisiittisesti
+hashattu muutoskuva, jos rajattua muutosta tarkastellaan ennen integraatiota.
+Luo nykyiseen hyväksyntänäyttöön toteutettujen moduulien ja toimitettavan
+lähteen polkuinventaario; määritä jokaiselle kohteelle vastuualue ja yksi
+katselmusomistaja. Lähtöreitti on [integraatiomatriisi](module-integration-matrix.md),
+mutta täsmää sen tilat nykyiseen koodiin. Pelkkä vanha `implemented`-rivi,
+tyhjä skeleton tai hyväksytty aiempi paketti ei ole katselmointinäyttö.
+
+Jokainen alue saa suoritetun lähdekatselmuksen, riskiperusteisen syvän
+tarkastelun sekä näkyvän rajauksen siitä, mitä ei tarkistettu ja miksi.
+Kirjaa inventaariokohteiden käsittely ja viitteet, ei vain arvioijien määrää.
+Kolmannen osapuolen lähdepuuta ei väitetä käsin kokonaan katselmoiduksi:
+riippuvuus-, lukitus-, lisenssi-, auditointi- ja toimitusrajat tarkastetaan
+nykyisten omistajien kautta. Pilvi-, mobiili- ja AI-moduulien suunnitelmia
+ei toteuteta tässä katselmuksessa.
+
+| Vastuualue | Tarkasteltava nykyinen pinta ja rajat |
+| --- | --- |
+| Backend ja liiketoiminta | Customers, Company Settings ja Invoicing; HTTP, tietokanta ja migraatiot, domain/application/port/adapter-rajat sekä käytössä olevat auth-, permissions-, validation-, config- ja domain-paketit. |
+| Desktop ja datan elinkaari | Main/preload/session, workspaces ja poisto, backup/restore, salaisuudet, update/rollback ja prosessin todettu loppu. Installerin paketointirajapinta sovitaan testi- ja toimitusperustan omistajan kanssa. |
+| Web, API-client ja UI | Featureomistajuus, DTO:t, asynkroniset tilat ja vanhat vastaukset, virhe-/peruutus-/epävarmuuspalaute, yhteiset UI-paketit ja i18n. |
+| Activity, Diagnostics ja tukiketju | Business audit erillään teknisestä tapahtumasta; writer → reader → API/UI/tukipaketti, minimointi sekä osittaisen tai puuttuvan havainnon totuudenmukaisuus. |
+| Testi- ja toimitusperusta | E2E/harness, testivalinta ja erottavat väittämät, entrypointit/scriptit, Git-juuren `.github`, riippuvuudet/lockfile, native-/build-manifestien omistus, paketin identiteetti ja prosessisiivous. |
+
+Alueet eivät ole rinnakkaisten agenttien kiintiö. Pääagentti rajaa
+päällekkäisyyden, antaa kunkin alueen omistavat ohjeet/ADR:t ja järjestää
+riippumattomat lähdekatselmukset [nykyisen työnjaon](../ai/workflow.md#mallin-ja-päättelytason-valinta)
+mukaan. Koordinoiva kokonaiskatselmus yhdistää rajapinnat ja saman juurisyyn
+löydökset; toteuttaja ohjaa ajot ja korjaukset. Henkilökohtainen mallijako
+ja toteutuneen asetuksen todiste pysyvät paikallisina.
+
+Pääagentti todentaa alueiden väliset ketjut nykyisen lähde-/testinäytön ja
+tarvittavan rajatun lisäkokeen kautta, ei teetä jokaiselle arvioijalle
+koko historiaa tai kaikkia testejä uudelleen:
+
+- laskun hyväksyntä → PDF → toimitus ja audit
+- workspace switch/delete/restore → session/backend/SQLite → restart
+- update → backup ja strict shutdown → first-start/rollback
+- alkuperäinen virhe → turvallinen käyttäjäpalaute → diagnostiikka/tuki.
+
+##### Arviointiperusta ja löydökset
+
+Vertailuperustana ovat hyväksytyt ADR:t, [moduulirajat](module-boundaries.md),
+integraatiomatriisi, omistavat lähteet ja [siivousroadmapin vastuusäännöt](codebase-cleanup-roadmap.md).
+Katselmus tarkistaa todellisen riippuvuussuunnan ja Clean Architecture
+-kerrosrajat, composition rootin, datan ja transaktioiden omistajuuden sekä
+julkiset luku-/kirjoitusportit. Arvioi myös, voidaanko seuraava moduuli tai
+testi lisätä nykyisten pienten rajapintojen kautta ilman laajaa muutospintaa.
+Etsi sopimusrikko, väärä tai epävarma lopputulos, valtuuksien tai tietojen
+ylitys, vuotava tai palautumaton elinkaari ja väärän toiminnan hyväksyvä
+testi. Selvitä myös, onko muutoksen vaikutusalue tarpeettoman vaikea löytää
+tai rajata ja vastaavatko ohjeet, testit sekä diagnostiikka toteutusta.
+
+AI-avusteinen ylläpidettävyys tarkoittaa löydettävää omistajaa ja
+muutospolkua, eksplisiittistä sopimusta, perusteluja, diagnostista näyttöä
+sekä käyttäytymistä suojaavaa testiä ilman koko historian lukemista.
+Perustele aluearvio nykyisillä konkreettisilla muutospoluilla:
+omistaja → sopimus → lähde → erottava testi. Uutta benchmarkia tai
+pisteytysjärjestelmää ei rakenneta.
+Se ei anna sovelluksen AI-toimijalle uusia oikeuksia. Tarkoituksellinen,
+selkeä toisto ei itsessään ole virhe: abstraktio tai tiedostonjako vaatii
+osoitetun hyödyn. Rivimäärä ei yksin ole peruste, eikä yleistä utils-kerrosta
+tai riippuvuutta lisätä ennakolta. Laskun atominen cross-module-snapshot-luku
+arvioidaan [nykyisen nimetyn poikkeuksen](module-boundaries.md#laskun-hyväksynnän-rajattu-snapshot-luku)
+käyttöalaa ja perustelua vasten, ei automaattisena moduulirikkeenä.
+
+Käytä [Code Severity](codebase-cleanup-roadmap.md#code-severity)- ja
+[Release Gate](codebase-cleanup-roadmap.md#release-gate)-luokituksia erillisinä
+ulottuvuuksina. Nimeä löydöksen lähderevisio ja polku, nykyinen sopimus,
+konkreettinen skenaario/vaikutus, todiste tai vielä tarvittava koe, omistaja,
+rajattu korjaus ja hyväksymisehto. Erota todennettu vika, hypoteesi,
+kattavuusaukko ja myöhempi parannus. Vanha avoin havainto ei muutu korjatuksi
+uudella läpäisyllä. Julkaisueste ratkaistaan sovitun 0.3.0-käyttörajan
+perusteella; vakavuusluokka ei yksin avaa tai sulje release-porttia.
+
+Jos puuttuva näyttö estää kriittisen sopimuksen arvioinnin tai
+julkaisuedellytyksen todentamisen, kyseisen alueen katselmus ei ole valmis
+pelkällä aukon kirjaamisella. Ratkaise aukko nykyisellä näytöllä, rajatulla
+kokeella tai soveltuvalla erillisellä omistajapäätöksellä; pakollista
+turva- tai hyväksyntäporttia ei ohiteta. Muu riippumaton katselmus voi jatkua.
+
+##### Korjaukset, valtuus ja luovutus
+
+Uuden Goalin jatkamisen jälkeen nykyisten sopimusten sisäinen tutkimus,
+rajattu synteettinen todennus/virheinjektio, välttämätön tilapäinen
+[lähde-eristys ja testivalmistelu](../ai/workflow.md#suunnitelman-sisältö-ja-hyväksyntä),
+nykyiset testipaketit ja osoitetut sopimuksen palauttavat koodi-/testi-/ohjekorjaukset
+kuuluvat kokonaisuuteen ilman uutta rutiinilupaa. Tämä kattaa nykyiset
+väittämät säilyttävän testiapurin korjauksen ja ehdollisen lähdekytkennän,
+ei uutta käyttäytymis- tai turvasopimusta. Käytä nykyisiä omistajia ja
+testialustaa; ei yleistä manageria, supervisoria tai lokituskehystä.
+
+Kohde-, integraatio-, hardened packaged-, PR- ja main-portit valitaan
+muutoksen todellisen vaikutusalueen mukaan. Paikalliset testiaikarajat
+noudattavat [nykyistä aikabudjettiohjetta](../ai/testing-rules.md#testin-tuotannon-ja-cin-aikabudjetit);
+ensivirhe, erillinen cleanup ja [uusintaraja](../ai/testing-rules.md#enintään-yksi-uusinta)
+säilyvät. Synteettinen pakollinen testipaketti ei ole lopullinen
+release-ehdokas, eikä paketin kokoaminen anna toimituslupaa. Normaalit
+commit/PR/merge-toimet noudattavat [Goalin mergevaltuutta](../ai/workflow.md#mergen-valtuus-hyväksytyssä-goalissa),
+täsmällisen revision portteja ja uuden mainin omaa näyttöä.
+
+Erillisiä päätöksiä ovat uudet riippuvuudet, laaja arkkitehtuuri-,
+liiketoiminta- tai turvasopimus, oikeat käyttäjätiedot/tuotantokäyttö ja
+OS-suojausasetukset, CI-kokonaisbudjetin tai pakollisen portin kevennys tai
+poikkeus sekä M5.3-skannauksen ja M5.4/M5.5-versionnoston, releasen tai
+toimituksen käynnistys. Uusi tekninen ongelma, hyväksytty mallin delegointi
+tai sopimuksen säilyttävä testivalmistelu ei yksin ole uusi päätösraja.
+Rajaa aito päätöstarve vaikutusalueeseensa; muu riippumaton valtuutettu
+työ voi jatkua. Erilliset taukopyynnöt ja päiväpalaveri säilyvät.
+
+M5.2 valmistuu vasta, kun inventaarion kaikki alueet ja rajapinnat on
+käsitelty, duplikaatit yhdistetty ja sovitun julkaisun todetut esteet
+korjattu sekä riippumattomasti tarkistettu vaadituilla revisionmukaisilla
+porteilla. Muut avoimet asiat jäävät näkyviin omistajineen, vaikutuksineen
+ja kattavuusrajoineen. Uudelleenkatselmus rajataan muuttuneeseen
+vaikutusalueeseen, ellei löydös osoita laajempaa tarvetta. Pelkkä lukumäärä,
+tokenbudjetti tai vihreä testikomento ei sulje katselmusta. Luovuta M5.3:lle
+puhdas todennettu ehdokasrevisio, kattavuuskartta, löydösten käsittely ja
+jäljellä olevat päätökset; älä käynnistä skannausta luovutuksen sivutoimena.
+Vaihe-/mallikohtainen kulutus kirjataan [nykyiseen raportointiin](../ai/workflow.md#päivittäinen-tarkistuspiste),
+ei uuteen mittausjärjestelmään tai kattavuuden korvikkeeksi.
+
+##### M5.1-M5.2-jatkogoalin tavoite
+
+**Työkalun vahvistama tila: tallennettu, `active`, ei tokenbudjettia.**
+Suunnitelma ja tavoiteteksti on lukukatselmoitu. Goal tauotettiin ensin;
+omistaja jatkoi 15.11.2026 M5.1:n tarkistuksiin ja integraatioon. M5.2 alkaa
+vasta M5.1:n sekä sen PR/main-porttien hyväksynnän jälkeen. Tallennus tai
+jatko ei itsessään hyväksy kumpaakaan osatyötä.
+
+> EKY 0.3.0: viimeistele ensin M5.1 ja sen jälkeen M5.2 tämän roadmapin
+> sopimuksilla ja M1:n yhdestä jatkamiskohdasta. Säilytä M5.1:n nykyinen
+> työpuu, paikalliset muutokset ja ensivirheet. Varmenna tuore Git/CI ja
+> ohjeet ennen jatkoa. Vie M5.1:n puuttuvat tarkistukset, PR #331:n
+> täsmällisen lähteen portit ja auditointi normaaliin suojattuun mergeen
+> sekä uuden mainin omiin portteihin. Älä hyväksy M5.1:tä valmistelun vuoksi.
+> Jäädytä vasta hyväksynnän jälkeen M5.2:n lähde ja polkuinventaario.
+> Toteuta viiden vastuualueen riippumaton koodi-, rakenne-, ylläpidettävyys-
+> ja testikatselmus sekä koordinoitu rajapintojen arvio. Erota lähdekatselmus,
+> todennettu vika, hypoteesi ja puuttuva näyttö. Korjaa nykyisiä sopimuksia
+> rikkovat todetut julkaisuesteet pienissä katselmoitavissa paloissa ja
+> todenna muuttunut vaikutusalue nykyisillä kohde-/integraatio-/paketti-/PR-/main-porteilla.
+> Nykyisten sopimusten sisäiset kokeet, valmistelu, korjaukset ja normaali
+> mergevaltuus eivät tarvitse uutta rutiinilupaa; erilliset päätösrajat,
+> turva-/siivousehdot, ensivirheen säilytys ja uusintaraja säilyvät.
+> Käytä sovittua paikallista mallijakoa ja nykyistä vaihe-/malliraportointia;
+> älä muuta asetusta tai päättele puuttuvaa kulutusta. Noudata päiväpalaveria
+> ja taukopyyntöjä. Valmis vasta M5.1:n hyväksynnän ja M5.2:n kattavuus-,
+> korjaus- ja luovutusehtojen täytyttyä, ei koko 0.3.0:n julkaisu.
+> Ei laajaa refaktorointia, uusia ominaisuuksia, skannausta, versionnostoa,
+> release-ehdokasta, jakelua tai oikeaa dataa tämän Goalin sivutoimena.
+
 #### Myöhemmät M5-portit
 
 Jokaisessa paketissa käytetään
@@ -712,29 +886,10 @@ sen jälkeen uusi Codex Security Deep Scan `Ultra`-päättelyllä. Omistajan
 4.10.2026 täsmennys määrää tämän järjestyksen, ei uutta rinnakkaista roadmapia
 tai kaikkien suurten tiedostojen automaattista uudelleenkirjoitusta.
 
-Koodikatselmus kattaa backendin, webin, desktopin, jaetut paketit, jokaisen
-toteutetun moduulin ja yhteisen testiperustan:
-
-- vastaako todellinen riippuvuussuunta hyväksyttyä modulaarista monoliittia,
-  Clean Architecture -kerrosrajoja sekä domain/application/port/adapter-jakoa
-- säilyvätkö datan omistajuus, composition rootin vastuu ja moduulien julkiset
-  luku-/kirjoitusportit ilman oikopolkuja tai kiertäviä riippuvuuksia
-- löytyykö vaikeasti seurattavaa ohjausta, päällekkäistä logiikkaa tai usean
-  vastuun koodikeskittymiä, joiden jakaminen oikeasti parantaa ylläpidettävyyttä;
-  rivimäärä yksin ei ole refaktorointiperuste
-- tarvitseeko todellinen toisto yhteisen työkalun vai kuuluuko se edelleen
-  moduuliin; ei yleistä utils-kerrosta tai uutta riippuvuutta ennakolta
-- ovatko uudet moduulit ja testit lisättävissä nykyisten pienten rajapintojen
-  kautta, ja vastaavatko ohjeet, lukureitit, testit ja diagnostiikka toteutusta.
-
-Tuloksena kirjataan lähdeviitteellinen, priorisoitu havaintolista, omistajat,
-korjausten rajaus ja hyväksyntäehdot nykyiseen suunnitelmaan. Vertailuperustana
-ovat hyväksytyt ADR:t, [moduulirajat](module-boundaries.md),
-[integraatiomatriisi](module-integration-matrix.md) ja
-[siivousroadmapin vastuusäännöt](codebase-cleanup-roadmap.md).
-Korjaukset tehdään erillisinä katselmoituina paloina; laaja arkkitehtuurimuutos
-vaatii edelleen päätöksen. Sovitut ennen julkaisua tarvittavat korjaukset ja
-niiden regressiot valmistuvat ennen Deep Scanin ehdokasrevision jäädytystä.
+[M5.2:n sopimus](#m52-koko-nykyisen-sovelluksen-katselmus) omistaa koko
+koodi-/rakennekatselmuksen, löydökset, rajatut korjaukset ja luovutuksen
+M5.3:lle. Sovitut ennen julkaisua tarvittavat korjaukset ja niiden regressiot
+valmistuvat ennen Deep Scanin ehdokasrevision jäädytystä.
 
 Ajankohta on 0.3.0-toteutuskokonaisuuden jälkeen mutta ennen lopullista
 toimitushyväksyntää. Deep Scan on uusi erikseen

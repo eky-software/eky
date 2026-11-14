@@ -92,6 +92,51 @@ test('Linux package and build jobs require their own exact successful steps', ()
   }
 });
 
+test('workspace 10+1 routing requires each exact successful step in its own shared prerequisite job', () => {
+  const owners = {
+    'Verify V2.6 artifact and runtime contracts': ['Verify encrypted evidence contracts without MSI'],
+    'Build workspace acceptance artifact once': ['Verify packaged smoke driver contracts without MSI'],
+  };
+  for (const event of ['pull_request', 'push']) {
+    const plan = planFor([critical], event);
+    assert.equal(plan.risk, event === 'pull_request' ? 'installer' : 'full');
+    const required = requiredCiJobs(plan);
+    for (const gate of ['workspaceSuccess', 'workspaceFault']) {
+      assert.deepEqual(required[gate].slice(0, 2).map(job => [job.name, job.steps]), Object.entries(owners));
+    }
+    const original = evidence(plan);
+    // Independent literals also supply the successful evidence, not just the coverage map.
+    for (const [owner, names] of Object.entries(owners)) {
+      const matches = original.jobs.filter(job => job.name === `caller / ${owner}`);
+      assert.equal(matches.length, 1, 'shared producer must be deduplicated across success and fault gates');
+      matches[0].steps = names.map(name => ({ name, status: 'completed', conclusion: 'success' }));
+    }
+    assert.equal(evaluateCiRun(plan, original.needs, original.jobs).status, 'completed');
+    for (const [owner, [name]] of Object.entries(owners)) {
+      for (const outcome of ['missing', 'renamed', 'duplicate', 'wrong-owner', 'skipped', 'failure',
+        'cancelled', 'timed_out', 'neutral', 'action_required', 'queued', 'in_progress']) {
+        const { needs, jobs } = structuredClone(original);
+        const job = jobs.find(value => value.name === `caller / ${owner}`);
+        const step = job.steps.find(value => value.name === name);
+        if (outcome === 'missing' || outcome === 'wrong-owner') job.steps = [];
+        if (outcome === 'wrong-owner') {
+          jobs.find(value => value.name === `caller / ${Object.keys(owners).find(value => value !== owner)}`)
+            .steps.push(step);
+        } else if (outcome === 'renamed') step.name = 'Unrelated contract';
+        else if (outcome === 'duplicate') job.steps.push(structuredClone(step));
+        else if (['queued', 'in_progress'].includes(outcome)) {
+          step.status = outcome;
+          step.conclusion = null;
+        } else if (outcome !== 'missing') step.conclusion = outcome;
+        assert.equal(job.conclusion, 'success');
+        assert.equal(needs.workspace.result, 'success');
+        assert.equal(evaluateCiRun(plan, needs, jobs).resultCode, 'CI_REQUIRED_STEP_INCOMPLETE',
+          `${event}:${owner}:${outcome}`);
+      }
+    }
+  }
+});
+
 test('legacy coverage requires every responsibility group and selected repetition before its producer', () => {
   for (const event of ['pull_request', 'push']) {
     const plan = planFor([critical], event);

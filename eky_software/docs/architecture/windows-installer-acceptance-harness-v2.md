@@ -66,8 +66,16 @@ Yhteenlaskettu enimmäisvara kasvaa 35:stä 70 runner-minuuttiin; valmistelu
 on työkohtainen. Testi-, Playwright-, cleanup- ja retry-rajat säilyvät.
 Salattu keräys käyttää erillisiä `core-electron-0`- ja `core-packaged-0`-
 sidontoja; natiivikäännöksen raakalokipoikkeus ei laajene pakettityöhön.
-Jaon täysi ajonäyttö ja cleanup-hyväksyntä ovat avoimia; aiempia hylkäyksiä
-tai puuttuvia sulkutodisteita ei suljeta tällä CI-sijoituksen muutoksella.
+Työnjaon aiemman integraation hyväksyntä on M1:n tilassa. Uusi revisio
+tarvitsee omat porttinsa; aiempia hylkäyksiä tai puuttuvia sulkutodisteita
+ei suljeta tällä CI-sijoituksen muutoksella.
+
+Workspace-CI:n [valmistelutestien työnjako](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit)
+säilyttää samat 11 tiedostoa: kymmenen core-tiedostoa sopimustyössä ja koko
+pakettiajurin tiedosto tuottajassa riippuvuuksien jälkeen ennen WiX-restorea
+ja artifactin rakentamista. Molemmat askeleet ja niiden järjestys ovat
+pakollisia; nykyiset työ-, build-, keräys- ja siivousrajat sekä manuaaliset
+polut säilyvät. Tämä ei avaa kuluttajia ilman tuottajan hyväksyttyä tulosta.
 
 Workspace-asentimen sulkemispyynnön tiedostokäyttäjät havaitaan nykyisen
 valinnaisen MSI-kyselyn kautta. Lähdeinventaarion hyväksytyt tiedostot

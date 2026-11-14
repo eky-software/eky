@@ -18,7 +18,9 @@ export function requiredCiJobs(plan) {
     name: `${name} ${index + 1}`, family: `${name} `, steps,
   }));
   const job = (name, steps = []) => ({ name, family: name, steps });
-  const workspaceProducer = [job('Verify V2.6 artifact and runtime contracts'), job('Build workspace acceptance artifact once')];
+  const workspaceProducer = [job('Verify V2.6 artifact and runtime contracts',
+    ['Verify encrypted evidence contracts without MSI']), job('Build workspace acceptance artifact once',
+    ['Verify packaged smoke driver contracts without MSI'])];
   return {
     verify: [job('V2 cadence contracts (ubuntu-latest)', ['Verify risk and result contracts']),
       job('V2 cadence contracts (windows-latest)', ['Verify risk and result contracts']),

@@ -528,7 +528,11 @@ erillistä prosessia; se ei korvaa oikean Electron-paketin hyväksyntäajoa.
 Nämä asennettuja testityökaluja tarvitsevat kokeet ovat tiedostossa
 `originalFailureEvidenceOpenPgp.test.mjs` ja nykyisessä
 `installer:test:encrypted-evidence`-komennossa riippuvuuksien valmistelun
-jälkeen. Aiempi `encryptedEvidenceOpenPgp.test.mjs` säilyy ilman projektin
+jälkeen. Workspace-CI:n `installer:test:encrypted-evidence:core` säilyttää
+nämä salauskokeet; koko pakettiajurin tiedosto ajetaan erikseen tuottajassa
+ennen WiX-restorea ja buildia [valmistelutestien työnjaon](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit)
+mukaan. Täysi käsiajokomento, keräin ja aineistorajat eivät muutu.
+Aiempi `encryptedEvidenceOpenPgp.test.mjs` säilyy ilman projektin
 kolmannen osapuolen paketteja ajettavana Linuxin toimituskokeena; samaa
 testiavainapuria käytetään molemmissa sarjoissa.
 

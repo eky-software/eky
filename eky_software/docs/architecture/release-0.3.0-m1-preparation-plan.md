@@ -7,7 +7,7 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 ## Jatka tästä
 
-**14.11.2026: W7.5 A-E on hyväksytty. M5.1:n näyttökartta ja loppuvarmistus ovat käynnissä;
+**W7.5 A-E on hyväksytty. M5.1:n loppuvarmennus on käynnissä;
 0.3.0-julkaisu ei ole vielä hyväksytty.** Hyväksytty lähtö on main
 `4646f6dbabb881a65c0987f9c73711061bae4725` ja
 [PR #330:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021).
@@ -31,12 +31,15 @@ native-alipuun erillinen loppusiivousnäyttö jäävät avoimiksi. Myös aiemmat
 core-/MSI- ja siivousepävarmuudet säilyvät omissa rajauksissaan. Myöhempi
 läpäisy tai tämä dokumenttimuutos ei sulje niitä eikä nollaa uusintarajaa.
 
-**Nykyinen valtuus:** omistaja hyväksyi M5.1:n Goalin: tunnuskohtaisen
-hyväksyntänäytön täsmäytys sekä R030-04:n palautteen ja R030-05:n käyttö-/tukiohjeen
-loppuvarmistus. Säilytä tämän haaran kolme aiempaa suunnitelmamuutosta.
-Työ ei käynnistä M5.2:n koko sovelluksen katselmusta, uutta skannausta,
-versionnostoa tai toimitusta. [M5.1:n sopimus ja näyttökartta](release-0.3.0-plan.md#m51-hyväksyntänäytön-täsmäytys)
-omistaa rajatut tarkistukset ja puuttuvan näytön, ei uutta rinnakkaista työjonoa.
+**Nykyinen valtuus:** [M5.1 → M5.2-jatkogoal](release-0.3.0-plan.md#m51-m52-jatkogoalin-tavoite)
+on lukukatselmoitu ja tallennettu ilman tokenbudjettia. Työkalun vahvistama
+tila on `active`; omistaja jatkoi työtä 15.11.2026. Ensin viimeistellään
+M5.1:n tarkistukset, PR #331 ja uuden mainin omat portit. Vasta niiden
+hyväksynnän jälkeen alkaa M5.2:n katselmus. Valmistelu ei hyväksy M5.1:tä,
+eikä tämä Goal käynnistä skannausta, versionnostoa tai toimitusta. Säilytä
+`codex/m5-release-preparation` / `e5704b27` ja sen 13 aiempaa muutosta.
+[M5.1:n sopimus ja näyttökartta](release-0.3.0-plan.md#m51-hyväksyntänäytön-täsmäytys)
+säilyy keskeneräisen osatyön omistajana, ei valmistelulla hyväksyttynä.
 
 **Nykyinen checkpoint:** 47 tunnuksen lähde-/testi-/hyväksyntäkartta ja
 käyttö-/tukiohje on katselmoitu; ohjeen kaksi täsmennystä on korjattu ja tarkistettu.
@@ -48,24 +51,39 @@ toteutuskatselmus ei löytänyt korjattavaa. Pakotetun alkuperäisen virheen
 viesti, kutsupino ja syyketju löytyivät nykyisellä TEST-avainkokeella puretusta
 salatusta paketista. Ensihylkäykset ja kohdenäytön rajat säilyvät.
 Omistaja hyväksyi rajatun synteettisen Windows-testipaketin ja muutoksen nykyiset
-turvaportit. Puhtaan lähteen paketti- ja PR/main-todennus sekä M5.1:n
-loppuhyväksyntä ovat avoinna; release-paketointi ja jakelu eivät avaudu.
+turvaportit. [PR #331:n](https://github.com/eky-software/eky/pull/331) ensimmäinen head oli
+`e5704b27`; sen todellinen testimerge `bbfec11c` säilyttää oman build-identiteettinsä.
+[Ensimmäinen V2](https://github.com/eky-software/eky/actions/runs/43631584543) katkaisi
+workspace-sopimustyön kymmenen minuutin kokonaisrajaan myös yhdessä sallitussa
+kohdeuusinnassa. Uusinta on käytetty; koko työn siivousnäyttö jää puuttuvaksi.
+Muut 24 onnistunutta suoritusta, valmiit paketit ja erillisen auditoinnin läpäisy
+säilyvät, mutta workspace-paketin tuotto ja kuluttajat estyivät.
+Omistaja hyväksyi nykyisten CI-töiden [10+1-työnjaon](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit)
+ja sen tarkistukset. Toteutus säilyttää koko käsiajokomentoon kuuluvan
+testijoukon ja lukitsee ajuritestin tuottajaan ennen WiX-restorea ja buildia.
+Työnjaon 326 kohdetarkistusta, core-valinnan 177 ja ajuritiedoston 194 testiä
+sekä rajattu riippumaton katselmus läpäisivät. Erillisen virheinjektion
+tiedostotunnistevertailu korjattiin täsmälliseksi; keräin ja väittämät säilyivät.
+Myös alkuperäinen täysi käsiajokomento läpäisi 371 testiä; osavalintoja ja
+täyttä ajoa ei summata uudeksi kattavuudeksi. Jatkossa myös normaali
+CI-sopimussarja 431/431 ja workspace-artifact-sarja 78/78 läpäisivät.
+Taukoa varten kaikki aloitetut
+komennot päättyivät ja tarkistajat suljettiin; uusia ajoja ei aloitettu.
+Korjatun lähteen normaalin PR/main-kierroksen tulokset sidotaan PR:n
+täsmälliseen hyväksyntänäyttöön. Aikarajoja ei nosteta.
+Paketti- ja PR/main-portit sekä M5.1:n loppuhyväksyntä ovat avoinna;
+release-paketointi ja jakelu eivät avaudu.
 
-Työ etenee [roadmapin M5-järjestyksessä](release-0.3.0-plan.md#m5-uusi-katselmus-deep-scan-ja-julkaisuportti):
-1. Täsmää R01-R31, S030-01-S030-05 ja sovitut R030-/D029-kohdat nykyiseen
-   toteutus-, testi- ja revisionmukaiseen hyväksyntänäyttöön. Varmista erityisesti
-   R030-04:n palaute ja R030-05:n ohjeet; vanha tilarivi ei yksin todista puuttuvaa
-   toteutusta. R030-06, D029-06 ja R030-07 ovat edelleen erillisiä rajauspäätöksiä.
-2. M5.1:n jälkeen rajaa koko backendin, webin, desktopin, jaettujen pakettien, toteutettujen
-   moduulien ja testiperustan koodi-/rakenne-/ylläpidettävyyskatselmus nykyisiin
-   omistajiin. Erota ennen toimitusta tarvittava korjaus myöhemmästä siivouksesta.
-3. Suunnittele korjausten jälkeisen puhtaan ehdokasrevision uusi Deep Scan,
-   sen asetusten ja työbudjetin varmennus sekä havaintojen/kattavuusaukkojen käsittely.
-   Keskeytettyä vanhaa skannausta ei jatketa tämän työn sivutoimena.
-4. Valmistele tuoreet testit ja auditointi, varsinainen 0.3.0-versionosto,
-   build-once-paketin nykyiset hyväksyntäportit, päivitetty synteettinen
-   käyttäjätestaus ja erillinen toimitushyväksyntä. Vanhan pilotin ohje tai
-   automaation vihreys ei ole uuden ehdokkaan käyttäjätestitulos.
+Nykyinen työjärjestys on:
+1. Viimeistele M5.1:n `test:ci`- ja workspace-artifact-tarkistukset,
+   linkki-/yksityisyys-/lähdejäädytys ja PR #331:n korjausrevision nykyiset
+   paketti-/auditointi-/PR-portit, suojattu merge ja uuden mainin omat portit.
+2. Vasta M5.1:n hyväksynnän jälkeen jäädytä lähde ja inventaario
+   [M5.2:n viiden alueen katselmukseen](release-0.3.0-plan.md#m52-koko-nykyisen-sovelluksen-katselmus).
+   Korjaa todetut julkaisuesteet, tarkista vaikutusalue ja luovuta M5.3:lle.
+3. M5.3:n skannaus sekä M5.4/M5.5:n versionosto, release ja käyttäjätestaus/
+   toimitus pysyvät [erillisinä myöhempinä portteina](release-0.3.0-plan.md#myöhemmät-m5-portit).
+   R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä.
 
 Laaja refaktorointi ja GitHubin tietoturva-asetusten yhteinen läpikäynti
 säilyvät julkaisun jälkeisinä erillisinä töinä. M5:n toimitusta estäviä
