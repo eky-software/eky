@@ -9,58 +9,57 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 **14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
 Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
-edellisen PR-kierroksen head `4ed57149`. Hyväksytty lähtö on main
-`9657fdc1` ja PR #327/#328. Säilytä paikalliset testiodotuskorjaukset.
+edellisen PR-kierroksen head `5f11f2a2`. Hyväksytty lähtö on main
+`9657fdc1` ja PR #327/#328. Säilytä paikallinen luettelointiodotuksen korjaus.
 [Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
 ja hyväksytyt tuontijournalin/sidontatallentimen rajaukset säilyvät.
 Hyväksyttyjä paketteja ei avata ilman regressiota.
 
-[V2-ajo 43538585776](https://github.com/eky-software/eky/actions/runs/43538585776)
-päättyi hylättynä: 36 onnistui, kolme hylkäsi ja seitsemän ohitettiin.
-Ohituksista kuusi oli tarkoituksella valitsematonta diagnostiikkatyötä;
-core-verifyn riippuvuusesto ei ole hyväksyttyä kattavuutta. Koontihylkäys
-on seuraus kahdesta alkuperäisaineistosta osoitetusta testiodotuspuutteesta.
-Todellinen checkout molemmissa hylänneissä töissä oli
-`a3f97afb5a6d1b2690894dbfff9b07196a025ba7`, ei PR-head.
-[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43538585530)
-läpäisi. Windowsin Electron-, paketti-, workspace- ja installer/legacy-portit
-läpäisivät. PR ei ole mergevalmis.
+[V2-ajo 43542629431](https://github.com/eky-software/eky/actions/runs/43542629431)
+päättyi hylättynä: 38 onnistui, kaksi hylkäsi ja kuusi tarkoituksella
+valitsematonta diagnostiikkatyötä ohitettiin. Core-verify hylkäsi
+E2E-testikomentonsa luettelointiodotukseen; koontihylkäys on sen seuraus.
+Todellinen checkout hylänneessä työssä oli
+`86aab82cc50ba43a063dd86c8f059017ea4abb3c`, ei PR-head.
+[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43542629292)
+läpäisi. Edellisen kierroksen startup-v2/v3- ja desktopin runner-odotuskorjaukset
+läpäisivät nyt system- ja package-työt CI:ssä, samoin muut valitut portit.
+PR ei ole mergevalmis.
 
-Rajattu nykyinen korjaus:
-- Systemin startup-sopimustesti odotti vanhaa v2-snapshotia, vaikka nykyinen
-  tuottaja palauttaa v3:n ja `mainStartup`-kentän. Vain testiodotus korjattiin;
-  legacy-v2:n tiukka luku ja väärien yhdistelmäkenttien hylkäys todennetaan.
-  Koko nykyinen 23 testin tiedosto läpäisi.
-- Desktopin T1-kytkentätestin vanha yhteinen Linux-label odotti yhä latestia.
-  `verify` vaatii nyt sovitun 24.04:n, `test-packages` säilyttää latestin.
-  Neljä kielteistä drift-kontrollia lisättiin. Koko 244 testin tiedosto ja
-  normaali Node-loppuvaihe läpäisivät (590 läpäisyä, 12 alustakohtaista ohitusta).
-  Joukot ovat päällekkäisiä. E2E-tyypitys läpäisi.
-- Koko desktop-Vitest-vaihe (486 tiedostoa, 12 559 läpäisyä, neljä ohitusta)
-  ja sama 23 kohteen rooliketju läpäisivät jo tässä CI-kierroksessa.
-  Hylännyt Node-koonti säilyy hylättynä; myöhempi kohdeajo ei hyväksy sitä.
-  Molempien ensihylkäysten salatut alkuperäiset, lähdesidonnat ja tavut
-  varmennettiin. Tuotantokoodi, parserit, turvavartijat ja aikarajat eivät muutu.
+Nykyinen rajattu korjaus on vain E2E-ajokytkentätestissä:
+- Oikea Playwright-`--list` onnistui, mutta testi odotti CI:ssäkin paikallista
+  tekstilistaa. Nykyinen turvallinen reportteri palauttaa tarkoituksella
+  kolme JSON-tilaa ilman testin nimeä. Alkuperäinen salattu poikkeus ja kaikki
+  kolme payloadia sekä lähdesidonta varmennettiin; kyse ei ollut timeoutista.
+- Testi tarkistaa nyt nykyisen reportterimuodon: paikallisesti sama tekstilista,
+  CI:ssä täsmällinen yksi valinta oikeasta projektista/tiedostosta,
+  `notRun: 1`, nolla yritystä ja nolla suoritettua testiä tai virhettä.
+  Luettelointi ei ole käyttäjäpolun ajonäyttö. Reportteria, ympäristön
+  CI-suojausta, 4/5 sekunnin rajoja tai 128 KiB:n tulostusrajaa ei muuteta.
+- Paikallinen koko tiedosto läpäisi 87 testiä, oikean CLI:n paikallinen
+  CI-reportterikoe yhden ja koko normaali E2E-komento paikallisessa CI-tilassa
+  87 + 789 + 515 testiä ilman ohituksia. Joukot ovat päällekkäisiä.
+  E2E-tyypitys läpäisi. Tämä ei vielä todenna hosted-Linux-kierrosta.
+  Yhden testiomistajan riippumaton katselmus ei löytänyt korjattavaa.
 
 [Kolmen Linux-kuluttajan ympäristörajaus](e2e-test-environment.md#linux-ci),
 eksplisiittiset permissions/auth-buildit ja ajokytkentätiedoston erillinen
-ajo säilyvät. Niiden lähdekatselmus, puhdas normaali E2E-komento
-(86 + 789 + 515 testiä) ja 429 CI-sopimustestiä läpäisivät.
-Vanhan luettelointitimeoutin tarkkaa syytä ei silti väitetä korjatuksi.
-Kahden uuden testikorjauksen riippumaton katselmus ei löytänyt korjattavaa.
+ajo säilyvät. Verifyn myöhempi oikea Linux-inspection jäi vielä ajamatta.
+Vanhat luettelointi- ja muut timeout-syyt pysyvät avoimina; niitä ei nimetä
+korjatuiksi onnistuneella erillisajolla.
 
-Säilyvä toiminnallinen näyttö: koko desktop, web/backend/HTTP, stress ja
-täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
-Puhdas lähde `03f97967` rakennettiin kerran: hardened smoke ja kaikki viisi
-paketoitua palautus/poistotapausta läpäisivät samoilla tavuilla.
-Myöhempi checkpoint ei muuta paketin build-identiteettiä.
+Säilyvä toiminnallinen näyttö: koko desktop ja sama 23 kohteen ketju,
+web/backend/HTTP, stress ja täysi soak sekä oikeat Electronin poisto-/
+tukivientipolut läpäisivät. Puhdas lähde `03f97967` rakennettiin kerran:
+hardened smoke ja kaikki viisi paketoitua palautus/poistotapausta läpäisivät
+samoilla tavuilla. Myöhempi checkpoint ei muuta paketin build-identiteettiä.
 Koko A-E:n riippumaton koodikatselmus on tehty; muuttuneet korjaukset
-katselmoidaan erikseen. [Aiemmat kierrokset ja avoimet havainnot](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-4ed)
+katselmoidaan erikseen. [Aiemmat kierrokset ja avoimet havainnot](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-5f)
 säilyvät historiassa.
 
 Seuraavaksi:
-1. Julkaise osoitetut katselmoidut testikorjaukset ja ohjeet normaalisti
-   samaan PR:ään; säilytä päättyneen kierroksen virheet ja lähdesidonnat.
+1. Julkaise osoitettu katselmoitu testikorjaus ja lyhyt ohje normaalisti
+   samaan PR:ään; säilytä päättyneen kierroksen ensivirhe ja lähdesidonta.
 2. Vaadi uuden jäädytetyn headin kaikki normaalit portit sekä auditointi.
 3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
    main-revision omat tarkistukset. Ei uusintasilmukkaa tai turva-/aikarajojen

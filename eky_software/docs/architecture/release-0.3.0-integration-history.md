@@ -5,6 +5,77 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+<a id="m1-checkpoint-20261114-pr330-5f"></a>
+
+## M1:n checkpoint ennen PR330:n luettelointireportterin odotuskorjausta 14.11.2026
+
+Alla on edellinen aktiiviosuus muuttamattomana. Päivätyt tilat säilyvät
+historiana; nykyinen työjono ja hyväksyntänäyttö löytyvät M1:stä.
+
+**14.11.2026: W7.5 A-E on toteutettu, integraatiohyväksyntä on kesken.**
+Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330),
+edellisen PR-kierroksen head `4ed57149`. Hyväksytty lähtö on main
+`9657fdc1` ja PR #327/#328. Säilytä paikalliset testiodotuskorjaukset.
+[Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+ja hyväksytyt tuontijournalin/sidontatallentimen rajaukset säilyvät.
+Hyväksyttyjä paketteja ei avata ilman regressiota.
+
+[V2-ajo 43538585776](https://github.com/eky-software/eky/actions/runs/43538585776)
+päättyi hylättynä: 36 onnistui, kolme hylkäsi ja seitsemän ohitettiin.
+Ohituksista kuusi oli tarkoituksella valitsematonta diagnostiikkatyötä;
+core-verifyn riippuvuusesto ei ole hyväksyttyä kattavuutta. Koontihylkäys
+on seuraus kahdesta alkuperäisaineistosta osoitetusta testiodotuspuutteesta.
+Todellinen checkout molemmissa hylänneissä töissä oli
+`a3f97afb5a6d1b2690894dbfff9b07196a025ba7`, ei PR-head.
+[Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43538585530)
+läpäisi. Windowsin Electron-, paketti-, workspace- ja installer/legacy-portit
+läpäisivät. PR ei ole mergevalmis.
+
+Rajattu nykyinen korjaus:
+- Systemin startup-sopimustesti odotti vanhaa v2-snapshotia, vaikka nykyinen
+  tuottaja palauttaa v3:n ja `mainStartup`-kentän. Vain testiodotus korjattiin;
+  legacy-v2:n tiukka luku ja väärien yhdistelmäkenttien hylkäys todennetaan.
+  Koko nykyinen 23 testin tiedosto läpäisi.
+- Desktopin T1-kytkentätestin vanha yhteinen Linux-label odotti yhä latestia.
+  `verify` vaatii nyt sovitun 24.04:n, `test-packages` säilyttää latestin.
+  Neljä kielteistä drift-kontrollia lisättiin. Koko 244 testin tiedosto ja
+  normaali Node-loppuvaihe läpäisivät (590 läpäisyä, 12 alustakohtaista ohitusta).
+  Joukot ovat päällekkäisiä. E2E-tyypitys läpäisi.
+- Koko desktop-Vitest-vaihe (486 tiedostoa, 12 559 läpäisyä, neljä ohitusta)
+  ja sama 23 kohteen rooliketju läpäisivät jo tässä CI-kierroksessa.
+  Hylännyt Node-koonti säilyy hylättynä; myöhempi kohdeajo ei hyväksy sitä.
+  Molempien ensihylkäysten salatut alkuperäiset, lähdesidonnat ja tavut
+  varmennettiin. Tuotantokoodi, parserit, turvavartijat ja aikarajat eivät muutu.
+
+[Kolmen Linux-kuluttajan ympäristörajaus](e2e-test-environment.md#linux-ci),
+eksplisiittiset permissions/auth-buildit ja ajokytkentätiedoston erillinen
+ajo säilyvät. Niiden lähdekatselmus, puhdas normaali E2E-komento
+(86 + 789 + 515 testiä) ja 429 CI-sopimustestiä läpäisivät.
+Vanhan luettelointitimeoutin tarkkaa syytä ei silti väitetä korjatuksi.
+Kahden uuden testikorjauksen riippumaton katselmus ei löytänyt korjattavaa.
+
+Säilyvä toiminnallinen näyttö: koko desktop, web/backend/HTTP, stress ja
+täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
+Puhdas lähde `03f97967` rakennettiin kerran: hardened smoke ja kaikki viisi
+paketoitua palautus/poistotapausta läpäisivät samoilla tavuilla.
+Myöhempi checkpoint ei muuta paketin build-identiteettiä.
+Koko A-E:n riippumaton koodikatselmus on tehty; muuttuneet korjaukset
+katselmoidaan erikseen. [Aiemmat kierrokset ja avoimet havainnot](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-4ed)
+säilyvät historiassa.
+
+Seuraavaksi:
+1. Julkaise osoitetut katselmoidut testikorjaukset ja ohjeet normaalisti
+   samaan PR:ään; säilytä päättyneen kierroksen virheet ja lähdesidonnat.
+2. Vaadi uuden jäädytetyn headin kaikki normaalit portit sekä auditointi.
+3. Vasta hyväksyttyjen porttien jälkeen normaali suojattu merge ja uuden
+   main-revision omat tarkistukset. Ei uusintasilmukkaa tai turva-/aikarajojen
+   lievennystä; W7.5 tai koko 0.3.0 ei ole vielä hyväksytty.
+
+`DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
+tulosodotus; globaali 10 sekunnin oletus ei muutu. Aiemmat timeoutit,
+tuntemattomat syyt ja siivousepävarmuudet säilyvät avoimina.
+Poiston tiukka vartija ei saa periytyä kevyestä luentavartijasta.
+
 <a id="m1-checkpoint-20261114-pr330-4ed"></a>
 
 ## M1:n checkpoint ennen PR330:n kahden testiodotuksen korjausta 14.11.2026
