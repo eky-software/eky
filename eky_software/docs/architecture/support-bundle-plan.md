@@ -25,14 +25,18 @@ querya, `companyId`:tä tai runtime-sessionia.
 
 ## W7:n hyväksytty jatkosuunta
 
-W7.5:n kytkentäjärjestyksen ja avoimet elinkaariliitokset omistaa
+W7.5:n kytkentäjärjestyksen ja elinkaariliitokset omistaa
 [nykyinen toteutussuunnitelma](local-company-workspace-plan.md#w75-toteutussuunnitelma).
 V3:n tiedostoraja, valitsimen vienti ja varhaisen virheen native-entry ovat
-W7.5-työhaarassa. Alla olevat päivätyt W7.0:n lähtötilat ja kokeet eivät
-tarkoita, että nämä toteutukset pitäisi aloittaa uudelleen. Niiden rajattu
-kehitysketjun näyttö kuvataan W7.5-kohdissa; paketoidun viennin ja koko
-W7.5:n integraatiohyväksyntä ovat edelleen avoinna. Tukireitti ei ohita
-startup-portteja.
+hyväksytyssä mainissa `4646f6dbabb881a65c0987f9c73711061bae4725`:
+[PR #330:n PR/main-loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021)
+sisältää myös molempien tukiformaattien tarkastinketjut ja paketoidun näytön.
+Alla olevat päivätyt W7.0/W7.5:n lähtötilat ja kokeet säilyttävät oman
+silloisen näyttörajansa; niiden avoin kytkentäportti ei ole uusi työjono tai
+nykyisen integraation hylkäys. Alkuperäiset syy- ja siivousepävarmuudet
+säilyvät loppuhyväksynnän rajauksissa. Tukireitti ei ohita startup-portteja.
+[Käyttäjän käyttö- ja tukiohje](../product/local-desktop-user-guide.md#lyhyt-tukiohje)
+erottaa viennin varmuuskopiosta ja yksityisestä CI-virheaineistosta.
 Omistaja hyväksyi 6.11.2026 myös W7.5-suunnitelman rajatun native-viennin
 ennen yritysvalinnan/pääikkunan valmistumista, vasta kokeiden ja katselmuksen
 jälkeen. Sen kertakäyttöinen valtuus kuuluu virhettä käsittelevälle mainille;

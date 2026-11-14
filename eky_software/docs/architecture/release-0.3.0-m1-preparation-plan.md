@@ -7,60 +7,69 @@ ajoselostukset löytyvät historiasta, eivät tästä työjonosta.
 
 ## Jatka tästä
 
-**14.11.2026: W7.5 A-E on toteutettu; viimeinen PR-kierros hylkäsi kaksi
-testityötä. Korjausrevision ja uuden mainin omat portit ovat avoinna.**
-Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330).
-Nykyinen julkaistu PR-head on `7d061671f17abf72224794725417cd23081140e8`;
-hyväksytty lähtö main `9657fdc1` ja PR #327/#328.
-[Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
-ja hyväksytyt sidonta-/tuontijournalirajaukset säilyvät. Hyväksyttyjä paketteja
-ei avata uudelleen ilman omaa regressiota.
+**14.11.2026: W7.5 A-E on hyväksytty. M5.1:n näyttökartta ja loppuvarmistus ovat käynnissä;
+0.3.0-julkaisu ei ole vielä hyväksytty.** Hyväksytty lähtö on main
+`4646f6dbabb881a65c0987f9c73711061bae4725` ja
+[PR #330:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021).
+Lopullinen PR-head oli `dba38645`; normaali suojattu merge ja mainin omat
+portit on varmennettu. [Mainin V2](https://github.com/eky-software/eky/actions/runs/43612061886)
+läpäisi 40 työtä ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/43612061732)
+läpäisi ensimmäisellä yrityksellä. Kuusi tarkoituksella valitsematonta
+diagnostiikkatyötä eivät ole läpäisseitä testejä.
 
-[7d:n V2-kierroksen](https://github.com/eky-software/eky/actions/runs/43589836127)
-core-työn palautusvertailun `oversizedSibling`-tapaus ylitti nykyisen viiden
-sekunnin testirajan. Alkuperäinen salattu virhe ja todellinen checkout on
-varmennettu; virhe ei nimeä odottavaa sisäkutsua tai todista resurssien
-loppusiivousta. [Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43589836115)
-läpäisi. Rajattu korjaus muuttaa vain testin suurten Buffer-tavujen vertailua,
-ei sovelluksen tarkistuksia, väittämiä tai aikarajaa. Vaikutustestit ja
-katselmus vaaditaan ennen uutta lähdejäädytystä. [Ensihylkäys](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-7d-core)
-säilyy erillään korjauksen todennuksesta.
+T/A/B/C/K/D/E/F/G/H/I, M4.1-M4.3 ja W7.0-W7.5 säilyvät hyväksytyissä
+rajauksissaan. Niitä ei toteuteta uudelleen; M5:n mahdollinen korjaus vaatii
+oman todennetun löydöksen, omistajan ja vaikutusalueen näytön.
+[W7.5:n sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma),
+turva- ja aikarajat sekä hyväksytyt luenta-/poistovaltuuksien erot säilyvät.
+Paikalliset native-, stress-, soak- ja puhtaan `03f97967`-paketin todisteet
+säilyttävät omat lähde-/build-identiteettinsä; ne eivät muutu uuden mainin ajoiksi.
 
-Sama kierros hylkäsi myös paketoidun keskeytyneen palautuksen toiston 2:
-MSI odotti sovelluksen sulkemispyyntöön vastausta. Alkuperäiset asennus- ja
-ikkunahavainnot säilyivät, ja ajon erillinen loppusiivous ilmoitti
-onnistumisesta. Pyynnön aiheuttajaa ei vielä luokitella. V2 päättyi
-36 onnistumiseen, kahteen ensihylkäykseen ja niiden koontihylkäykseen;
-kuusi diagnostiikkatyötä jäi tarkoituksella valitsematta ja core-verify estyi.
-Tämä uusi havainto tutkitaan erillään desktop-testikorjauksesta.
+[W7.5:n loppunäyttö ja vanha jatkamiskohta](release-0.3.0-integration-history.md#m1-checkpoint-20261114-w75-accepted)
+säilyvät historiassa. Alkuperäisen MSI-havaitsijan aikakatkaisun syy ja
+native-alipuun erillinen loppusiivousnäyttö jäävät avoimiksi. Myös aiemmat
+core-/MSI- ja siivousepävarmuudet säilyvät omissa rajauksissaan. Myöhempi
+läpäisy tai tämä dokumenttimuutos ei sulje niitä eikä nollaa uusintarajaa.
 
-[e151:n aiempi vihreä koonti ja rajattu MSI-etenemispäätös](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-e151-msi)
-säilyvät historiassa. Sen avoin aikakatkaisun syy ja native-alipuun
-loppusiivousnäyttö eivät sulkeudu. Päätös ei kata tämän kierroksen uusia
-hylkäyksiä, anna lisäuusintaa tai siirrä vanhoja portteja uudelle headille.
+**Nykyinen valtuus:** omistaja hyväksyi M5.1:n Goalin: tunnuskohtaisen
+hyväksyntänäytön täsmäytys sekä R030-04:n palautteen ja R030-05:n käyttö-/tukiohjeen
+loppuvarmistus. Säilytä tämän haaran kolme aiempaa suunnitelmamuutosta.
+Työ ei käynnistä M5.2:n koko sovelluksen katselmusta, uutta skannausta,
+versionnostoa tai toimitusta. [M5.1:n sopimus ja näyttökartta](release-0.3.0-plan.md#m51-hyväksyntänäytön-täsmäytys)
+omistaa rajatut tarkistukset ja puuttuvan näytön, ei uutta rinnakkaista työjonoa.
 
-Säilyvä näyttö: koko desktop ja sama 23 kohteen ketju, web/backend/HTTP,
-stress ja täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
-Puhdas lähde `03f97967` rakennettiin kerran; hardened smoke ja kaikki viisi
-paketoitua palautus-/poistotapausta läpäisivät samoilla tavuilla.
-Myöhempi checkpoint ei muuta build-identiteettiä. Koko A-E ja myöhempien
-korjausten kumulatiivinen koodi on katselmoitu riippumattomasti ilman avoimia
-löydöksiä; uusi koodikorjaus vaatii oman rajatun katselmuksensa.
+**Nykyinen checkpoint:** 47 tunnuksen lähde-/testi-/hyväksyntäkartta ja
+käyttö-/tukiohje on katselmoitu; ohjeen kaksi täsmennystä on korjattu ja tarkistettu.
+R030-04:n rajattu palautesopimus on katselmoitu. Toteutus lisää ei-uudemman
+version täsmäpalautteen ja suljetun kyvykkyyden myöhäisen ilmoituksen eston.
+Seitsemän update-vaikutustiedoston 136 testiä, koko main-kytkentätiedoston
+531 testiä ja desktop-tyypitys läpäisivät. Rajattu riippumaton
+toteutuskatselmus ei löytänyt korjattavaa. Pakotetun alkuperäisen virheen
+viesti, kutsupino ja syyketju löytyivät nykyisellä TEST-avainkokeella puretusta
+salatusta paketista. Ensihylkäykset ja kohdenäytön rajat säilyvät.
+Omistaja hyväksyi rajatun synteettisen Windows-testipaketin ja muutoksen nykyiset
+turvaportit. Puhtaan lähteen paketti- ja PR/main-todennus sekä M5.1:n
+loppuhyväksyntä ovat avoinna; release-paketointi ja jakelu eivät avaudu.
 
-Seuraavaksi:
-1. Viimeistele rajattu testikorjaus ja nykytila, katselmoi muutos ja vaadi
-   uuden jäädytetyn headin kaikki valitut/pakolliset portit sekä auditointi.
-   Selvitä ensin uuden MSI-hylkäyksen säilynyt aineisto nykyisellä sopimuksella.
-2. Tee normaali suojattu merge vasta hyväksyttyjen porttien jälkeen;
-   varmista sitten uuden main-revision omat portit.
-3. Säilytä ensivirheet ja käytetty kohdeuusinta erillään. Dokumenttimuutos
-   ei nollaa [uusintarajaa](../ai/testing-rules.md#enintään-yksi-uusinta).
-   Uusi hylkäys käsitellään ennen etenemistä; ei turva-/aikarajojen lievennystä.
-   W7.5 ja koko 0.3.0 eivät ole vielä hyväksyttyjä.
+Työ etenee [roadmapin M5-järjestyksessä](release-0.3.0-plan.md#m5-uusi-katselmus-deep-scan-ja-julkaisuportti):
+1. Täsmää R01-R31, S030-01-S030-05 ja sovitut R030-/D029-kohdat nykyiseen
+   toteutus-, testi- ja revisionmukaiseen hyväksyntänäyttöön. Varmista erityisesti
+   R030-04:n palaute ja R030-05:n ohjeet; vanha tilarivi ei yksin todista puuttuvaa
+   toteutusta. R030-06, D029-06 ja R030-07 ovat edelleen erillisiä rajauspäätöksiä.
+2. M5.1:n jälkeen rajaa koko backendin, webin, desktopin, jaettujen pakettien, toteutettujen
+   moduulien ja testiperustan koodi-/rakenne-/ylläpidettävyyskatselmus nykyisiin
+   omistajiin. Erota ennen toimitusta tarvittava korjaus myöhemmästä siivouksesta.
+3. Suunnittele korjausten jälkeisen puhtaan ehdokasrevision uusi Deep Scan,
+   sen asetusten ja työbudjetin varmennus sekä havaintojen/kattavuusaukkojen käsittely.
+   Keskeytettyä vanhaa skannausta ei jatketa tämän työn sivutoimena.
+4. Valmistele tuoreet testit ja auditointi, varsinainen 0.3.0-versionosto,
+   build-once-paketin nykyiset hyväksyntäportit, päivitetty synteettinen
+   käyttäjätestaus ja erillinen toimitushyväksyntä. Vanhan pilotin ohje tai
+   automaation vihreys ei ole uuden ehdokkaan käyttäjätestitulos.
 
-`DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
-tulosodotus; globaali 10 sekunnin oletus säilyy. Vanhat timeout-syyt ja
-epävarmuudet jäävät avoimiksi. Poiston tiukka vartija ei saa periytyä luentavartijasta.
+Laaja refaktorointi ja GitHubin tietoturva-asetusten yhteinen läpikäynti
+säilyvät julkaisun jälkeisinä erillisinä töinä. M5:n toimitusta estäviä
+löydöksiä tai turvallisuusportteja ei tämän vuoksi siirretä myöhemmäksi.
 
 ## Voimassa olevat sopimukset
 

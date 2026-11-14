@@ -8,6 +8,9 @@ lukea jokaisessa tehtävässä.
 
 ## Aloitus ja omistajuus
 
+- Paikallisen työpöytäsovelluksen käyttö ja virhetilanteet:
+  [käyttö- ja tukiohje](product/local-desktop-user-guide.md). Tämä ei ole
+  julkaisu- tai käyttäjätestihyväksyntä.
 - Työtapa, aloitus ja valmistuminen: [workflow](ai/workflow.md).
   Sovittu päiväraportti ja turvallinen tauko: [päivittäinen tarkistuspiste](ai/workflow.md#päivittäinen-tarkistuspiste).
 - Moduulin sisäinen työ: [moduulihakemisto](modules/README.md), moduulin oma

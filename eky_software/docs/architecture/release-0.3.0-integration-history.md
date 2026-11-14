@@ -5,6 +5,100 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+<a id="m1-checkpoint-20261114-w75-accepted"></a>
+
+## W7.5:n loppuhyväksyntä ja siirtymä M5-valmisteluun 14.11.2026
+
+[PR #330:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021)
+sulkee W7.5 A-E:n main-revisiossa `4646f6dbabb881a65c0987f9c73711061bae4725`.
+Lopullinen PR-head oli `dba386457f720923710c578d02f48bb5eeac73f4` ja
+hyväksytty base `9657fdc17a5457bfaec7c6aa5ebf1661a5130f85`.
+Normaalin head-suojatun mergen vanhemmat ja lähdepuu varmennettiin.
+
+[PR:n V2](https://github.com/eky-software/eky/actions/runs/43597299376)
+läpäisi yhden rajatun supervisor-kohdeuusinnan jälkeen: 40 onnistunutta
+työtä ja kuusi tarkoituksella valitsematonta diagnostiikkatyötä.
+Kohdeuusinta läpäisi 172 testiä samalla lähteellä; muut 38 onnistunutta
+suoritusta ja kahdeksan artifact-identiteettiä säilyivät ennallaan.
+[PR:n erillinen auditointi](https://github.com/eky-software/eky/actions/runs/43597299325)
+läpäisi. Omistajan [nimetty etenemispäätös](https://github.com/eky-software/eky/pull/330#issuecomment-6879853749)
+säilyttää alkuperäisen MSI-havaitsijan aikakatkaisun syyn ja native-alipuun
+erillisen loppusiivousnäytön avoimina. Uusinta ei todista niitä korjatuiksi.
+
+[Uuden mainin V2](https://github.com/eky-software/eky/actions/runs/43612061886)
+läpäisi kaikki 40 työtä ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/43612061732)
+läpäisi ensimmäisellä yrityksellä, ilman main-kohdeuusintaa. Kuusi
+diagnostiikkatyötä jäivät tarkoituksella valitsematta. Kaikkien 41
+onnistuneen työn alkuperäislokin ensimmäinen todellinen checkout ja
+nykyisen täyden riskisuunnitelman pakolliset vaiheet varmennettiin.
+Paikalliset native-/endurance-raportit ja puhdas `03f97967`-paketti säilyttävät
+omat lähde-/build-identiteettinsä; niitä ei nimetä uuden mainin suorituksiksi.
+
+Koko W7.5:n katselmus, regressiot ja integraatioportit on täsmäytetty sen
+omistavaan sopimukseen. Tämä ei sulje vanhoja core-/MSI-/siivousepävarmuuksia,
+anna uutta uusinta- tai julkaisupoikkeusta tai hyväksy koko 0.3.0/M5:tä.
+M5:n valmistelu on seuraava erillinen työ. Alla oleva aiempi aktiiviosuus
+säilytetään muuttamattomana, ei uutena työjonona.
+
+<a id="m1-checkpoint-20261114-before-m5"></a>
+
+## M1:n jatkamiskohta ennen W7.5:n loppuhyväksynnän kirjausta
+
+**14.11.2026: W7.5 A-E on toteutettu; viimeinen PR-kierros hylkäsi kaksi
+testityötä. Korjausrevision ja uuden mainin omat portit ovat avoinna.**
+Työhaara on `codex/w7-5-deletion-feedback`, PR [#330](https://github.com/eky-software/eky/pull/330).
+Nykyinen julkaistu PR-head on `7d061671f17abf72224794725417cd23081140e8`;
+hyväksytty lähtö main `9657fdc1` ja PR #327/#328.
+[Täysi W7.5-sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma)
+ja hyväksytyt sidonta-/tuontijournalirajaukset säilyvät. Hyväksyttyjä paketteja
+ei avata uudelleen ilman omaa regressiota.
+
+[7d:n V2-kierroksen](https://github.com/eky-software/eky/actions/runs/43589836127)
+core-työn palautusvertailun `oversizedSibling`-tapaus ylitti nykyisen viiden
+sekunnin testirajan. Alkuperäinen salattu virhe ja todellinen checkout on
+varmennettu; virhe ei nimeä odottavaa sisäkutsua tai todista resurssien
+loppusiivousta. [Erillinen riippuvuustarkistus](https://github.com/eky-software/eky/actions/runs/43589836115)
+läpäisi. Rajattu korjaus muuttaa vain testin suurten Buffer-tavujen vertailua,
+ei sovelluksen tarkistuksia, väittämiä tai aikarajaa. Vaikutustestit ja
+katselmus vaaditaan ennen uutta lähdejäädytystä. [Ensihylkäys](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-7d-core)
+säilyy erillään korjauksen todennuksesta.
+
+Sama kierros hylkäsi myös paketoidun keskeytyneen palautuksen toiston 2:
+MSI odotti sovelluksen sulkemispyyntöön vastausta. Alkuperäiset asennus- ja
+ikkunahavainnot säilyivät, ja ajon erillinen loppusiivous ilmoitti
+onnistumisesta. Pyynnön aiheuttajaa ei vielä luokitella. V2 päättyi
+36 onnistumiseen, kahteen ensihylkäykseen ja niiden koontihylkäykseen;
+kuusi diagnostiikkatyötä jäi tarkoituksella valitsematta ja core-verify estyi.
+Tämä uusi havainto tutkitaan erillään desktop-testikorjauksesta.
+
+[e151:n aiempi vihreä koonti ja rajattu MSI-etenemispäätös](release-0.3.0-integration-history.md#m1-checkpoint-20261114-pr330-e151-msi)
+säilyvät historiassa. Sen avoin aikakatkaisun syy ja native-alipuun
+loppusiivousnäyttö eivät sulkeudu. Päätös ei kata tämän kierroksen uusia
+hylkäyksiä, anna lisäuusintaa tai siirrä vanhoja portteja uudelle headille.
+
+Säilyvä näyttö: koko desktop ja sama 23 kohteen ketju, web/backend/HTTP,
+stress ja täysi soak sekä oikeat Electronin poisto-/tukivientipolut läpäisivät.
+Puhdas lähde `03f97967` rakennettiin kerran; hardened smoke ja kaikki viisi
+paketoitua palautus-/poistotapausta läpäisivät samoilla tavuilla.
+Myöhempi checkpoint ei muuta build-identiteettiä. Koko A-E ja myöhempien
+korjausten kumulatiivinen koodi on katselmoitu riippumattomasti ilman avoimia
+löydöksiä; uusi koodikorjaus vaatii oman rajatun katselmuksensa.
+
+Seuraavaksi:
+1. Viimeistele rajattu testikorjaus ja nykytila, katselmoi muutos ja vaadi
+   uuden jäädytetyn headin kaikki valitut/pakolliset portit sekä auditointi.
+   Selvitä ensin uuden MSI-hylkäyksen säilynyt aineisto nykyisellä sopimuksella.
+2. Tee normaali suojattu merge vasta hyväksyttyjen porttien jälkeen;
+   varmista sitten uuden main-revision omat portit.
+3. Säilytä ensivirheet ja käytetty kohdeuusinta erillään. Dokumenttimuutos
+   ei nollaa [uusintarajaa](../ai/testing-rules.md#enintään-yksi-uusinta).
+   Uusi hylkäys käsitellään ennen etenemistä; ei turva-/aikarajojen lievennystä.
+   W7.5 ja koko 0.3.0 eivät ole vielä hyväksyttyjä.
+
+`DESK-DELETE-RECOVERY-001`: 150 sekunnin kokonaisraja, nimetty 100 sekunnin
+tulosodotus; globaali 10 sekunnin oletus säilyy. Vanhat timeout-syyt ja
+epävarmuudet jäävät avoimiksi. Poiston tiukka vartija ei saa periytyä luentavartijasta.
+
 <a id="m1-checkpoint-20261114-pr330-7d-core"></a>
 
 ## PR330:n 7d-revision kaksi ensihylkäystä 14.11.2026
