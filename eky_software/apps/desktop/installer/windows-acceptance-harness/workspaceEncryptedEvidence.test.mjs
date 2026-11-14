@@ -227,14 +227,14 @@ test('a log disappearing during copying preserves its fixture instead of becomin
   const moved = join(f.proofRoot, 'result', 'moved.private.log');
   await writeFile(source, 'original synthetic native log');
   const handle = await open(source, 'r');
-  const sourceIdentity = await handle.stat();
+  const sourceIdentity = await handle.stat({ bigint: true });
   const prototype = Object.getPrototypeOf(handle);
   const read = prototype.read;
   await handle.close();
   let changed = false;
   t.mock.method(prototype, 'read', async function (...args) {
     const result = await read.apply(this, args);
-    const identity = await this.stat();
+    const identity = await this.stat({ bigint: true });
     if (!changed && result.bytesRead > 0 && identity.ino === sourceIdentity.ino && identity.dev === sourceIdentity.dev) {
       changed = true;
       await rename(source, moved);
