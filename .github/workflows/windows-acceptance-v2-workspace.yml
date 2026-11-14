@@ -63,7 +63,7 @@ jobs:
         run: pnpm --filter @eky/desktop installer:test:windows-acceptance-workspace-fault
 
       - name: Set up .NET SDK for command contracts
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
           dotnet-version: 10.0.302
 
@@ -117,7 +117,7 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
           dotnet-version: 10.0.302
       - name: Verify exact .NET SDK
@@ -230,7 +230,7 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
           dotnet-version: 10.0.302
       - name: Verify exact .NET SDK
@@ -409,7 +409,7 @@ jobs:
           node-version-file: eky_software/.node-version
           package-manager-cache: false
       - name: Set up .NET SDK
-        uses: actions/setup-dotnet@26b0ec14cb23fa6904739307f278c14f94c95bf1
+        uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73
         with:
           dotnet-version: 10.0.302
       - name: Verify exact .NET SDK
