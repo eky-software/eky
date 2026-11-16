@@ -20362,3 +20362,153 @@ Tämä on nimetyn puhtaan paketin näyttö, ei PR/main- tai W7.5-loppuhyväksynt
 Myöhempi dokumentointicommit ei muuta testatun paketin build-identiteettiä.
 Ensimmäinen hylkäys ei muutu jälkikäteen onnistuneeksi. [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
 omistaa seuraavan integraatioportin.
+
+<a id="m1-checkpoint-20261115-before-daily-maintenance"></a>
+
+## M5.1:n jatkamiskohta ennen päivähuoltoa 15.11.2026
+
+Alla on ennen päivähuoltoa voimassa olleen M1:n 140-rivinen jatkamiskohta
+muuttamattomana. Se säilyttää ajoselostukset, päätösperustelut ja avoimet
+ensihylkäykset. Nykytilan omistaa edelleen M1, ei tämä päivätty snapshot.
+M5.1 ei valmistunut arkistoinnilla; omistajan säilyttämä hyväksyntäehto
+ja alkuperäiset näyttörajat pysyvät voimassa.
+
+## Jatka tästä
+
+**W7.5 A-E on hyväksytty. M5.1:n loppuvarmennus on kesken;
+0.3.0-julkaisu ei ole vielä hyväksytty.** Hyväksytty lähtö on main
+`4646f6dbabb881a65c0987f9c73711061bae4725` ja
+[PR #330:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021).
+Lopullinen PR-head oli `dba38645`; normaali suojattu merge ja mainin omat
+portit on varmennettu. [Mainin V2](https://github.com/eky-software/eky/actions/runs/43612061886)
+läpäisi 40 työtä ja [riippuvuusauditointi](https://github.com/eky-software/eky/actions/runs/43612061732)
+läpäisi ensimmäisellä yrityksellä. Kuusi tarkoituksella valitsematonta
+diagnostiikkatyötä eivät ole läpäisseitä testejä.
+
+T/A/B/C/K/D/E/F/G/H/I, M4.1-M4.3 ja W7.0-W7.5 säilyvät hyväksytyissä
+rajauksissaan. Niitä ei toteuteta uudelleen; M5:n mahdollinen korjaus vaatii
+oman todennetun löydöksen, omistajan ja vaikutusalueen näytön.
+[W7.5:n sopimus](local-company-workspace-plan.md#w75-toteutussuunnitelma),
+turva- ja aikarajat sekä hyväksytyt luenta-/poistovaltuuksien erot säilyvät.
+Paikalliset native-, stress-, soak- ja puhtaan `03f97967`-paketin todisteet
+säilyttävät omat lähde-/build-identiteettinsä; ne eivät muutu uuden mainin ajoiksi.
+
+[W7.5:n loppunäyttö ja vanha jatkamiskohta](release-0.3.0-integration-history.md#m1-checkpoint-20261114-w75-accepted)
+säilyvät historiassa. Alkuperäisen MSI-havaitsijan aikakatkaisun syy ja
+native-alipuun erillinen loppusiivousnäyttö jäävät avoimiksi. Myös aiemmat
+core-/MSI- ja siivousepävarmuudet säilyvät omissa rajauksissaan. Myöhempi
+läpäisy tai tämä dokumenttimuutos ei sulje niitä eikä nollaa uusintarajaa.
+
+**Nykyinen valtuus:** [M5.1 → M5.2-jatkogoal](release-0.3.0-plan.md#m51-m52-jatkogoalin-tavoite)
+on lukukatselmoitu ja tallennettu ilman tokenbudjettia. Työkalun vahvistama
+tila on `blocked`: sama kriittisen ensihylkäyksen hyväksyntäeste jatkui
+rajatun selvityksen jälkeen. Omistajan 15.11.2026 jatkovaltuus ei muuta
+hyväksyntäehtoja. Mittaustulos ja omistajan säilyttämä ehto ovat alla;
+työtä ei merkitä valmiiksi eikä samaa ajoa toisteta odotusajalla.
+M5.1:n kriittisen ensihylkäyksen hyväksyntäeste estää edelleen mergen
+ja hyväksynnän.
+Ensin viimeistellään M5.1:n tarkistukset,
+PR #331 ja uuden mainin omat portit. Vasta niiden
+hyväksynnän jälkeen alkaa M5.2:n katselmus. Valmistelu ei hyväksy M5.1:tä,
+eikä tämä Goal käynnistä skannausta, versionnostoa tai toimitusta. Säilytä
+`codex/m5-release-preparation` / `5b60d4ab` ja nykyiset paikalliset muutokset.
+[M5.1:n sopimus ja näyttökartta](release-0.3.0-plan.md#m51-hyväksyntänäytön-täsmäytys)
+säilyy keskeneräisen osatyön omistajana, ei valmistelulla hyväksyttynä.
+
+**Nykyinen checkpoint:** 47 tunnuksen lähde-/testi-/hyväksyntäkartta ja
+käyttö-/tukiohje on katselmoitu; ohjeen kaksi täsmennystä on korjattu ja tarkistettu.
+R030-04:n rajattu palautesopimus on katselmoitu. Toteutus lisää ei-uudemman
+version täsmäpalautteen ja suljetun kyvykkyyden myöhäisen ilmoituksen eston.
+Seitsemän update-vaikutustiedoston 136 testiä, koko main-kytkentätiedoston
+531 testiä ja desktop-tyypitys läpäisivät. Rajattu riippumaton
+toteutuskatselmus ei löytänyt korjattavaa. Pakotetun alkuperäisen virheen
+viesti, kutsupino ja syyketju löytyivät nykyisellä TEST-avainkokeella puretusta
+salatusta paketista. Ensihylkäykset ja kohdenäytön rajat säilyvät.
+Omistaja hyväksyi rajatun synteettisen Windows-testipaketin ja muutoksen nykyiset
+turvaportit. [PR #331:n](https://github.com/eky-software/eky/pull/331) ensimmäinen head oli
+`e5704b27`; sen todellinen testimerge `bbfec11c` säilyttää oman build-identiteettinsä.
+[Ensimmäinen V2](https://github.com/eky-software/eky/actions/runs/43631584543) katkaisi
+workspace-sopimustyön kymmenen minuutin kokonaisrajaan myös yhdessä sallitussa
+kohdeuusinnassa. Uusinta on käytetty; koko työn siivousnäyttö jää puuttuvaksi.
+Muut 24 onnistunutta suoritusta, valmiit paketit ja erillisen auditoinnin läpäisy
+säilyvät, mutta workspace-paketin tuotto ja kuluttajat estyivät.
+Omistaja hyväksyi nykyisten CI-töiden [10+1-työnjaon](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit)
+ja sen tarkistukset. Toteutus säilyttää koko käsiajokomentoon kuuluvan
+testijoukon ja lukitsee ajuritestin tuottajaan ennen WiX-restorea ja buildia.
+Työnjaon 326 kohdetarkistusta, core-valinnan 177 ja ajuritiedoston 194 testiä
+sekä rajattu riippumaton katselmus läpäisivät. Erillisen virheinjektion
+tiedostotunnistevertailu korjattiin täsmälliseksi; keräin ja väittämät säilyivät.
+Myös alkuperäinen täysi käsiajokomento läpäisi 371 testiä; osavalintoja ja
+täyttä ajoa ei summata uudeksi kattavuudeksi. Jatkossa myös normaali
+CI-sopimussarja 431/431 ja workspace-artifact-sarja 78/78 läpäisivät.
+Taukoa varten kaikki aloitetut
+komennot päättyivät ja tarkistajat suljettiin; uusia ajoja ei aloitettu.
+Korjatun lähteen normaalin PR/main-kierroksen tulokset sidotaan PR:n
+täsmälliseen hyväksyntänäyttöön. Aikarajoja ei nosteta.
+PR-head `5b60d4ab` / todellinen testimerge `c4e02052` läpäisi
+[nykyisen V2:n](https://github.com/eky-software/eky/actions/runs/43648239442)
+yhden nimetyn kohdeuusinnan jälkeen: 40 onnistunutta työtä ja kuusi
+tarkoituksella valitsematonta diagnostiikkatyötä. Erillinen auditointi läpäisi.
+Passiivisen yrityksen migraatiopalautuksen ensiyrityksen MSI-sulkemispyynnön
+syy jäi avoimeksi; alkuperäinen aineisto ja erilliset siivoustulokset säilyvät.
+Saman lähteen ja pakettien uusintaläpäisy ei korjaa tätä hyväksyntäestettä.
+[Täsmällinen PR-checkpoint](https://github.com/eky-software/eky/pull/331#issuecomment-6886316578)
+omistaa tulokset ja niiden rajat. Main-portit ja M5.1:n loppuhyväksyntä
+ovat avoinna; uudet muutokset tarvitsevat omat soveltuvat porttinsa.
+Release-paketointi ja jakelu eivät avaudu.
+
+Nykyinen työjärjestys on:
+1. Selvitä rajatusti MSI:n alkupään havainnon ja lähdeprosessin päättymisen
+   järjestys nykyisistä todisteista ja synteettisestä havaitsinfixtuurista.
+   Ensimmäinen työjakso on 45 minuuttia ja enintään kolme pientä
+   kontrollivalintaa nykyisillä testirajoilla; ei uutta pitkää CI-ajoa tai
+   saman hylätyn jobin lisäuusintaa. Kirjaa havaittu ero ja jäljelle jäävä
+   näyttöpuute nykyiseen mittaukseen. [Vianrajaus ei ole uusinta](../ai/testing-rules.md#enintään-yksi-uusinta).
+   Kolme ohjattua näytteenottokontrollia läpäisivät nykyisen Windows-
+   sopimustestin: näytteiden välissä käyvä asiakas ja kokonaan puuttuva
+   asiakas antavat saman myöhäisen havainnon, mutta pysyvä asiakas erottuu.
+   Tämä todentaa havaintoikkunan rajan, ei vanhan MSI-odotuksen syytä.
+   Alkuperäisestä joblokista varmennettiin `sourceHandoff`-loppuhavainto;
+   nykyisessä koodissa se seuraa suoran main-lapsen sulkua ja validointia,
+   ei ole tarkka OS-exit-aika tai koko prosessipuun poissaolotodiste.
+   Yksi saman tiedoston resurssihaku ennen/jälkeen varmennetun haltijan
+   poistumisen läpäisi nykyisen salaus-/purkusopimustestin. Eristetyn
+   havaitsinehdokkaan pienkontrollit läpäisivät, mutta 2 568 tiedoston haku
+   valmistui vasta haltijan poistuttua: aikainen aloitus ei yksin takaa
+   estäjän tunnistamista. Tavallinen havaitsin ja keräyssopimus eivät muutu.
+   Alkuperäselvityksen jälkeen sallittu yksi yksityinen vaihemittaus
+   päättyi testifixtuurin keskeneräisen luvun viiden sekunnin odotukseen.
+   Alkuperäinen poikkeus säilyi nykyisessä apurissa, mutta valmis
+   vaiheraportti puuttuu: varsinaisen resurssikyselyn päättymishetkeä ei
+   päätellä aiemmasta läpäisystä. Tätä varten yksityisen mittausajurin
+   loppuraportointi ja odotus korjattiin, ei tuotantohavaitsinta.
+   Yksityiseen fixtureen on valmisteltu osatuloksen tallennus ennen
+   hylkäystä ja odotus saman nykyisen resurssityöbudjetin sisällä.
+   Korjattu yksityinen fixturekäännös läpäisi ilman varoituksia tai virheitä.
+   Rajattu fixtureajo läpäisi elinikä- ja säilymiskontrollit, mutta palautti
+   puuttuvan resurssihavainnon ennen varsinaista kyselyä. Kyselyn ajoitus
+   ja koko native-ketjun toimivuus jäävät todentamatta; ajurin läpäisy
+   ei poista hyväksyntäestettä. Kyse ei ole uudesta osoitetusta
+   sovellusviasta tai puuttuvasta käyttäjäluvasta. Ajoreitin vuoksi ei
+   ohiteta nykyisiä valinta- tai omistajuussuojia.
+   Kaikki aloitetut komennot ovat päättyneet; aineisto ja ensihylkäys
+   säilyvät. Pitkää CI-ajoa tai saman jobin lisäuusintaa ei aloitettu.
+   Alkuperäisen MSI-odotuksen puuttuvaa prosessihistoriaa ei voi päätellä
+   uuden ympäristön kontrollista. Nykyinen hyväksyntäsopimus edellyttää
+   edelleen perusteltua ensihylkäyksen luokitusta tai osoitettua korjausta;
+   hyväksyntärajan muuttaminen olisi erillinen omistajapäätös.
+   Omistaja päätti 15.11.2026 säilyttää nykyisen hyväksyntäehdon.
+   Riskipoikkeusta ei annettu. Tätä päätöstä ei kysytä uudelleen:
+   jäljellä on tekninen näyttöpuute, ei puuttuva tavallisen testiajon lupa.
+   Säilytä kriittinen hyväksyntäehto; vasta riittävän näytön ja nykyisten
+   porttien jälkeen normaali suojattu merge ja uuden mainin omat portit.
+2. Vasta M5.1:n hyväksynnän jälkeen jäädytä lähde ja inventaario
+   [M5.2:n viiden alueen katselmukseen](release-0.3.0-plan.md#m52-koko-nykyisen-sovelluksen-katselmus).
+   Korjaa todetut julkaisuesteet, tarkista vaikutusalue ja luovuta M5.3:lle.
+3. M5.3:n skannaus sekä M5.4/M5.5:n versionosto, release ja käyttäjätestaus/
+   toimitus pysyvät [erillisinä myöhempinä portteina](release-0.3.0-plan.md#myöhemmät-m5-portit).
+   R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä.
+
+Laaja refaktorointi ja GitHubin tietoturva-asetusten yhteinen läpikäynti
+säilyvät julkaisun jälkeisinä erillisinä töinä. M5:n toimitusta estäviä
+löydöksiä tai turvallisuusportteja ei tämän vuoksi siirretä myöhemmäksi.

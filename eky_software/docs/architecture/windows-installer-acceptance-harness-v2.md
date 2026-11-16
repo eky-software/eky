@@ -87,6 +87,15 @@ omistavat myös skeeman 3 lukutuen, osittaisuuden ja salatun toimituksen.
 Pysyvät valinta-, keskeytys- ja oikean OpenPGP-ketjun regressiot ovat nykyisissä
 workspace-runtime-, inventaario-, keräin- ja supervisor-sopimussarjoissa.
 
+Erikseen valittu synteettinen RM-ajoituskoe käyttää samaa 2 550 tiedoston
+valintaa kahdessa haarassa, ilman kyselyä ja yhdellä kyselyllä. Kummankin
+uuden omistetun lapsen vapautuspyyntö etenee kyselystä riippumatta; 150 ms
+ei ole luvattu OS-exit-aika. Kahvan tilat, kyselyn vaiheet ja erillinen
+siivousnäyttö eivät palauta historiallisen MSI-odotuksen puuttuvaa syytä.
+[Raportin rajaus](ci-encrypted-evidence.md#nimetyn-rm-ajoituskokeen-onnistumisraportti)
+omistaa nimetyn onnistumistoimituksen; nykyiset kaksi toistoa, 120 sekunnin
+testi-, 10 sekunnin resurssi- ja 10 minuutin työrajat säilyvät.
+
 ### MSI-ikkunatestin ensimmäinen valmisteluhavainto
 
 Supervisorin synteettinen MSI-ikkunatesti säilyttää yhden ensimmäisen

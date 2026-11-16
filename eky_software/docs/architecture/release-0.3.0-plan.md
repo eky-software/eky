@@ -711,7 +711,7 @@ ei merkitä tällä päätöksellä korjatuiksi; M5.1 ei ole vielä hyväksytty.
 
 #### M5.2: Koko nykyisen sovelluksen katselmus
 
-**Lukukatselmoitu sopimus; Goal jatkettu M5.1:een, M5.2-katselmusta ei aloitettu.** Kokonaisuus sulkee
+**Lukukatselmoitu sopimus; ajantasainen työtila on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).** Kokonaisuus sulkee
 ensin M5.1:n jäljellä olevat tarkistukset sekä täsmällisen PR #331:n ja sen
 merge-mainin omat portit. Vasta hyväksynnän jälkeen jäädytetään M5.2:n
 lähtörevisio. Suunnitelman tai uuden Goalin tallennus ei hyväksy M5.1:tä,
@@ -843,11 +843,10 @@ ei uuteen mittausjärjestelmään tai kattavuuden korvikkeeksi.
 
 ##### M5.1-M5.2-jatkogoalin tavoite
 
-**Työkalun vahvistama tila: tallennettu, `active`, ei tokenbudjettia.**
-Suunnitelma ja tavoiteteksti on lukukatselmoitu. Goal tauotettiin ensin;
-omistaja jatkoi 15.11.2026 M5.1:n tarkistuksiin ja integraatioon. M5.2 alkaa
-vasta M5.1:n sekä sen PR/main-porttien hyväksynnän jälkeen. Tallennus tai
-jatko ei itsessään hyväksy kumpaakaan osatyötä.
+Suunnitelma ja tavoiteteksti on lukukatselmoitu; Goalin ajantasainen tila,
+jatkovaltuus ja hyväksyntäeste ovat vain [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+M5.2 alkaa vasta M5.1:n sekä sen PR/main-porttien hyväksynnän jälkeen.
+Goalin tallennus tai jatko ei itsessään hyväksy kumpaakaan osatyötä.
 
 > EKY 0.3.0: viimeistele ensin M5.1 ja sen jälkeen M5.2 tämän roadmapin
 > sopimuksilla ja M1:n yhdestä jatkamiskohdasta. Säilytä M5.1:n nykyinen

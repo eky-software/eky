@@ -55,6 +55,17 @@ Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
 edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
 checkpoint-jaosta.
 
+Salatun CI-aineiston kehityscheckpointille on erillinen
+`pnpm --filter @eky/desktop installer:test:encrypted-evidence:quick`.
+Se valitsee positiivisesti kuusi nimettyä RM-raportin sopimustestiä ja kolme
+CI-keräimen alusta-, lähde- ja ajosidontatestiä sekä oman valintasopimustestinsä.
+Ankkuroitu nimilista ei ota uusia tapauksia automaattisesti mukaan eikä aja
+GPG-avainten luontia, salausta tai purkua. Tämä ei ole salaus-, purku-,
+integraatio- tai hosted-hyväksyntä. Täysi `installer:test:encrypted-evidence`
+(11 tiedostoa), `:core` (10 tiedostoa), pakettiajurin komento ja CI-portit
+säilyvät ennallaan; nopea ajo ei korvaa niitä. Valinnan sopimuksen tarkistaa
+[`encryptedEvidenceQuickSelection.test.mjs`](../../apps/desktop/installer/windows-acceptance-harness/encryptedEvidenceQuickSelection.test.mjs).
+
 Nimetyn kohdeajon hyväksyntä vaatii näytön juuri valitun testitapauksen
 suorituksesta. Pelkkä exit 0 tai testitiedoston latauksen läpäisy ei riitä;
 sisäisen testin nimi esimerkiksi generoidussa lähdetekstissä ei ole ulomman
@@ -931,6 +942,12 @@ ja oikean salaus/purku-ketjun kautta ennen varsinaista Windows-koetta.
 
 ### Keräyksen ja toimituksen rajat
 
+Nimetyn synteettisen RM-ajoituskokeen erillinen
+[onnistumisraportin poikkeus](../architecture/ci-encrypted-evidence.md#nimetyn-rm-ajoituskokeen-onnistumisraportti)
+ei avaa yleistä onnistuneiden testien keräystä. Mittaustulos, sen salattu
+toimitus ja alkuperäisen MSI-hylkäyksen hyväksyntä ovat erillisiä portteja;
+myöhäistä tai tyhjää havaintoa ei hylätä vain keräyksen käynnistämiseksi.
+
 Kerää ongelman vaiheeseen sopiva rajattu aineisto nykyisillä välineillä:
 testiraportti, prosessin tulosteet, trace tai erikseen perusteltu vedos.
 Kaikkea raakadataa ei kerätä oletuksena. [Testinkirjoittajan vianetsintäreitti](e2e-test-authoring-guide.md#kun-testi-epäonnistuu)
@@ -1015,10 +1032,19 @@ Nykyinen automaattinen Playwright-retry sekä ihmisen tai agentin käsin
 käynnistämä uusinta lasketaan samaan yhden uusinnan rajaan;
 sen jälkeen ei tehdä lisäksi job-, workflow- tai paikallista uusintaa
 saman hylkäyksen vuoksi. Ennalta sovitut vakaustoistot ovat eri asia, mutta
-niilläkään ei korvata hylättyä yritystä. Uusinnan epäonnistuessa tai syyn
-jäädessä avoimeksi pysähdytään luokittelemaan tulos, ei ajeta vihreään asti.
+niilläkään ei korvata hylättyä yritystä. Tuloksen luokittelu keskeyttää saman
+kokeen lisätoiston, ei hyväksyttyyn työhön kuuluvaa vianrajausta. Uuteen
+erottavaan havaintoon tai kontrolliin perustuva tutkimus sekä osoitetun
+korjauksen todennus ovat sallittuja nykyisen tehtävä-, aineisto- ja
+turvasopimuksen puitteissa. Nimeä tutkimuskysymys, päätökseen vaikuttava
+odotettu havainto, pienin koe sekä työjakson työ- ja ajobudjetti. Budjetin
+lopussa arvioi tiedon lisääntyminen; jatka uudella perustellulla kysymyksellä
+tai muulla hyväksytyllä työllä ilman uutta rutiinilupaa, älä muuttumattomalla
+toistolla. Pelkkä kokeen uusi nimi, lokituksen lisääminen ilman erottavaa
+kysymystä tai asiaan liittymätön commit ei nollaa uusintarajaa.
 Näyttöön perustuva korjaus ja sen nimetty todennus eivät ole saman lähteen
-uusinta; pelkkä dokumentti- tai muu asiaan liittymätön commit ei nollaa rajaa.
+uusinta. Tutkimuskoe ei ole hylätyn hyväksyntäajon korvaava läpäisy;
+kriittisen hyväksyntäehdon muuttaminen pysyy erillisenä päätöksenä.
 
 Uusinta ei ole hyväksyntä: toisella yrityksellä läpäisevä testi on edelleen
 epävakaa, ellei alkuperäistä estettä osoiteta testin ulkopuoliseksi
