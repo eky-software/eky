@@ -12,6 +12,7 @@ import { createOpenPgpTestFixture } from '../../windows-acceptance-harness/openP
 import { collectJobFailureEvidence } from '../../windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
 import { publishWorkspaceMsiResourceSelection } from '../../windows-acceptance-harness/workspaceMsiResourceSelection.mjs';
+import { publishMsiResourceTimingReport } from '../../windows-acceptance-harness/msiResourceTimingEvidence.mjs';
 import { captureContractOutput, CONTRACT_OUTPUT_LIMIT } from './supervisorContractPrivateEvidence.mjs';
 import {
   cleanupRunContext,
@@ -91,10 +92,17 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     const result = await execution.completion;
     assert.equal(result.exitCode, 0);
     assert.doesNotMatch(result.standardOutput, /SYNTHETIC RM|foreign\.bin|startTimeLow|ownedJob/);
-    const proof = JSON.parse(await readFile(join(scenarioRoot, 'msi-resource-contract.json'), 'utf8'));
+    const nativeProof = JSON.parse(await readFile(join(scenarioRoot, 'msi-resource-contract.json'), 'utf8'));
+    const timingEnabled = process.env.EKY_MSI_RESOURCE_TIMING_PROOF === '1';
+    const proof = timingEnabled ? nativeProof.checks : nativeProof;
+    if (timingEnabled) {
+      // Preserve the measured projection before later assertions or disposable-key crypto can fail.
+      await publishMsiResourceTimingReport(process.env, context, nativeProof);
+    }
     assert.equal(proof.junctionRejected, true);
     assert.equal(proof.nodePublishedSelectionAdmitted, true);
     assert.equal(proof.cleanupDoesNotAwaitResourceRead, true);
+    assert.equal(proof.sameSelectionAfterVerifiedExitEmpty, true);
     for (const check of ['textBudgetUnchanged', 'messageBudgetUnchanged', 'resourceBudgetNamed',
       'textExpiryLeavesResourceTime', 'resourceAdmittedBeforeBoundary', 'resourceRejectedAtBoundary',
       'resourceRejectedAfterBoundary', 'stopOverridesRemainingResourceTime', 'postQueryExpiryDropsIdentities',
@@ -103,7 +111,7 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(proof.bothTreesAbsent, true);
     assert.ok(Object.keys(proof).length >= 30);
     assert.ok(Object.values(proof).every(value => value === true));
-    const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
+    const collected = await collectJobFailureEvidence({ ...env, EKY_MSI_RESOURCE_TIMING_PROOF: '' }, { nativeTemp: temporary });
     await encryptArchive(collected.root, collected);
     const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
     const archive = JSON.parse(gunzipSync(decrypted.stdout));
@@ -322,6 +330,11 @@ test('MSI observation: held handles, bounded samples and late completion preserv
   const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-observation-contract.json'), 'utf8'));
   assert.ok(Object.keys(proof).length >= 30);
   assert.ok(Object.values(proof).every(value => value === true));
+  for (const control of ['transient', 'persistent', 'absent']) {
+    for (const check of ['betweenSamples', 'controlledAvailability', 'stillBetweenSamples', 'threeReads', 'lateSequence']) {
+      assert.equal(proof[`sampling-${control}-${check}`], true);
+    }
+  }
 });
 
 for (const mode of ['msiObservationBlocked', 'msiObservationThrows']) {

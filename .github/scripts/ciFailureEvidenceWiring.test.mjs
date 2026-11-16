@@ -11,6 +11,9 @@ const collectorPath = 'eky_software/apps/desktop/installer/windows-acceptance-ha
 const action = read('../actions/collect-ci-failure-evidence/action.yml');
 const actionUse = './.github/actions/collect-ci-failure-evidence';
 const hookName = 'Preserve encrypted CI failure evidence';
+const timingGuardName = 'Require encrypted RM timing report publication';
+const timingOptIn = "github.event_name == 'workflow_dispatch' && inputs.mode == 'contracts' && inputs.msi_resource_timing_proof == true";
+const timingFlag = `\${{ ${timingOptIn} && '1' || '' }}`;
 const uploadPin = 'actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a';
 
 // This is delivery coverage, not a claim that every command produces private raw data.
@@ -109,18 +112,23 @@ function context(runnerOs = 'Windows') {
       event: { pull_request: { head: { repo: { full_name: 'example/erp' } } } } },
     vars: { EKY_DIAGNOSTIC_PUBLIC_KEY: 'synthetic-public-key', EKY_DIAGNOSTIC_KEY_FINGERPRINT: fingerprint,
       EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: fingerprint },
-    inputs: { mode: '', 'job-outcome': 'failure', 'public-key': 'synthetic-public-key',
+    inputs: { mode: '', msi_resource_timing_proof: false,
+      'msi-resource-timing-proof': '', 'msi-resource-timing-repetition': '',
+      'job-outcome': 'failure', 'public-key': 'synthetic-public-key',
       fingerprint, 'verified-fingerprint': fingerprint },
   };
 }
 
-function evaluate(expression, mutate = () => {}, runnerOs = 'Windows') {
+function evaluateValue(expression, mutate = () => {}, runnerOs = 'Windows') {
   const values = context(runnerOs);
   mutate(values);
-  // All compared values are fixed strings; this exercises the boolean gate,
-  // not GitHub's general expression coercion rules.
+  // Exercise fixed strings and typed dispatch booleans, not GitHub's general coercion rules.
   const script = expression.replace(/inputs\.([a-z][a-z_-]*)/gu, 'inputs["$1"]');
-  return Boolean(runInNewContext(script, values, { timeout: 1000 }));
+  return runInNewContext(script, values, { timeout: 1000 });
+}
+
+function evaluate(expression, mutate, runnerOs) {
+  return Boolean(evaluateValue(expression, mutate, runnerOs));
 }
 
 const workflowFiles = readdirSync(new URL('../workflows/', import.meta.url)).filter(name => /\.ya?ml$/u.test(name));
@@ -301,7 +309,12 @@ test('all normal Linux and Windows families collect last, independently of which
       const hooks = allSteps.filter(step => step.includes(`uses: ${actionUse}\n`));
       assert.equal(hooks.length, 1, `${file}/${id}`);
       const hook = hooks[0];
-      assert.equal(hook, allSteps.at(-1), `${file}/${id}: capture must follow all existing steps`);
+      if (key === 'supervisor-contracts') {
+        assert.equal(hook, allSteps.at(-2), 'only the explicit timing publication guard follows capture');
+        assert.ok(allSteps.at(-1).startsWith(`      - name: ${timingGuardName}\n`));
+      } else {
+        assert.equal(hook, allSteps.at(-1), `${file}/${id}: capture must follow all existing steps`);
+      }
       assert.ok(hook.startsWith(`      - name: ${hookName}\n`));
       assert.ok(allSteps.slice(0, -1).some(step => step.includes('uses: actions/checkout@')));
       assert.match(hook, /^        continue-on-error: true$/mu);
@@ -384,6 +397,198 @@ test('split Windows evidence keeps distinct job keys without extending native ra
     'packaged preparation is excluded even before the collector supplies a key');
 });
 
+function timingContext(c) {
+  c.github.event_name = 'workflow_dispatch';
+  c.inputs.mode = 'contracts';
+  c.inputs.msi_resource_timing_proof = true;
+  c.inputs['msi-resource-timing-proof'] = '1';
+  c.inputs['msi-resource-timing-repetition'] = '1';
+  c.job.status = 'success';
+  c.inputs['job-outcome'] = 'success';
+  c.steps = { supervisor_contracts: { outcome: 'success' } };
+}
+
+function assertTimingPreflightOrder(run) {
+  assert.deepEqual(run.match(/^        shell: .+$/gmu), ['        shell: pwsh']);
+  const prefix = 'node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs';
+  const preflight = `${prefix} installer/windows-acceptance-harness/msiResourceTimingEvidence.test.mjs`;
+  const contracts = `${prefix} installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs`;
+  assert.deepEqual(run.split('        run: |\n')[1]?.trim().split('\n').map(line => line.trim()), [
+    '$PSNativeCommandUseErrorActionPreference = $false',
+    preflight,
+    'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
+    contracts,
+    'exit $LASTEXITCODE',
+  ]);
+  assert.doesNotMatch(run, /timeout-minutes:|continue-on-error:|--test-name-pattern/u);
+  return { preflight, contracts };
+}
+
+test('named RM timing opt-in is dispatch-only and retains both repetitions, tests and timeouts', () => {
+  const source = read('../workflows/windows-acceptance-supervisor-feasibility.yml');
+  assert.match(source, /^on:\n  workflow_call:\n  workflow_dispatch:\n    inputs:/mu,
+    'reusable callers cannot supply the dispatch-only opt-in');
+  assert.match(source, /^      msi_resource_timing_proof:\n        description: [^\n]+\n        type: boolean\n        default: false\n/mu);
+  const job = jobs(source).get('job-object-feasibility');
+  assert.match(job, /^    timeout-minutes: 10$/mu);
+  assert.match(job, /^      fail-fast: false$/mu);
+  const matrix = job.match(/^        repetition: \$\{\{ (.+) \}\}$/mu)?.[1];
+  assert.ok(matrix);
+  assert.doesNotMatch(matrix, /msi_resource_timing_proof/u);
+  const allSteps = steps(job, 6);
+  const run = allSteps.find(step => step.includes('- name: Run supervisor unit and process contracts\n'));
+  const hook = allSteps.at(-2);
+  assert.match(run, /^        id: supervisor_contracts$/mu);
+  assert.match(hook, /^        id: failure_evidence$/mu);
+  assert.ok(run.includes(`          EKY_MSI_RESOURCE_TIMING_PROOF: ${timingFlag}\n`));
+  assert.ok(hook.includes(`          msi-resource-timing-proof: ${timingFlag}\n`));
+  assert.ok(run.includes('          EKY_MSI_RESOURCE_TIMING_REPETITION: ${{ matrix.repetition }}\n'));
+  assert.ok(hook.includes('          msi-resource-timing-repetition: ${{ matrix.repetition }}\n'));
+  assert.ok(run.includes('          EKY_EVIDENCE_JOB_KEY: supervisor-contracts-${{ strategy.job-index || 0 }}\n'));
+  assert.ok(hook.includes('          job-key: supervisor-contracts-${{ strategy.job-index || 0 }}\n'));
+  assertTimingPreflightOrder(run);
+  const enabled = timingFlag.slice(3, -2).trim();
+  assert.equal(evaluateValue(enabled, timingContext), '1');
+  for (const mutate of [
+    c => { c.inputs.msi_resource_timing_proof = false; },
+    c => { delete c.inputs.msi_resource_timing_proof; },
+    c => { c.inputs.mode = ''; },
+    c => { c.inputs.mode = 'legacy-contracts-diagnostic'; },
+    ...['push', 'schedule', 'pull_request', 'workflow_call', 'workflow_run'].map(event =>
+      c => { c.github.event_name = event; }),
+  ]) assert.equal(evaluateValue(enabled, c => { timingContext(c); mutate(c); }), '');
+  for (const optIn of [false, true]) {
+    assert.deepEqual(Array.from(runInNewContext(matrix, {
+      fromJSON: JSON.parse, inputs: { mode: 'contracts', msi_resource_timing_proof: optIn },
+    })), [1, 2]);
+  }
+  for (const [id, block] of jobs(source)) {
+    if (id !== 'job-object-feasibility') assert.doesNotMatch(block, /EKY_MSI_RESOURCE_TIMING|msi-resource-timing-proof:/u);
+  }
+});
+
+test('all seven RM preflight controls must pass before original supervisor coverage, with no duplicate tests or swallowed status', () => {
+  const job = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('job-object-feasibility');
+  const run = steps(job, 6).find(step => step.includes('- name: Run supervisor unit and process contracts\n'));
+  const { preflight, contracts } = assertTimingPreflightOrder(run);
+  const controls = read('../../eky_software/apps/desktop/installer/windows-acceptance-harness/msiResourceTimingEvidence.test.mjs');
+  assert.equal(controls.match(/^test\(/gmu)?.length, 7);
+  assert.match(controls, /^test\('RM timing projection survives real existing OpenPGP encryption and byte-exact decryption'/mu);
+  const gate = 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }';
+  for (const changed of [
+    run.replace(`          ${gate}\n`, ''),
+    run.replace(gate, 'if ($LASTEXITCODE -eq 0) { exit $LASTEXITCODE }'),
+    run.replace(gate, 'if ($LASTEXITCODE -ne 0) { exit 0 }'),
+    run.replace(preflight, contracts).replace(`          ${contracts}\n          exit`, `          ${preflight}\n          exit`),
+    run.replace(`          ${gate}\n          ${contracts}`, `          ${contracts}\n          ${gate}`),
+    run.replace(`          ${contracts}`, `          ${preflight}\n          ${contracts}`),
+    run.replace('          exit $LASTEXITCODE\n', '          exit 0\n'),
+    run.replace('        shell: pwsh', '        shell: bash'),
+  ]) {
+    assert.notEqual(changed, run);
+    assert.throws(() => assertTimingPreflightOrder(changed));
+  }
+});
+
+test('named RM success collection preserves host, key, event and mode admission on both boundaries', () => {
+  const hook = steps(workflows.get('windows-acceptance-supervisor-feasibility.yml').get('job-object-feasibility'), 6).at(-2);
+  const workflowGate = condition(hook, 8);
+  const actionGate = condition(steps(action, 4)[0], 6);
+  for (const gate of [workflowGate, actionGate]) {
+    assert.equal(evaluate(gate, timingContext), true);
+    for (const mutate of [
+      c => { c.runner.os = 'Linux'; },
+      c => { c.runner.os = 'macOS'; },
+      c => { c.runner.environment = 'self-hosted'; },
+      ...['push', 'schedule', 'workflow_call', 'workflow_run', 'pull_request_target'].map(event =>
+        c => { c.github.event_name = event; }),
+      c => { c.github.event_name = 'pull_request'; c.github.event.pull_request.head.repo.full_name = 'outside/fork'; },
+      c => { c.vars.EKY_DIAGNOSTIC_PUBLIC_KEY = ''; c.inputs['public-key'] = ''; },
+      c => { c.vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT = ''; c.inputs.fingerprint = ''; },
+      c => { c.vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT = ''; c.inputs['verified-fingerprint'] = ''; },
+      c => { c.vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT = 'B'.repeat(40); c.inputs['verified-fingerprint'] = 'B'.repeat(40); },
+      c => { c.job.status = 'skipped'; c.inputs['job-outcome'] = 'skipped'; },
+    ]) assert.equal(evaluate(gate, c => { timingContext(c); mutate(c); }), false);
+  }
+  for (const mutate of [
+    c => { c.inputs.msi_resource_timing_proof = false; },
+    c => { delete c.inputs.msi_resource_timing_proof; },
+    c => { c.inputs.mode = ''; },
+    c => { c.inputs.mode = 'packaged-boundary-diagnostic'; },
+    c => { c.hashFiles = () => ''; },
+  ]) assert.equal(evaluate(workflowGate, c => { timingContext(c); mutate(c); }), false);
+  for (const proof of ['', '0', 'true', '2', undefined]) {
+    assert.equal(evaluate(actionGate, c => { timingContext(c); c.inputs['msi-resource-timing-proof'] = proof; }), false);
+  }
+  for (const repetition of ['', '0', '3', '01', undefined]) {
+    assert.equal(evaluate(actionGate, c => { timingContext(c); c.inputs['msi-resource-timing-repetition'] = repetition; }), false);
+  }
+  for (const repetition of ['1', '2']) {
+    assert.ok(evaluate(actionGate, c => { timingContext(c); c.inputs['msi-resource-timing-repetition'] = repetition; }));
+  }
+  for (const outcome of ['failure', 'cancelled']) {
+    for (const gate of [workflowGate, actionGate]) {
+      assert.ok(evaluate(gate, c => { timingContext(c); c.job.status = outcome; c.inputs['job-outcome'] = outcome; }));
+    }
+  }
+  for (const input of ['msi-resource-timing-proof', 'msi-resource-timing-repetition']) {
+    assert.match(action, new RegExp(`^  ${input}:\\n    description: [^\\n]+\\n    required: false\\n    default: ''\\n`, 'mu'));
+  }
+});
+
+function assertTimingPublicationGuard(source) {
+  const allSteps = steps(source, 6);
+  const guard = allSteps.at(-1);
+  assert.ok(guard.startsWith(`      - name: ${timingGuardName}\n`));
+  assert.equal(allSteps.filter(step => step.startsWith(`      - name: ${timingGuardName}\n`)).length, 1);
+  assert.equal(condition(guard, 8).replace(/\s+/gu, ' '),
+    `always() && ${timingOptIn} && steps.supervisor_contracts.outcome == 'success'`);
+  assert.match(guard, /^        shell: pwsh$/mu);
+  assert.doesNotMatch(guard, /continue-on-error:|timeout-minutes:/u);
+  for (const [variable, output] of [['DELIVERY_OUTCOME', 'outcome'], ['SEALED', 'outputs.sealed'],
+    ['UPLOAD_OUTCOME', 'outputs.upload-outcome'], ['ARTIFACT_ID', 'outputs.artifact-id']]) {
+    assert.ok(guard.includes(`          ${variable}: \${{ steps.failure_evidence.${output} }}\n`));
+  }
+  assert.equal(guard.split('        run: |\n')[1].trimEnd(), [
+    "          if ($env:DELIVERY_OUTCOME -cne 'success' -or $env:SEALED -cne 'true' -or",
+    "              $env:UPLOAD_OUTCOME -cne 'success' -or $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$') {",
+    "            [Console]::Error.WriteLine('MSI_RESOURCE_TIMING_EVIDENCE_DELIVERY_UNVERIFIED')",
+    '            exit 1',
+    '          }',
+  ].join('\n'));
+  return guard;
+}
+
+test('only explicit successful timing runs require complete sealed and uploaded publication, even without keys', () => {
+  const job = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('job-object-feasibility');
+  const guard = assertTimingPublicationGuard(job);
+  const gate = condition(guard, 8);
+  assert.ok(evaluate(gate, timingContext));
+  assert.ok(evaluate(gate, c => {
+    timingContext(c); c.vars = {}; c.runner.environment = 'self-hosted'; c.hashFiles = () => '';
+  }), 'missing collector admission cannot silently pass the explicit experiment');
+  for (const mutate of [
+    c => { c.inputs.msi_resource_timing_proof = false; },
+    c => { c.inputs.mode = ''; },
+    c => { c.inputs.mode = 'legacy-contracts-diagnostic'; },
+    c => { c.github.event_name = 'workflow_call'; },
+    ...['failure', 'cancelled', 'skipped', ''].map(outcome =>
+      c => { c.steps.supervisor_contracts.outcome = outcome; }),
+  ]) assert.equal(evaluate(gate, c => { timingContext(c); mutate(c); }), false);
+  for (const changed of [
+    job.replace("&& inputs.msi_resource_timing_proof == true && steps.supervisor_contracts.outcome", '&& steps.supervisor_contracts.outcome'),
+    job.replace("$env:SEALED -cne 'true'", "$env:SEALED -cne 'false'"),
+    job.replace("$env:UPLOAD_OUTCOME -cne 'success'", '$false'),
+    job.replace("$env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$'", '$false'),
+    job.replace('MSI_RESOURCE_TIMING_EVIDENCE_DELIVERY_UNVERIFIED\')\n            exit 1',
+      'MSI_RESOURCE_TIMING_EVIDENCE_DELIVERY_UNVERIFIED\')\n            exit 0'),
+    job.replace(`      - name: ${timingGuardName}\n`, `      - name: ${timingGuardName}\n        continue-on-error: true\n`),
+  ]) {
+    assert.notEqual(changed, job);
+    assert.throws(() => assertTimingPublicationGuard(changed));
+  }
+});
+
 function assertCompositeTrust(source) {
   assert.match(source, /^  using: composite$/mu);
   const [seal, upload] = steps(source, 4);
@@ -412,7 +617,8 @@ function assertCompositeTrust(source) {
   assert.match(seal, /^      shell: pwsh$/mu);
   assert.ok(seal.includes('      working-directory: ${{ github.workspace }}'));
   for (const [variable, input] of [['EKY_DIAGNOSTIC_PUBLIC_KEY', 'public-key'], ['EKY_DIAGNOSTIC_KEY_FINGERPRINT', 'fingerprint'],
-    ['EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT', 'verified-fingerprint'], ['EKY_EVIDENCE_JOB_KEY', 'job-key'], ['EKY_EVIDENCE_JOB_OUTCOME', 'job-outcome']]) {
+    ['EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT', 'verified-fingerprint'], ['EKY_EVIDENCE_JOB_KEY', 'job-key'], ['EKY_EVIDENCE_JOB_OUTCOME', 'job-outcome'],
+    ['EKY_MSI_RESOURCE_TIMING_PROOF', 'msi-resource-timing-proof'], ['EKY_MSI_RESOURCE_TIMING_REPETITION', 'msi-resource-timing-repetition']]) {
     assert.ok(seal.includes(`        ${variable}: \${{ inputs.${input} }}\n`));
   }
   assert.ok(seal.includes(`Join-Path $env:GITHUB_WORKSPACE '${collectorPath}'`));

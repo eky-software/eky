@@ -8,6 +8,14 @@ inputs:
   job-outcome:
     description: Job status before this optional diagnostic action starts.
     required: true
+  msi-resource-timing-proof:
+    description: Explicit named RM timing experiment only; empty for ordinary failure evidence.
+    required: false
+    default: ''
+  msi-resource-timing-repetition:
+    description: Existing supervisor matrix repetition for the named RM timing experiment.
+    required: false
+    default: ''
   public-key:
     description: Approved ASCII-armored public encryption key, never a private key.
     required: true
@@ -36,7 +44,10 @@ runs:
       id: seal
       if: >-
         ${{ always() && (runner.os == 'Windows' || runner.os == 'Linux') && runner.environment == 'github-hosted'
-          && (inputs.job-outcome == 'failure' || inputs.job-outcome == 'cancelled')
+          && (inputs.job-outcome == 'failure' || inputs.job-outcome == 'cancelled'
+            || (inputs.job-outcome == 'success' && inputs.msi-resource-timing-proof == '1'
+              && github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
+              && (inputs.msi-resource-timing-repetition == '1' || inputs.msi-resource-timing-repetition == '2')))
           && inputs.public-key != '' && inputs.fingerprint != ''
           && inputs.fingerprint == inputs.verified-fingerprint
           && (github.event_name == 'push' || github.event_name == 'schedule'
@@ -50,6 +61,8 @@ runs:
         EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: ${{ inputs.verified-fingerprint }}
         EKY_EVIDENCE_JOB_KEY: ${{ inputs.job-key }}
         EKY_EVIDENCE_JOB_OUTCOME: ${{ inputs.job-outcome }}
+        EKY_MSI_RESOURCE_TIMING_PROOF: ${{ inputs.msi-resource-timing-proof }}
+        EKY_MSI_RESOURCE_TIMING_REPETITION: ${{ inputs.msi-resource-timing-repetition }}
       run: |
         try {
           $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1

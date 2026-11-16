@@ -49,6 +49,10 @@ on:
         description: Opt-in legacy, upgrade or workspace diagnostic; raw WPR data stays in runner temp
         type: boolean
         default: false
+      msi_resource_timing_proof:
+        description: Named RM timing experiment in contracts mode with encrypted report delivery
+        type: boolean
+        default: false
       workspace_fault_capture_scenario:
         description: Selected workspace-fault capture; the default retains the historical prefixes
         type: choice
@@ -445,11 +449,19 @@ jobs:
         run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
 
       - name: Run supervisor unit and process contracts
+        id: supervisor_contracts
         if: inputs.mode != 'product-command-diagnostic' && inputs.mode != 'clean-upgrade-command-diagnostic' && inputs.mode != 'inspection-command-contracts' && inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
-        run: >-
-          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
-          installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs
-          installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs
+        shell: pwsh
+        env:
+          EKY_MSI_RESOURCE_TIMING_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'contracts' && inputs.msi_resource_timing_proof == true && '1' || '' }}
+          EKY_MSI_RESOURCE_TIMING_REPETITION: ${{ matrix.repetition }}
+          EKY_EVIDENCE_JOB_KEY: supervisor-contracts-${{ strategy.job-index || 0 }}
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $false
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/msiResourceTimingEvidence.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs
+          exit $LASTEXITCODE
 
       - name: Diagnose one native window startup without MSI or acceptance matrix
         if: inputs.mode == 'window-startup-diagnostic'
@@ -582,9 +594,12 @@ jobs:
         run: ./installer/windows-acceptance-harness/captureInstallerProductInspection.ps1 -Mode compareEvents
 
       - name: Preserve encrypted CI failure evidence
+        id: failure_evidence
         if: >-
           ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
-            && (job.status == 'failure' || job.status == 'cancelled')
+            && (job.status == 'failure' || job.status == 'cancelled'
+              || (job.status == 'success' && github.event_name == 'workflow_dispatch'
+                && inputs.mode == 'contracts' && inputs.msi_resource_timing_proof == true))
             && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
             && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
             && (github.event_name == 'push' || github.event_name == 'schedule'
@@ -599,9 +614,28 @@ jobs:
         with:
           job-key: supervisor-contracts-${{ strategy.job-index || 0 }}
           job-outcome: ${{ job.status }}
+          msi-resource-timing-proof: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'contracts' && inputs.msi_resource_timing_proof == true && '1' || '' }}
+          msi-resource-timing-repetition: ${{ matrix.repetition }}
           public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
           fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
           verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}
+
+      - name: Require encrypted RM timing report publication
+        if: >-
+          ${{ always() && github.event_name == 'workflow_dispatch' && inputs.mode == 'contracts'
+            && inputs.msi_resource_timing_proof == true && steps.supervisor_contracts.outcome == 'success' }}
+        shell: pwsh
+        env:
+          DELIVERY_OUTCOME: ${{ steps.failure_evidence.outcome }}
+          SEALED: ${{ steps.failure_evidence.outputs.sealed }}
+          UPLOAD_OUTCOME: ${{ steps.failure_evidence.outputs.upload-outcome }}
+          ARTIFACT_ID: ${{ steps.failure_evidence.outputs.artifact-id }}
+        run: |
+          if ($env:DELIVERY_OUTCOME -cne 'success' -or $env:SEALED -cne 'true' -or
+              $env:UPLOAD_OUTCOME -cne 'success' -or $env:ARTIFACT_ID -cnotmatch '^[1-9][0-9]*$') {
+            [Console]::Error.WriteLine('MSI_RESOURCE_TIMING_EVIDENCE_DELIVERY_UNVERIFIED')
+            exit 1
+          }
 
   packaged-boundary-diagnostic:
     if: github.event_name == 'workflow_dispatch' && inputs.mode == 'packaged-boundary-diagnostic'
