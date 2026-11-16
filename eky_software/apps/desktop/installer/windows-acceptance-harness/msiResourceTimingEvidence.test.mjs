@@ -183,6 +183,30 @@ test('RM success restriction preserves the existing named MSI policy success rep
   f.complete();
 });
 
+test('RM opt-in stays outside both nested synthetic failure collectors', async t => {
+  const source = await readFile(new URL('../windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs', import.meta.url), 'utf8');
+  assert.equal((source.match(/collectJobFailureEvidence\(\{ \.\.\.env, EKY_MSI_RESOURCE_TIMING_PROOF: '' \}, \{ nativeTemp: temporary \}\)/gu) ?? []).length, 2);
+  assert.doesNotMatch(source, /collectJobFailureEvidence\(env, \{ nativeTemp: temporary \}\)/u);
+  const f = await fixture(t);
+  await publishMsiResourceTimingReport(f.env, request, native());
+  const directory = join(f.temp, 'eky supervisor nested'); await mkdir(directory);
+  await writeFile(join(directory, 'result.json'), '{"status":"synthetic failure"}');
+  const nested = { ...f.env, GITHUB_RUN_ID: '98765', GITHUB_JOB: 'tests',
+    EKY_EVIDENCE_JOB_KEY: 'tests-0', EKY_EVIDENCE_JOB_OUTCOME: 'failure' };
+  await assert.rejects(collectJobFailureEvidence(nested), /MSI_RESOURCE_TIMING_EVIDENCE_INVALID/u);
+  const collected = await collectJobFailureEvidence({ ...nested, EKY_MSI_RESOURCE_TIMING_PROOF: '' });
+  assert.equal(collected.manifest.scope, 'ciFailureEvidence');
+  assert.equal(collected.manifest.binding.runId, '98765');
+  assert.equal(collected.manifest.binding.job, 'tests');
+  assert.equal(collected.manifest.files.length, 1);
+  assert.equal(collected.manifest.files[0].kind, 'nativeResult');
+  assert.equal(collected.manifest.files[0].status, 'retained');
+  assert.equal(collected.manifest.approvedExceptions, undefined);
+  assert.equal(f.env.EKY_MSI_RESOURCE_TIMING_PROOF, '1');
+  assert.equal(msiResourceTimingBinding(f.env).job, 'job-object-feasibility');
+  f.complete();
+});
+
 test('RM timing projection survives real existing OpenPGP encryption and byte-exact decryption', { timeout: 120_000 }, async t => {
   const f = await fixture(t);
   const crypto = await createOpenPgpTestFixture(ROOT);

@@ -263,7 +263,7 @@ test('MSI windows: native observation survives exit and interrupted publication 
         assert.notEqual(failed.child.exitCode, 0);
       } finally { await cleanupRunContext(failedContext, { preserveEvidence: true }); }
     }
-    const collected = await collectJobFailureEvidence(env, { nativeTemp: temporary });
+    const collected = await collectJobFailureEvidence({ ...env, EKY_MSI_RESOURCE_TIMING_PROOF: '' }, { nativeTemp: temporary });
     await encryptArchive(collected.root, collected);
     const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
     const archive = JSON.parse(gunzipSync(decrypted.stdout));

@@ -467,12 +467,12 @@ test('named RM timing opt-in is dispatch-only and retains both repetitions, test
   }
 });
 
-test('all seven RM preflight controls must pass before original supervisor coverage, with no duplicate tests or swallowed status', () => {
+test('all eight RM preflight controls must pass before original supervisor coverage, with no duplicate tests or swallowed status', () => {
   const job = workflows.get('windows-acceptance-supervisor-feasibility.yml').get('job-object-feasibility');
   const run = steps(job, 6).find(step => step.includes('- name: Run supervisor unit and process contracts\n'));
   const { preflight, contracts } = assertTimingPreflightOrder(run);
   const controls = read('../../eky_software/apps/desktop/installer/windows-acceptance-harness/msiResourceTimingEvidence.test.mjs');
-  assert.equal(controls.match(/^test\(/gmu)?.length, 7);
+  assert.equal(controls.match(/^test\(/gmu)?.length, 8);
   assert.match(controls, /^test\('RM timing projection survives real existing OpenPGP encryption and byte-exact decryption'/mu);
   const gate = 'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }';
   for (const changed of [

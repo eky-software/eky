@@ -24,16 +24,17 @@ lähde-/build-identiteetit sekä kaikki avoimet ensihylkäykset säilyvät.
 **Nykyinen työ:** [M5.1 → M5.2-jatkogoal](release-0.3.0-plan.md#m51-m52-jatkogoalin-tavoite)
 ja [M5.1:n näyttökartta](release-0.3.0-plan.md#m51-hyväksyntänäytön-täsmäytys).
 Työ jatkuu `codex/m5-release-preparation`-haaralla; viimeisen varmennetun
-CI-kierroksen lähde on `5b60d4ab`. Säilytä nykyiset lisämuutokset.
+CI-kierroksen lähde on `fcd5ff5b`. Säilytä nykyiset lisämuutokset.
 47 tunnuksen kartta, käyttö-/tukiohje ja R030-04:n palautetäsmennys on
 katselmoitu; kohderegressiot, tyypitys ja alkuperäisen virheen salaus/purku
 läpäisivät. Tämä valmistelu ei ole M5.1:n hyväksyntä.
 
 **Avoin hyväksyntäeste:** [PR #331](https://github.com/eky-software/eky/pull/331)
-on avoin. Viimeisin varmennettu head `5b60d4ab` / testimerge `c4e02052` läpäisi
-[V2:n](https://github.com/eky-software/eky/actions/runs/43648239442)
-yhden kohdeuusinnan jälkeen (40 onnistunutta työtä, kuusi tarkoituksella
-valitsematonta diagnostiikkatyötä); erillinen auditointi läpäisi.
+on avoin. Viimeisin varmennettu head `fcd5ff5b` / testimerge `a4193be4` läpäisi
+[V2:n](https://github.com/eky-software/eky/actions/runs/43835007101)
+ensimmäisellä yrityksellä (40 onnistunutta työtä, kuusi tarkoituksella
+valitsematonta diagnostiikkatyötä); [erillinen auditointi](https://github.com/eky-software/eky/actions/runs/43835007035)
+läpäisi samalla lähteellä.
 Passiivisen yrityksen migraatiopalautuksen alkuperäisen MSI-sulkemispyynnön
 syy ja varhainen prosessi-/resurssihistoria ovat silti avoimia.
 [Täsmällinen PR-checkpoint](https://github.com/eky-software/eky/pull/331#issuecomment-6886316578)
@@ -71,6 +72,14 @@ säilyvät. Rajattu lähdekytkentä ja kohderegressiot on valmisteltu;
 katselmuksen löytämä vanhan MSI-policy-toimituksen regressio on korjattu.
 Nykyisten kolmen projektin varsinainen kohdekäännös on varmennettu.
 Natiivikoe ja nimetty hosted-toimitus ovat vielä todentamatta.
+Ensimmäinen [nimetty ajo](https://github.com/eky-software/eky/actions/runs/43839169190)
+hylkäsi molemmissa toistoissa sisäisen ikkunatestin keräyksen: ulomman
+RM-kokeen opt-in periytyi testin erilliseen synteettiseen ajosidontaan.
+Tiukkaa sidontatarkistusta ei muuteta. Rajattu korjaus erottaa sisäisen
+testikeräyksen asetuksen ulommasta kokeesta ja lisää pysyvän regression.
+Molempien ensihylkäysten salattu toimitus onnistui; niiden sisältöä tai
+RM-ajoituksen tulosta ei vielä ole varmennettu purkamalla. Korjausrevision
+omat PR-portit ja nimetty Windows-todennus tarvitaan ennen hyväksyntää.
 Nykyiset salaus-/purkuregressiot on varmennettu erillisillä testiavaimilla;
 oikean CI-aineiston käyttäjäkohtainen purku on eri portti. Yleistä
 onnistuneiden testien keräystä ei avata. Rajat, vartijat ja kriittinen
