@@ -435,7 +435,7 @@ test('joint source proof builds separately before both unchanged contract repeti
   const job = jobs(source).get('job-object-feasibility');
   const allSteps = steps(job, 6);
   const build = allSteps.find(step => step.includes('- name: Build Windows process supervisor\n'));
-  const evidence = allSteps.find(step => step.includes('- name: Verify joint source failure evidence before native build\n'));
+  const evidence = allSteps.find(step => step.includes('- name: Verify joint source and workspace worker failure evidence before native build\n'));
   const run = allSteps.find(step => step.includes('- name: Run supervisor unit and process contracts\n'));
   assert.ok(allSteps.indexOf(evidence) < allSteps.indexOf(build));
   assert.ok(allSteps.indexOf(build) < allSteps.indexOf(run));
@@ -452,9 +452,10 @@ test('joint source proof builds separately before both unchanged contract repeti
   }
   assert.match(evidence, /^          EKY_EVIDENCE_JOB_KEY: supervisor-contracts-\$\{\{ strategy.job-index \|\| 0 \}\}$/mu);
   const parent = 'original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption';
-  const selected = 'joint source harness preserves its first technical cause and raw native MSI bytes through decryption';
+  const joint = 'joint source harness preserves its first technical cause and raw native MSI bytes through decryption';
+  const native = 'native original failure reaches a decrypted package through its real reporting boundary';
   assert.ok(evidence.includes(`--test-name-pattern="^${parent}$"`));
-  assert.ok(evidence.includes(`--test-skip-pattern="^${parent} (?!${selected}$)"`));
+  assert.ok(evidence.includes(`--test-skip-pattern="^${parent} (?!(?:${joint}|${native})$)"`));
   assert.ok(evidence.includes('installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs'));
   assert.doesNotMatch(evidence, /continue-on-error:|always\(|timeout-minutes:|retry/u);
   assert.ok(run.includes("          EKY_SOURCE_HANDOFF_JOINT_PROOF: '1'\n"));
@@ -468,22 +469,24 @@ test('joint source proof builds separately before both unchanged contract repeti
   assert.doesNotMatch(build + run, /continue-on-error:|--test-name-pattern|retry/u);
 });
 
-test('joint evidence name selection runs the selected nested case and no other child', () => {
+test('failure evidence name selection runs both selected nested cases and no other child', () => {
   const root = realpathSync.native(mkdtempSync(join(realpathSync.native(tmpdir()), 'eky-joint-selection-')));
   let completed;
   try {
     writeFileSync(join(root, 'selection.test.mjs'), `import test from 'node:test';
 test('joint filter parent', async t => {
-  await t.test('selected', () => {});
+  await t.test('joint-case', () => {});
+  await t.test('native-case', () => {});
   await t.test('not-selected', () => { throw new Error('JOINT_SELECTION_TOO_BROAD'); });
 });\n`, { flag: 'wx' });
     completed = spawnSync(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--test',
       '--test-concurrency=1', '--test-name-pattern=^joint filter parent$',
-      '--test-skip-pattern=^joint filter parent (?!selected$)', 'selection.test.mjs'],
+      '--test-skip-pattern=^joint filter parent (?!(?:joint-case|native-case)$)', 'selection.test.mjs'],
     { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 5_000, maxBuffer: 65_536,
       env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
     assert.equal(completed.error, undefined); assert.equal(completed.signal, null); assert.equal(completed.status, 0);
-    assert.match(completed.stdout, /\bselected\b/u);
+    assert.match(completed.stdout, /\bjoint-case\b/u);
+    assert.match(completed.stdout, /\bnative-case\b/u);
     assert.doesNotMatch(completed.stdout + completed.stderr, /not-selected|JOINT_SELECTION_TOO_BROAD/u);
   } finally {
     if (Number.isInteger(completed?.status) && completed.signal === null) rmSync(root, { recursive: true });

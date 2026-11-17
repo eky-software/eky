@@ -444,14 +444,14 @@ jobs:
           }
           "EKY_DOTNET_EXE=$dotnet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
-      - name: Verify joint source failure evidence before native build
+      - name: Verify joint source and workspace worker failure evidence before native build
         if: inputs.mode == '' || inputs.mode == 'contracts'
         env:
           EKY_EVIDENCE_JOB_KEY: supervisor-contracts-${{ strategy.job-index || 0 }}
         run: >-
           node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
           --test-name-pattern="^original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption$"
-          --test-skip-pattern="^original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption (?!joint source harness preserves its first technical cause and raw native MSI bytes through decryption$)"
+          --test-skip-pattern="^original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption (?!(?:joint source harness preserves its first technical cause and raw native MSI bytes through decryption|native original failure reaches a decrypted package through its real reporting boundary)$)"
           installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs
 
       - name: Build Windows process supervisor
