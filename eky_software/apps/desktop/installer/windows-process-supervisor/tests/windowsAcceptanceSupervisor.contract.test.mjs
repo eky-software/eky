@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { EventEmitter, once } from 'node:events';
-import { access, mkdir, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
+import { access, lstat, mkdir, open, readFile, realpath, rm, symlink, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { stripTypeScriptTypes } from 'node:module';
 import test from 'node:test';
@@ -47,6 +47,139 @@ const WINDOWS_ONLY = {
   skip: process.platform !== 'win32',
   timeout: 120_000,
 };
+
+test('MSI evidence reservation permits both closed mailbox directions without partial acceptance', WINDOWS_ONLY, async t => {
+  const context = await contextFor(t, 'msi-mailbox-coexistence');
+  context.scenario = 'packagedWorkspaceSuccess';
+  await mkdir(context.runRoot);
+  const root = await lstat(context.testRoot, { bigint: true });
+  const request = createRequest(context, 'exitZero');
+  await writeRequest(context, request);
+  const deadline = performance.now() + request.timeoutMilliseconds - request.cleanupReserveMilliseconds;
+  const expected = Buffer.from(JSON.stringify({ schemaVersion: 1, runNonce: context.runNonce,
+    scenario: context.scenario, artifactDescriptorSha256: context.artifactDescriptorSha256 }) + '\n');
+  const requestPath = join(context.testRoot, 'mailbox-request.private.json');
+  const resultPath = join(context.testRoot, 'mailbox-result.private.json');
+  const execution = startProgramFailureFixture(context, 'msiMailboxCoexistence');
+  let terminal;
+  const observedCompletion = execution.completion.then(value => { terminal = { value }; }, error => { terminal = { error }; });
+  let writer, firstFailure;
+  const active = async () => {
+    if (terminal) throw terminal.error ?? new Error('MAILBOX_FIXTURE_EXITED_BEFORE_EXCHANGE');
+    assert.ok(performance.now() < deadline, 'MAILBOX_EXCHANGE_DEADLINE');
+    const current = await lstat(context.testRoot, { bigint: true });
+    assert.ok(current.isDirectory() && !current.isSymbolicLink() && current.dev === root.dev && current.ino === root.ino,
+      'MAILBOX_FIXTURE_ROOT_CHANGED');
+  };
+  const pause = () => new Promise(resolve => setTimeout(resolve, 20));
+  async function withFile(file, inspect) {
+    let value, primary;
+    try { value = await inspect(file); } catch (error) { primary = error; }
+    try { await file.close(); } catch (error) {
+      if (primary) throw new AggregateError([primary, error], 'MAILBOX_READ_AND_CLOSE_FAILED', { cause: primary });
+      throw error;
+    }
+    if (primary) throw primary;
+    return value;
+  }
+  async function expectOpenFailure(path, flags, code) {
+    let file;
+    try { file = await open(path, flags); }
+    catch (error) { assert.equal(error.code, code); return; }
+    await withFile(file, () => assert.fail('MAILBOX_OPEN_UNEXPECTEDLY_SUCCEEDED'));
+  }
+  const release = async name => {
+    await active();
+    await writeFile(join(context.runRoot, name), '', { flag: 'wx' });
+  };
+  async function wait(name) {
+    for (;;) {
+      await active();
+      let file;
+      try { file = await open(join(context.runRoot, name), 'r'); }
+      catch (error) { if (!['ENOENT', 'EBUSY'].includes(error.code)) throw error; }
+      if (file) {
+        await withFile(file, async () => {
+          const info = await file.stat({ bigint: true });
+          assert.ok(info.isFile() && info.nlink === 1n && info.size === 0n, 'MAILBOX_CONTROL_INVALID');
+          const pathInfo = await lstat(join(context.runRoot, name), { bigint: true });
+          assert.ok(pathInfo.isFile() && !pathInfo.isSymbolicLink() && pathInfo.dev === info.dev && pathInfo.ino === info.ino);
+        });
+        await active();
+        return;
+      }
+      await pause();
+    }
+  }
+  try {
+    await wait('reservation.ready');
+    writer = await open(requestPath, 'wx');
+    await writer.writeFile(expected.subarray(0, -1));
+    await writer.sync();
+    await release('request-partial.release');
+    await wait('request-partial.ready');
+    await writer.writeFile(expected.subarray(-1));
+    await writer.sync();
+    await release('request-complete.release');
+    await wait('request-complete.ready');
+    await writer.close();
+    writer = undefined;
+    await expectOpenFailure(requestPath, 'wx', 'EEXIST');
+    assert.deepEqual(await readFile(requestPath), expected);
+    await release('request-closed.release');
+    await wait('result-held.ready');
+    await expectOpenFailure(resultPath, 'r', 'EBUSY');
+    await release('result-close.release');
+    let result;
+    for (;;) {
+      await active();
+      try { result = await open(resultPath, 'r'); }
+      catch (error) { if (!['ENOENT', 'EBUSY'].includes(error.code)) throw error; }
+      if (result) break;
+      await pause();
+    }
+    await withFile(result, async () => {
+      const before = await result.stat({ bigint: true });
+      assert.ok(before.isFile() && before.nlink === 1n && before.size === BigInt(expected.length) && before.size <= 4096n);
+      const bytes = Buffer.alloc(Number(before.size));
+      let offset = 0;
+      while (offset < bytes.length) {
+        const read = await result.read(bytes, offset, bytes.length - offset, offset);
+        assert.ok(read.bytesRead > 0, 'MAILBOX_RESULT_TRUNCATED');
+        offset += read.bytesRead;
+      }
+      assert.equal((await result.read(Buffer.alloc(1), 0, 1, bytes.length)).bytesRead, 0);
+      assert.deepEqual(bytes, expected);
+      const after = await result.stat({ bigint: true });
+      const pathAfter = await lstat(resultPath, { bigint: true });
+      for (const key of ['dev', 'ino', 'size', 'nlink', 'mtimeNs', 'ctimeNs']) {
+        assert.equal(after[key], before[key]);
+        assert.equal(pathAfter[key], before[key]);
+      }
+    });
+    await wait('result-closed.ready');
+    await release('exchange.release');
+  } catch (error) { firstFailure = error; }
+  finally {
+    const failures = [];
+    if (firstFailure) try { await writeFile(join(context.runRoot, 'abort.release'), '', { flag: 'wx' }); }
+      catch (error) { failures.push(error); }
+    if (writer) try { await writer.close(); } catch (error) { failures.push(error); }
+    await observedCompletion;
+    if (terminal?.error) failures.push(terminal.error);
+    if (firstFailure || failures.length) throw new AggregateError(
+      firstFailure ? [firstFailure, ...failures] : failures, 'MAILBOX_COEXISTENCE_FAILED', { cause: firstFailure ?? failures[0] });
+  }
+  assert.equal(terminal.value.exitCode, 0);
+  assert.equal(terminal.value.signal, null);
+  const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-mailbox-coexistence.json'), 'utf8'));
+  assert.equal(proof.publication, 'recorded');
+  assert.equal(proof.exchangeCompleted, true);
+  assert.equal(proof.ownedStreamsClosed, true);
+  assert.deepEqual(proof.checks, { partialRequestExcluded: true, completeOpenRequestExcluded: true,
+    requestSizeBounded: true, requestConsumedExactlyOnce: true, exchangeCompletedInsideReservation: true,
+    realReservationEntered: true, actualEvidenceRecorded: true, evidenceSizeBounded: true, actualEvidenceBound: true });
+});
 const repetitions = Number.parseInt(
   process.env.EKY_SUPERVISOR_TIMEOUT_REPETITIONS || '1',
   10,
