@@ -1,5 +1,6 @@
 import {
-  WORKSPACE_SUCCESS_POSTCONDITION_ERRORS, hasWorkspaceSuccessExactKeys,
+  WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE, WORKSPACE_SUCCESS_POSTCONDITION_ERRORS,
+  hasWorkspaceSuccessExactKeys, matchesWorkspaceReportedFailureReceipt,
   validateWorkspaceSuccessResult, workspaceSuccessErrorCode,
 } from './workspaceSuccessContracts.mjs';
 import { validateWorkspaceFaultRequest, validateWorkspaceFaultResult,
@@ -73,8 +74,15 @@ async function resolveWorkspaceTerminalOutcome(input, faultScenario) {
   return completeWorkspaceTerminalOutcome(plan, input);
 }
 
+async function hasSettledScenarioFailure(supervisorResult, request, readScenarioReceipt) {
+  if (supervisorResult.status !== 'failed' || supervisorResult.processResultCode !== 'processExitFailed' ||
+      supervisorResult.childExitCode !== WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE) return false;
+  try { return matchesWorkspaceReportedFailureReceipt(await readScenarioReceipt(), request); }
+  catch { return false; }
+}
+
 async function prepareWorkspaceTerminalOutcome({
-  request, supervisorResult, productPrecondition, readScenarioResult,
+  request, supervisorResult, productPrecondition, readScenarioResult, readScenarioReceipt,
   verifyExactProductStates, verifySemanticPostcondition, verifySessionPostcondition,
 }, faultScenario) {
   const fault = faultScenario !== undefined;
@@ -105,15 +113,14 @@ async function prepareWorkspaceTerminalOutcome({
   const cleanupAllowed = precondition.status === 'completed' && precondition.resultCode === 'exactProductsAbsent';
   if (!cleanupAllowed) result.errorCode ??= precondition.status === 'failed' ? precondition.errorCode : 'preconditionFailed';
 
-  if (supervisorResult.status === 'completed' ||
-    (supervisorResult.processResultCode === 'processCompleted' && supervisorResult.workerResultCode === 'workerReportedFailure') ||
-    (supervisorResult.processResultCode === 'processExitFailed' && supervisorResult.childExitCode === 1)) {
+  const supervisorCompleted = supervisorResult.status === 'completed';
+  if (supervisorCompleted || await hasSettledScenarioFailure(supervisorResult, request, readScenarioReceipt)) {
     try {
       const scenario = (fault ? validateWorkspaceFaultResult : validateWorkspaceSuccessResult)(await readScenarioResult(), request);
+      if (!supervisorCompleted && scenario.status !== 'failed') throw new Error('scenarioResultInvalid');
       result.scenarioResultCode = scenario.resultCode;
       result.failedPhase = scenario.failedPhase;
       if (scenario.status === 'failed') result.errorCode = (fault ? workspaceFaultErrorCode : workspaceSuccessErrorCode)({ message: scenario.errorCode });
-      else if (supervisorResult.status !== 'completed') result.errorCode ??= 'supervisorFailed';
     } catch {
       result.scenarioResultCode = 'missingOrInvalid';
       result.errorCode ??= 'scenarioResultInvalid';

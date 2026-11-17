@@ -229,7 +229,7 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
   const directCases = ['completed', 'blockedEvidence', 'preparationHold', 'productInspectionHold', 'scenarioHold', 'uninstallHold', 'resultBeforeExit', 'cleanupFailed', 'scenarioAndCleanupFailed', 'removalHold',
     'publicationBeforeExit', 'productMissingResult', 'preconditionFailed', 'scenarioMissing', 'businessFailed', 'profileChanged', 'artifactChanged',
     ...(kind === 'legacy' ? ['msiProcessHold', 'productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly',
-      'requestPreparationDelayed', 'requestPreparationHold', 'requestPreparationLate'] : workspace ? ['footprintFailed']
+      'requestPreparationDelayed', 'requestPreparationHold', 'requestPreparationLate'] : workspace ? ['footprintFailed', 'unsettledScenarioFailure']
       : ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed']), ...(kind === 'workspace-fault' ? ['sessionFailed'] : []),
     ...(upgrade ? ['applicationCleanupUnverified', 'postconditionFailed'] : [])];
   const ciCases = kind === 'legacy' || clean || upgrade
@@ -444,6 +444,13 @@ export function registerAcceptanceCommandEntrypointContracts(kind, register = te
             assert.equal(result.outcome.errorCode, scenarioFailureCode);
             assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupFailed');
             assert.equal(result.outcome.fixtureRemoved, false);
+          }
+          if (testCase === 'unsettledScenarioFailure') {
+            assert.equal(result.outcome.errorCode, 'supervisorFailed');
+            assert.equal(result.outcome.scenarioResultCode, 'notChecked');
+            assert.equal(result.outcome.failedPhase, null);
+            assert.equal(result.outcome.semanticCleanupResultCode, 'semanticCleanupCompleted');
+            assert.equal(result.outcome.fixtureRemoved, true);
           }
           if (['cleanupFailed', 'scenarioAndCleanupFailed'].includes(testCase)) {
             await assert.rejects(lstat(join(commandRoot, followingCleanupPhase)), { code: 'ENOENT' });

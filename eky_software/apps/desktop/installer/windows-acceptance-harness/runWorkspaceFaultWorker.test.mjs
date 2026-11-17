@@ -4,12 +4,13 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 import { WORKSPACE_FAULT_PLANS, createWorkspaceFaultRequest } from './workspaceFaultContracts.mjs';
+import { WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE } from './workspaceSuccessContracts.mjs';
 import { createWorkspaceFaultWorkerRuntime } from './workspaceWorkerRuntime.mjs';
 import { runWorkspaceFaultWorker } from './runWorkspaceFaultWorker.mjs';
-import { createWorkspaceSuccessArtifactTestFixture } from './workspaceSuccessArtifactTestFixture.mjs';
 import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunFixture, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 
 test('real fault worker composition prepares shared ports without installing or starting Eky', async (t) => {
+  const { createWorkspaceSuccessArtifactTestFixture } = await import('./workspaceSuccessArtifactTestFixture.mjs');
   const f = await createWorkspaceSuccessArtifactTestFixture(t);
   const runRoot = resolve(f.root, 'run'); await mkdir(runRoot);
   const artifact = await materializeWorkspaceSuccessArtifactFixture(f.verification, resolve(runRoot, 'fixture'));
@@ -81,7 +82,7 @@ test('fault worker binds installation diagnostics to the existing progress sink'
 for (const stage of ['readRequest', 'verifyArtifact', 'createRuntime', 'execute']) {
   test(`fault worker safely classifies ${stage} failure`, async () => {
     const f = fixture(); f.options[stage] = async () => { throw new Error('private path and secret'); };
-    assert.equal(await f.run(), stage === 'readRequest' ? 64 : 1);
+    assert.equal(await f.run(), stage === 'readRequest' ? 64 : WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
     const writes = f.calls.filter(([name]) => name === 'write');
     assert.equal(writes.length, stage === 'readRequest' ? 0 : 2);
     assert.doesNotMatch(JSON.stringify(writes), /private path and secret/);
@@ -93,7 +94,7 @@ test('fault worker preserves the failed prefix and clears only memory evidence',
   const f = fixture();
   Object.assign(f.result, { status: 'failed', resultCode: 'workspaceFaultFailed', errorCode: 'sessionProofInvalid',
     completedPhases: f.result.completedPhases.slice(0, 5), failedPhase: 'sourceHandoff' });
-  assert.equal(await f.run(), 1);
+  assert.equal(await f.run(), WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
   assert.equal(f.calls.at(-2)[2].failedPhase, 'sourceHandoff');
   assert.equal(f.calls.at(-1)[2].errorCode, 'sessionProofInvalid');
   assert.equal(f.calls.filter(([name]) => name === 'dispose').length, 1);
@@ -103,8 +104,9 @@ test('missing phase and result publication failure cannot turn a fault run green
   const f = fixture(); f.result.completedPhases.pop();
   assert.equal(await f.run(), 1);
   assert.equal(f.calls.filter(([name]) => name === 'write').length, 0);
-  for (const failAt of [1, 2]) {
+  for (const [scenario, failAt] of [['completed', 1], ['completed', 2], ['failed', 1], ['failed', 2]]) {
     const next = fixture(); let writes = 0;
+    if (scenario === 'failed') next.options.execute = async () => { throw new Error('faultProofFailed'); };
     next.options.writeResult = async () => { if (++writes === failAt) throw new Error('private write failure'); };
     assert.equal(await next.run(), 1); assert.equal(writes, failAt);
   }

@@ -1,6 +1,7 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
-import { WORKSPACE_SUCCESS_PHASES, workspaceSuccessResultPath, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE, WORKSPACE_SUCCESS_PHASES,
+  workspaceSuccessResultPath, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
 import { workspaceFaultPlan, workspaceFaultResultPath } from './workspaceFaultContracts.mjs';
 import { W6B2_INSTALLER_LOG_FILE } from '../../src/main/w6b2PackagedInstallerLog.ts';
 
@@ -57,7 +58,7 @@ export function workspaceCommandFixture(input, testCase, hold) {
       await writeFile(resolve(logRoot, W6B2_INSTALLER_LOG_FILE), 'synthetic target MSI action before terminal\n');
       if (testCase === 'scenarioHold') hold();
       if (testCase === 'scenarioMissing') return 0;
-      const failed = testCase === 'scenarioAndCleanupFailed';
+      const failed = ['scenarioAndCleanupFailed', 'unsettledScenarioFailure'].includes(testCase);
       const phases = fault ? workspaceFaultPlan(request.faultScenario).phases : WORKSPACE_SUCCESS_PHASES;
       const result = { schemaVersion: 1, scenario: request.scenario, runNonce: request.runNonce,
         artifactDescriptorSha256: request.artifactDescriptorSha256, ...(fault ? { faultScenario: request.faultScenario } : {}),
@@ -66,7 +67,7 @@ export function workspaceCommandFixture(input, testCase, hold) {
       await writeJsonAtomicExclusive((fault ? workspaceFaultResultPath : workspaceSuccessResultPath)(requestPath), result);
       await writeJsonAtomicExclusive(resolve(dirname(requestPath), 'worker-result.json'), { ...request,
         status: result.status, resultCode: result.resultCode, errorCode: result.errorCode });
-      return failed ? 1 : 0;
+      return failed ? (testCase === 'unsettledScenarioFailure' ? 1 : WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE) : 0;
     },
   };
 }

@@ -776,8 +776,8 @@ test('entrypoint groups register original and migrated command contracts exactly
     ['upgradeCommandEntrypoint', 'upgrade', ['temporaryRootAlias', 'scenarioAndProfileFailed', 'scenarioAndRemovalFailed', 'applicationCleanupUnverified', 'postconditionFailed']],
     ['legacyCommandEntrypoint', 'legacy', ['msiProcessHold', 'productInspectionNativeHold', 'productInspectionResultBeforeExit', 'productInspectionReadOnly',
       'requestPreparationDelayed', 'requestPreparationHold', 'requestPreparationLate']],
-    ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed']],
-    ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'sessionFailed']],
+    ['workspaceSuccessCommandEntrypoint', 'workspace-success', ['footprintFailed', 'unsettledScenarioFailure']],
+    ['workspaceFaultCommandEntrypoint', 'workspace-fault', ['footprintFailed', 'unsettledScenarioFailure', 'sessionFailed']],
   ]) {
     const registrations = [];
     registerAcceptanceCommandEntrypointContracts(kind, (name, options, callback) => {

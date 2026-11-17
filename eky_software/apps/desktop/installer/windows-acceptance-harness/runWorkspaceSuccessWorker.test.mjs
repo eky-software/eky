@@ -3,12 +3,12 @@ import { mkdir, readdir } from 'node:fs/promises';
 import { resolve } from 'node:path';
 import test from 'node:test';
 
-import { createWorkspaceSuccessRequest, WORKSPACE_SUCCESS_PHASES } from './workspaceSuccessContracts.mjs';
+import { createWorkspaceSuccessRequest, WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE, WORKSPACE_SUCCESS_PHASES } from './workspaceSuccessContracts.mjs';
 import { createWorkspaceSuccessWorkerRuntime, runWorkspaceSuccessWorker } from './runWorkspaceSuccessWorker.mjs';
-import { createWorkspaceSuccessArtifactTestFixture } from './workspaceSuccessArtifactTestFixture.mjs';
 import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunFixture, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 
 test('real worker composition prepares its ports without installing or starting the application', async (t) => {
+  const { createWorkspaceSuccessArtifactTestFixture } = await import('./workspaceSuccessArtifactTestFixture.mjs');
   const f = await createWorkspaceSuccessArtifactTestFixture(t);
   const runRoot = resolve(f.root, 'run');
   await mkdir(runRoot);
@@ -77,7 +77,7 @@ for (const stage of ['readRequest', 'verifyArtifact', 'createRuntime', 'execute'
   test(`worker fails closed at ${stage} without leaking the original exception`, async () => {
     const f = fixture();
     f.options[stage] = async () => { throw new Error('private path and secret'); };
-    assert.equal(await f.run(), stage === 'readRequest' ? 64 : 1);
+    assert.equal(await f.run(), stage === 'readRequest' ? 64 : WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
     const writes = f.calls.filter((entry) => entry[0] === 'write');
     assert.equal(writes.length, stage === 'readRequest' ? 0 : 2);
     assert.doesNotMatch(JSON.stringify(writes), /private path and secret/);
@@ -89,7 +89,7 @@ test('an ordered scenario failure keeps its original stage and safe error', asyn
   f.result.status = 'failed'; f.result.resultCode = 'workspaceSuccessFailed';
   f.result.completedPhases = WORKSPACE_SUCCESS_PHASES.slice(0, 3);
   f.result.failedPhase = WORKSPACE_SUCCESS_PHASES[3]; f.result.errorCode = 'sourceStateInvalid';
-  assert.equal(await f.run(), 1);
+  assert.equal(await f.run(), WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
   assert.equal(f.calls.at(-1)[2].errorCode, 'sourceStateInvalid');
   assert.equal(f.calls.at(-2)[2].failedPhase, 'sourcePostcondition');
 });
@@ -97,15 +97,16 @@ test('an ordered scenario failure keeps its original stage and safe error', asyn
 test('unavailable Electron runtime has a safe preflight result and never starts the scenario', async () => {
   const f = fixture();
   f.options.createRuntime = async () => { throw new Error('electronRuntimeUnavailable'); };
-  assert.equal(await f.run(), 1);
+  assert.equal(await f.run(), WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
   assert.equal(f.calls.some(([name]) => name === 'execute'), false);
   assert.equal(f.calls.at(-2)[2].failedPhase, 'preflight');
   assert.equal(f.calls.at(-1)[2].errorCode, 'electronRuntimeUnavailable');
 });
 
-for (const failAt of [1, 2]) {
-  test(`result write ${failAt} failure never returns successful exit`, async () => {
+for (const [scenario, failAt] of [['completed', 1], ['completed', 2], ['failed', 1], ['failed', 2]]) {
+  test(`result write ${failAt} failure after a ${scenario} scenario returns only the generic exit`, async () => {
     const f = fixture();
+    if (scenario === 'failed') f.options.execute = async () => { throw new Error('sourceInstallFailed'); };
     let writes = 0;
     f.options.writeResult = async () => { if (++writes === failAt) throw new Error('private write error'); };
     assert.equal(await f.run(), 1);

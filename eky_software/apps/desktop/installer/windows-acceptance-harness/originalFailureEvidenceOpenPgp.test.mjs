@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
 import { encryptArchive } from './workspaceEncryptedEvidence.mjs';
+import { WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE } from './workspaceSuccessContracts.mjs';
 import { collectJobFailureEvidence, evidenceSourceKind } from './ciFailureEvidence.mjs';
 import { createOpenPgpTestFixture } from './openPgpTestFixture.mjs';
 import { createRunnerFailureSink, runnerFailureBinding, validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
@@ -96,7 +97,7 @@ test('original failure evidence: installed runners and packaged ASAR through iso
           }
         }
         const child = await run(process.execPath, args, 30_000, { env, cwd: directory });
-        assert.equal(child.status, 1, 'OPENPGP_RUNNER_FAILURE_EXPECTED');
+        assert.equal(child.status, runner === 'native' ? WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE : 1, 'OPENPGP_RUNNER_FAILURE_EXPECTED');
         const collected = await collectJobFailureEvidence(env);
         await encryptArchive(collected.root, collected);
         const decrypted = await invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
