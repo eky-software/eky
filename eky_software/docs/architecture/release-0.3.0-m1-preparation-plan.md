@@ -23,8 +23,10 @@ Erillinen mittaushuolto ei muuta sovellustyön turva- tai hyväksyntärajoja.
 [mainin V2](https://github.com/eky-software/eky/actions/runs/43612061886) ja
 [auditointi](https://github.com/eky-software/eky/actions/runs/43612061732).
 [PR #331](https://github.com/eky-software/eky/pull/331) on avoin ja yhdistämättä,
-haara `codex/m5-release-preparation`, head
-`977daaaa52111c9ac91274628ef9dd21c1ac5cdc`, CI-checkout `93ac4ee4`.
+haara `codex/m5-release-preparation`. Aiempi porttirevisio on
+`977daaaa52111c9ac91274628ef9dd21c1ac5cdc`, CI-checkout `93ac4ee4`;
+alla nimetyn testijatkon julkaisu tarvitsee oman täsmällisen PR-headin
+portit ja auditoinnin. Julkaisun head ja checkout sidotaan PR:n tarkistuksiin.
 [M5.1:n näyttökartta](release-0.3.0-plan.md#m51-hyväksyntänäytön-täsmäytys)
 ja [nykyinen M5.1-jatkotavoite](release-0.3.0-plan.md#m51-m52-jatkogoalin-tavoite)
 omistavat sisällön. T/A/B/C/K/D/E/F/G/H/I ja M4/W7 sekä paikalliset
@@ -43,35 +45,42 @@ riskipoikkeusta eikä sitä kysytä uudelleen. Merge vaatii perustellun
 syyluokituksen tai osoitetun korjauksen ja normaalit PR/main-portit.
 Ikkunan sulku, backend-exit ja mainin poistuminen ovat eri todisteita.
 
-**Seuraava rajattu työ:** `exit0`/`sourceHold`-yhteiskokeen täsmällinen
-testilähdevalinta nykyiseen ContractFixture-/Windows-CI-ketjuun ilman
-prototyypin siirtämistä tavalliseen supervisoriin. Kolmen projektin täsmällinen
-lähdevalinta ja erilliset tulos-/väli-/restore-polut on tarkistettu
-metadatasta. Siirrettävät koelähteet, koontivalinta ja Node-/CI-kytkentä ovat
-keskeneräisessä työpuussa. Lähdekaappauksen valmistelu, koontiajurin ja
-workflow'n vaikutustestit sekä nykyisen apurin 16 ja CI-kytkennän 19
-kohderegressiota läpäisivät korjatun valintafixturen jälkeen. Todellisen resurssiupotuksen,
-lähde-/binäärisidonnan ja tavallisten koontitiedostojen säilymisen tarkistukset
-ovat koontiehdokkaassa, mutta erillinen koonti ja tarkistusten todellinen
-suoritus ovat avoinna. Testiapurin erilliset completion-/cleanup-/raporttisyyt
-kulkevat nykyisen runner-liitännän kautta; väärän tapauksen siivoushavainto
-torjutaan. Nykyisen salauskoetiedoston pelkkä moduulilataus läpäisi.
-Saman lähteen salaus/purku vaaditaan nykyisen Windows-sopimustyön alussa
-ennen koontia ja natiivitapauksia, eikä vanhan lähteen läpäisy korvaa sitä.
-Rajattu lähdekatselmus läpäisi keräyskorjausten jälkeen. Seuraavaksi julkaistaan
-vain katselmoitu testilähde tarkistusrefille, ajetaan nykyinen contracts-työ
-ja vasta sen näytön jälkeen sama commit PR #331:n normaaliin V2-kierrokseen.
-Tämä ei ohita alkuperäistä MSI-hyväksyntäestettä.
-Käännös ei käynnistynyt valmistelun hylkäyksen jälkeen;
-uutta natiivikoetta ei ajettu. Tarkka ensisyy ja jatkoresepti pysyvät paikallisina.
+**Seuraava rajattu työ:** läpäisseen `exit0`/`sourceHold`-yhteiskokeen
+testijulkaisu PR #331:n nykyisiin portteihin, ei tavallisen supervisorin
+tuotantokytkentä. Katselmoitu testilähde on tarkistusrefillä
+`codex/m51-source-joint-proof-02`, revisio `f3dd2714`,
+[nimetyssä contracts-ajossa](https://github.com/eky-software/eky/actions/runs/44148623813).
+Molemmat nykyiset toistot läpäisivät saman lähteen salaus-/purkukokeen,
+tavallisen ja erillisen koonnin sekä 175 sopimustestiä kumpikin, myös kaksi
+nimettyä yhteistapausta. Erillinen 25 kontrollin ja kahdeksan RM-kontrollin
+sarja läpäisi kummassakin työssä; päällekkäisiä ajoja ei summata kattavuudeksi.
+Koonti varmisti todelliset resurssit, lähde-/binäärisidonnan ja tavallisten
+koontitiedostojen säilymisen. Tarkistusajo ei muuttanut PR #331:n headiä.
+Koontiajurin ja workflow'n vaikutustestit, apurin 17 ja CI-kytkennän 19
+kohderegressiota sekä rajatut lähdekatselmukset läpäisivät. Korjatun
+reporter-latauksen oma Windows-kontrolli säilytti alkuperäisen viestin ja
+kutsupinon. Salaus/purku tapahtui nykyisen sopimustyön alussa ennen koontia
+ja natiivitapauksia, ei vanhan lähteen läpäisyyn vedoten.
+[Ensimmäinen tarkistusajo](https://github.com/eky-software/eky/actions/runs/44143560210)
+pysähtyi ennen koontia ja natiivia uuden salauskoelapsen reporter-lataukseen.
+Windows-polun korvaaminen `file:`-URLilla on erotettu omaksi korjauksekseen;
+ensihylkäys ja salatut aineistot säilyvät. Purettujen pakettien ajosidonta,
+tavut, tiivisteet ja alkuperäinen assertion/pino varmennettiin; lapsen
+reporter-käynnistyksen stderr ei sisältynyt niihin. Testiapurin erilliset
+completion-/cleanup-/raporttisyyt kulkevat nykyisen runner-liitännän kautta;
+vieraan raportin siivoussyytä ei kohdisteta nykyiseen testiin.
+Testikokonaisuus etenee seuraavaksi PR #331:n normaaleihin V2-portteihin.
+Alkuperäinen MSI-hyväksyntäeste ei poistu tämän perusteella. Natiivilähteen
+varsinaisen harness-liitoksen ja uuden havaintosisällön päätös säilyy
+erillisenä; uutta tutkimus- tai keräyskerrosta ei avata yhteiskokeen jatkona.
 Sama MSI-havaintovaraus,
 lähdekuljetus ja varauksen säilyminen sulkupyyntöön asti todennetaan
 [nykyisen omistajan sopimuksella](windows-installer-acceptance-harness-v2.md#natiivin-sourcehandoff-liitoksen-suunnittelusopimus).
 Aiemman yksityisen koeehdokkaan koonti, viisi tavutason vertailu- ja viisi
 sulkukoukun pienkontrollia sekä kriittinen lähdekatselmus läpäisivät; ne eivät
 hyväksy uuden siirrettävän version koontia. Yhteiskokeen onnistuminen on
-edelleen todentamatta. Aiempi säilynyt ensiyritys ei
-edennyt lähteen käynnistymiseen; toinen tapaus jäi ajamatta. Sama estynyt
+nyt todennettu yllä nimetyllä siirrettävällä versiolla. Aiempi säilynyt
+ensiyritys ei edennyt lähteen käynnistymiseen; toinen tapaus jäi ajamatta. Sama estynyt
 ajoreitti ei ole seuraava uusintakohde. Lähdekatselmus tai käännös eivät
 korvaa nykyisen Windows-testiketjun todellista yhteisnäyttöä.
 Aiemmat kaksi synteettistä sulkukilpailua sekä koeharnessin polku- ja
@@ -97,7 +106,8 @@ koesyöte ja muuttumaton ajokuitti. Noin tunnin työjaksossa arvioi opittu asia,
 poissuljettu vaihtoehto ja seuraava ratkaiseva havainto; tämä ei ole lupatauko.
 Tarkista mittauksen saatavuus työjakson alussa nykyisellä sallitulla reitillä.
 
-Todellisen varauksen ja koko lähdekuljetuksen yhteistodennus on avoin.
+Todellisen varauksen ja rajatun lähdekuljetuksen yhteistodennus läpäisi;
+se ei ole varsinaisen EKY-/MSI-päivitysketjun tai sen vanhan estäjän näyttö.
 Valmistuneet osanäytöt ja huoltoa edeltävä nykytila säilyvät
 [integraatiohistoriassa](release-0.3.0-integration-history.md#m51-checkpoint-before-process-maintenance-20261117);
 niitä ei summata tai uusita ilman erottavaa syytä.

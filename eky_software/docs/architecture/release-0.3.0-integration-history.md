@@ -5,6 +5,40 @@ Nykyisen työn ja hyväksyntänäytön omistaa
 Alla olevat päivätyt tilat ja jatkoehdotukset ovat syntyhetkensä historiaa,
 eivät nykyinen työjono tai uusi valtuus.
 
+<a id="m51-joint-ci-proof-20261117"></a>
+
+## M5.1:n erillisen lähdekuljetuksen yhteisnäyttö 17.11.2026
+
+Testijulkaisu `f3dd2714` läpäisi nykyisen Windows-sopimustyön molemmat
+toistot [ajossa 44148623813](https://github.com/eky-software/eky/actions/runs/44148623813).
+Kumpikin vaati ennen natiivikoontia nykyisen alkuperäisen virheen salaus-/
+purkuketjun. Tavalliset koonnit tehtiin ensin, erillinen koonti varmisti
+todella upotetut resurssit, lähde-/binäärisidonnan ja tavallisten tulos- ja
+välitiedostojen muuttumattomuuden. Molempien töiden 175 sopimustestiä,
+erilliset 25 koonti-/apurikontrollia ja kahdeksan RM-kontrollia läpäisivät;
+kattavuutta ei summata toistojen tai aiempien osanäyttöjen yli.
+
+`exit0` valmistui noin 2,3-2,7 sekunnissa ja `sourceHold` noin 4,5-4,8
+sekunnissa. Oikea MSI-havaintohakemiston varaus ja admissionin lähdekuljetus
+olivat samassa kokeessa; pidetyn lähteen tapauksessa varaus säilyi nimetyn
+sulkupyynnön kohdalla. Varsinaisen EKYn tai MSI-päivityksen käynnistystä,
+UI-/RM-havaitsijaa ja alkuperäisen MSI-odotuksen syytä ei kokeiltu tai
+päätelty tästä. Nykyiset työ-, sulku- ja siivousrajat säilyivät.
+
+[Ensimmäinen julkaisuajo](https://github.com/eky-software/eky/actions/runs/44143560210)
+revisiolla `2dd9af7c` pysähtyi ennen koontia ja natiivia uuden koetestilapsen
+reporter-lataukseen. Tavallisen Windows-polun vaihtaminen `file:`-URLiin
+todennettiin erottavalla latauskokeella ja pysyvällä regressiolla; korjaus
+on oma commit `f3dd2714`. Ensihylkäys, molemmat salatut paketit ja niiden
+varmennettu purku säilyivät: alkuperäinen assertion ja pino löytyivät,
+lapsen puuttuva stderr ei muuttunut jälkikäteen kerätyksi. Väärän testin
+siivoussyyn kohdistus estettiin ja erillisten completion-/cleanup-/raportti-
+syiden toimitus varmennettiin nykyisellä runner-liitännällä.
+
+Tämä on testiliitoksen näyttö, ei M5.1:n loppuhyväksyntä tai PR #331:n
+mergepoikkeus. Alkuperäinen kriittinen MSI-este ja varsinaisen natiivilähteen
+harness-/havaintokytkennän erillinen päätös säilyivät avoimina.
+
 <a id="m51-retirement-race-preparation-20261117"></a>
 
 ## M5.1:n rajatun sulkukokeen valmisteluhylkäys 17.11.2026
