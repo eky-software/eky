@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "operation": "sourceHandoff",
+  "requestFile": "source-launch-request.private.json",
+  "resultFile": "source-launch-result.private.json",
+  "controlAckFile": "bridge-control-ack.private.json",
+  "requestMaxBytes": 16384,
+  "resultMaxBytes": 4096,
+  "bindingKeys": ["runNonce", "scenario", "artifactDescriptorSha256", "buildRevision", "scenarioRoot"],
+  "cases": ["exit0", "fault0", "exit7", "wrongBinding", "replay", "sourceHold", "heldRead", "heldCreation", "birthRejected", "exit7CleanupFailure", "exit0CleanupFailure"]
+}

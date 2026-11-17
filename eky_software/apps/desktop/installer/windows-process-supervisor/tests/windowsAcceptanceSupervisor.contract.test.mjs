@@ -42,11 +42,22 @@ import {
 import {
   readWindowsAcceptanceSupervisorResult,
 } from '../windowsAcceptanceSupervisorResult.mjs';
+import { runSourceHandoffJointContract } from './sourceHandoffJointContractSupport.mjs';
 
 const WINDOWS_ONLY = {
   skip: process.platform !== 'win32',
   timeout: 120_000,
 };
+
+const jointSelection = process.env.EKY_SOURCE_HANDOFF_JOINT_PROOF;
+if (jointSelection !== undefined && jointSelection !== '' && jointSelection !== '1') {
+  throw new Error('WINDOWS_ACCEPTANCE_SOURCE_HANDOFF_SELECTION_INVALID');
+}
+for (const selected of ['exit0', 'sourceHold']) {
+  test('actual MSI reservation and admitted source handoff: ' + selected, {
+    ...WINDOWS_ONLY, skip: process.platform !== 'win32' || jointSelection !== '1',
+  }, async t => runSourceHandoffJointContract(t, selected));
+}
 
 test('MSI evidence reservation permits both closed mailbox directions without partial acceptance', WINDOWS_ONLY, async t => {
   const context = await contextFor(t, 'msi-mailbox-coexistence');

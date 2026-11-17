@@ -444,21 +444,34 @@ jobs:
           }
           "EKY_DOTNET_EXE=$dotnet" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Verify joint source failure evidence before native build
+        if: inputs.mode == '' || inputs.mode == 'contracts'
+        env:
+          EKY_EVIDENCE_JOB_KEY: supervisor-contracts-${{ strategy.job-index || 0 }}
+        run: >-
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs
+          --test-name-pattern="^original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption$"
+          --test-skip-pattern="^original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption (?!joint source harness preserves its first technical cause and raw native MSI bytes through decryption$)"
+          installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs
+
       - name: Build Windows process supervisor
         if: inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'clean-upgrade-command-diagnostic'
-        run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs
+        run: node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs ${{ (inputs.mode == '' || inputs.mode == 'contracts') && '--source-handoff-joint' || '' }}
 
       - name: Run supervisor unit and process contracts
         id: supervisor_contracts
         if: inputs.mode != 'product-command-diagnostic' && inputs.mode != 'clean-upgrade-command-diagnostic' && inputs.mode != 'inspection-command-contracts' && inputs.mode != 'window-startup-diagnostic' && inputs.mode != 'legacy-contracts-diagnostic' && inputs.mode != 'legacy-worker-diagnostic' && inputs.mode != 'inspector-analysis-diagnostic' && inputs.mode != 'inspector-external-diagnostic'
         shell: pwsh
         env:
+          EKY_SOURCE_HANDOFF_JOINT_PROOF: '1'
           EKY_MSI_RESOURCE_TIMING_PROOF: ${{ github.event_name == 'workflow_dispatch' && inputs.mode == 'contracts' && inputs.msi_resource_timing_proof == true && '1' || '' }}
           EKY_MSI_RESOURCE_TIMING_REPETITION: ${{ matrix.repetition }}
           EKY_EVIDENCE_JOB_KEY: supervisor-contracts-${{ strategy.job-index || 0 }}
         run: |
           $PSNativeCommandUseErrorActionPreference = $false
           node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-acceptance-harness/msiResourceTimingEvidence.test.mjs
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-process-supervisor/tests/buildWindowsAcceptanceSupervisor.test.mjs installer/windows-process-supervisor/tests/sourceHandoffJointContractSupport.test.mjs
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
           node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs
           exit $LASTEXITCODE

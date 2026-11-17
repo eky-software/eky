@@ -20,6 +20,7 @@ import {
 } from '../windowsAcceptanceSupervisorResult.mjs';
 import { captureContractOutput, preserveContractOutput } from './supervisorContractPrivateEvidence.mjs';
 import { parseWorkspacePhaseObservation } from '../../windows-acceptance-harness/workspacePhaseObservation.mjs';
+import { verifySourceHandoffBuildBinding } from '../buildWindowsAcceptanceSupervisor.mjs';
 
 const TEST_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const TOOL_DIRECTORY = resolve(TEST_DIRECTORY, '..');
@@ -41,6 +42,9 @@ const PROGRAM_FAILURE_FIXTURE_DLL = resolve(
   'net10.0',
   'Eky.WindowsProcessSupervisor.ContractFixture.dll',
 );
+const SOURCE_HANDOFF_JOINT_DLL = resolve(TOOL_DIRECTORY, '..', 'bin', 'source-handoff-joint',
+  'Eky.WindowsProcessSupervisor.ContractFixture', 'Release', 'net10.0',
+  'Eky.WindowsProcessSupervisor.ContractFixture.dll');
 const FIXTURE_PATH = resolve(TEST_DIRECTORY, 'processTreeFixture.mjs');
 const DOTNET_EXECUTABLE = process.env.EKY_DOTNET_EXE || 'dotnet';
 const activeSupervisorProcesses = new Set();
@@ -314,6 +318,18 @@ export function startProgramFailureFixture(context, mode, { environment = proces
     dotnetArguments: ['--mode', mode, '--request', context.requestPath],
     dotnetAssembly: PROGRAM_FAILURE_FIXTURE_DLL,
     environment,
+  });
+}
+
+export function startSourceHandoffJointFixture(context, selected) {
+  if (!['exit0', 'sourceHold'].includes(selected)) {
+    throw new Error('WINDOWS_ACCEPTANCE_SOURCE_HANDOFF_CASE_INVALID');
+  }
+  verifySourceHandoffBuildBinding();
+  return startSupervisor(context, {
+    dotnetAssembly: SOURCE_HANDOFF_JOINT_DLL,
+    dotnetArguments: ['--joint-reservation-proof', selected, join(context.testRoot, 'temporary'),
+      resolve(TEST_DIRECTORY, 'programFailureFixture/sourceHandoffJoint')],
   });
 }
 

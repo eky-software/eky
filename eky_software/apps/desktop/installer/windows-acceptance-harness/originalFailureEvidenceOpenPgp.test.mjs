@@ -1,16 +1,16 @@
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, readdir, realpath, utimes, writeFile } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { gunzipSync } from 'node:zlib';
 import test from 'node:test';
 import { encryptArchive } from './workspaceEncryptedEvidence.mjs';
-import { collectJobFailureEvidence } from './ciFailureEvidence.mjs';
-import { prepareSmokeExceptionEvidence } from '../../scripts/packagedSmokeFailureEvidence.mjs';
-import { writeLegacyDatabaseBuildInfoFixture } from './legacyUpgradeDatabaseEvidence.fixture.mjs';
+import { collectJobFailureEvidence, evidenceSourceKind } from './ciFailureEvidence.mjs';
 import { createOpenPgpTestFixture } from './openPgpTestFixture.mjs';
-import { createRunnerFailureSink } from '../../../../test-reporters/runnerFailureEvidence.mjs';
+import { createRunnerFailureSink, runnerFailureBinding, validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
+import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
+import { validateWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -114,6 +114,145 @@ test('original failure evidence: installed runners and packaged ASAR through iso
         assert.equal(value.manifest.cleanup, 'notInferred');
       });
     }
+    await check('joint source harness preserves its first technical cause and raw native MSI bytes through decryption', async () => {
+      const directory = join(fixture.root, 'joint-proof'), temp = join(directory, 'temporary'), checkout = join(directory, 'checkout');
+      await mkdir(temp, { recursive: true }); await mkdir(checkout);
+      const env = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'joint-proof',
+        EKY_EVIDENCE_JOB_KEY: 'joint-proof-0', GITHUB_SHA: 'b'.repeat(40), EKY_EVIDENCE_JOB_OUTCOME: 'failure',
+        RUNNER_TEMP: temp, GITHUB_WORKSPACE: checkout, TEMP: temp, TMP: temp, TMPDIR: temp, NODE_TEST_CONTEXT: undefined };
+      const binding = { kind: 'github', runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+        job: env.GITHUB_JOB, sourceRevision: env.GITHUB_SHA };
+      const root = join(temp, 'eky supervisor abc123', 'temporary');
+      const encode = value => Buffer.from(JSON.stringify(value) + '\n');
+      const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
+      const native = { schemaVersion: 1, runNonce: 'c'.repeat(64), scenario: 'packagedWorkspaceSuccess',
+        artifactDescriptorSha256: 'a'.repeat(64), durationMs: 100, status: 'completed',
+        processResultCode: 'processCompleted', workerResultCode: 'workerResultValidated',
+        cleanupResultCode: 'notRequired', processTreeAbsent: true, childExitCode: 0,
+        processWin32ErrorCode: null, cleanupWin32ErrorCode: null };
+      const evidence = { schemaVersion: msiWindowEvidenceContract.schemaVersion, operation: msiWindowEvidenceContract.operation,
+        binding, runNonce: native.runNonce, scenario: native.scenario,
+        artifactDescriptorSha256: native.artifactDescriptorSha256, sequence: 1, elapsedMs: 50, clients: [], resources: null };
+      const commandRoot = join(root, 'eky-acceptance-command-' + 'd'.repeat(32));
+      const nativeBytes = encode(native), evidenceBytes = encode(evidence);
+      const controlFixture = { native, nativeBytes, evidenceBytes,
+        report: { schemaVersion: 1, selected: 'exit0', commandRoot },
+        reportPath: join(root, 'joint-reservation-result.private.json'),
+        files: new Map([[join(commandRoot, 'scenario', 'result.json'), nativeBytes],
+          [join(commandRoot, 'scenario', msiWindowEvidenceContract.filenamePrefix + '001.private.json'), evidenceBytes]]) };
+      await mkdir(join(controlFixture.report.commandRoot, 'scenario'), { recursive: true });
+      for (const [path, bytes] of controlFixture.files) await writeFile(path, bytes, { flag: 'wx' });
+      await writeFile(join(controlFixture.report.commandRoot, 'scenario', 'request.json'), encode({ schemaVersion: 1,
+        runNonce: controlFixture.native.runNonce, scenario: controlFixture.native.scenario,
+        artifactDescriptorSha256: controlFixture.native.artifactDescriptorSha256,
+        workingDirectory: join(controlFixture.report.commandRoot, 'scenario') }), { flag: 'wx' });
+      controlFixture.report.status = 'failed'; controlFixture.report.firstFailure = 'JOINT_SYNTHETIC_ORIGINAL';
+      controlFixture.report.harnessFailure = { exceptionType: 'IOException', HResult: -2147024891, errorCode: 'jointSyntheticNativeFailure' };
+      controlFixture.report.admissionCleanupFailure = { exceptionType: 'IOException', hresult: -2147024890,
+        errorCode: 'jointSyntheticCleanupFailure' };
+      await writeFile(controlFixture.reportPath, encode(controlFixture.report), { flag: 'wx' });
+      const childTest = join(directory, 'joint-failure.test.mjs');
+      await writeFile(childTest, `import test from 'node:test';
+import { fileURLToPath } from 'node:url';
+import { completeSourceHandoffJointContract, withSourceHandoffJointFailureEvidence } from ${JSON.stringify(new URL('../windows-process-supervisor/tests/sourceHandoffJointContractSupport.mjs', import.meta.url).href)};
+test('joint synthetic first failure', { timeout: 5000 }, async t => {
+  await withSourceHandoffJointFailureEvidence(t, observeAdditionalFailure =>
+    completeSourceHandoffJointContract({ completion: Promise.reject(new Error('JOINT_SYNTHETIC_COMPLETION')) },
+      ${JSON.stringify(root)}, 'exit0', { observeAdditionalFailure }), { file: fileURLToPath(import.meta.url) });
+});
+test('joint synthetic unreadable report', { timeout: 5000 }, async t => {
+  await withSourceHandoffJointFailureEvidence(t, observeAdditionalFailure =>
+    completeSourceHandoffJointContract({ completion: Promise.reject(new Error('JOINT_SYNTHETIC_REPORT_COMPLETION')) },
+      ${JSON.stringify(root)}, 'exit0', { observeAdditionalFailure,
+        readFixture: async () => { throw new Error('JOINT_SYNTHETIC_REPORT_READ'); } }),
+    { file: fileURLToPath(import.meta.url) });
+});\n`, { flag: 'wx' });
+      const child = await fixture.run(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--test',
+        '--test-concurrency=1', '--test-reporter=' + fileURLToPath(new URL('../../../../test-reporters/nodeFailureReporter.mjs', import.meta.url)),
+        childTest], 30_000, { env, cwd: directory });
+      assert.equal(child.error, undefined); assert.equal(child.signal, null); assert.equal(child.status, 1);
+      const output = Buffer.concat([child.stdout, child.stderr]).toString('utf8');
+      // The shared fixture keeps child stdout/stderr private; the outer runner never emits them.
+      assert.equal(output.includes('joint synthetic first failure'), true);
+      const originals = new Map();
+      for (const name of await readdir(temp)) {
+        if (!name.startsWith('eky-test-errors-')) continue;
+        for (const file of await readdir(join(temp, name)))
+          originals.set(`temporary/${name}/${file}`, await readFile(join(temp, name, file)));
+      }
+      assert.equal(originals.size, 8, 'JOINT_PRIMARY_SECONDARY_AND_SUMMARIES_REQUIRED');
+      const prefix = 'temporary/eky supervisor abc123/temporary/eky-acceptance-command-' + 'd'.repeat(32) + '/scenario/';
+      originals.set(prefix + 'result.json', controlFixture.nativeBytes);
+      originals.set(prefix + msiWindowEvidenceContract.filenamePrefix + '001.private.json', controlFixture.evidenceBytes);
+      assert.equal(evidenceSourceKind('temporary', 'eky supervisor abc123/temporary/joint-reservation-result.private.json'), null);
+      Object.assign(env, { EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+        EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint, EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') });
+      const collected = await collectJobFailureEvidence(env, { nativeTemp: temp });
+      await encryptArchive(collected.root, collected);
+      const decrypted = await fixture.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+      const archive = JSON.parse(gunzipSync(decrypted.stdout));
+      assert.equal(archive.manifest.scope, 'ciFailureEvidence'); assert.equal(archive.manifest.jobOutcome, 'failure');
+      assert.equal(archive.manifest.cleanup, 'notInferred');
+      assert.deepEqual(archive.manifest.binding, { runId: env.GITHUB_RUN_ID, attempt: env.GITHUB_RUN_ATTEMPT,
+        job: env.GITHUB_JOB, jobKey: env.EKY_EVIDENCE_JOB_KEY, sourceRevision: env.GITHUB_SHA });
+      assert.equal(archive.manifest.files.length, originals.size); assert.equal(Object.keys(archive.files).length, originals.size);
+      const records = [];
+      for (const entry of archive.manifest.files) {
+        assert.equal(entry.status, 'retained'); assert.equal(entry.location, 'runnerTemp');
+        const bytes = Buffer.from(archive.files[entry.name], 'base64'), original = originals.get(entry.source);
+        assert.equal(original !== undefined && bytes.equals(original), true, 'JOINT_RAW_BYTES_CHANGED');
+        assert.equal(bytes.length, entry.bytes); assert.equal(sha256(bytes), entry.sha256);
+        if (entry.kind === 'runnerFailure') records.push(validateRunnerFailureEvidence(JSON.parse(bytes)));
+        else if (entry.kind === 'nativeResult') validateWindowsAcceptanceSupervisorResult(JSON.parse(bytes), {
+          runNonce: controlFixture.native.runNonce, scenario: controlFixture.native.scenario,
+          artifactDescriptorSha256: 'a'.repeat(64), supervisorExitCode: 0 });
+        else { assert.equal(entry.kind, 'msiWindowObservation'); validateMsiWindowEvidence(JSON.parse(bytes), binding, entry.source); }
+        originals.delete(entry.source);
+      }
+      assert.equal(originals.size, 0);
+      const original = records.find(record => record.kind === 'runnerFailure' && record.phase === 'testFailure' &&
+        record.test.name === 'joint synthetic first failure');
+      assert.equal(original !== undefined, true, 'JOINT_ORIGINAL_FAILURE_MISSING');
+      assert.deepEqual(original.binding, runnerFailureBinding(env)); assert.equal(original.runner, 'node');
+      assert.equal(original.test.name, 'joint synthetic first failure'); assert.equal(original.test.attempt, 0);
+      assert.equal(resolve(original.test.file), resolve(childTest));
+      assert.equal(original.exception.chain.some(part => part.message === 'JOINT_SYNTHETIC_ORIGINAL' &&
+        part.stack?.includes('verifySourceHandoffJointReport')), true, 'JOINT_ORIGINAL_MESSAGE_AND_STACK_MISSING');
+      assert.equal(original.exception.chain.some(part => part.name === 'IOException' &&
+        part.message === 'errorCode=jointSyntheticNativeFailure; HResult=-2147024891' && part.stack === null), true,
+        'JOINT_BOUNDED_NATIVE_CAUSE_MISSING');
+      assert.equal(original.exception.incomplete, true, 'JOINT_UNAVAILABLE_NATIVE_STACK_MUST_REMAIN_UNKNOWN');
+      const completion = records.find(record => record.kind === 'runnerFailure' && record.phase === 'jointFixtureCompletion');
+      const cleanup = records.find(record => record.kind === 'runnerFailure' && record.phase === 'jointFixtureCleanup');
+      assert.ok(completion?.exception.chain.some(part => part.message === 'JOINT_SYNTHETIC_COMPLETION' &&
+        part.stack?.includes('joint-failure.test.mjs')), 'JOINT_COMPLETION_CAUSE_MISSING');
+      assert.ok(cleanup?.exception.chain.some(part => part.name === 'IOException' &&
+        part.message === 'errorCode=jointSyntheticCleanupFailure; HResult=-2147024890' && part.stack === null),
+        'JOINT_CLEANUP_CAUSE_MISSING');
+      for (const secondary of [completion, cleanup]) {
+        assert.deepEqual(secondary.binding, original.binding);
+        assert.equal(secondary.test.name, original.test.name); assert.equal(secondary.test.file, original.test.file);
+        assert.equal(secondary.test.attempt, original.test.attempt);
+      }
+      assert.equal(completion.invocationId, cleanup.invocationId);
+      assert.equal(records.some(record => record.kind === 'runnerFailureSummary' && record.invocationId === cleanup.invocationId &&
+        record.status === 'recorded' && record.recorded === 2 && record.rejected === 0 && record.omitted === 0), true);
+      const reportPrimary = records.find(record => record.kind === 'runnerFailure' && record.phase === 'testFailure' &&
+        record.test.name === 'joint synthetic unreadable report');
+      const reportSecondary = records.find(record => record.kind === 'runnerFailure' && record.phase === 'jointFixtureReport');
+      assert.ok(reportPrimary?.exception.chain.some(part => part.message === 'JOINT_SYNTHETIC_REPORT_COMPLETION'),
+        'JOINT_REPORT_COMPLETION_PRIMARY_MISSING');
+      assert.ok(reportSecondary?.exception.chain.some(part => part.message === 'JOINT_SYNTHETIC_REPORT_READ' &&
+        part.stack?.includes('readFixture')), 'JOINT_REPORT_READ_CAUSE_MISSING');
+      assert.deepEqual(reportSecondary.binding, reportPrimary.binding);
+      assert.equal(reportSecondary.test.name, reportPrimary.test.name);
+      assert.equal(reportSecondary.test.file, reportPrimary.test.file);
+      assert.equal(reportSecondary.test.attempt, reportPrimary.test.attempt);
+      assert.equal(records.some(record => record.kind === 'runnerFailureSummary' && record.invocationId === reportSecondary.invocationId &&
+        record.status === 'recorded' && record.recorded === 1 && record.rejected === 0 && record.omitted === 0), true);
+      assert.equal(records.some(record => record.kind === 'runnerFailureSummary' && record.invocationId === original.invocationId &&
+        record.status === 'recorded' && record.recorded === 2 && record.rejected === 0 && record.omitted === 0), true);
+    });
     await check('an independent private check survives a repetitive runner quota through real decryption', async () => {
       const directory = join(root, 'runner-quota');
       const temp = join(directory, 'temporary');
@@ -368,6 +507,8 @@ test('original failure evidence: installed runners and packaged ASAR through iso
       assert.equal(value.manifest.cleanup, 'notInferred');
     });
     await check('packaged original survives safe-code replacement, process exit and encrypted job delivery', async () => {
+      const { prepareSmokeExceptionEvidence } = await import('../../scripts/packagedSmokeFailureEvidence.mjs');
+      const { writeLegacyDatabaseBuildInfoFixture } = await import('./legacyUpgradeDatabaseEvidence.fixture.mjs');
       const tempCandidate = join(root, 'packaged-exception-temp');
       await mkdir(tempCandidate);
       const temp = await realpath(tempCandidate);

@@ -1,0 +1,25 @@
+<Project>
+  <ItemGroup Condition="'$(EkyJointReservationProof)' == 'true' and '$(MSBuildProjectName)' == 'Eky.WindowsProcessSupervisor'">
+    <Compile Remove="$(MSBuildProjectDirectory)\AcceptanceCommandProgram.cs" />
+    <Compile Remove="$(MSBuildProjectDirectory)\WindowsJobProcessSupervisor.cs" />
+    <Compile Remove="$(MSBuildProjectDirectory)\SuspendedWindowsProcess.cs" />
+    <Compile Remove="$(MSBuildProjectDirectory)\ProcessCreationJobAttribute.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)AcceptanceCommandProgram.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)WindowsJobProcessSupervisor.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SuspendedWindowsProcess.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)ProcessCreationJobAttribute.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SourceBootstrapProjection.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SourceAdmissionFiles.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)RetirementRaceContract.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)SourceHandoffPrototype.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)WorkspaceSourceAdmission.cs" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)..\..\..\..\obj\source-handoff-joint\source-bootstrap-projection.json" LogicalName="source-bootstrap-projection.private.json" />
+    <EmbeddedResource Include="$(MSBuildThisFileDirectory)sourceBridgeProtocol.json" LogicalName="bridge-protocol.private.json" />
+  </ItemGroup>
+  <ItemGroup Condition="'$(EkyJointReservationProof)' == 'true' and '$(MSBuildProjectName)' == 'Eky.WindowsProcessSupervisor.ContractFixture'">
+    <Compile Remove="@(Compile)" />
+    <Compile Include="$(MSBuildThisFileDirectory)SourceMailboxRollbackContract.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)Program.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)JointReservationCloseControls.cs" />
+  </ItemGroup>
+</Project>

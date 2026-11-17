@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 import { runInNewContext } from 'node:vm';
 import { withoutOptionalEvidenceAllowance } from './ciFailureEvidenceTestContract.mjs';
@@ -412,10 +415,13 @@ function assertTimingPreflightOrder(run) {
   assert.deepEqual(run.match(/^        shell: .+$/gmu), ['        shell: pwsh']);
   const prefix = 'node --test --test-concurrency=1 --test-reporter=../../test-reporters/nodeFailureReporter.mjs';
   const preflight = `${prefix} installer/windows-acceptance-harness/msiResourceTimingEvidence.test.mjs`;
+  const jointControls = `${prefix} installer/windows-process-supervisor/tests/buildWindowsAcceptanceSupervisor.test.mjs installer/windows-process-supervisor/tests/sourceHandoffJointContractSupport.test.mjs`;
   const contracts = `${prefix} installer/windows-process-supervisor/tests/windowsAcceptanceSupervisorResult.test.mjs installer/windows-process-supervisor/tests/windowsAcceptanceSupervisor.contract.test.mjs`;
   assert.deepEqual(run.split('        run: |\n')[1]?.trim().split('\n').map(line => line.trim()), [
     '$PSNativeCommandUseErrorActionPreference = $false',
     preflight,
+    'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
+    jointControls,
     'if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }',
     contracts,
     'exit $LASTEXITCODE',
@@ -423,6 +429,66 @@ function assertTimingPreflightOrder(run) {
   assert.doesNotMatch(run, /timeout-minutes:|continue-on-error:|--test-name-pattern/u);
   return { preflight, contracts };
 }
+
+test('joint source proof builds separately before both unchanged contract repetitions', () => {
+  const source = read('../workflows/windows-acceptance-supervisor-feasibility.yml');
+  const job = jobs(source).get('job-object-feasibility');
+  const allSteps = steps(job, 6);
+  const build = allSteps.find(step => step.includes('- name: Build Windows process supervisor\n'));
+  const evidence = allSteps.find(step => step.includes('- name: Verify joint source failure evidence before native build\n'));
+  const run = allSteps.find(step => step.includes('- name: Run supervisor unit and process contracts\n'));
+  assert.ok(allSteps.indexOf(evidence) < allSteps.indexOf(build));
+  assert.ok(allSteps.indexOf(build) < allSteps.indexOf(run));
+  const command = build.match(/^        run: (.+)$/mu)?.[1];
+  assert.ok(command?.startsWith('node installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs '));
+  const expression = command.match(/\$\{\{ (.+) \}\}/u)?.[1];
+  assert.ok(expression);
+  for (const mode of ['', 'contracts', 'window-startup-diagnostic', 'product-command-diagnostic',
+    'inspection-command-contracts', 'legacy-contracts-diagnostic']) {
+    assert.equal(runInNewContext(expression, { inputs: { mode } }),
+      mode === '' || mode === 'contracts' ? '--source-handoff-joint' : '');
+    const condition = evidence.match(/^        if: (.+)$/mu)[1];
+    assert.equal(runInNewContext(condition, { inputs: { mode } }), mode === '' || mode === 'contracts');
+  }
+  assert.match(evidence, /^          EKY_EVIDENCE_JOB_KEY: supervisor-contracts-\$\{\{ strategy.job-index \|\| 0 \}\}$/mu);
+  const parent = 'original failure evidence: installed runners and packaged ASAR through isolated TEST-key encryption';
+  const selected = 'joint source harness preserves its first technical cause and raw native MSI bytes through decryption';
+  assert.ok(evidence.includes(`--test-name-pattern="^${parent}$"`));
+  assert.ok(evidence.includes(`--test-skip-pattern="^${parent} (?!${selected}$)"`));
+  assert.ok(evidence.includes('installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs'));
+  assert.doesNotMatch(evidence, /continue-on-error:|always\(|timeout-minutes:|retry/u);
+  assert.ok(run.includes("          EKY_SOURCE_HANDOFF_JOINT_PROOF: '1'\n"));
+  assertTimingPreflightOrder(run);
+  assert.match(job, /^    timeout-minutes: 10$/mu);
+  assert.match(job, /^      fail-fast: false$/mu);
+  const matrix = job.match(/^        repetition: \$\{\{ (.+) \}\}$/mu)[1];
+  for (const mode of ['', 'contracts']) {
+    assert.deepEqual(Array.from(runInNewContext(matrix, { inputs: { mode }, fromJSON: JSON.parse })), [1, 2]);
+  }
+  assert.doesNotMatch(build + run, /continue-on-error:|--test-name-pattern|retry/u);
+});
+
+test('joint evidence name selection runs the selected nested case and no other child', () => {
+  const root = realpathSync.native(mkdtempSync(join(realpathSync.native(tmpdir()), 'eky-joint-selection-')));
+  let completed;
+  try {
+    writeFileSync(join(root, 'selection.test.mjs'), `import test from 'node:test';
+test('joint filter parent', async t => {
+  await t.test('selected', () => {});
+  await t.test('not-selected', () => { throw new Error('JOINT_SELECTION_TOO_BROAD'); });
+});\n`, { flag: 'wx' });
+    completed = spawnSync(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--test',
+      '--test-concurrency=1', '--test-name-pattern=^joint filter parent$',
+      '--test-skip-pattern=^joint filter parent (?!selected$)', 'selection.test.mjs'],
+    { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 5_000, maxBuffer: 65_536,
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined } });
+    assert.equal(completed.error, undefined); assert.equal(completed.signal, null); assert.equal(completed.status, 0);
+    assert.match(completed.stdout, /\bselected\b/u);
+    assert.doesNotMatch(completed.stdout + completed.stderr, /not-selected|JOINT_SELECTION_TOO_BROAD/u);
+  } finally {
+    if (Number.isInteger(completed?.status) && completed.signal === null) rmSync(root, { recursive: true });
+  }
+});
 
 test('named RM timing opt-in is dispatch-only and retains both repetitions, tests and timeouts', () => {
   const source = read('../workflows/windows-acceptance-supervisor-feasibility.yml');
