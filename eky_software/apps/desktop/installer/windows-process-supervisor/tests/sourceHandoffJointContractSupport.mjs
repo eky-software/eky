@@ -12,6 +12,10 @@ import { parseStrictJsonObjectBytes } from '../../windows-acceptance-harness/str
 import { validateWindowsAcceptanceSupervisorResult } from '../windowsAcceptanceSupervisorResult.mjs';
 import { createTestRunContext, startSourceHandoffJointFixture } from './supervisorContractTestSupport.mjs';
 
+export const SOURCE_HANDOFF_JOINT_REPORTER_URL = new URL(
+  '../../../../../test-reporters/nodeFailureReporter.mjs', import.meta.url,
+).href;
+
 const COMMON_CHECKS = [
   "realOrderedPrefix",
   "distinctMailboxAndSourceDirectory",

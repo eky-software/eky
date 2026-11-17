@@ -1,13 +1,15 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { realpathSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import test from 'node:test';
 import {
   completeSourceHandoffJointContract, readSourceHandoffJointFixture, verifySourceHandoffJointReport,
   withSourceHandoffJointFailureEvidence,
+  SOURCE_HANDOFF_JOINT_REPORTER_URL,
 } from './sourceHandoffJointContractSupport.mjs';
 import { msiWindowEvidenceContract } from '../../windows-acceptance-harness/msiWindowEvidence.mjs';
 import { projectExceptionChain } from '../../../src/main/startupExceptionEvidence.ts';
@@ -96,6 +98,37 @@ test('source handoff joint pure: both complete reports and raw artifacts pass wi
     const fixture = control(selected);
     verifySourceHandoffJointReport(fixture.report, selected);
     await fixture.complete();
+  }
+});
+
+test('source handoff joint reporter URL loads the actual reporter and preserves its original child failure', PURE, async () => {
+  assert.equal(new URL(SOURCE_HANDOFF_JOINT_REPORTER_URL).protocol, 'file:');
+  const root = realpathSync.native(await mkdtemp(join(realpathSync.native(tmpdir()), 'eky-joint-reporter-')));
+  let child, completed = false;
+  try {
+    await writeFile(join(root, 'fixture.test.mjs'), `import test from 'node:test';
+test('joint reporter URI original', () => { throw new Error('JOINT_REPORTER_URI_ORIGINAL'); });\n`, { flag: 'wx' });
+    child = spawnSync(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--test',
+      '--test-concurrency=1', '--test-reporter=' + SOURCE_HANDOFF_JOINT_REPORTER_URL, 'fixture.test.mjs'],
+    { cwd: root, encoding: 'utf8', windowsHide: true, timeout: 4_000, maxBuffer: 65_536,
+      env: { ...process.env, NODE_TEST_CONTEXT: undefined, TEMP: root, TMP: root, TMPDIR: root } });
+    assert.equal(child.error, undefined); assert.equal(child.signal, null); assert.equal(child.status, 1);
+    assert.doesNotMatch(child.stderr, /ERR_UNSUPPORTED_ESM_URL_SCHEME/u);
+    const directories = (await readdir(root)).filter(name => name.startsWith('eky-test-errors-'));
+    assert.equal(directories.length, 1);
+    const records = [];
+    for (const name of await readdir(join(root, directories[0]))) {
+      records.push(JSON.parse(await readFile(join(root, directories[0], name), 'utf8')));
+    }
+    assert.equal(records.length, 2);
+    const original = records.find(record => record.kind === 'runnerFailure');
+    assert.equal(original.test.name, 'joint reporter URI original');
+    assert.ok(original.exception.chain.some(part => part.message === 'JOINT_REPORTER_URI_ORIGINAL' &&
+      part.stack?.includes('fixture.test.mjs')));
+    assert.ok(records.some(record => record.kind === 'runnerFailureSummary' && record.status === 'recorded' && record.recorded === 1));
+    completed = true;
+  } finally {
+    if (completed && Number.isInteger(child?.status) && child.signal === null) await rm(root, { recursive: true });
   }
 });
 

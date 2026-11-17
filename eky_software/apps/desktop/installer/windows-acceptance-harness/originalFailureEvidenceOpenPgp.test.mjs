@@ -11,6 +11,7 @@ import { createOpenPgpTestFixture } from './openPgpTestFixture.mjs';
 import { createRunnerFailureSink, runnerFailureBinding, validateRunnerFailureEvidence } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 import { validateWindowsAcceptanceSupervisorResult } from '../windows-process-supervisor/windowsAcceptanceSupervisorResult.mjs';
+import { SOURCE_HANDOFF_JOINT_REPORTER_URL } from '../windows-process-supervisor/tests/sourceHandoffJointContractSupport.mjs';
 
 const ROOT = fileURLToPath(new URL('../../../../', import.meta.url));
 
@@ -168,7 +169,7 @@ test('joint synthetic unreadable report', { timeout: 5000 }, async t => {
     { file: fileURLToPath(import.meta.url) });
 });\n`, { flag: 'wx' });
       const child = await fixture.run(process.execPath, ['--preserve-symlinks', '--preserve-symlinks-main', '--test',
-        '--test-concurrency=1', '--test-reporter=' + fileURLToPath(new URL('../../../../test-reporters/nodeFailureReporter.mjs', import.meta.url)),
+        '--test-concurrency=1', '--test-reporter=' + SOURCE_HANDOFF_JOINT_REPORTER_URL,
         childTest], 30_000, { env, cwd: directory });
       assert.equal(child.error, undefined); assert.equal(child.signal, null); assert.equal(child.status, 1);
       const output = Buffer.concat([child.stdout, child.stderr]).toString('utf8');
