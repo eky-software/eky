@@ -168,16 +168,17 @@ hakusuodattimia. Tarkat turvallisuus- ja testiehdot ovat
 - I-paketin ohjeverkon haltuunotto ja tutkimushistorian erottaminen on
   hyväksytty aikaistettavaksi ennen D:tä omana dokumentaatiotyönään.
   Tämä ei hyväksy I:n CI-politiikan muutoksia. Mahdollinen myöhempi
-  lisätiivistys ei siirrä I/M5:n ajantasaisuus-, lukureitti-, rakenne- tai
-  tietoturvatarkistuksia julkaisun jälkeiseen aikaan.
+  lisätiivistys ei poista muuttuvan pinnan ajantasaisuus-, lukureitti- tai
+  tietoturvatarkistuksia. Laajan M5.2/M5.3-työn ajankohdan omistaa
+  [17.11.2026 loppurajaus](#suppea-030-loppurajaus).
   Muuttuvan alueen ohjeet pidetään kunnossa jo jokaisen toteutuspalan mukana;
   vaatimukset ja hyväksyntänäyttö säilyvät tiivistettäessä.
 - Omistajan 12.10.2026 täsmennys: laaja ylläpidettävyyden siivous ja
   käyttäytymisen säilyttävä refaktorointi tehdään erillisenä työnä
-  `0.3.0`:n jälkeen, ei keskeneräisen K:n rinnalla. Tämä ei siirrä
-  [M5:n ennen toimitusta tehtävää rakennekatselmusta](#m5-uusi-katselmus-deep-scan-ja-julkaisuportti),
-  sen julkaisun estäviä korjauksia tai muuttuvan alueen korvattujen
-  toteutusten ja ohjeiden viimeistelyä myöhemmäksi.
+  `0.3.0`:n jälkeen, ei keskeneräisen K:n rinnalla. Omistajan 17.11.2026
+  päätös siirtää myös laajan M5.2-katselmuksen ja M5.3-skannauksen kesään
+  2027; todetut olennaiset viat, muuttuvan pinnan katselmus ja sen
+  toteutusten sekä ohjeiden viimeistely säilyvät suppean julkaisun portteina.
 - Ei piilotettuja varmuuskopioita, yleistä tietokannan salausuudistusta,
   uusia sähköpostiprovidereita, laajaa refaktorointia tai uutta
   riippuvuutta tämän suunnitelman sivutyönä.
@@ -504,9 +505,10 @@ Ilmoitukset ja ohjeet R030-04/R030-05 valmistuvat jokaisen muutoksen mukana,
 eivät vasta lopun kosmeettisena vaiheena. Latausikoni tai UI-esto ei korvaa
 backendin invarianttia, atomista varausta tai prosessin exit-todistetta.
 
-### M5: Uusi katselmus, Deep Scan ja julkaisuportti
+<a id="m5-uusi-katselmus-deep-scan-ja-julkaisuportti"></a>
+### M5: Suppea julkaisu ja myöhemmät katselmukset
 
-**Valmistelu 14.11.2026:** hyväksytty W7.5 ei vielä hyväksy koko 0.3.0:aa.
+**Omistajan loppurajaus 17.11.2026:** hyväksytty W7.5 ei vielä hyväksy koko 0.3.0:aa.
 Aktiivinen revisio ja seuraava rajattu työ ovat [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
 Seuraava taulukko täsmentää alla jo sovittua järjestystä, ei lisää ominaisuuksia
 tai aloita katselmusta, skannausta, versionnostoa tai toimitusta:
@@ -514,10 +516,50 @@ tai aloita katselmusta, skannausta, versionnostoa tai toimitusta:
 | Pala | Tulos ja portti seuraavaan vaiheeseen |
 | --- | --- |
 | M5.1: rajaus ja näyttökartta | Tunnuskohtainen R01-R31/S030-01-S030-05 sekä sovittujen R030-/D029-tehtävien toteutus-, testi-, revisio- ja hyväksyntäviite; erityisesti R030-04/R030-05:n loppuvarmistus. R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä, eivät automaattisina lisätöinä. |
-| M5.2: koko sovelluksen katselmus | [Viiden vastuualueen ja niiden rajapintojen katselmus](#m52-koko-nykyisen-sovelluksen-katselmus) vasta M5.1:n hyväksynnän jälkeen. Todetut julkaisuesteet korjataan ja riippumattomasti tarkistetaan; muu avoin työ erotetaan julkaisun jälkeisestä siivouksesta ennen M5.3:lle luovutusta. |
-| M5.3: uusi Deep Scan | Tarkka puhdas ehdokasrevisio, sovittu kattavuus ja työbudjetti, käytössä olevan skannaustyökalun asetusten varmennus sekä loppuraportti. Löydökset ja aukot käsitellään; vanhaa keskeytettyä ajoa tai pelkkää lähdekatselmusta ei kirjata uudeksi läpäisyksi. |
+| M5.2: koko sovelluksen katselmus | **Siirretty kesään 2027, avoin jatkotyö.** [Laajan katselmuksen sopimus](#m52-koko-nykyisen-sovelluksen-katselmus) säilyy tulevaa erillistä aloituspäätöstä varten; ei 0.3.0:n ennakkoportti tai hyväksytty katselmus. |
+| M5.3: uusi Deep Scan | **Siirretty kesään 2027, avoin jatkotyö.** Ei 0.3.0:n ennakkoportti. Käynnistys, kattavuus ja työbudjetti sovitaan silloin; vanha keskeytetty ajo ei muutu valmiiksi skannaukseksi. |
 | M5.4: lopullinen release-ehdokas | Tarkoituksellinen 0.3.0-versionosto vasta edeltävien korjausten jälkeen; saman revision nykyiset testit, auditointi ja PR/main-portit sekä build-once-paketin backup/restore-, installer/update/rollback- ja soveltuvat endurance-portit. Pelkkä tavallinen PR/main-MSI ei ole toimitettava release candidate. |
 | M5.5: käyttäjätestaus ja toimitus | Nykyisen ehdokkaan synteettinen käyttäjätestiohje, todella raportoidut tulokset, käyttö-/tukiohje ja release security gate. Hyväksytty MSI/manifesti/checksum toimitetaan samoina tavuina nykyisen pilot-sopimuksen mukaan; ei rebuildiä tai automaattista asennusta. |
+
+<a id="suppea-030-loppurajaus"></a>
+#### Suppea loppurajaus
+
+Omistajan 17.11.2026 päätös korvaa aiemman ehdon laajan M5.2-katselmuksen
+ja M5.3-skannauksen valmistumisesta ennen 0.3.0:n toimitusta. Ne jäävät
+nimetyiksi avoimiksi töiksi kesään 2027, eivät läpäistyiksi tai perutuiksi.
+Tässä loppuketjussa ei aloiteta uusia ominaisuuksia tai yleistä refaktorointia.
+
+1. **M5.1:** täsmää jo sovitun sisällön näyttö, viimeistele R030-04/R030-05
+   ja ratkaise alkuperäinen MSI-havainto perustellulla luokituksella tai
+   osoitetulla korjauksella. Täsmärevision PR- ja uuden mainin portit sekä
+   auditointi vaaditaan; pelkkä uusintaläpäisy ei sulje ensihylkäystä.
+2. **Muuttunut pinta:** riippumaton kohdennettu katselmus, todettujen
+   olennaisten vikojen korjaukset ja niiden regressiot sekä nykyinen
+   riippuvuus- ja toimitusketjutarkistus. Yritys-, permission-, salaisuus-
+   ja tietojen säilymisrajat eivät muutu laajan katselmuksen siirrosta.
+3. **M5.4:** tarkoituksellinen 0.3.0-versionosto ja täsmällinen puhdas
+   toimitusrevisio nykyisen käynnistyspäätöksen kautta. Rakenna paketti kerran;
+   todenna samoille tavuille tarpeelliset backup/inspect/restore/restart/compare-,
+   installer/update/rollback- sekä vaikutusalueen nykyiset kestoportit.
+4. **M5.5:** rajattu todellinen synteettinen käyttäjätestaus, raportoidut
+   tulokset, ajantasaiset käyttö-/tukiohjeet ja release security gate.
+   Toimita hyväksytyt MSI-/manifesti-/checksum-tavut muuttumattomina.
+
+Valmis 0.3.0 tarkoittaa tämän loppuketjun todennettua hyväksyntää, ei
+pelkkää poiston valmistumista tai testipaketin koontia. Oikea data,
+käyttöönotto ja jakelutapa noudattavat nykyisiä erillisiä turvallisuusehtoja.
+R030-06, D029-06 ja R030-07 säilyvät erillisissä päätösrajoissaan, eivät
+tämän rajauksen automaattisina lisätöinä. Sovellustyön ainoa aktiivinen
+jatkamiskohta on [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+M5.1:n nykyisen kahden reservation/source-tapauksen CI-liitoksen ratkaiseva
+havainto on samaan ketjuun sidottu tuloksen kulutus todellisen varauksen
+aikana sekä pidetyn varauksen sulku ja kaikkien töiden päättyminen nykyisissä
+rajoissa. Tuloksen jälkeen kirjataan heti, mikä selvisi alkuperäisestä
+esteestä ja mitä ei. Jokainen mahdollinen jatkokoe tarvitsee nimetyn
+tiedonlisäyksen tähän esteeseen; uutta tutkimus- tai diagnostiikkakerrosta
+ei aloiteta automaattisesti. Kokeen läpäisy ei yksin ratkaise MSI:n syytä,
+hyväksy tuotantokytkentää tai anna mergepoikkeusta.
 
 Käytä nykyisiä testejä, tarkistimia ja hyväksyntäomistajia. Tunnuskohtainen
 näyttökartta ei ole kaikkien testien uudelleenkirjoitus. Vanha
@@ -528,11 +570,28 @@ muuttuneen revision ja toimitettavan paketin portit säilyvät alla kuvatusti.
 
 #### M5.1: Hyväksyntänäytön täsmäytys
 
-**Omistajan hyväksymä M5.1 on kesken; aiempi Goal poistettiin tauolla.** Lähtö on
+**Omistajan hyväksymä suppea M5.1-Goal on aktiivinen; vanha M5.1–M5.2-Goal poistettiin 17.11.2026.** Lähtö on
 main `4646f6dbabb881a65c0987f9c73711061bae4725` ja
 [W7.5:n loppuhyväksyntä](https://github.com/eky-software/eky/pull/330#issuecomment-6880745021).
 Näyttökartta täsmää nykyiseen lähteeseen erikseen R01-R31-, S030-01-S030-05-
 sekä sovitut R030-01/02/03/04/05/08- ja D029-01-05-kohdat.
+
+**Työpaketin valtuus, 17.11.2026:** hyväksytyn sopimuksen tarpeellinen tekninen
+valmistelu -> rajatut kokeet ja regressiot -> riippumaton katselmus ->
+testimuutoksen julkaisu nykyiselle feature-haaralle -> normaalit pakolliset
+CI-portit kuuluvat samaan valtuuteen ilman uusia rutiinilupia. Valmistelun
+kuittaus tai vaiheen vaihtuminen ei luo päätösporttia. Erillinen prosessi-/
+ohje-/mittaushuolto ei itsessään jatka tauotettua sovellus-Goalia tai käynnistä
+koetta, CI:tä tai mergeä; sovellustyön jatko perustuu omistajan jatkopäätökseen.
+Natiivin testisulkukokeen poikkeus koskee vain hyväksyttyjä synteettisiä
+kilpailuja, ei tuotantotakuun muutosta. Uusi tietosisältö, tuotannon
+turvasopimus, kulutettu kertalupa ja alkuperäisen MSI-ensihylkäyksen
+hyväksyntäeste säilyvät erillisinä rajoina. Normaali merge vaatii niiden
+ratkaisun ja nykyiset PR/main-portit; vanhaa riskipoikkeusta ei kysytä uudelleen.
+Riippumaton varatyö on nykyisten koereseptien ja staattisten lähdevalintojen
+tarkistus sekä omistavien ohjeiden huolto, ei M5.2:n aloittaminen.
+Noin tunnin tiedonlisäyksen arviointi ja mittauksen saatavuuden tarkistus
+noudattavat [nykyistä workflow'ta](../ai/workflow.md#toiminnon-aloitusportti).
 
 Jokainen rivi nimeää nykyisen omistajan ja tuotantopolun, vaatimusta todella
 suojaavan testiväitteen ja sen ajovalinnan, alkuperäisen PR/main-hyväksynnän
@@ -555,9 +614,9 @@ soveltuvat portit ja auditoinnin. Puuttuvaa näyttöä, vanhaa ensihylkäystä t
 tuntematonta siivoustilaa ei suljeta myöhemmän läpäisyn perusteella.
 M5.2:n koko sovelluksen katselmus, M5.3:n uusi Deep Scan, versionnosto,
 release-paketointi ja todellinen käyttäjätestaus eivät sisälly M5.1-osatyöhön.
-Uuden [M5.1 → M5.2-jatkogoalin](#m51-m52-jatkogoalin-tavoite) järjestys
-sallii M5.2:n vasta M5.1:n hyväksynnän jälkeen ilman uutta vaiheenvaihtolupaa;
-omistajan tauko ja myöhempien vaiheiden erilliset päätökset säilyvät.
+[Nykyinen jatkotavoite](#m51-m52-jatkogoalin-tavoite) sulkee vain M5.1:n.
+M5.2/M5.3 eivät käynnisty sen hyväksynnästä tai vanhasta tallennetusta
+tavoitetekstistä; omistajan tauot ja myöhempien vaiheiden päätökset säilyvät.
 R030-06, D029-06 ja R030-07 säilyvät erillisinä rajauspäätöksinä.
 
 ##### M5.1:n näyttökartta
@@ -711,6 +770,14 @@ ei merkitä tällä päätöksellä korjatuiksi; M5.1 ei ole vielä hyväksytty.
 
 #### M5.2: Koko nykyisen sovelluksen katselmus
 
+**Siirretty kesään 2027, avoin jatkotyö.** Tämä ei ole suppean 0.3.0:n
+ennakkoportti eikä valmistuneen katselmuksen ilmoitus. Aloitus vaatii silloin
+oman päätöksen ja ajantasaisen lähderajauksen. Alla oleva aiempi sopimus
+säilyy tulevan työn valmisteluna, ei aktiivisena työjonona.
+
+<details>
+<summary>Laajan katselmuksen aiempi sopimus tulevaa erillistä työtä varten</summary>
+
 **Lukukatselmoitu sopimus; ajantasainen työtila on [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).** Kokonaisuus sulkee
 ensin M5.1:n jäljellä olevat tarkistukset sekä täsmällisen PR #331:n ja sen
 merge-mainin omat portit. Vasta hyväksynnän jälkeen jäädytetään M5.2:n
@@ -841,7 +908,31 @@ jäljellä olevat päätökset; älä käynnistä skannausta luovutuksen sivutoi
 Vaihe-/mallikohtainen kulutus kirjataan [nykyiseen raportointiin](../ai/workflow.md#päivittäinen-tarkistuspiste),
 ei uuteen mittausjärjestelmään tai kattavuuden korvikkeeksi.
 
+</details>
+
 ##### M5.1-M5.2-jatkogoalin tavoite
+
+**Nykyinen tavoite 17.11.2026:** sulje M5.1
+[suppean loppurajauksen](#suppea-030-loppurajaus) mukaan. Vanhan tallennetun
+Goalin M5.2-jatkoa ei suoriteta. Goalin nykyinen tila ja seuraava työ ovat
+vain [M1:ssä](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+
+> EKY 0.3.0: viimeistele M5.1 nykyisen näyttökartan ja M1:n jatkamiskohdan
+> mukaan. Säilytä paikallinen työ ja ensivirheet. Sulje R030-04/R030-05:n
+> loppuvarmistus sekä alkuperäisen MSI-havainnon perusteltu luokitus tai
+> osoitettu korjaus nykyisin turva-, aika- ja siivousehdoin. Tee muuttuneen
+> pinnan riippumaton katselmus ja vaadittu testinäyttö; vie täsmällinen PR
+> normaaliin mergeen vain sen porttien ja auditoinnin täytyttyä ja varmista
+> uuden mainin omat portit. Nykyinen kahden tapauksen CI-liitos saa nimetyn
+> ratkaisevan havainnon ja loppuyhteenvedon, ei automaattista tutkimusjatkoa.
+> Uudet aidot turva-/sisältöpäätökset, ensihylkäyksen käsittely ja nykyinen
+> uusintaraja säilyvät. Valmis vasta M5.1:n ja sen PR/main-porttien hyväksynnästä.
+> Ei laajaa M5.2-katselmusta, M5.3-skannausta, uusia moduuleja, versionnostoa,
+> jakelua tai oikeaa dataa tämän osatyön sivutoimena. Myöhempi toimitusketju
+> jatkuu vain omassa sovitussa rajassaan; M5.2/M5.3 jäävät kesään 2027.
+
+<details>
+<summary>Aiempi M5.1–M5.2-tavoite, ei enää aktiivinen jatkovaltuus</summary>
 
 Suunnitelma ja tavoiteteksti on lukukatselmoitu; Goalin ajantasainen tila,
 jatkovaltuus ja hyväksyntäeste ovat vain [M1:n jatkamiskohdassa](release-0.3.0-m1-preparation-plan.md#jatka-tästä).
@@ -870,6 +961,8 @@ Goalin tallennus tai jatko ei itsessään hyväksy kumpaakaan osatyötä.
 > Ei laajaa refaktorointia, uusia ominaisuuksia, skannausta, versionnostoa,
 > release-ehdokasta, jakelua tai oikeaa dataa tämän Goalin sivutoimena.
 
+</details>
+
 #### Myöhemmät M5-portit
 
 Jokaisessa paketissa käytetään
@@ -879,29 +972,21 @@ onnistuminen/esto/virhe/peruutus, turvallinen jäljitettävyys, sovitut
 diagnostiikka- ja tukiprojektiot, ilmoitukset, ohje ja palautettavuus.
 Uusi toiminto tuo nämä mukanaan eikä vain onnellisen polun testiä.
 
-Koko korjaus- ja ominaisuuskokonaisuuden valmistuttua tehdään ensin koko
-sovelluksen syvä koodi-, arkkitehtuuri- ja ylläpidettävyyskatselmus, vasta
-sen jälkeen uusi Codex Security Deep Scan `Ultra`-päättelyllä. Omistajan
-4.10.2026 täsmennys määrää tämän järjestyksen, ei uutta rinnakkaista roadmapia
-tai kaikkien suurten tiedostojen automaattista uudelleenkirjoitusta.
-
-[M5.2:n sopimus](#m52-koko-nykyisen-sovelluksen-katselmus) omistaa koko
-koodi-/rakennekatselmuksen, löydökset, rajatut korjaukset ja luovutuksen
-M5.3:lle. Sovitut ennen julkaisua tarvittavat korjaukset ja niiden regressiot
-valmistuvat ennen Deep Scanin ehdokasrevision jäädytystä.
-
-Ajankohta on 0.3.0-toteutuskokonaisuuden jälkeen mutta ennen lopullista
-toimitushyväksyntää. Deep Scan on uusi erikseen
-käynnistettävä tarkistus täsmälliseen ehdokasrevisioon, ei keskeytetyn ajon
-automaattinen jatko tai tämän suunnitelmatyön sivutoimi. Varmista silloin
-työkalun saatavuus ja asetukset; päättelytaso ei itsessään todista kattavuutta.
+Suppean 0.3.0:n nykyiset loppuehdot ovat
+[yhdessä omistavassa kohdassa](#suppea-030-loppurajaus). Omistajan
+17.11.2026 päätös siirtää laajan [M5.2-katselmuksen](#m52-koko-nykyisen-sovelluksen-katselmus)
+ja sitä seuraavan M5.3 Deep Scanin kesään 2027. Aiempi 4.10.2026 järjestys
+säilyy tulevan laajan työn sisällä, ei tämän julkaisun edeltävänä porttina.
+Uusi skannaus vaatii silloin täsmärajauksen ja oman aloituspäätöksen;
+keskeytettyä vanhaa ajoa ei jatketa tai merkitä hyväksytyksi tämän perusteella.
 
 Loppuportti vaatii lisäksi:
 
 - R01-R31- ja S030-01-S030-05-kohtaisen ratkaisun ja todisteen tai
   nimenomaisen omistajan rajauspäätöksen; ei pelkkää ryhmän sulkemista
-- uusintaskannauksen havaintojen ja kattavuusaukkojen käsittelyn;
-  peruutettua/osittaista tulosta ei kutsuta läpäistyksi täydeksi skannaukseksi
+- muuttuneen pinnan katselmuksen havaintojen ja julkaisua koskevien
+  olennaisten kattavuusaukkojen käsittelyn; siirrettyä laajaa skannausta
+  ei väitetä tehdyksi tai hyväksytyksi
 - tuoreet soveltuvat unit-, integration-, API-/sopimus-, system-, web- ja
   Electron-testit sekä ajantasainen riippuvuus- ja toimitusketjutarkistus
 - backup/restore-/SQLite-/artifact-/profiili-/process lifecycle -muutoksille

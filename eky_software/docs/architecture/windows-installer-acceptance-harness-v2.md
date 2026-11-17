@@ -140,6 +140,76 @@ omistaa nykytilan. Lapsen callback-havainto ei korvaa tätä natiivisidontaa.
   Mahdollinen versioitu lisähavainto kuuluu nykyiseen `MsiWindowEvidence`-
   codec-/keräinketjuun, vain salattuun virhetoimitukseen; v1-v3 säilyvät.
 
+**Omistajan 17.11.2026 hyväksymä rajattu koetäsmennys:** kahdessa pienessä
+synteettisessä kilpailukokeessa `sourceHandoff`-tulos on lähteen
+päättymishavainto, ei worker-jatkon voimassaololupa. Ensimmäinen koe erottaa
+määräajan aikana keskeneräisen tuloskirjoituksen ja sen myöhemmän kulutuksen;
+toinen ajoissa toimitetun tuloksen ja vasta sulkupyynnön jälkeisen jatkon.
+Testin kausaaliset pidätyspisteet eivät ole tuotannon valtuuskuittauksia.
+Aikakatkaisu hylkää komennon pysyvästi. Nykyinen Job-omistaja sulkee puun,
+ja työn sekä resurssien todellinen päättyminen vaaditaan ennen siivousta.
+Sulkupyynnön ja todistetun poistumisen välille ei kokeessa luvata workerin
+sivuvaikutuksettomuutta tai jo tehdyn vaikutuksen peruuntumista.
+Tämä on aiempaa ehdotonta jatkokieltoa heikompi koesopimus, ei muuttumaton
+turvatakuu. Työ-/sulkuajat, sovelluksen turvarajat ja ensivirheen säilytys
+eivät muutu. Hyväksyntä ei koske tuotantokytkentää, pitkää MSI-/CI-ajoa,
+uutta tiedonkeruusisältöä tai mergeä. Todellisen MSI-varauksen näyttö ja
+mahdollinen myöhempi tuotantopäätös säilyvät erillisinä.
+
+**17.11.2026 katselmoitu seuraava yksityinen yhteiskoe:** `exit0` ja
+`sourceHold` yhdistävät saman admissionin lähdekuljetuksen oikeaan
+`MsiWindowEvidence.Publish`-hakemistovaraukseen. Vanhan varauskokeen vihreä
+binääri ei sisällä myöhempiä polku- ja raportin sulkukorjauksia; ne valitaan
+eksplisiittisesti uuteen koesyötteeseen. Onnistuvassa tapauksessa worker
+kuluttaa tuloksen varauksen ollessa yhä hallussa. `sourceHold`-tapauksessa
+varaus todistetaan pidetyksi nimetyn natiivin sulkupyynnön hetkellä, ei vain
+ennen callbackin oman työajan loppumista. Pidätys vapautetaan nykyisen
+sulkubudjetin sisällä; työn ja kahvojen päättyminen varmennetaan erikseen.
+Ensivirhe ja vapautusvirhe säilyvät. Koe ei todenna UI-/RM-havaintoa,
+tuotantokytkentää tai heikomman jatkolupauksen siirtoa tuotantoon.
+
+**Yhteiskokeen testijulkaisu:** nykyinen koontiajuri valitsee erillisen
+`--source-handoff-joint`-koonnin vain tavallisen supervisor-sopimusajon
+valmisteluun. Tavallinen supervisor ja sen ContractFixture käännetään ensin
+ennallaan; erillisen valinnan kaikkien kolmen projektin output-, intermediate-
+ja restore-polut erotetaan ennen projektien arviointia. Kaksi nimettyä tapausta
+valitaan vain `EKY_SOURCE_HANDOFF_JOINT_PROOF=1`-asetuksella nykyisen työn
+molemmissa toistoissa. Työn, testien ja natiivivaiheiden nykyiset rajat säilyvät.
+
+Koonti sitoo nykyisestä TS-omistajasta johdetut bootstrap-tavut ja kiinteän
+ohjausprotokollan natiivin todella upottamiin resursseihin. Nykyisen lähde-
+ja binäärisidonnan on täsmättävä ennen käynnistystä, ja tavallisten koontien
+tavujen on säilyttävä erillisen koonnin yli. Kokeen koko apuraporttia ei
+lisätä keräykseen: vain nykyiset native-/MSI-/runner-virhetiedostot ja
+rajatut prosessitulosteet kuuluvat nykyiseen salattuun toimitukseen.
+Nykyisen sopimustyön ennen koontia tehtävä rajattu salauskoe vaatii ensisyyn
+lisäksi erilliset completion-, cleanup- ja raportin lukuvirheet nykyisistä
+runner-tietueista oikeasti purettuina. Sivusyitä ei jätetä vain
+`AggregateError.errors`-taulukkoon; yhteinen syyprojektio ja keräysskeema
+eivät muutu. Vieraan raportin cleanup-syytä ei kohdisteta nykyiseen testiin.
+Valmistelu, metadatan lähdevalinta ja lähdekatselmus eivät korvaa erillisen
+koonnin tai kahden todellisen tapauksen suoritusta. Niiden onnistuminenkaan
+ei yksin luokittele alkuperäisen MSI-odotuksen syytä tai hyväksy mergeä.
+
+**Yhteiskokeen testijulkaisun rajaus, 17.11.2026:** käytetään nykyistä
+ContractFixture-projektia, sopimustestitiedostoa ja Windows-CI-työtä.
+Yksi eksplisiittinen, vain testiin valittava lähdevalinta korvaa neljä
+supervisorin lähdettä ja lisää viisi tukilähdettä sekä kaksi resurssia;
+fixtureen valitaan kolme lähdettä. Tavallinen supervisor ja sen resurssit
+eivät saa muuttua tämän valinnan vuoksi. Kummatkin ProjectReferencet,
+analyysit ja warnings-as-errors säilyvät. Kaikkien kolmen projektin tulos-,
+väli- ja restore-polut erotetaan jo projektin alkuarvioinnissa; pelkkä
+lopputuloshakemiston vaihto ei riitä. Oletuskoonnin erillisyys todennetaan.
+Julkaistaan vain tarvittavat siirrettävät koelähteet ja JS-/resurssisulkeuma,
+ei tutkimushistoriaa tai aiempien lähdevalintojen ketjua. Bootstrap-projektio
+sidotaan nykyiseen TS-omistajaan ja todella upotettuihin tavuihin.
+Muuttunut sijainti saa uuden lähdeidentiteetin ja rajatun erotuskatselmuksen.
+Nykyiset testien, työn, kahden toiston ja siivouksen rajat säilyvät;
+`exit0` käyttää 35/5 ja `sourceHold` 4/1 sekuntia, ei uutta kokonaisbudjettia.
+Nykyinen ensivirheen salattu toimitus varmennetaan ilman uutta keräysmuotoa.
+Tämä rajaus ei hyväksy lähdekäynnistyksen tuotantokytkentää tai uutta
+havaintosisältöä eikä ratkaise alkuperäisen MSI-hylkäyksen hyväksyntäestettä.
+
 Ennen toimituskytkennän päätöstä todennetaan aito worker -> nykyinen parent ->
 synteettinen lähde -> worker-tulos -vaihto, valtuuden vanheneminen, replay,
 virheellinen juurisidonta ja myöhäinen luonti. Lisäksi sidotaan parentin

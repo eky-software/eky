@@ -19,6 +19,9 @@ lukea jokaisessa tehtävässä.
   [integraatiomatriisi](architecture/module-integration-matrix.md).
 - Julkaisun sisältö ja järjestys: [0.3.0-roadmap](architecture/release-0.3.0-plan.md).
   Aktiivinen työ ja hyväksyntänäyttö: [M1:n jatkamiskohta](architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+  Nykyiset toimitusehdot: [suppea 0.3.0-loppurajaus](architecture/release-0.3.0-plan.md#suppea-030-loppurajaus).
+  Laaja M5.2-katselmus ja M5.3 Deep Scan ovat kesän 2027 erillisiä avoimia
+  jatkoja, eivät tämän toimituksen ennakkoportteja.
 - Git-juuren `.github`-työ: sovelluksen pääohje, workflow'n CI-seuranta,
   [testausohje](ai/testing-rules.md), [riippuvuusohje](architecture/dependency-policy.md)
   ja muutettavan testiperheen reitti alla. Git-juuri ja sovelluksen työjuuri
