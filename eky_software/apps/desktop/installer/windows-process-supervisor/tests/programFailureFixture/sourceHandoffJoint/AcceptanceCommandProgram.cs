@@ -34,6 +34,8 @@ internal static class AcceptanceCommandProgram
             _ => null,
         };
         if (kind is null || arguments.Length != (kind == "workspaceFault" ? 11 : 9)) return 64;
+        if (contractAdmission?.PrepareReservedRoots == true &&
+            (contractWorker is null || kind != "workspaceSuccess")) return 64;
         var input = arguments[1..];
         if (input[0] != "--artifact-descriptor" || input[2] != "--expected-descriptor-sha256" ||
             input[4] != "--expected-build-revision" || input[^2] != "--result-path" ||
@@ -103,7 +105,11 @@ internal static class AcceptanceCommandProgram
             }
             return failed ? 1 : 0;
         }
-        finally { evidence?.CompleteWithinRequestBudget(0); }
+        finally
+        {
+            context.ReleaseUnusedPreparation();
+            evidence?.CompleteWithinRequestBudget(0);
+        }
     }
 
     internal static int CalculatePhaseTimeout(int commandReservation, long elapsed, int exitReserve,
@@ -130,9 +136,10 @@ internal static class AcceptanceCommandProgram
         var preparationClosed = false;
         WorkspaceSourceAdmission? pending = null;
         var proof = phase == "scenario" ? context.ContractAdmission : null;
+        context.LastPhaseSettled = false;
         try
         {
-            return SupervisorProgram.RunPhase(observe =>
+            var completion = SupervisorProgram.RunPhase(observe =>
         {
             WorkspaceSourceAdmission? local = null;
             try
@@ -144,6 +151,7 @@ internal static class AcceptanceCommandProgram
             var phaseRoot = Path.Combine(context.Root, phase);
             observe(SupervisorRequestPreparationPhase.PhaseDirectoryCreation, false);
             Directory.CreateDirectory(phaseRoot);
+            var reservedRoot = context.ReserveWorkspacePreparation(phase);
             observe(SupervisorRequestPreparationPhase.PhaseDirectoryCreation, true);
             var inputPath = Path.Combine(phaseRoot, "phase-input.json");
             observe(SupervisorRequestPreparationPhase.PhaseInputWrite, false);
@@ -162,7 +170,8 @@ internal static class AcceptanceCommandProgram
             WriteExclusive(requestPath, new { schemaVersion = 1, runNonce = nonce,
                 scenario = phase == "scenario" ? context.Scenario : "acceptanceCommandPhase",
                 artifactDescriptorSha256 = context.Input[3], command,
-                arguments = new[] { worker, "--phase-request", inputPath }, workingDirectory = phaseRoot,
+                arguments = reservedRoot is null ? new[] { worker, "--phase-request", inputPath }
+                    : new[] { worker, "--phase-request", inputPath, "--reserved-run-root", reservedRoot }, workingDirectory = phaseRoot,
                 timeoutMilliseconds = timeout, cleanupReserveMilliseconds = cleanup }, observe);
             observe(SupervisorRequestPreparationPhase.RequestWrite, true);
             var request = SupervisorRequestReader.Read(["--request", requestPath], observe);
@@ -174,7 +183,9 @@ internal static class AcceptanceCommandProgram
                     context.Kind == "workspaceFault" ? context.Input[7] : null,
                     context.SourcePrefix, JsonSerializer.SerializeToElement(context.History));
                 proof.BeforeAdmission?.Invoke(anchors);
-                local = WorkspaceSourceAdmission.Read(anchors, proof);
+                local = proof.PrepareReservedRoots
+                    ? WorkspaceSourceAdmission.ReadReserved(anchors, proof, context.TakePreparation())
+                    : WorkspaceSourceAdmission.Read(anchors, proof);
                 lock (ownershipGate)
                 {
                     if (preparationClosed)
@@ -207,6 +218,7 @@ internal static class AcceptanceCommandProgram
             SourceReservationFixture? reservation = null;
             var releasePending = false;
             var releaseScheduled = false;
+            var processOwnerEntered = false;
             SupervisorOutcome outcome;
             try
             {
@@ -235,13 +247,14 @@ internal static class AcceptanceCommandProgram
                 catch (Exception error) { proof.ObserveFirst(error); throw; }
             });
             reservation.ObserveOwnerStart();
+            processOwnerEntered = true;
             outcome = owner.Run(request);
             }
             catch (Exception error)
             {
                 proof.ObserveFirst(error);
                 reservation?.ObserveFailure(error);
-                ReleaseAfterCreation();
+                ReleaseAfterCreation(null);
                 proof.SourceProof = owner?.SourceProof;
                 proof.ReservationProof = reservation?.Snapshot();
                 var failed = SupervisorOutcome.Failed(error is TimeoutException ? "deadlineExceeded" :
@@ -251,7 +264,7 @@ internal static class AcceptanceCommandProgram
                 proof.FinalOwnerOutcome = failed;
                 return failed;
             }
-            ReleaseAfterCreation();
+            ReleaseAfterCreation(outcome);
             proof.SourceProof = owner?.SourceProof;
             proof.ReservationProof = reservation?.Snapshot();
             var requiredResourcesSettled = !releasePending && proof.DeferredRelease.IsCompletedSuccessfully &&
@@ -262,7 +275,7 @@ internal static class AcceptanceCommandProgram
             proof.FinalOwnerOutcome = finalOutcome;
             return finalOutcome;
 
-            void ReleaseAfterCreation()
+            void ReleaseAfterCreation(SupervisorOutcome? exitEvidence)
             {
                 if (releaseScheduled) return;
                 releaseScheduled = true;
@@ -270,7 +283,7 @@ internal static class AcceptanceCommandProgram
                 var release = Task.WhenAll(owner?.LateCreationRelease ?? Task.CompletedTask,
                     reservation?.Work ?? Task.CompletedTask);
                 // Final proof reads and all closes are themselves tracked host I/O.
-                proof.DeferredRelease = release.ContinueWith(CompleteRelease,
+                proof.DeferredRelease = release.ContinueWith(completed => CompleteRelease(completed, exitEvidence),
                     CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.Default);
                 new StopwatchSupervisorDeadline(clock).WaitForTask(proof.DeferredRelease, request.TimeoutMilliseconds);
                 releasePending = !proof.DeferredRelease.IsCompletedSuccessfully;
@@ -278,9 +291,12 @@ internal static class AcceptanceCommandProgram
                 proof.ReservationProof = reservation?.Snapshot();
             }
 
-            void CompleteRelease(Task completed)
+            void CompleteRelease(Task completed, SupervisorOutcome? exitEvidence)
             {
                 if (completed.Exception is not null) proof.ObserveCleanup(completed.Exception);
+                // A drained host task cannot establish that the Job stopped using these pins.
+                if (proof.PrepareReservedRoots &&
+                    !CanReleasePreparedAdmission(processOwnerEntered, exitEvidence, completed.IsCompletedSuccessfully)) return;
                 try { reservation?.CaptureWorkerContinuation(); }
                 catch (Exception error) { reservation?.ObserveFailure(error); }
                 finally
@@ -298,6 +314,9 @@ internal static class AcceptanceCommandProgram
             }
         }, commandEvidence: evidence, preparationTimeoutMilliseconds:
             CalculatePreparationTimeout(timeout, cleanup, context.PreparationWorkCap));
+            context.LastPhaseSettled = completion.ProcessBoundaryVerified;
+            if (proof is not null) proof.ScenarioBoundaryVerified = completion.ProcessBoundaryVerified;
+            return completion;
         }
         finally
         {
@@ -306,6 +325,10 @@ internal static class AcceptanceCommandProgram
             if (unused is not null) Close(unused, proof!);
         }
     }
+
+    internal static bool CanReleasePreparedAdmission(bool processOwnerEntered, SupervisorOutcome? exitEvidence,
+        bool hostWorkSettled) => hostWorkSettled && (!processOwnerEntered ||
+        exitEvidence is { ProcessTreeAbsent: true, HostOperationsCompleted: true });
 
     // Exchange/observation success is not process or resource-settlement evidence.
     internal static SupervisorOutcome ProjectReservationCompletion(SupervisorOutcome original,
@@ -759,6 +782,50 @@ internal static class AcceptanceCommandProgram
         int PreparationWorkCap, SourceAdmissionExperiment? ContractAdmission, IReadOnlyList<string> SourcePrefix)
     {
         internal List<object> History { get; } = [];
+        internal bool LastPhaseSettled { get; set; }
+        private SourceAdmissionFiles? preparation;
+        private string? tempRoot, runRoot;
+
+        // Only the bounded alternate test command calls this. Phase preparation
+        // owns all mutations; the command loop advances only after its boundary.
+        internal string? ReserveWorkspacePreparation(string phase)
+        {
+            if (ContractAdmission?.PrepareReservedRoots != true || phase is not ("prepare" or "scenarioPreparation" or "scenario")) return null;
+            if (phase == "prepare")
+            {
+                if (preparation is not null || runRoot is not null) throw new SupervisorFailure("processStateInvalid");
+                tempRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(Path.GetTempPath()));
+                preparation = SourceAdmissionFiles.OpenRoot(tempRoot);
+                var name = SourceBootstrapProjection.Read().WorkspaceRunRootPrefix + NewNonce()[..6];
+                var path = Path.Combine(tempRoot, name);
+                preparation.CreateReservedChildDirectory(path);
+                runRoot = path;
+            }
+            else if (phase == "scenarioPreparation")
+            {
+                if (preparation is null || runRoot is null || tempRoot is null) throw new SupervisorFailure("processStateInvalid");
+                preparation.CreateReservedChildDirectory(Path.Combine(runRoot, "scenario"));
+                preparation.VerifyCreatedPreparation(tempRoot, runRoot);
+            }
+            else if (preparation is null || runRoot is null) throw new SupervisorFailure("processStateInvalid");
+            return runRoot;
+        }
+
+        internal SourceAdmissionFiles TakePreparation()
+        {
+            var owned = preparation ?? throw new SupervisorFailure("processStateInvalid");
+            preparation = null;
+            return owned;
+        }
+
+        internal void ReleaseUnusedPreparation()
+        {
+            // A timed-out phase may still be using the scope. Do not dispose,
+            // remove the fixture, or assert settlement on its behalf.
+            if (!LastPhaseSettled || preparation is null) return;
+            try { TakePreparation().Dispose(); }
+            catch (Exception error) { ContractAdmission?.ObserveCleanup(error); }
+        }
     }
 
     private static string NewNonce() => Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(32));

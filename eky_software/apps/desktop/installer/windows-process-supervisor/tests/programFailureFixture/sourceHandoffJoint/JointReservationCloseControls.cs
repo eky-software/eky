@@ -98,6 +98,18 @@ internal static class JointReservationCloseControls
                 actual.ProcessWin32ErrorCode == original.ProcessWin32ErrorCode &&
                 !actual.ProcessTreeAbsent && !actual.HostOperationsCompleted && actual.CleanupResultCode == "cleanupUnverified");
         });
+        Check("preparedPinsRequireProcessAbsenceAndSettledHostWork", () =>
+        {
+            var settled = SupervisorOutcome.Failed("deadlineExceeded", "processTreeAbsent", true)
+                with { HostOperationsCompleted = true };
+            Require(AcceptanceCommandProgram.CanReleasePreparedAdmission(false, null, true));
+            Require(!AcceptanceCommandProgram.CanReleasePreparedAdmission(false, null, false));
+            Require(!AcceptanceCommandProgram.CanReleasePreparedAdmission(true, null, true));
+            Require(!AcceptanceCommandProgram.CanReleasePreparedAdmission(true, settled with { ProcessTreeAbsent = false }, true));
+            Require(!AcceptanceCommandProgram.CanReleasePreparedAdmission(true, settled with { HostOperationsCompleted = false }, true));
+            Require(!AcceptanceCommandProgram.CanReleasePreparedAdmission(true, settled, false));
+            Require(AcceptanceCommandProgram.CanReleasePreparedAdmission(true, settled, true));
+        });
 
         Console.WriteLine(JsonSerializer.Serialize(new
         {

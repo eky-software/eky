@@ -152,7 +152,9 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
   if (phase === 'prepare') {
     if (!process.env.APPDATA || !process.env.LOCALAPPDATA) invalid();
     await workspaceCallerResultFile('prepare', context.resultPath, context.callerBinding);
-    state.runRoot = await mkdtemp(resolve(await realpath(tmpdir()), WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
+    state.runRoot = dependencies.reservedPreparation
+      ? await dependencies.reservedPreparation.useRunRoot()
+      : await mkdtemp(resolve(await realpath(tmpdir()), WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
   } else if (phase === 'inventoryBefore') state.profileBefore = await (dependencies.inventoryProfile ?? readNormalProfile)();
   else if (phase === 'materialize') {
     state.artifact = await (dependencies.materializeFixture ?? materializeWorkspaceSuccessArtifactFixture)(artifactInput(context), resolve(state.runRoot, 'fixture'));
@@ -169,9 +171,12 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
   else if (phase === 'scenarioPreparation') {
     requireWorkspaceSuccessProductPrecondition(productPair(context, 'Before'));
     const runtime = runContext(context);
-    await mkdir(runtime.scenarioRoot);
+    const reserved = dependencies.reservedPreparation;
+    if (reserved) await reserved.requireScenarioRoot(runtime.scenarioRoot);
+    else await mkdir(runtime.scenarioRoot);
     await (dependencies.prepareFixture ?? prepareWorkspaceSuccessRunFixture)(runtime);
-    await writeJsonAtomicExclusive(runtime.requestPath, runtime.request);
+    if (reserved) await reserved.writeRequest(runtime.requestPath, runtime.request);
+    else await writeJsonAtomicExclusive(runtime.requestPath, runtime.request);
   } else if (phase === 'scenario') {
     return (dependencies.runScenario ?? (fault ? runWorkspaceFaultWorker : runWorkspaceSuccessWorker))(['--request', runContext(context).requestPath], {
       createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),

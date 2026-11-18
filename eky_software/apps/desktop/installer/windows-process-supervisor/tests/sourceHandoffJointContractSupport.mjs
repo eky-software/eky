@@ -7,10 +7,13 @@ import { fileURLToPath } from 'node:url';
 import { createRunnerFailureSink } from '../../../../../test-reporters/runnerFailureEvidence.mjs';
 import { WORKSPACE_SUCCESS_DESCRIPTOR_FILENAME } from '../../windows-acceptance-harness/workspaceSuccessArtifactDescriptor.mjs';
 import { WORKSPACE_CALLER_RESULT_PREFIX, WORKSPACE_CALLER_RESULT_FILENAME } from '../../windows-acceptance-harness/workspaceCallerResult.mjs';
+import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX } from '../../windows-acceptance-harness/workspaceSuccessRunFixture.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from '../../windows-acceptance-harness/msiWindowEvidence.mjs';
 import { parseStrictJsonObjectBytes } from '../../windows-acceptance-harness/strictJsonObject.mjs';
 import { validateWindowsAcceptanceSupervisorResult } from '../windowsAcceptanceSupervisorResult.mjs';
 import { createTestRunContext, startSourceHandoffJointFixture } from './supervisorContractTestSupport.mjs';
+import { PREPARED_PRODUCT_REPORT, requirePreparedProductAbsent }
+  from './programFailureFixture/sourceHandoffJoint/preparedProductInspection.mjs';
 
 export const SOURCE_HANDOFF_JOINT_REPORTER_URL = new URL(
   '../../../../../test-reporters/nodeFailureReporter.mjs', import.meta.url,
@@ -47,6 +50,8 @@ const COMMON_CHECKS = [
 ];
 const CASE_CHECKS = { exit0: ["naturalExitCodeDelivered","recordedExchangeBeforeReturn","actualRecordedEvidenceBound","realWorkerResultValidated","workerEnteredAfterExchange"], sourceHold: ["cleanupNeverClaimsNaturalExit","abortNeverCompletesExchange","abortReasonRetained","abortNeverEntersBusinessWorker","reservationAbortBoundaryPreserved","underlyingJobCleanupRetainedSeparately","originalDeadlinePreserved","reservationHeldAtNativeClose","callbackReleasedAfterNativeClose","callbackReturnedWithinNativeBudget"] };
 const hash = bytes => createHash('sha256').update(bytes).digest('hex');
+const PREPARED_SCOPE = 'twoCasePreparedReservationSyntheticTransport';
+const STANDARD_SCOPE = 'twoCaseRealReservationSyntheticTransport';
 const samePath = (left, right) => resolve(left).toLowerCase() === resolve(right).toLowerCase();
 const sameFile = (left, right) => ['dev', 'ino', 'size', 'nlink', 'mtimeNs', 'ctimeNs']
   .every(key => left[key] === right[key]);
@@ -122,11 +127,12 @@ function failedJointReport(report) {
     'JOINT_FIXTURE_REPORT_AND_CLEANUP_FAILED', { cause: original });
 }
 
-export function verifySourceHandoffJointReport(report, selected) {
+export function verifySourceHandoffJointReport(report, selected, { prepared = false } = {}) {
   assert(Object.hasOwn(CASE_CHECKS, selected));
   assert(report !== null && typeof report === 'object' && !Array.isArray(report));
   assert.equal(report.schemaVersion, 1);
   assert.equal(report.selected, selected);
+  assert.equal(report.scope, prepared ? PREPARED_SCOPE : STANDARD_SCOPE);
   if (report.status === 'failed') {
     throw failedJointReport(report);
   }
@@ -134,11 +140,11 @@ export function verifySourceHandoffJointReport(report, selected) {
   assert.equal(report.firstFailure, null);
   assert.equal(report.harnessFailure, null);
   assert(report.checks !== null && typeof report.checks === 'object' && !Array.isArray(report.checks));
-  assert.deepEqual(Object.keys(report.checks).sort(), [...COMMON_CHECKS, ...CASE_CHECKS[selected]].sort());
+  const required = prepared ? COMMON_CHECKS.map(key => key === 'allFourteenPinsClosed' ? 'allFifteenPinsClosed' : key) : COMMON_CHECKS;
+  assert.deepEqual(Object.keys(report.checks).sort(), [...required, ...CASE_CHECKS[selected]].sort());
   for (const [name, passed] of Object.entries(report.checks)) assert.equal(passed, true, name);
   assert.equal(report.commandExit, 1);
   assert.equal(report.postScenarioPhases, 'notRun');
-  assert.equal(report.scope, 'twoCaseRealReservationSyntheticTransport');
   assert.equal(report.lateFrameWorkerRetirementGap, 'open');
   for (const key of ['fullCommandAccepted', 'sourceEkyExecuted', 'originalMsiCauseEstablished']) assert.equal(report[key], false);
   assert.equal(report.admissionCleanupFailure, null);
@@ -221,8 +227,8 @@ export function verifySourceHandoffJointReport(report, selected) {
   }
 }
 
-async function verifyJointArtifacts(root, report, selected, readFixture, statFixture, environment) {
-  verifySourceHandoffJointReport(report, selected);
+async function verifyJointArtifacts(root, report, selected, readFixture, statFixture, environment, prepared) {
+  verifySourceHandoffJointReport(report, selected, { prepared });
   assert(typeof report.commandRoot === 'string' && isAbsolute(report.commandRoot));
   const command = relative(root, report.commandRoot);
   assert(/^eky-acceptance-command-[a-f0-9]{32}$/.test(command));
@@ -232,6 +238,12 @@ async function verifyJointArtifacts(root, report, selected, readFixture, statFix
     scenario: 'packagedWorkspaceSuccess', artifactDescriptorSha256: 'a'.repeat(64),
     supervisorExitCode: selected === 'exit0' ? 0 : 1 });
   assert.deepEqual(native, report.nativeResult);
+  if (prepared) {
+    assert(typeof report.runRoot === 'string' && isAbsolute(report.runRoot));
+    const run = relative(root, report.runRoot);
+    assert(new RegExp(`^${WORKSPACE_SUCCESS_RUN_ROOT_PREFIX}[a-zA-Z0-9]{6}$`).test(run));
+    requirePreparedProductAbsent(json(await readFixture(root, join(report.runRoot, 'scenario', PREPARED_PRODUCT_REPORT))));
+  }
   const evidencePath = join(report.commandRoot, 'scenario', msiWindowEvidenceContract.filenamePrefix + '001.private.json');
   if (selected === 'exit0') {
     const bytes = await readFixture(root, evidencePath, msiWindowEvidenceContract.maximumBytes);
@@ -259,7 +271,7 @@ async function verifyJointArtifacts(root, report, selected, readFixture, statFix
 
 export async function completeSourceHandoffJointContract(execution, root, selected, {
   readFixture = readSourceHandoffJointFixture, statFixture = lstat, environment = process.env,
-  observeAdditionalFailure,
+  observeAdditionalFailure, prepared = false,
 } = {}) {
   assert(Object.hasOwn(CASE_CHECKS, selected));
   let completed, completionFailure, reportFailure, report;
@@ -267,14 +279,16 @@ export async function completeSourceHandoffJointContract(execution, root, select
   try { completed = await execution.completion; }
   catch (error) { completionFailure = error; completionRejected = true; }
   try {
+    if (prepared && await execution.ownerClosed !== true) throw new Error('JOINT_FIXTURE_OWNER_EXIT_UNVERIFIED');
     report = json(await readFixture(root, join(root, 'joint-reservation-result.private.json')));
-    await verifyJointArtifacts(root, report, selected, readFixture, statFixture, environment);
+    await verifyJointArtifacts(root, report, selected, readFixture, statFixture, environment, prepared);
   } catch (error) { reportFailure = error; reportRejected = true; }
   const observe = (error, phase) => {
     try { observeAdditionalFailure?.(error, phase); }
     catch { /* Evidence delivery cannot replace the original test failure. */ }
   };
-  const reportSelected = report?.schemaVersion === 1 && report.selected === selected;
+  const reportSelected = report?.schemaVersion === 1 && report.selected === selected &&
+    report.scope === (prepared ? PREPARED_SCOPE : STANDARD_SCOPE);
   if (reportRejected && reportSelected && report.admissionCleanupFailure != null) {
     observe(technicalJointFailure(report.admissionCleanupFailure, 'hresult'), 'jointFixtureCleanup');
   }
@@ -322,6 +336,6 @@ export async function runSourceHandoffJointContract(testContext, selected) {
   await writeFile(join(root, WORKSPACE_SUCCESS_DESCRIPTOR_FILENAME), JSON.stringify({ schemaVersion: 1, syntheticOnly: true }),
     { flag: 'wx' });
   await withSourceHandoffJointFailureEvidence(testContext, observeAdditionalFailure =>
-    completeSourceHandoffJointContract(startSourceHandoffJointFixture(context, selected), root, selected,
-      { observeAdditionalFailure }));
+    completeSourceHandoffJointContract(startSourceHandoffJointFixture(context, selected, { prepared: true }), root, selected,
+      { observeAdditionalFailure, prepared: true }));
 }

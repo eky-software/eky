@@ -138,7 +138,7 @@ test('original failure evidence: installed runners and packaged ASAR through iso
       const commandRoot = join(root, 'eky-acceptance-command-' + 'd'.repeat(32));
       const nativeBytes = encode(native), evidenceBytes = encode(evidence);
       const controlFixture = { native, nativeBytes, evidenceBytes,
-        report: { schemaVersion: 1, selected: 'exit0', commandRoot },
+        report: { schemaVersion: 1, selected: 'exit0', commandRoot, scope: 'twoCasePreparedReservationSyntheticTransport' },
         reportPath: join(root, 'joint-reservation-result.private.json'),
         files: new Map([[join(commandRoot, 'scenario', 'result.json'), nativeBytes],
           [join(commandRoot, 'scenario', msiWindowEvidenceContract.filenamePrefix + '001.private.json'), evidenceBytes]]) };
@@ -159,13 +159,15 @@ import { fileURLToPath } from 'node:url';
 import { completeSourceHandoffJointContract, withSourceHandoffJointFailureEvidence } from ${JSON.stringify(new URL('../windows-process-supervisor/tests/sourceHandoffJointContractSupport.mjs', import.meta.url).href)};
 test('joint synthetic first failure', { timeout: 5000 }, async t => {
   await withSourceHandoffJointFailureEvidence(t, observeAdditionalFailure =>
-    completeSourceHandoffJointContract({ completion: Promise.reject(new Error('JOINT_SYNTHETIC_COMPLETION')) },
-      ${JSON.stringify(root)}, 'exit0', { observeAdditionalFailure }), { file: fileURLToPath(import.meta.url) });
+    completeSourceHandoffJointContract({ completion: Promise.reject(new Error('JOINT_SYNTHETIC_COMPLETION')),
+      ownerClosed: Promise.resolve(true) },
+      ${JSON.stringify(root)}, 'exit0', { observeAdditionalFailure, prepared: true }), { file: fileURLToPath(import.meta.url) });
 });
 test('joint synthetic unreadable report', { timeout: 5000 }, async t => {
   await withSourceHandoffJointFailureEvidence(t, observeAdditionalFailure =>
-    completeSourceHandoffJointContract({ completion: Promise.reject(new Error('JOINT_SYNTHETIC_REPORT_COMPLETION')) },
-      ${JSON.stringify(root)}, 'exit0', { observeAdditionalFailure,
+    completeSourceHandoffJointContract({ completion: Promise.reject(new Error('JOINT_SYNTHETIC_REPORT_COMPLETION')),
+      ownerClosed: Promise.resolve(true) },
+      ${JSON.stringify(root)}, 'exit0', { observeAdditionalFailure, prepared: true,
         readFixture: async () => { throw new Error('JOINT_SYNTHETIC_REPORT_READ'); } }),
     { file: fileURLToPath(import.meta.url) });
 });\n`, { flag: 'wx' });
