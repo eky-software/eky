@@ -798,7 +798,7 @@ test('entrypoint groups register original and migrated command contracts exactly
     assert.ok(source.includes(`registerAcceptanceCommandEntrypointContracts('${kind}');`));
     all.push(...registrations);
   }
-  assert.equal(all.length, 128);
+  assert.equal(all.length, 130);
   assert.equal(new Set(all).size, all.length);
 });
 
