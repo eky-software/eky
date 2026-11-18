@@ -251,6 +251,10 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
       'textExpiryLeavesResourceTime', 'resourceAdmittedBeforeBoundary', 'resourceRejectedAtBoundary',
       'resourceRejectedAfterBoundary', 'stopOverridesRemainingResourceTime', 'postQueryExpiryDropsIdentities',
       'postQuerySelectionChangeDropsIdentities', 'postQueryFailureHasLivePositiveControl',
+      'queryBracketsAStableSource', 'samePidWrongCreationNotAttributed', 'missingFinalLiveEvidenceNotAttributed',
+      'sourceExitOverlapNotAttributed',
+      'incompleteSampleNotAttributed', 'sameJobIsNotSourceIdentity', 'mixedHoldersNotAttributedSolelyToSource',
+      'outsideJobHolderNotAttributedToSource', 'emptyDoesNotExcludePriorSource', 'sameJobHolderReleased', 'sameJobHolderExited',
       'largeFreshSelectionObserved']) assert.equal(proof[check], true);
     assert.equal(proof.bothTreesAbsent, true);
     assert.ok(Object.keys(proof).length >= 30);

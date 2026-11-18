@@ -12,7 +12,7 @@ internal sealed record MsiResourceSample(string Status, string? SelectionIdentit
 internal static class MsiResourceObservation
 {
     internal static MsiResourceSample Capture(SupervisorRequest request, WindowsJob job, Func<bool> admitted,
-        string? fixtureRoot = null, Action? afterQuery = null)
+        string? fixtureRoot = null, Action? afterQuery = null, Action? beforeQuery = null)
     {
         var empty = new MsiResourceSample("unavailable", null, 0, null, null, []);
         if (!admitted()) return empty with { Status = "cancelled" };
@@ -41,6 +41,7 @@ internal static class MsiResourceObservation
                     try
                     {
                         var count = (uint)capacity;
+                        beforeQuery?.Invoke();
                         code = RmGetList(session, out var needed, ref count, pointer, out _);
                         afterQuery?.Invoke();
                         var status = QueryStatus(code, needed, count, capacity);

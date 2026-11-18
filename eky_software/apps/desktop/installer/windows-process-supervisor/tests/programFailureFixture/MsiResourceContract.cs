@@ -32,7 +32,7 @@ internal static class MsiResourceContract
         ExceptionDispatchInfo? firstFailure = null;
         var payload = Path.Combine(request.WorkingDirectory, "payload");
         Directory.CreateDirectory(payload);
-        var names = new[] { "owned.bin", "other.bin", "unused.bin" };
+        var names = new[] { "owned.bin", "other.bin", "unused.bin", "same-job.bin" };
         foreach (var name in names) File.WriteAllBytes(Path.Combine(payload, name), "SYNTHETIC RM RESOURCE"u8.ToArray());
         var selectionPath = Path.Combine(request.WorkingDirectory, MsiWindowObservation.Contract.ResourceSelectionFilename);
         var children = new List<(SuspendedWindowsProcess Process, EventWaitHandle Stop)>();
@@ -46,7 +46,7 @@ internal static class MsiResourceContract
             File.Delete(selectionPath);
             Check("missingSelectionUnavailable", MsiResourceSelection.Read(request, () => true, payload) is null);
             WriteSelection(names);
-            Check("validSelectionAdmitted", MsiResourceSelection.Read(request, () => true, payload)?.Files.Length == 3);
+            Check("validSelectionAdmitted", MsiResourceSelection.Read(request, () => true, payload)?.Files.Length == names.Length);
             Check("cancelledSelectionRejected", MsiResourceSelection.Read(request, () => false, payload) is null);
             foreach (var invalid in new[] { new[] { "../escape.bin" }, new[] { "owned.bin", "OWNED.bin" },
                 new[] { "missing.bin" }, new[] { "owned.bin/child" }, new[] { "/owned.bin" }, new[] { "owned.bin " } })
@@ -69,18 +69,50 @@ internal static class MsiResourceContract
             var aIdentity = Identity(a.Process);
             var bIdentity = Identity(b.Process);
             WriteSelection([names[0]]);
-            observed = MsiResourceObservation.Capture(request, own, () => true, payload);
+            var registered = CaptureForSource(a.Process);
+            observed = registered.Sample;
             Check("registeredHolderObserved", observed.Status == "observed" && observed.Processes.Any(row =>
                 row.ProcessId == aIdentity.Pid && row.StartTimeLow == aIdentity.Low && row.StartTimeHigh == aIdentity.High && row.Membership == "ownedJob"));
             Check("unregisteredHolderExcluded", observed.Processes.All(row => row.ProcessId != bIdentity.Pid));
             Check("sessionClosed", observed.NativeCode == 0 && observed.EndSessionCode == 0);
+            Check("queryBracketsAStableSource", registered.LiveBefore && registered.LiveAfter &&
+                SourceRelation(registered, aIdentity) == "sourceReported");
+            Check("samePidWrongCreationNotAttributed", SourceRelation(registered, new() { Pid = aIdentity.Pid,
+                Low = aIdentity.Low ^ 1, High = aIdentity.High }) == "unknown");
+            Check("missingFinalLiveEvidenceNotAttributed", SourceRelation(registered with { LiveAfter = false },
+                aIdentity) == "unknown");
+            Check("incompleteSampleNotAttributed", SourceRelation(registered with {
+                Sample = observed with { Status = "limited" } }, aIdentity) == "unknown");
+            var sameJob = Start(own, names[3]);
+            var sameJobIdentity = Identity(sameJob.Process);
+            WriteSelection([names[3]]);
+            var sibling = CaptureForSource(a.Process);
+            Check("sameJobIsNotSourceIdentity", HasOwnedHolder(sibling.Sample, sameJobIdentity) &&
+                SourceRelation(sibling, aIdentity) == "otherReported");
+            WriteSelection([names[0], names[3]]);
+            var mixed = CaptureForSource(a.Process);
+            Check("mixedHoldersNotAttributedSolelyToSource", HasOwnedHolder(mixed.Sample, sameJobIdentity) &&
+                SourceRelation(mixed, aIdentity) == "mixedReported");
             WriteSelection([names[1]]);
-            var external = MsiResourceObservation.Capture(request, own, () => true, payload);
+            var outside = CaptureForSource(a.Process);
+            var external = outside.Sample;
             Check("outsideJobObserved", external.Status == "observed" && external.Processes.Any(row =>
                 row.ProcessId == bIdentity.Pid && row.Membership == "outsideJob"));
+            Check("outsideJobHolderNotAttributedToSource", SourceRelation(outside, aIdentity) == "otherReported");
             WriteSelection([names[2]]);
-            var empty = MsiResourceObservation.Capture(request, own, () => true, payload);
+            var absent = CaptureForSource(a.Process);
+            var empty = absent.Sample;
             Check("emptyObservedDistinct", empty.Status == "observed" && empty.Processes.Count == 0 && empty.EndSessionCode == 0);
+            Check("emptyDoesNotExcludePriorSource", SourceRelation(absent, aIdentity) == "unknown");
+            WriteSelection([names[3]]);
+            var overlap = CaptureForSource(sameJob.Process, () =>
+            {
+                Check("sameJobHolderReleased", sameJob.Stop.Set());
+                Check("sameJobHolderExited", sameJob.Process.Wait(childExitTimeoutMs) && sameJob.Process.GetExitCode() == 0);
+            });
+            Check("sourceExitOverlapNotAttributed", overlap.LiveBefore && !overlap.LiveAfter &&
+                overlap.Sample.Status == "observed" && overlap.Sample.Processes.Any(row => Matches(row, sameJobIdentity)) &&
+                SourceRelation(overlap, sameJobIdentity) == "unknown");
             Check("staleCreationUnknown", MsiResourceObservation.Membership(new() { Pid = aIdentity.Pid,
                 Low = aIdentity.Low ^ 1, High = aIdentity.High }, own) == "unknown");
             var callbackReached = false;
@@ -259,6 +291,16 @@ internal static class MsiResourceContract
             try { cleanup(); }
             catch (Exception error) { firstFailure ??= ExceptionDispatchInfo.Capture(error); }
         }
+        SourceQuery CaptureForSource(SuspendedWindowsProcess source, Action? afterWindowsQuery = null)
+        {
+            bool liveBefore = false, liveAfter = false;
+            var sample = MsiResourceObservation.Capture(request, own, () => true, payload,
+                afterQuery: () => { afterWindowsQuery?.Invoke(); liveAfter = IsLive(); },
+                beforeQuery: () => liveBefore = IsLive());
+            return new(sample, liveBefore, liveAfter);
+
+            bool IsLive() => NativeMethods.WaitForSingleObject(source.Process, 0) == NativeMethods.WaitTimeout;
+        }
         object TimingArm(bool withQuery, SafeEvidenceWriter evidence)
         {
             var kind = withQuery ? "withQuery" : "withoutQuery";
@@ -385,6 +427,35 @@ internal static class MsiResourceContract
                 throw new InvalidOperationException("processIdentityUnavailable");
             return new() { Pid = GetProcessId(process.Process), Low = created.Low, High = created.High };
         }
+    }
+
+    private sealed record SourceQuery(MsiResourceSample Sample, bool LiveBefore, bool LiveAfter);
+
+    private static bool Matches(MsiResourceProcess row, MsiResourceObservation.UniqueProcess process) =>
+        row.ProcessId == process.Pid && row.StartTimeLow == process.Low && row.StartTimeHigh == process.High;
+
+    private static bool HasOwnedHolder(MsiResourceSample sample, MsiResourceObservation.UniqueProcess process) =>
+        sample.Processes.Any(row => row.Membership == "ownedJob" && Matches(row, process));
+
+    private static string SourceRelation(SourceQuery query, MsiResourceObservation.UniqueProcess source)
+    {
+        if (!query.LiveBefore || !query.LiveAfter || query.Sample is not { Status: "observed", Phase: "complete",
+            NativeCode: 0, EndSessionCode: 0, ResourceCount: > 0 }) return "unknown";
+
+        var ownSource = false;
+        var other = false;
+        foreach (var row in query.Sample.Processes)
+        {
+            if (row.ProcessId == source.Pid)
+            {
+                if (!Matches(row, source) || row.Membership != "ownedJob")
+                    return "unknown";
+                ownSource = true;
+            }
+            else if (row.Membership is "ownedJob" or "outsideJob") other = true;
+            else return "unknown";
+        }
+        return ownSource ? other ? "mixedReported" : "sourceReported" : other ? "otherReported" : "unknown";
     }
 
     [DllImport("kernel32.dll")] private static extern uint GetProcessId(Microsoft.Win32.SafeHandles.SafeProcessHandle process);
