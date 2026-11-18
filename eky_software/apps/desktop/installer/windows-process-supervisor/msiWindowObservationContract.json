@@ -1,5 +1,7 @@
 {
   "schemaVersion": 3,
+  "sourceObservationSchemaVersion": 4,
+  "maximumElapsedMilliseconds": 14400000,
   "operation": "msiWindowObservation",
   "filenamePrefix": "msi-window-",
   "maximumBytes": 65536,
@@ -17,5 +19,11 @@
   "maximumResourcePathBytes": 160,
   "resourceStatuses": ["observed", "limited", "unavailable", "cancelled"],
   "resourcePhases": ["selection", "startSession", "registerResources", "queryResources", "membership", "complete"],
-  "resourceMemberships": ["ownedJob", "outsideJob", "unknown"]
+  "resourceMemberships": ["ownedJob", "outsideJob", "unknown"],
+  "sourceRelations": ["sourceReported", "otherReported", "mixedReported", "unknown"],
+  "sourceStates": ["alive", "exitedBefore", "unknown"],
+  "closingPromptMessages": [
+    "The following applications should be closed before continuing the installation:",
+    "Seuraavat sovellukset tulee sulkea ennen asennuksen jatkamista:"
+  ]
 }

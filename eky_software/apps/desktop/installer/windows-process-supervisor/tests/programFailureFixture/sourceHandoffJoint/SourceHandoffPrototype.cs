@@ -31,13 +31,12 @@ internal sealed record SourceBridgeProtocol(int SchemaVersion, string Operation,
 }
 
 // Created only from the current command owner's successful, retained admission.
-// The executor remains a fixed synthetic fixture; this is not source-EKY wiring.
 internal sealed record SourceHandoffContext(SourceBridgeProtocol Protocol, string Case,
-    SupervisorRequest Request, string FixturePath, IReadOnlyDictionary<string, string> Environment,
+    SupervisorRequest Request, string? FixturePath, IReadOnlyDictionary<string, string> Environment,
     WorkspaceSourceAdmission Admission, IReadOnlyList<string> SourceArguments, SourceAdmissionExperiment Proof)
 {
     internal static SourceHandoffContext Create(SourceBridgeProtocol protocol, SourceAdmissionExperiment proof,
-        SupervisorRequest request, WorkspaceSourceAdmission admission, string fixturePath)
+        SupervisorRequest request, WorkspaceSourceAdmission admission, string? fixturePath)
     {
         var selectedCase = proof.Case;
         if (!protocol.Cases.Contains(selectedCase, StringComparer.Ordinal) ||
@@ -46,7 +45,8 @@ internal sealed record SourceHandoffContext(SourceBridgeProtocol Protocol, strin
             !string.Equals(request.WorkingDirectory, admission.MailboxRoot, StringComparison.OrdinalIgnoreCase) ||
             request.RunNonce != admission.Anchors.ScenarioNonce || request.Scenario != admission.Anchors.Scenario ||
             request.ArtifactDescriptorSha256 != admission.Anchors.Descriptor || !proof.MetadataValidated ||
-            !proof.Published || proof.Consumed != 1 || admission.AllHandlesClosed)
+            !proof.Published || proof.Consumed != 1 || admission.AllHandlesClosed ||
+            (fixturePath is null) != proof.MeasureActualSource)
             throw new SupervisorFailure("processStateInvalid");
         var environment = new SortedDictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         // Exact current workspaceSuccessApplicationEnvironment filtering; never serialize this snapshot.
@@ -62,7 +62,7 @@ internal sealed record SourceHandoffContext(SourceBridgeProtocol Protocol, strin
         environment["TEMP"] = admission.TemporaryRoot;
         environment["TMP"] = admission.TemporaryRoot;
         environment[admission.TokenEnvironment] = request.RunNonce;
-        return new(protocol, selectedCase, request, Path.GetFullPath(fixturePath),
+        return new(protocol, selectedCase, request, fixturePath is null ? null : Path.GetFullPath(fixturePath),
             new ReadOnlyDictionary<string, string>(environment), admission,
             Array.AsReadOnly(new[] { "--" + admission.ProofSwitch, "--user-data-dir=" + admission.UserDataPath }), proof);
     }
@@ -93,6 +93,7 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
     private Task? acknowledgement;
     private MailboxLease? lease;
     private SuspendedWindowsProcess? child;
+    private volatile ObservationSource? observationSource;
     private bool consumed;
     private bool delivered;
     private volatile bool closed;
@@ -119,6 +120,19 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
 
     internal bool RootAdmitted => rootPin is not null;
     internal bool AdmissionClosed => closed;
+    internal bool IsMsiSourceResumed => !closed && observationSource is not null;
+
+    private sealed record ObservationSource(SuspendedWindowsProcess Process, MsiResourceObservation.UniqueProcess Birth);
+
+    internal MsiResourceObservation.SourceRead? RetainForMsiObservation()
+    {
+        if (closed || observationSource is not { } source) return null;
+        var read = MsiResourceObservation.SourceRead.Retain(source.Process, job, source.Birth,
+            sourceJobProvedAtBirth: SourceInSameJobBeforeResume);
+        if (!closed) return read;
+        read?.Dispose();
+        return null;
+    }
 
     internal Task BeginRootAdmission()
     {
@@ -180,7 +194,7 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
                                 context.Proof.SourceCreationHeld.Set();
                                 context.Proof.SourceCreationRelease.Wait();
                             }
-                            return SuspendedWindowsProcess.StartSyntheticSource(context, job, cancellation.Token);
+                            return SuspendedWindowsProcess.StartSource(context, job, cancellation.Token, value.SourceExecutableSha256);
                         });
                     }
                 }
@@ -192,7 +206,9 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
             creation = null;
             try
             {
-                child = task.GetAwaiter().GetResult();
+                var arrived = task.GetAwaiter().GetResult();
+                if (closed) arrived.CloseSourceObservationAdmission();
+                child = arrived;
                 // The creation handle already exists. Never reopen this process by PID.
                 BirthCapturedBeforeResume = context.Case != "birthRejected" && child.CaptureSourceBirth();
                 SourceInSameJobBeforeResume = job.ContainsProcess(child.Process);
@@ -202,6 +218,8 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
                     resumeStartedAtMs = elapsed();
                     child.Resume();
                     resumeReturnedAtMs = elapsed();
+                    if (child.SourceBirth is { } birth)
+                        observationSource = new(child, new() { Pid = birth.ProcessId, Low = birth.StartTimeLow, High = birth.StartTimeHigh });
                 }
                 else if (!closed)
                 {
@@ -293,6 +311,8 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
         if (closed) return;
         context.Proof.RetirementRace?.BeforeAdmissionClose();
         closed = true;
+        observationSource = null;
+        child?.CloseSourceObservationAdmission();
         var closeRequestedAtMs = elapsed();
         try { cancellation.Cancel(); }
         finally { context.Proof.NotifySourceReservationCloseRequested(closeRequestedAtMs); }
@@ -362,7 +382,12 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
         var pendingCreation = creation;
         if (pendingCreation is not null)
         {
-            try { child = await pendingCreation; }
+            try
+            {
+                var arrived = await pendingCreation;
+                arrived.CloseSourceObservationAdmission();
+                child = arrived;
+            }
             catch (Exception error) { RecordRequestFailure("lateCreation", error); }
             creation = null;
         }
@@ -511,10 +536,19 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
             using var document = JsonDocument.Parse(opened.Bytes, new JsonDocumentOptions { MaxDepth = 4 });
             var root = document.RootElement;
             stage = "requestSchema";
-            var valid = ExactKeys(root, ["schemaVersion", "binding", "operation"]) &&
+            var valid = ExactKeys(root, context.Proof.MeasureActualSource
+                ? ["schemaVersion", "binding", "operation", "sourceExecutableSha256"] : ["schemaVersion", "binding", "operation"]) &&
                 root.GetProperty("schemaVersion").TryGetInt32(out var version) && version == context.Protocol.SchemaVersion &&
                 root.GetProperty("operation").ValueKind == JsonValueKind.String &&
                 root.GetProperty("operation").GetString() == context.Protocol.Operation;
+            string? sourceExecutableSha256 = null;
+            if (valid && context.Proof.MeasureActualSource)
+            {
+                var expected = root.GetProperty("sourceExecutableSha256");
+                sourceExecutableSha256 = expected.ValueKind == JsonValueKind.String ? expected.GetString() : null;
+                valid = sourceExecutableSha256 is { Length: 64 } &&
+                    sourceExecutableSha256.All(character => character is >= '0' and <= '9' or >= 'a' and <= 'f');
+            }
             if (valid)
             {
                 stage = "requestBinding";
@@ -525,7 +559,7 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
             }
             if (!valid) RecordRequestFailure(stage, null);
             opened.Verify(value => stage = value);
-            return new(true, opened, valid);
+            return new(true, opened, valid, sourceExecutableSha256);
         }
         catch (FileNotFoundException) when (opened is null && (stage is "requestPresence" or "requestOpen"))
         { return new(false, null, false); }
@@ -593,7 +627,7 @@ internal sealed class SourceHandoffPrototype(SourceHandoffContext context, Windo
         [property: JsonPropertyName("hresult")] int? HResult,
         [property: JsonPropertyName("nativeError")] int? NativeError);
 
-    private sealed record MailboxRead(bool Observed, MailboxLease? Lease, bool Valid);
+    private sealed record MailboxRead(bool Observed, MailboxLease? Lease, bool Valid, string? SourceExecutableSha256 = null);
 
     // The exact admitted root is pinned; no metadata walk escapes into host ancestors.
     // FileShare.Read keeps each consumed file immutable until required operations settle.

@@ -19,6 +19,7 @@ import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
 import { createRunnerFailureSink, RUNNER_FAILURE_ROOT_PREFIX } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 import { PHASE_WIRE_LIMITS, capturePhaseHandoffExpected } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
+import { readSourceMeasurementExit } from '../windows-process-supervisor/tests/programFailureFixture/sourceHandoffJoint/workspaceSourceMeasurementPhase.mjs';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -75,6 +76,62 @@ test('MSI reader: schema 3 accepts null, successful empty queries, all membershi
     const sample = record(3, { resources: value });
     assert.equal(validate(sample), sample);
     assert.deepEqual(validate(JSON.parse(JSON.stringify(sample))), sample);
+  }
+});
+
+const sourceObservation = (patch = {}) => ({ relation: 'sourceReported', sourceState: 'alive', promptReadStartMs: 124, promptReadEndMs: 130,
+  resourceQueryStartMs: 140, resourceQueryEndMs: 150, ...patch });
+const sourceRecord = (patch = {}) => record(contract.sourceObservationSchemaVersion,
+  { clients: [{ processId: 1234, status: 'observed', windows: [{ role: 'message',
+    text: contract.closingPromptMessages[0], enabled: true }] }], resources: resources(), sourceObservation: sourceObservation(), ...patch });
+
+test('MSI reader: source timing accepts bounded source, other, mixed and unknown only in schema 4', () => {
+  assert.equal(contract.sourceObservationSchemaVersion, 4);
+  for (const item of [sourceRecord(), sourceRecord({ sourceObservation: sourceObservation({ relation: 'otherReported' }),
+    resources: resources({ processes: [processIdentity({ membership: 'outsideJob' })] }) }),
+  sourceRecord({ sourceObservation: sourceObservation({ relation: 'mixedReported' }),
+    resources: resources({ processes: [processIdentity(), processIdentity({ processId: 43 })] }) }),
+  sourceRecord({ resources: null, sourceObservation: sourceObservation({ relation: 'unknown',
+    resourceQueryStartMs: null, resourceQueryEndMs: null }) })]) {
+    assert.deepEqual(validate(JSON.parse(JSON.stringify(item))), item);
+  }
+  for (const version of [1, 2, 3]) rejects(record(version, { sourceObservation: sourceObservation() }));
+});
+
+test('MSI reader: keeps an already-exited source separate from an empty resource read', () => {
+  const sample = sourceRecord({ resources: resources({ processes: [] }),
+    sourceObservation: sourceObservation({ relation: 'unknown', sourceState: 'exitedBefore' }) });
+  assert.deepEqual(validate(JSON.parse(JSON.stringify(sample))), sample);
+  rejects(sourceRecord({ sourceObservation: sourceObservation({ sourceState: 'exitedBefore' }) }));
+  rejects(sourceRecord({ sourceObservation: sourceObservation({ sourceState: 'unknown' }) }));
+  rejects(sourceRecord({ sourceObservation: sourceObservation({ sourceState: 'notSeen' }) }));
+});
+
+test('MSI reader: source timing rejects raw keys, unordered clocks and attribution without complete evidence', () => {
+  for (const invalid of [{ relation: 'sourceConfirmed' }, { promptReadStartMs: 122 }, { promptReadEndMs: 123 },
+    { resourceQueryStartMs: 129 }, { resourceQueryEndMs: 139 }, { resourceQueryStartMs: null },
+    { resourceQueryEndMs: contract.maximumElapsedMilliseconds + 1 }, { promptReadEndMs: '130' },
+    { sourceProcessId: 42 }, { processPath: 'EXCLUDED' }]) rejects(sourceRecord({ sourceObservation: sourceObservation(invalid) }));
+  for (const invalid of [null, resources({ phase: 'selection' }), resources({ status: 'limited' }), resources({ processes: [] }),
+    resources({ processes: [processIdentity({ membership: 'unknown' })] }),
+    resources({ processes: [processIdentity({ membership: 'outsideJob' })] }),
+    resources({ processes: [processIdentity(), processIdentity({ processId: 43 })] })]) rejects(sourceRecord({ resources: invalid }));
+  rejects(sourceRecord({ sourceObservation: sourceObservation({ relation: 'mixedReported' }) }));
+  rejects(sourceRecord({ sourceObservation: sourceObservation({ resourceQueryStartMs: null, resourceQueryEndMs: null }) }));
+  rejects(sourceRecord({ clients: record().clients }));
+  const onePrompt = sourceRecord().clients[0];
+  const partial = { ...onePrompt, status: 'partial' };
+  rejects(sourceRecord({ clients: [partial] }));
+  rejects(sourceRecord({ resources: null, sourceObservation: sourceObservation({ relation: 'unknown' }) }));
+  const ambiguousClients = [onePrompt, { ...onePrompt, processId: 1235 }];
+  rejects(sourceRecord({ clients: ambiguousClients }));
+  rejects(sourceRecord({ clients: ambiguousClients, sourceObservation: sourceObservation({ relation: 'unknown' }) }));
+  const ambiguous = sourceRecord({ clients: ambiguousClients, sourceObservation: sourceObservation({ relation: 'unknown', sourceState: 'unknown' }) });
+  assert.equal(validate(ambiguous), ambiguous);
+  for (const key of ['sourceObservation', 'resources']) {
+    const value = sourceRecord();
+    delete value[key];
+    rejects(value);
   }
 });
 
@@ -294,6 +351,46 @@ async function fixture(t, preserveUntilComplete = false) {
   };
   return { root, temp, checkout, env, put, complete() { complete = true; } };
 }
+
+test('passive MSI measurement success retains only the bound first-prompt sample', async t => {
+  const f = await fixture(t);
+  const env = { ...f.env, GITHUB_ACTIONS: 'true', RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted',
+    GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_JOB: 'packaged-boundary-diagnostic',
+    EKY_EVIDENCE_JOB_KEY: 'workspace-passive-source-0', EKY_M51_PASSIVE_SOURCE_MEASUREMENT: '1',
+    EKY_EVIDENCE_JOB_OUTCOME: 'success' };
+  const phase = `eky-acceptance-command-${nativeId}/scenario`;
+  const phaseRoot = join(await realpath(f.temp), ...phase.split('/'));
+  const sample = sourceRecord({ binding: { ...binding, job: env.GITHUB_JOB },
+    scenario: 'packagedWorkspaceFaultRollback', resources: resources({ processes: [] }),
+    sourceObservation: sourceObservation({ relation: 'unknown', sourceState: 'exitedBefore' }), sequence: 2 });
+  await f.put(f.temp, `${phase}/request.json`, JSON.stringify({ schemaVersion: 1, runNonce: sample.runNonce,
+    scenario: sample.scenario, artifactDescriptorSha256: sample.artifactDescriptorSha256, workingDirectory: phaseRoot }));
+  await f.put(f.temp, `${phase}/msi-window-001.private.json`, JSON.stringify(record(3, {
+    binding: sample.binding, scenario: sample.scenario })));
+  await f.put(f.temp, `${phase}/worker-result.json`, 'EXCLUDED_SUCCESS_WORKER');
+  const absent = await collectJobFailureEvidence(env);
+  assert.deepEqual(absent.manifest.files, []);
+  await f.put(f.temp, `${phase}/msi-window-002.private.json`, JSON.stringify(sample));
+  const observed = await collectJobFailureEvidence(env);
+  assert.equal(observed.manifest.scope, 'msiPassiveSourceMeasurement');
+  assert.equal(observed.manifest.files.length, 1);
+  const archive = JSON.parse(gunzipSync(await readFile(observed.archivePath)));
+  assert.deepEqual(JSON.parse(Buffer.from(Object.values(archive.files)[0], 'base64')), sample);
+  await assert.rejects(() => collectJobFailureEvidence({ ...env, GITHUB_JOB: 'other-result' }));
+  await assert.rejects(() => collectJobFailureEvidence({ ...env, GITHUB_EVENT_NAME: 'pull_request' }));
+});
+
+test('passive MSI measurement reads only the closed exit for the current source request', () => {
+  const envelope = { schemaVersion: 1, operation: 'sourceHandoff', binding: { runNonce: 'a'.repeat(64) } };
+  const result = { ...envelope, status: 'completed', exitCode: 0, errorCode: null };
+  assert.equal(readSourceMeasurementExit(result, envelope), 0);
+  assert.equal(readSourceMeasurementExit({ ...result, exitCode: 7 }, envelope), 7);
+  for (const invalid of [{ binding: { runNonce: 'b'.repeat(64) } }, { processId: 42 }, { exitCode: '0' },
+    { status: 'failed', exitCode: null, errorCode: 'unreviewed' }])
+    assert.throws(() => readSourceMeasurementExit({ ...result, ...invalid }, envelope), /requestInvalid/);
+  assert.throws(() => readSourceMeasurementExit({ ...result, status: 'failed',
+    exitCode: null, errorCode: 'ownedProcessStartFailed' }, envelope), /ownedProcessStartFailed/);
+});
 
 test('phase observation owns only the exact failure filename before generic process output', () => {
   const path = `${run}/synthetic-retry1/failure.private.json`;

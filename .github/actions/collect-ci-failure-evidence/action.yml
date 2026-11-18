@@ -12,6 +12,10 @@ inputs:
     description: Explicit named RM timing experiment only; empty for ordinary failure evidence.
     required: false
     default: ''
+  msi-passive-source-measurement:
+    description: Only the named passive source timing diagnostic, with no WPR recording.
+    required: false
+    default: ''
   msi-resource-timing-repetition:
     description: Existing supervisor matrix repetition for the named RM timing experiment.
     required: false
@@ -47,7 +51,10 @@ runs:
           && (inputs.job-outcome == 'failure' || inputs.job-outcome == 'cancelled'
             || (inputs.job-outcome == 'success' && inputs.msi-resource-timing-proof == '1'
               && github.event_name == 'workflow_dispatch' && runner.os == 'Windows'
-              && (inputs.msi-resource-timing-repetition == '1' || inputs.msi-resource-timing-repetition == '2')))
+              && (inputs.msi-resource-timing-repetition == '1' || inputs.msi-resource-timing-repetition == '2'))
+            || (inputs.job-outcome == 'success' && inputs.msi-passive-source-measurement == '1'
+              && inputs.job-key == 'workspace-passive-source-0' && github.job == 'packaged-boundary-diagnostic'
+              && github.event_name == 'workflow_dispatch' && runner.os == 'Windows'))
           && inputs.public-key != '' && inputs.fingerprint != ''
           && inputs.fingerprint == inputs.verified-fingerprint
           && (github.event_name == 'push' || github.event_name == 'schedule'
@@ -63,6 +70,7 @@ runs:
         EKY_EVIDENCE_JOB_OUTCOME: ${{ inputs.job-outcome }}
         EKY_MSI_RESOURCE_TIMING_PROOF: ${{ inputs.msi-resource-timing-proof }}
         EKY_MSI_RESOURCE_TIMING_REPETITION: ${{ inputs.msi-resource-timing-repetition }}
+        EKY_M51_PASSIVE_SOURCE_MEASUREMENT: ${{ inputs.msi-passive-source-measurement }}
       run: |
         try {
           $node = Get-Command node -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1

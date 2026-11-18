@@ -12,7 +12,7 @@ internal sealed record MsiResourceSample(string Status, string? SelectionIdentit
 internal static class MsiResourceObservation
 {
     internal static MsiResourceSample Capture(SupervisorRequest request, WindowsJob job, Func<bool> admitted,
-        string? fixtureRoot = null, Action? afterQuery = null, Action? beforeQuery = null)
+        string? fixtureRoot = null, Action? afterQuery = null, Action? beforeQuery = null, SourceRead? sourceRead = null)
     {
         var empty = new MsiResourceSample("unavailable", null, 0, null, null, []);
         if (!admitted()) return empty with { Status = "cancelled" };
@@ -59,7 +59,9 @@ internal static class MsiResourceObservation
                                 if (identity.Pid == 0 || (identity.Low == 0 && identity.High == 0))
                                 { processes.Clear(); status = "unavailable"; break; }
                                 if (identities.Add((identity.Pid, identity.Low, identity.High)))
-                                    processes.Add(new(identity.Pid, identity.Low, identity.High, Membership(identity, job)));
+                                    processes.Add(new(identity.Pid, identity.Low, identity.High,
+                                        sourceRead is not null && identity.Pid == sourceRead.Birth.Pid
+                                            ? sourceRead.MembershipAtSample(job, identity) : Membership(identity, job)));
                                 processed++;
                             }
                             sample = empty with { Status = status == "unavailable" ? status :
@@ -80,6 +82,128 @@ internal static class MsiResourceObservation
     internal static string QueryStatus(uint code, uint needed, uint count, int capacity) =>
         code == 234 || needed > capacity || count > capacity ? "limited" : code == 0 ? "observed" : "unavailable";
 
+    internal static string ClassifySource(MsiResourceSample? sample, UniqueProcess source, bool sourceLiveAcrossReads)
+    {
+        if (!sourceLiveAcrossReads || source.Pid == 0 || (source.Low == 0 && source.High == 0) ||
+            sample is not { Status: "observed", Phase: "complete",
+            NativeCode: 0, EndSessionCode: 0, ResourceCount: > 0, SelectionIdentity: not null }) return "unknown";
+
+        var ownSource = false;
+        var other = false;
+        foreach (var row in sample.Processes)
+        {
+            if (row.ProcessId == source.Pid)
+            {
+                if (row.StartTimeLow != source.Low || row.StartTimeHigh != source.High || row.Membership != "ownedJob")
+                    return "unknown";
+                ownSource = true;
+            }
+            else if (row.Membership is "ownedJob" or "outsideJob") other = true;
+            else return "unknown";
+        }
+        return ownSource ? other ? "mixedReported" : "sourceReported" : other ? "otherReported" : "unknown";
+    }
+
+    internal static UniqueProcess? ReadCreationIdentity(SafeProcessHandle process)
+    {
+        var pid = GetProcessId(process);
+        return pid != 0 && GetProcessTimes(process, out var birth, out _, out _, out _) && (birth.Low != 0 || birth.High != 0)
+            ? new() { Pid = pid, Low = birth.Low, High = birth.High } : null;
+    }
+
+    internal sealed class SourceRead : IDisposable
+    {
+        private readonly object gate = new();
+        private readonly SafeProcessHandle view;
+        private readonly WindowsJob job;
+        private SafeProcessHandle? owner;
+
+        private SourceRead(SafeProcessHandle owner, SafeProcessHandle view, WindowsJob job, UniqueProcess birth)
+        {
+            this.owner = owner;
+            this.view = view;
+            this.job = job;
+            Birth = birth;
+        }
+
+        internal UniqueProcess Birth { get; }
+
+        internal static SourceRead? Retain(SuspendedWindowsProcess source, WindowsJob job, UniqueProcess birth,
+            bool sourceJobProvedAtBirth = false)
+        {
+            if (birth.Pid == 0 || (birth.Low == 0 && birth.High == 0)) return null;
+            if (!source.TryRetainSourceObservationHandle()) return null;
+
+            var owner = source.Process;
+            var retained = true;
+            SafeProcessHandle? view = null;
+            try
+            {
+                if (owner.IsInvalid) return null;
+                // A view remains usable after the original owner disposes its reference.
+                view = new SafeProcessHandle(owner.DangerousGetHandle(), ownsHandle: false);
+                if (ReadCreationIdentity(view) is not { } actual || actual.Pid != birth.Pid ||
+                    actual.Low != birth.Low || actual.High != birth.High) return null;
+                // The creation handle and initial membership survive as identity
+                // evidence even when the original process has already signalled.
+                if (!(sourceJobProvedAtBirth && NativeMethods.WaitForSingleObject(view, 0) == NativeMethods.WaitObject0) &&
+                    !job.ContainsProcess(view)) return null;
+
+                var read = new SourceRead(owner, view, job, birth);
+                retained = false;
+                view = null;
+                return read;
+            }
+            catch (Exception error) when (error is ObjectDisposedException or SupervisorFailure) { return null; }
+            finally
+            {
+                try { view?.Dispose(); }
+                finally { if (retained) owner.DangerousRelease(); }
+            }
+        }
+
+        internal string MembershipAtSample(WindowsJob ownerJob, UniqueProcess reported) => ReferenceEquals(ownerJob, job) &&
+            reported.Pid == Birth.Pid && reported.Low == Birth.Low && reported.High == Birth.High && IsLive() is true
+                ? "ownedJob" : "unknown";
+
+        internal bool IsDirectChild(SafeProcessHandle candidate)
+        {
+            lock (gate)
+            {
+                if (owner is null || !job.ContainsProcess(candidate) || ReadCreationIdentity(candidate) is not { } current ||
+                    NativeMethods.WaitForSingleObject(candidate, 0) != NativeMethods.WaitTimeout) return false;
+                var size = (uint)Marshal.SizeOf<BasicProcessInformation>();
+                return NtQueryInformationProcess(candidate, 0, out var information, size, out var length) == 0 &&
+                    length == size && IsChildIdentity(Birth, current, information.ProcessId, information.ParentProcessId);
+            }
+        }
+
+        internal bool? IsLive()
+        {
+            lock (gate)
+            {
+                if (owner is null) return null;
+                return NativeMethods.WaitForSingleObject(view, 0) switch
+                {
+                    NativeMethods.WaitTimeout => true,
+                    NativeMethods.WaitObject0 => false,
+                    _ => null,
+                };
+            }
+        }
+
+        public void Dispose()
+        {
+            lock (gate)
+            {
+                if (owner is not { } retained) return;
+                owner = null;
+                try { view.Dispose(); }
+                finally { retained.DangerousRelease(); }
+            }
+        }
+    }
+
     internal static string Membership(UniqueProcess identity, WindowsJob job, Action? afterMembership = null)
     {
         using var process = OpenProcess(0x1000 | 0x100000, false, identity.Pid);
@@ -99,6 +223,18 @@ internal static class MsiResourceObservation
 
     [StructLayout(LayoutKind.Sequential)] internal struct FileTime { internal uint Low; internal uint High; }
     [StructLayout(LayoutKind.Sequential)] internal struct UniqueProcess { internal uint Pid; internal uint Low; internal uint High; }
+    internal static bool IsChildIdentity(UniqueProcess source, UniqueProcess child, nuint childId, nuint parentId) =>
+        source.Pid != 0 && child.Pid != 0 && child.Pid != source.Pid && childId == child.Pid && parentId == source.Pid &&
+        (((ulong)child.High << 32) | child.Low) > (((ulong)source.High << 32) | source.Low);
+    [StructLayout(LayoutKind.Sequential)]
+    private struct BasicProcessInformation
+    {
+        internal nint ExitStatus, PebBaseAddress, AffinityMask, BasePriority;
+        internal nuint ProcessId, ParentProcessId;
+    }
+    [DllImport("ntdll.dll")]
+    private static extern int NtQueryInformationProcess(SafeProcessHandle process, uint informationClass,
+        out BasicProcessInformation information, uint length, out uint returnLength);
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     private struct ProcessInfo
     {

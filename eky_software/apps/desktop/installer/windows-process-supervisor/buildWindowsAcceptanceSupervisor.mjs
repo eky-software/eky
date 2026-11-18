@@ -138,6 +138,7 @@ export async function prepareSourceHandoffJointBuild(run = runDotnet) {
     // Import-only: the phase's entry guard prevents fixture execution here.
     projection = await createSourceBootstrapProjection();
     await import(pathToFileURL(resolve(JOINT_DIRECTORY, 'sourceHandoffPhase.mjs')).href);
+    await import(pathToFileURL(resolve(JOINT_DIRECTORY, 'workspaceSourceMeasurementPhase.mjs')).href);
   } finally { hooks.deregister(); }
   mkdirSync(dirname(JOINT_PROJECTION), { recursive: true });
   writeFileSync(JOINT_PROJECTION, JSON.stringify(projection, null, 2) + '\n');

@@ -255,7 +255,8 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
       'sourceExitOverlapNotAttributed',
       'incompleteSampleNotAttributed', 'sameJobIsNotSourceIdentity', 'mixedHoldersNotAttributedSolelyToSource',
       'outsideJobHolderNotAttributedToSource', 'emptyDoesNotExcludePriorSource', 'sameJobHolderReleased', 'sameJobHolderExited',
-      'largeFreshSelectionObserved']) assert.equal(proof[check], true);
+      'largeFreshSelectionObserved', 'sourceEvidenceRejectsUnorderedTiming',
+      'sourceEvidenceRejectsMissingResources', 'sourceEvidenceRecorded']) assert.equal(proof[check], true);
     assert.equal(proof.bothTreesAbsent, true);
     assert.ok(Object.keys(proof).length >= 30);
     assert.ok(Object.values(proof).every(value => value === true));
@@ -264,8 +265,11 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     const decrypted = await crypto.invokeGpg(recipient.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
     const archive = JSON.parse(gunzipSync(decrypted.stdout));
     const entries = archive.manifest.files.filter(value => value.kind === 'msiWindowObservation' && value.status === 'retained');
-    assert.equal(entries.length, 1);
-    const record = JSON.parse(Buffer.from(archive.files[entries[0].name], 'base64'));
+    assert.equal(entries.length, 2);
+    const records = entries.map(entry => JSON.parse(Buffer.from(archive.files[entry.name], 'base64')));
+    const record = records.find(value => value.schemaVersion === 3);
+    const sourceRecord = records.find(value => value.schemaVersion === 4);
+    assert.ok(record && sourceRecord);
     assert.equal(record.schemaVersion, 3);
     assert.equal(record.resources.status, 'observed');
     assert.equal(record.resources.phase, 'complete');
@@ -275,6 +279,14 @@ test('MSI resources: scoped identity, cancellation and real OpenPGP delivery', W
     assert.equal(record.resources.resourceCount, 2550);
     assert.ok(record.resources.processes.some(value => value.membership === 'ownedJob' && value.processId > 0 &&
       (value.startTimeLow !== 0 || value.startTimeHigh !== 0)));
+    assert.equal(record.sequence, 1);
+    assert.equal(Object.hasOwn(record, 'sourceObservation'), false);
+    assert.equal(sourceRecord.sequence, 2);
+    assert.deepEqual({ ...sourceRecord.resources, processes: record.resources.processes }, record.resources);
+    assert.equal(sourceRecord.resources.processes.length, 1);
+    assert.ok(record.resources.processes.some(row => JSON.stringify(row) === JSON.stringify(sourceRecord.resources.processes[0])));
+    assert.deepEqual(sourceRecord.sourceObservation, { relation: 'sourceReported', sourceState: 'alive', promptReadStartMs: 3,
+      promptReadEndMs: 4, resourceQueryStartMs: 5, resourceQueryEndMs: 6 });
     assert.equal(JSON.stringify(archive).includes('EXCLUDED FOREIGN CONTENT'), false);
     assert.equal(archive.manifest.files.some(value => value.source.includes('msi-resource-selection')), false);
     assert.equal(await readFile(join(foreign, 'foreign.bin'), 'utf8'), 'EXCLUDED FOREIGN CONTENT');
@@ -478,6 +490,11 @@ test('MSI observation: held handles, bounded samples and late completion preserv
   const proof = JSON.parse(await readFile(join(context.testRoot, 'msi-observation-contract.json'), 'utf8'));
   assert.ok(Object.keys(proof).length >= 30);
   assert.ok(Object.values(proof).every(value => value === true));
+  for (const check of ['sourceHandleRejectsWrongBirth', 'sourceHandleRejectsWrongJob', 'retainedSourceInitiallyLive',
+    'retainedSourceClassifiesExactBirth', 'retainedSourceRejectsAnotherSampleJob', 'closedSourceObservationRejectsLateRead',
+    'sourceCloseNotSignalledWhileReadRetained', 'sourceHandleClosedAfterReadRelease', 'sourceObservationInitialSample',
+    'sourceObservationDoesNotRearmBeforeResume', 'sourceObservationRearmsOnceAtResume',
+    'sourceObservationDoesNotRearmAgain']) assert.equal(proof[check], true);
   for (const control of ['transient', 'persistent', 'absent']) {
     for (const check of ['betweenSamples', 'controlledAvailability', 'stillBetweenSamples', 'threeReads', 'lateSequence']) {
       assert.equal(proof[`sampling-${control}-${check}`], true);

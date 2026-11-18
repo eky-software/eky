@@ -35,13 +35,40 @@ function observeStep(observation, boundary, task) {
 export function runWorkspaceSuccessOwnedCommand(command, arguments_, options, spawnProcess = spawn) {
   return new Promise((resolvePromise, rejectPromise) => {
     let child;
+    let settled = false;
+    let observer;
+    try {
+      const candidate = options.observeTermination;
+      if (typeof candidate === 'function') observer = candidate;
+    } catch { /* An unavailable observer is not a process-start failure. */ }
+    const observeTermination = (event, code, signal) => {
+      if (observer === undefined) return;
+      try {
+        const observation = Object.freeze({ event,
+          processId: Number.isSafeInteger(child.pid) && child.pid > 0 ? child.pid : null,
+          exitCode: Number.isInteger(code) ? code : null,
+          signal: typeof signal === 'string' ? signal : null });
+        // Observation is optional and must not become command or cleanup work.
+        Promise.resolve(observer(observation)).catch(() => {});
+      } catch { /* Preserve the directly owned command's result. */ }
+    };
     try {
       child = spawnProcess(command, arguments_, {
         cwd: options.cwd, env: options.env, windowsHide: true, stdio: 'ignore', shell: false,
       });
     } catch { rejectPromise(new Error('ownedProcessStartFailed')); return; }
-    child.once('error', () => rejectPromise(new Error('ownedProcessStartFailed')));
+    child.once('error', () => {
+      if (settled) return;
+      settled = true;
+      rejectPromise(new Error('ownedProcessStartFailed'));
+    });
+    if (observer !== undefined) child.once('exit', (code, signal) => {
+      if (!settled) observeTermination('ownedChildExitObserved', code, signal);
+    });
     child.once('close', (code, signal) => {
+      if (settled) return;
+      settled = true;
+      observeTermination('ownedChildCloseObserved', code, signal);
       if (signal !== null || !Number.isInteger(code)) {
         rejectPromise(new Error('ownedProcessExitInvalid'));
       } else resolvePromise(code);
@@ -79,21 +106,29 @@ async function createWorkspaceWindowsRuntime({
   request, artifact, runFixture, temporaryRoot, scenarioRoot, profileRuntime,
   resourceSelectionDirectory = scenarioRoot,
   proofProtocol, profileProtocol, captureCheckpoint, sessionProof,
-}, {
-  environment = process.env,
-  runCommand = runWorkspaceSuccessOwnedCommand,
-  readObject = readWorkspaceSuccessObject,
-  inspectPayload = inspectPackageArtifactInventory,
-  inspectFootprint = inspectLegacyInstallerFootprint,
-  verifyArtifact = verifyWorkspaceSuccessArtifact,
-  verifyRunFixture = verifyW6b2PackagedSuccessRunFixture,
-  writePhase = writeW6b2PackagedSuccessPhase,
-  writeFaultPhase = writeW6b2PackagedFaultPhase,
-  removePreviousResult = removeWorkspaceSuccessPreviousResult,
-  nextObservation = () => pollNextObservation(250),
-  publishResourceSelection = publishWorkspaceMsiResourceSelection,
-} = {}, faultScenario) {
+}, dependencies = {}, faultScenario) {
+  const {
+    environment = process.env,
+    runCommand = runWorkspaceSuccessOwnedCommand,
+    runSourceHandoff,
+    readObject = readWorkspaceSuccessObject,
+    inspectPayload = inspectPackageArtifactInventory,
+    inspectFootprint = inspectLegacyInstallerFootprint,
+    verifyArtifact = verifyWorkspaceSuccessArtifact,
+    verifyRunFixture = verifyW6b2PackagedSuccessRunFixture,
+    writePhase = writeW6b2PackagedSuccessPhase,
+    writeFaultPhase = writeW6b2PackagedFaultPhase,
+    removePreviousResult = removeWorkspaceSuccessPreviousResult,
+    nextObservation = () => pollNextObservation(250),
+    publishResourceSelection = publishWorkspaceMsiResourceSelection,
+  } = dependencies;
+  let observeSourceProcessTermination;
+  try {
+    const candidate = dependencies.observeSourceProcessTermination;
+    if (typeof candidate === 'function') observeSourceProcessTermination = candidate;
+  } catch { /* An unavailable observer does not prevent runtime creation. */ }
   if (!environment.APPDATA || !environment.LOCALAPPDATA || !environment.SystemRoot ||
+    (runSourceHandoff !== undefined && typeof runSourceHandoff !== 'function') ||
     typeof captureCheckpoint !== 'function' || typeof sessionProof?.start !== 'function') throw new Error('requestInvalid');
   const installRoot = resolve(environment.LOCALAPPDATA, 'Programs', 'Eky');
   const executablePath = resolve(installRoot, 'Eky.exe');
@@ -108,6 +143,7 @@ async function createWorkspaceWindowsRuntime({
   await mkdir(logRoot, { recursive: false });
   let inspectionSequence = 0;
   let resourceSelectionAttempted = false;
+  let sourceExecutableSha256;
   const sessionPhases = faultScenario === undefined ? undefined
     : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
@@ -211,12 +247,15 @@ async function createWorkspaceWindowsRuntime({
       commandOptions),
     async validatePayload(role) {
       let files;
+      let executableSha256;
       const inventory = await inspectPayload({ root: installRoot, stage: 'packagedApp',
-        ...(role === 'source' ? { onValidatedFiles: value => { files = value; } } : {}) });
+        ...(role === 'source' ? { onValidatedFiles: value => { files = value; },
+          ...(runSourceHandoff ? { onValidatedExecutable: value => { executableSha256 = value; } } : {}) } : {}) });
       const expected = artifact[role].payloadInventory;
       if (['stage', 'identity', 'fileCount', 'totalByteSize'].some((key) => inventory[key] !== expected[key])) {
         throw new Error(role === 'source' ? 'sourceStateInvalid' : 'targetStateInvalid');
       }
+      if (role === 'source') sourceExecutableSha256 = executableSha256;
       if (role === 'source' && !resourceSelectionAttempted) {
         resourceSelectionAttempted = true;
         // Optional publication is not awaited by scenario admission or cleanup.
@@ -255,9 +294,23 @@ async function createWorkspaceWindowsRuntime({
           });
           await rename(nextPath, controlPath);
         }
-        const code = await runCommand(executablePath, [
-          `--${proofProtocol.W6B2_PACKAGED_PROOF_SWITCH}`, `--user-data-dir=${bootstrap.userDataPath}`,
-        ], { cwd: scenarioRoot, env: applicationEnvironment });
+        const nativeSourceSelected = phase === 'sourceHandoff' && runSourceHandoff !== undefined;
+        let terminationObservationOpen = !nativeSourceSelected && phase === 'sourceHandoff' &&
+          typeof observeSourceProcessTermination === 'function';
+        const observeTermination = terminationObservationOpen ? (value) => {
+          if (!terminationObservationOpen) return;
+          try { Promise.resolve(observeSourceProcessTermination(value)).catch(() => {}); }
+          catch { /* An observation cannot change proof validation or session cleanup. */ }
+        } : undefined;
+        let code;
+        try {
+          code = nativeSourceSelected
+            ? await runSourceHandoff(...(sourceExecutableSha256 === undefined ? [] : [sourceExecutableSha256]))
+            : await runCommand(executablePath, [
+            `--${proofProtocol.W6B2_PACKAGED_PROOF_SWITCH}`, `--user-data-dir=${bootstrap.userDataPath}`,
+          ], { cwd: scenarioRoot, env: applicationEnvironment,
+            ...(observeTermination === undefined ? {} : { observeTermination }) });
+        } finally { terminationObservationOpen = false; }
         const value = await readObject(resultPath, 'proofResultUnreadable');
         try { result = proofProtocol.parseW6b2PackagedProofResult(value); }
         catch { throw new Error('proofSchemaInvalid'); }

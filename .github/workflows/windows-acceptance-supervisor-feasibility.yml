@@ -54,7 +54,7 @@ on:
         type: boolean
         default: false
       workspace_fault_capture_scenario:
-        description: Selected workspace-fault capture; the default retains the historical prefixes
+        description: Selected workspace-fault diagnostic; passive without inspector measures only source timing
         type: choice
         default: acceptanceInterruption
         options: [acceptanceInterruption, activeWorkspaceFirstStartFailure, passiveWorkspaceMigrationFailure]
@@ -670,6 +670,7 @@ jobs:
       EXPECTED_DESCRIPTOR_SHA256: ${{ inputs.artifact_descriptor_sha256 }}
       INSPECTOR_CAPTURE: ${{ inputs.inspector_capture }}
       WORKSPACE_FAULT_CAPTURE_SCENARIO: ${{ inputs.workspace_fault_capture_scenario || 'acceptanceInterruption' }}
+      EKY_M51_PASSIVE_SOURCE_MEASUREMENT: ${{ inputs.artifact_kind == 'workspace-fault' && inputs.workspace_fault_capture_scenario == 'passiveWorkspaceMigrationFailure' && !inputs.inspector_capture && '1' || '0' }}
     steps:
       - name: Check out exact diagnostic harness revision
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -681,7 +682,8 @@ jobs:
         run: |
           if ($env:WORKSPACE_FAULT_CAPTURE_SCENARIO -cnotin @('acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure') -or
               ($env:WORKSPACE_FAULT_CAPTURE_SCENARIO -cne 'acceptanceInterruption' -and
-               ($env:INSPECTOR_CAPTURE -cne 'true' -or $env:ARTIFACT_KIND -cne 'workspace-fault'))) {
+               ($env:ARTIFACT_KIND -cne 'workspace-fault' -or
+                ($env:INSPECTOR_CAPTURE -cne 'true' -and $env:EKY_M51_PASSIVE_SOURCE_MEASUREMENT -cne '1')))) {
             throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CAPTURE_SCENARIO_INVALID'
           }
           if ($env:INSPECTOR_CAPTURE -ceq 'true' -and $env:ARTIFACT_KIND -cnotin @('legacy', 'upgrade', 'workspace', 'workspace-fault')) {
@@ -754,7 +756,11 @@ jobs:
       - name: Prepare existing supervisor and only the required proof readers
         timeout-minutes: 3
         run: |
-          pnpm --filter @eky/desktop installer:supervisor:build
+          if ($env:EKY_M51_PASSIVE_SOURCE_MEASUREMENT -ceq '1') {
+            node apps/desktop/installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs --source-handoff-joint
+          } else {
+            pnpm --filter @eky/desktop installer:supervisor:build
+          }
           if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
           if ($env:ARTIFACT_KIND -cin @('workspace', 'workspace-fault')) {
             pnpm --filter @eky/desktop e2e:prepare-electron-runtime
@@ -826,8 +832,16 @@ jobs:
           if ($env:ARTIFACT_KIND -ceq 'workspace-fault') {
             $descriptorPath = Join-Path (Join-Path $env:RUNNER_TEMP 'eky-existing-boundary-artifact') 'workspace-success-artifact.json'
             $PSNativeCommandUseErrorActionPreference = $false
-            $scenarios = if ($env:INSPECTOR_CAPTURE -ceq 'true') { @($env:WORKSPACE_FAULT_CAPTURE_SCENARIO) }
+            $measure = $env:EKY_M51_PASSIVE_SOURCE_MEASUREMENT -ceq '1'
+            $scenarios = if ($env:INSPECTOR_CAPTURE -ceq 'true' -or $measure) { @($env:WORKSPACE_FAULT_CAPTURE_SCENARIO) }
               else { @('preUpdateRecoveryPointFailure', 'activeWorkspaceFirstStartFailure') }
+            $supervisor = if ($measure) {
+              'apps/desktop/installer/bin/source-handoff-joint/Eky.WindowsProcessSupervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll'
+            } else { 'apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll' }
+            if ($measure) {
+              node --input-type=module -e "import { verifySourceHandoffBuildBinding } from './apps/desktop/installer/windows-process-supervisor/buildWindowsAcceptanceSupervisor.mjs'; verifySourceHandoffBuildBinding();"
+              if ($LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_PREPARATION_FAILED' }
+            }
             foreach ($faultScenario in $scenarios) {
               if ($env:INSPECTOR_CAPTURE -ceq 'true') {
                 if ($faultScenario -cnotin @('acceptanceInterruption', 'activeWorkspaceFirstStartFailure', 'passiveWorkspaceMigrationFailure') -or
@@ -838,7 +852,7 @@ jobs:
               } else {
                 $resultPath = Join-Path (Join-Path $env:RUNNER_TEMP ('eky-workspace-caller-' + [Guid]::NewGuid().ToString('N'))) 'result.json'
               }
-              dotnet apps/desktop/installer/bin/windows-process-supervisor/Release/net10.0/Eky.WindowsProcessSupervisor.dll --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath
+              dotnet $supervisor --workspace-fault-command --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath
               $commandExit = $LASTEXITCODE
               node apps/desktop/installer/windows-acceptance-harness/verifyWorkspaceCallerResult.mjs --artifact-descriptor $descriptorPath --expected-descriptor-sha256 $env:EXPECTED_DESCRIPTOR_SHA256 --expected-build-revision $env:EXPECTED_BUILD_REVISION --fault-scenario $faultScenario --result-path $resultPath --command-exit $commandExit
               if ($commandExit -ne 0 -or $LASTEXITCODE -ne 0) { throw 'WINDOWS_ACCEPTANCE_DIAGNOSTIC_CALLER_FAILED' }
@@ -937,21 +951,22 @@ jobs:
       - name: Preserve encrypted CI failure evidence
         if: >-
           ${{ always() && runner.os == 'Windows' && runner.environment == 'github-hosted'
-            && (job.status == 'failure' || job.status == 'cancelled')
+            && (job.status == 'failure' || job.status == 'cancelled' || env.EKY_M51_PASSIVE_SOURCE_MEASUREMENT == '1')
             && vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''
             && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT
             && (github.event_name == 'push' || github.event_name == 'schedule'
               || github.event_name == 'workflow_dispatch'
               || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository))
-            && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'workspace')
+            && (inputs.artifact_kind == 'legacy' || inputs.artifact_kind == 'workspace' || env.EKY_M51_PASSIVE_SOURCE_MEASUREMENT == '1')
             && hashFiles('.github/actions/collect-ci-failure-evidence/action.yml') != ''
             && hashFiles('eky_software/apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs') != '' }}
         continue-on-error: true
         timeout-minutes: 3
         uses: ./.github/actions/collect-ci-failure-evidence
         with:
-          job-key: ${{ inputs.artifact_kind }}-boundary-diagnostic-0
+          job-key: ${{ env.EKY_M51_PASSIVE_SOURCE_MEASUREMENT == '1' && 'workspace-passive-source-0' || format('{0}-boundary-diagnostic-0', inputs.artifact_kind) }}
           job-outcome: ${{ job.status }}
+          msi-passive-source-measurement: ${{ env.EKY_M51_PASSIVE_SOURCE_MEASUREMENT == '1' && '1' || '' }}
           public-key: ${{ vars.EKY_DIAGNOSTIC_PUBLIC_KEY }}
           fingerprint: ${{ vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT }}
           verified-fingerprint: ${{ vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT }}

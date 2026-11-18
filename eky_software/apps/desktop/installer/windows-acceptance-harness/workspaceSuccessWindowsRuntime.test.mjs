@@ -100,6 +100,7 @@ async function fixture(context, changes = {}) {
   profileRuntime: { executablePath: resolve(root, 'electron.exe'), applicationPath: resolve(root, 'profile') },
   sessionProof: { async start(value) { calls.push({ sessionStarted: value }); return { nonce: 'd'.repeat(64), async finish(value) {
     calls.push({ sessionFinished: value });
+    await changes.onSessionFinish?.();
     if (changes.sessionFailure) throw new Error('sessionProofInvalid');
   } }; } },
   proofProtocol: {
@@ -130,10 +131,12 @@ async function fixture(context, changes = {}) {
         phase = control.phase;
         calls.push({ control });
       }
+      if (basename(command) === 'Eky.exe' && changes.onProofCommand) return changes.onProofCommand(options);
       return changes.exitCode ?? 0;
     },
     async readObject(path, errorCode) {
       if (path.endsWith('w6b2-proof-result.json')) {
+        await changes.onProofRead?.();
         if (changes.proofUnreadable) throw new Error(errorCode);
         return changes.proofResult ?? { ...(changes.faultScenario
           ? { formatVersion: 2, faultScenario: changes.faultScenario } : { formatVersion: 1 }),
@@ -157,6 +160,11 @@ async function fixture(context, changes = {}) {
       return changes.payload ?? { identity: 'target' };
     },
     ...(changes.publishResourceSelection ? { publishResourceSelection: changes.publishResourceSelection } : {}),
+    ...(changes.observeSourceProcessTermination ? { observeSourceProcessTermination: changes.observeSourceProcessTermination } : {}),
+    ...(changes.runSourceHandoff ? { async runSourceHandoff(...args) {
+      if (changes.faultScenario) phase = JSON.parse(await readFile(resolve(root, 'control/phase.json'), 'utf8')).phase;
+      return changes.runSourceHandoff(...args);
+    } } : {}),
     async inspectFootprint() { calls.push({ footprint: true });
       return { installRootExists: true, executableExists: true, shortcutExists: true }; },
     async verifyArtifact(value) { calls.push({ artifact: value }); },
@@ -170,6 +178,9 @@ async function fixture(context, changes = {}) {
       await changes.onObservation?.({ root, calls });
     },
   };
+  if (changes.observerGetter) Object.defineProperty(dependencies, 'observeSourceProcessTermination', {
+    get() { throw new Error('PRIVATE_OBSERVER_GETTER_FAILURE'); },
+  });
   return { root, calls, inputs, dependencies,
     runtime: await (changes.faultScenario ? createWorkspaceFaultWindowsRuntime : createWorkspaceSuccessWindowsRuntime)(inputs, dependencies) };
 }
@@ -1048,5 +1059,172 @@ for (const [name, event, expected] of [
     assert.equal(Object.hasOwn(options, 'timeout'), false);
     if (typeof expected === 'number') assert.equal(await promise, expected);
     else await assert.rejects(promise, { message: expected });
+  });
+}
+
+test('owned termination observes exit before close without settling or exposing the child handle', async () => {
+  const child = Object.assign(new EventEmitter(), { pid: 4242 });
+  const events = [];
+  let settled = false;
+  const command = runWorkspaceSuccessOwnedCommand('fixture', [], {
+    cwd: 'owned', env: {}, observeTermination: value => events.push(value),
+  }, () => child).then(code => { settled = true; return code; });
+  child.emit('exit', 7, null);
+  await new Promise(resolvePromise => setImmediate(resolvePromise));
+  assert.equal(settled, false);
+  assert.deepEqual(events, [{ event: 'ownedChildExitObserved', processId: 4242,
+    exitCode: 7, signal: null }]);
+  assert.equal(Object.isFrozen(events[0]), true);
+  child.emit('close', 7, null);
+  assert.equal(await command, 7);
+  assert.deepEqual(events[1], { event: 'ownedChildCloseObserved', processId: 4242,
+    exitCode: 7, signal: null });
+  assert.equal(Object.isFrozen(events[1]), true);
+});
+
+for (const mode of ['throws', 'rejects', 'pending', 'getter']) {
+  test(`owned termination observer ${mode} cannot change command settlement`, async () => {
+    const child = Object.assign(new EventEmitter(), { pid: 4242 });
+    const options = { cwd: 'owned', env: {} };
+    const observe = () => {
+      if (mode === 'throws') throw new Error('PRIVATE_OBSERVER_FAILURE');
+      if (mode === 'rejects') return Promise.reject(new Error('PRIVATE_OBSERVER_FAILURE'));
+      return new Promise(() => {});
+    };
+    if (mode === 'getter') Object.defineProperty(options, 'observeTermination', {
+      get() { throw new Error('PRIVATE_OBSERVER_GETTER_FAILURE'); },
+    });
+    else options.observeTermination = observe;
+    const command = runWorkspaceSuccessOwnedCommand('fixture', [], options, () => child);
+    child.emit('exit', 0, null);
+    child.emit('close', 0, null);
+    assert.equal(await command, 0);
+    await new Promise(resolvePromise => setImmediate(resolvePromise));
+  });
+}
+
+test('owned termination preserves a signalled failure rather than accepting an exit observation', async () => {
+  const child = new EventEmitter(), events = [];
+  const command = runWorkspaceSuccessOwnedCommand('fixture', [], {
+    cwd: 'owned', env: {}, observeTermination: value => events.push(value),
+  }, () => child);
+  const rejected = assert.rejects(command, { message: 'ownedProcessExitInvalid' });
+  child.emit('exit', null, 'SIGTERM');
+  child.emit('close', null, 'SIGTERM');
+  await rejected;
+  assert.equal(events.length, 2);
+  assert(events.every(value => value.processId === null && value.exitCode === null && value.signal === 'SIGTERM'));
+});
+
+for (const immediate of [false, true]) {
+  test(`owned termination does not fabricate evidence after a process-start failure (${immediate})`, async () => {
+    const child = new EventEmitter(), events = [];
+    const command = runWorkspaceSuccessOwnedCommand('fixture', [], {
+      cwd: 'owned', env: {}, observeTermination: value => events.push(value),
+    }, () => { if (immediate) throw new Error('PRIVATE_SPAWN_FAILURE'); return child; });
+    const rejected = assert.rejects(command, { message: 'ownedProcessStartFailed' });
+    if (!immediate) {
+      child.emit('error', new Error('PRIVATE_SPAWN_FAILURE'));
+      child.emit('exit', 9, null);
+      child.emit('close', 9, null);
+    }
+    await rejected;
+    assert.deepEqual(events, []);
+  });
+}
+
+test('source termination relay is source-only and closes before proof read, session finish and later phases', async context => {
+  const events = [], observation = Object.freeze({ event: 'ownedChildCloseObserved',
+    processId: 4242, exitCode: 0, signal: null });
+  let relay;
+  const value = await fixture(context, {
+    faultScenario: 'passiveWorkspaceMigrationFailure',
+    observeSourceProcessTermination: event => events.push(event),
+    onProofCommand(options) {
+      if (relay === undefined) {
+        relay = options.observeTermination;
+        assert.equal(typeof relay, 'function');
+        relay(observation);
+      } else assert.equal(Object.hasOwn(options, 'observeTermination'), false);
+      return 0;
+    },
+    onProofRead() { relay(observation); },
+    onSessionFinish() { relay(observation); },
+  });
+  await value.runtime.runProofPhase('sourceHandoff');
+  relay(observation);
+  await value.runtime.runProofPhase('targetFirstStart');
+  assert.deepEqual(events, [observation]);
+});
+
+test('source termination relay failure preserves the first command error and closes its callback', async context => {
+  const first = new Error('PRIVATE_FIRST_COMMAND_FAILURE');
+  let relay, calls = 0;
+  const value = await fixture(context, {
+    faultScenario: 'passiveWorkspaceMigrationFailure', sessionFailure: true,
+    observeSourceProcessTermination() { calls++; throw new Error('PRIVATE_OBSERVER_FAILURE'); },
+    onProofCommand(options) {
+      relay = options.observeTermination;
+      relay({ event: 'ownedChildExitObserved', processId: 4242, exitCode: 9, signal: null });
+      throw first;
+    },
+    onSessionFinish() { relay({ event: 'ownedChildCloseObserved' }); },
+  });
+  await assert.rejects(value.runtime.runProofPhase('sourceHandoff'), error => error === first);
+  relay({ event: 'ownedChildCloseObserved' });
+  assert.equal(calls, 1);
+});
+
+test('source termination relay remains absent without an explicit observer', async context => {
+  const value = await fixture(context, { onProofCommand(options) {
+    assert.equal(Object.hasOwn(options, 'observeTermination'), false);
+    return 0;
+  } });
+  await value.runtime.runProofPhase('sourceHandoff');
+});
+
+for (const faultScenario of [undefined, 'passiveWorkspaceMigrationFailure']) {
+  test(`native source port runs only sourceHandoff and retains proof/session checks (${faultScenario ?? 'success'})`, async context => {
+    const steps = [];
+    const observations = [];
+    const value = await fixture(context, { faultScenario,
+      runSourceHandoff(...args) { assert.deepEqual(args, []); steps.push('native'); return 0; },
+      onProofCommand(options) { assert.equal(Object.hasOwn(options, 'observeTermination'), false); steps.push('node'); return 0; },
+      observeSourceProcessTermination(event) { observations.push(event); },
+      onProofRead() { steps.push('proof'); },
+      onSessionFinish() { steps.push('session'); },
+    });
+    assert.equal((await value.runtime.runProofPhase('sourceHandoff')).phase, 'sourceHandoff');
+    assert.deepEqual(steps, ['native', 'proof', 'session']);
+    steps.length = 0;
+    assert.equal((await value.runtime.runProofPhase('targetFirstStart')).phase, 'targetFirstStart');
+    assert.deepEqual(steps.slice(0, 2), ['node', 'proof']);
+    assert.deepEqual(observations, []);
+  });
+}
+
+test('native source port failure preserves the first error without Node fallback', async context => {
+  const first = new Error('PRIVATE_FIRST_NATIVE_SOURCE_FAILURE');
+  const value = await fixture(context, { faultScenario: 'passiveWorkspaceMigrationFailure', sessionFailure: true,
+    runSourceHandoff() { throw first; },
+    onProofCommand() { assert.fail('native source fell back to Node'); },
+    onProofRead() { assert.fail('failed native source tried to read a proof'); },
+  });
+  await assert.rejects(value.runtime.runProofPhase('sourceHandoff'), error => error === first);
+  assert.equal(value.calls.filter(call => Object.hasOwn(call, 'sessionFinished')).length, 1);
+});
+
+test('native source port still rejects a nonzero exit with a completed proof', async context => {
+  const value = await fixture(context, { runSourceHandoff: () => 9 });
+  await assert.rejects(value.runtime.runProofPhase('sourceHandoff'), { message: 'proofProcessExitFailed' });
+});
+
+for (const faultScenario of [undefined, 'passiveWorkspaceMigrationFailure']) {
+  test(`source termination observer getter does not prevent runtime creation (${faultScenario ?? 'success'})`, async context => {
+    const value = await fixture(context, { faultScenario, observerGetter: true, onProofCommand(options) {
+      assert.equal(Object.hasOwn(options, 'observeTermination'), false);
+      return 0;
+    } });
+    await value.runtime.runProofPhase('sourceHandoff');
   });
 }

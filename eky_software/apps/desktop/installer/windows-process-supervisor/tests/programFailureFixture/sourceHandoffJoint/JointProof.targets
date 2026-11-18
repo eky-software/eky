@@ -1,4 +1,7 @@
 <Project>
+  <PropertyGroup Condition="'$(EkyJointReservationProof)' == 'true' and '$(MSBuildProjectName)' == 'Eky.NativeMsiTestAdapter'">
+    <DefineConstants>$(DefineConstants);EKY_JOINT_RESERVATION_PROOF</DefineConstants>
+  </PropertyGroup>
   <ItemGroup Condition="'$(EkyJointReservationProof)' == 'true' and '$(MSBuildProjectName)' == 'Eky.WindowsProcessSupervisor'">
     <Compile Remove="$(MSBuildProjectDirectory)\AcceptanceCommandProgram.cs" />
     <Compile Remove="$(MSBuildProjectDirectory)\WindowsJobProcessSupervisor.cs" />
@@ -21,5 +24,6 @@
     <Compile Include="$(MSBuildThisFileDirectory)SourceMailboxRollbackContract.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)Program.cs" />
     <Compile Include="$(MSBuildThisFileDirectory)JointReservationCloseControls.cs" />
+    <Compile Include="$(MSBuildThisFileDirectory)PreparedProductInspection.cs" />
   </ItemGroup>
 </Project>

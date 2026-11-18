@@ -40,6 +40,7 @@ internal static class MsiObservationContract
         using var other = WindowsJob.Create();
         using var child = SuspendedWindowsProcess.Start(request, own, CancellationToken.None);
         using var outsider = SuspendedWindowsProcess.Start(request, other, CancellationToken.None);
+        var childExitVerified = false;
         try
         {
             Check("ownedHandle", WorkspaceMsiActivityObservation.ObserveHandle(own, child.Process) == WorkspaceMsiMembership.Owned);
@@ -47,9 +48,33 @@ internal static class MsiObservationContract
             Check("otherJobPositiveControl", WorkspaceMsiActivityObservation.ObserveHandle(other, outsider.Process) == WorkspaceMsiMembership.Owned);
             using (var invalid = new SafeProcessHandle(IntPtr.Zero, false))
                 Check("invalidUnknown", WorkspaceMsiActivityObservation.ObserveHandle(own, invalid) == WorkspaceMsiMembership.Unknown);
-            child.Resume();
-            Check("normalChildExit", child.Wait(5000) && child.GetExitCode() == 0);
-            Check("exitedUnknown", WorkspaceMsiActivityObservation.ObserveHandle(own, child.Process) == WorkspaceMsiMembership.Unknown);
+            var birth = MsiResourceObservation.ReadCreationIdentity(child.Process)
+                ?? throw new InvalidOperationException("msiObservationContractFailed:sourceBirthUnavailable");
+            var staleBirth = birth;
+            staleBirth.Low ^= 1;
+            using var wrongBirth = MsiResourceObservation.SourceRead.Retain(child, own, staleBirth);
+            Check("sourceHandleRejectsWrongBirth", wrongBirth is null);
+            using var wrongJob = MsiResourceObservation.SourceRead.Retain(child, other, birth);
+            Check("sourceHandleRejectsWrongJob", wrongJob is null);
+            using (var retained = MsiResourceObservation.SourceRead.Retain(child, own, birth)
+                ?? throw new InvalidOperationException("msiObservationContractFailed:sourceReadUnavailable"))
+            {
+                Check("retainedSourceInitiallyLive", retained.IsLive() is true);
+                Check("retainedSourceClassifiesExactBirth", retained.MembershipAtSample(own, birth) == "ownedJob" &&
+                    retained.MembershipAtSample(own, staleBirth) == "unknown");
+                Check("retainedSourceRejectsAnotherSampleJob", retained.MembershipAtSample(other, birth) == "unknown");
+                child.CloseSourceObservationAdmission();
+                using var lateRead = MsiResourceObservation.SourceRead.Retain(child, own, birth);
+                Check("closedSourceObservationRejectsLateRead", lateRead is null && retained.IsLive() is true);
+                child.Resume();
+                childExitVerified = child.Wait(5000) && child.GetExitCode() == 0;
+                Check("normalChildExit", childExitVerified);
+                Check("exitedUnknown", WorkspaceMsiActivityObservation.ObserveHandle(own, child.Process) == WorkspaceMsiMembership.Unknown);
+                child.Dispose();
+                Check("sourceCloseNotSignalledWhileReadRetained", !child.HandlesClosed && retained.IsLive() is false);
+                retained.Dispose();
+                Check("sourceHandleClosedAfterReadRelease", child.HandlesClosed && retained.IsLive() is null);
+            }
             Check("exitDuringReadUnknown", WorkspaceMsiActivityObservation.ObserveHandle(other, outsider.Process, () =>
             {
                 other.Terminate();
@@ -152,6 +177,24 @@ internal static class MsiObservationContract
                 capped.Poll(WorkspaceMsiActivityObservation.MaximumSamples * 60_000L);
                 Check("lifetimeSampleCap", capped.PendingRead is null && cappedCalls == WorkspaceMsiActivityObservation.MaximumSamples);
             }
+            var sourceResumed = false;
+            var sourceSamples = 0;
+            using (var scoped = new WorkspaceMsiActivityObservation(request.Scenario, own, cappedEvidence, _ =>
+            {
+                Interlocked.Increment(ref sourceSamples);
+                return WorkspaceMsiMembership.None;
+            }, sourceObservation: new(() => sourceResumed, () => null, () => 0)))
+            {
+                scoped.Poll(0);
+                Check("sourceObservationInitialSample", scoped.PendingRead!.Wait(5000));
+                scoped.Poll(1);
+                Check("sourceObservationDoesNotRearmBeforeResume", scoped.PendingRead is null && sourceSamples == 1);
+                sourceResumed = true;
+                scoped.Poll(2);
+                Check("sourceObservationRearmsOnceAtResume", scoped.PendingRead!.Wait(5000) && sourceSamples == 2);
+                scoped.Poll(3);
+                Check("sourceObservationDoesNotRearmAgain", scoped.PendingRead is null && sourceSamples == 2);
+            }
             cappedEvidence.CompleteWithinRequestBudget(5000);
 
             // Characterize a short client lifetime between samples without wall-clock sleeps.
@@ -209,7 +252,7 @@ internal static class MsiObservationContract
         finally
         {
             own.Terminate(); other.Terminate();
-            Check("childrenExited", child.Wait(5000) && outsider.Wait(5000));
+            Check("childrenExited", (childExitVerified && child.HandlesClosed || child.Wait(5000)) && outsider.Wait(5000));
             Check("ownedTreesAbsent", own.GetActiveProcessCount() == 0 && other.GetActiveProcessCount() == 0);
         }
         using var file = new FileStream(Path.Combine(request.WorkingDirectory, "msi-observation-contract.json"), FileMode.CreateNew);

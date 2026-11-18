@@ -24,6 +24,13 @@ internal sealed class SourceAdmissionFiles : IDisposable
     private const uint BackupSemantics = 0x02000000;
     private const uint DirectorySharing = (uint)(FileShare.Read | FileShare.Write);
     private const uint FileSharing = (uint)FileShare.Read;
+    private const uint Synchronize = 0x00100000;
+    private const uint CreateNew = 2;
+    private const ulong Created = 2;
+    private const uint DirectoryFile = 0x00000001;
+    private const uint SynchronousIoNonAlert = 0x00000020;
+    private const uint CaseInsensitive = 0x00000040;
+    private const uint DontReparse = 0x00001000;
     private const int MinimumJsonBytes = 2;
     private const int FinalPathCapacity = 32_768;
 
@@ -68,6 +75,29 @@ internal sealed class SourceAdmissionFiles : IDisposable
         Admit(Pin.OpenDirectory(path));
     }
 
+    internal void CreateReservedChildDirectory(string canonicalPath)
+    {
+        ThrowIfDisposed();
+        var path = CanonicalPath(canonicalPath);
+        _ = NativePath(path);
+        var parent = FindPin(System.IO.Path.GetDirectoryName(path) ?? "");
+        if (parent is not { IsDirectory: true } || FindPin(path) is not null)
+            throw new InvalidDataException();
+        VerifyAll();
+        Admit(Pin.CreateReservedDirectory(path, parent.Handle));
+    }
+
+    internal void VerifyCreatedPreparation(string temporaryParent, string runRoot)
+    {
+        ThrowIfDisposed();
+        var scenario = System.IO.Path.Combine(runRoot, "scenario");
+        if (pins.Count != 3 || !string.Equals(pins[0].Path, temporaryParent, StringComparison.Ordinal) || !pins[0].IsDirectory ||
+            !string.Equals(pins[1].Path, runRoot, StringComparison.Ordinal) || !pins[1].CreatedDirectory ||
+            !string.Equals(pins[2].Path, scenario, StringComparison.Ordinal) || !pins[2].CreatedDirectory)
+            throw new InvalidDataException();
+        VerifyAll();
+    }
+
     // Returns fresh bytes only; the stored bytes are a private integrity baseline.
     // JSON shape, nonces, history and authority remain the reader's responsibility.
     internal byte[] ReadPinnedJson(string path, int maxBytes)
@@ -96,6 +126,25 @@ internal sealed class SourceAdmissionFiles : IDisposable
         foreach (var pin in pins)
             if (!pin.IsDirectory) VerifyPin(pin);
         VerifyDirectories();
+    }
+
+    internal FileStream OpenPinnedExecutable(string canonicalPath)
+    {
+        var path = CanonicalPath(canonicalPath);
+        RequirePinnedParent(path);
+        VerifyAll();
+        var handle = OpenHandle(path, false);
+        try
+        {
+            _ = Information(handle, path, false, "initial");
+            VerifyAll();
+            return new FileStream(handle, FileAccess.Read, 4096, false);
+        }
+        catch (Exception failure)
+        {
+            CloseAfterFailure(null, handle, failure);
+            throw;
+        }
     }
 
     private void VerifyDirectories()
@@ -185,18 +234,20 @@ internal sealed class SourceAdmissionFiles : IDisposable
         internal string Path { get; }
         internal SafeFileHandle Handle { get; }
         internal bool IsDirectory => stream is null;
+        internal bool CreatedDirectory { get; }
         private readonly FileInformation identity;
         private readonly FileStream? stream;
         private readonly byte[]? originalBytes;
         private readonly byte[]? originalHash;
 
         private Pin(string path, SafeFileHandle handle, FileInformation identity,
-            FileStream? stream = null, byte[]? bytes = null)
+            FileStream? stream = null, byte[]? bytes = null, bool createdDirectory = false)
         {
             Path = path;
             Handle = handle;
             this.identity = identity;
             this.stream = stream;
+            CreatedDirectory = createdDirectory;
             originalBytes = bytes;
             originalHash = bytes is null ? null : SHA256.HashData(bytes);
         }
@@ -205,6 +256,17 @@ internal sealed class SourceAdmissionFiles : IDisposable
         {
             var handle = OpenHandle(path, true);
             try { return new Pin(path, handle, Information(handle, path, true, "initial")); }
+            catch (Exception failure)
+            {
+                CloseAfterFailure(null, handle, failure);
+                throw;
+            }
+        }
+
+        internal static Pin CreateReservedDirectory(string path, SafeFileHandle parent)
+        {
+            var handle = CreateDirectoryHandle(parent, System.IO.Path.GetFileName(path));
+            try { return new Pin(path, handle, Information(handle, path, true, "created"), createdDirectory: true); }
             catch (Exception failure)
             {
                 CloseAfterFailure(null, handle, failure);
@@ -313,6 +375,42 @@ internal sealed class SourceAdmissionFiles : IDisposable
         throw NativeObservation(new Win32Exception(error), error, "CreateFileW", directory, handleKind);
     }
 
+    // Only create a single name relative to the already pinned parent. The creation
+    // handle supplies the identity; a path reopen is only a subsequent comparison.
+    private static SafeFileHandle CreateDirectoryHandle(SafeFileHandle parent, string name)
+    {
+        if (name.Length is < 1 or > 255) throw new InvalidDataException();
+        foreach (var character in name)
+            if (!char.IsAsciiLetterOrDigit(character) && character != '-') throw new InvalidDataException();
+
+        var buffer = IntPtr.Zero;
+        var descriptor = IntPtr.Zero;
+        var parentReferenced = false;
+        try
+        {
+            var length = checked((ushort)(name.Length * sizeof(char)));
+            buffer = Marshal.StringToHGlobalUni(name);
+            descriptor = Marshal.AllocHGlobal(Marshal.SizeOf<UnicodeName>());
+            Marshal.StructureToPtr(new UnicodeName(length, (ushort)(length + sizeof(char)), buffer), descriptor, false);
+            parent.DangerousAddRef(ref parentReferenced);
+            var attributes = new ObjectAttributes(Marshal.SizeOf<ObjectAttributes>(), parent.DangerousGetHandle(),
+                descriptor, CaseInsensitive | DontReparse, IntPtr.Zero, IntPtr.Zero);
+            var status = NtCreateFile(out var handle, DirectoryRead | Synchronize, ref attributes, out var io,
+                IntPtr.Zero, 0, FileSharing, CreateNew, DirectoryFile | SynchronousIoNonAlert, IntPtr.Zero, 0);
+            if (status == 0 && io.Information.ToUInt64() == Created && !handle.IsInvalid) return handle;
+
+            var failure = NativeObservation(new InvalidDataException(), status, "NtCreateFile", true, "created");
+            CloseAfterFailure(null, handle, failure);
+            throw failure;
+        }
+        finally
+        {
+            if (parentReferenced) parent.DangerousRelease();
+            Marshal.FreeHGlobal(descriptor);
+            Marshal.FreeHGlobal(buffer);
+        }
+    }
+
     private static FileInformation Information(SafeFileHandle handle, string expected, bool directory, string handleKind = "held")
     {
         if (!GetFileInformationByHandle(handle, out var value))
@@ -397,4 +495,16 @@ internal sealed class SourceAdmissionFiles : IDisposable
     private static extern bool GetFileInformationByHandle(SafeFileHandle handle, out FileInformation information);
     [DllImport("kernel32.dll", EntryPoint = "GetFinalPathNameByHandleW", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern uint GetFinalPathNameByHandle(SafeFileHandle handle, StringBuilder path, uint length, uint flags);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct UnicodeName(ushort Length, ushort MaximumLength, IntPtr Buffer);
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct ObjectAttributes(int Length, IntPtr Root, IntPtr Name, uint Attributes,
+        IntPtr Security, IntPtr QualityOfService);
+    [StructLayout(LayoutKind.Sequential)]
+    private readonly record struct IoStatusBlock(IntPtr Status, UIntPtr Information);
+    [DllImport("ntdll.dll", ExactSpelling = true)]
+    private static extern int NtCreateFile(out SafeFileHandle handle, uint access, ref ObjectAttributes attributes,
+        out IoStatusBlock io, IntPtr allocationSize, uint fileAttributes, uint share, uint disposition, uint options,
+        IntPtr ea, uint eaLength);
 }

@@ -16,7 +16,9 @@ internal static class MsiWindowObservation
     internal sealed record Limits(int SchemaVersion, string Operation, string FilenamePrefix,
         int MaximumBytes, int MaximumClients, int MaximumSamples, int MaximumWindows, int MaximumTextCharacters, int MaximumTotalCharacters,
         int MessageTimeoutMilliseconds, int SampleTimeoutMilliseconds, int ResourceTimeoutMilliseconds, string ResourceSelectionFilename,
-        int MaximumSelectionBytes, int MaximumResourceFiles, int MaximumResourcePathBytes);
+        int MaximumSelectionBytes, int MaximumResourceFiles, int MaximumResourcePathBytes,
+        int SourceObservationSchemaVersion, long MaximumElapsedMilliseconds, IReadOnlyList<string> SourceRelations,
+        IReadOnlyList<string> SourceStates, IReadOnlyList<string> ClosingPromptMessages);
     internal static readonly JsonSerializerOptions JsonOptions = new() { PropertyNamingPolicy = JsonNamingPolicy.CamelCase };
     internal static readonly Limits Contract = ReadContract();
 
@@ -29,13 +31,16 @@ internal static class MsiWindowObservation
     internal static bool IsSystemInstaller(string image) =>
         string.Equals(image, Path.Combine(Environment.SystemDirectory, "msiexec.exe"), StringComparison.OrdinalIgnoreCase);
 
-    internal static bool IsApplicationsInUseMessage(string text) => text is
-        "The following applications should be closed before continuing the installation:" or
-        "Seuraavat sovellukset tulee sulkea ennen asennuksen jatkamista:";
+    internal static bool IsApplicationsInUseMessage(string text) =>
+        Contract.ClosingPromptMessages.Contains(text, StringComparer.Ordinal);
+
+    internal static int CountClosingPrompts(MsiWindowSample sample) => sample.Status == "unavailable" ? 0 :
+        sample.Windows.Count(text => text.Role == "message" && IsApplicationsInUseMessage(text.Text));
 
     internal static MsiWindowSample Capture(WindowsJob job, SafeProcessHandle process, Func<bool> stopped,
         Stopwatch budget, ref int remainingCharacters, ref int remainingWindows,
-        Action<MsiApplicationListFailure>? listFailure = null)
+        Action<MsiApplicationListFailure>? listFailure = null, Action<Func<bool>>? offerSamePrompt = null,
+        bool requireCompleteSweep = false)
     {
         var pid = GetProcessId(process);
         var text = new List<MsiWindowText>();
@@ -48,7 +53,8 @@ internal static class MsiWindowObservation
         bool AllowedClass(IntPtr window, string role)
         {
             var name = new StringBuilder(64);
-            if (GetClassName(window, name, name.Capacity) == 0) return false;
+            if (GetClassName(window, name, name.Capacity) == 0)
+            { partial |= requireCompleteSweep; return false; }
             return role switch
             {
                 "message" => name.ToString().Equals("Static", StringComparison.OrdinalIgnoreCase),
@@ -62,7 +68,8 @@ internal static class MsiWindowObservation
             if (!WithinBudget() || slots <= 0 || characters <= 0)
             { partial = true; return false; }
             var thread = GetWindowThreadProcessId(window, out var owner);
-            if (thread == 0 || owner != pid || !IsWindowVisible(window) || !AllowedClass(window, role)) return true;
+            if (thread == 0 || owner != pid || !IsWindowVisible(window) || !AllowedClass(window, role))
+            { partial |= requireCompleteSweep; return true; }
             slots--;
             if (WorkspaceMsiActivityObservation.ObserveHandle(job, process) != WorkspaceMsiMembership.Owned)
             { partial = true; return false; }
@@ -87,6 +94,7 @@ internal static class MsiWindowObservation
         {
             if (!WithinBudget()) { partial = true; return false; }
             var parentThread = GetWindowThreadProcessId(window, out var owner);
+            if (parentThread == 0 && requireCompleteSweep) { partial = true; return true; }
             if (owner != pid || !IsWindowVisible(window) || !AllowedClass(window, "title")) return true;
             if (!Read(window, "title")) return false;
             var lists = new List<IntPtr>();
@@ -94,7 +102,8 @@ internal static class MsiWindowObservation
             EnumChildWindows(window, (child, _) =>
             {
                 if (!WithinBudget()) { partial = true; return false; }
-                GetWindowThreadProcessId(child, out var childOwner);
+                var childThread = GetWindowThreadProcessId(child, out var childOwner);
+                if (childThread == 0 && requireCompleteSweep) { partial = true; return true; }
                 if (childOwner != pid || !IsWindowVisible(child)) return true;
                 var className = new StringBuilder(64);
                 if (GetClassName(child, className, className.Capacity) == 0) { partial = true; return true; }
@@ -160,6 +169,7 @@ internal static class MsiWindowObservation
                         partial = true;
                         break;
                     }
+                    if (!limited) offerSamePrompt?.Invoke(SameMessage);
                     foreach (var application in applications)
                     {
                         text.Add(new("application", application, IsWindowEnabled(list)));

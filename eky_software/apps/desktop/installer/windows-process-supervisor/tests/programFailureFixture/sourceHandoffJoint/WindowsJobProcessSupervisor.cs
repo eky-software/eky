@@ -212,8 +212,12 @@ internal sealed class WindowsJobProcessSupervisor(
         var rootExited = false;
         int? childExitCode = null;
         string? lastTerminalWaitState = null;
+        var sourceObservation = observeMsiActivity is null && source is { } sourceOwner
+            ? new MsiSourceObservationContext(() => sourceOwner.IsMsiSourceResumed && supervisorDeadline.ElapsedMilliseconds < workDeadline,
+                sourceOwner.RetainForMsiObservation, () => supervisorDeadline.ElapsedMilliseconds)
+            : null;
         using var msiObservation = new WorkspaceMsiActivityObservation(
-            request.Scenario, job, evidence, observeMsiActivity, request);
+            request.Scenario, job, evidence, observeMsiActivity, request, sourceObservation: sourceObservation);
 
         while (supervisorDeadline.ElapsedMilliseconds < workDeadline)
         {

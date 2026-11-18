@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -18,17 +19,20 @@ test('validated file observation follows complete admission and cannot alter its
   const root = await createStageFixture('Eky.exe', 'synthetic executable');
   await writeFixture(root, 'resources/app.asar', 'synthetic application');
   let files;
+  let executable;
   const expected = await inspectPackageArtifactInventory({ root, stage: 'packagedApp' });
   const actual = await inspectPackageArtifactInventory({ root, stage: 'packagedApp', onValidatedFiles(value) {
     files = value;
     assert.equal(Object.isFrozen(value), true);
     throw new Error('optional observation failed');
-  } });
+  }, onValidatedExecutable(value) { executable = value; } });
   assert.deepEqual(actual, expected);
   assert.deepEqual(files, ['Eky.exe', 'resources/app.asar']);
+  assert.equal(executable, createHash('sha256').update('synthetic executable').digest('hex'));
   await writeFixture(root, 'private.sqlite', 'excluded');
   let calls = 0;
-  await assert.rejects(inspectPackageArtifactInventory({ root, stage: 'packagedApp', onValidatedFiles() { calls++; } }), /DATABASE/);
+  await assert.rejects(inspectPackageArtifactInventory({ root, stage: 'packagedApp',
+    onValidatedFiles() { calls++; }, onValidatedExecutable() { calls++; } }), /DATABASE/);
   assert.equal(calls, 0);
 });
 

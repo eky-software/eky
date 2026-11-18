@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { appendFile, lstat, mkdir, opendir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { appendFile, lstat, mkdir, opendir, readFile, realpath, unlink, writeFile } from 'node:fs/promises';
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
@@ -79,10 +79,15 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   const timingBinding = env.EKY_MSI_RESOURCE_TIMING_PROOF === '1' ? msiResourceTimingBinding(env) : null;
   const successful = env.EKY_EVIDENCE_JOB_OUTCOME === 'success';
   const timingOnly = successful && timingBinding !== null;
+  const passive = env.EKY_M51_PASSIVE_SOURCE_MEASUREMENT === '1';
+  if (passive && (env.GITHUB_ACTIONS !== 'true' || env.RUNNER_OS !== 'Windows' ||
+      env.RUNNER_ENVIRONMENT !== 'github-hosted' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+      binding.job !== 'packaged-boundary-diagnostic' || binding.jobKey !== 'workspace-passive-source-0' || timingBinding)) throw failure();
+  const passiveOnly = successful && passive;
   const policySuccess = env.GITHUB_ACTIONS === 'true' && env.RUNNER_OS === 'Windows' &&
     env.RUNNER_ENVIRONMENT === 'github-hosted' && env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
     binding.job === 'msi-file-version-policy' && binding.jobKey === 'msi-policy-0';
-  if (successful && !timingBinding && !policySuccess) throw failure();
+  if (successful && !timingBinding && !policySuccess && !passive) throw failure();
   const { fingerprint, key } = evidenceRecipient(env);
   const temp = await realpath(env.RUNNER_TEMP);
   const checkout = await realpath(env.GITHUB_WORKSPACE);
@@ -92,7 +97,8 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   await writeFile(join(root, 'recipient.asc'), key, { flag: 'wx', mode: 0o600 });
   const stage = join(root, 'retained');
   await mkdir(stage, { mode: 0o700 });
-  const manifest = { schemaVersion: 1, binding, scope: timingOnly ? 'msiResourceTimingExperiment' : 'ciFailureEvidence',
+  const manifest = { schemaVersion: 1, binding, scope: timingOnly ? 'msiResourceTimingExperiment' :
+    passiveOnly ? 'msiPassiveSourceMeasurement' : 'ciFailureEvidence',
     jobOutcome: outcomes.has(env.EKY_EVIDENCE_JOB_OUTCOME) ? env.EKY_EVIDENCE_JOB_OUTCOME : 'unknown',
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
@@ -108,7 +114,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   let total = 0;
   const select = async (base, path, area, location, relativePath) => {
     const kind = evidenceSourceKind(area, relativePath);
-    if (kind === null) return;
+    if (kind === null || (passiveOnly && kind !== 'msiWindowObservation')) return;
     if (kind === 'msiResourceTiming' && (!timingBinding || relativePath !== msiResourceTimingSource(timingBinding))) return;
     if (manifest.files.length >= MAX_FILES) return;
     const name = `${String(manifest.files.length).padStart(4, '0')}.private`;
@@ -161,6 +167,12 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
         if (request.schemaVersion !== 1 ||
             ['runNonce', 'scenario', 'artifactDescriptorSha256'].some(key => request[key] !== observation[key]) ||
             !workingDirectories.includes(request.workingDirectory)) throw failure();
+        if (passiveOnly && (observation.schemaVersion !== msiWindowEvidenceContract.sourceObservationSchemaVersion ||
+            observation.scenario !== 'packagedWorkspaceFaultRollback' || !observation.sourceObservation)) {
+          await unlink(join(stage, name));
+          manifest.files.pop();
+          return;
+        }
       }
       if (kind === 'runnerFailure') {
         const record = validateRunnerFailureEvidence(parseStrictJsonObjectBytes(await readFile(join(stage, name)),
@@ -221,7 +233,9 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       examinedEntries: 1, fileLimit: 1 });
     if (timingOnly && !retained) throw failure();
   }
-  for (const [area, location, base, start] of timingOnly ? [] : [
+  for (const [area, location, base, start] of timingOnly ? [] : passiveOnly ? [
+    ['temporary', 'runnerTemp', temp, temp],
+  ] : [
     ['reports', 'checkout', checkout, join(checkout, 'eky_software/apps/e2e/playwright-report')],
     ['results', 'checkout', checkout, join(checkout, 'eky_software/apps/e2e/test-results')],
     ['temporary', 'runnerTemp', temp, temp],
@@ -293,6 +307,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       await select(base, path, area, location, rel);
     }
   }
+  if (passiveOnly && manifest.files.filter(file => file.status === 'retained').length > 1) throw failure();
   const archivePath = join(root, 'evidence.private.json.gz');
   await writeEvidenceArchive({ temp, stage, archivePath, manifest });
   return { root, archivePath, fingerprint, manifest };

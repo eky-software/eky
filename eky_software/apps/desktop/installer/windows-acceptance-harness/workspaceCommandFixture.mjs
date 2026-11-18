@@ -7,7 +7,7 @@ import { W6B2_INSTALLER_LOG_FILE } from '../../src/main/w6b2PackagedInstallerLog
 
 // Synthetic business/product facts injected into the real fixed command.
 // Process ownership, phase publication and command exit are never replaced.
-export function workspaceCommandFixture(input, testCase, hold) {
+export function workspaceCommandFixture(input, testCase, hold, { writeScenarioResult = writeJsonAtomicExclusive } = {}) {
   const source = { productCode: '00000000-0000-0000-0000-000000000001', packageSha256: 'c'.repeat(64),
     packageSize: 1, manifest: { packageFilename: 'source.msi' } };
   const target = { productCode: '00000000-0000-0000-0000-000000000002', packageSha256: 'd'.repeat(64),
@@ -64,8 +64,8 @@ export function workspaceCommandFixture(input, testCase, hold) {
         artifactDescriptorSha256: request.artifactDescriptorSha256, ...(fault ? { faultScenario: request.faultScenario } : {}),
         status: failed ? 'failed' : 'completed', resultCode: (fault ? 'workspaceFault' : 'workspaceSuccess') + (failed ? 'Failed' : 'Completed'),
         errorCode: failed ? 'sourceInstallFailed' : null, completedPhases: failed ? [] : phases, failedPhase: failed ? phases[0] : null };
-      await writeJsonAtomicExclusive((fault ? workspaceFaultResultPath : workspaceSuccessResultPath)(requestPath), result);
-      await writeJsonAtomicExclusive(resolve(dirname(requestPath), 'worker-result.json'), { ...request,
+      await writeScenarioResult((fault ? workspaceFaultResultPath : workspaceSuccessResultPath)(requestPath), result);
+      await writeScenarioResult(resolve(dirname(requestPath), 'worker-result.json'), { ...request,
         status: result.status, resultCode: result.resultCode, errorCode: result.errorCode });
       return failed ? (testCase === 'unsettledScenarioFailure' ? 1 : WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE) : 0;
     },

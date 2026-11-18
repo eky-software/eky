@@ -68,17 +68,18 @@ internal static class MsiResourceContract
             var b = Start(other, names[1]);
             var aIdentity = Identity(a.Process);
             var bIdentity = Identity(b.Process);
+            var staleBirth = new MsiResourceObservation.UniqueProcess { Pid = aIdentity.Pid,
+                Low = aIdentity.Low ^ 1, High = aIdentity.High };
             WriteSelection([names[0]]);
-            var registered = CaptureForSource(a.Process);
+            var registered = CaptureForSource(a.Process, aIdentity);
             observed = registered.Sample;
             Check("registeredHolderObserved", observed.Status == "observed" && observed.Processes.Any(row =>
                 row.ProcessId == aIdentity.Pid && row.StartTimeLow == aIdentity.Low && row.StartTimeHigh == aIdentity.High && row.Membership == "ownedJob"));
             Check("unregisteredHolderExcluded", observed.Processes.All(row => row.ProcessId != bIdentity.Pid));
             Check("sessionClosed", observed.NativeCode == 0 && observed.EndSessionCode == 0);
-            Check("queryBracketsAStableSource", registered.LiveBefore && registered.LiveAfter &&
+            Check("queryBracketsAStableSource", registered.LiveBefore is true && registered.LiveAfter is true &&
                 SourceRelation(registered, aIdentity) == "sourceReported");
-            Check("samePidWrongCreationNotAttributed", SourceRelation(registered, new() { Pid = aIdentity.Pid,
-                Low = aIdentity.Low ^ 1, High = aIdentity.High }) == "unknown");
+            Check("samePidWrongCreationNotAttributed", SourceRelation(registered, staleBirth) == "unknown");
             Check("missingFinalLiveEvidenceNotAttributed", SourceRelation(registered with { LiveAfter = false },
                 aIdentity) == "unknown");
             Check("incompleteSampleNotAttributed", SourceRelation(registered with {
@@ -86,31 +87,31 @@ internal static class MsiResourceContract
             var sameJob = Start(own, names[3]);
             var sameJobIdentity = Identity(sameJob.Process);
             WriteSelection([names[3]]);
-            var sibling = CaptureForSource(a.Process);
+            var sibling = CaptureForSource(a.Process, aIdentity);
             Check("sameJobIsNotSourceIdentity", HasOwnedHolder(sibling.Sample, sameJobIdentity) &&
                 SourceRelation(sibling, aIdentity) == "otherReported");
             WriteSelection([names[0], names[3]]);
-            var mixed = CaptureForSource(a.Process);
+            var mixed = CaptureForSource(a.Process, aIdentity);
             Check("mixedHoldersNotAttributedSolelyToSource", HasOwnedHolder(mixed.Sample, sameJobIdentity) &&
                 SourceRelation(mixed, aIdentity) == "mixedReported");
             WriteSelection([names[1]]);
-            var outside = CaptureForSource(a.Process);
+            var outside = CaptureForSource(a.Process, aIdentity);
             var external = outside.Sample;
             Check("outsideJobObserved", external.Status == "observed" && external.Processes.Any(row =>
                 row.ProcessId == bIdentity.Pid && row.Membership == "outsideJob"));
             Check("outsideJobHolderNotAttributedToSource", SourceRelation(outside, aIdentity) == "otherReported");
             WriteSelection([names[2]]);
-            var absent = CaptureForSource(a.Process);
+            var absent = CaptureForSource(a.Process, aIdentity);
             var empty = absent.Sample;
             Check("emptyObservedDistinct", empty.Status == "observed" && empty.Processes.Count == 0 && empty.EndSessionCode == 0);
             Check("emptyDoesNotExcludePriorSource", SourceRelation(absent, aIdentity) == "unknown");
             WriteSelection([names[3]]);
-            var overlap = CaptureForSource(sameJob.Process, () =>
+            var overlap = CaptureForSource(sameJob.Process, sameJobIdentity, () =>
             {
                 Check("sameJobHolderReleased", sameJob.Stop.Set());
                 Check("sameJobHolderExited", sameJob.Process.Wait(childExitTimeoutMs) && sameJob.Process.GetExitCode() == 0);
             });
-            Check("sourceExitOverlapNotAttributed", overlap.LiveBefore && !overlap.LiveAfter &&
+            Check("sourceExitOverlapNotAttributed", overlap.LiveBefore is true && overlap.LiveAfter is false &&
                 overlap.Sample.Status == "observed" && overlap.Sample.Processes.Any(row => Matches(row, sameJobIdentity)) &&
                 SourceRelation(overlap, sameJobIdentity) == "unknown");
             Check("staleCreationUnknown", MsiResourceObservation.Membership(new() { Pid = aIdentity.Pid,
@@ -238,7 +239,30 @@ internal static class MsiResourceContract
             Check("largeFreshSelectionObserved", observed is { Status: "observed", Phase: "complete", ResourceCount: 2550,
                 NativeCode: 0, EndSessionCode: 0 } && observed.Processes.Any(row => row.ProcessId == holderIdentity.Pid &&
                 row.StartTimeLow == holderIdentity.Low && row.StartTimeHigh == holderIdentity.High && row.Membership == "ownedJob"));
-            Check("resourceEvidenceRecorded", new MsiWindowEvidence(request).Publish(prompt, 0, () => false, observed) == "recorded");
+            var windowEvidence = new MsiWindowEvidence(request);
+            Check("resourceEvidenceRecorded", windowEvidence.Publish(prompt, 0, () => false, observed) == "recorded");
+            // The format control uses just the independently proved fixture holder.
+            var measured = observed ?? throw new InvalidOperationException("msiResourceContractFailed:sourceEvidenceMissingSample");
+            var sourceFormatSample = measured with { Processes = measured.Processes.Where(row => Matches(row, holderIdentity)).ToArray() };
+            Check("sourcePromptStateDoesNotDependOnResources",
+                MsiSourceObservation.ClassifyPromptState(true, true) == "alive" &&
+                MsiSourceObservation.ClassifyPromptState(false, false) == "exitedBefore" &&
+                MsiSourceObservation.ClassifyPromptState(true, false) == "unknown" &&
+                MsiSourceObservation.ClassifyPromptState(null, false) == "unknown");
+            var expectedSource = new MsiResourceObservation.UniqueProcess { Pid = 42, Low = 100 };
+            var installerChild = new MsiResourceObservation.UniqueProcess { Pid = 43, Low = 101 };
+            Check("onlyNewerDirectChildBelongsToSource",
+                MsiResourceObservation.IsChildIdentity(expectedSource, installerChild, 43, 42) &&
+                !MsiResourceObservation.IsChildIdentity(expectedSource, installerChild, 43, 41) &&
+                !MsiResourceObservation.IsChildIdentity(expectedSource, installerChild, 44, 42) &&
+                !MsiResourceObservation.IsChildIdentity(expectedSource, expectedSource, 42, 42) &&
+                !MsiResourceObservation.IsChildIdentity(installerChild, expectedSource, 42, 43));
+            var sourceObservation = new MsiSourceObservation("sourceReported", "alive", 3, 4, 5, 6);
+            Check("sourceEvidenceRejectsUnorderedTiming", windowEvidence.Publish(prompt, 0, () => false, sourceFormatSample,
+                sourceObservation with { ResourceQueryStartMs = 2 }) == "unavailable");
+            Check("sourceEvidenceRejectsMissingResources", windowEvidence.Publish(prompt, 0, () => false,
+                sourceObservation: sourceObservation) == "unavailable");
+            Check("sourceEvidenceRecorded", windowEvidence.Publish(prompt, 0, () => false, sourceFormatSample, sourceObservation) == "recorded");
             if (timingEnabled)
             {
                 Check("timingPositiveControlReleased", holder.Stop.Set());
@@ -291,15 +315,16 @@ internal static class MsiResourceContract
             try { cleanup(); }
             catch (Exception error) { firstFailure ??= ExceptionDispatchInfo.Capture(error); }
         }
-        SourceQuery CaptureForSource(SuspendedWindowsProcess source, Action? afterWindowsQuery = null)
+        SourceQuery CaptureForSource(SuspendedWindowsProcess source, MsiResourceObservation.UniqueProcess birth,
+            Action? afterWindowsQuery = null)
         {
-            bool liveBefore = false, liveAfter = false;
+            using var read = MsiResourceObservation.SourceRead.Retain(source, own, birth)
+                ?? throw new InvalidOperationException("msiResourceContractFailed:retainSourceHandle");
+            bool? liveBefore = null, liveAfter = null;
             var sample = MsiResourceObservation.Capture(request, own, () => true, payload,
-                afterQuery: () => { afterWindowsQuery?.Invoke(); liveAfter = IsLive(); },
-                beforeQuery: () => liveBefore = IsLive());
+                afterQuery: () => { afterWindowsQuery?.Invoke(); liveAfter = read.IsLive(); },
+                beforeQuery: () => liveBefore = read.IsLive(), sourceRead: read);
             return new(sample, liveBefore, liveAfter);
-
-            bool IsLive() => NativeMethods.WaitForSingleObject(source.Process, 0) == NativeMethods.WaitTimeout;
         }
         object TimingArm(bool withQuery, SafeEvidenceWriter evidence)
         {
@@ -429,7 +454,7 @@ internal static class MsiResourceContract
         }
     }
 
-    private sealed record SourceQuery(MsiResourceSample Sample, bool LiveBefore, bool LiveAfter);
+    private sealed record SourceQuery(MsiResourceSample Sample, bool? LiveBefore, bool? LiveAfter);
 
     private static bool Matches(MsiResourceProcess row, MsiResourceObservation.UniqueProcess process) =>
         row.ProcessId == process.Pid && row.StartTimeLow == process.Low && row.StartTimeHigh == process.High;
@@ -438,25 +463,7 @@ internal static class MsiResourceContract
         sample.Processes.Any(row => row.Membership == "ownedJob" && Matches(row, process));
 
     private static string SourceRelation(SourceQuery query, MsiResourceObservation.UniqueProcess source)
-    {
-        if (!query.LiveBefore || !query.LiveAfter || query.Sample is not { Status: "observed", Phase: "complete",
-            NativeCode: 0, EndSessionCode: 0, ResourceCount: > 0 }) return "unknown";
-
-        var ownSource = false;
-        var other = false;
-        foreach (var row in query.Sample.Processes)
-        {
-            if (row.ProcessId == source.Pid)
-            {
-                if (!Matches(row, source) || row.Membership != "ownedJob")
-                    return "unknown";
-                ownSource = true;
-            }
-            else if (row.Membership is "ownedJob" or "outsideJob") other = true;
-            else return "unknown";
-        }
-        return ownSource ? other ? "mixedReported" : "sourceReported" : other ? "otherReported" : "unknown";
-    }
+        => MsiResourceObservation.ClassifySource(query.Sample, source, query.LiveBefore is true && query.LiveAfter is true);
 
     [DllImport("kernel32.dll")] private static extern uint GetProcessId(Microsoft.Win32.SafeHandles.SafeProcessHandle process);
 }

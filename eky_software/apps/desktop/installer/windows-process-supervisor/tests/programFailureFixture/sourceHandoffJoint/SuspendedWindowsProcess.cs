@@ -4,7 +4,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Eky.WindowsProcessSupervisor;
 
-internal sealed class SuspendedWindowsProcess : IDisposable
+internal sealed partial class SuspendedWindowsProcess : IDisposable
 {
     private readonly SafeWaitHandle thread;
     private bool resumed;
@@ -76,8 +76,8 @@ internal sealed class SuspendedWindowsProcess : IDisposable
     }
 
 
-    internal static SuspendedWindowsProcess StartSyntheticSource(
-        SourceHandoffContext context, WindowsJob job, CancellationToken cancellationToken)
+    internal static SuspendedWindowsProcess StartSource(
+        SourceHandoffContext context, WindowsJob job, CancellationToken cancellationToken, string? expectedExecutableSha256)
     {
         cancellationToken.ThrowIfCancellationRequested();
         context.Admission.Verify();
@@ -99,18 +99,29 @@ internal sealed class SuspendedWindowsProcess : IDisposable
             AttributeList = attribute.List,
         };
         var root = context.Admission.WorkingDirectory;
-        string[] arguments = ["--preserve-symlinks", "--preserve-symlinks-main", context.FixturePath,
-            "--report", Path.Combine(root, "native-primary.private.json"),
-            "--release", Path.Combine(root, "native-primary.release"),
-            "--exit-code", context.Case is "exit7" or "exit7CleanupFailure" ? "7" : "0", "--", .. context.SourceArguments];
-        var commandLine = WindowsCommandLine.Build(context.Request.Command, arguments);
+        var executable = context.FixturePath is null ? context.Admission.SourceExecutable : context.Request.Command;
+        using var imageRoot = context.FixturePath is null
+            ? SourceAdmissionFiles.OpenRoot(Path.GetDirectoryName(executable)!) : null;
+        using var image = imageRoot?.OpenPinnedExecutable(executable);
+        string[] arguments = context.FixturePath is { } fixture
+            ? ["--preserve-symlinks", "--preserve-symlinks-main", fixture, "--report", Path.Combine(root, "native-primary.private.json"),
+                "--release", Path.Combine(root, "native-primary.release"),
+                "--exit-code", context.Case is "exit7" or "exit7CleanupFailure" ? "7" : "0", "--", .. context.SourceArguments]
+            : [.. context.SourceArguments];
+        if (image is not null)
+        {
+            var hash = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(image));
+            if (hash != expectedExecutableSha256) throw new SupervisorFailure("processStartFailed");
+            imageRoot!.VerifyAll();
+        }
+        var commandLine = WindowsCommandLine.Build(executable, arguments);
         if (commandLine.Length >= 32_767) throw new SupervisorFailure("processStartFailed");
         var block = string.Join('\0', context.Environment.Select(entry => $"{entry.Key}={entry.Value}")) + "\0\0";
         var environment = Marshal.StringToHGlobalUni(block);
         try
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var created = NativeMethods.CreateProcess(context.Request.Command, new StringBuilder(commandLine),
+            var created = NativeMethods.CreateProcess(executable, new StringBuilder(commandLine),
                 IntPtr.Zero, IntPtr.Zero, true,
                 NativeMethods.CreateSuspended | NativeMethods.ExtendedStartupInfoPresent | 0x08000000 | 0x00000400,
                 environment, root, ref startup, out var information);
@@ -222,6 +233,7 @@ internal sealed class SuspendedWindowsProcess : IDisposable
 
     public void Dispose()
     {
+        CloseSourceObservationAdmission();
         Exception? first = null;
         try { thread.Dispose(); } catch (Exception error) { first = error; }
         try { Process.Dispose(); } catch (Exception error) { first ??= error; }

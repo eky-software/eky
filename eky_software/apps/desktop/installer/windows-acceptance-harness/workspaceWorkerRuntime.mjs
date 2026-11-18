@@ -25,10 +25,13 @@ export function createWorkspaceFaultWorkerRuntime(requestPath, request, artifact
 
 // Both workers compose the same Windows ports. Only the closed scenario's
 // lifecycle, checkpoint and session contracts differ; ownership stays outside.
-async function createWorkspaceWorkerRuntime(requestPath, request, artifact, {
-  resolveElectronRuntime = resolveElectronDevelopmentRuntime,
-  resourceSelectionDirectory,
-} = {}) {
+async function createWorkspaceWorkerRuntime(requestPath, request, artifact, dependencies = {}) {
+  const { resolveElectronRuntime = resolveElectronDevelopmentRuntime, resourceSelectionDirectory, runSourceHandoff } = dependencies;
+  let observeSourceProcessTermination;
+  try {
+    const candidate = dependencies.observeSourceProcessTermination;
+    if (typeof candidate === 'function') observeSourceProcessTermination = candidate;
+  } catch { /* An unavailable observer does not prevent runtime creation. */ }
   const fault = Object.hasOwn(request, 'faultScenario');
   const context = workspaceSuccessRunContext(requestPath, request, artifact);
   await verifyW6b2PackagedSuccessRunFixture({ ...context.runFixture, temporaryRoot: context.temporaryRoot });
@@ -53,7 +56,7 @@ async function createWorkspaceWorkerRuntime(requestPath, request, artifact, {
           request, proofRoot: context.proofRoot, checkpoint, support,
         });
       },
-    });
+    }, { observeSourceProcessTermination, ...(runSourceHandoff === undefined ? {} : { runSourceHandoff }) });
     return { ...runtime, disposeSessionEvidence: () => sessionProof.dispose() };
   } catch (error) {
     sessionProof.dispose();

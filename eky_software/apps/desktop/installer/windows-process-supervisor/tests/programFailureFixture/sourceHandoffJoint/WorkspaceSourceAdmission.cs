@@ -43,13 +43,28 @@ internal sealed class WorkspaceSourceAdmission : IDisposable
         ProjectionSha256 = projectionSha256;
     }
 
-    internal static WorkspaceSourceAdmission Read(SourceAdmissionAnchors anchors, SourceAdmissionExperiment proof)
+    internal static WorkspaceSourceAdmission Read(SourceAdmissionAnchors anchors, SourceAdmissionExperiment proof) =>
+        ReadCore(anchors, proof, null);
+
+    // Takes ownership of the preparation scope even if validation fails. The
+    // caller may not use or dispose it once the reader has taken it.
+    internal static WorkspaceSourceAdmission ReadReserved(SourceAdmissionAnchors anchors, SourceAdmissionExperiment proof,
+        SourceAdmissionFiles preparation)
+    {
+        ArgumentNullException.ThrowIfNull(preparation);
+        return ReadCore(anchors, proof, preparation);
+    }
+
+    private static WorkspaceSourceAdmission ReadCore(SourceAdmissionAnchors anchors, SourceAdmissionExperiment proof,
+        SourceAdmissionFiles? preparation)
     {
         var scopes = new List<SourceAdmissionFiles>();
+        if (preparation is not null) scopes.Add(preparation);
         WorkspaceSourceAdmission? result = null;
-        proof.ReaderStarted.Set();
+        var finishSignalAttempted = false;
         try
         {
+            proof.ReaderStarted.Set();
             proof.Stage = "parentPrefix";
             Require(anchors.Kind is "workspaceSuccess" or "workspaceFault");
             Require(anchors.Scenario == (anchors.Kind == "workspaceFault" ? "packagedWorkspaceFaultRollback" : "packagedWorkspaceSuccess"));
@@ -87,10 +102,11 @@ internal sealed class WorkspaceSourceAdmission : IDisposable
             Require(name.StartsWith(projection.WorkspaceRunRootPrefix, StringComparison.Ordinal) &&
                 name.Length == projection.WorkspaceRunRootPrefix.Length + 6 &&
                 name[projection.WorkspaceRunRootPrefix.Length..].All(char.IsAsciiLetterOrDigit));
-            var runFiles = SourceAdmissionFiles.OpenRoot(runRoot);
-            scopes.Add(runFiles);
+            var runFiles = preparation ?? SourceAdmissionFiles.OpenRoot(runRoot);
+            if (preparation is null) scopes.Add(runFiles);
+            else runFiles.VerifyCreatedPreparation(temporaryParent, runRoot);
             runFiles.PinChildDirectory(Path.Combine(runRoot, "fixture"));
-            runFiles.PinChildDirectory(Path.Combine(runRoot, "scenario"));
+            if (preparation is null) runFiles.PinChildDirectory(Path.Combine(runRoot, "scenario"));
             proof.Stage = "artifactBinding";
             var artifact = state.GetProperty("artifact");
             Require(Same(artifact.GetProperty("artifactRoot").GetString(), Path.Combine(runRoot, "fixture")) &&
@@ -123,16 +139,28 @@ internal sealed class WorkspaceSourceAdmission : IDisposable
             proof.Stage = "admissionFinalIdentity";
             result.Verify();
             proof.MetadataValidated = true;
+            finishSignalAttempted = true;
+            proof.ReaderFinished.Set();
             return result;
         }
         catch (Exception error)
         {
-            proof.ObserveFirst(error);
+            proof.MetadataValidated = false;
+            try { proof.ObserveFirst(error); } catch { /* Observation cannot prevent close. */ }
             try { Close(scopes); }
-            catch (Exception cleanup) { proof.ObserveCleanup(cleanup); }
+            catch (Exception cleanup) { ObserveCleanup(proof, cleanup); }
+            if (!finishSignalAttempted)
+            {
+                try { proof.ReaderFinished.Set(); }
+                catch (Exception cleanup) { ObserveCleanup(proof, cleanup); }
+            }
             throw;
         }
-        finally { proof.ReaderFinished.Set(); }
+    }
+
+    private static void ObserveCleanup(SourceAdmissionExperiment proof, Exception error)
+    {
+        try { proof.ObserveCleanup(error); } catch { /* Preserve the first error. */ }
     }
 
     internal void Verify()
@@ -214,9 +242,11 @@ internal sealed class WorkspaceSourceAdmission : IDisposable
 }
 
 // Closed controls for this private command fixture, not a production observer API.
-internal sealed class SourceAdmissionExperiment(string selectedCase)
+internal sealed class SourceAdmissionExperiment(string selectedCase, bool prepareReservedRoots = false, bool measureActualSource = false)
 {
     internal string Case { get; } = selectedCase;
+    internal bool PrepareReservedRoots { get; } = prepareReservedRoots;
+    internal bool MeasureActualSource { get; } = measureActualSource;
     internal string? FixtureDirectory { get; set; }
     internal string Stage { get; set; } = "notStarted";
     internal WorkspaceSourceAdmission? Current { get; set; }
@@ -225,6 +255,7 @@ internal sealed class SourceAdmissionExperiment(string selectedCase)
     internal int Consumed { get; set; }
     internal int WorkerStarts;
     internal SupervisorOutcome? FinalOwnerOutcome { get; set; }
+    internal bool ScenarioBoundaryVerified { get; set; }
     internal object? ReservationProof { get; set; }
     internal Action<long>? SourceReservationCloseRequested { get; set; }
     internal bool LateAuthorityRejected { get; set; }

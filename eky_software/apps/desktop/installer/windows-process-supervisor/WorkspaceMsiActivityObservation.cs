@@ -10,6 +10,9 @@ internal enum WorkspaceMsiMembership
     None, Owned, Outside, Mixed, Unknown, Limited,
 }
 
+internal sealed record MsiSourceObservationContext(Func<bool> Admitted,
+    Func<MsiResourceObservation.SourceRead?> RetainSource, Func<long> ElapsedMilliseconds);
+
 // Optional evidence only. The existing MSI count and product checks still decide readiness.
 internal sealed class WorkspaceMsiActivityObservation : IDisposable
 {
@@ -28,16 +31,21 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
     private long observedElapsed;
     private string? windowDelivery;
     private readonly SupervisorRequest? request;
+    private readonly MsiSourceObservationContext? sourceObservation;
+    private bool sourceObservationArmed;
+    private bool firstSourcePromptRead;
+    private bool precedingSourceUiIncomplete;
     internal Task? PendingRead => pending;
 
     internal WorkspaceMsiActivityObservation(string scenario, WindowsJob job, SafeEvidenceWriter evidence,
         Func<WindowsJob, WorkspaceMsiMembership>? capture = null, SupervisorRequest? request = null,
-        Action? beforeWindowWrite = null)
+        Action? beforeWindowWrite = null, MsiSourceObservationContext? sourceObservation = null)
     {
         this.job = job;
         this.evidence = evidence;
         this.capture = capture ?? Capture;
         this.request = request;
+        this.sourceObservation = sourceObservation;
         enabled = scenario is "packagedWorkspaceSuccess" or "packagedWorkspaceFaultRollback";
         windows = enabled && request is not null ? new MsiWindowEvidence(request, beforeWindowWrite) : null;
     }
@@ -46,6 +54,11 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
     {
         if (!enabled || stopped) return;
         if (pending?.IsCompleted == true) PublishCompleted();
+        if (!sourceObservationArmed && sourceObservation?.Admitted() == true)
+        {
+            sourceObservationArmed = true;
+            nextSample = elapsedMilliseconds;
+        }
         if (pending is not null || samples >= MaximumSamples || elapsedMilliseconds < nextSample) return;
         samples++;
         observedElapsed = elapsedMilliseconds;
@@ -108,12 +121,19 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
     {
         if (stopped) return WorkspaceMsiMembership.Unknown;
         Process[] clients = [];
+        SafeProcessHandle? firstInstaller = null;
+        MsiSourceObservationContext? sourceContext = null;
         try
         {
+            sourceContext = !firstSourcePromptRead && sourceObservation?.Admitted() == true ? sourceObservation : null;
             using var current = Process.GetCurrentProcess();
             var session = current.SessionId;
             clients = Process.GetProcessesByName("msiexec");
-            if (clients.Length > MaximumClients) return WorkspaceMsiMembership.Limited;
+            if (clients.Length > MaximumClients)
+            {
+                MarkIncompleteSourceSweep(sourceContext);
+                return WorkspaceMsiMembership.Limited;
+            }
             var owned = false;
             var outside = false;
             var unknown = false;
@@ -121,42 +141,145 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
             var windowBudget = Stopwatch.StartNew();
             var remainingCharacters = MsiWindowObservation.Contract.MaximumTotalCharacters;
             var remainingWindows = MsiWindowObservation.Contract.MaximumWindows;
+            using var sourceRead = RetainOptionalSource(sourceContext);
+            MsiSourceObservation? firstPrompt = null;
+            Func<bool>? samePrompt = null;
+            var singlePrompt = false;
+            var sourceStateAtPrompt = "unknown";
             foreach (var client in clients)
             {
                 if (stopped) return WorkspaceMsiMembership.Unknown;
                 // Keep the process object held while checking image, session and live membership.
-                using var handle = OpenProcess(QueryLimitedInformation | Synchronize, false, (uint)client.Id);
-                if (handle.IsInvalid) { unknown = true; continue; }
-                var name = new StringBuilder(32_768);
-                var length = (uint)name.Capacity;
-                if (!QueryFullProcessImageName(handle, 0, name, ref length) ||
-                    !ProcessIdToSessionId((uint)client.Id, out var actualSession))
-                { unknown = true; continue; }
-                if (!string.Equals(Path.GetFileName(name.ToString()), "msiexec.exe", StringComparison.OrdinalIgnoreCase))
-                { unknown = true; continue; }
-                if (actualSession != session) continue;
-                switch (ObserveHandle(owner, handle))
+                var handle = OpenProcess(QueryLimitedInformation | Synchronize, false, (uint)client.Id);
+                try
                 {
-                    case WorkspaceMsiMembership.Owned:
-                        owned = true;
-                        if (windows is not null && MsiWindowObservation.IsSystemInstaller(name.ToString()))
-                        {
-                            try { windowSamples.Add(MsiWindowObservation.Capture(owner, handle, () => stopped,
-                                windowBudget, ref remainingCharacters, ref remainingWindows)); }
-                            catch { windowSamples.Add(new((uint)client.Id, "unavailable", [])); }
-                        }
-                        break;
-                    case WorkspaceMsiMembership.Outside: outside = true; break;
-                    default: unknown = true; break;
+                    if (handle.IsInvalid) { unknown = true; continue; }
+                    var name = new StringBuilder(32_768);
+                    var length = (uint)name.Capacity;
+                    if (!QueryFullProcessImageName(handle, 0, name, ref length) ||
+                        !ProcessIdToSessionId((uint)client.Id, out var actualSession))
+                    { unknown = true; continue; }
+                    if (!string.Equals(Path.GetFileName(name.ToString()), "msiexec.exe", StringComparison.OrdinalIgnoreCase))
+                    { unknown = true; continue; }
+                    if (actualSession != session) continue;
+                    switch (ObserveHandle(owner, handle))
+                    {
+                        case WorkspaceMsiMembership.Owned:
+                            owned = true;
+                            if (windows is not null && MsiWindowObservation.IsSystemInstaller(name.ToString()))
+                            {
+                                var targetBound = sourceContext is not null && firstPrompt is null &&
+                                    sourceRead?.IsDirectChild(handle) == true;
+                                var sourceBefore = targetBound ? sourceRead?.IsLive() : null;
+                                var promptStart = sourceContext?.ElapsedMilliseconds() ?? 0;
+                                Func<bool>? verifyPrompt = null;
+                                Action<Func<bool>>? offerPrompt = targetBound ? verify => verifyPrompt = verify : null;
+                                MsiWindowSample sample;
+                                try { sample = MsiWindowObservation.Capture(owner, handle, () => stopped,
+                                    windowBudget, ref remainingCharacters, ref remainingWindows, offerSamePrompt: offerPrompt,
+                                    requireCompleteSweep: sourceContext is not null); }
+                                catch { sample = new((uint)client.Id, "unavailable", []); }
+                                var promptEnd = sourceContext?.ElapsedMilliseconds() ?? 0;
+                                var sourceAfter = targetBound ? sourceRead?.IsLive() : null;
+                                windowSamples.Add(sample);
+                                var matches = MsiWindowObservation.CountClosingPrompts(sample);
+                                if (sourceContext is not null && targetBound && matches > 0)
+                                {
+                                    firstSourcePromptRead = true;
+                                    firstPrompt = new("unknown", "unknown", promptStart, promptEnd, null, null);
+                                    singlePrompt = matches == 1;
+                                    if (singlePrompt && sample.Status == "observed" && verifyPrompt is not null)
+                                    {
+                                        firstInstaller = handle;
+                                        samePrompt = verifyPrompt;
+                                        sourceStateAtPrompt = MsiSourceObservation.ClassifyPromptState(sourceBefore, sourceAfter);
+                                    }
+                                }
+                            }
+                            break;
+                        case WorkspaceMsiMembership.Outside: outside = true; break;
+                        default: unknown = true; break;
+                    }
                 }
+                finally { if (!ReferenceEquals(firstInstaller, handle)) handle.Dispose(); }
             }
-            var resources = CaptureResources(request, owner, windowSamples,
-                ResourceAdmission(() => windowBudget.ElapsedMilliseconds));
-            if (windows is not null) windowDelivery = windows.Publish(windowSamples, observedElapsed, () => stopped, resources);
+            var windowSweepComplete = !unknown && windowSamples.All(sample => sample.Status == "observed");
+            var resourceAdmitted = ResourceAdmission(() => windowBudget.ElapsedMilliseconds);
+            MsiResourceSample? resources = null;
+            if (firstPrompt is null)
+            {
+                if (sourceContext is not null && !windowSweepComplete) precedingSourceUiIncomplete = true;
+                if (sourceContext is null && !firstSourcePromptRead && sourceObservation?.Admitted() == true)
+                    precedingSourceUiIncomplete = true;
+                if (sourceObservation is null) resources = CaptureResources(request, owner, windowSamples, resourceAdmitted);
+            }
+            else if (sourceContext is not null && singlePrompt && windowSweepComplete && !precedingSourceUiIncomplete &&
+                windowSamples.Sum(MsiWindowObservation.CountClosingPrompts) == 1 &&
+                firstInstaller is not null && samePrompt is not null && sourceRead is not null)
+            {
+                (firstPrompt, resources) = ReadFirstSourcePrompt(owner, firstInstaller, sourceContext, sourceRead,
+                    firstPrompt, sourceStateAtPrompt, samePrompt, () => sourceContext.Admitted() && resourceAdmitted());
+            }
+            if (windows is not null) windowDelivery = windows.Publish(windowSamples, observedElapsed, () => stopped, resources, firstPrompt);
             return Combine(owned, outside, unknown);
         }
-        catch { return WorkspaceMsiMembership.Unknown; }
-        finally { foreach (var client in clients) client.Dispose(); }
+        catch
+        {
+            MarkIncompleteSourceSweep(sourceContext);
+            return WorkspaceMsiMembership.Unknown;
+        }
+        finally
+        {
+            firstInstaller?.Dispose();
+            foreach (var client in clients) client.Dispose();
+        }
+    }
+
+    private void MarkIncompleteSourceSweep(MsiSourceObservationContext? scopedAtStart)
+    {
+        if (sourceObservation is null || firstSourcePromptRead) return;
+        try { precedingSourceUiIncomplete |= scopedAtStart is not null || sourceObservation.Admitted(); }
+        catch { precedingSourceUiIncomplete = true; }
+    }
+
+    private static MsiResourceObservation.SourceRead? RetainOptionalSource(MsiSourceObservationContext? source)
+    {
+        try { return source?.RetainSource(); }
+        catch { return null; }
+    }
+
+    private (MsiSourceObservation Observation, MsiResourceSample? Resources) ReadFirstSourcePrompt(WindowsJob owner,
+        SafeProcessHandle installer, MsiSourceObservationContext source, MsiResourceObservation.SourceRead sourceRead,
+        MsiSourceObservation observation, string sourceStateAtPrompt, Func<bool> samePrompt, Func<bool> admitted)
+    {
+        if (request is null || stopped || !source.Admitted() ||
+            ObserveHandle(owner, installer) != WorkspaceMsiMembership.Owned || !sourceRead.IsDirectChild(installer))
+            return (observation, null);
+        observation = observation with { SourceState = sourceStateAtPrompt };
+        if (!admitted()) return (observation, null);
+        long? queryStart = null, queryEnd = null;
+        bool? liveBefore = null, liveAfter = null;
+        try
+        {
+            var sample = MsiResourceObservation.Capture(request, owner, admitted,
+                beforeQuery: () =>
+                {
+                    if (!admitted() || !samePrompt() || !sourceRead.IsDirectChild(installer) || !admitted())
+                        throw new InvalidOperationException("msiSourcePromptChanged");
+                    liveBefore = sourceRead.IsLive();
+                    queryStart = source.ElapsedMilliseconds();
+                },
+                afterQuery: () => { queryEnd = source.ElapsedMilliseconds(); liveAfter = sourceRead.IsLive(); },
+                sourceRead: sourceRead);
+            if (queryStart is null || queryEnd is null) return (observation, sample);
+            var relation = admitted() && samePrompt() && admitted() &&
+                ObserveHandle(owner, installer) == WorkspaceMsiMembership.Owned && sourceRead.IsDirectChild(installer)
+                ? MsiResourceObservation.ClassifySource(sample, sourceRead.Birth,
+                    sourceStateAtPrompt == "alive" && liveBefore is true && liveAfter is true)
+                : "unknown";
+            return (observation with { Relation = relation, ResourceQueryStartMs = queryStart, ResourceQueryEndMs = queryEnd }, sample);
+        }
+        catch { return (observation, new("unavailable", null, 0, null, null, [])); }
     }
 
     internal Func<bool> ResourceAdmission(Func<long> elapsedMilliseconds) =>
@@ -166,8 +289,7 @@ internal sealed class WorkspaceMsiActivityObservation : IDisposable
         IReadOnlyList<MsiWindowSample> samples, Func<bool> admitted,
         Func<SupervisorRequest, WindowsJob, Func<bool>, MsiResourceSample>? captureResources = null)
     {
-        if (request is null || !admitted() || !samples.Any(sample => sample.Status != "unavailable" &&
-            sample.Windows.Any(text => text.Role == "message" && MsiWindowObservation.IsApplicationsInUseMessage(text.Text)))) return null;
+        if (request is null || !admitted() || !samples.Any(sample => MsiWindowObservation.CountClosingPrompts(sample) > 0)) return null;
         try { return captureResources is null ? MsiResourceObservation.Capture(request, owner, admitted) :
             captureResources(request, owner, admitted); }
         catch { return new("unavailable", null, 0, null, null, []); }

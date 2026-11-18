@@ -9,6 +9,8 @@ internal static class Program
 {
     private static int Main(string[] args)
     {
+        if (args.FirstOrDefault() == PreparedProductInspection.Verb)
+            return PreparedProductInspection.Run(args);
         if (args.Length == 1 && args[0] == "--joint-resource-binding")
         {
             var resources = new Dictionary<string, string>(StringComparer.Ordinal);
@@ -23,7 +25,8 @@ internal static class Program
         }
         if (args.Length == 1 && args[0] == "--joint-reservation-close-controls")
             return JointReservationCloseControls.Run();
-        if (args.Length != 4 || args[0] != "--joint-reservation-proof") return 64;
+        if (args.Length != 4 || args[0] is not ("--joint-reservation-proof" or "--joint-reservation-prepared-proof")) return 64;
+        var prepareReservedRoots = args[0] == "--joint-reservation-prepared-proof";
         var selected = args[1];
         if (selected is not ("exit0" or "sourceHold") ||
             !SourceBridgeProtocol.Read().Cases.Contains(selected, StringComparer.Ordinal)) return 64;
@@ -37,7 +40,16 @@ internal static class Program
         object? harnessFailure = null;
         void Check(string name, bool value) { checks[name] = value; if (!value) firstFailure ??= name; }
         var clock = Stopwatch.StartNew();
-        var proof = new SourceAdmissionExperiment(selected) { FixtureDirectory = directory };
+        var proof = new SourceAdmissionExperiment(selected, prepareReservedRoots) { FixtureDirectory = directory };
+        if (prepareReservedRoots)
+        {
+            var host = Environment.ProcessPath;
+            var assembly = typeof(Program).Assembly.Location;
+            if (host is null || !Path.IsPathFullyQualified(host) || !Path.IsPathFullyQualified(assembly) ||
+                !string.Equals(Path.GetFileName(host), "dotnet.exe", StringComparison.OrdinalIgnoreCase)) return 64;
+            Environment.SetEnvironmentVariable("EKY_M51_RESERVED_INSPECTION_HOST", host);
+            Environment.SetEnvironmentVariable("EKY_M51_RESERVED_INSPECTION_ASSEMBLY", assembly);
+        }
         string? commandRoot = null;
         string? runRoot = null;
         JsonElement? sourceProof = null;
@@ -54,6 +66,9 @@ internal static class Program
                     errorCode = (error as SupervisorFailure)?.ErrorCode };
             }
         }
+        bool ScenarioReportReadable() => !prepareReservedRoots ||
+            (proof.ScenarioBoundaryVerified && proof.DeferredRelease.IsCompletedSuccessfully &&
+             proof.Current is { AllHandlesClosed: true });
         try
         {
             Environment.SetEnvironmentVariable("TEMP", root);
@@ -107,7 +122,8 @@ internal static class Program
             // No post-phase grace period: pending work remains a failed/uncertain fixture.
             Check("allRequiredWorkSettled", proof.DeferredRelease.IsCompletedSuccessfully);
             Check("realAdmissionConsumedOnce", proof.MetadataValidated && proof.Published && proof.Consumed == 1 && proof.WorkerStarts == 1);
-            Check("allFourteenPinsClosed", proof.Current is { PinCount: 14, AllHandlesClosed: true });
+            Check(prepareReservedRoots ? "allFifteenPinsClosed" : "allFourteenPinsClosed",
+                proof.Current is { AllHandlesClosed: true } && proof.Current.PinCount == (prepareReservedRoots ? 15 : 14));
             Check("admissionReaderSettled", proof.ReaderFinished.IsSet && proof.PreparationFinished.IsSet);
             var releaseFailure = selected is "exit7CleanupFailure" or "exit0CleanupFailure";
             Check("admissionCleanupMatchesCase", releaseFailure ? proof.CleanupFailure is not null : proof.CleanupFailure is null);
@@ -158,6 +174,7 @@ internal static class Program
                     source.GetProperty("sourceExitCode").GetInt32() == (selected is "exit7" or "exit7CleanupFailure" ? 7 : 0));
             if (selected == "wrongBinding") Check("badBindingRejectedBeforeCreate", source.GetProperty("requestRejected").GetBoolean());
             if (selected == "replay") Check("replayRejected", source.GetProperty("replayRejected").GetBoolean());
+            if (!ScenarioReportReadable()) throw new SupervisorFailure("processStateInvalid");
             using var result = JsonDocument.Parse(File.ReadAllBytes(Path.Combine(commandRoot!, "scenario", "result.json")));
             nativeResult = result.RootElement.Clone();
             var native = nativeResult.Value;
@@ -246,7 +263,7 @@ internal static class Program
             });
             Snapshot(() =>
             {
-                if (commandRoot is null) return;
+                if (commandRoot is null || !ScenarioReportReadable()) return;
                 var path = Path.Combine(commandRoot, "scenario", "result.json");
                 if (!File.Exists(path)) return;
                 using var result = JsonDocument.Parse(File.ReadAllBytes(path));
@@ -266,7 +283,8 @@ internal static class Program
             } : null,
             admissionFirstFailure = proof.FirstFailure, admissionCleanupFailure = proof.CleanupFailure,
             boundedStopAfterScenario = proof.BoundedStopAfterScenario, postScenarioPhases = "notRun",
-            scope = "twoCaseRealReservationSyntheticTransport", lateFrameWorkerRetirementGap = "open",
+            scope = prepareReservedRoots ? "twoCasePreparedReservationSyntheticTransport" : "twoCaseRealReservationSyntheticTransport",
+            lateFrameWorkerRetirementGap = "open",
             fullCommandAccepted = false, sourceEkyExecuted = false, originalMsiCauseEstablished = false });
         output.Flush(true);
         var elapsedMs = clock.ElapsedMilliseconds;

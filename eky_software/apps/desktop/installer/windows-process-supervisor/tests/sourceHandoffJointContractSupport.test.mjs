@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { EventEmitter } from 'node:events';
 import { realpathSync } from 'node:fs';
 import { mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -12,6 +13,7 @@ import {
   SOURCE_HANDOFF_JOINT_REPORTER_URL,
 } from './sourceHandoffJointContractSupport.mjs';
 import { msiWindowEvidenceContract } from '../../windows-acceptance-harness/msiWindowEvidence.mjs';
+import { observeSourceHandoffOwnerClose } from './supervisorContractTestSupport.mjs';
 import { projectExceptionChain } from '../../../src/main/startupExceptionEvidence.ts';
 
 const PURE = { timeout: 5_000 };
@@ -92,6 +94,74 @@ function control(selected = 'exit0', binding = { kind: 'local' }, root = resolve
     completeSourceHandoffJointContract({ completion }, root, selected, operations);
   return { report, root, reportPath, files, native, nativePath, nativeBytes, evidence, evidencePath, evidenceBytes, operations, complete };
 }
+
+test('prepared source handoff requires its own scope and exact inspection report in both named cases', PURE, async () => {
+  for (const selected of ['exit0', 'sourceHold']) {
+    const fixture = control(selected);
+    const complete = () => completeSourceHandoffJointContract({
+      completion: Promise.resolve({ exitCode: 0, signal: null }), ownerClosed: Promise.resolve(true),
+    }, fixture.root, selected, { ...fixture.operations, prepared: true });
+    await assert.rejects(complete());
+    fixture.report.scope = 'twoCasePreparedReservationSyntheticTransport';
+    delete fixture.report.checks.allFourteenPinsClosed;
+    fixture.report.checks.allFifteenPinsClosed = true;
+    fixture.report.runRoot = join(fixture.root, 'v26-a123bc');
+    await assert.rejects(complete(), { code: 'ENOENT' });
+    const inspection = join(fixture.report.runRoot, 'scenario', 'workspace-inspection-1.json');
+    const absent = { schemaVersion: 1, productState: -1, productName: null, productVersion: null,
+      localPackagePresent: false, ownedRegistryExists: false, ekyProcessCount: 0 };
+    for (const contrary of [{ ekyProcessCount: 1 }, { localPackagePresent: true },
+      { productName: 'synthetic contrary name' }, { productVersion: '0.0.0' }, { ownedRegistryExists: true }]) {
+      fixture.files.set(inspection, encode({ ...absent, ...contrary }));
+      await assert.rejects(complete(), { message: 'JOINT_FIXTURE_PRODUCT_REPORT_INVALID' });
+    }
+    fixture.files.set(inspection, encode(absent));
+    await complete();
+  }
+});
+
+test('prepared source handoff requires spawn before accepting a numerical close code', PURE, async () => {
+  for (const [started, code, signal, expected] of [
+    [false, -4058, null, false], [true, 1, null, true], [true, null, 'SIGTERM', false],
+  ]) {
+    const child = new EventEmitter();
+    const closure = observeSourceHandoffOwnerClose(child);
+    if (started) child.emit('spawn');
+    child.emit('close', code, signal);
+    assert.equal(await closure, expected);
+  }
+});
+
+test('source handoff joint pure: foreign mode cannot supply the first failure or cleanup', PURE, async () => {
+  for (const prepared of [true, false]) {
+    const fixture = control(), observed = [], completion = new Error('JOINT_OWN_COMPLETION');
+    Object.assign(fixture.report, { status: 'failed', firstFailure: 'JOINT_FOREIGN_CAUSE',
+      admissionCleanupFailure: { exceptionType: 'IOException', hresult: -1, errorCode: 'foreignCleanup' } });
+    if (!prepared) fixture.report.scope = 'twoCasePreparedReservationSyntheticTransport';
+    await assert.rejects(completeSourceHandoffJointContract({
+      completion: Promise.reject(completion), ownerClosed: Promise.resolve(true),
+    }, fixture.root, 'exit0', { ...fixture.operations, prepared,
+      observeAdditionalFailure(_error, phase) { observed.push(phase); },
+    }), error => {
+      assert.equal(error.cause, completion);
+      assert.deepEqual(observed, ['jointFixtureReport']);
+      return true;
+    });
+  }
+});
+
+test('prepared source handoff never opens a report without an observed owner close', PURE, async () => {
+  const fixture = control();
+  for (const ownerClosed of [undefined, Promise.resolve(false)]) {
+    let reads = 0;
+    await assert.rejects(completeSourceHandoffJointContract({
+      completion: Promise.resolve({ exitCode: 0, signal: null }), ownerClosed,
+    }, fixture.root, 'exit0', { ...fixture.operations, prepared: true,
+      readFixture() { reads++; throw new Error('unexpectedRead'); },
+    }), { message: 'JOINT_FIXTURE_OWNER_EXIT_UNVERIFIED' });
+    assert.equal(reads, 0);
+  }
+});
 
 test('source handoff joint pure: both complete reports and raw artifacts pass without starting a process', PURE, async () => {
   for (const selected of ['exit0', 'sourceHold']) {

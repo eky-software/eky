@@ -1,31 +1,35 @@
 import assert from 'node:assert/strict';
-import { lstat, mkdir, open, realpath, writeFile } from 'node:fs/promises';
+import { lstat, mkdir, open, readdir, realpath, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, isAbsolute, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, relative, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { readPublishedResult, waitForPublishedResult } from './resultPublicationReader.mjs';
 import { readPublicationReady } from './publicationReadyReader.mjs';
+import { PREPARED_PRODUCT_REPORT, requirePreparedProductAbsent } from './preparedProductInspection.mjs';
 
 import { readWorkspaceCommandPhase, executeWorkspaceCommandPhase }
   from '../../../../windows-acceptance-harness/workspaceCommandPhase.mjs';
 import { workspaceCommandFixture }
   from '../../../../windows-acceptance-harness/workspaceCommandFixture.mjs';
-import { workspaceSuccessErrorCode, validateWorkspaceSuccessRequest, writeJsonAtomicExclusive }
+import { workspaceSuccessErrorCode, validateWorkspaceSuccessRequest, workspaceSuccessResultPath, writeJsonAtomicExclusive }
   from '../../../../windows-acceptance-harness/workspaceSuccessContracts.mjs';
-import { workspaceFaultErrorCode, validateWorkspaceFaultRequest }
+import { workspaceFaultErrorCode, validateWorkspaceFaultRequest, workspaceFaultResultPath }
   from '../../../../windows-acceptance-harness/workspaceFaultContracts.mjs';
-import { workspaceSuccessApplicationEnvironment }
+import { runWorkspaceSuccessOwnedCommand, workspaceSuccessApplicationEnvironment }
   from '../../../../windows-acceptance-harness/workspaceSuccessWindowsRuntime.mjs';
 import { parseStrictJsonObjectBytes }
   from '../../../../windows-acceptance-harness/strictJsonObject.mjs';
 import { createNativeFailureEvidence }
   from '../../../../windows-acceptance-harness/nativeFailureEvidence.mjs';
+import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX }
+  from '../../../../windows-acceptance-harness/workspaceSuccessRunFixture.mjs';
 import { createW6b2PackagedProofBootstrapConfiguration, W6B2_PACKAGED_PROOF_DIRECTORY_NAME,
   W6B2_PACKAGED_PROOF_PATH_TOKEN_LENGTH, W6B2_PACKAGED_PROOF_SWITCH }
   from '../../../../../src/main/w6b2PackagedProof.ts';
 
 // Private synthetic phase worker. The existing native Job owns source creation,
-// NUL handles, admission, deadline and cleanup; this worker never launches a process.
+// NUL handles, source admission, deadline and cleanup. Only reserved preparation
+// launches a separate synthetic inspection child in its own phase Job.
 const DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const CASE_ENV = 'EKY_M51_ADMITTED_TRANSPORT_CASE';
 const CASES = ['exit0', 'fault0', 'exit7', 'wrongBinding', 'replay', 'sourceHold', 'heldRead', 'heldCreation',
@@ -104,7 +108,7 @@ async function readBounded(path, maximum) {
   return result;
 }
 
-async function readProtocol() {
+export async function readProtocol() {
   const { value: protocol } = await readBounded(resolve(DIRECTORY, 'sourceBridgeProtocol.json'), REPORT_MAX_BYTES);
   assert.equal(protocol.schemaVersion, 1);
   assert.equal(protocol.operation, 'sourceHandoff');
@@ -135,7 +139,7 @@ export async function publicationOptions(root, operation) {
   } };
 }
 
-async function waitForObject(path, maximum, options, terminalPath, terminalMaximum, terminalOptions, readyPath) {
+export async function waitForObject(path, maximum, options, terminalPath, terminalMaximum, terminalOptions, readyPath) {
   const read = async () => {
     if (readyPath) {
       const ready = await readPublicationReady(readyPath, options);
@@ -161,7 +165,7 @@ async function waitForObject(path, maximum, options, terminalPath, terminalMaxim
   }, options);
 }
 
-async function publishRequest(mailbox, protocol, request, options, stagedOnly = false) {
+export async function publishRequest(mailbox, protocol, request, options, stagedOnly = false) {
   // .next is retained only as the old replay-control sentinel, never renamed.
   const path = resolve(mailbox, protocol.requestFile) + (stagedOnly ? '.next' : '');
   const bytes = Buffer.from(JSON.stringify(request) + '\n');
@@ -403,6 +407,70 @@ function phaseErrorCode(error, context) {
   return (context.commandKind === 'workspaceFault' ? workspaceFaultErrorCode : workspaceSuccessErrorCode)(error);
 }
 
+export async function openReservedPreparation(context, path, passive = false) {
+  const temp = await realpath(tmpdir());
+  const allowed = passive ? context.commandKind === 'workspaceFault' &&
+    context.callerBinding.faultScenario === 'passiveWorkspaceMigrationFailure' : context.commandKind === 'workspaceSuccess';
+  if (!allowed || dirname(path) !== temp ||
+    !new RegExp(`^${WORKSPACE_SUCCESS_RUN_ROOT_PREFIX}[a-zA-Z0-9]{6}$`).test(basename(path)) ||
+    !['prepare', 'scenarioPreparation', 'scenario'].includes(context.phase) ||
+    (context.phase !== 'prepare' && context.state.runRoot !== path)) invalid();
+  const retainedRoot = await publicationOptions(path, { assertActive() {} });
+  const scenario = resolve(path, 'scenario');
+  const request = resolve(scenario, 'worker-request.json');
+  const files = new Set([resolve(scenario, 'worker-result.json'),
+    (passive ? workspaceFaultResultPath : workspaceSuccessResultPath)(request)]);
+  const reservedScenario = context.phase === 'prepare' ? null : await publicationOptions(scenario, { assertActive() {} });
+  const writeExclusive = async (destination, value) => {
+    await retainedRoot.verifyRoot();
+    if (!reservedScenario) invalid();
+    await publishRequest(scenario, { requestFile: basename(destination), requestMaxBytes: REPORT_MAX_BYTES }, value, reservedScenario);
+    await retainedRoot.verifyRoot();
+  };
+  return {
+    async useRunRoot() {
+      if (context.phase !== 'prepare' || (await readdir(path)).length !== 0) invalid();
+      await retainedRoot.verifyRoot();
+      return path;
+    },
+    async requireScenarioRoot(candidate) {
+      if (context.phase !== 'scenarioPreparation' || candidate !== scenario) invalid();
+      await retainedRoot.verifyRoot();
+      await reservedScenario.verifyRoot();
+    },
+    async inspectProduct() {
+      if (context.phase !== 'scenarioPreparation') invalid();
+      const host = process.env.EKY_M51_RESERVED_INSPECTION_HOST;
+      const assembly = process.env.EKY_M51_RESERVED_INSPECTION_ASSEMBLY;
+      if (!host || !assembly || !isAbsolute(host) || !isAbsolute(assembly) ||
+        basename(host).toLowerCase() !== 'dotnet.exe' || basename(assembly) !== 'Eky.WindowsProcessSupervisor.ContractFixture.dll' ||
+        !samePath(await realpath(host), host) || !samePath(await realpath(assembly), assembly)) invalid();
+      await retainedRoot.verifyRoot();
+      await reservedScenario.verifyRoot();
+      const report = resolve(scenario, PREPARED_PRODUCT_REPORT);
+      // The existing owner resolves with a code only after this child's close.
+      const exit = await runWorkspaceSuccessOwnedCommand(host,
+        [assembly, '--joint-reserved-inspection', report], {
+          cwd: scenario, env: process.env,
+        });
+      if (exit !== 0) invalid();
+      await retainedRoot.verifyRoot();
+      await reservedScenario.verifyRoot();
+      requirePreparedProductAbsent((await readBounded(report, REPORT_MAX_BYTES)).value);
+      await reservedScenario.verifyRoot();
+      await retainedRoot.verifyRoot();
+    },
+    async writeRequest(destination, value) {
+      if (context.phase !== 'scenarioPreparation' || destination !== request) invalid();
+      await writeExclusive(destination, value);
+    },
+    async writeScenarioResult(destination, value) {
+      if (context.phase !== 'scenario' || !files.has(destination)) invalid();
+      await writeExclusive(destination, value);
+    },
+  };
+}
+
 export async function runAdmittedTransportPhaseFixture(args) {
   let context;
   let evidence;
@@ -414,14 +482,20 @@ export async function runAdmittedTransportPhaseFixture(args) {
     evidence(error, phase);
   };
   try {
-    if (args.length !== 2 || args[0] !== '--phase-request' || !isAbsolute(args[1]) || args[1] !== resolve(args[1])) invalid();
+    const reserved = args.length === 4 && args[2] === '--reserved-run-root' && isAbsolute(args[3]) && args[3] === resolve(args[3]);
+    if ((args.length !== 2 && !reserved) || args[0] !== '--phase-request' || !isAbsolute(args[1]) || args[1] !== resolve(args[1])) invalid();
     await requirePrivateEnvironment();
     context = await readWorkspaceCommandPhase(args[1]);
     const testCase = process.env[CASE_ENV];
     if (!['exit0', 'sourceHold'].includes(testCase)) invalid();
-    const dependencies = workspaceCommandFixture(context, 'normal', invalid);
+    const reservedPreparation = reserved ? await openReservedPreparation(context, args[3]) : undefined;
+    const dependencies = workspaceCommandFixture(context, 'normal', invalid,
+      reservedPreparation ? { writeScenarioResult: reservedPreparation.writeScenarioResult } : undefined);
     const runScenario = (...scenarioArgs) => runTransport(context, args[1], testCase, scenarioArgs, dependencies);
-    const code = await executeWorkspaceCommandPhase(context, { ...dependencies, prepareFixture, runScenario, observeFailure });
+    const code = await executeWorkspaceCommandPhase(context, { ...dependencies, reservedPreparation, async prepareFixture(runtime) {
+      await prepareFixture(runtime);
+      if (reservedPreparation) await reservedPreparation.inspectProduct();
+    }, runScenario, observeFailure });
     if (context.phase !== 'scenario') {
       await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-state.json'),
         { binding: context.binding, state: context.state });

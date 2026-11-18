@@ -5,4 +5,5 @@ export function inspectPackageArtifactInventory(options: {
   root: string;
   stage: PackageArtifactStage;
   onValidatedFiles?: (files: readonly string[]) => void;
+  onValidatedExecutable?: (sha256: string) => void;
 }): Promise<Readonly<{ fileCount: number; identity: string; stage: PackageArtifactStage; totalByteSize: number }>>;

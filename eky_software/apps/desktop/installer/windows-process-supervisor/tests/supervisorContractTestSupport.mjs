@@ -321,16 +321,26 @@ export function startProgramFailureFixture(context, mode, { environment = proces
   });
 }
 
-export function startSourceHandoffJointFixture(context, selected) {
+export function observeSourceHandoffOwnerClose(child) {
+  let started = false;
+  child.once('spawn', () => { started = true; });
+  return new Promise(done => child.once('close', (code, signal) =>
+    done(started && Number.isInteger(code) && signal === null)));
+}
+
+export function startSourceHandoffJointFixture(context, selected, { prepared = false } = {}) {
   if (!['exit0', 'sourceHold'].includes(selected)) {
     throw new Error('WINDOWS_ACCEPTANCE_SOURCE_HANDOFF_CASE_INVALID');
   }
   verifySourceHandoffBuildBinding();
-  return startSupervisor(context, {
+  const execution = startSupervisor(context, {
     dotnetAssembly: SOURCE_HANDOFF_JOINT_DLL,
-    dotnetArguments: ['--joint-reservation-proof', selected, join(context.testRoot, 'temporary'),
+    dotnetArguments: [prepared ? '--joint-reservation-prepared-proof' : '--joint-reservation-proof',
+      selected, join(context.testRoot, 'temporary'),
       resolve(TEST_DIRECTORY, 'programFailureFixture/sourceHandoffJoint')],
   });
+  if (prepared) execution.ownerClosed = observeSourceHandoffOwnerClose(execution.child);
+  return execution;
 }
 
 export async function readWindowsShortPathFixture(root, { directory, hold = false }) {

@@ -4,7 +4,7 @@ using Microsoft.Win32.SafeHandles;
 
 namespace Eky.WindowsProcessSupervisor;
 
-internal sealed class SuspendedWindowsProcess : IDisposable
+internal sealed partial class SuspendedWindowsProcess : IDisposable
 {
     private readonly SafeWaitHandle thread;
     private bool resumed;
@@ -120,6 +120,7 @@ internal sealed class SuspendedWindowsProcess : IDisposable
 
     public void Dispose()
     {
+        CloseSourceObservationAdmission();
         thread.Dispose();
         Process.Dispose();
     }

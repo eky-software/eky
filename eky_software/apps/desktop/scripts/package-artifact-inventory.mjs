@@ -86,7 +86,7 @@ export class PackageArtifactInventoryError extends Error {
   }
 }
 
-export async function inspectPackageArtifactInventory({ root, stage, onValidatedFiles }) {
+export async function inspectPackageArtifactInventory({ root, stage, onValidatedFiles, onValidatedExecutable }) {
   if (!validStages.has(stage)) {
     throw new PackageArtifactInventoryError('STAGE');
   }
@@ -100,6 +100,7 @@ export async function inspectPackageArtifactInventory({ root, stage, onValidated
   }
   const hash = createHash('sha256').update('Eky package inventory v1\0');
   let totalByteSize = 0;
+  let executableSha256;
 
   for (const file of files) {
     const logicalPath = relative(root, file).split(sep).join('/');
@@ -150,6 +151,7 @@ export async function inspectPackageArtifactInventory({ root, stage, onValidated
       throw new PackageArtifactInventoryError('SIZE');
     }
     const fileHash = await hashFile(file, nativePath === undefined ? undefined : metadata);
+    if (stage === 'packagedApp' && logicalPath === 'Eky.exe') executableSha256 = fileHash;
     const lengths = Buffer.alloc(12);
     lengths.writeUInt32BE(pathBytes.byteLength, 0);
     lengths.writeBigUInt64BE(BigInt(metadata.size), 4);
@@ -159,6 +161,8 @@ export async function inspectPackageArtifactInventory({ root, stage, onValidated
   // Optional test evidence must not change artifact admission or repeat traversal.
   try { onValidatedFiles?.(Object.freeze(files.map(file => relative(root, file).split(sep).join('/')))); }
   catch { /* Missing optional evidence is reported by its reader. */ }
+  try { if (executableSha256 !== undefined) onValidatedExecutable?.(executableSha256); }
+  catch { /* No callback can bypass the inventory check. */ }
   return Object.freeze({
     fileCount: files.length,
     identity: hash.digest('hex'),
