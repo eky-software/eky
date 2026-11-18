@@ -9,10 +9,12 @@ import { publishWorkspaceMsiResourceSelection } from './workspaceMsiResourceSele
 import { executeWorkspaceCommandPhase } from './workspaceCommandPhase.mjs';
 
 import { WORKSPACE_SUCCESS_PROFILE_ERRORS, WORKSPACE_SUCCESS_PROOF_ERRORS,
-  WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
+  WORKSPACE_INSTALLATION_INSPECTION_ERRORS as inspectionErrors,
+  readWorkspaceSuccessObject, workspaceSuccessErrorCode } from './workspaceSuccessContracts.mjs';
 import { WORKSPACE_SUCCESS_RUN_ROOT_PREFIX, workspaceSuccessRunContext } from './workspaceSuccessRunFixture.mjs';
 import { WORKSPACE_FAULT_SCENARIO, workspaceFaultErrorCode } from './workspaceFaultContracts.mjs';
 import { writeW6b2PackagedSuccessPhase } from '../scripts/w6b2PackagedSuccessRunFixture.mjs';
+import { createReservedProductInspectionCommand } from '../windows-process-supervisor/tests/programFailureFixture/sourceHandoffJoint/workspaceSourceMeasurementPhase.mjs';
 
 const profileProtocol = await import(new URL('../../e2e-dist/e2e/w6b2PackagedWorkspaceProfileCommand.js', import.meta.url));
 const proofProtocol = await import(new URL('../../e2e-dist/src/main/w6b2PackagedProof.js', import.meta.url));
@@ -116,9 +118,11 @@ async function fixture(context, changes = {}) {
   let activityQuery = false;
   const dependencies = {
     environment,
+    reservedProductInspectionCommand: changes.reservedProductInspectionCommand,
     async runCommand(command, args, options) {
       calls.push({ command, args, options });
-      if (basename(command) === 'powershell.exe' || args.includes('--inspect-product')) {
+      if (basename(command) === 'powershell.exe' || args.includes('--inspect-product') ||
+          args.includes('--joint-passive-product-inspection')) {
         activityQuery = args.some((arg) => arg.endsWith('inspectWorkspaceSuccessMsiActivity.ps1'));
         inspectionRole = args.includes('{SOURCE}') ? 'source' : 'target';
         if (changes.inspectionCommand) return changes.inspectionCommand({
@@ -134,7 +138,7 @@ async function fixture(context, changes = {}) {
       if (basename(command) === 'Eky.exe' && changes.onProofCommand) return changes.onProofCommand(options);
       return changes.exitCode ?? 0;
     },
-    async readObject(path, errorCode) {
+    async readObject(path, errorCode, maxBytes) {
       if (path.endsWith('w6b2-proof-result.json')) {
         await changes.onProofRead?.();
         if (changes.proofUnreadable) throw new Error(errorCode);
@@ -148,6 +152,7 @@ async function fixture(context, changes = {}) {
       }
       await changes.inspectionRead?.({ kind: activityQuery ? 'activity' : inspectionRole, resultPath: path });
       if (activityQuery) return changes.activity?.length ? changes.activity.shift() : { schemaVersion: 1, msiClientCount: 0 };
+      if (changes.readProductReport) return readWorkspaceSuccessObject(path, errorCode, maxBytes);
       const installedRole = changes.installedRole ?? 'target';
       const installed = changes.noTarget !== true && inspectionRole === installedRole;
       const result = { schemaVersion: 1, productState: installed ? 5 : -1,
@@ -692,6 +697,87 @@ test('MSI inspector nonzero exit is distinct before and after the product observ
     await assert.rejects(value.runtime.waitForTargetInstallation(), { message: inspectionErrors.activityCommand });
     assert.equal(value.calls.some((call) => call.observation || call.footprint), false);
     assert.equal(activities, failAt);
+  }
+});
+
+test('reserved passive product inspection waits for the owned command and keeps activity checks ordinary', async context => {
+  const ready = Promise.withResolvers();
+  const closed = Promise.withResolvers();
+  const reads = [];
+  const bytes = JSON.stringify({ schemaVersion: 1, productState: -1, productName: null, productVersion: null,
+    localPackagePresent: false, ownedRegistryExists: false, ekyProcessCount: 0 });
+  const value = await fixture(context, {
+    faultScenario: 'passiveWorkspaceMigrationFailure',
+    reservedProductInspectionCommand: createReservedProductInspectionCommand,
+    readProductReport: true,
+    async inspectionCommand({ kind, resultPath }) {
+      if (kind !== 'activity') await writeFile(resultPath, bytes, { flag: 'wx' });
+      if (kind === 'source') {
+        ready.resolve(resultPath);
+        await closed.promise;
+      }
+      return 0;
+    },
+    inspectionRead({ kind }) { reads.push(kind); },
+  });
+  const pending = value.runtime.inspectState();
+  let report;
+  try {
+    report = await Promise.race([ready.promise, pending.then(() => assert.fail('source command was not selected'))]);
+    assert.deepEqual(reads, ['activity']);
+    assert.equal(await readFile(report, 'utf8'), bytes);
+  } finally { closed.resolve(); }
+  await pending;
+  assert.deepEqual(reads, ['activity', 'source', 'target', 'activity']);
+  const commands = value.calls.filter(call => call.args?.includes('--joint-passive-product-inspection'));
+  assert.deepEqual(commands.map(({ args }) => [basename(args[0]), args[2], basename(args[3])]), [
+    ['Eky.WindowsProcessSupervisor.ContractFixture.dll', '{SOURCE}', 'workspace-inspection-1.json'],
+    ['Eky.WindowsProcessSupervisor.ContractFixture.dll', '{TARGET}', 'workspace-inspection-2.json'],
+  ]);
+  await assert.rejects(access(report), { code: 'ENOENT' });
+});
+
+test('a reserved report does not authorize a read after the product inspection command fails', async context => {
+  let report;
+  const reads = [];
+  const { runtime } = await fixture(context, {
+    faultScenario: 'passiveWorkspaceMigrationFailure',
+    reservedProductInspectionCommand: createReservedProductInspectionCommand,
+    async inspectionCommand({ kind, resultPath }) {
+      if (kind !== 'source') return 0;
+      report = resultPath;
+      await writeFile(report, '{}', { flag: 'wx' });
+      return 1;
+    },
+    inspectionRead({ kind }) { reads.push(kind); },
+  });
+  await assert.rejects(runtime.inspectState(), { message: inspectionErrors.sourceCommand });
+  assert.deepEqual(reads, ['activity']);
+  assert.equal(await readFile(report, 'utf8'), '{}');
+});
+
+test('a successful reserved inspector does not authorize malformed report bytes or their removal', async context => {
+  let report;
+  const { runtime } = await fixture(context, {
+    faultScenario: 'passiveWorkspaceMigrationFailure',
+    reservedProductInspectionCommand: createReservedProductInspectionCommand,
+    readProductReport: true,
+    async inspectionCommand({ kind, resultPath }) {
+      if (kind === 'source') {
+        report = resultPath;
+        await writeFile(report, '{}', { flag: 'wx' });
+      }
+      return 0;
+    },
+  });
+  await assert.rejects(runtime.inspectState(), { message: inspectionErrors.sourceResult });
+  assert.equal(await readFile(report, 'utf8'), '{}');
+});
+
+test('ordinary success and other fault scenarios cannot select the reserved product inspector', async context => {
+  for (const faultScenario of [undefined, 'acceptanceInterruption']) {
+    await assert.rejects(fixture(context, { faultScenario,
+      reservedProductInspectionCommand: createReservedProductInspectionCommand }), /requestInvalid/);
   }
 });
 

@@ -1,5 +1,5 @@
 import { dirname, isAbsolute, resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { openReservedPreparation, publicationOptions, publishRequest, readProtocol, waitForObject } from './sourceHandoffPhase.mjs';
 import { readWorkspaceCommandPhase, runWorkspaceCommandPhase } from '../../../../windows-acceptance-harness/workspaceCommandPhase.mjs';
 import { createWorkspaceFaultWorkerRuntime } from '../../../../windows-acceptance-harness/workspaceWorkerRuntime.mjs';
@@ -7,6 +7,13 @@ import { createNativeFailureEvidence } from '../../../../windows-acceptance-harn
 
 const invalid = () => new Error('requestInvalid');
 const allowedErrors = ['sourceLaunchRequestInvalid', 'ownedProcessStartFailed', 'ownedProcessExitInvalid'];
+const reservedInspectionAssembly = fileURLToPath(new URL('../../../../bin/source-handoff-joint/' +
+  'Eky.WindowsProcessSupervisor.ContractFixture/Release/net10.0/Eky.WindowsProcessSupervisor.ContractFixture.dll', import.meta.url));
+
+export function createReservedProductInspectionCommand(productCode, resultPath, environment) {
+  return { command: environment.EKY_DOTNET_EXE || 'dotnet',
+    arguments: [reservedInspectionAssembly, '--joint-passive-product-inspection', productCode, resultPath] };
+}
 
 export function readSourceMeasurementExit(result, envelope) {
   const keys = (value) => Object.keys(value ?? {}).sort().join(',');
@@ -43,6 +50,7 @@ export async function runWorkspaceSourceMeasurementPhase(args) {
           dependencies.resourceSelectionDirectory !== context.phaseRoot) throw invalid();
       return createWorkspaceFaultWorkerRuntime(requestPath, request, artifact, {
         ...dependencies,
+        reservedProductInspectionCommand: createReservedProductInspectionCommand,
         async runSourceHandoff(sourceExecutableSha256) {
           if (consumed || typeof sourceExecutableSha256 !== 'string' || !/^[0-9a-f]{64}$/.test(sourceExecutableSha256))
             throw invalid();

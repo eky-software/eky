@@ -111,6 +111,7 @@ async function createWorkspaceWindowsRuntime({
     environment = process.env,
     runCommand = runWorkspaceSuccessOwnedCommand,
     runSourceHandoff,
+    reservedProductInspectionCommand,
     readObject = readWorkspaceSuccessObject,
     inspectPayload = inspectPackageArtifactInventory,
     inspectFootprint = inspectLegacyInstallerFootprint,
@@ -129,6 +130,8 @@ async function createWorkspaceWindowsRuntime({
   } catch { /* An unavailable observer does not prevent runtime creation. */ }
   if (!environment.APPDATA || !environment.LOCALAPPDATA || !environment.SystemRoot ||
     (runSourceHandoff !== undefined && typeof runSourceHandoff !== 'function') ||
+    (reservedProductInspectionCommand !== undefined && (faultScenario !== 'passiveWorkspaceMigrationFailure' ||
+      typeof reservedProductInspectionCommand !== 'function')) ||
     typeof captureCheckpoint !== 'function' || typeof sessionProof?.start !== 'function') throw new Error('requestInvalid');
   const installRoot = resolve(environment.LOCALAPPDATA, 'Programs', 'Eky');
   const executablePath = resolve(installRoot, 'Eky.exe');
@@ -147,7 +150,7 @@ async function createWorkspaceWindowsRuntime({
   const sessionPhases = faultScenario === undefined ? undefined
     : proofProtocol.getW6b2PackagedFaultSessionPhases(faultScenario);
 
-  async function inspectResult(createInvocation, { commandError, resultError, validate }, observation, boundary) {
+  async function inspectResult(createInvocation, { commandError, resultError, validate, preserveOnFailure }, observation, boundary) {
     const resultPath = resolve(scenarioRoot, `workspace-inspection-${inspectionSequence++}.json`);
     let result;
     let failure;
@@ -162,8 +165,10 @@ async function createWorkspaceWindowsRuntime({
         readObject(resultPath, resultError, 64 * 1024))); }
       catch { throw new Error(resultError); }
     } catch (error) { failure = error; }
-    try { await observeStep(observation, `${boundary}Cleanup`, () => rm(resultPath, { force: true })); }
-    catch { failure ??= new Error(inspectionErrors.cleanup); }
+    if (!failure || !preserveOnFailure) {
+      try { await observeStep(observation, `${boundary}Cleanup`, () => rm(resultPath, { force: true })); }
+      catch { failure ??= new Error(inspectionErrors.cleanup); }
+    }
     if (failure) throw failure;
     return result;
   }
@@ -173,16 +178,15 @@ async function createWorkspaceWindowsRuntime({
     // Only compare valid observations bracketed by MSI inactivity. A busy
     // sample stays pending; malformed evidence and inspection failures do not.
     if (!await requireMsiIdle(observation, 'activityBefore')) return null;
-    const source = await inspectResult(
-      resultPath => createNativeProductInspectionCommand(`{${artifact.source.productCode}}`, resultPath, environment), {
-        commandError: inspectionErrors.sourceCommand, resultError: inspectionErrors.sourceResult,
-        validate: validateInstallerProductStateResult,
-      }, observation, 'sourceProduct');
-    const target = await inspectResult(
-      resultPath => createNativeProductInspectionCommand(`{${artifact.target.productCode}}`, resultPath, environment), {
-        commandError: inspectionErrors.targetCommand, resultError: inspectionErrors.targetResult,
-        validate: validateInstallerProductStateResult,
-      }, observation, 'targetProduct');
+    const inspectProduct = (role) => inspectResult(resultPath =>
+      (reservedProductInspectionCommand ?? createNativeProductInspectionCommand)(
+        `{${artifact[role].productCode}}`, resultPath, environment), {
+      commandError: inspectionErrors[`${role}Command`], resultError: inspectionErrors[`${role}Result`],
+      validate: validateInstallerProductStateResult,
+      preserveOnFailure: reservedProductInspectionCommand !== undefined,
+    }, observation, `${role}Product`);
+    const source = await inspectProduct('source');
+    const target = await inspectProduct('target');
     if (!await requireMsiIdle(observation, 'activityAfter')) return null;
     if (source.ekyProcessCount !== target.ekyProcessCount) throw new Error(inspectionErrors.processMismatch);
     if (source.ownedRegistryExists !== target.ownedRegistryExists) throw new Error(inspectionErrors.registryMismatch);
