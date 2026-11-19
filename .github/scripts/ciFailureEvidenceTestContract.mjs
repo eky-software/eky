@@ -41,7 +41,11 @@ export function withoutOptionalEvidenceAllowance(source, expectedCount, contract
     const guard = step.match(/^        if: >-\n((?:          [^\n]+\n)+)/mu)?.[1];
     assert.equal(guard?.trim().replace(/\s+/gu, ' '), [
       '${{ always() && ' + runnerGuards[platform] + " && runner.environment == 'github-hosted'",
-      "&& (job.status == 'failure' || job.status == 'cancelled')",
+      ...(contractModesOnly ? [
+        "&& (job.status == 'failure' || job.status == 'cancelled'",
+        "|| (job.status == 'success' && github.event_name == 'workflow_dispatch'",
+        "&& inputs.mode == 'contracts' && inputs.msi_resource_timing_proof == true))",
+      ] : ["&& (job.status == 'failure' || job.status == 'cancelled')"]),
       "&& vars.EKY_DIAGNOSTIC_PUBLIC_KEY != '' && vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT != ''",
       '&& vars.EKY_DIAGNOSTIC_KEY_FINGERPRINT == vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT',
       "&& (github.event_name == 'push' || github.event_name == 'schedule'",

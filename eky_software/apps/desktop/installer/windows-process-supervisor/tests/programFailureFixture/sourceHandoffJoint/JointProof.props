@@ -1,0 +1,7 @@
+<Project>
+  <PropertyGroup Condition="'$(EkyJointReservationProof)' == 'true'">
+    <BaseOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\bin\source-handoff-joint\$(MSBuildProjectName)\</BaseOutputPath>
+    <BaseIntermediateOutputPath>$(MSBuildThisFileDirectory)..\..\..\..\obj\source-handoff-joint\$(MSBuildProjectName)\</BaseIntermediateOutputPath>
+    <MSBuildProjectExtensionsPath>$(BaseIntermediateOutputPath)</MSBuildProjectExtensionsPath>
+  </PropertyGroup>
+</Project>

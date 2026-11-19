@@ -3,6 +3,7 @@ import { resolve } from 'node:path';
 import test from 'node:test';
 
 import { WORKSPACE_FAULT_PLANS, createWorkspaceFaultRequest } from './workspaceFaultContracts.mjs';
+import { WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE, workspacePhaseWorkerResult } from './workspaceSuccessContracts.mjs';
 import { resolveWorkspaceFaultTerminalOutcome, workspaceSuccessRunRootRemovable } from './workspaceSuccessFailureBoundary.mjs';
 
 const absent = { status: 'completed', resultCode: 'exactProductsAbsent', sourcePresent: false,
@@ -69,7 +70,11 @@ for (const mode of ['missingSupervisor', 'unverifiedTree', 'deadline', 'missingS
       f.calls.push('cleanup'); return { status: 'failed', errorCode: 'semanticCleanupTimedOut' };
     };
     if (mode === 'workerAndCleanupFail') {
-      Object.assign(input.supervisorResult, { status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1 });
+      Object.assign(input.supervisorResult, { status: 'failed', processResultCode: 'processExitFailed',
+        workerResultCode: 'notChecked', childExitCode: WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE });
+      const { scenario, runNonce, artifactDescriptorSha256 } = input.request;
+      input.readScenarioReceipt = async () => workspacePhaseWorkerResult({ schemaVersion: 1, scenario, runNonce, artifactDescriptorSha256 },
+        WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
       Object.assign(f.scenario, { status: 'failed', resultCode: 'workspaceFaultFailed', errorCode: 'sessionProofInvalid',
         completedPhases: f.scenario.completedPhases.slice(0, 5), failedPhase: 'sourceHandoff' });
     }

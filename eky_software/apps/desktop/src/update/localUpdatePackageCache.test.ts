@@ -13,12 +13,14 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import { createPackageBuildInfo } from '../release/packageBuildInfo.js';
 import { LocalUnsignedPilotUpdatePackageTrustPolicy } from './localUnsignedPilotUpdatePackageTrustPolicy.js';
 import { copyLocalUpdatePackageWithHash } from './localUpdateFileOperations.js';
+import * as localUpdateFiles from './localUpdateFileOperations.js';
+import { UpdatePackageTrustError } from './updatePackageTrustPolicy.js';
 import {
   LocalUpdatePackageCache,
   LocalUpdatePackageCacheError,
@@ -40,12 +42,120 @@ const releaseInfo: DesktopReleaseInfo = {
 };
 
 afterEach(async () => {
+  vi.restoreAllMocks();
   await Promise.all(
     roots.splice(0).map((root) => rm(root, { force: true, recursive: true })),
   );
 });
 
 describe('local update package cache', () => {
+  it('preserves the real candidate version reason and leaves an existing candidate byte-identical', async () => {
+    const { cache, current, candidate } = await createCurrentAndCandidatePair();
+    const candidateRoot = join(current.cacheRoot, 'candidate');
+    const before = await Promise.all((await readdir(candidateRoot)).map(async name =>
+      [name, await readFile(join(candidateRoot, name))] as const));
+    const copy = vi.spyOn(localUpdateFiles, 'copyLocalUpdatePackageWithHash');
+    const hash = vi.spyOn(localUpdateFiles, 'hashLocalUpdateFile');
+    const result = cache.stageSelectedPackage({ manifestPath: current.manifestPath, role: 'candidate' });
+    await expect(result).rejects.toMatchObject({ stage: 'sourceValidation', reason: 'versionNotNewer' });
+    const error = await result.catch((value: unknown) => value);
+    expect(error).not.toHaveProperty('cause');
+    expect(JSON.stringify(error)).not.toContain(current.root);
+    expect(copy).not.toHaveBeenCalled();
+    expect(hash).not.toHaveBeenCalled();
+    for (const [name, bytes] of before) expect((await readFile(join(candidateRoot, name))).equals(bytes)).toBe(true);
+    expect(await cache.getPackageStatus('candidate')).toMatchObject({ appVersion: candidate.manifest.appVersion });
+    expect((await readdir(current.cacheRoot)).sort()).toEqual(['candidate', 'current']);
+  });
+
+  it.each(['inspectInstaller', 'inspectRegularFile'] as const)(
+    'drops even authentic typed reasons from %s', async (dependency) => {
+      const fixture = await createFixture();
+      for (const injected of [new UpdatePackageTrustError('versionNotNewer'),
+        new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer')]) {
+        const cache = createCache(fixture.cacheRoot, { [dependency]: async () => { throw injected; } });
+        const result = cache.stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'candidate' });
+        await expect(result).rejects.toMatchObject({ stage: 'sourceValidation', reason: undefined });
+        expect(await result.catch((error: unknown) => error)).not.toHaveProperty('cause');
+      }
+    },
+  );
+
+  it.each(['absent', 'unknown', 'lookalike', 'cacheError', 'cause', 'aggregate'] as const)(
+    'does not extract candidate reasons from %s policy failures', async (kind) => {
+      const fixture = await createFixture();
+      const reason = new UpdatePackageTrustError('versionNotNewer');
+      const injected = kind === 'absent' ? new UpdatePackageTrustError()
+        : kind === 'unknown' ? Object.assign(new UpdatePackageTrustError(), { reason: 'futureReason' })
+        : kind === 'lookalike' ? { name: reason.name, reason: reason.reason, stage: 'sourceValidation' }
+        : kind === 'cacheError' ? new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer')
+        : kind === 'cause' ? new Error('synthetic-private-failure', { cause: reason })
+        : new AggregateError([reason], 'synthetic-private-failure');
+      const cache = createCache(fixture.cacheRoot, { trustPolicy: { verifyPackage() { throw injected; } } });
+      const result = cache.stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'candidate' });
+      await expect(result).rejects.toMatchObject({ stage: 'sourceValidation', reason: undefined });
+      const error = await result.catch((value: unknown) => value);
+      expect(error).not.toHaveProperty('cause');
+      expect(JSON.stringify(error)).not.toContain('synthetic-private');
+    },
+  );
+
+  it('keeps current policy failures generic and exact rollback independent of candidate ordering', async () => {
+    const fixture = await createFixture();
+    const policy = { verifyPackage: vi.fn(() => { throw new UpdatePackageTrustError('versionNotNewer'); }) };
+    const cache = createCache(fixture.cacheRoot, { trustPolicy: policy });
+    await expect(cache.stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'current' }))
+      .rejects.toMatchObject({ reason: undefined });
+    policy.verifyPackage.mockClear();
+    await expect(cache.registerExactRollbackPackage({ manifestPath: fixture.manifestPath,
+      expectedIdentity: expectedIdentityOf(fixture.manifest) })).resolves.toMatchObject({ role: 'current' });
+    expect(policy.verifyPackage).not.toHaveBeenCalled();
+  });
+
+  it.each(['cachePreparation', 'packageCopy', 'stagedValidation'] as const)(
+    'does not promote a later %s failure to a source reason', async (phase) => {
+      const fixture = await createFixture({ appVersion: '0.1.0-alpha.2', msiProductVersion: '0.1.2' });
+      const injected = new LocalUpdatePackageCacheError('sourceValidation', 'versionNotNewer');
+      const policy = new LocalUnsignedPilotUpdatePackageTrustPolicy();
+      let policyCalls = 0;
+      const cache = createCache(fixture.cacheRoot, {
+        ...(phase === 'cachePreparation' ? { getAvailableBytes: async () => { throw injected; } } : {}),
+        ...(phase === 'packageCopy' ? { copyPackage: async () => { throw injected; } } : {}),
+        trustPolicy: { verifyPackage(input) {
+          if (++policyCalls > 1 && phase === 'stagedValidation') throw new UpdatePackageTrustError('versionNotNewer');
+          return policy.verifyPackage(input);
+        } },
+      });
+      await expect(cache.stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'candidate' }))
+        .rejects.toMatchObject({ reason: undefined });
+      expect((await safeReadDirectory(fixture.cacheRoot)).filter(name => name.startsWith('.staging-'))).toEqual([]);
+    },
+  );
+
+  it.each(['same', 'newer'] as const)('keeps version-before-hash precedence for %s metadata', async (version) => {
+    const fixture = await createFixture(version === 'newer'
+      ? { appVersion: '0.1.0-alpha.2', msiProductVersion: '0.1.2' } : {});
+    const bytes = await readFile(fixture.packagePath, 'utf8');
+    await writeFile(fixture.packagePath, bytes.replace('synthetic', 'synthetix'));
+    const hash = vi.spyOn(localUpdateFiles, 'hashLocalUpdateFile');
+    await expect(createCache(fixture.cacheRoot).stageSelectedPackage({ manifestPath: fixture.manifestPath, role: 'candidate' }))
+      .rejects.toMatchObject({ stage: 'sourceValidation', reason: version === 'same' ? 'versionNotNewer' : undefined });
+    expect(hash).toHaveBeenCalledTimes(version === 'same' ? 0 : 1);
+  });
+
+  it.each(['manifest', 'size', 'sharedIdentity', 'relativePath'] as const)(
+    'keeps an earlier %s rejection generic despite non-newer metadata', async (fault) => {
+      const fixture = await createFixture();
+      if (fault === 'manifest') await writeFile(fixture.manifestPath, JSON.stringify({ ...fixture.manifest, appVersion: 'invalid' }));
+      if (fault === 'size') await appendFile(fixture.packagePath, '!');
+      const cache = createCache(fixture.cacheRoot, fault === 'sharedIdentity'
+        ? { inspectInstaller: async () => ({ architecture: 'x64', packageScope: 'perMachine',
+          productCode: `{${createExpectedWindowsInstallerProductCode('0.1.1')}}`, productVersion: '0.1.1',
+          upgradeCode: `{${releaseInfo.upgradeCode}}` } as unknown as WindowsInstallerIdentity) } : {});
+      await expect(cache.stageSelectedPackage({ manifestPath: fault === 'relativePath' ? 'relative.json' : fixture.manifestPath,
+        role: 'candidate' })).rejects.toMatchObject({ reason: undefined });
+    },
+  );
   it.each([
     'sourceValidation', 'cachePreparation', 'packageCopy',
     'stagedValidation', 'slotPublication', 'slotValidation',

@@ -4370,8 +4370,15 @@ async function startDesktopCompositionRuntime({
               ? null
               : result.filePaths[0] ?? null;
           },
-          showSafeError() {
+          showSafeError(reason) {
             if (updateWindowClosureStarted) return;
+            if (reason === 'versionNotNewer') {
+              deliveryConfirmation.showApplicationError(
+                'Päivityspaketti ei ole uudempi',
+                'Valitun paketin sovellusversio tai asennuspaketin versio ei ole käytössä olevaa uudempi. Samaa tai vanhempaa versiota ei voi asentaa päivityksenä. Valitse uudemman Eky-version päivityspaketti.',
+              );
+              return;
+            }
             deliveryConfirmation.showApplicationError(
               'Päivitystä ei voitu käsitellä',
               'Paikallista Eky-päivitystä ei voitu käsitellä turvallisesti.',

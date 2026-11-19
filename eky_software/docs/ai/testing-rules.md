@@ -55,6 +55,17 @@ Checkpoint-kadenssi ei vähennä GitHubin required check -portteja. CI ajaa
 edelleen sille dokumentoidut merge-portit riippumatta paikallisen työn
 checkpoint-jaosta.
 
+Salatun CI-aineiston kehityscheckpointille on erillinen
+`pnpm --filter @eky/desktop installer:test:encrypted-evidence:quick`.
+Se valitsee positiivisesti kuusi nimettyä RM-raportin sopimustestiä ja kolme
+CI-keräimen alusta-, lähde- ja ajosidontatestiä sekä oman valintasopimustestinsä.
+Ankkuroitu nimilista ei ota uusia tapauksia automaattisesti mukaan eikä aja
+GPG-avainten luontia, salausta tai purkua. Tämä ei ole salaus-, purku-,
+integraatio- tai hosted-hyväksyntä. Täysi `installer:test:encrypted-evidence`
+(11 tiedostoa), `:core` (10 tiedostoa), pakettiajurin komento ja CI-portit
+säilyvät ennallaan; nopea ajo ei korvaa niitä. Valinnan sopimuksen tarkistaa
+[`encryptedEvidenceQuickSelection.test.mjs`](../../apps/desktop/installer/windows-acceptance-harness/encryptedEvidenceQuickSelection.test.mjs).
+
 Nimetyn kohdeajon hyväksyntä vaatii näytön juuri valitun testitapauksen
 suorituksesta. Pelkkä exit 0 tai testitiedoston latauksen läpäisy ei riitä;
 sisäisen testin nimi esimerkiksi generoidussa lähdetekstissä ei ole ulomman
@@ -931,6 +942,12 @@ ja oikean salaus/purku-ketjun kautta ennen varsinaista Windows-koetta.
 
 ### Keräyksen ja toimituksen rajat
 
+Nimetyn synteettisen RM-ajoituskokeen erillinen
+[onnistumisraportin poikkeus](../architecture/ci-encrypted-evidence.md#nimetyn-rm-ajoituskokeen-onnistumisraportti)
+ei avaa yleistä onnistuneiden testien keräystä. Mittaustulos, sen salattu
+toimitus ja alkuperäisen MSI-hylkäyksen hyväksyntä ovat erillisiä portteja;
+myöhäistä tai tyhjää havaintoa ei hylätä vain keräyksen käynnistämiseksi.
+
 Kerää ongelman vaiheeseen sopiva rajattu aineisto nykyisillä välineillä:
 testiraportti, prosessin tulosteet, trace tai erikseen perusteltu vedos.
 Kaikkea raakadataa ei kerätä oletuksena. [Testinkirjoittajan vianetsintäreitti](e2e-test-authoring-guide.md#kun-testi-epäonnistuu)
@@ -1015,10 +1032,19 @@ Nykyinen automaattinen Playwright-retry sekä ihmisen tai agentin käsin
 käynnistämä uusinta lasketaan samaan yhden uusinnan rajaan;
 sen jälkeen ei tehdä lisäksi job-, workflow- tai paikallista uusintaa
 saman hylkäyksen vuoksi. Ennalta sovitut vakaustoistot ovat eri asia, mutta
-niilläkään ei korvata hylättyä yritystä. Uusinnan epäonnistuessa tai syyn
-jäädessä avoimeksi pysähdytään luokittelemaan tulos, ei ajeta vihreään asti.
+niilläkään ei korvata hylättyä yritystä. Tuloksen luokittelu keskeyttää saman
+kokeen lisätoiston, ei hyväksyttyyn työhön kuuluvaa vianrajausta. Uuteen
+erottavaan havaintoon tai kontrolliin perustuva tutkimus sekä osoitetun
+korjauksen todennus ovat sallittuja nykyisen tehtävä-, aineisto- ja
+turvasopimuksen puitteissa. Nimeä tutkimuskysymys, päätökseen vaikuttava
+odotettu havainto, pienin koe sekä työjakson työ- ja ajobudjetti. Budjetin
+lopussa arvioi tiedon lisääntyminen; jatka uudella perustellulla kysymyksellä
+tai muulla hyväksytyllä työllä ilman uutta rutiinilupaa, älä muuttumattomalla
+toistolla. Pelkkä kokeen uusi nimi, lokituksen lisääminen ilman erottavaa
+kysymystä tai asiaan liittymätön commit ei nollaa uusintarajaa.
 Näyttöön perustuva korjaus ja sen nimetty todennus eivät ole saman lähteen
-uusinta; pelkkä dokumentti- tai muu asiaan liittymätön commit ei nollaa rajaa.
+uusinta. Tutkimuskoe ei ole hylätyn hyväksyntäajon korvaava läpäisy;
+kriittisen hyväksyntäehdon muuttaminen pysyy erillisenä päätöksenä.
 
 Uusinta ei ole hyväksyntä: toisella yrityksellä läpäisevä testi on edelleen
 epävakaa, ellei alkuperäistä estettä osoiteta testin ulkopuoliseksi
@@ -1335,11 +1361,43 @@ Testi-, Playwright-, käynnistys- ja cleanup-rajat sekä retry-ehdot säilyvät.
 Molemmilla on nykyinen enintään kolmen minuutin ehdollinen salattu
 virhekeräys, erillisillä `core-electron-0`- ja `core-packaged-0`-sidonnoilla.
 Natiivikäännöksen raakalokipoikkeus pysyy vain development-työn sidonnassa.
-Jaon kokonaisajon ja cleanupin hyväksyntänäyttö on vielä avoin; jako ei
-korjaa aiempia hylkäyksiä tai puuttuvaa sulkutodistetta.
+Työnjaon aiemman integraation hyväksyntä löytyy [M1:n tilasta](../architecture/release-0.3.0-m1-preparation-plan.md#jatka-tästä).
+Sen aiemmat hylkäykset tai puuttuvat sulkutodisteet eivät muutu korjatuiksi;
+uusi lähderevisio tarvitsee edelleen omat porttinsa.
 Tämä rajattu diagnoosi ei tuota `V2 acceptance` -tulosta eikä korvaa normaalia
 kokonaiskierrosta. Reusable-kutsun pakollinen riskisuunnitelma säilyy;
 myös manuaalinen V2-kokonaisajo käyttää sitä muuttumattomana.
+
+### Workspace-paketoinnin valmistelutestit
+
+Omistajan 14.11.2026 hyväksymä jako säilyttää alkuperäisen
+`installer:test:encrypted-evidence`-komennon kaikki 11 tiedostoa,
+ajojärjestyksen, runner-liput ja raportoinnin täysille käsiajoille.
+Workspace-CI käyttää samaa tiedostojoukkoa kahdessa nykyisessä työssä:
+
+- `workspace_artifact_contracts` ajaa kymmenen tiedoston
+  `installer:test:encrypted-evidence:core`-valinnan muiden nykyisten
+  sopimustestiensä rinnalla. Vain `scripts/packagedSmokeFailureEvidence.test.mjs`
+  on erotettu tästä valinnasta.
+- `workspace_artifact_producer` ajaa koko erotetun tiedoston komennolla
+  `installer:test:packaged-smoke-driver`. Pakollinen järjestys on riippuvuuksien
+  valmistelu → ajuritesti → WiX-restore → build → tavujen varmennus → upload.
+  Testin virhe estää paketin rakentamisen; ehtoa tai virheen ohitusta ei lisätä.
+
+Nykyiset kytkentätestit varmentavat täyden 11 tiedoston joukon, kahden
+CI-valinnan erillisyyden ja täydellisyyden sekä väärän järjestyksen eston.
+Koonti vaatii core-askeleen sopimustyössä ja ajuriaskeleen tuottajassa;
+puuttuva, kahdentunut, väärän työn, ohitettu tai epäonnistunut askel ei kelpaa.
+Kumpikin komentovalinta säilyttää nykyisen `--test-concurrency=1`-rajan
+ja Node-virheraportoijan. Koko testitiedoston väittämiä tai testirajoja ei muuteta.
+
+Jaossa ei lisätä CI-työtä: sopimustyön 10 minuutin, tuottajan 30 minuutin
+ja sen build-askeleen 22 minuutin rajat säilyvät. Myös `workflow_call`-,
+`workflow_dispatch`- ja diagnostinen `artifact_only`-polku säilyttävät saman
+ennen buildia tehtävän tarkistuksen ja nykyiset riippuvuudet. Salattu keräys
+käyttää kunkin työn omia nykyisiä sidontoja. Jaon korjatun lähteen ajonäyttö
+ja alkuperäisten kokonaiskatkaisujen avoimet rajat kirjataan M1:een;
+työnjako ei yksin todista nopeutta, siivousta tai hyväksyntää.
 
 CI:n vähimmäisportti on:
 

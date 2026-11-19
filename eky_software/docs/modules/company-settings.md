@@ -370,10 +370,14 @@ säilyttää hyväksyntänäytön;
 
 ## D-paketin hyväksytyt toteutusrajat
 
-CS-1/CS-2 ei sulje D-pakettia. D1:n alkuluvun tallennusesto on toteutettu
-ja kohdetodennettu; salaisuusoperaation timeoutin ja myöhäisen
-sivuvaikutuksen käsittely sekä D:n integraatio ovat edelleen avoimia.
-Omistaja hyväksyi 17.10.2026 seuraavat rajat:
+CS-1/CS-2:n alkuperäinen hyväksyntä ei yksin sulkenut D-pakettia.
+D1-D3 ja niitä täydentävä HTTP-sulkukorjaus on sittemmin hyväksytty
+[PR #309:n loppuhyväksynnässä](https://github.com/eky-software/eky/pull/309#issuecomment-6324156808)
+main-revisiolla `286cc3227ffe37dd44417750636ec30d460a61e1`.
+[D:n omistava suunnitelma](../architecture/release-0.3.0-company-settings-plan.md)
+ja M1 erottavat tämän hyväksynnän myöhemmän revision omista porteista;
+vanhat ensivirheet eivät muutu korjatuiksi. Omistaja hyväksyi 17.10.2026
+seuraavat edelleen säilyvät rajat:
 
 - D1 vaatii saman muokkaussession onnistuneen, validoidun alkuluvun ennen
   perustietolomakkeen muokkausta ja tallennusta. Virheessä tarjotaan käsin

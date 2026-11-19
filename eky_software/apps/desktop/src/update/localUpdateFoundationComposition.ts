@@ -5,7 +5,7 @@ import type { BrowserWindow, IpcMain } from 'electron';
 import type { DesktopReleaseInfo } from '../release/desktopReleaseInfo.js';
 import type { LocalUpdateHandoffCoordinator } from './localUpdateHandoffCoordinator.js';
 import { LocalUnsignedPilotUpdatePackageTrustPolicy } from './localUnsignedPilotUpdatePackageTrustPolicy.js';
-import { LocalUpdatePackageCache } from './localUpdatePackageCache.js';
+import { LocalUpdatePackageCache, type LocalUpdatePackageCacheError } from './localUpdatePackageCache.js';
 import {
   createLocalUpdateSelectionCapability,
   type LocalUpdateSelectionCapability,
@@ -33,7 +33,7 @@ interface LocalUpdateFoundationCompositionOptions {
   releaseInfo: Readonly<DesktopReleaseInfo>;
   resourcesPath: string;
   selectManifestPath(): Promise<string | null>;
-  showSafeError(): void;
+  showSafeError(reason?: LocalUpdatePackageCacheError['reason']): void;
   systemRoot: string | undefined;
   userDataPath: string;
 }

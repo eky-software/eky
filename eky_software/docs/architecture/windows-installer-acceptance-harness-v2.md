@@ -39,6 +39,201 @@ hyväksynnän perusteella ratkaistuksi.
 | Viiden legacy-ryhmän ja kymmenen tuloksen checkpoint | Kuusi ryhmää: `core`, `commands`, `legacy-entry`, `clean-upgrade-entry`, `workspace-success-entry`, `workspace-fault-entry`; täydessä portissa kaksi toistoa ja 12 tulosta. |
 | K:n valmistelu tai V2-cutover vielä avoinna | Hyväksytyt integraatiot säilyvät; muuttuneen revision [testauskäytäntö](../ai/testing-rules.md) ja todellinen riskisuunnitelma määräävät uudet PR/main-portit. |
 
+### Lähdeprosessin rajattu exit/close-havainto
+
+Nykyisen workspace-Windows-adapterin valinnainen
+`observeSourceProcessTermination` välittää vain `sourceHandoff`-komennon
+suoraan omistetun `ChildProcess`-olion `exit`- ja `close`-havainnot.
+Havainto sisältää vain tapahtumalajin, saatavilla olevan PID:n sekä
+exit-koodin ja signaalin; prosessikahvaa, argumentteja tai ympäristöä ei anneta.
+PID ei ole Windowsin creation identity. Callbackin vastaanottoaika on
+poistumisen havaintoajan yläraja, ei tarkka native-exit, FILETIME-todiste,
+koko puun poissaolo tai prosessien välinen järjestystodiste.
+
+Komento odottaa edelleen `close`-tapahtumaa. Havainto ei ohita tulosvalidointia,
+session sulkua tai nykyistä Job-/cleanup-omistajaa. Callbackin pitää olla
+lyhyt; sen palauttamaa lupausta ei odoteta. Sen luku- tai kutsupoikkeus ja
+hylätty lupaus eivät muuta komennon tulosta. Lähdevaiheen välitys sulkeutuu
+komennon päättyessä, myös virheessä, ennen proof-lukua ja session sulkua;
+myöhäinen kutsu ei vaikuta seuraavaan vaiheeseen. Puuttuva havainto on tuntematon.
+
+Koukku ei itsessään kirjoita raporttia, avaa julkista tuloskenttää tai kytke
+CI-keräystä. Salatun virhetoimituksen ajosidonta, kellosopimus, sisältörajat
+ja oikea native-ketju todennetaan erikseen ennen toimituskytkentää.
+Lähde-/kohdetesti ei ratkaise alkuperäisen MSI-odotuksen syytä.
+
+### Natiivin sourceHandoff-liitoksen suunnittelusopimus
+
+Tämä on M5.1:n hyväksytyn suunnittelu- ja pienkoevaiheen jatkosopimus,
+ei vielä toimituskytkentä tai lupa pitkään MSI-/CI-ajoon. [M1](release-0.3.0-m1-preparation-plan.md#jatka-tästä)
+omistaa nykytilan. Lapsen callback-havainto ei korvaa tätä natiivisidontaa.
+
+- `AcceptanceCommandProgram` avaa yhden suljetun `sourceHandoff`-operaation
+  vain nykyisen workspace-success/fault-komennon `scenario`-vaiheessa.
+  Pelkkä geneerisen pyynnön skenaarionimi ei avaa valtuutta.
+  Edeltäjien järjestys ja onnistuminen tulevat parentin omasta historiasta;
+  kummankin tilatiedoston sidonta tarkistetaan sen oman native-noncen ja
+  parentin descriptor-/build-ankkurien perusteella. Tiedostojen keskinäinen
+  yhtäpitävyys ei yksin osoita ennen ensimmäistä native-havaintoa ollutta
+  juuri-identiteettiä. Puuttuvaa historiallista sidontaa ei päätellä kaiusta.
+- `SupervisorProgram` välittää saman vaihevaltuuden ja kellon nykyiselle
+  `WindowsJobProcessSupervisor`-omistajalle. Ei toista Jobia tai supervisoria.
+  Worker-composition välittää vain `runSourceHandoff()`-portin; muut komennot
+  ja proof-/session-loppukäsittelyn järjestys säilyvät.
+- Yksi ajosidottu pyyntö ja tulos kulkevat kahdessa kiinteässä yksityisessä
+  tiedostossa native-skenaariopyynnön vieressä. Ei putkea, stdout-protokollaa,
+  workerin komentograafia, polkuvalintaista tulostetta tai varakäynnistystä.
+  Tarkka nonce-, skenaario-, descriptor-, build- ja juurisidonta tarkistetaan
+  natiivin omasta, ennen pyyntöä hyväksytystä kontekstista. Pelkkä kaiku ei
+  anna valtuutta. Osittainen, muuttunut, vanha, toistettu tai linkitetty
+  tiedosto torjutaan. Skenaariojuuren kanoninen identiteetti pidetään kahvalla
+  ennen workerin käynnistystä ja tarkistetaan lukujen sekä julkaisujen
+  molemmin puolin; oikeutta ei johdeta juuren ulkopuolisten kansioiden luvusta.
+  Muuttuva hakemiston koko tai mtime ei ole juuren omistajuusidentiteetti.
+  Juurikahvan kirjoitusjako ei takaa reparse-muuttumattomuutta; tarkistusten
+  havaintorajoja ei saa kuvata mielivaltaisten kilpailujen estoksi.
+  Kokeen lähtörajat ovat pyynnölle 16 KiB ja tulokselle
+  4 KiB; ne keskitetään vain tämän suljetun ohjausprotokollan omistajaan.
+  Natiivin mailbox sijaitsee `commandRoot/scenario`-juuressa; sovelluksen
+  työhakemisto on eri juuri `runRoot/scenario`. Niitä ei vaihdeta keskenään.
+- Parent johtaa vain nykyisen asennetun `Eky.exe`:n, proof-kytkimen,
+  bootstrap-profiilin ja työhakemiston. Worker ei anna vapaata komentoa,
+  argumentteja tai ympäristöä. Nykyinen peritty ympäristö suodatetaan
+  muistissa nykyisillä säännöillä; sitä ei tallenneta ohjaustiedostoon.
+  Bootstrap-projektio generoidaan nykyisestä TS-omistajasta ja sidotaan myös
+  natiivin todella upottamiin tavuihin. Polkulaskennan vertailu jo kanonisella
+  syötejuurella ei korvaa tiedostojärjestelmän valinta- tai identiteettiporttia.
+- `SuspendedWindowsProcess` käyttää samaa creation-time Job-sidontaa,
+  rajattua kolmen NUL-kahvan periytystä ja nykyistä lainauskäytäntöä.
+  Syntymäkahva kirjataan ennen havainnointia ja Resumea; PID:llä ei avata
+  korvaavaa prosessia. Puuttuva syntymäidentiteetti estää Resumen;
+  sen hylkäys ei oikeuta käsittelemään pakkosiivousta luonnollisena exitinä.
+  Normaali worker-käynnistys ei muutu.
+- Tulos julkaistaan suoran lähdeprosessin valmistuttua, ei koko Jobin
+  tyhjennyttyä: worker odottaa tulosta ja MSI-jälkeläiset voivat yhä elää.
+  Kokonaisluvun exit-koodi ja nykyiset virhekategoriat säilyvät. Puuttuva tai
+  virheellinen kuljetustulos ei ole exit 0. Natiivilapselle ei keksitä
+  Node-`exit`/`close`-callbackeja.
+- Työ, tulostoimitus ja myöhäinen native-luonti kuuluvat nykyisiin
+  määräaika-, host-I/O- ja cleanup-portteihin. Keskeneräinen luonti ei anna
+  poissaolotodistetta, eikä myöhäistä lasta enää jatketa aikakatkaisun jälkeen.
+  Valmistelussa avattujen resurssien onnistunut luovutus ja määräajan jälkeen
+  valmistuvan työn sulku todennetaan erikseen. Myöhäinen valmistuminen ei
+  julkaise käyttökelpoista valtuutta eikä vapauta yhä käytössä olevaa kahvaa.
+- Valinnainen MSI-havainto ei odota diagnostiikan tyhjennystä sulussa.
+  Jo alkanut luku säilyttää kahvareferenssinsä omaan `finally`-vaiheeseensa;
+  uusia lukuja ei aloiteta sulun jälkeen. Pending ei muutu onnistuneeksi
+  havainnoksi eikä erilliseksi siivous- tai hyväksyntävaltuudeksi; se ei
+  yksin estä muuten todistettua valmistumista.
+  Omistajan sulkupyyntö ja viimeisen kahvareferenssin todellinen vapautuminen
+  todennetaan erikseen; pidetyn referenssin aikana ei väitetä kahvaa suljetuksi.
+  Kaikkien jo omistettujen resurssien vapautusta yritetään erillisestä
+  vapautusvirheestä huolimatta; ensimmäinen syy ja siivoushavainto säilyvät
+  erillään. Lopputulos noudattaa nykyistä tulosmuotoa: epäonnistunut tai
+  epävarma siivous ei julkaise onnistumista tai prosessipuun poissaoloa.
+  Tiedostokeräyksen hakemistovaraukset eivät saa estää pakollisten mailbox-
+  tiedostojen atomisia julkaisuja. Observerin korvaaminen tyhjällä havainnolla
+  ei todenna tätä rinnakkaisuutta.
+- Oikeat UI-/RM-lukuvälit ja lähteen live/exited-rajat käyttävät samaa
+  vaihekelloa. Epäonnistunut tai siirtymän kanssa päällekkäinen havainto on
+  unknown. Cleanupin aiheuttamaa poistumista ei merkitä luonnolliseksi exitiksi.
+  Mahdollinen versioitu lisähavainto kuuluu nykyiseen `MsiWindowEvidence`-
+  codec-/keräinketjuun, vain salattuun virhetoimitukseen; v1-v3 säilyvät.
+
+**Omistajan 17.11.2026 hyväksymä rajattu koetäsmennys:** kahdessa pienessä
+synteettisessä kilpailukokeessa `sourceHandoff`-tulos on lähteen
+päättymishavainto, ei worker-jatkon voimassaololupa. Ensimmäinen koe erottaa
+määräajan aikana keskeneräisen tuloskirjoituksen ja sen myöhemmän kulutuksen;
+toinen ajoissa toimitetun tuloksen ja vasta sulkupyynnön jälkeisen jatkon.
+Testin kausaaliset pidätyspisteet eivät ole tuotannon valtuuskuittauksia.
+Aikakatkaisu hylkää komennon pysyvästi. Nykyinen Job-omistaja sulkee puun,
+ja työn sekä resurssien todellinen päättyminen vaaditaan ennen siivousta.
+Sulkupyynnön ja todistetun poistumisen välille ei kokeessa luvata workerin
+sivuvaikutuksettomuutta tai jo tehdyn vaikutuksen peruuntumista.
+Tämä on aiempaa ehdotonta jatkokieltoa heikompi koesopimus, ei muuttumaton
+turvatakuu. Työ-/sulkuajat, sovelluksen turvarajat ja ensivirheen säilytys
+eivät muutu. Hyväksyntä ei koske tuotantokytkentää, pitkää MSI-/CI-ajoa,
+uutta tiedonkeruusisältöä tai mergeä. Todellisen MSI-varauksen näyttö ja
+mahdollinen myöhempi tuotantopäätös säilyvät erillisinä.
+
+**17.11.2026 katselmoitu seuraava yksityinen yhteiskoe:** `exit0` ja
+`sourceHold` yhdistävät saman admissionin lähdekuljetuksen oikeaan
+`MsiWindowEvidence.Publish`-hakemistovaraukseen. Vanhan varauskokeen vihreä
+binääri ei sisällä myöhempiä polku- ja raportin sulkukorjauksia; ne valitaan
+eksplisiittisesti uuteen koesyötteeseen. Onnistuvassa tapauksessa worker
+kuluttaa tuloksen varauksen ollessa yhä hallussa. `sourceHold`-tapauksessa
+varaus todistetaan pidetyksi nimetyn natiivin sulkupyynnön hetkellä, ei vain
+ennen callbackin oman työajan loppumista. Pidätys vapautetaan nykyisen
+sulkubudjetin sisällä; työn ja kahvojen päättyminen varmennetaan erikseen.
+Ensivirhe ja vapautusvirhe säilyvät. Koe ei todenna UI-/RM-havaintoa,
+tuotantokytkentää tai heikomman jatkolupauksen siirtoa tuotantoon.
+
+**Yhteiskokeen testijulkaisu:** nykyinen koontiajuri valitsee erillisen
+`--source-handoff-joint`-koonnin vain tavallisen supervisor-sopimusajon
+valmisteluun. Tavallinen supervisor ja sen ContractFixture käännetään ensin
+ennallaan; erillisen valinnan kaikkien kolmen projektin output-, intermediate-
+ja restore-polut erotetaan ennen projektien arviointia. Kaksi nimettyä tapausta
+valitaan vain `EKY_SOURCE_HANDOFF_JOINT_PROOF=1`-asetuksella nykyisen työn
+molemmissa toistoissa. Työn, testien ja natiivivaiheiden nykyiset rajat säilyvät.
+
+Koonti sitoo nykyisestä TS-omistajasta johdetut bootstrap-tavut ja kiinteän
+ohjausprotokollan natiivin todella upottamiin resursseihin. Nykyisen lähde-
+ja binäärisidonnan on täsmättävä ennen käynnistystä, ja tavallisten koontien
+tavujen on säilyttävä erillisen koonnin yli. Kokeen koko apuraporttia ei
+lisätä keräykseen: vain nykyiset native-/MSI-/runner-virhetiedostot ja
+rajatut prosessitulosteet kuuluvat nykyiseen salattuun toimitukseen.
+Nykyisen sopimustyön ennen koontia tehtävä rajattu salauskoe vaatii ensisyyn
+lisäksi erilliset completion-, cleanup- ja raportin lukuvirheet nykyisistä
+runner-tietueista oikeasti purettuina. Sivusyitä ei jätetä vain
+`AggregateError.errors`-taulukkoon; yhteinen syyprojektio ja keräysskeema
+eivät muutu. Vieraan raportin cleanup-syytä ei kohdisteta nykyiseen testiin.
+Valmistelu, metadatan lähdevalinta ja lähdekatselmus eivät korvaa erillisen
+koonnin tai kahden todellisen tapauksen suoritusta. Niiden onnistuminenkaan
+ei yksin luokittele alkuperäisen MSI-odotuksen syytä tai hyväksy mergeä.
+
+**Yhteiskokeen testijulkaisun rajaus, 17.11.2026:** käytetään nykyistä
+ContractFixture-projektia, sopimustestitiedostoa ja Windows-CI-työtä.
+Yksi eksplisiittinen, vain testiin valittava lähdevalinta korvaa neljä
+supervisorin lähdettä ja lisää viisi tukilähdettä sekä kaksi resurssia;
+fixtureen valitaan kolme lähdettä. Tavallinen supervisor ja sen resurssit
+eivät saa muuttua tämän valinnan vuoksi. Kummatkin ProjectReferencet,
+analyysit ja warnings-as-errors säilyvät. Kaikkien kolmen projektin tulos-,
+väli- ja restore-polut erotetaan jo projektin alkuarvioinnissa; pelkkä
+lopputuloshakemiston vaihto ei riitä. Oletuskoonnin erillisyys todennetaan.
+Julkaistaan vain tarvittavat siirrettävät koelähteet ja JS-/resurssisulkeuma,
+ei tutkimushistoriaa tai aiempien lähdevalintojen ketjua. Bootstrap-projektio
+sidotaan nykyiseen TS-omistajaan ja todella upotettuihin tavuihin.
+Muuttunut sijainti saa uuden lähdeidentiteetin ja rajatun erotuskatselmuksen.
+Nykyiset testien, työn, kahden toiston ja siivouksen rajat säilyvät;
+`exit0` käyttää 35/5 ja `sourceHold` 4/1 sekuntia, ei uutta kokonaisbudjettia.
+Nykyinen ensivirheen salattu toimitus varmennetaan ilman uutta keräysmuotoa.
+Tämä rajaus ei hyväksy lähdekäynnistyksen tuotantokytkentää tai uutta
+havaintosisältöä eikä ratkaise alkuperäisen MSI-hylkäyksen hyväksyntäestettä.
+
+Ennen toimituskytkennän päätöstä todennetaan aito worker -> nykyinen parent ->
+synteettinen lähde -> worker-tulos -vaihto, valtuuden vanheneminen, replay,
+virheellinen juurisidonta ja myöhäinen luonti. Lisäksi sidotaan parentin
+luotettu valmistelukonteksti ja nykyiset bootstrap-määrittelyt ilman uutta
+irrallista määrittelykopiota sekä todistetaan, ettei pidetty havaintoluku
+viivytä sulkua. Erilliset käynnistys- ja pakkosiivouskokeet tai synteettisen
+ennakkovaltuuden viestinvaihto eivät yksin todista tätä todellista liitosta.
+Varsinainen kytkentä ja rajattu lisähavainto
+käsitellään yhtenä omistajapäätöksenä; tavallisia koejärjestelyjä ei kysytä
+uudelleen. Alkuperäisen MSI-hylkäyksen hyväksyntäeste säilyy erillisenä.
+
+Rinnakkaisuuden testivalmistelu kuuluu nykyiseen ContractFixture-projektiin
+ja `windowsAcceptanceSupervisor.contract.test.mjs`-sarjaan. Kiinteät,
+kertaluontiset tyhjät merkit erottavat todellisen `beforeWrite`-varauksen,
+avoimen pyynnön torjunnan, suljetun pyynnön luvun, avoimen tuloksen torjunnan
+ja suljetun tuloksen luvun ennen varauksen vapautusta. Stdout on edelleen
+vain havaintokanava, ei ohjauskuittaus. Keskeytysmerkki ei kuittaa vaihtoa
+onnistuneeksi. Myöhäinen valmistuminen hylätään nykyisellä määräajalla;
+synkronisen I/O:n kovaa keskeytymistä ei päätellä näistä tarkistuksista.
+Valmistelun käännös ei korvaa ajamatonta natiivikoetta. Omistaja hyväksyi
+17.11.2026 testimuutoksen julkaisun ja sen normaalit CI-portit, myös pitkät
+MSI-portit. Nykyiset jobit ja niiden aikarajat säilyvät. Keräimen
+tuotantokoodi ja myöhempi lähdekäynnistyksen kytkentäpäätös eivät muutu.
+
 T1/T2-ajokytkentä ja valmistelu sekä T3:n kolme nykyistä fixtureä ja koko
 prosessipuun sopimus ovat [runtime-ohjeessa](e2e-test-environment.md).
 Native-, lifecycle- ja turvallinen CI-raportointi ovat eri havaintokanavia;
@@ -66,8 +261,16 @@ Yhteenlaskettu enimmäisvara kasvaa 35:stä 70 runner-minuuttiin; valmistelu
 on työkohtainen. Testi-, Playwright-, cleanup- ja retry-rajat säilyvät.
 Salattu keräys käyttää erillisiä `core-electron-0`- ja `core-packaged-0`-
 sidontoja; natiivikäännöksen raakalokipoikkeus ei laajene pakettityöhön.
-Jaon täysi ajonäyttö ja cleanup-hyväksyntä ovat avoimia; aiempia hylkäyksiä
-tai puuttuvia sulkutodisteita ei suljeta tällä CI-sijoituksen muutoksella.
+Työnjaon aiemman integraation hyväksyntä on M1:n tilassa. Uusi revisio
+tarvitsee omat porttinsa; aiempia hylkäyksiä tai puuttuvia sulkutodisteita
+ei suljeta tällä CI-sijoituksen muutoksella.
+
+Workspace-CI:n [valmistelutestien työnjako](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit)
+säilyttää samat 11 tiedostoa: kymmenen core-tiedostoa sopimustyössä ja koko
+pakettiajurin tiedosto tuottajassa riippuvuuksien jälkeen ennen WiX-restorea
+ja artifactin rakentamista. Molemmat askeleet ja niiden järjestys ovat
+pakollisia; nykyiset työ-, build-, keräys- ja siivousrajat sekä manuaaliset
+polut säilyvät. Tämä ei avaa kuluttajia ilman tuottajan hyväksyttyä tulosta.
 
 Workspace-asentimen sulkemispyynnön tiedostokäyttäjät havaitaan nykyisen
 valinnaisen MSI-kyselyn kautta. Lähdeinventaarion hyväksytyt tiedostot
@@ -78,6 +281,15 @@ prosesseja, vastaa ilmoituksiin tai muuta asennuksen hyväksymisehtoja.
 omistavat myös skeeman 3 lukutuen, osittaisuuden ja salatun toimituksen.
 Pysyvät valinta-, keskeytys- ja oikean OpenPGP-ketjun regressiot ovat nykyisissä
 workspace-runtime-, inventaario-, keräin- ja supervisor-sopimussarjoissa.
+
+Erikseen valittu synteettinen RM-ajoituskoe käyttää samaa 2 550 tiedoston
+valintaa kahdessa haarassa, ilman kyselyä ja yhdellä kyselyllä. Kummankin
+uuden omistetun lapsen vapautuspyyntö etenee kyselystä riippumatta; 150 ms
+ei ole luvattu OS-exit-aika. Kahvan tilat, kyselyn vaiheet ja erillinen
+siivousnäyttö eivät palauta historiallisen MSI-odotuksen puuttuvaa syytä.
+[Raportin rajaus](ci-encrypted-evidence.md#nimetyn-rm-ajoituskokeen-onnistumisraportti)
+omistaa nimetyn onnistumistoimituksen; nykyiset kaksi toistoa, 120 sekunnin
+testi-, 10 sekunnin resurssi- ja 10 minuutin työrajat säilyvät.
 
 ### MSI-ikkunatestin ensimmäinen valmisteluhavainto
 

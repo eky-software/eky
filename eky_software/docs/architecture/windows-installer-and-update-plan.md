@@ -463,6 +463,24 @@ rollback-paketin tilan, candidate-version, recovery point -tilan ja
 päivitysvaiheen. Selainkehityksessä capability on tarkoituksella pois
 käytöstä; webiin ei lisätä fake-filesystem-adapteria.
 
+Candidate-paketin saman tai vanhemman app- tai MSI-version hylkäys säilyttää
+vain varsinaisen source-trust-policy-kutsun suljetun `versionNotNewer`-syyn.
+Cache välittää sen vain todellisesta `sourceValidation`-vaiheesta;
+inspection-riippuvuuden samantyyppinen virhe tai myöhemmän vaiheen ilmoittama
+vaihenimi ei ole tämä todiste. Main näyttää kiinteän suomenkielisen
+native-palautteen ja kehottaa valitsemaan uudemman paketin. Hylkäys tapahtuu
+ennen lähde-MSI:n hash-tarkistusta eikä todista koko paketin eheyttä tai
+publisher-luottamusta. Exact-current-rekisteröinti ja journal-bound rollback
+säilyvät eri käyttötapauksina; aiempi candidate ei poistu hylkäyksen vuoksi.
+
+Palaute näytetään vain elävän capabilityn alkuperäiselle sallitulle
+ikkunalle/framelle. Dispose, ikkunan tuhoutuminen tai alkuperän vaihtuminen
+estää myöhäisen esityksen peruuttamatta alkanutta cache-I/O:ta. Handoffin
+nykyinen ikkunasulkuvartija säilyy. Muut virheet käyttävät yleistä palautetta;
+IPC DTO, julkinen yleiskoodi, rendererin yleinen virhebanneri ja nykyiset
+diagnostiikkaprojektiot eivät tarkennu. Native-palaute ei myönnä päivitys-
+tai business-valtuutta eikä vapauta suojaa, muuta recovery-tilaa tai uusi ajoa.
+
 Allekirjoittamattoman pilotin native-vahvistus näyttää nykyisen ja kohde-
 app-version, nykyisen ja kohde-MSI-version, kanavan, arkkitehtuurin, lyhyen
 SHA-256-sormenjäljen, rollback-paketin ja pre-update-pisteen tilan sekä

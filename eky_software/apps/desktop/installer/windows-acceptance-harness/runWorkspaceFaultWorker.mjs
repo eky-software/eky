@@ -2,7 +2,7 @@ import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
-import { writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
+import { WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
 import { WORKSPACE_FAULT_EXIT_CODES, readWorkspaceFaultRequest, validateWorkspaceFaultResult,
   workspaceFaultErrorCode, workspaceFaultPlan, workspaceFaultResultPath, workspaceFaultWorkerResult } from './workspaceFaultContracts.mjs';
 import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
@@ -42,11 +42,12 @@ export async function runWorkspaceFaultWorker(arguments_, {
       artifactDescriptorSha256: request.artifactDescriptorSha256 }, request);
     await writeResult(workspaceFaultResultPath(requestPath), bound);
     await writeResult(resolve(dirname(requestPath), 'worker-result.json'), workspaceFaultWorkerResult(request, bound));
-    return WORKSPACE_FAULT_EXIT_CODES[bound.status];
+    return bound.status === 'failed' ? WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE : WORKSPACE_FAULT_EXIT_CODES.completed;
   } catch (error) { observeFailure(error, 'resultPublication'); return WORKSPACE_FAULT_EXIT_CODES.failed; }
   finally { await observeFailure.finish(); }
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  process.exit(await runWorkspaceFaultWorker(process.argv.slice(2)));
+  const code = await runWorkspaceFaultWorker(process.argv.slice(2));
+  process.exit(code === WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE ? WORKSPACE_FAULT_EXIT_CODES.failed : code);
 }

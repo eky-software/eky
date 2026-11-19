@@ -1,17 +1,24 @@
 import assert from 'node:assert/strict';
+import { mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import test from 'node:test';
 
 import {
   requireWorkspaceSuccessProductPrecondition, resolveWorkspaceSuccessTerminalOutcome, workspaceSuccessRunRootRemovable,
 } from './workspaceSuccessFailureBoundary.mjs';
-import { WORKSPACE_SUCCESS_PHASES } from './workspaceSuccessContracts.mjs';
+import { readWorkspaceScenarioReceipt, WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE, WORKSPACE_SUCCESS_PHASES,
+  workspacePhaseWorkerResult } from './workspaceSuccessContracts.mjs';
 
 const absent = { status: 'completed', resultCode: 'exactProductsAbsent', sourcePresent: false,
   targetPresent: false, installerRegistryPresent: false };
 const target = { ...absent, resultCode: 'targetProductPresent', targetPresent: true, installerRegistryPresent: true };
 const supervisor = { status: 'completed', processTreeAbsent: true, processResultCode: 'processCompleted',
   workerResultCode: 'workerResultValidated', cleanupResultCode: 'notRequired', childExitCode: 0 };
-const request = { runNonce: 'a'.repeat(64), artifactDescriptorSha256: 'b'.repeat(64) };
+const request = { scenario: 'packagedWorkspaceSuccess', runNonce: 'a'.repeat(64), artifactDescriptorSha256: 'b'.repeat(64) };
+const reportedFailure = { ...supervisor, status: 'failed', processResultCode: 'processExitFailed',
+  workerResultCode: 'notChecked', childExitCode: WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE };
+const receipt = workspacePhaseWorkerResult({ ...request, schemaVersion: 1 }, reportedFailure.childExitCode);
 const scenario = { ...request, schemaVersion: 1, scenario: 'packagedWorkspaceSuccess',
   status: 'completed', resultCode: 'workspaceSuccessCompleted', errorCode: null, failedPhase: null,
   completedPhases: [...WORKSPACE_SUCCESS_PHASES] };
@@ -105,7 +112,7 @@ for (const cleanupResult of [
 }
 
 test('original worker error survives failed semantic cleanup', async () => {
-  const value = fixture({ supervisorResult: { ...supervisor, status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1 },
+  const value = fixture({ supervisorResult: reportedFailure, readScenarioReceipt: async () => receipt,
     async readScenarioResult() { return failedScenario; },
     async cleanupExactProducts() { throw new Error('PRIVATE cleanup'); } });
   const result = await resolveWorkspaceSuccessTerminalOutcome(value.input);
@@ -114,6 +121,50 @@ test('original worker error survives failed semantic cleanup', async () => {
   assert.equal(result.semanticCleanupResultCode, 'semanticCleanupFailed');
   assert.equal(result.supervisorProcessResultCode, 'processExitFailed');
   assert.equal(result.semanticProofResultCode, 'notChecked');
+});
+
+for (const [label, result, readReceipt, expectedReceiptReads] of [
+  ['unexpected exit 1', { ...reportedFailure, childExitCode: 1 }, async () => receipt, 0],
+  ['generic worker failure', { ...supervisor, status: 'failed', workerResultCode: 'workerReportedFailure' }, async () => receipt, 0],
+  ['missing receipt', reportedFailure, async () => { throw new Error('PRIVATE'); }, 1],
+  ['another run', reportedFailure, async () => ({ ...receipt, runNonce: 'c'.repeat(64) }), 1],
+  ['wrong artifact', reportedFailure, async () => ({ ...receipt, artifactDescriptorSha256: 'c'.repeat(64) }), 1],
+  ['wrong scenario', reportedFailure, async () => ({ ...receipt, scenario: 'packagedWorkspaceFaultRollback' }), 1],
+  ['unknown receipt field', reportedFailure, async () => ({ ...receipt, extra: true }), 1],
+  ['success receipt', reportedFailure, async () => workspacePhaseWorkerResult({ ...request, schemaVersion: 1 }, 0), 1],
+]) {
+  test(`complete failure detail is never read with ${label}`, async () => {
+    const value = fixture({ supervisorResult: result,
+      async readScenarioReceipt() { value.calls.push('receipt'); return readReceipt(); },
+      async readScenarioResult() { value.calls.push('scenario'); return failedScenario; } });
+    const outcome = await resolveWorkspaceSuccessTerminalOutcome(value.input);
+    assert.equal(outcome.errorCode, 'supervisorFailed');
+    assert.equal(outcome.scenarioResultCode, 'notChecked');
+    assert.equal(value.calls.includes('scenario'), false);
+    assert.equal(value.calls.filter((operation) => operation === 'receipt').length, expectedReceiptReads);
+    assert.equal(outcome.semanticCleanupResultCode, 'semanticCleanupCompleted');
+  });
+}
+
+test('settled failure receipt cannot publish contradictory success detail', async () => {
+  const value = fixture({ supervisorResult: reportedFailure, readScenarioReceipt: async () => receipt });
+  const outcome = await resolveWorkspaceSuccessTerminalOutcome(value.input);
+  assert.equal(outcome.errorCode, 'supervisorFailed');
+  assert.equal(outcome.scenarioResultCode, 'missingOrInvalid');
+  assert.equal(value.calls.includes('proof'), false);
+  assert.equal(outcome.semanticCleanupResultCode, 'semanticCleanupCompleted');
+});
+
+test('scenario receipt uses the native terminal receipt byte limit', async (t) => {
+  const root = await mkdtemp(join(await realpath(tmpdir()), 'eky-workspace-receipt-'));
+  t.after(() => rm(root, { recursive: true }));
+  const valid = JSON.stringify(receipt).padEnd(64 * 1024, ' ');
+  const atLimit = join(root, 'at-limit.json');
+  const oversized = join(root, 'oversized.json');
+  await writeFile(atLimit, valid, { flag: 'wx' });
+  await writeFile(oversized, valid + ' ', { flag: 'wx' });
+  assert.deepEqual(await readWorkspaceScenarioReceipt(atLimit), receipt);
+  await assert.rejects(readWorkspaceScenarioReceipt(oversized), { message: 'WINDOWS_ACCEPTANCE_WORKSPACE_RECEIPT_INVALID' });
 });
 
 test('an unverified cleanup process cannot be erased by a later absent product state', async () => {
@@ -159,7 +210,7 @@ for (const [errorCode, cleanupFails, expectedCode] of [
 
 test('a failed worker cannot authorize cleanup after a rejected caller precondition', async () => {
   const value = fixture({ productPrecondition: target,
-    supervisorResult: { ...supervisor, status: 'failed', processResultCode: 'processExitFailed', childExitCode: 1 },
+    supervisorResult: reportedFailure, readScenarioReceipt: async () => receipt,
     async readScenarioResult() { return failedScenario; } });
   const rejected = await resolveWorkspaceSuccessTerminalOutcome(value.input);
   assert.equal(rejected.status, 'failed');

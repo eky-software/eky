@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using System.Reflection;
+using System.Runtime.ExceptionServices;
 using System.Runtime.InteropServices;
 using System.Text.Json;
 using Eky.WindowsProcessSupervisor;
@@ -22,9 +23,16 @@ internal static class MsiResourceContract
         if (!OperatingSystem.IsWindows()) return 63;
         var request = SupervisorRequestReader.Read(["--request", requestPath]);
         var checks = new Dictionary<string, bool>();
+        var timingEnabled = Environment.GetEnvironmentVariable("EKY_MSI_RESOURCE_TIMING_PROOF") == "1";
+        const int releaseDelayMs = 150;
+        const int resourceCount = 2550;
+        const int childExitTimeoutMs = 5000;
+        var timingArms = new List<object>();
+        string[] bulk = [];
+        ExceptionDispatchInfo? firstFailure = null;
         var payload = Path.Combine(request.WorkingDirectory, "payload");
         Directory.CreateDirectory(payload);
-        var names = new[] { "owned.bin", "other.bin", "unused.bin" };
+        var names = new[] { "owned.bin", "other.bin", "unused.bin", "same-job.bin" };
         foreach (var name in names) File.WriteAllBytes(Path.Combine(payload, name), "SYNTHETIC RM RESOURCE"u8.ToArray());
         var selectionPath = Path.Combine(request.WorkingDirectory, MsiWindowObservation.Contract.ResourceSelectionFilename);
         var children = new List<(SuspendedWindowsProcess Process, EventWaitHandle Stop)>();
@@ -38,7 +46,7 @@ internal static class MsiResourceContract
             File.Delete(selectionPath);
             Check("missingSelectionUnavailable", MsiResourceSelection.Read(request, () => true, payload) is null);
             WriteSelection(names);
-            Check("validSelectionAdmitted", MsiResourceSelection.Read(request, () => true, payload)?.Files.Length == 3);
+            Check("validSelectionAdmitted", MsiResourceSelection.Read(request, () => true, payload)?.Files.Length == names.Length);
             Check("cancelledSelectionRejected", MsiResourceSelection.Read(request, () => false, payload) is null);
             foreach (var invalid in new[] { new[] { "../escape.bin" }, new[] { "owned.bin", "OWNED.bin" },
                 new[] { "missing.bin" }, new[] { "owned.bin/child" }, new[] { "/owned.bin" }, new[] { "owned.bin " } })
@@ -61,18 +69,50 @@ internal static class MsiResourceContract
             var aIdentity = Identity(a.Process);
             var bIdentity = Identity(b.Process);
             WriteSelection([names[0]]);
-            observed = MsiResourceObservation.Capture(request, own, () => true, payload);
+            var registered = CaptureForSource(a.Process);
+            observed = registered.Sample;
             Check("registeredHolderObserved", observed.Status == "observed" && observed.Processes.Any(row =>
                 row.ProcessId == aIdentity.Pid && row.StartTimeLow == aIdentity.Low && row.StartTimeHigh == aIdentity.High && row.Membership == "ownedJob"));
             Check("unregisteredHolderExcluded", observed.Processes.All(row => row.ProcessId != bIdentity.Pid));
             Check("sessionClosed", observed.NativeCode == 0 && observed.EndSessionCode == 0);
+            Check("queryBracketsAStableSource", registered.LiveBefore && registered.LiveAfter &&
+                SourceRelation(registered, aIdentity) == "sourceReported");
+            Check("samePidWrongCreationNotAttributed", SourceRelation(registered, new() { Pid = aIdentity.Pid,
+                Low = aIdentity.Low ^ 1, High = aIdentity.High }) == "unknown");
+            Check("missingFinalLiveEvidenceNotAttributed", SourceRelation(registered with { LiveAfter = false },
+                aIdentity) == "unknown");
+            Check("incompleteSampleNotAttributed", SourceRelation(registered with {
+                Sample = observed with { Status = "limited" } }, aIdentity) == "unknown");
+            var sameJob = Start(own, names[3]);
+            var sameJobIdentity = Identity(sameJob.Process);
+            WriteSelection([names[3]]);
+            var sibling = CaptureForSource(a.Process);
+            Check("sameJobIsNotSourceIdentity", HasOwnedHolder(sibling.Sample, sameJobIdentity) &&
+                SourceRelation(sibling, aIdentity) == "otherReported");
+            WriteSelection([names[0], names[3]]);
+            var mixed = CaptureForSource(a.Process);
+            Check("mixedHoldersNotAttributedSolelyToSource", HasOwnedHolder(mixed.Sample, sameJobIdentity) &&
+                SourceRelation(mixed, aIdentity) == "mixedReported");
             WriteSelection([names[1]]);
-            var external = MsiResourceObservation.Capture(request, own, () => true, payload);
+            var outside = CaptureForSource(a.Process);
+            var external = outside.Sample;
             Check("outsideJobObserved", external.Status == "observed" && external.Processes.Any(row =>
                 row.ProcessId == bIdentity.Pid && row.Membership == "outsideJob"));
+            Check("outsideJobHolderNotAttributedToSource", SourceRelation(outside, aIdentity) == "otherReported");
             WriteSelection([names[2]]);
-            var empty = MsiResourceObservation.Capture(request, own, () => true, payload);
+            var absent = CaptureForSource(a.Process);
+            var empty = absent.Sample;
             Check("emptyObservedDistinct", empty.Status == "observed" && empty.Processes.Count == 0 && empty.EndSessionCode == 0);
+            Check("emptyDoesNotExcludePriorSource", SourceRelation(absent, aIdentity) == "unknown");
+            WriteSelection([names[3]]);
+            var overlap = CaptureForSource(sameJob.Process, () =>
+            {
+                Check("sameJobHolderReleased", sameJob.Stop.Set());
+                Check("sameJobHolderExited", sameJob.Process.Wait(childExitTimeoutMs) && sameJob.Process.GetExitCode() == 0);
+            });
+            Check("sourceExitOverlapNotAttributed", overlap.LiveBefore && !overlap.LiveAfter &&
+                overlap.Sample.Status == "observed" && overlap.Sample.Processes.Any(row => Matches(row, sameJobIdentity)) &&
+                SourceRelation(overlap, sameJobIdentity) == "unknown");
             Check("staleCreationUnknown", MsiResourceObservation.Membership(new() { Pid = aIdentity.Pid,
                 Low = aIdentity.Low ^ 1, High = aIdentity.High }, own) == "unknown");
             var callbackReached = false;
@@ -81,6 +121,11 @@ internal static class MsiResourceContract
             { callbackReached = true; a.Stop.Set(); exited = a.Process.Wait(5000) && a.Process.GetExitCode() == 0; });
             Check("exitDuringReadVerified", callbackReached && exited && membership == "unknown");
             Check("exitedUnknown", MsiResourceObservation.Membership(aIdentity, own) == "unknown");
+            WriteSelection([names[0]]);
+            var afterExit = MsiResourceObservation.Capture(request, own, () => true, payload);
+            Check("sameSelectionAfterVerifiedExitEmpty", afterExit is { Status: "observed", Phase: "complete",
+                ResourceCount: 1, NativeCode: 0, EndSessionCode: 0 } &&
+                afterExit.SelectionIdentity == observed.SelectionIdentity && afterExit.Processes.Count == 0);
             Check("moreDataLimited", MsiResourceObservation.QueryStatus(234, 33, 32, 32) == "limited");
             Check("badCountLimited", MsiResourceObservation.QueryStatus(0, 0, 33, 32) == "limited");
             Check("nativeFailureUnavailable", MsiResourceObservation.QueryStatus(121, 0, 0, 32) == "unavailable");
@@ -177,7 +222,7 @@ internal static class MsiResourceContract
             }
             evidence.CompleteWithinRequestBudget(5000);
             Check("noRawPublicOutput", !output.ToString().Contains("EXCLUDED", StringComparison.Ordinal));
-            var bulk = Enumerable.Range(0, 2550).Select(index => $"bulk/file{index:D4}.bin").ToArray();
+            bulk = Enumerable.Range(0, resourceCount).Select(index => $"bulk/file{index:D4}.bin").ToArray();
             Directory.CreateDirectory(Path.Combine(payload, "bulk"));
             foreach (var name in bulk) File.WriteAllBytes(Path.Combine(payload, name), "SYNTHETIC RM RESOURCE"u8.ToArray());
             var holder = Start(own, bulk[0]);
@@ -194,25 +239,160 @@ internal static class MsiResourceContract
                 NativeCode: 0, EndSessionCode: 0 } && observed.Processes.Any(row => row.ProcessId == holderIdentity.Pid &&
                 row.StartTimeLow == holderIdentity.Low && row.StartTimeHigh == holderIdentity.High && row.Membership == "ownedJob"));
             Check("resourceEvidenceRecorded", new MsiWindowEvidence(request).Publish(prompt, 0, () => false, observed) == "recorded");
+            if (timingEnabled)
+            {
+                Check("timingPositiveControlReleased", holder.Stop.Set());
+                Check("timingPositiveControlExited", holder.Process.Wait(childExitTimeoutMs) && holder.Process.GetExitCode() == 0);
+                timingArms.Add(TimingArm(false, evidence));
+                timingArms.Add(TimingArm(true, evidence));
+            }
         }
+        catch (Exception error) { firstFailure = ExceptionDispatchInfo.Capture(error); }
         finally
         {
-            foreach (var child in children) child.Stop.Set();
+            foreach (var child in children) AttemptCleanup(() => child.Stop.Set());
             var exited = true;
-            foreach (var child in children) if (!child.Process.Wait(5000)) exited = false;
-            if (!exited) { own.Terminate(); other.Terminate(); }
+            foreach (var child in children)
+            {
+                var signalled = false;
+                AttemptCleanup(() => signalled = child.Process.Wait(5000));
+                exited &= signalled;
+            }
+            if (!exited) { AttemptCleanup(() => own.Terminate()); AttemptCleanup(() => other.Terminate()); }
             try
             {
-                foreach (var child in children) Check("childExited" + children.IndexOf(child), child.Process.Wait(5000) && child.Process.GetExitCode() == 0);
-                Check("bothTreesAbsent", own.GetActiveProcessCount() == 0 && other.GetActiveProcessCount() == 0);
-                foreach (var name in names) Check("bytesPreserved" + name,
-                    File.ReadAllBytes(Path.Combine(payload, name)).AsSpan().SequenceEqual("SYNTHETIC RM RESOURCE"u8));
+                foreach (var child in children) AttemptCleanup(() => Check("childExited" + children.IndexOf(child),
+                    child.Process.Wait(5000) && child.Process.GetExitCode() == 0));
+                AttemptCleanup(() => Check("bothTreesAbsent", own.GetActiveProcessCount() == 0 && other.GetActiveProcessCount() == 0));
+                foreach (var name in names) AttemptCleanup(() => Check("bytesPreserved" + name,
+                    File.ReadAllBytes(Path.Combine(payload, name)).AsSpan().SequenceEqual("SYNTHETIC RM RESOURCE"u8)));
+                if (timingEnabled) AttemptCleanup(() => Check("timingBulkBytesPreserved", bulk.Length == resourceCount &&
+                    bulk.All(name => File.ReadAllBytes(Path.Combine(payload, name)).AsSpan().SequenceEqual("SYNTHETIC RM RESOURCE"u8))));
             }
-            finally { foreach (var child in children) { child.Process.Dispose(); child.Stop.Dispose(); } }
+            finally
+            {
+                foreach (var child in children)
+                {
+                    AttemptCleanup(child.Process.Dispose);
+                    AttemptCleanup(child.Stop.Dispose);
+                }
+                if (timingEnabled) AttemptCleanup(() => Check("timingChildHandlesClosed",
+                    children.All(child => child.Process.HandlesClosed && child.Stop.SafeWaitHandle.IsClosed)));
+            }
         }
-        File.WriteAllText(Path.Combine(request.WorkingDirectory, "msi-resource-contract.json"), JsonSerializer.Serialize(checks));
+        firstFailure?.Throw();
+        var report = timingEnabled ? JsonSerializer.Serialize(new { schemaVersion = 1, checks,
+            timing = new { releaseDelayMs, resourceCount, positiveControl = true, arms = timingArms } }) : JsonSerializer.Serialize(checks);
+        File.WriteAllText(Path.Combine(request.WorkingDirectory, "msi-resource-contract.json"), report);
         return 0;
 
+        void AttemptCleanup(Action cleanup)
+        {
+            try { cleanup(); }
+            catch (Exception error) { firstFailure ??= ExceptionDispatchInfo.Capture(error); }
+        }
+        SourceQuery CaptureForSource(SuspendedWindowsProcess source, Action? afterWindowsQuery = null)
+        {
+            bool liveBefore = false, liveAfter = false;
+            var sample = MsiResourceObservation.Capture(request, own, () => true, payload,
+                afterQuery: () => { afterWindowsQuery?.Invoke(); liveAfter = IsLive(); },
+                beforeQuery: () => liveBefore = IsLive());
+            return new(sample, liveBefore, liveAfter);
+
+            bool IsLive() => NativeMethods.WaitForSingleObject(source.Process, 0) == NativeMethods.WaitTimeout;
+        }
+        object TimingArm(bool withQuery, SafeEvidenceWriter evidence)
+        {
+            var kind = withQuery ? "withQuery" : "withoutQuery";
+            WriteSelection(bulk);
+            var child = Start(own, bulk[0]);
+            var identity = Identity(child.Process);
+            Check("timing" + kind + "OwnedLiveAtReady", own.ContainsProcess(child.Process.Process) && !child.Process.Wait(0));
+            int? captureEntryMs = null, afterQueryMs = null, captureReturnMs = null;
+            string? entryState = null, afterQueryState = null, returnState = null;
+            var releaseRequestedMs = -1;
+            var exitObservedMs = -1;
+            MsiResourceSample? sample = null;
+            ExceptionDispatchInfo? armFailure = null;
+            using var budget = new WorkspaceMsiActivityObservation(request.Scenario, own, evidence);
+            var clock = Stopwatch.StartNew();
+            // The release and direct-child wait must progress even while RM is blocked.
+            var releaseThread = new Thread(() =>
+            {
+                try
+                {
+                    while (true)
+                    {
+                        var remaining = releaseDelayMs - clock.ElapsedMilliseconds;
+                        if (remaining <= 0) break;
+                        Thread.Sleep((int)remaining);
+                    }
+                    releaseRequestedMs = Elapsed();
+                    if (!child.Stop.Set()) throw new InvalidOperationException("timingReleaseRequestFailed");
+                    if (!child.Process.Wait(childExitTimeoutMs)) throw new InvalidOperationException("timingChildExitUnverified");
+                    exitObservedMs = Elapsed();
+                }
+                catch (Exception error) { RecordFailure(error); }
+            }) { IsBackground = true };
+            var started = false;
+            var releaseSettled = false;
+            try
+            {
+                releaseThread.Start();
+                started = true;
+                if (withQuery)
+                {
+                    captureEntryMs = Elapsed();
+                    entryState = State();
+                    sample = MsiResourceObservation.Capture(request, own,
+                        budget.ResourceAdmission(() => clock.ElapsedMilliseconds), payload, () =>
+                        {
+                            // Includes preceding selection and registration, not isolated RM latency.
+                            afterQueryMs = Elapsed();
+                            afterQueryState = State();
+                        });
+                    captureReturnMs = Elapsed();
+                    returnState = State();
+                }
+            }
+            catch (Exception error) { RecordFailure(error); }
+            finally
+            {
+                if (started)
+                {
+                    try
+                    {
+                        releaseSettled = releaseThread.Join(releaseDelayMs + 2 * childExitTimeoutMs);
+                        if (!releaseSettled) RecordFailure(new InvalidOperationException("timingReleaseSettlementUnverified"));
+                    }
+                    catch (Exception error) { RecordFailure(error); }
+                }
+            }
+            Volatile.Read(ref armFailure)?.Throw();
+            Check("timing" + kind + "ReleaseSettled", releaseSettled && releaseRequestedMs >= releaseDelayMs);
+            Check("timing" + kind + "DirectChildExitObserved", exitObservedMs >= releaseRequestedMs && child.Process.Wait(0));
+            var exitCode = child.Process.GetExitCode();
+            Check("timing" + kind + "ExitSucceeded", exitCode == 0);
+            if (withQuery) Check("timingwithQuerySessionClosed", sample is not null && sample.EndSessionCode is null or 0);
+            var holderRows = sample?.Processes.Where(row => row.ProcessId == identity.Pid &&
+                row.StartTimeLow == identity.Low && row.StartTimeHigh == identity.High).ToArray();
+            return new { kind, captureEntryMs, afterQueryMs, captureReturnMs, releaseRequestedMs, exitObservedMs,
+                entryState, afterQueryState, returnState, queryStatus = sample?.Status, queryPhase = sample?.Phase,
+                nativeCode = sample?.NativeCode, endSessionCode = sample?.EndSessionCode,
+                holderPresent = holderRows is null ? (bool?)null : holderRows.Length != 0,
+                holderLiveOwned = holderRows is null ? (bool?)null : holderRows.Any(row => row.Membership == "ownedJob"),
+                exitCode, releaseSettled };
+
+            int Elapsed() => checked((int)clock.ElapsedMilliseconds);
+            string State() => NativeMethods.WaitForSingleObject(child.Process.Process, 0) switch
+            {
+                NativeMethods.WaitTimeout => "live",
+                NativeMethods.WaitObject0 => "exited",
+                _ => "unknown",
+            };
+            void RecordFailure(Exception error) => Interlocked.CompareExchange(ref armFailure,
+                ExceptionDispatchInfo.Capture(error), null);
+        }
         void Check(string name, bool passed)
         { checks.Add(name, passed); if (!passed) throw new InvalidOperationException("msiResourceContractFailed:" + name); }
         void WriteSelection(string[] files, string? nonce = null, string? root = null) => File.WriteAllText(selectionPath,
@@ -247,6 +427,35 @@ internal static class MsiResourceContract
                 throw new InvalidOperationException("processIdentityUnavailable");
             return new() { Pid = GetProcessId(process.Process), Low = created.Low, High = created.High };
         }
+    }
+
+    private sealed record SourceQuery(MsiResourceSample Sample, bool LiveBefore, bool LiveAfter);
+
+    private static bool Matches(MsiResourceProcess row, MsiResourceObservation.UniqueProcess process) =>
+        row.ProcessId == process.Pid && row.StartTimeLow == process.Low && row.StartTimeHigh == process.High;
+
+    private static bool HasOwnedHolder(MsiResourceSample sample, MsiResourceObservation.UniqueProcess process) =>
+        sample.Processes.Any(row => row.Membership == "ownedJob" && Matches(row, process));
+
+    private static string SourceRelation(SourceQuery query, MsiResourceObservation.UniqueProcess source)
+    {
+        if (!query.LiveBefore || !query.LiveAfter || query.Sample is not { Status: "observed", Phase: "complete",
+            NativeCode: 0, EndSessionCode: 0, ResourceCount: > 0 }) return "unknown";
+
+        var ownSource = false;
+        var other = false;
+        foreach (var row in query.Sample.Processes)
+        {
+            if (row.ProcessId == source.Pid)
+            {
+                if (!Matches(row, source) || row.Membership != "ownedJob")
+                    return "unknown";
+                ownSource = true;
+            }
+            else if (row.Membership is "ownedJob" or "outsideJob") other = true;
+            else return "unknown";
+        }
+        return ownSource ? other ? "mixedReported" : "sourceReported" : other ? "otherReported" : "unknown";
     }
 
     [DllImport("kernel32.dll")] private static extern uint GetProcessId(Microsoft.Win32.SafeHandles.SafeProcessHandle process);

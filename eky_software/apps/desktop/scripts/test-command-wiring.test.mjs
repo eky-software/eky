@@ -43,7 +43,32 @@ const COMMANDS = {
   unit: ['installer:test:unit', 0],
   process: ['installer:test:windows-process', 1],
   encrypted: ['installer:test:encrypted-evidence', 0],
+  encryptedCore: ['installer:test:encrypted-evidence:core', 0],
+  smokeDriver: ['installer:test:packaged-smoke-driver', 0],
 };
+const ENCRYPTED_PREFIX = ['node', '--test', '--test-concurrency=1',
+  '--test-reporter=../../test-reporters/nodeFailureReporter.mjs'];
+const SMOKE_DRIVER_FILE = 'scripts/packagedSmokeFailureEvidence.test.mjs';
+// Pin the pre-split manual selection independently of all three package scripts.
+const ENCRYPTED_BASELINE = [
+  'installer/windows-acceptance-harness/workspaceEncryptedEvidence.test.mjs',
+  'installer/windows-acceptance-harness/ciFailureEvidence.test.mjs',
+  'installer/windows-acceptance-harness/startupExceptionEvidence.test.mjs',
+  SMOKE_DRIVER_FILE,
+  'installer/windows-acceptance-harness/encryptedEvidenceOpenPgp.test.mjs',
+  'installer/windows-acceptance-harness/originalFailureEvidenceOpenPgp.test.mjs',
+  '../../test-reporters/runnerFailureReporters.test.mjs',
+  '../../test-reporters/tests/d2SecretBrokerFailureEvidenceOpenPgp.test.mjs',
+  '../../test-reporters/tests/fHttpFailureEvidenceOpenPgp.test.mjs',
+  '../../test-reporters/tests/workspaceDeletionFailureEvidenceOpenPgp.test.mjs',
+  '../../test-reporters/tests/electronStartupObservationOpenPgp.test.mjs',
+];
+const WORKSPACE_EDGES = [
+  { job: 'workspace_artifact_contracts', name: 'Verify V2.6 artifact and runtime contracts', minutes: 10,
+    step: 'Verify encrypted evidence contracts without MSI', script: 'installer:test:encrypted-evidence:core' },
+  { job: 'workspace_artifact_producer', name: 'Build workspace acceptance artifact once', minutes: 30,
+    step: 'Verify packaged smoke driver contracts without MSI', script: 'installer:test:packaged-smoke-driver' },
+];
 const DELETION_ROLES_FILE = 'src/workspaces/deletion/workspaceDeletionRolesCommand.test.ts';
 const DELETION_ROLES_EXCLUSION = `--exclude=${DELETION_ROLES_FILE}`;
 const VITEST_PREFIX = ['vitest', 'run', '--reporter=default',
@@ -165,7 +190,7 @@ async function readFixture() {
   const root = JSON.parse(await readFile(new URL('../../../package.json', import.meta.url), 'utf8'));
   const desktop = JSON.parse(await readFile(new URL('package.json', DESKTOP_ROOT), 'utf8'));
   const files = new Set();
-  for (const [path] of REQUIRED_FILES) {
+  for (const path of new Set([...REQUIRED_FILES.map(([path]) => path), ...ENCRYPTED_BASELINE])) {
     try {
       if ((await lstat(new URL(path, DESKTOP_ROOT))).isFile()) files.add(path);
     } catch (error) {
@@ -175,6 +200,7 @@ async function readFixture() {
   const plan = classifyCiRisk({ eventName: 'pull_request', ref: 'refs/pull/1/merge',
     changedPaths: ['eky_software/apps/desktop/package.json'], comparisonComplete: true });
   return { root, desktop, files, plan, coverage: requiredCiJobs(plan),
+    workspace: (await readFile(new URL('workflows/windows-acceptance-v2-workspace.yml', CI_ROOT), 'utf8')).replaceAll('\r\n', '\n'),
     core: (await readFile(new URL('workflows/ci.yml', CI_ROOT), 'utf8')).replaceAll('\r\n', '\n'),
     caller: (await readFile(new URL('workflows/ci-cadence-contracts.yml', CI_ROOT), 'utf8')).replaceAll('\r\n', '\n') };
 }
@@ -204,6 +230,24 @@ function assertPackageWiring({ root, desktop, files }) {
   assert.equal(root.scripts.test, 'pnpm --recursive test');
   assert.equal(desktop.name, '@eky/desktop');
   assert.equal(desktop.scripts['inspection:proof:linux'], 'node scripts/profileInspection/linuxSandboxProbe.mjs');
+  const partition = {};
+  for (const [group, expected] of [
+    ['encrypted', ENCRYPTED_BASELINE],
+    ['encryptedCore', ENCRYPTED_BASELINE.filter(path => path !== SMOKE_DRIVER_FILE)],
+    ['smokeDriver', [SMOKE_DRIVER_FILE]],
+  ]) {
+    const script = desktop.scripts[COMMANDS[group][0]];
+    partition[group] = testFiles(commandChain(script, 1)[0], ENCRYPTED_PREFIX, 'mjs');
+    assert.deepEqual(partition[group], expected, `Wrong encrypted selection: ${group}`);
+    assert.equal(script, [...ENCRYPTED_PREFIX, ...expected].join(' '), 'Literal command changed');
+    assert.equal(Object.hasOwn(desktop.scripts, `pre${COMMANDS[group][0]}`), false);
+  }
+  assert.equal(partition.encrypted.length, 11);
+  assert.equal(partition.encryptedCore.length, 10);
+  assert.equal(partition.smokeDriver.length, 1);
+  assert.ok(partition.smokeDriver.every(path => !partition.encryptedCore.includes(path)));
+  assert.deepEqual([...partition.encryptedCore, ...partition.smokeDriver].sort(), [...ENCRYPTED_BASELINE].sort());
+  for (const path of ENCRYPTED_BASELINE) assert.ok(files.has(path), `Missing encrypted test file: ${path}`);
   const ordinary = commandChain(desktop.scripts.test, 3);
   const roles = commandChain(desktop.scripts['test:deletion:roles'], 1);
   const unit = commandChain(desktop.scripts['installer:test:unit'], 1);
@@ -310,6 +354,24 @@ function assertCiWiring({ core, caller, plan, coverage }) {
 function assertWiring(fixture) {
   assertPackageWiring(fixture);
   assertCiWiring(fixture);
+  for (const edge of WORKSPACE_EDGES) {
+    const job = jobBlock(fixture.workspace, edge.job);
+    const header = job.split('\n    steps:\n')[0];
+    property(header, 4, 'name', edge.name);
+    property(header, 4, 'runs-on', 'windows-latest');
+    property(header, 4, 'timeout-minutes', edge.minutes);
+    property(header, 8, 'working-directory', 'eky_software');
+    assert.doesNotMatch(header, /^    (?:if|continue-on-error):/mu);
+    assert.equal(stepBlock(job, edge.step),
+      `      - name: ${edge.step}\n        run: pnpm --filter @eky/desktop ${edge.script}`);
+    assert.equal(fixture.workspace.split(`run: pnpm --filter @eky/desktop ${edge.script}\n`).length, 2);
+    for (const gate of ['workspaceSuccess', 'workspaceFault']) {
+      const required = fixture.coverage[gate].filter(entry => entry.name === edge.name);
+      assert.equal(required.length, 1);
+      assert.deepEqual(required[0].steps, [edge.step]);
+    }
+  }
+  assert.doesNotMatch(fixture.workspace, /installer:test:encrypted-evidence(?:\s|$)/u);
 }
 
 function editCommand(fixture, group, change) {
@@ -332,6 +394,78 @@ function rejectsMutation(change) {
 test('T1 files and the wiring test reach their required commands and normal CI acceptance', () => {
   assertWiring(original);
 });
+
+for (const path of ENCRYPTED_BASELINE) {
+  test(`encrypted partition rejects a missing physical file or shared omission: ${path}`, () => {
+    rejectsMutation(f => f.files.delete(path));
+    rejectsMutation(f => {
+      for (const group of ['encrypted', 'encryptedCore', 'smokeDriver']) {
+        editCommand(f, group, command => command.replace(` ${path}`, ''));
+      }
+    });
+  });
+}
+
+for (const group of ['encrypted', 'encryptedCore', 'smokeDriver']) {
+  test(`encrypted partition preserves the literal runner and whole-file selection: ${group}`, () => {
+    for (const change of [
+      command => command.replace(' --test-concurrency=1', ''),
+      command => command.replace('--test-concurrency=1', '--test-concurrency=2'),
+      command => command.replace('nodeFailureReporter.mjs', 'otherReporter.mjs'),
+      command => command.replace(/ \S+\.test\.mjs$/u, ' scripts/wrong.test.mjs'),
+      command => command.replace(/ \S+\.test\.mjs$/u, ''),
+      command => `${command} ${command.split(' ').at(-1)}`,
+      command => `${command} scripts/extra.test.mjs`,
+      command => `${command} --test-name-pattern=success`,
+      command => `${command} --test-skip-pattern=failure`,
+      command => `${command} --retry=1`,
+      command => `${command} --test-timeout=600000`,
+      command => `${command} || true`,
+    ]) rejectsMutation(f => editCommand(f, group, change));
+    rejectsMutation(f => { delete f.desktop.scripts[COMMANDS[group][0]]; });
+    rejectsMutation(f => { f.desktop.scripts[`pre${COMMANDS[group][0]}`] = 'node --version'; });
+  });
+}
+
+test('encrypted partition rejects overlap, reordering and a chained manual replacement', () => {
+  rejectsMutation(f => editCommand(f, 'encryptedCore', command => `${command} ${SMOKE_DRIVER_FILE}`));
+  rejectsMutation(f => editCommand(f, 'smokeDriver', command => `${command} ${ENCRYPTED_BASELINE[0]}`));
+  rejectsMutation(f => editCommand(f, 'encryptedCore', command => {
+    const paths = command.split(' ');
+    return [...paths.slice(0, ENCRYPTED_PREFIX.length), ...paths.slice(ENCRYPTED_PREFIX.length).reverse()].join(' ');
+  }));
+  rejectsMutation(f => { f.desktop.scripts['installer:test:encrypted-evidence'] =
+    'pnpm installer:test:encrypted-evidence:core && pnpm installer:test:packaged-smoke-driver'; });
+});
+
+for (const edge of WORKSPACE_EDGES) {
+  test(`workspace route requires the exact mandatory invocation and coverage in its owner: ${edge.step}`, () => {
+    const job = jobBlock(original.workspace, edge.job);
+    const step = stepBlock(job, edge.step);
+    for (const changed of [
+      '', `${step}\n${step}`, step.replace(edge.step, 'Unrelated contract'),
+      step.replace(edge.script, 'installer:test:encrypted-evidence'),
+      step.replace('@eky/desktop', '@eky/backend'),
+      ...['if: false', "if: inputs.risk_plan != ''", 'if: inputs.artifact_only != true',
+        "if: vars.EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT != ''", 'continue-on-error: true',
+        'working-directory: .'].map(line => step.replace('        run:', `        ${line}\n        run:`)),
+      `${step} || true`, `${step}\n          exit 0`,
+    ]) rejectsMutation(f => { f.workspace = f.workspace.replace(job, job.replace(step, changed)); });
+    rejectsMutation(f => {
+      const other = WORKSPACE_EDGES.find(value => value !== edge);
+      const otherJob = jobBlock(f.workspace, other.job);
+      f.workspace = f.workspace.replace(job, job.replace(step, ''))
+        .replace(otherJob, `${otherJob}\n${step}`);
+    });
+    for (const gate of ['workspaceSuccess', 'workspaceFault']) {
+      for (const change of [steps => [], steps => [...steps, ...steps], steps => ['Unrelated contract']]) {
+        rejectsMutation(f => {
+          f.coverage[gate].find(entry => entry.name === edge.name).steps = change([edge.step]);
+        });
+      }
+    }
+  });
+}
 
 for (const [job, expected, rejected] of [
   ['verify', 'ubuntu-24.04', 'ubuntu-latest'],

@@ -9,6 +9,7 @@
     <AssemblyName>Eky.WindowsProcessSupervisor.ContractFixture</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Remove="sourceHandoffJoint\**\*.cs" />
     <ProjectReference Include="..\..\Eky.WindowsProcessSupervisor.csproj" />
     <ProjectReference Include="..\..\..\windows-acceptance-harness\native-msi-adapter\Eky.NativeMsiTestAdapter.csproj" />
   </ItemGroup>

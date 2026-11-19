@@ -20,7 +20,7 @@ export interface UpdatePackageTrustPolicy {
 }
 
 export class UpdatePackageTrustError extends Error {
-  constructor() {
+  constructor(readonly reason?: 'versionNotNewer') {
     super('The local update package is not trusted.');
     this.name = 'UpdatePackageTrustError';
   }

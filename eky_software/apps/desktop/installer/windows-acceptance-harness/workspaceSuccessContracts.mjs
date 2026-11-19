@@ -7,6 +7,8 @@ import { parseStrictJsonObjectBytes } from './strictJsonObject.mjs';
 
 export const WORKSPACE_SUCCESS_SCENARIO = 'packagedWorkspaceSuccess';
 export const WORKSPACE_SUCCESS_EXIT_CODES = Object.freeze({ completed: 0, failed: 1, invalidRequest: 64 });
+export const WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE = 20;
+const WORKSPACE_PHASE_RECEIPT_MAX_BYTES = 64 * 1024;
 export const WORKSPACE_SUCCESS_PHASES = Object.freeze([
   'preflight', 'artifactBeforeInstall', 'sourceInstall', 'sourcePostcondition',
   'profilePreparation', 'sourceHandoff', 'targetInstall', 'targetFirstStart',
@@ -193,6 +195,10 @@ export async function readWorkspaceSuccessResult(path, expected) {
     'WINDOWS_ACCEPTANCE_WORKSPACE_RESULT_MISSING_OR_INVALID'), expected);
 }
 
+export function readWorkspaceScenarioReceipt(path) {
+  return readWorkspaceSuccessObject(path, 'WINDOWS_ACCEPTANCE_WORKSPACE_RECEIPT_INVALID', WORKSPACE_PHASE_RECEIPT_MAX_BYTES);
+}
+
 export function workspaceSuccessResultPath(requestPath) {
   return resolve(dirname(requestPath), 'workspace-success-result.json');
 }
@@ -204,6 +210,18 @@ export function workspaceSuccessWorkerResult(request, result) {
     artifactDescriptorSha256: request.artifactDescriptorSha256,
     status: validated.status, resultCode: validated.resultCode, errorCode: validated.errorCode,
   });
+}
+
+export function workspacePhaseWorkerResult(binding, exitCode) {
+  return { ...binding, status: exitCode === 0 ? 'completed' : 'failed',
+    resultCode: exitCode === 0 ? 'phaseCompleted' : 'phaseFailed', errorCode: exitCode === 0 ? null : 'phaseFailed' };
+}
+
+export function matchesWorkspaceReportedFailureReceipt(receipt, request) {
+  const expected = workspacePhaseWorkerResult({ schemaVersion: 1, scenario: request.scenario,
+    runNonce: request.runNonce, artifactDescriptorSha256: request.artifactDescriptorSha256 }, WORKSPACE_REPORTED_SCENARIO_FAILURE_EXIT_CODE);
+  return hasWorkspaceSuccessExactKeys(receipt, Object.keys(expected)) &&
+    Object.entries(expected).every(([key, value]) => receipt[key] === value);
 }
 
 export { writeJsonAtomicExclusive };

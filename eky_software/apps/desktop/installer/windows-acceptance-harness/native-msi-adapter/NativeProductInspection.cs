@@ -9,7 +9,11 @@ internal static class NativeProductInspection
     internal const int MaximumResultBytes = 64 * 1024;
     internal const string ProviderName = "Eky-InstallerProductInspection-V1";
 
-    internal static int Run(string[] args, NativeProductQueries? queries = null, Action<string>? observation = null)
+    internal static int Run(string[] args, NativeProductQueries? queries = null, Action<string>? observation = null
+#if EKY_JOINT_RESERVATION_PROOF
+        , bool publishInReservedFixture = false
+#endif
+        )
     {
         EventSource? events = null;
         try { events = new EventSource(ProviderName); } catch { }
@@ -70,6 +74,21 @@ internal static class NativeProductInspection
                 productName = name, productVersion = version, localPackagePresent, ownedRegistryExists, ekyProcessCount });
             if (bytes.Length > MaximumResultBytes) throw new InvalidOperationException();
             Observe("resultSerializeCompleted");
+#if EKY_JOINT_RESERVATION_PROOF
+            if (publishInReservedFixture)
+            {
+                Observe("resultWriteStarted");
+                using (var stream = new FileStream(resultPath, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                {
+                    stream.Write(bytes);
+                    stream.Flush(flushToDisk: true);
+                }
+                Observe("resultWriteCompleted");
+                Observe("resultPublishCompleted");
+                exitCode = 0;
+                return exitCode;
+            }
+#endif
             var candidatePath = resultPath + "." + Guid.NewGuid().ToString("N") + ".tmp";
             Observe("resultWriteStarted");
             using (var stream = new FileStream(candidatePath, FileMode.CreateNew, FileAccess.Write, FileShare.None))

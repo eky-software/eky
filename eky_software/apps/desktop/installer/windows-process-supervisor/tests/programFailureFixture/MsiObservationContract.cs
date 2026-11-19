@@ -153,6 +153,58 @@ internal static class MsiObservationContract
                 Check("lifetimeSampleCap", capped.PendingRead is null && cappedCalls == WorkspaceMsiActivityObservation.MaximumSamples);
             }
             cappedEvidence.CompleteWithinRequestBudget(5000);
+
+            // Characterize a short client lifetime between samples without wall-clock sleeps.
+            foreach (var control in new[] { "transient", "persistent", "absent" })
+            {
+                var sampledOutput = new StringWriter();
+                SafeEvidenceWriter sampledEvidence;
+                try
+                {
+                    Console.SetOut(sampledOutput);
+                    sampledEvidence = new SafeEvidenceWriter(request.Scenario, Stopwatch.StartNew());
+                }
+                finally { Console.SetOut(prior); }
+                var available = 0;
+                var observedCalls = 0;
+                var prefix = "sampling-" + control + "-";
+                using (var sampled = new WorkspaceMsiActivityObservation(request.Scenario, own, sampledEvidence, _ =>
+                {
+                    Interlocked.Increment(ref observedCalls);
+                    return Volatile.Read(ref available) == 1 ? WorkspaceMsiMembership.Owned : WorkspaceMsiMembership.None;
+                }))
+                {
+                    void CompleteSample(long elapsed)
+                    {
+                        sampled.Poll(elapsed);
+                        var read = sampled.PendingRead ?? throw new InvalidOperationException("sampleMissing");
+                        Check(prefix + "read-" + elapsed, read.Wait(5000));
+                        sampled.Poll(elapsed + 1);
+                    }
+                    CompleteSample(14);
+                    CompleteSample(60_117);
+                    Volatile.Write(ref available, control == "absent" ? 0 : 1);
+                    sampled.Poll(63_000);
+                    Check(prefix + "betweenSamples", sampled.PendingRead is null && Volatile.Read(ref observedCalls) == 2);
+                    Check(prefix + "controlledAvailability", Volatile.Read(ref available) == (control == "absent" ? 0 : 1));
+                    if (control == "transient") Volatile.Write(ref available, 0);
+                    sampled.Poll(64_000);
+                    Check(prefix + "stillBetweenSamples", sampled.PendingRead is null && Volatile.Read(ref observedCalls) == 2);
+                    CompleteSample(120_118);
+                    Check(prefix + "threeReads", Volatile.Read(ref observedCalls) == 3);
+                }
+                sampledEvidence.CompleteWithinRequestBudget(5000);
+                var codes = sampledOutput.ToString().Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                    .Select(line =>
+                    {
+                        using var row = JsonDocument.Parse(line);
+                        return row.RootElement.GetProperty("resultCode").GetString();
+                    }).ToArray();
+                Check(prefix + "lateSequence", codes.SequenceEqual(new[]
+                {
+                    "noneObserved", "noneObserved", control == "persistent" ? "ownedObserved" : "noneObserved",
+                }));
+            }
         }
         finally
         {

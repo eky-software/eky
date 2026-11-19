@@ -23,6 +23,8 @@ import { validateRunnerFailureEvidence } from '../../../../test-reporters/runner
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 import { readCommandPhaseJson } from './acceptanceCommandPhaseInput.mjs';
 import { PHASE_WIRE_LIMITS, validatePhaseHandoffCollector } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
+import { MSI_RESOURCE_TIMING_MAX_BYTES, msiResourceTimingBinding, msiResourceTimingSource,
+  validateMsiResourceTimingReport } from './msiResourceTimingEvidence.mjs';
 
 const MiB = 1024 * 1024;
 const MAX_FILE = EVIDENCE_FILE_MAX_BYTES;
@@ -45,6 +47,7 @@ export function evidenceSourceKind(area, path) {
   if (area === 'results' && new RegExp(`^${runPattern}/[^/]+/(?:backend-startup|process-output|failure)\\.private\\.json$`, 'u').test(path)) return 'processOutput';
   if (area === 'results' && new RegExp(`^${runPattern}/(?!\\.{1,2}/)[^/]+/electron-lifecycle\\.json$`, 'u').test(path)) return 'electronLifecycle';
   if (area !== 'temporary') return null;
+  if (/^eky-msi-resource-timing-supervisor-contracts-[01]\/msi-resource-contract\.json$/u.test(path)) return 'msiResourceTiming';
   if (/^eky supervisor [a-zA-Z0-9]+\/(?:policy-result\.json|[1-9][0-9]*-(?:source|target|uninstall)\.log)$/u.test(path)) return 'msiPolicyEvidence';
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/(?:result\/desktop-smoke-result\.json|smoke-output\.private\.json)$/u.test(path)) return 'packagedSmoke';
   if (/^eky-desktop-smoke\/[a-f0-9]{32}\/result\/[a-f0-9-]{36}\.startup-exception\.private\.json$/u.test(path)) return 'startupException';
@@ -73,6 +76,13 @@ export function jobEvidenceBinding(env) {
 
 export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_TEMP, now = () => performance.now() } = {}) {
   const binding = jobEvidenceBinding(env);
+  const timingBinding = env.EKY_MSI_RESOURCE_TIMING_PROOF === '1' ? msiResourceTimingBinding(env) : null;
+  const successful = env.EKY_EVIDENCE_JOB_OUTCOME === 'success';
+  const timingOnly = successful && timingBinding !== null;
+  const policySuccess = env.GITHUB_ACTIONS === 'true' && env.RUNNER_OS === 'Windows' &&
+    env.RUNNER_ENVIRONMENT === 'github-hosted' && env.GITHUB_EVENT_NAME === 'workflow_dispatch' &&
+    binding.job === 'msi-file-version-policy' && binding.jobKey === 'msi-policy-0';
+  if (successful && !timingBinding && !policySuccess) throw failure();
   const { fingerprint, key } = evidenceRecipient(env);
   const temp = await realpath(env.RUNNER_TEMP);
   const checkout = await realpath(env.GITHUB_WORKSPACE);
@@ -82,11 +92,12 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   await writeFile(join(root, 'recipient.asc'), key, { flag: 'wx', mode: 0o600 });
   const stage = join(root, 'retained');
   await mkdir(stage, { mode: 0o700 });
-  const manifest = { schemaVersion: 1, binding, scope: 'ciFailureEvidence',
+  const manifest = { schemaVersion: 1, binding, scope: timingOnly ? 'msiResourceTimingExperiment' : 'ciFailureEvidence',
     jobOutcome: outcomes.has(env.EKY_EVIDENCE_JOB_OUTCOME) ? env.EKY_EVIDENCE_JOB_OUTCOME : 'unknown',
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
     exclusions: ['databases', 'profiles', 'environment', 'configuration', 'unreviewedTraces', 'memoryDumps', 'dependencyToolRawOutput'] };
+  if (timingBinding) manifest.approvedExceptions = ['boundedMsiResourceTiming'];
   const linuxCompilation = binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey;
   const windowsCompilation = binding.job === windowsNativePreparationBinding.job && binding.jobKey === windowsNativePreparationBinding.jobKey;
   if (linuxCompilation || windowsCompilation) {
@@ -98,6 +109,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   const select = async (base, path, area, location, relativePath) => {
     const kind = evidenceSourceKind(area, relativePath);
     if (kind === null) return;
+    if (kind === 'msiResourceTiming' && (!timingBinding || relativePath !== msiResourceTimingSource(timingBinding))) return;
     if (manifest.files.length >= MAX_FILES) return;
     const name = `${String(manifest.files.length).padStart(4, '0')}.private`;
     const entry = { name, source: `${area}/${relativePath}`, location, kind, status: 'unverified' };
@@ -107,13 +119,15 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
       const nativePreparation = kind === 'processOutput' && windowsCompilation &&
         relativePath.endsWith('/preparation/process-output.private.json');
-      const fileLimit = kind === 'workspaceDeletionPhaseObservation' ? PHASE_WIRE_LIMITS.bytes : installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
+      const fileLimit = kind === 'msiResourceTiming' ? MSI_RESOURCE_TIMING_MAX_BYTES :
+        kind === 'workspaceDeletionPhaseObservation' ? PHASE_WIRE_LIMITS.bytes : installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
         kind === 'msiWindowObservation' ? msiWindowEvidenceContract.maximumBytes :
         nativePreparation ? nativePreparationRecordMaximumBytes :
           ['startupException', 'runnerFailure'].includes(kind) ? STARTUP_EXCEPTION_LIMITS.fileBytes : MAX_FILE;
       if (info.size > fileLimit) { entry.status = 'tooLarge'; return; }
       if (info.size > MAX_TOTAL - total) { entry.status = 'totalLimit'; return; }
       let proof = await retain(base, path, join(stage, name), Math.min(fileLimit, MAX_TOTAL - total));
+      if (kind === 'msiResourceTiming') validateMsiResourceTimingReport(await readFile(join(stage, name)), timingBinding, relativePath);
       if (kind === 'workspaceDeletionPhaseObservation' &&
           validatePhaseHandoffCollector(await readFile(join(stage, name)), binding, relativePath) === undefined) throw failure();
       if (kind === 'processOutput') {
@@ -199,7 +213,15 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       Object.assign(entry, proof, { status: 'retained' });
     } catch (error) { entry.status = error.code === 'ENOENT' ? 'missing' : 'unverified'; }
   };
-  for (const [area, location, base, start] of [
+  if (timingBinding) {
+    const source = msiResourceTimingSource(timingBinding);
+    await select(temp, join(temp, source), 'temporary', 'runnerTemp', source);
+    const retained = manifest.files.some(file => file.kind === 'msiResourceTiming' && file.status === 'retained');
+    manifest.sources.push({ area: 'msiResourceTiming', location: 'runnerTemp', status: retained ? 'complete' : 'unverified',
+      examinedEntries: 1, fileLimit: 1 });
+    if (timingOnly && !retained) throw failure();
+  }
+  for (const [area, location, base, start] of timingOnly ? [] : [
     ['reports', 'checkout', checkout, join(checkout, 'eky_software/apps/e2e/playwright-report')],
     ['results', 'checkout', checkout, join(checkout, 'eky_software/apps/e2e/test-results')],
     ['temporary', 'runnerTemp', temp, temp],

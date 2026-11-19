@@ -6,8 +6,8 @@ import { parseWorkspaceSuccessArguments, parseWorkspaceFaultArguments } from './
 import { parseWorkspaceCallerCliArguments, validateWorkspaceCallerResult } from './workspaceCallerResult.mjs';
 import { workspaceCallerResultFile } from './workspaceCallerResultFile.mjs';
 import { verifyWorkspaceSuccessArtifact } from './workspaceSuccessArtifact.mjs';
-import { createWorkspaceSuccessRequest, readWorkspaceSuccessResult, workspaceSuccessResultPath,
-  workspaceSuccessErrorCode, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
+import { createWorkspaceSuccessRequest, readWorkspaceScenarioReceipt, readWorkspaceSuccessResult, workspaceSuccessResultPath,
+  workspacePhaseWorkerResult, workspaceSuccessErrorCode, writeJsonAtomicExclusive } from './workspaceSuccessContracts.mjs';
 import { createWorkspaceFaultRequest, readWorkspaceFaultResult, workspaceFaultResultPath,
   workspaceFaultErrorCode } from './workspaceFaultContracts.mjs';
 import { materializeWorkspaceSuccessArtifactFixture, prepareWorkspaceSuccessRunFixture,
@@ -84,6 +84,7 @@ async function terminalPlan(context, semantic = () => context.state.semanticProo
   return (isFault(context) ? prepareWorkspaceFaultTerminalOutcome : prepareWorkspaceSuccessTerminalOutcome)({
     request: runtime.request, supervisorResult: context.reports.scenario,
     productPrecondition: productPair(context, 'Before'), readScenarioResult: () => read(resultPath, runtime.request),
+    readScenarioReceipt: () => readWorkspaceScenarioReceipt(resolve(context.commandRoot, 'scenario', 'worker-result.json')),
     verifyExactProductStates: () => productPair(context, 'After'),
     verifySemanticPostcondition: async () => restoreProof(await semantic(runtime)),
     verifySessionPostcondition: async () => restoreProof(await sessions(runtime)),
@@ -151,7 +152,9 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
   if (phase === 'prepare') {
     if (!process.env.APPDATA || !process.env.LOCALAPPDATA) invalid();
     await workspaceCallerResultFile('prepare', context.resultPath, context.callerBinding);
-    state.runRoot = await mkdtemp(resolve(await realpath(tmpdir()), WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
+    state.runRoot = dependencies.reservedPreparation
+      ? await dependencies.reservedPreparation.useRunRoot()
+      : await mkdtemp(resolve(await realpath(tmpdir()), WORKSPACE_SUCCESS_RUN_ROOT_PREFIX));
   } else if (phase === 'inventoryBefore') state.profileBefore = await (dependencies.inventoryProfile ?? readNormalProfile)();
   else if (phase === 'materialize') {
     state.artifact = await (dependencies.materializeFixture ?? materializeWorkspaceSuccessArtifactFixture)(artifactInput(context), resolve(state.runRoot, 'fixture'));
@@ -168,9 +171,12 @@ export async function executeWorkspaceCommandPhase(context, dependencies = {}) {
   else if (phase === 'scenarioPreparation') {
     requireWorkspaceSuccessProductPrecondition(productPair(context, 'Before'));
     const runtime = runContext(context);
-    await mkdir(runtime.scenarioRoot);
+    const reserved = dependencies.reservedPreparation;
+    if (reserved) await reserved.requireScenarioRoot(runtime.scenarioRoot);
+    else await mkdir(runtime.scenarioRoot);
     await (dependencies.prepareFixture ?? prepareWorkspaceSuccessRunFixture)(runtime);
-    await writeJsonAtomicExclusive(runtime.requestPath, runtime.request);
+    if (reserved) await reserved.writeRequest(runtime.requestPath, runtime.request);
+    else await writeJsonAtomicExclusive(runtime.requestPath, runtime.request);
   } else if (phase === 'scenario') {
     return (dependencies.runScenario ?? (fault ? runWorkspaceFaultWorker : runWorkspaceSuccessWorker))(['--request', runContext(context).requestPath], {
       createFailureEvidence: request => createNativeFailureEvidence(import.meta.url, request),
@@ -289,8 +295,7 @@ export async function runWorkspaceCommandPhase(args, dependencies = {}) {
     const code = await executeWorkspaceCommandPhase(context, { ...dependencies, observeFailure });
     if (context.phase !== 'scenario') await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'phase-state.json'),
       { binding: context.binding, state: context.state });
-    await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'worker-result.json'), { ...context.binding,
-      status: code === 0 ? 'completed' : 'failed', resultCode: code === 0 ? 'phaseCompleted' : 'phaseFailed', errorCode: code === 0 ? null : 'phaseFailed' });
+    await writeJsonAtomicExclusive(resolve(context.phaseRoot, 'worker-result.json'), workspacePhaseWorkerResult(context.binding, code));
     return code;
   } catch (error) {
     observeFailure ??= createNativeFailureEvidence(import.meta.url, { scenario: 'workspaceCommandPhase' });

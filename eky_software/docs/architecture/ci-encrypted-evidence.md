@@ -96,6 +96,29 @@ salaus ei suojaa haitallisen työnkulun tahalliselta raakajulkaisulta.
 
 ## Testiperheiden virheaineisto
 
+### Nimetyn RM-ajoituskokeen onnistumisraportti
+
+Omistajan 15.11.2026 päätös sallii vain erikseen valitulle synteettiselle
+RM-ajoituskokeelle raportin myös onnistumisesta nykyisessä Windows-supervisorin
+sopimustyössä. Nykyiset kaksi toistoa tuottavat kumpikin enintään yhden
+64 KiB:n raportin. Sisältö rajataan todelliseen run/attempt/job/toisto/checkout-
+sidontaan, fixturen tekniseen sidontaan, vaiheisiin ja monotonisiin kestoihin,
+suljettuihin tulostiloihin sekä siivousväittämiin. Polut, PID-luettelot,
+valintatiedostot, yritystiedot ja salaisuudet eivät kuulu raporttiin.
+
+Nykyinen keräin, varmennettu OpenPGP-vastaanottaja ja yhden vuorokauden
+salattu säilytys säilyvät. Onnistumisen haara lukee vain tämän nimetyn
+raportin, ei yleistä onnistuneen työn aineistoa. Raportti säilytetään ennen
+onnistuneen fixturen hakemiston poistoa. Puuttuva tai virheellinen raportti
+ei ole onnistunut toimitus eikä raportti itsessään hyväksy testiä.
+150 ms on riippumattoman vapautuspyynnön tavoite, ei luvattu prosessin
+poistumisaika. Kyselyn jälkeinen aika sisältää myös valinnan ja rekisteröinnin;
+siitä ei päätellä erillistä RM-kutsun kestoa tai aiemman MSI-ilmoituksen syytä.
+Tämä ei avaa tuotannon varhaista keruuta, julkista raakajulkaisua, uusia
+CI-töitä, pidempiä aikarajoja tai alkuperäisen MSI-hylkäyksen hyväksyntää.
+
+### Nykyinen virhekeräys
+
 `ciFailureEvidence.mjs` käyttää workspace-keräimen nykyistä varmennettua
 tiedostokopiointia, gzip/JSON-kuorta ja OpenPGP-apuria. Se ei käynnistä tai
 pysäytä testiprosesseja, tulkitse testiä hyväksytyksi eikä korvaa T3:n tai
@@ -528,7 +551,11 @@ erillistä prosessia; se ei korvaa oikean Electron-paketin hyväksyntäajoa.
 Nämä asennettuja testityökaluja tarvitsevat kokeet ovat tiedostossa
 `originalFailureEvidenceOpenPgp.test.mjs` ja nykyisessä
 `installer:test:encrypted-evidence`-komennossa riippuvuuksien valmistelun
-jälkeen. Aiempi `encryptedEvidenceOpenPgp.test.mjs` säilyy ilman projektin
+jälkeen. Workspace-CI:n `installer:test:encrypted-evidence:core` säilyttää
+nämä salauskokeet; koko pakettiajurin tiedosto ajetaan erikseen tuottajassa
+ennen WiX-restorea ja buildia [valmistelutestien työnjaon](../ai/testing-rules.md#workspace-paketoinnin-valmistelutestit)
+mukaan. Täysi käsiajokomento, keräin ja aineistorajat eivät muutu.
+Aiempi `encryptedEvidenceOpenPgp.test.mjs` säilyy ilman projektin
 kolmannen osapuolen paketteja ajettavana Linuxin toimituskokeena; samaa
 testiavainapuria käytetään molemmissa sarjoissa.
 
