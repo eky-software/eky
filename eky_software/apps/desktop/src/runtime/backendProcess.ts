@@ -67,7 +67,7 @@ export interface DesktopBackendHandle {
   assertRunning(): void;
   onUnexpectedExit(callback: () => void): void;
   port: number;
-  stop(): Promise<BackendShutdownOutcome>;
+  stop(options?: { readonly requireGraceful: true }): Promise<BackendShutdownOutcome>;
   stopForUpdate(operationId: string): Promise<void>;
   stopForRestore(operationId: string): Promise<void>;
   stopForDelete(operationId: string): Promise<void>;
@@ -456,8 +456,8 @@ export function startDesktopBackend(
           unexpectedExitCallback = callback;
         },
         port: status.port,
-        stop() {
-          return stopBackend(true);
+        stop(options) {
+          return stopBackend(options?.requireGraceful !== true);
         },
         async stopForUpdate(operationId) {
           if (!isOperationId(operationId)) throw new Error('BACKEND_STOP_OPERATION_INVALID');

@@ -180,9 +180,7 @@ export function createPackagedWorkspaceDeletionPreparation(input) {
         const retained = await captureRetained(owner, entry.workspaceId);
         await assertCleanPreparation(owner, before);
         if (before.formatVersion === 1) {
-          const promotedIdentity = await owner.registry.writeSelected({ ...before, formatVersion: 2 }, {
-            expectedSlots: Object.fromEntries(Object.entries(slots).map(([key, slot]) => [key, slot?.bytes])),
-            expectedIdentities: Object.fromEntries(Object.entries(slots).map(([key, slot]) => [key, slot?.identity])),
+          const promotedIdentity = await owner.registry.promoteSettledLegacySelection(slots, {
             assertAuthority: owner.current, assertExternalSelection: () => assertCleanPreparation(owner, before),
           });
           slots = await owner.registry.inspectSlots(owner.current);

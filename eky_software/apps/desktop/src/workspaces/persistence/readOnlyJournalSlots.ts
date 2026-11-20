@@ -62,6 +62,10 @@ export async function hasAnyJournalSlot(
   return presence.some(Boolean);
 }
 
+export async function hasReadOnlyJournalSideSlots(paths: Pick<ReadOnlyJournalSlotPaths, 'nextPath' | 'backupPath'>): Promise<boolean> {
+  return await inspectSlotPresence(paths.nextPath) || await inspectSlotPresence(paths.backupPath);
+}
+
 export async function hasTerminalJournalConflict<T>(
   paths: Readonly<ReadOnlyJournalSlotPaths>,
   maximumBytes: number,

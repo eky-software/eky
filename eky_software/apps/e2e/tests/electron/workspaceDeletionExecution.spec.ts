@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, lstatSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
+import type { Locator } from '@playwright/test';
 
 import type { createWorkspaceDeletionExecutionProof } from '../../../desktop/e2e/workspaceDeletionExecutionProof.js';
 import { createWorkspaceDeletionJournalPaths } from '../../../desktop/src/workspaces/deletion/workspaceDeletionJournalStore.js';
@@ -54,13 +55,7 @@ for (const keepForeign of [true, false]) {
     }).click();
     const dialog = e2eElectron.page.getByRole('dialog');
     const row = dialog.getByRole('listitem').filter({ hasText: targetLabel });
-    await row.getByRole('button', { name: 'Poista yritys', exact: true }).click();
-    await expect(dialog.getByRole('heading', { name: 'Yrityksen lopullinen poisto', exact: true })).toBeVisible();
-    const submit = dialog.getByRole('button', { name: 'Jatka poistovahvistukseen', exact: true });
-    await expect(submit).toBeDisabled();
-    await dialog.getByLabel('Vahvista yrityksen nimi', { exact: true }).fill(targetLabel);
-    await dialog.getByRole('radio', { name: 'Jatkan ilman varmuuskopiota ja hyväksyn tietojen menetyksen', exact: true }).check();
-    await expect(submit).toBeEnabled();
+    const submit = await fillDeletionForm(dialog, row, targetLabel);
     const confirmationsBefore = await e2eElectron.electronApp.evaluate(() =>
       (globalThis as unknown as { __EKY_ELECTRON_E2E__: { nativeAdapterSnapshot(): { messageBoxCount: number } } })
         .__EKY_ELECTRON_E2E__.nativeAdapterSnapshot().messageBoxCount);
@@ -85,6 +80,81 @@ for (const keepForeign of [true, false]) {
     expect(readFileSync(external).equals(externalBytes)).toBe(true);
   });
 }
+
+test.describe('ordinary profile without a prepared selector registry', () => {
+  test.use({ e2eSelectorProfile: 'none' });
+
+  test('DESK-DELETE-UI-001 @critical @security @recovery deletes a newly created passive company after accepted startup', async ({ e2eElectron }) => {
+    const retained = readElectronE2eActiveWorkspace(e2eElectron.runtime.userDataPath);
+    const firstRegistry = readRegistry(e2eElectron);
+    expect(firstRegistry.formatVersion).toBe(1);
+    expect(firstRegistry.workspaces).toHaveLength(1);
+    const retainedEntry = firstRegistry.workspaces[0]!;
+    expect(retainedEntry.workspaceId).toBe(retained.workspaceId);
+    const invoice = await createApprovedInvoiceWithPdf(e2eElectron.api);
+    const beforeCustomers = await e2eElectron.api.get('/customers');
+    expect(beforeCustomers.status()).toBe(200);
+    const retainedCustomers = await beforeCustomers.json();
+    expect(retainedCustomers).toMatchObject({ customers: [expect.objectContaining({ name: 'Desktop Synthetic Customer Oy' })] });
+    const beforeInvoice = await e2eElectron.api.get(`/invoices/${invoice.invoiceId}`);
+    expect(beforeInvoice.status()).toBe(200);
+    const retainedInvoice = await beforeInvoice.json();
+    const beforePdf = await e2eElectron.api.get(`/invoices/${invoice.invoiceId}/pdf`);
+    expect(beforePdf.status()).toBe(200);
+    const retainedPdf = await beforePdf.body();
+
+    // Start again with the actual accepted metadata and registry from the first run.
+    // No test side promotion, selector fixture or injected deletion command.
+    await e2eElectron.restart();
+    expect(readRegistry(e2eElectron).formatVersion).toBe(2);
+    expect(readRegistry(e2eElectron).activeWorkspaceId).toBe(retained.workspaceId);
+    const switcher = () => e2eElectron.page.getByRole('button', {
+      name: `Vaihda yritystä. Aktiivinen yritys: ${retainedEntry.workspaceLabel}`, exact: true,
+    });
+    await switcher().click();
+    const createDialog = e2eElectron.page.getByRole('dialog');
+    await createDialog.getByRole('button', { name: 'Lisää yritys Ekyyn', exact: true }).click();
+    const disposable = 'Synthetic disposable workspace';
+    await createDialog.getByRole('textbox', { name: 'Yrityksen nimi', exact: true }).fill(disposable);
+    await e2eElectron.performRelaunchingOperation(async () => {
+      await createDialog.getByRole('button', { name: 'Luo yritys', exact: true }).click();
+    });
+    await switcher().click();
+    const dialog = e2eElectron.page.getByRole('dialog');
+    const row = dialog.getByRole('listitem').filter({ has: e2eElectron.page.getByText(disposable, { exact: true }) });
+    await expect(row).toBeVisible();
+    const beforeDelete = readRegistry(e2eElectron);
+    expect(beforeDelete.activeWorkspaceId).toBe(retained.workspaceId);
+    expect(beforeDelete.workspaces).toHaveLength(2);
+    const target = beforeDelete.workspaces.find(entry => entry.workspaceLabel === disposable)!;
+    expect(target.workspaceId).not.toBe(retained.workspaceId);
+    const targetRoot = deriveWorkspaceRoot(e2eElectron.runtime.userDataPath, validateWorkspaceId(target.workspaceId), 1).workspaceRoot;
+    expect(readFileSync(join(targetRoot, 'runtime', 'data', 'eky.sqlite')).subarray(0, 16).toString()).toBe('SQLite format 3\0');
+
+    const submit = await fillDeletionForm(dialog, row, disposable);
+    const confirmationsBefore = await e2eElectron.electronApp.evaluate(() =>
+      (globalThis as unknown as { __EKY_ELECTRON_E2E__: { nativeAdapterSnapshot(): { messageBoxCount: number } } })
+        .__EKY_ELECTRON_E2E__.nativeAdapterSnapshot().messageBoxCount);
+    const observationsPath = e2eElectron.runtime.observationsPath;
+    const closed = await e2eElectron.performRelaunchingOperation(async () => { await submit.click(); });
+    expect(e2eElectron.runtime.sessionSecret).not.toBe(closed.previousSessionSecret);
+    const confirmations = readFileSync(observationsPath, 'utf8').split(/\r?\n/u).filter(Boolean)
+      .map(line => JSON.parse(line) as { operation: string }).filter(value => value.operation === 'showMessageBox');
+    expect(confirmations).toHaveLength(confirmationsBefore + 2);
+
+    await expect(switcher()).toBeVisible();
+    assertRemoved(e2eElectron, targetRoot, retainedEntry, retained.workspaceId);
+    const afterCustomers = await e2eElectron.api.get('/customers');
+    expect(afterCustomers.status()).toBe(200);
+    expect(await afterCustomers.json()).toEqual(retainedCustomers);
+    const afterInvoice = await e2eElectron.api.get(`/invoices/${invoice.invoiceId}`);
+    expect(afterInvoice.status()).toBe(200);
+    expect(await afterInvoice.json()).toEqual(retainedInvoice);
+    const afterPdf = await e2eElectron.api.get(`/invoices/${invoice.invoiceId}/pdf`);
+    expect(afterPdf.status()).toBe(200);
+    expect((await afterPdf.body()).equals(retainedPdf)).toBe(true);
+  });
+});
 
 for (const keepForeign of [false, true]) {
   const scenario = keepForeign ? 'DESK-DELETE-ACTIVE-001' : 'DESK-DELETE-LAST-001';
@@ -336,6 +406,17 @@ async function createCompany(harness: IsolatedElectronHarness, label: string) {
   });
 }
 
+async function fillDeletionForm(dialog: Locator, row: Locator, label: string): Promise<Locator> {
+  await row.getByRole('button', { name: 'Poista yritys', exact: true }).click();
+  await expect(dialog.getByRole('heading', { name: 'Yrityksen lopullinen poisto', exact: true })).toBeVisible();
+  const submit = dialog.getByRole('button', { name: 'Jatka poistovahvistukseen', exact: true });
+  await expect(submit).toBeDisabled();
+  await dialog.getByLabel('Vahvista yrityksen nimi', { exact: true }).fill(label);
+  await dialog.getByRole('radio', { name: 'Jatkan ilman varmuuskopiota ja hyväksyn tietojen menetyksen', exact: true }).check();
+  await expect(submit).toBeEnabled();
+  return submit;
+}
+
 async function openCompany(harness: IsolatedElectronHarness, label: string) {
   await harness.page.getByRole('listitem').filter({
     has: harness.page.getByText(label, { exact: true }),
@@ -349,7 +430,7 @@ async function openCompany(harness: IsolatedElectronHarness, label: string) {
 }
 
 function readRegistry(harness: IsolatedElectronHarness): {
-  activeWorkspaceId: string | null; workspaces: { workspaceId: string; workspaceLabel: string }[];
+  formatVersion: number; activeWorkspaceId: string | null; workspaces: { workspaceId: string; workspaceLabel: string }[];
 } {
   return JSON.parse(readFileSync(join(harness.runtime.userDataPath, WORKSPACE_REGISTRY_FILE_NAME), 'utf8'));
 }
