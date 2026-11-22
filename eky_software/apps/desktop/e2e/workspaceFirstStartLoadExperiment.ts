@@ -20,6 +20,11 @@ export class WorkspaceFirstStartLoadExperiment {
     private readonly observe: (phase: FirstStartLoadPhase) => void,
   ) {}
 
+  get fixtureRegistryFormat(): 1 | 2 {
+    // Only the separate negative load diagnostic needs a window before restart.
+    return this.mode === 'releaseAfterProtocolRemoval' ? 2 : 1;
+  }
+
   startComposition(slot: FirstStartLoadSlot) {
     if (this.captures.has(slot)) throw new Error('E2E_FIRST_START_LOAD_SLOT_REUSED');
     const forced = this.mode === 'releaseAfterProtocolRemoval' && slot === 'mixedInitial';
@@ -54,7 +59,7 @@ export class WorkspaceFirstStartLoadExperiment {
     if (this.captures.size !== firstStartLoadSlots.length) {
       throw new Error('E2E_FIRST_START_LOAD_COMPOSITIONS_INCOMPLETE');
     }
-    for (const slot of firstStartLoadSlots) this.captures.get(slot)!.probe.assertComplete();
+    for (const slot of firstStartLoadSlots) this.captures.get(slot)!.assertComplete();
   }
 
   snapshot(): readonly FirstStartLoadSnapshot[] {
@@ -88,6 +93,7 @@ function captureCompositionWindow(
   const probe = createFirstStartLoadProbe({ holdUntilProtocolRemoval: forced, observe });
   let owned: BrowserWindow | undefined;
   let windows = 0;
+  let handoffWithoutWindow = false;
   let attachmentFailed = false;
   let restore: (() => void) | undefined;
   const onCreated = (_event: Electron.Event, window: BrowserWindow) => {
@@ -116,6 +122,13 @@ function captureCompositionWindow(
       probe.observe('windowObserved');
     } catch { attachmentFailed = true; }
   };
+  function assertNoWindowHandoff() {
+    const snapshot = probe.snapshot();
+    if (forced || windows !== 0 || snapshot.loadRequests !== 0 || snapshot.mainFrameFailures !== 0 ||
+        snapshot.loadErrorDialogs !== 0 || snapshot.otherErrorDialogs !== 0 || snapshot.quitRequests !== 0) {
+      throw new Error('E2E_FIRST_START_LOAD_HANDOFF_UNEXPECTED_ACTIVITY');
+    }
+  }
   app.on('browser-window-created', onCreated);
   return {
     forced,
@@ -125,6 +138,14 @@ function captureCompositionWindow(
       if (windows !== 1 || owned !== window || attachmentFailed) {
         throw new Error('E2E_FIRST_START_LOAD_WINDOW_CAPTURE_FAILED');
       }
+    },
+    acceptHandoffWithoutWindow() {
+      handoffWithoutWindow = true;
+      assertNoWindowHandoff();
+    },
+    assertComplete() {
+      if (handoffWithoutWindow) assertNoWindowHandoff();
+      else probe.assertComplete();
     },
     stopCreationObservation() { app.removeListener('browser-window-created', onCreated); },
     dispose() {

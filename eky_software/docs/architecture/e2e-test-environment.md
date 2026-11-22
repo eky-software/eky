@@ -1009,6 +1009,18 @@ Testin virheadapteri ei avaa natiivia modaalia eikä heitä irrotetusta
 callbackista. Odottamaton virhe hylkää normaalin testin omistajan tarkistuksessa.
 Vaihe sisältää vain suljetun composition-paikan ja tapahtuman, ei dialogitekstiä.
 
+`DESK-WORKSPACE-FIRST-START-001` säilyttää mixed- ja all-current-fixturet
+v1-muodossa. Kummankin ensimmäinen hyväksytty käynnistys todistaa yhden
+hallittua päättymistä vaativan backend-sulun ja vasta sen jälkeen yhden
+uudelleenkäynnistyspyynnön ilman liiketoimintaikkunaa. Testi tekee
+saman synteettisen profiilin seuraavan kylmäkäynnistyksen erikseen.
+Rekisterissä saa vaihtua vain v1 → v2 ennen backendia, ja samat v2-tavut
+sekä tyhjät sivuslotit vaaditaan vielä hallitun sulun jälkeen.
+`DESK-WORKSPACE-ACTIVATION-001` vaatii valitun v1-profiilin säilyvän
+aktivoinnin hyväksyntään asti; seuraava tavallinen käynnistys todistaa saman
+formaattimuutoksen. Valitsimen v2-tapaukset, palautus, SQLite/PDF-sisältö
+ja siivous eivät muutu.
+
 [M0.6:n latauksen omistajuus](windows-installer-acceptance-harness-v2.md#m06-ehdotus-testin-latauksen-ja-purun-omistajuus)
 edellyttää normaalissa proofissa, että oman ikkunan todellinen lataus päättyy
 ennen backendin shutdownia ja protokollapurkua. Ei lisäviivettä, timeoutia
@@ -1021,7 +1033,8 @@ todellisen virheketjun hyväksyntä pysyy erillisenä.
 `DESK-FIRST-START-LOAD-ORDER-001` on erillinen koe konfiguraatiossa
 `apps/e2e/playwright.first-start-diagnostic.config.ts`, ei tavallisen CI:n
 valitsema skenaario. Se käyttää samaa eristettyä fixtureä, cleanupia ja
-aikarajoja; yhden todellisen latauksen kutsu vapautetaan vasta todennetun
+aikarajoja mutta alustaa rekisterin v2:ksi neljän varsinaisen
+ikkunalatauksen mittaamista varten. Yhden todellisen latauksen kutsu vapautetaan vasta todennetun
 protokollapurun jälkeen. [M0.5:n havaintosopimus](windows-installer-acceptance-harness-v2.md#m05-pakotetun-kokeen-havaintosopimuksen-täsmennys)
 vaatii todellisen `loadURL`-rejectionin, täsmällisen virheadapterin ja
 quit-pyynnön. `did-fail-load` säilyy täydentävänä havaintona: native-promise

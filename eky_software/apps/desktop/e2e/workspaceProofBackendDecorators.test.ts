@@ -110,7 +110,24 @@ it.for(variants)('retains the original failed delete owner for cleanup in %s', a
   expect(f.stopForDelete).toHaveBeenCalledExactlyOnceWith(operationId);
 });
 
-function fixture(variant: typeof variants[number], observeReady?: () => void) {
+it('counts a first-start handoff only after the owned backend gracefully exits', async () => {
+  const onGracefulExit = vi.fn();
+  const f = fixture('firstStart', undefined, onGracefulExit);
+  const handle = await f.start();
+  const strictStop = { requireGraceful: true } as const;
+  const original = new Error('SYNTHETIC_GRACEFUL_EXIT_UNPROVEN');
+  f.ordinaryStop.mockRejectedValueOnce(original);
+  await expect(handle.stop(strictStop)).rejects.toBe(original);
+  expect(f.ordinaryStop).toHaveBeenCalledExactlyOnceWith(strictStop);
+  expect(onGracefulExit).not.toHaveBeenCalled();
+  expect(f.isRunning()).toBe(true);
+  await expect(handle.stop(strictStop)).resolves.toBe('exited');
+  expect(f.ordinaryStop).toHaveBeenLastCalledWith(strictStop);
+  expect(onGracefulExit).toHaveBeenCalledTimes(1);
+  expect(f.isRunning()).toBe(false);
+});
+
+function fixture(variant: typeof variants[number], observeReady?: () => void, onGracefulExit?: () => void) {
   let release!: () => void;
   const pending = new Promise<void>(resolve => { release = resolve; });
   const stopForDelete = vi.fn(async (_operationId: string) => pending);
@@ -126,7 +143,10 @@ function fixture(variant: typeof variants[number], observeReady?: () => void) {
     runtimeSessionCount: 0, selectorCleanupFailed: false };
   const observer = observeSelectorTestBackend(delegate, observeReady);
   const start = variant === 'selector' ? observer.startBackend
-    : (variant === 'firstStart' ? createFirstStartStarter : createActivationStarter)({ delegate, tracker });
+    : variant === 'firstStart' ? createFirstStartStarter({
+        delegate, tracker, ...(onGracefulExit === undefined ? {} : { onGracefulExit }),
+      })
+    : createActivationStarter({ delegate, tracker });
   const options = { config: { databaseFilePath: 'synthetic-unopened-database' } } as StartDesktopBackendOptions;
   return { start: () => start(options), release, stopForDelete, ordinaryStop, assertRunning,
     delegate, options, originalHandle, observer,

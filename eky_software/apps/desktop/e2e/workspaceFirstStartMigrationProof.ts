@@ -27,9 +27,10 @@ import { AcceptedBuildMetadataStore } from '../src/update/acceptedBuildMetadataS
 import { DirectSetupMigrationRecoveryStore } from '../src/update/directSetupMigrationRecoveryStore.js';
 import { createLocalUpdateRuntimePaths } from '../src/update/localUpdateRuntimePaths.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
+import { serializeWorkspaceRegistry } from '../src/workspaces/registry/workspaceRegistrySerializer.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import type {
-  LocalWorkspaceRegistryV1,
+  LocalWorkspaceRegistry,
   WorkspaceId,
 } from '../src/workspaces/registry/workspaceRegistryTypes.js';
 import { WorkspaceFirstStartMigrationJournalStore } from '../src/workspaces/update/workspaceFirstStartMigrationJournalStore.js';
@@ -87,6 +88,7 @@ interface ProofBuildIdentity {
 interface BackendProofTracker {
   readonly activeHandles: Set<DesktopBackendHandle>;
   startCount: number;
+  relaunchCount: number;
 }
 
 interface MixedScenarioResult {
@@ -128,7 +130,9 @@ export async function runWorkspaceFirstStartMigrationProof(
   const tracker: BackendProofTracker = {
     activeHandles: new Set(),
     startCount: 0,
+    relaunchCount: 0,
   };
+  const registryFormat = input.loadExperiment?.fixtureRegistryFormat ?? 1;
   let factories: Readonly<WorkspaceFirstStartProofFactories> | undefined;
   const progress = createProofProgress(join(proofRoot, 'progress.jsonl'), input.observe);
   let succeeded = false;
@@ -147,6 +151,7 @@ export async function runWorkspaceFirstStartMigrationProof(
       input,
       progress,
       proofRoot: join(proofRoot, 'm'),
+      registryFormat,
       tracker,
     });
 
@@ -156,6 +161,7 @@ export async function runWorkspaceFirstStartMigrationProof(
       input,
       progress,
       proofRoot: join(proofRoot, 'c'),
+      registryFormat,
       tracker,
     });
     requireAllCurrentScenarioResult(allCurrent);
@@ -188,11 +194,11 @@ export async function runWorkspaceFirstStartMigrationProof(
       passiveCompatibleWorkspacePreserved:
         mixed.passiveCompatibleWorkspacePreserved,
       preparedBeforeBackend: mixed.preparedBeforeBackend,
-      relaunchCount: 0,
+      relaunchCount: tracker.relaunchCount,
       targetAcceptedAfterRegistryTransition:
         mixed.targetAcceptedAfterRegistryTransition,
     });
-    requireProofResult(result);
+    requireProofResult(result, registryFormat === 1 ? 2 : 0);
     succeeded = true;
     return result;
   } catch (error) {
@@ -231,6 +237,7 @@ async function proveMixedScenario(input: {
   readonly input: Readonly<WorkspaceFirstStartMigrationProofInput>;
   readonly progress: ProofProgress;
   readonly proofRoot: string;
+  readonly registryFormat: 1 | 2;
   readonly tracker: BackendProofTracker;
 }): Promise<Readonly<MixedScenarioResult>> {
   await mkdir(input.proofRoot, { mode: 0o700, recursive: true });
@@ -255,6 +262,7 @@ async function proveMixedScenario(input: {
         activeWorkspaceId: active.workspaceId,
         fixtures,
         proofRoot: input.proofRoot,
+        registryFormat: input.registryFormat,
         sourceVersion: input.build.sourceVersion,
       });
       return { active, compatiblePassive, invalidPassive, fixtures, stores };
@@ -272,11 +280,12 @@ async function proveMixedScenario(input: {
   const artifactRootsBefore = await snapshotArtifactRoots(fixtures);
   let preparedBeforeBackend = false;
 
-  let firstLifecycle: DesktopLifecycleHandle;
+  let firstLifecycle: DesktopLifecycleHandle | undefined;
   try {
     await input.progress.enter('mixedStartup');
     firstLifecycle = await startProofComposition({
       loadSlot: 'mixedInitial',
+      expectRegistryHandoff: input.registryFormat === 1,
       beforeBackendStart: async () => {
         const [journal, acceptedBuild, registry, activeAtGate] =
           await Promise.all([
@@ -311,15 +320,17 @@ async function proveMixedScenario(input: {
     throw error;
   }
   await input.progress.enter('mixedRuntimeReadback');
-  const registryAfter = await stores.registry.read();
+  const registryAfter = await readSettledProofRegistry(stores.registry, input.registryFormat);
   const acceptedAfter = await stores.acceptedBuild.read();
   const journalAfter = await stores.journal.read();
   const directSetupAfter = await stores.directSetup.read();
   await input.progress.enter('mixedShutdown');
-  await stopProofComposition(firstLifecycle, (checkpoint) =>
-    input.progress.checkpoint(checkpoint),
-    input.input.loadExperiment,
-  );
+  if (firstLifecycle !== undefined) {
+    await stopProofComposition(firstLifecycle, (checkpoint) =>
+      input.progress.checkpoint(checkpoint),
+      input.input.loadExperiment,
+    );
+  }
 
   await input.progress.enter('mixedActiveInspection');
   const [activeInspection, compatibleInspection, invalidInspection] =
@@ -353,27 +364,27 @@ async function proveMixedScenario(input: {
   const artifactRootsAfter = await snapshotArtifactRoots(fixtures);
 
   await input.progress.enter('mixedRestart');
-  const exactRestartSkippedInventory = await runExactAcceptedRestart({
+  const { exactRestartSkippedInventory, registryAfterRestart } = await runExactAcceptedRestart({
     loadSlot: 'mixedRestart',
     build: input.build,
     factories: input.factories,
     input: input.input,
+    registry: stores.registry,
+    expectedRegistry: { ...registryAfter, formatVersion: 2 },
     tracker: input.tracker,
     userDataPath: input.proofRoot,
   });
-  const registryAfterRestart = await stores.registry.read();
-
-  const compatibleRegistryEntry = registryAfter?.workspaces.find(
+  const compatibleRegistryEntry = registryAfter.workspaces.find(
     (entry) => entry.workspaceId === compatiblePassive.workspaceId,
   );
-  const invalidRegistryEntry = registryAfter?.workspaces.find(
+  const invalidRegistryEntry = registryAfter.workspaces.find(
     (entry) => entry.workspaceId === invalidPassive.workspaceId,
   );
   await input.progress.enter('mixedComplete');
   return Object.freeze({
     activePointerPreserved:
-      registryAfter?.activeWorkspaceId === active.workspaceId &&
-      registryAfterRestart?.activeWorkspaceId === active.workspaceId,
+      registryAfter.activeWorkspaceId === active.workspaceId &&
+      registryAfterRestart.activeWorkspaceId === active.workspaceId,
     artifactRootsPreserved: workspaceFirstStartProofSnapshotsEqual(
       artifactRootsBefore,
       artifactRootsAfter,
@@ -413,6 +424,7 @@ async function proveAllCurrentScenario(input: {
   readonly input: Readonly<WorkspaceFirstStartMigrationProofInput>;
   readonly progress: ProofProgress;
   readonly proofRoot: string;
+  readonly registryFormat: 1 | 2;
   readonly tracker: BackendProofTracker;
 }): Promise<Readonly<AllCurrentScenarioResult>> {
   await mkdir(input.proofRoot, { mode: 0o700, recursive: true });
@@ -429,6 +441,7 @@ async function proveAllCurrentScenario(input: {
         activeWorkspaceId: active.workspaceId,
         fixtures,
         proofRoot: input.proofRoot,
+        registryFormat: input.registryFormat,
         sourceVersion: input.build.sourceVersion,
       });
       return { fixtures, active, stores };
@@ -442,6 +455,7 @@ async function proveAllCurrentScenario(input: {
   await input.progress.enter('allCurrentStartup');
   const firstLifecycle = await startProofComposition({
     loadSlot: 'currentInitial',
+    expectRegistryHandoff: input.registryFormat === 1,
     beforeBackendStart: async () => {
       const [journal, acceptedBuild, registry] = await Promise.all([
         stores.journal.read(),
@@ -465,29 +479,32 @@ async function proveAllCurrentScenario(input: {
   await input.progress.enter('allCurrentRuntimeReadback');
   const [registryAfter, acceptedAfter, journalAfter, directSetupAfter] =
     await Promise.all([
-      stores.registry.read(),
+      readSettledProofRegistry(stores.registry, input.registryFormat),
       stores.acceptedBuild.read(),
       stores.journal.read(),
       stores.directSetup.read(),
     ]);
   await input.progress.enter('allCurrentShutdown');
-  await stopProofComposition(firstLifecycle, (checkpoint) =>
-    input.progress.checkpoint(checkpoint),
-    input.input.loadExperiment,
-  );
+  if (firstLifecycle !== undefined) {
+    await stopProofComposition(firstLifecycle, (checkpoint) =>
+      input.progress.checkpoint(checkpoint),
+      input.input.loadExperiment,
+    );
+  }
   await input.progress.enter('allCurrentSnapshotsAfter');
   const artifactRootsAfter = await snapshotArtifactRoots(fixtures);
 
   await input.progress.enter('allCurrentRestart');
-  const exactRestartSkippedInventory = await runExactAcceptedRestart({
+  const { exactRestartSkippedInventory, registryAfterRestart } = await runExactAcceptedRestart({
     loadSlot: 'currentRestart',
     build: input.build,
     factories: input.factories,
     input: input.input,
+    registry: stores.registry,
+    expectedRegistry: { ...stores.registryBefore, formatVersion: 2 },
     tracker: input.tracker,
     userDataPath: input.proofRoot,
   });
-  const registryAfterRestart = await stores.registry.read();
   const journalAbsentAfterBackend =
     journalAfter === undefined && (await stores.journal.read()) === undefined;
   const acceptedTargetBuildAfterBackend =
@@ -508,7 +525,7 @@ async function proveAllCurrentScenario(input: {
         registryAfter,
       ) &&
       workspaceFirstStartProofSnapshotsEqual(
-        stores.registryBefore,
+        { ...stores.registryBefore, formatVersion: 2 },
         registryAfterRestart,
       ),
     artifactRootsPreserved: workspaceFirstStartProofSnapshotsEqual(
@@ -566,22 +583,23 @@ async function createProofStores(input: {
   readonly activeWorkspaceId: WorkspaceId;
   readonly fixtures: readonly Readonly<WorkspaceFirstStartProofFixture>[];
   readonly proofRoot: string;
+  readonly registryFormat: 1 | 2;
   readonly sourceVersion: string;
 }): Promise<{
   readonly acceptedBuild: AcceptedBuildMetadataStore;
   readonly directSetup: DirectSetupMigrationRecoveryStore;
   readonly journal: WorkspaceFirstStartMigrationJournalStore;
   readonly registry: WorkspaceRegistryStore;
-  readonly registryBefore: Readonly<LocalWorkspaceRegistryV1>;
+  readonly registryBefore: Readonly<LocalWorkspaceRegistry>;
 }> {
   const registry = new WorkspaceRegistryStore({
     filePath: join(input.proofRoot, WORKSPACE_REGISTRY_FILE_NAME),
     installationRoot: input.proofRoot,
   });
-  const registryBefore = createWorkspaceFirstStartProofRegistry(
-    input.fixtures,
-    input.activeWorkspaceId,
-  );
+  const registryBefore: LocalWorkspaceRegistry = {
+    ...createWorkspaceFirstStartProofRegistry(input.fixtures, input.activeWorkspaceId),
+    formatVersion: input.registryFormat,
+  };
   await registry.write(registryBefore);
   const updatePaths = createLocalUpdateRuntimePaths({
     legacyRuntimeRoot: createDesktopProfilePaths(input.proofRoot).runtimeRoot,
@@ -610,16 +628,35 @@ async function createProofStores(input: {
   });
 }
 
+async function readSettledProofRegistry(
+  store: WorkspaceRegistryStore,
+  format: 1 | 2,
+  expected?: Readonly<LocalWorkspaceRegistry>,
+): Promise<Readonly<LocalWorkspaceRegistry>> {
+  const { current, next, backup } = await store.inspectSlots();
+  if (current?.identity === undefined || next !== undefined || backup !== undefined ||
+      current.value.formatVersion !== format ||
+      !Buffer.from(serializeWorkspaceRegistry(expected ?? current.value)).equals(current.bytes)) {
+    throw new Error('WORKSPACE_FIRST_START_PROOF_REGISTRY_BYTES_CHANGED');
+  }
+  return current.value;
+}
+
 async function startProofComposition(input: {
   readonly loadSlot: FirstStartLoadSlot;
   readonly beforeBackendStart?: () => Promise<void>;
   readonly build: Readonly<ProofBuildIdentity>;
+  readonly expectRegistryHandoff?: boolean;
   readonly input: Readonly<WorkspaceFirstStartMigrationProofInput>;
   readonly tracker: BackendProofTracker;
   readonly userDataPath: string;
-}): Promise<DesktopLifecycleHandle> {
+}): Promise<DesktopLifecycleHandle | undefined> {
   unregisterApplicationProtocol();
   const capture = input.input.loadExperiment?.startComposition(input.loadSlot);
+  const startCountBefore = input.tracker.startCount;
+  let gracefulExits = 0;
+  let relaunches = 0;
+  let relaunchedAfterStop = false;
   try {
     const lifecycle = await startDesktopComposition({
       assertSingleInstanceOwnership: assertProofSingleInstanceOwnership,
@@ -639,6 +676,7 @@ async function startProofComposition(input: {
         ),
         startBackend: createTrackedBackendStarter({
           delegate: input.input.startBackend,
+          onGracefulExit() { gracefulExits += 1; },
           tracker: input.tracker,
           ...(input.beforeBackendStart === undefined
             ? {}
@@ -647,7 +685,11 @@ async function startProofComposition(input: {
       },
       quitApplication: () => capture?.probe.quitRequested(),
       releaseInfo: input.build.targetRelease,
-      relaunchApplication: () => undefined,
+      relaunchApplication() {
+        relaunches += 1;
+        input.tracker.relaunchCount += 1;
+        relaunchedAfterStop = gracefulExits === 1 && input.tracker.activeHandles.size === 0;
+      },
       reportSmokeStage: async () => undefined,
       resourcesPath: input.input.resourcesPath,
       runtimeInstanceId: randomUUID(),
@@ -660,7 +702,23 @@ async function startProofComposition(input: {
       userDataPath: input.userDataPath,
     });
     if (lifecycle === undefined) {
-      throw new Error('WORKSPACE_FIRST_START_PROOF_RELAUNCH_UNEXPECTED');
+      if (input.expectRegistryHandoff !== true || relaunches !== 1 || !relaunchedAfterStop ||
+          gracefulExits !== 1 || input.tracker.startCount !== startCountBefore + 1 ||
+          input.tracker.activeHandles.size !== 0) {
+        throw new Error('WORKSPACE_FIRST_START_PROOF_REGISTRY_HANDOFF_INVALID');
+      }
+      capture?.acceptHandoffWithoutWindow();
+      unregisterApplicationProtocol();
+      if (protocol.isProtocolHandled('eky')) throw new Error('WORKSPACE_FIRST_START_PROOF_HANDOFF_PROTOCOL_REMAINED');
+      return undefined;
+    }
+    if (input.expectRegistryHandoff === true || relaunches !== 0) {
+      try {
+        await stopProofComposition(lifecycle, undefined, input.input.loadExperiment);
+      } catch {
+        observeProof(input.input.observe, 'shutdownCleanupFailed');
+      }
+      throw new Error('WORKSPACE_FIRST_START_PROOF_REGISTRY_HANDOFF_INVALID');
     }
     capture?.acceptWindow(lifecycle.applicationWindow);
     return lifecycle;
@@ -674,9 +732,11 @@ async function runExactAcceptedRestart(input: {
   readonly build: Readonly<ProofBuildIdentity>;
   readonly factories: Readonly<WorkspaceFirstStartProofFactories>;
   readonly input: Readonly<WorkspaceFirstStartMigrationProofInput>;
+  readonly registry: WorkspaceRegistryStore;
+  readonly expectedRegistry: Readonly<LocalWorkspaceRegistry>;
   readonly tracker: BackendProofTracker;
   readonly userDataPath: string;
-}): Promise<boolean> {
+}) {
   const restoreRunner = await disableCandidateRunner(
     input.factories.runnerPath,
   );
@@ -685,6 +745,7 @@ async function runExactAcceptedRestart(input: {
     const lifecycle = await startProofComposition({
       loadSlot: input.loadSlot,
       beforeBackendStart: async () => {
+        await readSettledProofRegistry(input.registry, 2, input.expectedRegistry);
         await restoreRunner();
         restoredBeforeBackend = true;
       },
@@ -693,8 +754,12 @@ async function runExactAcceptedRestart(input: {
       tracker: input.tracker,
       userDataPath: input.userDataPath,
     });
+    if (lifecycle === undefined) throw new Error('WORKSPACE_FIRST_START_PROOF_RESTART_LIFECYCLE_MISSING');
     await stopProofComposition(lifecycle, undefined, input.input.loadExperiment);
-    return restoredBeforeBackend;
+    return {
+      exactRestartSkippedInventory: restoredBeforeBackend,
+      registryAfterRestart: await readSettledProofRegistry(input.registry, 2, input.expectedRegistry),
+    };
   } finally {
     await restoreRunner();
   }
@@ -702,6 +767,7 @@ async function runExactAcceptedRestart(input: {
 
 export function createTrackedBackendStarter(input: {
   readonly beforeStart?: () => Promise<void>;
+  readonly onGracefulExit?: () => void;
   readonly delegate: (
     options: StartDesktopBackendOptions,
   ) => Promise<DesktopBackendHandle>;
@@ -748,8 +814,9 @@ export function createTrackedBackendStarter(input: {
         delegateHandle.onUnexpectedExit(callback);
       },
       port: delegateHandle.port,
-      async stop() {
-        const result = await delegateHandle.stop();
+      async stop(options) {
+        const result = await delegateHandle.stop(options);
+        if (!released && options?.requireGraceful === true && result === 'exited') input.onGracefulExit?.();
         release();
         return result;
       },
@@ -896,6 +963,7 @@ function requireFixture(
 
 function requireProofResult(
   result: Readonly<WorkspaceFirstStartMigrationProofResult>,
+  expectedRelaunchCount: number,
 ): void {
   requireProofAssertion(
     result.activePointerPreserved,
@@ -954,7 +1022,7 @@ function requireProofResult(
     'WORKSPACE_FIRST_START_PROOF_NOT_PREPARED_BEFORE_BACKEND',
   );
   requireProofAssertion(
-    result.relaunchCount === 0,
+    result.relaunchCount === expectedRelaunchCount,
     'WORKSPACE_FIRST_START_PROOF_UNEXPECTED_RELAUNCH',
   );
   requireProofAssertion(
