@@ -416,8 +416,6 @@ jobs:
       - name: Diagnose the named Electron first-window phase
         if: github.event_name == 'workflow_dispatch' && inputs.electron_startup_phase_diagnostic == true
         shell: pwsh
-        env:
-          EKY_E2E: '1'
         run: |
           pnpm --filter @eky/e2e e2e:electron:prepare
           if ($LASTEXITCODE -ne 0) { throw 'ELECTRON_STARTUP_PHASE_DIAGNOSTIC_PREPARATION_FAILED' }

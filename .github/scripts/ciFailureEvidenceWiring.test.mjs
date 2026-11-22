@@ -418,6 +418,7 @@ test('named Electron timing dispatch selects only one existing job without chang
   assert.match(original, /run: pnpm test:e2e:electron:critical$/mu);
   assert.match(named, /--grep DESK-WORKSPACE-MANAGEMENT-001 --workers=1 --retries=0$/mu);
   assert.doesNotMatch(named, /continue-on-error|--timeout|--global-timeout/u);
+  assert.doesNotMatch(named, /EKY_E2E|EKY_E2E_BACKEND_ORIGIN/u);
   for (const event of ['push', 'pull_request', 'schedule']) {
     const normal = c => { c.github.event_name = event; c.inputs.electron_startup_phase_diagnostic = false; };
     assert.equal(evaluate(stepGate(original), normal), true);
