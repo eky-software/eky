@@ -315,9 +315,14 @@ varten.
 
 ### V2:n Exact-Byte-Pilotin Toimitus
 
-Omistajan hyväksymä release-kytkentä käyttää nykyistä
-`Windows acceptance V2 clean artifact` -työnkulkua puhtaassa Windows-CI:ssä.
-Erillinen käsikäynnistys `release_candidate=true` välittää clean-producerille
+Julkisen Windows-CI:n clean-, upgrade- ja legacy-paketointi on rajattu
+version `0.2.81` tavalliseen hyväksyntään. Älä käynnistä näitä työnkulkuja
+myöhemmän pilotin toimittamiseksi: myös `release_candidate=true` tarkistaa
+version ennen paketointia. Älä käytä vanhaa versionumeroa uudelleen.
+Myöhempi pilotti odottaa hyväksyttyä, todennettua yksityistä toimitusreittiä.
+
+Alkuperäisessä `Windows acceptance V2 clean artifact` -toimitussopimuksessa
+erillinen käsikäynnistys `release_candidate=true` välittää clean-producerille
 `--release-candidate`-valinnan. Tavalliset PR-/main-hyväksynnät säilyvät
 ilman tätä erillistä julkaisuvalintaa; niiden MSI ei yksin ole toimitettava
 pilottiehdokas.
