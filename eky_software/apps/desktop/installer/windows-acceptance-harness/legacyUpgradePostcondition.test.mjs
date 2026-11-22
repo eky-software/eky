@@ -12,7 +12,7 @@ function clone(value) {
 
 function evidence(overrides = {}) {
   return {
-    schemaVersion: 2,
+    schemaVersion: 3,
     acceptedCurrentClass: 'targetIdentity',
     acceptedLegacyClass: 'sourceIdentity',
     dataInventory: [
@@ -27,6 +27,8 @@ function evidence(overrides = {}) {
       schemaVersion: 1, mode: 'migration038To039', appVersion: '0.2.7', buildRevision: 'a'.repeat(12),
       contractSha256: '7'.repeat(64), sourceChainSha256: '8'.repeat(64), targetChainSha256: '9'.repeat(64),
     },
+    registryFormatVersion: 1,
+    promotedRegistrySha256: null,
     registrySha256: '2'.repeat(64),
     registrySize: 512,
     runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
@@ -76,6 +78,31 @@ test('legacy semantic evidence rejects changed current evidence', () => {
     () => validateLegacyUpgradeSemanticEvidence(value),
     /legacySemanticEvidenceChanged/,
   );
+});
+
+test('0.3.1 semantic evidence accepts exact promotion and still requires the actual final registry', () => {
+  const value = proof({ targetAppVersion: '0.3.1' });
+  value.firstEvidence.databaseProof.appVersion = value.targetAppVersion;
+  value.secondEvidence.databaseProof.appVersion = value.targetAppVersion;
+  value.firstEvidence.promotedRegistrySha256 = '5'.repeat(64);
+  value.secondEvidence.registryFormatVersion = 2;
+  value.secondEvidence.registrySha256 = value.firstEvidence.promotedRegistrySha256;
+  value.currentEvidence = clone(value.secondEvidence);
+  assert.equal(validateLegacyUpgradeSemanticEvidence(value).resultCode, 'legacySemanticProofValidated');
+  assert.throws(() => validateLegacyUpgradeSemanticEvidence({ ...value, targetAppVersion: '0.2.7' }),
+    /legacySecondStartupNotIdempotent/);
+  const finalChanged = clone(value);
+  finalChanged.currentEvidence.registrySha256 = value.firstEvidence.registrySha256;
+  assert.throws(() => validateLegacyUpgradeSemanticEvidence(finalChanged), /legacySemanticEvidenceChanged/);
+  const alreadyV2 = clone(value);
+  alreadyV2.firstEvidence = { ...alreadyV2.secondEvidence, runtimeInstanceId: value.firstEvidence.runtimeInstanceId };
+  assert.throws(() => validateLegacyUpgradeSemanticEvidence(alreadyV2), /legacySecondStartupNotIdempotent/);
+  for (const field of ['registrySize', 'registrySha256', 'workspaceId', 'dataInventory', 'storageInventory']) {
+    const changed = clone(value);
+    changed.secondEvidence[field] = value.firstEvidence.runtimeInstanceId;
+    changed.currentEvidence = clone(changed.secondEvidence);
+    assert.throws(() => validateLegacyUpgradeSemanticEvidence(changed), /legacySecondStartupNotIdempotent/);
+  }
 });
 
 test('legacy semantic evidence rejects changed installed payload', () => {
