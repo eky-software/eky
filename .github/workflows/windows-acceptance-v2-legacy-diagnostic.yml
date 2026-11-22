@@ -132,6 +132,10 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
+      - name: Require public Windows producer baseline
+        working-directory: .
+        run: node .github/scripts/windowsPilotPublicBuildGuard.mjs
+
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
         with:
