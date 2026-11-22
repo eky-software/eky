@@ -274,8 +274,8 @@ test('only matching hosted Windows or Linux contexts select their native Git', (
     assert.throws(() => jobEvidenceGit(env, 'darwin'), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
 });
-async function fixture(t, preserveUntilComplete = false) {
-  const root = await mkdtemp(join(tmpdir(), 'eky-evidence-test-'));
+async function fixture(t, preserveUntilComplete = false, tempParent = tmpdir()) {
+  const root = await mkdtemp(join(tempParent, 'eky-evidence-test-'));
   let complete = !preserveUntilComplete;
   t.after(() => complete ? rm(root, { recursive: true, force: true }) : undefined);
   const temp = join(root, 'temporary');
@@ -296,8 +296,8 @@ async function fixture(t, preserveUntilComplete = false) {
   return { root, temp, checkout, env, put, complete() { complete = true; } };
 }
 
-async function splitFixture(t) {
-  const f = await fixture(t, true);
+async function splitFixture(t, tempParent = tmpdir()) {
+  const f = await fixture(t, true, await realpath(tempParent));
   Object.assign(f.env, { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/main',
     RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows' });
   const source = join(f.checkout, 'source');
@@ -308,6 +308,25 @@ async function splitFixture(t) {
   const path = `eky_software/apps/e2e/test-results/${run}/case/process-output.private.json`;
   return { ...f, source, receipt, path };
 }
+
+test('split fixture supplies physical roots even when the temporary parent has an alias', async t => {
+  const parent = await fixture(t, true);
+  const alias = join(parent.root, 'temp-alias');
+  await symlink(parent.temp, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const f = await splitFixture(t, alias);
+  const throughAlias = join(alias, basename(f.root), 'checkout');
+  assert.notEqual(throughAlias, f.env.GITHUB_WORKSPACE);
+  assert.equal(await realpath(throughAlias), f.env.GITHUB_WORKSPACE);
+  assert.equal(await realpath(f.temp), f.env.RUNNER_TEMP);
+  await assert.rejects(collectJobFailureEvidence({ ...f.env, GITHUB_WORKSPACE: throughAlias },
+    { sourceSelection: f.receipt }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+  await f.put(f.source, f.path, '{"reason":"synthetic canonical checkout"}');
+  const collected = await collectJobFailureEvidence(f.env, { sourceSelection: f.receipt });
+  assert.equal(collected.manifest.files.length, 1);
+  assert.equal(collected.manifest.files[0].status, 'retained');
+  f.complete();
+  parent.complete();
+});
 
 test('split output clears partial and unverified publications on the original handle only', async t => {
   const f = await fixture(t, true);
