@@ -18,7 +18,7 @@ import {
   type ObservedRecoverySelection,
 } from '../persistence/crashSafeByteSlotStore.js';
 import { CrashSafeFileSlotError, type CrashSafeFileSlotIdentity } from '../persistence/crashSafeFileSlot.js';
-import type { ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
+import type { ReadOnlyJournalSlotRecord, ReadOnlyJournalSlots } from '../persistence/readOnlyJournalSlots.js';
 import { parseWorkspaceRegistryBytes } from './workspaceRegistryBytes.js';
 import { serializeWorkspaceRegistry } from './workspaceRegistrySerializer.js';
 import {
@@ -73,21 +73,29 @@ export class WorkspaceRegistryStore {
           ReadOnlyJournalSlots<LocalWorkspaceRegistry>['current']> = {
           current: undefined, next: undefined, backup: undefined,
         };
-        for (const slot of ['current', 'next', 'backup'] as const) {
-          assertSynchronousAuthority(assertAuthority);
-          let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
-          const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
-          assertSynchronousAuthority(assertAuthority);
-          if (bytes !== undefined) {
-            result[slot] = Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes), ...(identity === undefined ? {} : { identity }) });
-          }
-        }
+        for (const slot of ['current', 'next', 'backup'] as const) result[slot] = await this.inspectSlot(slot, assertAuthority);
         assertSynchronousAuthority(assertAuthority);
         return Object.freeze(result);
       } catch (error) {
         throw this.mapStoreError(error);
       }
     });
+  }
+
+  inspectCurrentSlot(assertAuthority?: () => void): Promise<ReadOnlyJournalSlotRecord<LocalWorkspaceRegistry> | undefined> {
+    return this.runExclusive(async () => {
+      try { return await this.inspectSlot('current', assertAuthority); }
+      catch (error) { throw this.mapStoreError(error); }
+    });
+  }
+
+  private async inspectSlot(slot: 'current' | 'next' | 'backup', assertAuthority?: () => void) {
+    assertSynchronousAuthority(assertAuthority);
+    let identity: Readonly<CrashSafeFileSlotIdentity> | undefined;
+    const bytes = await this.fileSystem.readSlot(slot, value => { identity = value; });
+    assertSynchronousAuthority(assertAuthority);
+    return bytes === undefined ? undefined
+      : Object.freeze({ bytes, value: parseWorkspaceRegistryBytes(bytes), ...(identity === undefined ? {} : { identity }) });
   }
 
   inspectRecoverySelection(assertAuthority: () => void) {
@@ -146,6 +154,29 @@ export class WorkspaceRegistryStore {
         } catch { /* Preserve the original failure before safe mapping. */ }
         throw this.mapStoreError(error);
       }
+    });
+  }
+
+  // The caller owns build acceptance and the other writers. This changes only
+  // the version of the exact, sole current v1 file that caller observed.
+  async promoteSettledLegacySelection(
+    observed: Readonly<ReadOnlyJournalSlots<LocalWorkspaceRegistry>>,
+    authority: Pick<CrashSafeByteSlotSelection, 'assertAuthority' | 'assertExternalSelection'> &
+      Partial<Pick<ObservedRecoveryAuthority, 'onUncertain'>>,
+  ): Promise<Readonly<CrashSafeFileSlotIdentity>> {
+    const current = observed.current;
+    if (current?.identity === undefined || observed.next !== undefined || observed.backup !== undefined) {
+      throw new WorkspaceRegistryValidationError();
+    }
+    const bytes = Uint8Array.from(current.bytes);
+    const selected = parseWorkspaceRegistryBytes(bytes);
+    if (selected.formatVersion !== 1) throw new WorkspaceRegistryValidationError();
+    return this.writeSelected({ ...selected, formatVersion: 2 }, {
+      expectedSlots: { current: bytes, next: undefined, backup: undefined },
+      expectedIdentities: { current: Object.freeze({ ...current.identity }), next: undefined, backup: undefined },
+      assertAuthority: authority.assertAuthority.bind(authority),
+      assertExternalSelection: authority.assertExternalSelection.bind(authority),
+      ...(authority.onUncertain === undefined ? {} : { onUncertain: authority.onUncertain.bind(authority) }),
     });
   }
 

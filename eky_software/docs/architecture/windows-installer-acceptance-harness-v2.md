@@ -2362,6 +2362,17 @@ verifier tarkistaa ennen semanttista cleanupia:
   inventorya
 - source- ja target-artifactien tavut ovat edelleen muuttumattomat.
 
+0.3.1-kohteen legacy-tarkistuksessa ensimmäisen rekisterin on oltava v1.
+Ainoa sallittu tavumuutos kahden käynnistyksen välillä on hyväksytyn
+buildin v1 → v2 -muunnos.
+Lukija johtaa odotetun v2-tiivisteen ensimmäisen rekisterin samoista
+tavuista vaihtamalla vain kanonisen versionumeron. Sekä toinen
+käynnistys että erillinen jälkitarkastin vaativat tämän täsmätuloksen
+tai täysin muuttumattoman rekisterin. Jälkitarkastin vertaa todellista
+lopputiedostoa myös toisen käynnistyksen tallennettuun näyttöön.
+Muut kohdeversiot säilyttävät v1:n tavuehdon. Yrityksen valinta ja
+lineage, SQLite-/PDF-inventaario, slottien poissaolo ja siivous eivät muutu.
+
 #### Legacy 038–039 -sisältötodiste
 
 Ensimmäinen kohdekäynnistys ei voi vaatia koko SQLite-tiedoston samaa hashia,
@@ -2455,7 +2466,10 @@ ledgerin, pakettisidonnan, uusien viitteiden, PDF-katalogin, keskeneräisen
 journalin ja lukijan kirjoituksen hylkäykset. Windowsin pitkät polut ja
 toisen käynnistyksen byte-ehto kuuluvat samaan suojaan.
 
-Target-evidencen versio 2 sisältää suljetun `databaseProof`-sidonnan.
+Target-evidencen versio 3 säilyttää suljetun `databaseProof`-sidonnan
+ja lisää rekisteriformaatin (`registryFormatVersion`) sekä mahdollisen
+odotetun v2-tiivisteen (`promotedRegistrySha256`). Nykyinen lukija ei
+käytä uudelleen vanhoja version 2 testikuitteja.
 Kevyiden tiedostoturvatestien `null`-todiste ei kelpaa oikean workerin tai
 erillisen semanttisen postconditionin hyväksynnäksi. Uudet regressiot kuuluvat
 nykyiseen `installer:test:windows-supervisor-v2-legacy-core`-sarjaan.

@@ -31,6 +31,8 @@ const WORKSPACE_KEYS = [
   'workspaceLabel',
 ];
 const LINEAGE_KEYS = ['formatVersion', 'profileId'];
+const LEGACY_REGISTRY_V1_PREFIX = Buffer.from('{"formatVersion":1,');
+const LEGACY_REGISTRY_V2_PREFIX = Buffer.from('{"formatVersion":2,');
 const UUID_V4_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const SHA_256_PATTERN = /^[0-9a-f]{64}$/;
@@ -192,14 +194,15 @@ async function readStrictObject(path, maximumBytes, errorCode) {
   }
 }
 
-async function fileIdentity(path, errorCode) {
+async function fileIdentity(path, errorCode, maximumBytes) {
   try {
     const before = await lstat(path, { bigint: true });
     if (
       !before.isFile() ||
       before.isSymbolicLink() ||
       before.nlink !== 1n ||
-      before.size < 1n
+      before.size < 1n ||
+      (maximumBytes !== undefined && before.size > BigInt(maximumBytes))
     ) {
       throw new Error(errorCode);
     }
@@ -224,16 +227,17 @@ async function fileIdentity(path, errorCode) {
   }
 }
 
-export async function readLegacyWorkspaceRegistry(userDataRoot) {
+export async function readLegacyWorkspaceRegistry(userDataRoot, targetAppVersion, afterFirstStartup = false) {
   const registryPath = resolve(userDataRoot, 'workspace-registry-v1.json');
-  const value = await readStrictObject(
+  const identity = await fileIdentity(
     registryPath,
-    1024 * 1024,
     'workspaceRegistryInvalid',
+    1024 * 1024,
   );
+  const value = parseStrictJsonObjectBytes(identity.bytes, { errorCode: 'workspaceRegistryInvalid' });
   if (
     !hasExactKeys(value, REGISTRY_KEYS) ||
-    value.formatVersion !== 1 ||
+    (value.formatVersion !== 1 && !(afterFirstStartup && targetAppVersion === '0.3.1' && value.formatVersion === 2)) ||
     !UUID_V4_PATTERN.test(value.activeWorkspaceId) ||
     !Array.isArray(value.workspaces) ||
     value.workspaces.length !== 1
@@ -266,13 +270,30 @@ export async function readLegacyWorkspaceRegistry(userDataRoot) {
       if (error?.code !== 'ENOENT') throw error;
     }
   }
-  const identity = await fileIdentity(registryPath, 'workspaceRegistryInvalid');
+  let promotedRegistrySha256 = null;
+  if (targetAppVersion === '0.3.1' && value.formatVersion === 1 &&
+      identity.bytes.subarray(0, LEGACY_REGISTRY_V1_PREFIX.length).equals(LEGACY_REGISTRY_V1_PREFIX)) {
+    // Bind the expected upgrade to the original bytes, not to a normalized registry.
+    const promoted = Buffer.from(identity.bytes);
+    LEGACY_REGISTRY_V2_PREFIX.copy(promoted);
+    promotedRegistrySha256 = createHash('sha256').update(promoted).digest('hex');
+  }
   return Object.freeze({
     activeWorkspaceId: value.activeWorkspaceId,
     lineageProfileId: workspace.lineageIdentity.profileId,
+    registryFormatVersion: value.formatVersion,
+    promotedRegistrySha256,
     registrySha256: identity.sha256,
     registrySize: identity.size,
   });
+}
+
+export function legacyRegistryBytesPreserved(first, second, targetAppVersion) {
+  return first.registryFormatVersion === 1 && first.registrySize === second.registrySize &&
+    ((second.registryFormatVersion === 1 && first.registrySha256 === second.registrySha256) ||
+      (targetAppVersion === '0.3.1' &&
+        second.registryFormatVersion === 2 && first.promotedRegistrySha256 !== null &&
+        first.promotedRegistrySha256 === second.registrySha256));
 }
 
 async function requireNoAdoptionResidue(userDataRoot) {
@@ -406,7 +427,11 @@ export async function captureLegacyTargetEvidence({
   ) {
     throw new Error('acceptedBuildIdentityInvalid');
   }
-  const registry = await readLegacyWorkspaceRegistry(userDataRoot);
+  const registry = await readLegacyWorkspaceRegistry(
+    userDataRoot,
+    identities.target.appVersion,
+    previousEvidence !== undefined,
+  );
   await requireNoAdoptionResidue(userDataRoot);
   const legacyData = await createClosedDirectoryInventory(
     resolve(userDataRoot, 'runtime', 'data'),
@@ -448,11 +473,13 @@ export async function captureLegacyTargetEvidence({
     packageBinding,
   });
   const evidence = Object.freeze({
-    schemaVersion: 2,
+    schemaVersion: 3,
     acceptedCurrentClass: accepted.currentClass,
     acceptedLegacyClass: accepted.legacyClass,
     dataInventory,
     databaseProof,
+    registryFormatVersion: registry.registryFormatVersion,
+    promotedRegistrySha256: registry.promotedRegistrySha256,
     registrySha256: registry.registrySha256,
     registrySize: registry.registrySize,
     runtimeInstanceId,
@@ -463,8 +490,7 @@ export async function captureLegacyTargetEvidence({
     previousEvidence !== undefined &&
     (previousEvidence.runtimeInstanceId === runtimeInstanceId ||
       previousEvidence.workspaceId !== evidence.workspaceId ||
-      previousEvidence.registrySha256 !== evidence.registrySha256 ||
-      previousEvidence.registrySize !== evidence.registrySize ||
+      !legacyRegistryBytesPreserved(previousEvidence, evidence, identities.target.appVersion) ||
       !valuesEqual(previousEvidence.databaseProof, evidence.databaseProof) ||
       !inventoriesMatch(previousEvidence.dataInventory, evidence.dataInventory) ||
       !inventoriesMatch(
@@ -542,6 +568,8 @@ export function validateLegacyTargetEvidence(value) {
       'acceptedLegacyClass',
       'dataInventory',
       'databaseProof',
+      'registryFormatVersion',
+      'promotedRegistrySha256',
       'registrySha256',
       'registrySize',
       'runtimeInstanceId',
@@ -549,12 +577,16 @@ export function validateLegacyTargetEvidence(value) {
       'storageInventory',
       'workspaceId',
     ]) ||
-    value.schemaVersion !== 2 ||
+    value.schemaVersion !== 3 ||
     (value.databaseProof !== null && !isLegacyDatabaseProof(value.databaseProof)) ||
     value.acceptedCurrentClass !== 'targetIdentity' ||
     !['missing', 'sourceIdentity'].includes(value.acceptedLegacyClass) ||
     !validInventory(value.dataInventory) ||
     !validInventory(value.storageInventory) ||
+    ![1, 2].includes(value.registryFormatVersion) ||
+    (value.promotedRegistrySha256 !== null &&
+      (value.registryFormatVersion !== 1 || typeof value.promotedRegistrySha256 !== 'string' ||
+        !SHA_256_PATTERN.test(value.promotedRegistrySha256))) ||
     !SHA_256_PATTERN.test(value.registrySha256) ||
     !Number.isSafeInteger(value.registrySize) ||
     value.registrySize < 2 ||

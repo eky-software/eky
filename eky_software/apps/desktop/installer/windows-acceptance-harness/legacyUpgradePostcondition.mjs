@@ -7,6 +7,7 @@ import {
   LEGACY_SOURCE_EVIDENCE_FILENAME,
   captureLegacyTargetEvidence,
   deriveLegacySourceUserDataRoot,
+  legacyRegistryBytesPreserved,
   readLegacySourceEvidence,
   readLegacyTargetEvidence,
 } from './legacyUpgradeProfileEvidence.mjs';
@@ -56,6 +57,7 @@ export function validateLegacyUpgradeSemanticEvidence({
   firstEvidence,
   installedPayload,
   secondEvidence,
+  targetAppVersion,
 }) {
   if (!equal(currentEvidence, secondEvidence)) {
     throw new Error('legacySemanticEvidenceChanged');
@@ -65,8 +67,7 @@ export function validateLegacyUpgradeSemanticEvidence({
     !equal(firstEvidence.databaseProof, secondEvidence.databaseProof) ||
     firstEvidence.runtimeInstanceId === secondEvidence.runtimeInstanceId ||
     firstEvidence.workspaceId !== secondEvidence.workspaceId ||
-    firstEvidence.registrySha256 !== secondEvidence.registrySha256 ||
-    firstEvidence.registrySize !== secondEvidence.registrySize ||
+    !legacyRegistryBytesPreserved(firstEvidence, secondEvidence, targetAppVersion) ||
     !equal(firstEvidence.dataInventory, secondEvidence.dataInventory) ||
     !equal(firstEvidence.storageInventory, secondEvidence.storageInventory)
   ) {
@@ -134,6 +135,7 @@ export async function verifyLegacyUpgradeSemanticPostcondition({
       firstEvidence,
       installedPayload,
       secondEvidence,
+      targetAppVersion: identities.target.appVersion,
     });
     stage = 'artifact';
     await verifyLegacyUpgradeArtifact({

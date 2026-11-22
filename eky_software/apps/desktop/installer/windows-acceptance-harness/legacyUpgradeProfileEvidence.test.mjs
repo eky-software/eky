@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve, toNamespacedPath } from 'node:path';
@@ -124,23 +125,22 @@ test('source and target evidence prove copy adoption and idempotent second start
     resolve(workspaceRuntime, 'storage', 'invoices', 'one', 'approved-invoice.pdf'),
     '%PDF-fixture',
   );
-  await writeFile(
-    resolve(userDataRoot, 'workspace-registry-v1.json'),
-    `${JSON.stringify({
-      formatVersion: 1,
-      activeWorkspaceId: WORKSPACE_ID,
-      workspaces: [
-        {
-          workspaceId: WORKSPACE_ID,
-          workspaceLabel: 'Oma yritys',
-          lineageIdentity: { formatVersion: 1, profileId: 'd'.repeat(64) },
-          layoutVersion: 1,
-          lifecycleState: 'ready',
-          createdAt: '2026-09-04T08:00:00.000Z',
-        },
-      ],
-    })}\n`,
-  );
+  const registryPath = resolve(userDataRoot, 'workspace-registry-v1.json');
+  const registry = {
+    formatVersion: 1,
+    activeWorkspaceId: WORKSPACE_ID,
+    workspaces: [
+      {
+        workspaceId: WORKSPACE_ID,
+        workspaceLabel: 'Oma yritys',
+        lineageIdentity: { formatVersion: 1, profileId: 'd'.repeat(64) },
+        layoutVersion: 1,
+        lifecycleState: 'ready',
+        createdAt: '2026-09-04T08:00:00.000Z',
+      },
+    ],
+  };
+  await writeFile(registryPath, `${JSON.stringify(registry)}\n`);
 
   const first = await captureLegacyTargetEvidence({
     identities: IDENTITIES,
@@ -157,6 +157,66 @@ test('source and target evidence prove copy adoption and idempotent second start
   });
   assert.equal(second.workspaceId, WORKSPACE_ID);
   assert.notEqual(second.runtimeInstanceId, first.runtimeInstanceId);
+
+  await t.test('0.3.1 second startup accepts only the exact promoted registry bytes', async () => {
+    const identities = { source: SOURCE, target: { ...TARGET, appVersion: '0.3.1' } };
+    const acceptedPath = resolve(userDataRoot, 'update-state', 'accepted-build-v1.json');
+    const oldBuild = await readFile(acceptedPath);
+    const original = await readFile(registryPath);
+    const bytes = value => `${JSON.stringify(value)}\n`;
+    const promoted = { ...registry, formatVersion: 2 };
+    const hash = value => createHash('sha256').update(value).digest('hex');
+    const input = { identities, sourceEvidence, userDataRoot };
+    try {
+      await writeFile(acceptedPath, JSON.stringify(accepted(identities.target)));
+      await writeFile(registryPath, bytes(registry));
+      const before = await captureLegacyTargetEvidence({ ...input, runtimeInstanceId: RUNTIME_ONE });
+      assert.equal(before.registrySha256, hash(bytes(registry)));
+      assert.equal(before.promotedRegistrySha256, hash(bytes(promoted)));
+      const secondInput = { ...input, previousEvidence: before, runtimeInstanceId: RUNTIME_TWO };
+      await writeFile(registryPath, bytes(promoted));
+      await assert.rejects(captureLegacyTargetEvidence({ ...input, runtimeInstanceId: RUNTIME_ONE }),
+        /workspaceRegistryInvalid/);
+      const after = await captureLegacyTargetEvidence(secondInput);
+      assert.equal(after.registryFormatVersion, 2);
+      assert.equal(after.registrySha256, hash(bytes(promoted)));
+      assert.equal(after.promotedRegistrySha256, null);
+      assert.equal(after.workspaceId, before.workspaceId);
+      assert.deepEqual(await captureLegacyTargetEvidence(secondInput), after);
+      for (const replacement of [
+        bytes({ ...promoted, workspaces: [{ ...promoted.workspaces[0],
+          lineageIdentity: { formatVersion: 1, profileId: 'e'.repeat(64) } }] }),
+        bytes({ ...promoted, workspaces: [{ ...promoted.workspaces[0], createdAt: '2026-09-05T08:00:00.000Z' }] }),
+        bytes(promoted).slice(0, -1) + ' ',
+      ]) {
+        await writeFile(registryPath, replacement);
+        await assert.rejects(captureLegacyTargetEvidence(secondInput), /targetSecondStartupNotIdempotent/);
+      }
+      await writeFile(registryPath, bytes(registry));
+      await assert.rejects(captureLegacyTargetEvidence({ ...secondInput, previousEvidence: after, runtimeInstanceId: RUNTIME_ONE }),
+        /targetSecondStartupNotIdempotent/);
+      await writeFile(registryPath, bytes(promoted));
+      const sideSlot = `${registryPath}.backup`;
+      await writeFile(sideSlot, bytes(registry));
+      try {
+        await assert.rejects(captureLegacyTargetEvidence(secondInput), /workspaceRegistryInvalid/);
+      } finally {
+        await rm(sideSlot);
+      }
+    } finally {
+      await writeFile(registryPath, original);
+      await writeFile(acceptedPath, oldBuild);
+    }
+    await writeFile(registryPath, bytes(promoted));
+    try {
+      await assert.rejects(captureLegacyTargetEvidence({
+        identities: IDENTITIES, previousEvidence: first, runtimeInstanceId: RUNTIME_TWO,
+        sourceEvidence, userDataRoot,
+      }), /workspaceRegistryInvalid/);
+    } finally {
+      await writeFile(registryPath, original);
+    }
+  });
 
   for (const [path, original, changed, errorCode] of [
     [resolve(legacyData, 'eky.sqlite'), 'sqlite-fixture', 'changed-sqlite-fixture', 'legacySourceDataChanged'],

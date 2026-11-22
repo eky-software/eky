@@ -11,9 +11,10 @@ async function manifest(relativePath) {
 }
 
 try {
-  if (process.argv.length !== 2) throw new Error(denied);
+  const candidate = process.env.REQUIRE_RELEASE_CANDIDATE ?? 'false';
+  if (process.argv.length !== 2 || !['true', 'false'].includes(candidate)) throw new Error(denied);
   assertPublicBuildBaseline(process.env.GITHUB_REPOSITORY, process.env.GITHUB_SERVER_URL,
-    await manifest('package.json'), await manifest('installer/installer-release.json'));
+    await manifest('package.json'), await manifest('installer/installer-release.json'), candidate === 'true');
 } catch {
   process.stderr.write(denied + '\n');
   process.exitCode = 1;

@@ -38,7 +38,7 @@ import {
 } from '../registry/workspaceRegistryPaths.js';
 import type { LocalWorkspaceRegistry, WorkspaceId } from '../registry/workspaceRegistryTypes.js';
 import { validateWorkspaceRegistry } from '../registry/workspaceRegistryValidation.js';
-import { deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
+import { deriveWorkspaceBackupReplacementOperationsPaths, deriveWorkspaceBackupReplacementRuntimePaths } from '../replacement/workspaceBackupReplacementPaths.js';
 import { createWorkspaceSwitchJournalPaths } from '../switch/workspaceSwitchJournal.js';
 import { createWorkspaceFirstStartMigrationJournalPaths } from '../update/workspaceFirstStartMigrationJournalPaths.js';
 import {
@@ -93,6 +93,27 @@ async function assertSelectorWorkspaceRecoveryFromRoot(
     const selected = validateWorkspaceRegistry(registry);
     if (selected.activeWorkspaceId !== null) throw new WorkspaceManagementRecoveryRequiredError();
     await assertSwitchSelection?.();
+    if (await hasWorkspaceRecoveryConflict(userDataRoot, selected)) throw new WorkspaceManagementRecoveryRequiredError();
+    await assertSwitchSelection?.();
+  } catch (error) {
+    if (error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
+    throw new WorkspaceManagementRecoveryRequiredError({ cause: error });
+  }
+}
+
+// Observation only; the exact accepted build and installation owner must be
+// proved separately by main before publishing a registry representation change.
+export async function hasWorkspaceRegistryPromotionRecoveryFromRoot(
+  userDataRoot: string, registry: Readonly<LocalWorkspaceRegistry>,
+): Promise<boolean> {
+  const selected = validateWorkspaceRegistry(registry);
+  return await hasAnyJournalSlot(createWorkspaceSwitchJournalPaths(userDataRoot)) ||
+    await hasAnyJournalSlot(createReadOnlyJournalSlotPaths(
+      deriveWorkspaceBackupReplacementOperationsPaths(userDataRoot).activationJournalPath)) ||
+    await hasWorkspaceRecoveryConflict(userDataRoot, selected);
+}
+
+async function hasWorkspaceRecoveryConflict(userDataRoot: string, selected: Readonly<LocalWorkspaceRegistry>): Promise<boolean> {
     const legacyRuntimeRoot = createDesktopProfilePaths(userDataRoot).runtimeRoot;
     const updatePaths = createLocalUpdateRuntimePaths({ userDataPath: userDataRoot, legacyRuntimeRoot });
     const pending = [
@@ -120,15 +141,11 @@ async function assertSelectorWorkspaceRecoveryFromRoot(
       createReadOnlyJournalSlotPaths(updatePaths.directSetupMigrationRecoveryPath),
       maximumDirectSetupMigrationRecoveryBytes, parseDirectSetupMigrationRecovery,
       record => record.state === 'accepted',
-    )) throw new WorkspaceManagementRecoveryRequiredError();
+    )) return true;
     for (const paths of pending) {
-      if (await hasAnyJournalSlot(paths)) throw new WorkspaceManagementRecoveryRequiredError();
+      if (await hasAnyJournalSlot(paths)) return true;
     }
-    await assertSwitchSelection?.();
-  } catch (error) {
-    if (error instanceof WorkspaceManagementRecoveryRequiredError) throw error;
-    throw new WorkspaceManagementRecoveryRequiredError({ cause: error });
-  }
+    return false;
 }
 
 // The root comes from main, never from renderer or journal contents. This probe

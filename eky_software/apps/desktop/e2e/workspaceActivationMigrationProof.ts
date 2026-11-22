@@ -35,6 +35,7 @@ import {
   selectActiveWorkspace,
 } from '../src/workspaces/registry/workspaceRegistryMutations.js';
 import { WORKSPACE_REGISTRY_FILE_NAME } from '../src/workspaces/registry/workspaceRegistryPaths.js';
+import { serializeWorkspaceRegistry } from '../src/workspaces/registry/workspaceRegistrySerializer.js';
 import { WorkspaceRegistryStore } from '../src/workspaces/registry/workspaceRegistryStore.js';
 import type {
   LocalWorkspaceRegistryEntryV1,
@@ -158,7 +159,6 @@ export async function runWorkspaceActivationMigrationProof(
     selectorCleanupFailed: false,
   };
   const selectorOpening = input.opening === 'selector' || input.opening === 'selectorDeferred';
-  const registryFormat = selectorOpening ? 2 : 1;
   let factories: Readonly<WorkspaceFirstStartProofFactories> | undefined;
   let succeeded = false;
 
@@ -203,6 +203,9 @@ export async function runWorkspaceActivationMigrationProof(
     const recoveryPointCountBefore = await readRecoveryPointCount(
       fixtures.compatibleTarget,
     );
+    const selectedRegistry = selectorOpening
+      ? undefined
+      : createWorkspaceFirstStartProofRegistry(fixtures.all, fixtures.compatibleTarget.workspaceId);
     if (selectorOpening) {
       await progress.enter('selectorOpening');
       await openTargetFromSelector({ input, release, tracker, stores,
@@ -216,7 +219,7 @@ export async function runWorkspaceActivationMigrationProof(
     } else {
       await seedSwitch({
         registry: stores.registry,
-        registryFormat,
+        registryFormat: 1,
         sourceWorkspaceId: fixtures.currentSource.workspaceId,
         switchJournal: stores.switchJournal,
         targetWorkspaceId: fixtures.compatibleTarget.workspaceId,
@@ -271,6 +274,10 @@ export async function runWorkspaceActivationMigrationProof(
     const switchJournalAfterMigration = selectorOpening
       ? (await stores.switchJournal.inspectSlots()).current?.value
       : await stores.switchJournal.read();
+    const compatibleRelaunchesAfterMigration = tracker.relaunchCount;
+    if (selectedRegistry !== undefined) {
+      await readExactProofRegistry(stores.registry, selectedRegistry);
+    }
     if (input.opening === 'selectorDeferred' &&
         (!isDeepStrictEqual(metadataBefore, await inspectProofAcceptedBuild(stores)) ||
           await hasAnyJournalSlot(createReadOnlyJournalSlotPaths(stores.directSetupPath)))) {
@@ -283,6 +290,9 @@ export async function runWorkspaceActivationMigrationProof(
       release,
       tracker,
       userDataPath: proofRoot,
+      ...(selectedRegistry === undefined ? {} : { async beforeBackendStart() {
+        await readExactProofRegistry(stores.registry, selectedRegistry);
+      } }),
     });
     const compatibleAfterAcceptance =
       await snapshotWorkspaceFirstStartProofFile(
@@ -296,9 +306,16 @@ export async function runWorkspaceActivationMigrationProof(
     const recoveryPointCountAfterAcceptance = await readRecoveryPointCount(
       fixtures.compatibleTarget,
     );
-    const registryAfterAcceptance = requireActivationProofRegistry(
-      await stores.registry.read(), registryFormat,
-    );
+    const registryAfterAcceptance = selectedRegistry === undefined
+      ? requireActivationProofRegistry(await stores.registry.read(), 2)
+      : await readExactProofRegistry(stores.registry, selectedRegistry);
+    if (selectedRegistry !== undefined) {
+      const switchSlots = await stores.switchJournal.inspectSlots();
+      if (compatibleRelaunchesAfterMigration !== 1 || tracker.relaunchCount !== compatibleRelaunchesAfterMigration ||
+          Object.values(switchSlots).some(slot => slot !== undefined)) {
+        throw new Error('WORKSPACE_ACTIVATION_PROOF_SELECTED_ACCEPTANCE_UNSETTLED');
+      }
+    }
     const acceptedMetadata = await inspectProofAcceptedBuild(stores);
     if (input.opening === 'selectorDeferred' &&
         (acceptedMetadata?.formatVersion !== 2 || acceptedMetadata.acceptanceScope !== 'business' ||
@@ -312,11 +329,21 @@ export async function runWorkspaceActivationMigrationProof(
 
     await progress.enter('compatibleRestart');
     const compatibleStartCountBeforeRestart = tracker.startCount;
+    const compatibleRelaunchesBeforeRestart = tracker.relaunchCount;
+    // The pending switch excluded promotion. This accepted cold startup may
+    // change only the format, and must do so before the backend can open.
+    const expectedRegistryAfterRestart = selectedRegistry === undefined
+      ? registryAfterAcceptance
+      : { ...registryAfterAcceptance, formatVersion: 2 as const };
+    const registryFormatAfterRestart = expectedRegistryAfterRestart.formatVersion;
     await runExpectedLifecycle({
       input,
       release,
       tracker,
       userDataPath: proofRoot,
+      ...(selectedRegistry === undefined ? {} : { async beforeBackendStart() {
+        await readExactProofRegistry(stores.registry, expectedRegistryAfterRestart);
+      } }),
     });
     const compatibleAfterRestart =
       await snapshotWorkspaceFirstStartProofFile(
@@ -325,7 +352,15 @@ export async function runWorkspaceActivationMigrationProof(
     const recoveryPointCountAfterRestart = await readRecoveryPointCount(
       fixtures.compatibleTarget,
     );
-    const registryAfterRestart = requireActivationProofRegistry(await stores.registry.read(), registryFormat);
+    const registryAfterRestart = selectedRegistry === undefined
+      ? requireActivationProofRegistry(await stores.registry.read(), registryFormatAfterRestart)
+      : await readExactProofRegistry(stores.registry, expectedRegistryAfterRestart);
+    if (selectedRegistry !== undefined &&
+        (tracker.relaunchCount !== compatibleRelaunchesBeforeRestart ||
+          !isDeepStrictEqual(tracker.databaseStarts.slice(compatibleStartCountBeforeRestart),
+            [fixtures.compatibleTarget.databaseFilePath]))) {
+      throw new Error('WORKSPACE_ACTIVATION_PROOF_SELECTED_RESTART_INVALID');
+    }
     if (!isDeepStrictEqual(acceptedMetadata, await inspectProofAcceptedBuild(stores))) {
       throw new Error('WORKSPACE_ACTIVATION_PROOF_RESTART_CHANGED_ACCEPTANCE');
     }
@@ -337,7 +372,7 @@ export async function runWorkspaceActivationMigrationProof(
     );
     await seedSwitch({
       registry: stores.registry,
-      registryFormat,
+      registryFormat: registryFormatAfterRestart,
       sourceWorkspaceId: fixtures.compatibleTarget.workspaceId,
       switchJournal: stores.switchJournal,
       targetWorkspaceId: fixtures.currentSource.workspaceId,
@@ -361,7 +396,7 @@ export async function runWorkspaceActivationMigrationProof(
       : requireSnapshot(databaseBefore, fixtures.invalidTarget.workspaceId);
     await seedSwitch({
       registry: stores.registry,
-      registryFormat,
+      registryFormat: registryFormatAfterRestart,
       sourceWorkspaceId: fixtures.currentSource.workspaceId,
       switchJournal: stores.switchJournal,
       targetWorkspaceId: fixtures.invalidTarget.workspaceId,
@@ -378,7 +413,7 @@ export async function runWorkspaceActivationMigrationProof(
     }
     const invalidRejectedBeforeBackend =
       tracker.startCount === backendStartsBeforeInvalid;
-    const invalidRegistry = requireActivationProofRegistry(await stores.registry.read(), registryFormat);
+    const invalidRegistry = requireActivationProofRegistry(await stores.registry.read(), registryFormatAfterRestart);
     const invalidJournal = await stores.switchJournal.read();
     const invalidAfter = await snapshotWorkspaceFirstStartProofFile(
       fixtures.invalidTarget.databaseFilePath,
@@ -399,7 +434,7 @@ export async function runWorkspaceActivationMigrationProof(
     );
     const faultOperationId = await seedSwitch({
       registry: stores.registry,
-      registryFormat,
+      registryFormat: registryFormatAfterRestart,
       sourceWorkspaceId: fixtures.currentSource.workspaceId,
       switchJournal: stores.switchJournal,
       targetWorkspaceId: fixtures.faultTarget.workspaceId,
@@ -422,7 +457,7 @@ export async function runWorkspaceActivationMigrationProof(
     if (faultLifecycle !== undefined) {
       await stopProofComposition(faultLifecycle);
     }
-    const faultRegistry = requireActivationProofRegistry(await stores.registry.read(), registryFormat);
+    const faultRegistry = requireActivationProofRegistry(await stores.registry.read(), registryFormatAfterRestart);
     const faultJournal = await stores.switchJournal.read();
     const faultAfter = await snapshotWorkspaceFirstStartProofFile(
       fixtures.faultTarget.databaseFilePath,
@@ -440,7 +475,7 @@ export async function runWorkspaceActivationMigrationProof(
     });
 
     await progress.enter('assertions');
-    const finalRegistry = requireActivationProofRegistry(await stores.registry.read(), registryFormat);
+    const finalRegistry = requireActivationProofRegistry(await stores.registry.read(), registryFormatAfterRestart);
     const finalDatabase = await snapshotDatabases(fixtures.all);
     const artifactsAfter = await snapshotArtifactRoots(fixtures.all);
     const businessDataAfter = await snapshotBusinessData([
@@ -522,7 +557,7 @@ export async function runWorkspaceActivationMigrationProof(
         fixtures.currentSource.workspaceId,
       relaunchCount: tracker.relaunchCount,
       secondTargetStartupIdempotent:
-        isDeepStrictEqual(registryAfterAcceptance, registryAfterRestart) &&
+        isDeepStrictEqual(expectedRegistryAfterRestart, registryAfterRestart) &&
         tracker.startCount >= compatibleStartCountBeforeRestart + 1 &&
         workspaceFirstStartProofSnapshotsEqual(
           compatibleAfterAcceptance,
@@ -665,6 +700,18 @@ async function inspectProofAcceptedBuild(stores: Readonly<ProofStores>) {
   return slots.current?.value;
 }
 
+async function readExactProofRegistry(
+  store: WorkspaceRegistryStore,
+  expected: Readonly<LocalWorkspaceRegistry>,
+): Promise<Readonly<LocalWorkspaceRegistry>> {
+  const { current, next, backup } = await store.inspectSlots();
+  if (current?.identity === undefined || next !== undefined || backup !== undefined ||
+      !Buffer.from(serializeWorkspaceRegistry(expected)).equals(current.bytes)) {
+    throw new Error('DESKTOP_SMOKE_WORKSPACE_ACTIVATION_REGISTRY_BYTES_CHANGED');
+  }
+  return current.value;
+}
+
 async function seedSwitch(input: {
   readonly registry: WorkspaceRegistryStore;
   readonly registryFormat: LocalWorkspaceRegistry['formatVersion'];
@@ -719,6 +766,7 @@ async function openTargetFromSelector(input: {
 }
 
 async function startProofComposition(input: {
+  readonly beforeBackendStart?: () => Promise<void>;
   readonly input: Readonly<WorkspaceActivationMigrationProofInput>;
   readonly release: Readonly<DesktopReleaseInfo>;
   readonly tracker: BackendProofTracker;
@@ -743,6 +791,7 @@ async function startProofComposition(input: {
         return createRuntimeSession();
       },
       startBackend: createTrackedBackendStarter({
+        ...(input.beforeBackendStart === undefined ? {} : { beforeStart: input.beforeBackendStart }),
         delegate: input.input.startBackend,
         tracker: input.tracker,
       }),
@@ -765,12 +814,7 @@ async function startProofComposition(input: {
   });
 }
 
-async function runExpectedLifecycle(input: {
-  readonly input: Readonly<WorkspaceActivationMigrationProofInput>;
-  readonly release: Readonly<DesktopReleaseInfo>;
-  readonly tracker: BackendProofTracker;
-  readonly userDataPath: string;
-}): Promise<void> {
+async function runExpectedLifecycle(input: Parameters<typeof startProofComposition>[0]): Promise<void> {
   const lifecycle = await startProofComposition(input);
   if (lifecycle === undefined) {
     throw new Error('WORKSPACE_ACTIVATION_PROOF_LIFECYCLE_MISSING');
@@ -779,6 +823,7 @@ async function runExpectedLifecycle(input: {
 }
 
 export function createTrackedBackendStarter(input: {
+  readonly beforeStart?: () => Promise<void>;
   readonly delegate: (
     options: StartDesktopBackendOptions,
   ) => Promise<DesktopBackendHandle>;
@@ -787,6 +832,7 @@ export function createTrackedBackendStarter(input: {
   options: StartDesktopBackendOptions,
 ) => Promise<DesktopBackendHandle> {
   return async (options) => {
+    if (input.beforeStart !== undefined) await input.beforeStart();
     input.tracker.startCount += 1;
     input.tracker.databaseStarts.push(options.config.databaseFilePath);
     const delegateHandle = await input.delegate(options);

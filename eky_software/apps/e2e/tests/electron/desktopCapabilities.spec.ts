@@ -166,7 +166,7 @@ test('DESK-WORKSPACE-FIRST-START-001 @critical @recovery @security migrates only
     mixedActiveWorkspaceMigrated: true,
     passiveCompatibleWorkspacePreserved: true,
     preparedBeforeBackend: true,
-    relaunchCount: 0,
+    relaunchCount: 2,
     targetAcceptedAfterRegistryTransition: true,
   });
 });

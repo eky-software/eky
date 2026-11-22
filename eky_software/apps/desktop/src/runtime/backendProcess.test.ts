@@ -109,6 +109,19 @@ describe('backend process shutdown result', () => {
     expect(fixture.kill).toHaveBeenCalledOnce();
   });
 
+  it('does not force a graceful-only shutdown or reclaim an unconfirmed exit', async () => {
+    vi.useFakeTimers();
+    const fixture = await createFixture();
+    const stopped = fixture.backend.stop({ requireGraceful: true });
+    const rejection = expect(stopped).rejects.toThrow('The backend did not stop gracefully within the allowed time.');
+    expect(fixture.postMessage).toHaveBeenLastCalledWith({ type: 'shutdown' });
+    await vi.advanceTimersByTimeAsync(3_000);
+    await rejection;
+    expect(fixture.kill).not.toHaveBeenCalled();
+    expect(fixture.transfer.reclaimAfterExit).not.toHaveBeenCalled();
+    expect(fixture.transfer.invalidate).toHaveBeenCalledOnce();
+  });
+
   it.each(['stopForUpdate', 'stopForRestore', 'stopForDelete'] as const)(
     'keeps %s strict without invoking the forced fallback', async (method) => {
     vi.useFakeTimers();
@@ -676,7 +689,7 @@ describe('backend parent reservation transfer', () => {
     const fixture = await createFixture();
     const reclaimed = createGate();
     fixture.transfer.reclaimAfterExit.mockImplementationOnce(() => reclaimed.promise);
-    const stopped = fixture.backend.stop();
+    const stopped = fixture.backend.stop({ requireGraceful: true });
     let completed = false;
     void stopped.then(() => { completed = true; });
     fixture.process.emit('exit', 0);
