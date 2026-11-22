@@ -9,7 +9,7 @@ on:
         type: boolean
         default: true
       electron_startup_phase_diagnostic:
-        description: Run only the named first-window phase diagnosis; not acceptance
+        description: Run the named 12-case first-window diagnostic prefix; not acceptance
         required: false
         type: boolean
         default: false
@@ -413,13 +413,13 @@ jobs:
         if: inputs.electron_startup_phase_diagnostic != true
         run: pnpm test:e2e:electron:critical
 
-      - name: Diagnose the named Electron first-window phase
+      - name: Diagnose the named Electron first-window phase after its predecessors
         if: github.event_name == 'workflow_dispatch' && inputs.electron_startup_phase_diagnostic == true
         shell: pwsh
         run: |
           pnpm --filter @eky/e2e e2e:electron:prepare
           if ($LASTEXITCODE -ne 0) { throw 'ELECTRON_STARTUP_PHASE_DIAGNOSTIC_PREPARATION_FAILED' }
-          pnpm --filter @eky/e2e exec playwright test --project=electron-development --grep DESK-WORKSPACE-MANAGEMENT-001 --workers=1 --retries=0
+          pnpm --filter @eky/e2e exec playwright test --project=electron-development --grep '(?:^|\s)DESK-(?:SELECTOR-(?:EMPTY|READY|RECOVERY|CREATE|IMPORT|RETURN)-001|SUPPORT-DESKTOPONLY-(?:001|002|CANCEL-001)|SECRET-DRAIN-00[12]|WORKSPACE-MANAGEMENT-001)(?=\s|$)' --workers=1 --retries=0
 
       - name: Verify Electron startup observation wiring
         if: inputs.risk_plan == '' && inputs.electron_diagnostic && inputs.electron_startup_phase_diagnostic != true

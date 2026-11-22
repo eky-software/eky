@@ -400,7 +400,7 @@ test('split Windows evidence keeps distinct job keys without extending native ra
     'packaged preparation is excluded even before the collector supplies a key');
 });
 
-test('named Electron timing dispatch selects only one existing job without changing normal test or publication gates', () => {
+test('Electron startup prefix dispatch keeps the fixed cases and normal test and publication gates', () => {
   const core = workflows.get('ci.yml');
   const id = 'e2e-electron-windows-critical';
   const electron = core.get(id);
@@ -416,7 +416,11 @@ test('named Electron timing dispatch selects only one existing job without chang
   const stepGate = step => /^        if: (.+)$/mu.exec(step)?.[1];
   assert.match(electron, /^    timeout-minutes: 35$/mu);
   assert.match(original, /run: pnpm test:e2e:electron:critical$/mu);
-  assert.match(named, /--grep DESK-WORKSPACE-MANAGEMENT-001 --workers=1 --retries=0$/mu);
+  const selection = /playwright test --project=electron-development --grep '([^']+)' --workers=1 --retries=0$/mu.exec(named);
+  assert.ok(selection);
+  const casePattern = new RegExp(selection[1], 'u');
+  assert.equal(casePattern.source, String.raw`(?:^|\s)DESK-(?:SELECTOR-(?:EMPTY|READY|RECOVERY|CREATE|IMPORT|RETURN)-001|SUPPORT-DESKTOPONLY-(?:001|002|CANCEL-001)|SECRET-DRAIN-00[12]|WORKSPACE-MANAGEMENT-001)(?=\s|$)`);
+  assert.match(named, /pnpm --filter @eky\/e2e e2e:electron:prepare\n\s+if \(\$LASTEXITCODE -ne 0\) \{ throw 'ELECTRON_STARTUP_PHASE_DIAGNOSTIC_PREPARATION_FAILED' \}/u);
   assert.doesNotMatch(named, /continue-on-error|--timeout|--global-timeout/u);
   assert.doesNotMatch(named, /EKY_E2E|EKY_E2E_BACKEND_ORIGIN/u);
   for (const event of ['push', 'pull_request', 'schedule']) {
