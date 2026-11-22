@@ -132,6 +132,27 @@ läpäisyä. Keräys sallitaan vain alustan kanssa täsmäävällä `RUNNER_OS`-
 GitHubin hosted-ajossa. Tavalliset push-, schedule- ja workflow_dispatch-ajot
 sekä saman repositoryn PR sallitaan; fork-PR ja `pull_request_target` estetään.
 
+Jos erillinen luotettu ohjain tarkistaa sovelluksen omaan
+`source/`-alihakemistoon, jobin ja ohjelmaversion identiteetit eivät
+ole sama asia. Runnerin alkuperäistietue sidotaan edelleen ajon
+`GITHUB_SHA`:han; pakatun sovelluksen virheen build-tunniste tarkistetaan
+ennen lähdetyötä varmennettua **sovelluksen** revisiota vasten.
+Keräimen kuittiin ei anneta vapaata lukupolkua. Jos lähdettä ei todennettu,
+checkout-raportteja ei lueta ja tilapäisalueilta hyväksytään vain suoraan
+ajoon sidotut reporterin virhe- ja yhteenvetotietueet. Temp-alueet ja
+työtila eivät saa sisältyä toisiinsa. Lähdehakemiston fyysinen tunniste
+ei kuulu arkistoon tai julkiseen tulokseen. Kahden juuren lukutapa on
+rajatun kutsujan liitos, ei tavallisen CI-komennon ympäristövalinta.
+Sen paikallinen salaus/purku ei todenna hosted-ajoa. Ennen CI-kytkentää
+kutsujan on suojattava lähdejuuri vaihtumiselta koko luvun ajan;
+pelkkä ennen ja jälkeen tarkistettu hakemistotunniste ei lukitse sitä.
+Keräintä tai sen riippuvuuksia ei käynnistetä epäonnistuneen työn
+checkoutista. Salatun tiedoston polku annetaan vain kyseisen askelen
+tyhjään tulostiedostoon. Jos kirjoitus tai sen loppuvarmennus epäonnistuu,
+keräin yrittää tyhjentää alkuperäisen tiedoston saman kahvan kautta.
+Tulostiedoston sisältö ei kelpaa ilman keräinaskeleen onnistunutta päättymistä.
+Salauskuitti ei muuta alkuperäisen työn virhettä onnistumiseksi.
+
 W7.3:n nimetty Electron-testikytkentä säilyttää requestin ja ulkoisen
 shutdownin ensimmäiset virheet erillisinä ennen turvallista IPC-muunnosta.
 Fixturen epäonnistunut testi tarjoaa rajatut projektiot nykyiselle

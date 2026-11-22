@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from 'node:crypto';
 import { execFile } from 'node:child_process';
-import { appendFile, lstat, mkdir, opendir, readFile, realpath, writeFile } from 'node:fs/promises';
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path';
+import { appendFile, lstat, mkdir, open, opendir, readFile, realpath, writeFile } from 'node:fs/promises';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import {
@@ -74,8 +74,25 @@ export function jobEvidenceBinding(env) {
     job: env.GITHUB_JOB, jobKey: env.EKY_EVIDENCE_JOB_KEY, sourceRevision: env.GITHUB_SHA };
 }
 
-export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_TEMP, now = () => performance.now() } = {}) {
+// Only the trusted caller supplies a split-checkout receipt. Never accept a report path from it.
+function splitCheckout(env, selection) {
+  if (selection === undefined) return null;
+  if (!selection || selection.controlSha !== env.GITHUB_SHA || env.GITHUB_ACTIONS !== 'true' ||
+      env.GITHUB_EVENT_NAME !== 'workflow_dispatch' || env.GITHUB_REF !== 'refs/heads/main' ||
+      env.RUNNER_ENVIRONMENT !== 'github-hosted' || env.RUNNER_OS !== 'Windows' ||
+      !['failure', 'cancelled'].includes(env.EKY_EVIDENCE_JOB_OUTCOME) || env.EKY_MSI_RESOURCE_TIMING_PROOF) throw failure();
+  const keys = Object.keys(selection).sort().join(',');
+  if (keys === 'controlSha,sourceStatus' && selection.sourceStatus === 'notVerified') return { status: 'notVerified' };
+  if (keys !== 'controlSha,sourceCheckout,sourceIdentity,sourceStatus' || selection.sourceStatus !== 'verifiedBeforeWork' ||
+      typeof selection.sourceCheckout !== 'string' || !/^[a-f0-9]{40}$/u.test(selection.sourceCheckout) ||
+      /^0{40}$/u.test(selection.sourceCheckout) || typeof selection.sourceIdentity !== 'string' ||
+      !/^(?:0|[1-9][0-9]{0,38}):[1-9][0-9]{0,38}$/u.test(selection.sourceIdentity)) throw failure();
+  return { status: 'verifiedBeforeWork', revision: selection.sourceCheckout, identity: selection.sourceIdentity };
+}
+
+export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_TEMP, now = () => performance.now(), sourceSelection } = {}) {
   const binding = jobEvidenceBinding(env);
+  const split = splitCheckout(env, sourceSelection);
   const timingBinding = env.EKY_MSI_RESOURCE_TIMING_PROOF === '1' ? msiResourceTimingBinding(env) : null;
   const successful = env.EKY_EVIDENCE_JOB_OUTCOME === 'success';
   const timingOnly = successful && timingBinding !== null;
@@ -86,7 +103,23 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
   const { fingerprint, key } = evidenceRecipient(env);
   const temp = await realpath(env.RUNNER_TEMP);
   const checkout = await realpath(env.GITHUB_WORKSPACE);
+  const reportsRoot = split ? join(checkout, 'source') : checkout;
   const native = await realpath(nativeTemp);
+  if (split) {
+    const outside = (root, other) => {
+      const path = relative(root, other);
+      return isAbsolute(path) || path === '..' || path.startsWith('..' + sep);
+    };
+    if (!isAbsolute(env.GITHUB_WORKSPACE) || relative(checkout, env.GITHUB_WORKSPACE) !== '' ||
+        !(await lstat(env.GITHUB_WORKSPACE)).isDirectory() ||
+        [temp, native].some(path => !outside(checkout, path) || !outside(path, checkout))) throw failure();
+  }
+  const assertSourceIdentity = async () => {
+    await ordinaryPath(checkout, reportsRoot, true);
+    const stat = await lstat(reportsRoot, { bigint: true });
+    if (!stat.isDirectory() || `${stat.dev}:${stat.ino}` !== split.identity) throw failure();
+  };
+  if (split?.status === 'verifiedBeforeWork') await assertSourceIdentity();
   const root = join(temp, `eky-job-evidence-${binding.runId}-${binding.attempt}-${binding.jobKey}-${randomUUID()}`);
   await mkdir(root, { mode: 0o700 });
   await writeFile(join(root, 'recipient.asc'), key, { flag: 'wx', mode: 0o600 });
@@ -97,6 +130,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     cleanup: 'notInferred', unresolvedEvidenceHold: true,
     publicCommandLog: 'githubWorkflowLog', files: [], sources: [],
     exclusions: ['databases', 'profiles', 'environment', 'configuration', 'unreviewedTraces', 'memoryDumps', 'dependencyToolRawOutput'] };
+  if (split) manifest.sourceCheckout = split.revision ? { status: split.status, revision: split.revision } : { status: split.status };
   if (timingBinding) manifest.approvedExceptions = ['boundedMsiResourceTiming'];
   const linuxCompilation = binding.job === inspectionSandboxProbeBinding.job && binding.jobKey === inspectionSandboxProbeBinding.jobKey;
   const windowsCompilation = binding.job === windowsNativePreparationBinding.job && binding.jobKey === windowsNativePreparationBinding.jobKey;
@@ -115,6 +149,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     const entry = { name, source: `${area}/${relativePath}`, location, kind, status: 'unverified' };
     manifest.files.push(entry);
     try {
+      if (split && area !== 'temporary') await assertSourceIdentity();
       const info = await ordinaryPath(base, path);
       const installerLog = kind === 'workspaceInstallerEvidence' && relativePath.endsWith('/' + W6B2_INSTALLER_LOG_FILE);
       const nativePreparation = kind === 'processOutput' && windowsCompilation &&
@@ -189,7 +224,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
             control.appVersion !== record.appVersion || typeof control.buildRevision !== 'string' ||
             !/^[a-f0-9]{7,40}$/u.test(control.buildRevision) ||
             !control.buildRevision.startsWith(record.buildRevision) ||
-            !binding.sourceRevision.startsWith(control.buildRevision) ||
+            !(split ? split.revision : binding.sourceRevision)?.startsWith(control.buildRevision) ||
             basename(dirname(dirname(path))) !== record.scenarioRunNonce.slice(0, 32) ||
             basename(path) !== `${record.runtimeInstanceId}${STARTUP_EXCEPTION_SUFFIX}`) throw failure();
       }
@@ -209,6 +244,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
         await writeFile(join(stage, name), bytes);
         proof = { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
       }
+      if (split && area !== 'temporary') await assertSourceIdentity();
       total += proof.bytes;
       Object.assign(entry, proof, { status: 'retained' });
     } catch (error) { entry.status = error.code === 'ENOENT' ? 'missing' : 'unverified'; }
@@ -222,14 +258,18 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     if (timingOnly && !retained) throw failure();
   }
   for (const [area, location, base, start] of timingOnly ? [] : [
-    ['reports', 'checkout', checkout, join(checkout, 'eky_software/apps/e2e/playwright-report')],
-    ['results', 'checkout', checkout, join(checkout, 'eky_software/apps/e2e/test-results')],
+    ['reports', 'checkout', checkout, join(reportsRoot, 'eky_software/apps/e2e/playwright-report')],
+    ['results', 'checkout', checkout, join(reportsRoot, 'eky_software/apps/e2e/test-results')],
     ['temporary', 'runnerTemp', temp, temp],
     ...(native === temp ? [] : [['temporary', 'nativeTemp', native, native]]),
   ]) {
     const fileLimit = area === 'temporary' && native === temp ? MAX_FILES / 2 : MAX_FILES / 4;
     const source = { area, location, status: 'complete', examinedEntries: 0, fileLimit };
     manifest.sources.push(source);
+    if (split?.status === 'notVerified' && area !== 'temporary') {
+      source.status = 'unverified';
+      continue;
+    }
     const firstFile = manifest.files.length;
     const candidates = [];
     const startedAt = now();
@@ -246,6 +286,8 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       for await (const item of await opendir(directory)) {
         if (now() >= discoveryDeadline) { source.status = 'limited'; break; }
         if (depth === 0 && area === 'temporary' && !/^(?:eky supervisor |eky-(?:test-errors-|t-|acceptance-command-|desktop-smoke$|(?:clean|upgrade|legacy|workspace)-caller-))/u.test(item.name)) continue;
+        // Before a verified checkout only direct, run-bound reporter failures can be attributed to this job.
+        if (depth === 0 && split?.status === 'notVerified' && !/^eky-test-errors-[a-f0-9-]{36}$/u.test(item.name)) continue;
         if (depth === 0 && area !== 'temporary' && !new RegExp(`^${runPattern}$`, 'u').test(item.name)) continue;
         if (++source.examinedEntries > MAX_ENTRIES) { source.status = 'limited'; break; }
         const path = join(directory, item.name);
@@ -262,6 +304,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
         : right.modified - left.modified || left.rel.localeCompare(right.rel));
       for (const { item, path, rel } of entries) {
         if (now() >= discoveryDeadline || manifest.files.length >= MAX_FILES) { source.status = 'limited'; break; }
+        if (split?.status === 'notVerified' && depth > 0 && (item.isDirectory() || evidenceSourceKind(area, rel) !== 'runnerFailure')) continue;
         if (item.isDirectory()) {
           if (['node_modules', '.npm-cache', 'cache', 'user-data', 'profiles', 'database', 'storage'].includes(item.name)) continue;
           try { await walk(path, rel, depth + 1); } catch { source.status = 'partial'; }
@@ -293,6 +336,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       await select(base, path, area, location, rel);
     }
   }
+  if (split?.status === 'verifiedBeforeWork') await assertSourceIdentity();
   const archivePath = join(root, 'evidence.private.json.gz');
   await writeEvidenceArchive({ temp, stage, archivePath, manifest });
   return { root, archivePath, fingerprint, manifest };
@@ -322,6 +366,10 @@ export async function runJobEvidence(env = process.env) {
     });
   });
   const collected = await collectJobFailureEvidence(env, { nativeTemp: tmpdir() });
+  await appendFile(env.GITHUB_OUTPUT, await sealAndDescribe(env, collected));
+}
+
+async function sealAndDescribe(env, collected) {
   await encryptArchive(collected.root, collected, true);
   const ciphertext = join(collected.root, 'evidence.json.gz.gpg');
   const info = await ordinaryPath(await realpath(env.RUNNER_TEMP), ciphertext);
@@ -330,7 +378,46 @@ export async function runJobEvidence(env = process.env) {
     retainedFiles: collected.manifest.files.filter(file => file.status === 'retained').length,
     missingOrRejectedFiles: collected.manifest.files.filter(file => file.status !== 'retained').length,
     sourceCoverage: collected.manifest.sources.map(({ area, status }) => ({ area, status })) }));
-  await appendFile(env.GITHUB_OUTPUT, `ciphertext=${ciphertext}\nsealed=true\n`);
+  return `ciphertext=${ciphertext}\nsealed=true\n`;
+}
+
+// Roll back through the same handle, never through a pathname that may have changed.
+export async function publishToEmptyStepOutput(handle, result, verifyOutput) {
+  await verifyOutput(0n);
+  try {
+    await handle.writeFile(result);
+    await verifyOutput(BigInt(Buffer.byteLength(result)));
+  } catch (error) {
+    try { await handle.truncate(0); }
+    catch (cleanup) { throw new AggregateError([error, cleanup], 'CI_FAILURE_EVIDENCE_UNVERIFIED', { cause: error }); }
+    throw error;
+  }
+}
+
+// Called only by the split-checkout controller while it owns the source read reservation.
+// A command-file handle publishes the ciphertext path, never an input-selected result path.
+export async function sealSplitJobFailureEvidence(env, sourceSelection) {
+  if (process.platform !== 'win32' || !splitCheckout(env, sourceSelection)) throw failure();
+  const temp = await realpath(env.RUNNER_TEMP);
+  const output = env.GITHUB_OUTPUT;
+  if (!isAbsolute(output ?? '') || /[\r\n]/u.test(temp) ||
+      relative(join(temp, '_runner_file_commands'), dirname(output)) !== '' ||
+      !/^set_output_[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/iu.test(basename(output))) throw failure();
+  await ordinaryPath(temp, output);
+  const handle = await open(output, 'r+');
+  try {
+    const initial = await handle.stat({ bigint: true });
+    const verifyOutput = async (size) => {
+      await ordinaryPath(temp, output);
+      const current = await lstat(output, { bigint: true });
+      if (!initial.isFile() || initial.nlink !== 1n || initial.size !== 0n ||
+          current.dev !== initial.dev || current.ino !== initial.ino || current.nlink !== 1n || current.size !== size) throw failure();
+    };
+    await verifyOutput(0n);
+    const collected = await collectJobFailureEvidence(env, { nativeTemp: tmpdir(), sourceSelection });
+    const result = await sealAndDescribe(env, collected);
+    await publishToEmptyStepOutput(handle, result, verifyOutput);
+  } finally { await handle.close(); }
 }
 
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

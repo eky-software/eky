@@ -26,6 +26,56 @@ const windows = process.platform === 'win32';
 const git = windows ? 'git.exe' : 'git';
 const windowsOnly = { skip: !windows ? 'Windows workspace delivery contract, not the shared Linux collector.' : false };
 
+test('split checkout original failure survives encryption and cold TEST-key decryption', { ...windowsOnly, timeout: 120_000 }, async () => {
+  const f = await createOpenPgpTestFixture(ROOT);
+  let completed = false;
+  try {
+    const recipient = await f.generate('split-recipient');
+    await f.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
+      '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
+    const publicKey = await f.exportKey(recipient, 'split-public.asc');
+    const secretKey = await f.exportKey(recipient, 'split-secret.private.asc', true);
+    const workspace = join(f.root, 'checkout'), source = join(workspace, 'source'), temp = join(f.root, 'temporary');
+    const report = 'eky_software/apps/e2e/test-results/run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee/case';
+    await mkdir(temp);
+    for (const root of [source, workspace, join(workspace, 'control')]) {
+      await mkdir(join(root, report), { recursive: true });
+      if (root !== source) await writeFile(join(root, report, 'process-output.private.json'), '{"reason":"wrong checkout"}');
+    }
+    const { dev, ino } = await stat(source, { bigint: true });
+    const sourceCheckout = 'b'.repeat(40);
+    const sourceSelection = { controlSha: 'a'.repeat(40), sourceStatus: 'verifiedBeforeWork',
+      sourceCheckout, sourceIdentity: `${dev}:${ino}` };
+    const child = await f.run(process.execPath, ['-e', `try { throw new Error('synthetic source failure', {cause: new Error('original cause')}); }
+      catch (e) { require('node:fs').writeFileSync('process-output.private.json', JSON.stringify({error:e.message,cause:e.cause.message}), {flag:'wx'}); process.exitCode=19; }`],
+      10_000, { cwd: join(source, report) });
+    assert.equal(child.status, 19);
+    const original = await readFile(join(source, report, 'process-output.private.json'));
+    const env = { RUNNER_TEMP: temp, GITHUB_WORKSPACE: workspace, GITHUB_ACTIONS: 'true', GITHUB_REF: 'refs/heads/main',
+      RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted', GITHUB_EVENT_NAME: 'workflow_dispatch',
+      GITHUB_RUN_ID: '123', GITHUB_RUN_ATTEMPT: '1', GITHUB_JOB: 'artifact_producer', GITHUB_SHA: 'a'.repeat(40),
+      EKY_EVIDENCE_JOB_KEY: 'clean-producer-0', EKY_EVIDENCE_JOB_OUTCOME: 'failure', EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
+      EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint, EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicKey, 'utf8') };
+    const collected = await collectJobFailureEvidence(env, { sourceSelection });
+    await encryptArchive(collected.root, collected, true);
+    const decryptor = await f.generate('split-decryptor');
+    await f.invokeGpg(decryptor.home, ['--import', secretKey]);
+    const decrypted = await f.invokeGpg(decryptor.home, ['--decrypt', join(collected.root, 'evidence.json.gz.gpg')]);
+    const archive = JSON.parse(gunzipSync(decrypted.stdout));
+    assert.deepEqual(archive.manifest.binding, { runId: '123', attempt: '1', job: 'artifact_producer', jobKey: 'clean-producer-0', sourceRevision: env.GITHUB_SHA });
+    assert.deepEqual(archive.manifest.sourceCheckout, { status: 'verifiedBeforeWork', revision: sourceCheckout });
+    assert.equal(archive.manifest.files.length, 1);
+    const [entry] = archive.manifest.files;
+    assert.deepEqual(Object.keys(archive.files), [entry.name]);
+    assert.equal(entry.status, 'retained');
+    assert.equal(entry.sha256, createHash('sha256').update(original).digest('hex'));
+    const bytes = Buffer.from(archive.files[entry.name], 'base64');
+    assert.deepEqual(bytes, original);
+    assert.deepEqual(JSON.parse(bytes), { error: 'synthetic source failure', cause: 'original cause' });
+    completed = true;
+  } finally { await f.finish({ completed, failed: !completed }); }
+});
+
 test('Windows native preparation original survives collection, encryption and cold TEST-key decryption', {
   ...windowsOnly, timeout: 120_000,
 }, async () => {

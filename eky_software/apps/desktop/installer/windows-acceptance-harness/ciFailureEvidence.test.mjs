@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { link, mkdir, mkdtemp, open, readFile, readdir, realpath, rm, symlink, utimes, writeFile } from 'node:fs/promises';
+import { link, lstat, mkdir, mkdtemp, open, readFile, readdir, realpath, rename, rm, symlink, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { basename, join, resolve } from 'node:path';
 import test from 'node:test';
 import { gunzipSync } from 'node:zlib';
-import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit } from './ciFailureEvidence.mjs';
+import { collectJobFailureEvidence, evidenceSourceKind, jobEvidenceBinding, jobEvidenceGit,
+  publishToEmptyStepOutput, sealSplitJobFailureEvidence } from './ciFailureEvidence.mjs';
 import { projectPlaywrightFailureReport } from './playwrightFailureReport.mjs';
 import { LEGACY_STARTUP_TERMINAL_FILENAME } from './legacyStartupFailureEvidence.mjs';
 import { W6B2_INSTALLER_LOG_FILE, W6B2_INSTALLER_LOG_RECEIPT } from '../../src/main/w6b2PackagedInstallerLog.ts';
@@ -273,8 +274,8 @@ test('only matching hosted Windows or Linux contexts select their native Git', (
     assert.throws(() => jobEvidenceGit(env, 'darwin'), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
   }
 });
-async function fixture(t, preserveUntilComplete = false) {
-  const root = await mkdtemp(join(tmpdir(), 'eky-evidence-test-'));
+async function fixture(t, preserveUntilComplete = false, tempParent = tmpdir()) {
+  const root = await mkdtemp(join(tempParent, 'eky-evidence-test-'));
   let complete = !preserveUntilComplete;
   t.after(() => complete ? rm(root, { recursive: true, force: true }) : undefined);
   const temp = join(root, 'temporary');
@@ -294,6 +295,181 @@ async function fixture(t, preserveUntilComplete = false) {
   };
   return { root, temp, checkout, env, put, complete() { complete = true; } };
 }
+
+async function splitFixture(t, tempParent = tmpdir()) {
+  const f = await fixture(t, true, await realpath(tempParent));
+  Object.assign(f.env, { GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'workflow_dispatch', GITHUB_REF: 'refs/heads/main',
+    RUNNER_ENVIRONMENT: 'github-hosted', RUNNER_OS: 'Windows' });
+  const source = join(f.checkout, 'source');
+  await mkdir(source);
+  const { dev, ino } = await lstat(source, { bigint: true });
+  const receipt = { controlSha: f.env.GITHUB_SHA, sourceStatus: 'verifiedBeforeWork',
+    sourceCheckout: 'b'.repeat(40), sourceIdentity: `${dev}:${ino}` };
+  const path = `eky_software/apps/e2e/test-results/${run}/case/process-output.private.json`;
+  return { ...f, source, receipt, path };
+}
+
+test('split fixture supplies physical roots even when the temporary parent has an alias', async t => {
+  const parent = await fixture(t, true);
+  const alias = join(parent.root, 'temp-alias');
+  await symlink(parent.temp, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  const f = await splitFixture(t, alias);
+  const throughAlias = join(alias, basename(f.root), 'checkout');
+  assert.notEqual(throughAlias, f.env.GITHUB_WORKSPACE);
+  assert.equal(await realpath(throughAlias), f.env.GITHUB_WORKSPACE);
+  assert.equal(await realpath(f.temp), f.env.RUNNER_TEMP);
+  await assert.rejects(collectJobFailureEvidence({ ...f.env, GITHUB_WORKSPACE: throughAlias },
+    { sourceSelection: f.receipt }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+  await f.put(f.source, f.path, '{"reason":"synthetic canonical checkout"}');
+  const collected = await collectJobFailureEvidence(f.env, { sourceSelection: f.receipt });
+  assert.equal(collected.manifest.files.length, 1);
+  assert.equal(collected.manifest.files[0].status, 'retained');
+  f.complete();
+  parent.complete();
+});
+
+test('split output clears partial and unverified publications on the original handle only', async t => {
+  const f = await fixture(t, true);
+  const payload = 'ciphertext=synthetic\nsealed=true\n';
+  const original = new Error('synthetic publication failure');
+  for (const phase of ['beforeWrite', 'partialWrite', 'afterWrite', 'cleanupFailed']) {
+    const path = join(f.temp, phase), moved = path + '.moved';
+    const handle = await open(path, 'wx+');
+    try {
+      if (phase === 'beforeWrite') await handle.writeFile('keep earlier output');
+      if (phase === 'partialWrite') t.mock.method(handle, 'writeFile', async () => {
+        await handle.write('ciphertext=');
+        throw original;
+      });
+      const cleanup = new Error('synthetic truncate failure');
+      if (phase === 'cleanupFailed') t.mock.method(handle, 'truncate', async () => { throw cleanup; });
+      await assert.rejects(publishToEmptyStepOutput(handle, payload, async size => {
+        if (phase === 'beforeWrite') throw original;
+        assert.equal((await handle.stat({ bigint: true })).size, size);
+        if (size === 0n) return;
+        if (phase === 'afterWrite') {
+          await rename(path, moved);
+          await writeFile(path, 'keep replacement', { flag: 'wx' });
+        }
+        throw original;
+      }), error => phase === 'cleanupFailed'
+        ? error instanceof AggregateError && error.cause === original && error.errors[1] === cleanup : error === original);
+    } finally { await handle.close(); }
+    if (phase === 'afterWrite') assert.equal(await readFile(moved, 'utf8'), '');
+    const expected = { beforeWrite: 'keep earlier output', partialWrite: '', afterWrite: 'keep replacement', cleanupFailed: payload };
+    assert.equal(await readFile(path, 'utf8'), expected[phase]);
+  }
+  f.complete();
+});
+
+test('split checkout sealer rejects a foreign, reused or linked step output before collection',
+  { skip: process.platform !== 'win32' }, async t => {
+    const f = await splitFixture(t);
+    const name = 'set_output_aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+    const commands = join(f.temp, '_runner_file_commands');
+    await mkdir(commands);
+    const output = join(commands, name);
+    const foreign = join(f.source, name);
+    const seal = path => sealSplitJobFailureEvidence({ ...f.env, GITHUB_OUTPUT: path }, f.receipt);
+    await writeFile(foreign, 'sentinel');
+    await assert.rejects(seal(foreign), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+    await writeFile(output, 'earlier step');
+    await assert.rejects(seal(output), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+    assert.equal(await readFile(output, 'utf8'), 'earlier step');
+    await rm(output);
+    await link(foreign, output);
+    await assert.rejects(seal(output), { reason: 'pathRejected' });
+    assert.equal(await readFile(foreign, 'utf8'), 'sentinel');
+    assert.deepEqual(await readdir(f.temp), ['_runner_file_commands']);
+    f.complete();
+  });
+
+test('split checkout reads only the verified source and does not publish its filesystem identity', async t => {
+  const f = await splitFixture(t);
+  const wanted = '{"reason":"synthetic source failure"}';
+  for (const root of [f.checkout, join(f.checkout, 'control')]) await f.put(root, f.path, '{"reason":"wrong root"}');
+  await f.put(f.source, f.path, wanted);
+  const result = await collectJobFailureEvidence(f.env, { sourceSelection: f.receipt });
+  const archive = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+  assert.deepEqual(archive.manifest.sourceCheckout, { status: 'verifiedBeforeWork', revision: f.receipt.sourceCheckout });
+  assert.equal(archive.manifest.binding.sourceRevision, f.env.GITHUB_SHA);
+  const [entry] = archive.manifest.files;
+  assert.equal(archive.manifest.files.length, 1);
+  assert.equal(entry.status, 'retained');
+  assert.equal(Buffer.from(archive.files[entry.name], 'base64').toString(), wanted);
+  assert.equal(JSON.stringify(archive.manifest).includes(f.receipt.sourceIdentity), false);
+  f.complete();
+});
+
+test('split checkout without admission opens neither source reports nor unattributable temporary payloads', async t => {
+  const f = await splitFixture(t);
+  await f.put(f.source, f.path, '{"reason":"excluded"}');
+  await f.put(f.temp, 'eky supervisor sample/1-source.log', 'excluded');
+  const sink = createRunnerFailureSink({ env: f.env, tempRoot: f.temp });
+  sink.record({ runner: 'node', phase: 'testFailure', testName: 'synthetic preparation', attempt: 0,
+    error: new Error('synthetic preparation first cause') });
+  assert.equal((await sink.flush()).status, 'recorded');
+  const result = await collectJobFailureEvidence(f.env, { sourceSelection: { controlSha: f.env.GITHUB_SHA, sourceStatus: 'notVerified' } });
+  const archive = JSON.parse(gunzipSync(await readFile(result.archivePath)));
+  assert.deepEqual(archive.manifest.sourceCheckout, { status: 'notVerified' });
+  assert.ok(archive.manifest.files.every(e => e.kind === 'runnerFailure'));
+  assert.ok(archive.manifest.files.some(e => e.status === 'retained' &&
+    Buffer.from(archive.files[e.name], 'base64').includes('synthetic preparation first cause')));
+  assert.ok(archive.manifest.sources.filter(s => s.area !== 'temporary').every(s => s.status === 'unverified' && s.examinedEntries === 0));
+  f.complete();
+});
+
+test('split checkout verifies packaged errors against the source build and reporter errors against the controller run', async t => {
+  const f = await splitFixture(t);
+  const runtimeInstanceId = '12345678-1234-4abc-8abc-1234567890ab', scenarioRunNonce = 'c'.repeat(64);
+  const prefix = `eky-desktop-smoke/${scenarioRunNonce.slice(0, 32)}/result`;
+  for (const buildRevision of [f.env.GITHUB_SHA, f.receipt.sourceCheckout]) {
+    const binding = { scenarioRunNonce, appVersion: '0.3.1', buildRevision, runtimeInstanceId };
+    const record = projectStartupException(new Error('synthetic original'), binding, 'packagedSmoke');
+    await f.put(f.temp, `${prefix}/${STARTUP_EXCEPTION_CONTROL}`, JSON.stringify({ schemaVersion: 1, scenarioRunNonce,
+      appVersion: binding.appVersion, buildRevision }));
+    await f.put(f.temp, `${prefix}/${runtimeInstanceId}${STARTUP_EXCEPTION_SUFFIX}`, JSON.stringify(record));
+    const sink = createRunnerFailureSink({ env: { ...f.env, GITHUB_SHA: buildRevision }, tempRoot: f.temp });
+    sink.record({ runner: 'node', phase: 'testFailure', testName: 'synthetic', attempt: 0, error: new Error('synthetic') });
+    assert.equal((await sink.flush()).status, 'recorded');
+    const collected = await collectJobFailureEvidence(f.env, { sourceSelection: f.receipt });
+    const archive = JSON.parse(gunzipSync(await readFile(collected.archivePath)));
+    const smoke = archive.manifest.files.find(e => e.kind === 'startupException');
+    assert.equal(smoke.status, buildRevision === f.receipt.sourceCheckout ? 'retained' : 'unverified');
+    assert.equal(Object.hasOwn(archive.files, smoke.name), smoke.status === 'retained');
+    const runner = archive.manifest.files.filter(e => e.kind === 'runnerFailure');
+    assert.equal(runner.filter(e => e.status === 'retained').length, 2);
+    assert.equal(runner.filter(e => e.status === 'unverified').length, buildRevision === f.receipt.sourceCheckout ? 2 : 0);
+  }
+  f.complete();
+});
+
+test('split checkout rejects malformed receipts, replacement directories and redirected roots', async t => {
+  const f = await splitFixture(t);
+  const collect = sourceSelection => collectJobFailureEvidence(f.env, { sourceSelection });
+  for (const patch of [{ controlSha: 'c'.repeat(40) }, { sourceIdentity: '0:0' }, { sourceIdentity: null },
+    { sourceCheckout: '0'.repeat(40) }, { sourceStatus: 'notVerified' }, { path: f.source }]) {
+    await assert.rejects(collect({ ...f.receipt, ...patch }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+  }
+  const absent = { controlSha: f.env.GITHUB_SHA, sourceStatus: 'notVerified' };
+  for (const sourceSelection of [f.receipt, absent]) {
+    for (const overlap of [f.checkout, f.source, f.root]) {
+      await assert.rejects(collectJobFailureEvidence({ ...f.env, RUNNER_TEMP: overlap }, { sourceSelection }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+      await assert.rejects(collectJobFailureEvidence(f.env, { sourceSelection, nativeTemp: overlap }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+    }
+  }
+  const alias = join(f.root, 'workspace-alias');
+  await symlink(f.checkout, alias, process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(collectJobFailureEvidence({ ...f.env, GITHUB_WORKSPACE: alias }, { sourceSelection: absent }), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+  const original = join(f.checkout, 'original');
+  await rename(f.source, original);
+  await mkdir(f.source);
+  await assert.rejects(collect(f.receipt), /CI_FAILURE_EVIDENCE_UNVERIFIED/u);
+  await rm(f.source, { recursive: true });
+  await symlink(original, f.source, process.platform === 'win32' ? 'junction' : 'dir');
+  await assert.rejects(collect(f.receipt));
+  f.complete();
+});
 
 test('phase observation owns only the exact failure filename before generic process output', () => {
   const path = `${run}/synthetic-retry1/failure.private.json`;
