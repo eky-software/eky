@@ -442,7 +442,7 @@ function assertPackagedLegacyCi(source) {
     assert.ok(!development.includes(`      - name: ${name}\n`));
   }
   assert.equal(workflowStep(development, 'Run critical Electron E2E journeys'),
-    '      - name: Run critical Electron E2E journeys\n        run: pnpm test:e2e:electron:critical');
+    '      - name: Run critical Electron E2E journeys\n        if: inputs.electron_startup_phase_diagnostic != true\n        run: pnpm test:e2e:electron:critical');
   assert.doesNotMatch(job, /test:e2e:electron:critical|e2e:packaged:legacy|upload-artifact|download-artifact|EKY_PACKAGED_SERIES_MANIFEST_SHA256:/u);
 }
 test('packaged deletion shares the existing aggregate budget and cannot omit its owned workflow', () => {

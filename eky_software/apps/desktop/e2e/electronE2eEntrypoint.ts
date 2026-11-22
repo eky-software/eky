@@ -74,7 +74,7 @@ const backendRunnerPath = resolve(
   import.meta.dirname,
   'electronE2eBackendRunner.js',
 );
-const startupObservation = createElectronE2eStartupObservation();
+const startupObservation = createElectronE2eStartupObservation(undefined, config.startupPhaseDiagnostic === true);
 const startupHold = createElectronE2eStartupHold(config);
 const admitFirstStartProof = createFirstStartProofAdmission();
 const backendController = createElectronE2eBackendController(
@@ -370,6 +370,7 @@ Object.assign(globalThis, {
     }),
     startupHold: () => startupHold.snapshot(),
     startupObservation: () => startupObservation.snapshot(),
+    startupPhaseTiming: () => startupObservation.snapshotPhaseTiming(),
     backendIsRunning: () => selectorBackend?.snapshot().running ?? backendController.isRunning(),
     backendStartCount: () => selectorBackend?.snapshot().starts ?? backendController.getStartCount(),
     selectorBackendPort: () => selectorBackend?.snapshot().port,

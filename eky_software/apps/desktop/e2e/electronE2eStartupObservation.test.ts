@@ -1,8 +1,45 @@
 import { describe, expect, it } from 'vitest';
 import { desktopStartupStagePhases } from '../src/main/desktopStartupObservation.js';
 import { createElectronE2eStartupObservation, parseElectronE2eStartupObservation } from './electronE2eStartupObservation.js';
+import { parseStartupPhaseTiming } from './electronE2eStartupPhaseTiming.js';
 
 describe('Electron startup main observation', () => {
+  it('collects only first named receipts without changing the public snapshot', () => {
+    let time = 0;
+    const ordinary = createElectronE2eStartupObservation(() => time);
+    const measuring = createElectronE2eStartupObservation(() => time, true);
+    for (const subject of [ordinary, measuring]) {
+      time = 4;
+      subject.record('backendStartMessageSent');
+      time = 7;
+      subject.recordBackendStartupStage('moduleImport');
+      time = 9;
+      subject.recordBackendStartupStage('moduleImport');
+      time = 11;
+      subject.recordMainStartup({ stage: 'backendHealth', phase: 'work', event: 'entered' });
+    }
+    expect(measuring.snapshot()).toEqual(ordinary.snapshot());
+    expect(ordinary.snapshotPhaseTiming()).toBeUndefined();
+    expect(measuring.snapshotPhaseTiming()).toEqual({ schemaVersion: 1, phases: [
+      { stage: 'backendStartMessageSent', elapsedMs: 4 },
+      { stage: 'moduleImport', elapsedMs: 7 },
+      { stage: 'backendHealth.entered', elapsedMs: 11 },
+    ] });
+  });
+
+  it('rejects unknown stages, extensions, duplicates and backwards or unbounded clocks', () => {
+    const phase = { stage: 'moduleImport', elapsedMs: 12 };
+    const next = { stage: 'backendStart', elapsedMs: 15 };
+    const valid = { schemaVersion: 1, phases: [phase, next] };
+    expect(parseStartupPhaseTiming(valid)).toEqual(valid);
+    for (const phases of [[], [phase, phase], [next, phase],
+      [{ ...phase, path: 'synthetic' }], [{ ...phase, stage: 'unknown' }],
+      [{ ...phase, elapsedMs: -1 }], [{ ...phase, elapsedMs: 180_001 }]]) {
+      expect(parseStartupPhaseTiming({ ...valid, phases })).toBeUndefined();
+    }
+    expect(parseStartupPhaseTiming({ ...valid, extra: true })).toBeUndefined();
+  });
+
   it('dispatches strict legacy v2 and current v3 without silently changing their fields', () => {
     const current = createElectronE2eStartupObservation(() => 0).snapshot();
     const { mainStartup: _main, schemaVersion: _version, ...common } = current;

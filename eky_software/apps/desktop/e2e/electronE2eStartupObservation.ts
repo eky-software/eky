@@ -4,6 +4,7 @@ import {
 } from './electronE2eBackendStatus.js';
 import { desktopStartupStagePhases, isDesktopStartupStage,
   type DesktopStartupSignal } from '../src/main/desktopStartupObservation.js';
+import { createStartupPhaseTiming, type StartupPhaseTiming } from './electronE2eStartupPhaseTiming.js';
 
 const checkpoints = [
   'waitingForAppReady',
@@ -60,13 +61,16 @@ export type ElectronE2eStartupObservation = ElectronE2eLegacyStartupObservation 
 // Test-only memory. No logger, filesystem, readiness signal or process owner.
 export function createElectronE2eStartupObservation(
   now: () => number = () => performance.now(),
+  recordPhaseTiming = false,
 ): {
   record(checkpoint: ElectronE2eStartupCheckpoint): void;
   recordBackendStartupStage(stage: ElectronE2eBackendObservationStage): void;
   recordMainStartup(signal: DesktopStartupSignal): void;
   snapshot(): ElectronE2eCurrentStartupObservation;
+  snapshotPhaseTiming(): StartupPhaseTiming | undefined;
 } {
   const started = now();
+  const timing = recordPhaseTiming ? createStartupPhaseTiming() : undefined;
   const observations: ElectronE2eStartupObservation['checkpoints'][number][] = [];
   let backendStartup: ElectronE2eBackendStartupObservation =
     Object.freeze({ status: 'unobserved' });
@@ -78,10 +82,9 @@ export function createElectronE2eStartupObservation(
         truncated = true;
         return;
       }
-      observations.push(Object.freeze({
-        checkpoint,
-        elapsedMs: Math.max(0, Math.floor(now() - started)),
-      }));
+      const elapsedMs = Math.max(0, Math.floor(now() - started));
+      observations.push(Object.freeze({ checkpoint, elapsedMs }));
+      timing?.record(checkpoint, elapsedMs);
     },
     recordBackendStartupStage(stage) {
       try {
@@ -89,6 +92,7 @@ export function createElectronE2eStartupObservation(
         const elapsedMs = Math.max(0, Math.floor(now() - started));
         if (!Number.isSafeInteger(elapsedMs)) return;
         backendStartup = Object.freeze({ status: 'observed', stage, elapsedMs });
+        timing?.record(stage, elapsedMs);
       } catch {
         // A failed observation cannot change the backend startup path.
       }
@@ -100,6 +104,7 @@ export function createElectronE2eStartupObservation(
         if (!Number.isSafeInteger(elapsedMs)) return;
         mainStartup = Object.freeze({ status: 'observed', stage: signal.stage,
           phase: signal.phase, event: signal.event, elapsedMs });
+        timing?.record(`${signal.stage}.${signal.event}`, elapsedMs);
       } catch { /* Failed observations cannot change startup. */ }
     },
     snapshot: () => Object.freeze({
@@ -109,6 +114,7 @@ export function createElectronE2eStartupObservation(
       checkpoints: Object.freeze([...observations]),
       truncated,
     }),
+    snapshotPhaseTiming: () => timing?.snapshot(),
   };
 }
 

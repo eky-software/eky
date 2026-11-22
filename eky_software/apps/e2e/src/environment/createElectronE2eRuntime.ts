@@ -50,6 +50,7 @@ export function createElectronE2eRuntime(input: {
     | 'workspaceBackupReplacement';
   paths: E2eWorkerPaths;
   scenarioId: string;
+  startupPhaseDiagnostic?: true;
   startupMode?: 'backendStartFailure' | 'normal' | 'pendingFirstWindow';
   workspaceBackupPath?: string;
 }): ElectronE2eRuntime {
@@ -174,6 +175,7 @@ export function createElectronE2eRuntime(input: {
     runtimeRoot: input.paths.workerRoot,
     scenarioId: input.scenarioId,
     startupMode: input.startupMode ?? 'normal',
+    ...(input.startupPhaseDiagnostic === true ? { startupPhaseDiagnostic: true } : {}),
   };
   writeFileSync(configPath, `${JSON.stringify(config, null, 2)}\n`, {
     encoding: 'utf8',

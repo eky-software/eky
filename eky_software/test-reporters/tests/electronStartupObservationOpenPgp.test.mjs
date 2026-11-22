@@ -12,12 +12,14 @@ import { RUNNER_FAILURE_ROOT_PREFIX, validateRunnerFailureEvidence } from '../ru
 import { collectJobFailureEvidence } from '../../apps/desktop/installer/windows-acceptance-harness/ciFailureEvidence.mjs';
 import { encryptArchive } from '../../apps/desktop/installer/windows-acceptance-harness/workspaceEncryptedEvidence.mjs';
 import { createOpenPgpTestFixture } from '../../apps/desktop/installer/windows-acceptance-harness/openPgpTestFixture.mjs';
+import { startupPhaseDiagnosticFile } from '../../apps/desktop/e2e/electronE2eStartupPhaseTiming.ts';
+import { projectPlaywrightFailureReport } from '../../apps/desktop/installer/windows-acceptance-harness/playwrightFailureReport.mjs';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 const source = path => new URL(path, import.meta.url).href;
 const sha256 = bytes => createHash('sha256').update(bytes).digest('hex');
 const scenarios = [
-  { name: 'current-work', stage: 'backendHealth', phase: 'work', version: 3 },
+  { name: 'DESK-WORKSPACE-MANAGEMENT-001 synthetic startup', stage: 'backendHealth', phase: 'work', version: 3, timing: true },
   { name: 'current-cleanup', stage: 'secretDrain', phase: 'cleanup', version: 3 },
   { name: 'legacy', version: 2 },
 ];
@@ -38,27 +40,29 @@ test('shared startup capture and separate original failures survive lifecycle co
     const checkout = join(directory, 'checkout');
     const run = `run-${randomUUID()}`;
     const output = join(checkout, 'eky_software/apps/e2e/test-results', run);
+    const reportPath = join(checkout, 'eky_software/apps/e2e/playwright-report', run, 'results.private.json');
     await mkdir(output, { recursive: true });
     const binding = { GITHUB_ACTIONS: 'true', GITHUB_RUN_ID: '98765', GITHUB_RUN_ATTEMPT: '2',
-      GITHUB_JOB: 'startup-proof', EKY_EVIDENCE_JOB_KEY: 'startup-proof-0', GITHUB_SHA: 'a'.repeat(40) };
+      GITHUB_JOB: 'e2e-electron-windows-critical', EKY_EVIDENCE_JOB_KEY: 'core-electron-0', GITHUB_SHA: 'a'.repeat(40) };
     await writeFile(join(directory, 'package.json'), JSON.stringify({ private: true, type: 'module' }), { flag: 'wx' });
     await writeFile(join(directory, 'startup.spec.ts'), `
 import { test, expect } from ${JSON.stringify(source('../../apps/e2e/node_modules/@playwright/test/index.mjs'))};
 import { isDeepStrictEqual } from 'node:util';
+import { writeFile } from 'node:fs/promises';
 import { createElectronE2eStartupObservation, parseElectronE2eStartupObservation }
   from ${JSON.stringify(source('../../apps/desktop/e2e/electronE2eStartupObservation.ts'))};
 import { emitDesktopStartupObservation, desktopStartupStagePhases }
   from ${JSON.stringify(source('../../apps/desktop/src/main/desktopStartupObservation.ts'))};
 import { captureElectronStartupObservation }
   from ${JSON.stringify(source('../../apps/e2e/src/fixtures/launchElectronRuntime.ts'))};
-import { reportElectronLifecycleEvidence }
+import { reportElectronLifecycleEvidence, reportPrivateElectronStartupPhaseTiming }
   from ${JSON.stringify(source('../../apps/e2e/src/fixtures/reportElectronLifecycleEvidence.ts'))};
 import { createRunnerFailureSink } from ${JSON.stringify(source('../runnerFailureEvidence.mjs'))};
 
 for (const scenario of ${JSON.stringify(scenarios)}) {
   test(scenario.name, async ({}, info) => {
     let now = 100;
-    const observation = createElectronE2eStartupObservation(() => now);
+    const observation = createElectronE2eStartupObservation(() => now, scenario.timing === true);
     observation.record('compositionStarted');
     now = 107;
     observation.recordBackendStartupStage('migration.initialAttestation.entered');
@@ -90,12 +94,20 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
     const delivery = await sink.flush();
     expect(delivery.status === 'recorded' && delivery.recorded === 2).toBe(true);
     await reportElectronLifecycleEvidence(info, {
-      launch: [{ phase: 'firstWindow', status: 'failed', reason: 'processExited' }],
+      launch: [{ phase: 'firstWindow', status: 'failed', reason: scenario.timing ? 'timeout' : 'processExited' }],
       observationsTruncated: false, startupCapture,
       cleanup: ${JSON.stringify(cleanup)}, launchExitCode: 1,
-      firstLaunchFailure: { startupGeneration: 1, phase: 'firstWindow', reason: 'processExited' },
+      firstLaunchFailure: { startupGeneration: 1, phase: 'firstWindow',
+        reason: scenario.timing ? 'timeout' : 'processExited' },
       publicCloseFailure: { startupGeneration: 1, reason: 'failed' },
     });
+    const timing = observation.snapshotPhaseTiming();
+    if (timing !== undefined) {
+      const path = info.outputPath('fixture-binding-control.json');
+      await writeFile(path, '{}', { flag: 'wx' });
+      await info.attach('fixture-process-output', { path, contentType: 'application/json' });
+      await reportPrivateElectronStartupPhaseTiming(info, timing);
+    }
     // Deliberate assertion failure, never a rethrow of either private exception.
     expect(false, 'STARTUP_OBSERVATION_EXPECTED_SUCCESS').toBe(true);
   });
@@ -105,7 +117,9 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
     await writeFile(config, `export default {
       testDir: '.', testMatch: 'startup.spec.ts', outputDir: ${JSON.stringify(output)},
       workers: 1, retries: 0, timeout: 5000, globalTimeout: 30000,
-      reporter: [[${JSON.stringify(fileURLToPath(new URL('../../apps/e2e/scripts/safeCiReporter.mjs', import.meta.url)))}]],
+      projects: [{ name: 'electron-development' }],
+      reporter: [[${JSON.stringify(fileURLToPath(new URL('../../apps/e2e/scripts/safeCiReporter.mjs', import.meta.url)))}],
+        ['json', { outputFile: ${JSON.stringify(reportPath)} }]],
     };`, { flag: 'wx', mode: 0o600 });
     const child = await fixture.run(process.execPath, [join(root, 'apps/e2e/node_modules/@playwright/test/cli.js'),
       'test', '--config', config], 60_000, { cwd: directory, env: { ...binding,
@@ -115,7 +129,7 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
     assert.equal(child.status, 1, 'STARTUP_PROOF_EXPECTED_ASSERTIONS_DID_NOT_FAIL');
     const publicOutput = Buffer.concat([child.stdout, child.stderr]).toString('utf8');
     for (const text of [...markers, secret, 'mainStartup', 'backendHealth', 'secretDrain',
-      'migration.initialAttestation.entered', 'STARTUP_OBSERVATION_EXPECTED_SUCCESS']) {
+      'migration.initialAttestation.entered', 'STARTUP_OBSERVATION_EXPECTED_SUCCESS', startupPhaseDiagnosticFile]) {
       assert.equal(publicOutput.includes(text), false, 'STARTUP_PROOF_PUBLIC_DISCLOSURE');
     }
     const rows = publicOutput.split(/\r?\n/u).filter(line => line.startsWith('EKY_E2E_REPORT '))
@@ -143,16 +157,23 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
     for (const attempt of await readdir(output, { withFileTypes: true })) {
       if (!attempt.isDirectory()) continue;
       const bytes = await readFile(join(output, attempt.name, 'electron-lifecycle.json'));
+      assert.equal(Object.hasOwn(JSON.parse(bytes), 'phases'), false);
       originals.set(`results/${run}/${attempt.name}/electron-lifecycle.json`, bytes);
+      const timing = await readFile(join(output, attempt.name, startupPhaseDiagnosticFile)).catch(error => {
+        if (error.code !== 'ENOENT') throw error;
+      });
+      if (timing !== undefined) originals.set(`results/${run}/${attempt.name}/${startupPhaseDiagnosticFile}`, timing);
     }
-    assert.equal(originals.size, scenarios.length, 'STARTUP_PROOF_LIFECYCLES_MISSING');
+    assert.equal(originals.size, scenarios.length + 1, 'STARTUP_PROOF_REPORTS_MISSING');
+    const report = projectPlaywrightFailureReport(JSON.parse(await readFile(reportPath, 'utf8')));
+    originals.set(`reports/${run}/results.private.json`, Buffer.from(JSON.stringify(report)));
     for (const name of await readdir(temp)) {
       if (!name.startsWith(RUNNER_FAILURE_ROOT_PREFIX)) continue;
       for (const file of await readdir(join(temp, name))) {
         originals.set(`temporary/${name}/${file}`, await readFile(join(temp, name, file)));
       }
     }
-    assert.equal(originals.size, 16, 'STARTUP_PROOF_SOURCE_SET_CHANGED');
+    assert.equal(originals.size, 18, 'STARTUP_PROOF_SOURCE_SET_CHANGED');
     const recipient = await fixture.generate('startup-recipient');
     await fixture.invokeGpg(recipient.home, ['--pinentry-mode', 'loopback', '--passphrase', '',
       '--quick-add-key', recipient.fingerprint, 'cv25519', 'encr', '1d']);
@@ -160,6 +181,8 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
     // Synthetic job identity tests collection, not hosted admission or upload.
     const collected = await collectJobFailureEvidence({ ...binding, RUNNER_TEMP: temp,
       GITHUB_WORKSPACE: checkout, EKY_EVIDENCE_JOB_OUTCOME: 'failure',
+      GITHUB_EVENT_NAME: 'workflow_dispatch', RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted',
+      EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC: '1',
       EKY_DIAGNOSTIC_KEY_FINGERPRINT: recipient.fingerprint,
       EKY_DIAGNOSTIC_VERIFIED_FINGERPRINT: recipient.fingerprint,
       EKY_DIAGNOSTIC_PUBLIC_KEY: await readFile(publicPath, 'utf8') });
@@ -176,8 +199,8 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
     assert.equal(Object.keys(archive.files).length, originals.size);
     const restored = archive.manifest.files.map(entry => {
       assert.equal(entry.status, 'retained', 'STARTUP_PROOF_SOURCE_NOT_RETAINED');
-      assert.equal(['runnerFailure', 'electronLifecycle'].includes(entry.kind), true);
-      assert.equal(entry.location, entry.kind === 'electronLifecycle' ? 'checkout' : 'runnerTemp');
+      assert.equal(['runnerFailure', 'electronLifecycle', 'electronStartupPhaseTiming', 'playwrightReport'].includes(entry.kind), true);
+      assert.equal(entry.location, entry.kind === 'runnerFailure' ? 'runnerTemp' : 'checkout');
       const bytes = Buffer.from(archive.files[entry.name], 'base64');
       const original = originals.get(entry.source);
       assert.equal(original !== undefined && bytes.equals(original), true, 'STARTUP_PROOF_SOURCE_BYTES_CHANGED');
@@ -189,6 +212,11 @@ for (const scenario of ${JSON.stringify(scenarios)}) {
       return { kind: entry.kind, record: entry.kind === 'runnerFailure' ? validateRunnerFailureEvidence(record) : record };
     });
     assert.equal(originals.size, 0, 'STARTUP_PROOF_SOURCE_MISSING');
+    assert.deepEqual(restored.filter(item => item.kind === 'electronStartupPhaseTiming').map(item => item.record),
+      [{ schemaVersion: 1, phases: [
+        { stage: 'migration.initialAttestation.entered', elapsedMs: 7 },
+        { stage: 'backendHealth.entered', elapsedMs: 19 },
+      ] }]);
     const lifecycles = restored.filter(item => item.kind === 'electronLifecycle').map(item => item.record);
     const failures = restored.filter(item => item.kind === 'runnerFailure').map(item => item.record);
     for (const scenario of scenarios) {

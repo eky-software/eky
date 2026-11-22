@@ -23,6 +23,8 @@ import { validateRunnerFailureEvidence } from '../../../../test-reporters/runner
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 import { readCommandPhaseJson } from './acceptanceCommandPhaseInput.mjs';
 import { PHASE_WIRE_LIMITS, validatePhaseHandoffCollector } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
+import { parseStartupPhaseTiming, startupPhaseDiagnosticFile, startupPhaseDiagnosticScenario,
+  startupPhaseDiagnosticMaxBytes } from '../../e2e/electronE2eStartupPhaseTiming.ts';
 import { MSI_RESOURCE_TIMING_MAX_BYTES, msiResourceTimingBinding, msiResourceTimingSource,
   validateMsiResourceTimingReport } from './msiResourceTimingEvidence.mjs';
 
@@ -46,6 +48,8 @@ export function evidenceSourceKind(area, path) {
   if (area === 'reports' && new RegExp(`^${runPattern}/results\\.private\\.json$`, 'u').test(path)) return 'playwrightReport';
   if (area === 'results' && new RegExp(`^${runPattern}/[^/]+/(?:backend-startup|process-output|failure)\\.private\\.json$`, 'u').test(path)) return 'processOutput';
   if (area === 'results' && new RegExp(`^${runPattern}/(?!\\.{1,2}/)[^/]+/electron-lifecycle\\.json$`, 'u').test(path)) return 'electronLifecycle';
+  if (area === 'results' && basename(path) === startupPhaseDiagnosticFile &&
+      new RegExp(`^${runPattern}/(?!\\.{1,2}/)[^/]+/[^/]+$`, 'u').test(path)) return 'electronStartupPhaseTiming';
   if (area !== 'temporary') return null;
   if (/^eky-msi-resource-timing-supervisor-contracts-[01]\/msi-resource-contract\.json$/u.test(path)) return 'msiResourceTiming';
   if (/^eky supervisor [a-zA-Z0-9]+\/(?:policy-result\.json|[1-9][0-9]*-(?:source|target|uninstall)\.log)$/u.test(path)) return 'msiPolicyEvidence';
@@ -62,6 +66,30 @@ export function evidenceSourceKind(area, path) {
   const command = new RegExp(`^${fixturePrefix}eky-acceptance-command-[a-f0-9]{32}/([^/]+)/(?:result|worker-result)\\.json$`, 'u').exec(path);
   if (command && commandPhases.has(command[1])) return 'nativeResult';
   return null;
+}
+
+function matchesNamedStartupAttempt(report, attachmentDirectory) {
+  const comparable = value => process.platform === 'win32' ? value.toLowerCase() : value;
+  const expected = comparable(attachmentDirectory);
+  const pending = [...report.suites];
+  let matches = 0;
+  while (pending.length > 0) {
+    const suite = pending.pop();
+    pending.push(...suite.suites);
+    for (const spec of suite.specs) {
+      if (typeof spec.title !== 'string' || !spec.title.startsWith(startupPhaseDiagnosticScenario + ' ')) continue;
+      for (const test of spec.tests) {
+        if (test.expectedStatus !== 'passed' || test.projectName !== 'electron-development') continue;
+        for (const result of test.results) {
+          if (result.retry === 0 && ['failed', 'timedOut'].includes(result.status) &&
+              result.attachments.some(attachment => attachment.name === 'fixture-process-output' &&
+                typeof attachment.path === 'string' && isAbsolute(attachment.path) &&
+                comparable(dirname(resolve(attachment.path))) === expected)) matches++;
+        }
+      }
+    }
+  }
+  return matches === 1;
 }
 
 export function jobEvidenceBinding(env) {
@@ -144,6 +172,11 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     const kind = evidenceSourceKind(area, relativePath);
     if (kind === null) return;
     if (kind === 'msiResourceTiming' && (!timingBinding || relativePath !== msiResourceTimingSource(timingBinding))) return;
+    if (kind === 'electronStartupPhaseTiming' &&
+        (env.EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC !== '1' || env.GITHUB_EVENT_NAME !== 'workflow_dispatch' ||
+         env.GITHUB_ACTIONS !== 'true' || env.RUNNER_OS !== 'Windows' || env.RUNNER_ENVIRONMENT !== 'github-hosted' ||
+         env.EKY_EVIDENCE_JOB_OUTCOME !== 'failure' ||
+         binding.job !== 'e2e-electron-windows-critical' || binding.jobKey !== 'core-electron-0')) return;
     if (manifest.files.length >= MAX_FILES) return;
     const name = `${String(manifest.files.length).padStart(4, '0')}.private`;
     const entry = { name, source: `${area}/${relativePath}`, location, kind, status: 'unverified' };
@@ -155,6 +188,7 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       const nativePreparation = kind === 'processOutput' && windowsCompilation &&
         relativePath.endsWith('/preparation/process-output.private.json');
       const fileLimit = kind === 'msiResourceTiming' ? MSI_RESOURCE_TIMING_MAX_BYTES :
+        kind === 'electronStartupPhaseTiming' ? startupPhaseDiagnosticMaxBytes :
         kind === 'workspaceDeletionPhaseObservation' ? PHASE_WIRE_LIMITS.bytes : installerLog ? W6B2_INSTALLER_LOG_MAX_BYTES :
         kind === 'msiWindowObservation' ? msiWindowEvidenceContract.maximumBytes :
         nativePreparation ? nativePreparationRecordMaximumBytes :
@@ -165,6 +199,11 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
       if (kind === 'msiResourceTiming') validateMsiResourceTimingReport(await readFile(join(stage, name)), timingBinding, relativePath);
       if (kind === 'workspaceDeletionPhaseObservation' &&
           validatePhaseHandoffCollector(await readFile(join(stage, name)), binding, relativePath) === undefined) throw failure();
+      if (kind === 'electronStartupPhaseTiming') {
+        const record = parseStrictJsonObjectBytes(await readFile(join(stage, name)),
+          { errorCode: 'electronStartupPhaseTimingInvalid', maximumBytes: startupPhaseDiagnosticMaxBytes });
+        if (parseStartupPhaseTiming(record) === undefined) throw failure();
+      }
       if (kind === 'processOutput') {
         const bytes = await readFile(join(stage, name));
         const record = parseStrictJsonObjectBytes(bytes, { errorCode: 'nativePreparationEvidenceInvalid', maximumBytes: MAX_FILE });
@@ -337,6 +376,29 @@ export async function collectJobFailureEvidence(env, { nativeTemp = env.RUNNER_T
     }
   }
   if (split?.status === 'verifiedBeforeWork') await assertSourceIdentity();
+  const timings = manifest.files.filter(file => file.kind === 'electronStartupPhaseTiming' && file.status === 'retained');
+  for (const timing of timings) {
+    try {
+      const source = timing.source.slice(0, -startupPhaseDiagnosticFile.length) + 'electron-lifecycle.json';
+      const lifecycle = manifest.files.find(file => file.source === source && file.kind === 'electronLifecycle'
+        && file.status === 'retained' && file.bytes <= 32 * 1024);
+      if (timings.length !== 1 || !lifecycle) throw failure();
+      const first = parseStrictJsonObjectBytes(await readFile(join(stage, lifecycle.name)),
+        { errorCode: 'electronStartupPhaseLifecycleInvalid', maximumBytes: 32 * 1024 });
+      if (first.schemaVersion !== 1 || first.attempt !== 0 || first.firstLaunchFailure?.startupGeneration !== 1 ||
+          first.firstLaunchFailure?.phase !== 'firstWindow' || first.firstLaunchFailure?.reason !== 'timeout') throw failure();
+      const [, run, attemptDir] = timing.source.split('/');
+      const report = manifest.files.find(file => file.source === `reports/${run}/results.private.json` &&
+        file.kind === 'playwrightReport' && file.status === 'retained' && file.bytes <= 256 * 1024);
+      if (!report) throw failure();
+      const expectedDirectory = join(reportsRoot, 'eky_software/apps/e2e/test-results',
+        run, attemptDir, 'attachments');
+      const parsed = JSON.parse(await readFile(join(stage, report.name), 'utf8'));
+      if (!matchesNamedStartupAttempt(parsed, expectedDirectory)) throw failure();
+    } catch {
+      timing.status = 'unverified';
+    }
+  }
   const archivePath = join(root, 'evidence.private.json.gz');
   await writeEvidenceArchive({ temp, stage, archivePath, manifest });
   return { root, archivePath, fingerprint, manifest };

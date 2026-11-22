@@ -254,14 +254,18 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
     const capture = createElectronLaunchFailureCapture();
     const root = createE2eRunRoot();
     let mainReads = 0;
+    let phaseReads = 0;
     try {
       const fixture = launchFixture({}, (observation) => capture.observe(observation, {
         runRoot: root,
         userDataPath: join(root, 'missing-user-data'),
         runtimeInstanceId: '11111111-1111-4111-8111-111111111111',
-      }, async () => { mainReads += 1; return undefined; }));
+      }, async () => { mainReads += 1; return undefined; }, null,
+      async () => { phaseReads += 1; return undefined; }));
       await expect(fixture.run()).resolves.toHaveProperty('page');
       expect(mainReads).toBe(0);
+      expect(phaseReads).toBe(0);
+      expect(capture.finishPhaseTiming()).toBeUndefined();
       expect(capture.finish()).toEqual({
         startupCapture: { status: 'notRequested' },
         backendStartupLogs: { status: 'notRequested' },
@@ -269,6 +273,38 @@ test.describe('SYS-ELECTRON-LIFECYCLE-001 @critical @security', () => {
         launchExitCode: null,
         firstLaunchFailure: null,
       });
+    } finally { await removeE2eRunRootIfPresent(root); }
+  });
+
+  test('phase timing reads only the first window timeout and never waits for late evidence', async () => {
+    const root = createE2eRunRoot();
+    try {
+      const runtime = { runRoot: root, userDataPath: join(root, 'missing-user-data'),
+        runtimeInstanceId: '11111111-1111-4111-8111-111111111111', startupGeneration: 1 };
+      const timing = { schemaVersion: 1, phases: [{ stage: 'moduleImport', elapsedMs: 5 }] };
+      for (const accept of [true, false]) {
+        const capture = createElectronLaunchFailureCapture();
+        let reads = 0;
+        let resolve!: (value: unknown) => void;
+        const pending = new Promise<unknown>(done => { resolve = done; });
+        const observation = { status: 'failed', phase: 'firstWindow', reason: 'timeout' } as const;
+        capture.observe(observation, runtime, async () => undefined, null, () => { reads++; return pending; });
+        capture.observe(observation, { ...runtime, startupGeneration: 2 }, async () => undefined, null,
+          async () => { reads++; return timing; });
+        expect(reads).toBe(1);
+        if (!accept) expect(capture.finishPhaseTiming()).toBeUndefined();
+        resolve(timing);
+        await pending;
+        expect(capture.finishPhaseTiming()).toEqual(accept ? timing : undefined);
+        expect(capture.finish().firstLaunchFailure).toEqual({
+          phase: 'firstWindow', reason: 'timeout', startupGeneration: 1,
+        });
+      }
+      const unrelated = createElectronLaunchFailureCapture();
+      let unrelatedReads = 0;
+      unrelated.observe({ status: 'failed', phase: 'playwrightConnect', reason: 'timeout' }, runtime,
+        async () => undefined, null, async () => { unrelatedReads++; return timing; });
+      expect(unrelatedReads).toBe(0);
     } finally { await removeE2eRunRootIfPresent(root); }
   });
 

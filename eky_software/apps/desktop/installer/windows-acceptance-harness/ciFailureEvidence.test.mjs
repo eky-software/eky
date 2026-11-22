@@ -20,6 +20,7 @@ import { executeWorkspaceFaultLifecycle } from './workspaceFaultLifecycle.mjs';
 import { createRunnerFailureSink, RUNNER_FAILURE_ROOT_PREFIX } from '../../../../test-reporters/runnerFailureEvidence.mjs';
 import { msiWindowEvidenceContract, validateMsiWindowEvidence } from './msiWindowEvidence.mjs';
 import { PHASE_WIRE_LIMITS, capturePhaseHandoffExpected } from '../../e2e/workspaceDeletionPhaseHandoff.ts';
+import { startupPhaseDiagnosticFile } from '../../e2e/electronE2eStartupPhaseTiming.ts';
 
 const run = 'run-aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
 const fingerprint = 'A'.repeat(40);
@@ -1387,6 +1388,57 @@ test('OS-native temporary roots are collected separately from runner staging', a
   assert.deepEqual(manifest.files.map(file => file.location).sort(), ['nativeTemp', 'runnerTemp']);
   assert.ok(manifest.files.every(file => file.status === 'retained'));
   assert.equal(manifest.sources.find(source => source.location === 'nativeTemp').status, 'complete');
+});
+
+test('Electron startup timings are admitted only as a strict bounded report in the named hosted diagnosis', async t => {
+  const { env, checkout, put } = await fixture(t);
+  const root = `eky_software/apps/e2e/test-results/${run}`;
+  const valid = { schemaVersion: 1, phases: [{ stage: 'moduleImport', elapsedMs: 17 }] };
+  const life = { schemaVersion: 1, attempt: 0, firstLaunchFailure: {
+    startupGeneration: 1, phase: 'firstWindow', reason: 'timeout',
+  } };
+  await put(checkout, `${root}/attempt0/${startupPhaseDiagnosticFile}`, JSON.stringify(valid));
+  await put(checkout, `${root}/attempt0/attachments/${startupPhaseDiagnosticFile}`, JSON.stringify(valid));
+  await put(checkout, `${root}/bad/${startupPhaseDiagnosticFile}`, JSON.stringify({
+    ...valid, phases: [{ ...valid.phases[0], path: 'EXCLUDED-SYNTHETIC' }],
+  }));
+  await put(checkout, `${root}/oversize/${startupPhaseDiagnosticFile}`, Buffer.alloc(4097));
+  const named = { ...env, GITHUB_ACTIONS: 'true', GITHUB_EVENT_NAME: 'workflow_dispatch',
+    RUNNER_OS: 'Windows', RUNNER_ENVIRONMENT: 'github-hosted',
+    GITHUB_JOB: 'e2e-electron-windows-critical', EKY_EVIDENCE_JOB_KEY: 'core-electron-0',
+    EKY_EVIDENCE_JOB_OUTCOME: 'failure', EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC: '1' };
+  for (const patch of [{ EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC: '0' }, { GITHUB_EVENT_NAME: 'push' },
+    { GITHUB_JOB: 'unrelated' }, { RUNNER_ENVIRONMENT: 'self-hosted' }]) {
+    const { manifest } = await collectJobFailureEvidence({ ...named, ...patch });
+    assert.equal(manifest.files.length, 0);
+  }
+  const collected = await collectJobFailureEvidence(named);
+  assert.ok(collected.manifest.files.every(f => f.kind !== 'electronStartupPhaseTiming' || f.status !== 'retained'));
+  await put(checkout, `${root}/attempt0/electron-lifecycle.json`, JSON.stringify(life));
+  const report = title => ({ errors: [], suites: [{ specs: [{ title, tests: [{ expectedStatus: 'passed',
+    projectName: 'electron-development', results: [{ status: 'failed', retry: 0, attachments: [
+      { name: 'fixture-process-output', path: join(checkout, root, 'attempt0', 'attachments', 'synthetic.json') },
+    ] }] }] }] }] });
+  const reportPath = `eky_software/apps/e2e/playwright-report/${run}/results.private.json`;
+  await put(checkout, reportPath, JSON.stringify(report('UNRELATED synthetic case')));
+  const wrongScenario = await collectJobFailureEvidence(named);
+  assert.ok(wrongScenario.manifest.files.every(f => f.kind !== 'electronStartupPhaseTiming' || f.status !== 'retained'));
+  await put(checkout, reportPath, JSON.stringify(report('DESK-WORKSPACE-MANAGEMENT-001 synthetic case')));
+  const verified = await collectJobFailureEvidence(named);
+  const reports = verified.manifest.files.filter(f => f.kind === 'electronStartupPhaseTiming');
+  assert.deepEqual(reports.map(f => f.status).sort(), ['retained', 'tooLarge', 'unverified']);
+  const archive = JSON.parse(gunzipSync(await readFile(verified.archivePath)));
+  const kept = reports.find(f => f.status === 'retained');
+  assert.deepEqual(JSON.parse(Buffer.from(archive.files[kept.name], 'base64')), valid);
+  for (const invalid of [
+    { ...life, attempt: 1 },
+    { ...life, firstLaunchFailure: { ...life.firstLaunchFailure, reason: 'processExited' } },
+    { ...life, firstLaunchFailure: { ...life.firstLaunchFailure, startupGeneration: 2 } },
+  ]) {
+    await put(checkout, `${root}/attempt0/electron-lifecycle.json`, JSON.stringify(invalid));
+    const wrongAttempt = await collectJobFailureEvidence(named);
+    assert.ok(wrongAttempt.manifest.files.every(f => f.kind !== 'electronStartupPhaseTiming' || f.status !== 'retained'));
+  }
 });
 
 test('older native results cannot evict reports or the latest failed native root', async t => {

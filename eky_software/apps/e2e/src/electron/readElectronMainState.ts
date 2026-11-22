@@ -56,6 +56,12 @@ export function readElectronStartupObservation(
   });
 }
 
+export function readElectronStartupPhaseTiming(electronApp: ElectronApplication): Promise<unknown> {
+  return electronApp.evaluate(() => (
+    globalThis as typeof globalThis & { __EKY_ELECTRON_E2E__?: { startupPhaseTiming(): unknown } }
+  ).__EKY_ELECTRON_E2E__?.startupPhaseTiming());
+}
+
 export async function readSelectorTestBackendPort(electronApp: ElectronApplication): Promise<number | undefined> {
   const observed = await electronApp.evaluate(() => {
     const controller = (globalThis as unknown as { __EKY_ELECTRON_E2E__: {

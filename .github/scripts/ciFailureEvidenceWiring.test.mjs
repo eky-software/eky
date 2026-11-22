@@ -400,6 +400,43 @@ test('split Windows evidence keeps distinct job keys without extending native ra
     'packaged preparation is excluded even before the collector supplies a key');
 });
 
+test('named Electron timing dispatch selects only one existing job without changing normal test or publication gates', () => {
+  const core = workflows.get('ci.yml');
+  const id = 'e2e-electron-windows-critical';
+  const electron = core.get(id);
+  const jobGate = job => /^    if: (.+)$/mu.exec(job)?.[1];
+  const selected = [...core].filter(([, job]) => evaluate(jobGate(job), c => {
+    c.github.event_name = 'workflow_dispatch';
+    c.inputs = { risk_plan: '', electron_startup_phase_diagnostic: true,
+      electron_diagnostic: true, linux_consumer_diagnostic: true };
+  })).map(([name]) => name);
+  assert.deepEqual(selected, [id]);
+  const original = steps(electron, 6).find(step => step.includes('Run critical Electron E2E journeys'));
+  const named = steps(electron, 6).find(step => step.includes('Diagnose the named Electron first-window phase'));
+  const stepGate = step => /^        if: (.+)$/mu.exec(step)?.[1];
+  assert.match(electron, /^    timeout-minutes: 35$/mu);
+  assert.match(original, /run: pnpm test:e2e:electron:critical$/mu);
+  assert.match(named, /--grep DESK-WORKSPACE-MANAGEMENT-001 --workers=1 --retries=0$/mu);
+  assert.doesNotMatch(named, /continue-on-error|--timeout|--global-timeout/u);
+  for (const event of ['push', 'pull_request', 'schedule']) {
+    const normal = c => { c.github.event_name = event; c.inputs.electron_startup_phase_diagnostic = false; };
+    assert.equal(evaluate(stepGate(original), normal), true);
+    assert.equal(evaluate(stepGate(named), normal), false);
+  }
+  for (const enabled of [true, false]) {
+    const manual = c => { c.github.event_name = 'workflow_dispatch'; c.inputs.electron_startup_phase_diagnostic = enabled; };
+    assert.equal(evaluate(stepGate(original), manual), !enabled);
+    assert.equal(evaluate(stepGate(named), manual), enabled);
+  }
+  const env = /^      EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC: \$\{\{ (.+) \}\}$/mu.exec(electron)?.[1];
+  const optIn = event => c => { c.github.event_name = event; c.inputs.electron_startup_phase_diagnostic = true; };
+  assert.equal(evaluateValue(env, optIn('workflow_dispatch')), '1');
+  assert.equal(evaluateValue(env, optIn('push')), '0');
+  const publicUpload = steps(electron, 6).find(step => step.includes('Preserve safe Electron lifecycle evidence'));
+  assert.match(publicUpload, /path: eky_software\/apps\/e2e\/test-results\/run-\*\/\*\/electron-lifecycle\.json$/mu);
+  assert.doesNotMatch(publicUpload, /private\.json|startup-phases/u);
+});
+
 function timingContext(c) {
   c.github.event_name = 'workflow_dispatch';
   c.inputs.mode = 'contracts';

@@ -10,6 +10,18 @@ import type { ElectronFirstLaunchFailure } from './captureElectronLaunchFailure.
 import type { ElectronNativeStartupFailureCapture } from './captureElectronNativeStartupFailure.js';
 import type { ElectronLaunchObservation, ElectronStartupCapture } from './launchElectronRuntime.js';
 import type { ElectronPublicCloseFailureReason } from './closeOwnedWindowsElectronRuntime.js';
+import { startupPhaseDiagnosticFile, type StartupPhaseTiming } from '../../../desktop/e2e/electronE2eStartupPhaseTiming.js';
+
+// This source is not an attachment or part of the public lifecycle report.
+export async function reportPrivateElectronStartupPhaseTiming(
+  testInfo: Pick<TestInfo, 'outputPath'>,
+  timing: StartupPhaseTiming,
+): Promise<void> {
+  try {
+    await writeFile(testInfo.outputPath(startupPhaseDiagnosticFile), JSON.stringify(timing),
+      { encoding: 'utf8', mode: 0o600, flag: 'wx' });
+  } catch { /* Optional evidence never replaces the startup or cleanup result. */ }
+}
 
 export interface ElectronPublicCloseFailureEvidence {
   readonly startupGeneration: number;

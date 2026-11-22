@@ -41,7 +41,9 @@ import { reserveLoopbackPort } from '../environment/reserveLoopbackPort.js';
 import { removeE2eRunRoot } from '../environment/removeE2eRunRoot.js';
 import { resolveElectronE2eExecutable } from '../environment/resolveElectronE2eExecutable.js';
 import { waitForLoopbackPortRelease } from '../environment/waitForLoopbackPortRelease.js';
-import { readElectronStartupObservation, readSelectorTestBackendPort } from '../electron/readElectronMainState.js';
+import {
+  readElectronStartupObservation, readElectronStartupPhaseTiming, readSelectorTestBackendPort,
+} from '../electron/readElectronMainState.js';
 import {
   createElectronActiveWorkspaceReplacementFixture,
   createElectronWorkspaceBackupFixture,
@@ -58,10 +60,12 @@ import { ELECTRON_E2E_PROCESS_CONNECT_TIMEOUT_MILLISECONDS } from './electronLau
 import { captureFirstStartProof } from './captureFirstStartProof.js';
 import { reportFixtureProcessOutput, reportStartupProcessOutput } from './reportStartupProcessOutput.js';
 import type { FirstStartProofCapture } from '../../../desktop/e2e/workspaceFirstStartProofObservation.js';
+import { startupPhaseDiagnosticScenario } from '../../../desktop/e2e/electronE2eStartupPhaseTiming.js';
 import { recordElectronEvidenceFailure } from '../../scripts/electronLifecycleProjection.mjs';
 import { createLegacyInvoiceProfile, type LegacyInvoiceProfile } from '../data/createLegacyInvoiceProfile.js';
 import {
   reportElectronLifecycleEvidence,
+  reportPrivateElectronStartupPhaseTiming,
   type ElectronCleanupResult,
   type ElectronPreparationFailureEvidence,
 } from './reportElectronLifecycleEvidence.js';
@@ -156,6 +160,8 @@ export const test = base.extend<
       e2eContainmentTimeoutMilliseconds === undefined ? testInfo.timeout : e2eContainmentTimeoutMilliseconds,
     );
     const scenarioId = readE2eScenarioId(testInfo.title);
+    const collectStartupPhaseTiming = process.env.EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC === '1' &&
+      scenarioId === startupPhaseDiagnosticScenario && testInfo.retry === 0;
     const runRoot = createE2eRunRoot();
     const paths = createE2eWorkerPaths(runRoot, scenarioId);
     if (e2eLegacyInvoiceProfile !== 'none' && e2eWorkspaceBackupFixture !== 'none') {
@@ -226,6 +232,7 @@ export const test = base.extend<
       nativeOpenDialogPurpose: e2eNativeOpenDialogPurpose,
       paths,
       scenarioId,
+      ...(collectStartupPhaseTiming ? { startupPhaseDiagnostic: true } : {}),
       ...(workspaceBackupFixture === undefined
         ? {}
         : { workspaceBackupPath: workspaceBackupFixture.backupPath }),
@@ -329,7 +336,9 @@ export const test = base.extend<
           }, () => application === undefined
             ? Promise.resolve(undefined)
             : readElectronStartupObservation(application),
-          readObservedElectronLaunchExitCode(windowsBridge));
+          readObservedElectronLaunchExitCode(windowsBridge),
+          collectStartupPhaseTiming && currentStartupGeneration === 1 && application !== undefined
+            ? () => readElectronStartupPhaseTiming(application) : undefined);
           if (launchObservations.length < MAX_ELECTRON_LAUNCH_OBSERVATIONS) {
             launchObservations.push(observation);
           } else {
@@ -557,6 +566,7 @@ export const test = base.extend<
           runtimeInstanceId: runtime.runtimeInstanceId, testInfo });
       }
       let launchFailureEvidence: ReturnType<typeof launchFailureCapture.finish> | undefined;
+      let startupPhaseTiming: ReturnType<typeof launchFailureCapture.finishPhaseTiming>;
       await finishIsolatedElectronTest({
         failure,
         testAlreadyFailed: testInfo.errors.length > 0,
@@ -574,6 +584,7 @@ export const test = base.extend<
         releasePort: releaseCurrentPort,
         captureEvidence() {
           launchFailureEvidence = launchFailureCapture.finish();
+          startupPhaseTiming = launchFailureCapture.finishPhaseTiming();
           if (scenarioId === 'DESK-WORKSPACE-FIRST-START-001' || scenarioId === 'DESK-FIRST-START-LOAD-ORDER-001') {
             firstStartProof = captureFirstStartProof(runtime.userDataPath, runtime.runtimeInstanceId);
           }
@@ -602,6 +613,10 @@ export const test = base.extend<
               ...(firstStartProof.status === 'notRequested' ? {} : { firstStartProof }),
             },
           });
+          if (startupPhaseTiming !== undefined && failed) {
+            // Optional evidence must not extend teardown or replace its result.
+            void reportPrivateElectronStartupPhaseTiming(testInfo, startupPhaseTiming);
+          }
         },
       });
     }

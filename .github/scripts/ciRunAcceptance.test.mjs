@@ -601,7 +601,7 @@ test('manual diagnostics select independent existing jobs without changing reusa
     ]);
   }
   assert.doesNotMatch(core, /name: V2 acceptance|uses: .*windows-acceptance/);
-  assert.match(core, /name: Verify Electron startup observation wiring\s+if: inputs.risk_plan == '' && inputs.electron_diagnostic\s+run: pnpm --filter @eky\/e2e exec playwright test --project=electron-development --grep @diagnostic-contract --workers=1 --retries=0/);
+  assert.match(core, /name: Verify Electron startup observation wiring\s+if: inputs.risk_plan == '' && inputs.electron_diagnostic && inputs.electron_startup_phase_diagnostic != true\s+run: pnpm --filter @eky\/e2e exec playwright test --project=electron-development --grep @diagnostic-contract --workers=1 --retries=0/);
 });
 
 const linuxConsumers = [
@@ -727,7 +727,7 @@ test('core jobs preserve their exact approved preparation and execution budgets'
   }
   const electron = workflowJob(core, 'e2e-electron-windows-critical');
   assert.equal(workflowStep(electron, 'Run critical Electron E2E journeys'),
-    '        run: pnpm test:e2e:electron:critical');
+    '        if: inputs.electron_startup_phase_diagnostic != true\n        run: pnpm test:e2e:electron:critical');
   assert.match(workflowStep(electron, 'Preserve encrypted CI failure evidence'),
     /^        timeout-minutes: 3$/mu);
   const packaged = workflowJob(core, 'e2e-packaged-windows-smoke');
@@ -743,7 +743,7 @@ test('core jobs preserve their exact approved preparation and execution budgets'
 
 function verifyLinuxDiagnostics(source, definition) {
   const section = workflowJob(source, definition.job);
-  assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true\)\n    runs-on: ubuntu-24\.04/u);
+  assert.match(section, /if: inputs\.risk_plan != '' \|\| \(inputs\.risk_plan == '' && inputs\.linux_consumer_diagnostic == true && inputs\.electron_startup_phase_diagnostic != true\)\n    runs-on: ubuntu-24\.04/u);
   assert.deepEqual(section.match(/^    runs-on: .+$/gmu), ['    runs-on: ubuntu-24.04']);
   assert.match(section, new RegExp(`    timeout-minutes: ${definition.timeout}\\n`, 'u'));
   assert.match(section, /working-directory: eky_software/u);

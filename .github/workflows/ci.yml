@@ -8,6 +8,11 @@ on:
         required: true
         type: boolean
         default: true
+      electron_startup_phase_diagnostic:
+        description: Run only the named first-window phase diagnosis; not acceptance
+        required: false
+        type: boolean
+        default: false
       linux_consumer_diagnostic:
         description: Run existing Linux jobs with consumer-loss diagnostics and web endurance
         required: true
@@ -168,7 +173,7 @@ jobs:
 
   e2e-system-security:
     name: System security E2E
-    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
+    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true && inputs.electron_startup_phase_diagnostic != true)
     runs-on: ubuntu-24.04
     timeout-minutes: 10
 
@@ -263,7 +268,7 @@ jobs:
 
   e2e-web-critical:
     name: Web critical E2E
-    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true)
+    if: inputs.risk_plan != '' || (inputs.risk_plan == '' && inputs.linux_consumer_diagnostic == true && inputs.electron_startup_phase_diagnostic != true)
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -367,9 +372,11 @@ jobs:
 
   e2e-electron-windows-critical:
     name: Windows Electron critical E2E
-    if: (inputs.risk_plan == '' && inputs.electron_diagnostic) || (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.electronCritical)
+    if: (inputs.risk_plan == '' && (inputs.electron_diagnostic || inputs.electron_startup_phase_diagnostic)) || (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.electronCritical)
     runs-on: windows-latest
     timeout-minutes: 35
+    env:
+      EKY_ELECTRON_STARTUP_PHASE_DIAGNOSTIC: ${{ github.event_name == 'workflow_dispatch' && inputs.electron_startup_phase_diagnostic == true && '1' || '0' }}
 
     defaults:
       run:
@@ -403,10 +410,21 @@ jobs:
         run: pnpm --filter @eky/desktop e2e:prepare-electron-runtime
 
       - name: Run critical Electron E2E journeys
+        if: inputs.electron_startup_phase_diagnostic != true
         run: pnpm test:e2e:electron:critical
 
+      - name: Diagnose the named Electron first-window phase
+        if: github.event_name == 'workflow_dispatch' && inputs.electron_startup_phase_diagnostic == true
+        shell: pwsh
+        env:
+          EKY_E2E: '1'
+        run: |
+          pnpm --filter @eky/e2e e2e:electron:prepare
+          if ($LASTEXITCODE -ne 0) { throw 'ELECTRON_STARTUP_PHASE_DIAGNOSTIC_PREPARATION_FAILED' }
+          pnpm --filter @eky/e2e exec playwright test --project=electron-development --grep DESK-WORKSPACE-MANAGEMENT-001 --workers=1 --retries=0
+
       - name: Verify Electron startup observation wiring
-        if: inputs.risk_plan == '' && inputs.electron_diagnostic
+        if: inputs.risk_plan == '' && inputs.electron_diagnostic && inputs.electron_startup_phase_diagnostic != true
         run: pnpm --filter @eky/e2e exec playwright test --project=electron-development --grep @diagnostic-contract --workers=1 --retries=0
 
       - name: Preserve safe Electron lifecycle evidence from every failed attempt
@@ -443,7 +461,7 @@ jobs:
 
   e2e-packaged-windows-smoke:
     name: Windows packaged smoke and recovery
-    if: (inputs.risk_plan == '' && inputs.electron_diagnostic) || (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.packageSmoke)
+    if: (inputs.risk_plan == '' && inputs.electron_diagnostic && inputs.electron_startup_phase_diagnostic != true) || (inputs.risk_plan != '' && fromJSON(inputs.risk_plan).gates.packageSmoke)
     runs-on: windows-latest
     timeout-minutes: 35
 

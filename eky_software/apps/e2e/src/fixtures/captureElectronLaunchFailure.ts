@@ -12,6 +12,9 @@ import {
   type ElectronNativeStartupFailureCapture,
 } from './captureElectronNativeStartupFailure.js';
 import type { OwnedWindowsElectronBridge } from '../environment/startOwnedWindowsElectronBridge.js';
+import {
+  parseStartupPhaseTiming, type StartupPhaseTiming,
+} from '../../../desktop/e2e/electronE2eStartupPhaseTiming.js';
 
 export interface ElectronFirstLaunchFailure {
   readonly startupGeneration: number | null;
@@ -42,6 +45,8 @@ export function createElectronLaunchFailureCapture() {
   let nativeStartupFailure: ElectronNativeStartupFailureCapture = Object.freeze({ status: 'notRequested' });
   let launchExitCode: number | null = null;
   let firstLaunchFailure: Readonly<ElectronFirstLaunchFailure> | null = null;
+  let phaseTiming: StartupPhaseTiming | undefined;
+  let phaseTimingSealed = false;
 
   return {
     captureBackendFailure(runtime: Parameters<typeof captureElectronBackendStartupLogs>[0]): void {
@@ -57,6 +62,7 @@ export function createElectronLaunchFailureCapture() {
       },
       readStartup: () => Promise<unknown>,
       observedExitCode?: number | null,
+      readPhaseTiming?: () => Promise<unknown>,
     ): void {
       if (observation.status !== 'failed' || requested) return;
       requested = true;
@@ -71,6 +77,13 @@ export function createElectronLaunchFailureCapture() {
       launchExitCode = typeof observedExitCode === 'number' && Number.isInteger(observedExitCode) &&
         observedExitCode >= -0x80000000 && observedExitCode <= 0x7fffffff ? observedExitCode : null;
       finishStartup = captureElectronStartupObservation(readStartup);
+      if (readPhaseTiming !== undefined && observation.phase === 'firstWindow' && observation.reason === 'timeout') {
+        try {
+          void readPhaseTiming().then((value) => {
+            if (!phaseTimingSealed) phaseTiming = parseStartupPhaseTiming(value);
+          }).catch(() => undefined);
+        } catch { /* Optional evidence must not change the original launch failure. */ }
+      }
       backendStartupLogs = captureElectronBackendStartupLogs(runtime);
       if (runtime.artifactsRoot !== undefined) {
         nativeStartupFailure = captureElectronNativeStartupFailure({
@@ -87,6 +100,10 @@ export function createElectronLaunchFailureCapture() {
         launchExitCode,
         firstLaunchFailure,
       });
+    },
+    finishPhaseTiming() {
+      phaseTimingSealed = true;
+      return phaseTiming;
     },
   };
 }

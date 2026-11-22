@@ -4,6 +4,7 @@ import {
   realpathSync,
 } from 'node:fs';
 import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { startupPhaseDiagnosticScenario } from './electronE2eStartupPhaseTiming.js';
 
 export interface ElectronE2eConfig {
   backend: {
@@ -34,6 +35,7 @@ export interface ElectronE2eConfig {
   runtimeInstanceId: string;
   runtimeRoot: string;
   scenarioId: string;
+  startupPhaseDiagnostic?: true;
   startupMode: 'backendStartFailure' | 'normal' | 'pendingFirstWindow';
 }
 
@@ -88,6 +90,7 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     'runtimeRoot',
     'scenarioId',
     'startupMode',
+    ...(Object.hasOwn(root, 'startupPhaseDiagnostic') ? ['startupPhaseDiagnostic'] : []),
   ]);
 
   if (
@@ -96,6 +99,8 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     (root.dialogMode !== 'accept' && root.dialogMode !== 'cancel') ||
     typeof root.scenarioId !== 'string' ||
     !scenarioIdPattern.test(root.scenarioId) ||
+    (Object.hasOwn(root, 'startupPhaseDiagnostic') &&
+      (root.startupPhaseDiagnostic !== true || root.scenarioId !== startupPhaseDiagnosticScenario)) ||
     typeof root.runtimeInstanceId !== 'string' ||
     !runtimeInstanceIdPattern.test(root.runtimeInstanceId) ||
     (root.startupMode !== 'backendStartFailure' &&
@@ -193,6 +198,7 @@ function parseElectronE2eConfig(value: unknown): ElectronE2eConfig {
     runtimeInstanceId: root.runtimeInstanceId,
     runtimeRoot: root.runtimeRoot,
     scenarioId: root.scenarioId,
+    ...(root.startupPhaseDiagnostic === true ? { startupPhaseDiagnostic: true as const } : {}),
     startupMode: root.startupMode,
   };
 }

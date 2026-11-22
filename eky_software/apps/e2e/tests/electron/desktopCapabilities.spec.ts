@@ -326,9 +326,14 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
   const startup = parseElectronE2eStartupObservation(
     await readElectronStartupObservation(e2eElectron.electronApp),
   );
-  expect(startup).toBeDefined();
-  expect(startup?.schemaVersion).toBe(2);
-  expect(startup?.truncated).toBe(false);
+  expect(startup).toMatchObject({
+    schemaVersion: 3,
+    truncated: false,
+    mainStartup: {
+      status: 'observed', stage: 'windowCreation', phase: 'work', event: 'returned',
+      elapsedMs: expect.any(Number),
+    },
+  });
   expect(startup?.backendStartup).toEqual({
     status: 'observed', stage: 'readyNotification', elapsedMs: expect.any(Number),
   });
