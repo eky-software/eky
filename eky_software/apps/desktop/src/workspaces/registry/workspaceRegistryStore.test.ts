@@ -3,6 +3,7 @@ import {
   mkdir,
   mkdtemp,
   readFile,
+  rename,
   rm,
   writeFile,
 } from 'node:fs/promises';
@@ -23,6 +24,7 @@ import { WorkspaceRegistryStore } from './workspaceRegistryStore.js';
 const roots: string[] = [];
 const firstWorkspaceId = '11111111-1111-4111-8111-111111111111';
 const secondWorkspaceId = '22222222-2222-4222-8222-222222222222';
+const selectedWriter = { assertAuthority() {}, async assertExternalSelection() {} };
 
 afterEach(async (context) => {
   const completedRoots = roots.splice(0);
@@ -99,6 +101,74 @@ describe('workspace registry store', () => {
     expect(await readFile(fixture.currentPath)).toEqual(before);
     expect(await pathExists(fixture.nextPath)).toBe(false);
     expect(await pathExists(fixture.backupPath)).toBe(false);
+  });
+
+  it('promotes exactly the observed legacy version, preserving entries and the active selection', async () => {
+    const fixture = await createFixture();
+    const initial = { ...createRegistry('Synthetic active'), workspaces: [
+      ...createRegistry('Synthetic active').workspaces, ...createRegistry('Synthetic passive', secondWorkspaceId).workspaces,
+    ] };
+    await fixture.store.write(initial);
+    const before = await fixture.store.inspectSlots();
+
+    const identity = await fixture.store.promoteSettledLegacySelection(before, selectedWriter);
+
+    const current = await fixture.store.inspectSlots();
+    expect(current.current?.identity).toEqual(identity);
+    expect(current.current?.value).toEqual({ ...initial, formatVersion: 2 });
+    expect(current.next).toBeUndefined();
+    expect(current.backup).toBeUndefined();
+  });
+
+  it.each(['next', 'backup', 'v2', 'missingIdentity'] as const)(
+    'preserves bytes when the observed legacy current is ineligible: %s', async reason => {
+      const fixture = await createFixture();
+      const source = { ...createRegistry('Synthetic company'), formatVersion: reason === 'v2' ? 2 : 1 };
+      await writeSlot(fixture.currentPath, source);
+      if (reason === 'next') await writeSlot(fixture.nextPath, source);
+      if (reason === 'backup') await writeSlot(fixture.backupPath, source);
+      const selected = await fixture.store.inspectSlots();
+      const observed = reason === 'missingIdentity' ? {
+        ...selected, current: { value: selected.current!.value, bytes: selected.current!.bytes },
+      } : selected;
+
+      await expect(fixture.store.promoteSettledLegacySelection(observed, selectedWriter)).rejects.toThrow(WORKSPACE_REGISTRY_INVALID);
+
+      expect(await fixture.store.inspectSlots()).toEqual(selected);
+    });
+
+  it('refuses to promote a byte-identical replacement of the selected file', async () => {
+    const fixture = await createFixture();
+    await fixture.store.write(createRegistry('Synthetic company'));
+    const selected = await fixture.store.inspectSlots();
+    const bytes = await readFile(fixture.currentPath);
+    const displaced = `${fixture.currentPath}.displaced`;
+    await rename(fixture.currentPath, displaced);
+    await writeFile(fixture.currentPath, bytes, { mode: 0o600, flag: 'wx' });
+
+    await expect(fixture.store.promoteSettledLegacySelection(selected, selectedWriter)).rejects.toThrow();
+
+    expect(await readFile(displaced)).toEqual(bytes);
+    expect(await readFile(fixture.currentPath)).toEqual(bytes);
+    expect(await pathExists(fixture.nextPath)).toBe(false);
+    expect(await pathExists(fixture.backupPath)).toBe(false);
+  });
+
+  it('does not promote when the external startup selection no longer grants authority', async () => {
+    const fixture = await createFixture();
+    await fixture.store.write(createRegistry('Synthetic company'));
+    const selected = await fixture.store.inspectSlots();
+    const original = new Error('synthetic acceptance changed');
+    const causes: unknown[] = [];
+
+    await expect(fixture.store.promoteSettledLegacySelection(selected, {
+      assertAuthority() {},
+      async assertExternalSelection() { throw original; },
+      onUncertain(cause) { causes.push(cause); },
+    })).rejects.toThrow();
+
+    expect(causes).toEqual([original]);
+    expect(await fixture.store.inspectSlots()).toEqual(selected);
   });
 
   it('does not invent an empty registry when all slots are absent', async () => {

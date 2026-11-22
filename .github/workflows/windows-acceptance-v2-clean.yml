@@ -48,6 +48,8 @@ jobs:
 
       - name: Require public Windows producer baseline
         working-directory: .
+        env:
+          REQUIRE_RELEASE_CANDIDATE: ${{ github.event_name == 'workflow_dispatch' && inputs.release_candidate == true }}
         run: node .github/scripts/windowsPilotPublicBuildGuard.mjs
 
       - name: Set up Node.js

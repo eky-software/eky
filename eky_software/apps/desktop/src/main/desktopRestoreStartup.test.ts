@@ -26,6 +26,7 @@ import { RecoveryPointScheduler } from '../profileBackup/recoveryPoint/recoveryP
 import { RecoveryPointService } from '../profileBackup/recoveryPoint/recoveryPointService.js';
 import { RecoveryPointCleanShutdownMarker } from '../profileBackup/recoveryPoint/recoveryPointCleanShutdownMarker.js';
 import { BackendShutdownExitError, type BackendShutdownOutcome } from '../runtime/backendShutdown.js';
+import * as acceptedWorkspaceRegistry from './desktopAcceptedWorkspaceRegistry.js';
 import { startDesktopBackend, type DesktopBackendHandle, type StartDesktopBackendOptions } from '../runtime/backendProcess.js';
 import { desktopBackendReadinessTimeoutMilliseconds } from '../runtime/backendMessages.js';
 import { DesktopBackendStartupError, DesktopBackendStartupStoppedError } from '../runtime/backendStartupFailure.js';
@@ -4491,7 +4492,7 @@ describe('desktop restore startup composition', () => {
 
   it.each([false, true])('uses fresh isolated first-start validation after ordinary startup validation (reject: %s)', async reject => {
     const fixture = await createFixture(originalProfileId, {
-      update: true, firstStartUpgrade: true, skipRestore: true, completeStartup: true,
+      update: true, firstStartUpgrade: true, skipRestore: true, completeStartup: true, registryFormatVersion: 2,
     });
     // Passive W6 inventory is a separate contract; keep the real first-start acceptance owner.
     vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'prepareBeforeBackend').mockResolvedValue('notRequired');
@@ -4530,6 +4531,38 @@ describe('desktop restore startup composition', () => {
     expect(begin).toHaveBeenCalledTimes(2);
     expect(begin.mock.calls[0]![0]).not.toBe(begin.mock.calls[1]![0]);
     await expect(readFile(fixture.databasePath, 'utf8')).resolves.toBe(fixture.originalBytes);
+  });
+
+  it.each(['exited', 'unconfirmed', 'readFailure'] as const)('restarts a direct Setup upgrade with a v1 registry only after graceful exit: %s', async outcome => {
+    const fixture = await createFixture(originalProfileId, {
+      update: true, firstStartUpgrade: true, skipRestore: true, completeStartup: true,
+    });
+    vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'prepareBeforeBackend').mockResolvedValue('notRequired');
+    vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'transitionRegistryAfterActiveWorkspaceAcceptance').mockResolvedValue();
+    vi.spyOn(WorkspaceFirstStartMigrationOrchestrator.prototype, 'completeAfterTargetAcceptance').mockResolvedValue();
+    electronBoundary.fetch.mockImplementation(async input => String(input).endsWith('/customers')
+      ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
+    const source = await fixture.registry.inspect();
+    const pdf = await readFile(fixture.pdfPath);
+    const failure = new Error('synthetic first shutdown error');
+    if (outcome === 'unconfirmed') fixture.stop.mockRejectedValueOnce(failure);
+    if (outcome === 'readFailure') vi.spyOn(acceptedWorkspaceRegistry, 'needsAcceptedWorkspaceRegistryPromotion').mockRejectedValueOnce(failure);
+    const observe = vi.fn();
+
+    if (outcome !== 'exited') {
+      await expect(fixture.start(observe)).rejects.toThrow();
+      expect(observe.mock.calls.some(([error]) => hasErrorCause(error, failure))).toBe(true);
+    } else {
+      await expect(fixture.start(observe)).resolves.toBeUndefined();
+      expect(observe).not.toHaveBeenCalled();
+    }
+    expect(fixture.stop).toHaveBeenCalledExactlyOnceWith({ requireGraceful: true });
+    expect(fixture.relaunch).toHaveBeenCalledTimes(outcome === 'exited' ? 1 : 0);
+    expect(electronBoundary.createWindow).not.toHaveBeenCalled();
+    expect(await fixture.registry.inspect()).toEqual(source);
+    expect(await fixture.acceptedBuild.read()).toMatchObject({ appVersion: '0.2.8' });
+    expect(await readFile(fixture.databasePath, 'utf8')).toBe(fixture.originalBytes);
+    expect(await readFile(fixture.pdfPath)).toEqual(pdf);
   });
 
   it.each(['rollbackRequired', 'businessRollbackStarting', 'businessRollbackCompleted'] as const)(
@@ -6458,7 +6491,7 @@ describe('desktop restore startup composition', () => {
   it.each(['success', 'spawnFailure', 'dialogFailure'] as const)(
     'holds the closed-window handoff through installer settlement (%s)', async outcome => {
       const fixture = await createFixture(originalProfileId, {
-        completeStartup: true, skipRestore: true, update: true,
+        completeStartup: true, skipRestore: true, update: true, registryFormatVersion: 2,
       });
       const readHandoff = prepareUpdateBoundary(fixture.root);
       const lifecycle = (await fixture.start())!;
@@ -6848,7 +6881,7 @@ describe('desktop restore startup composition', () => {
   it.each(['none', 'backend', 'backendAndBroker', 'capability', 'broker', 'scheduler', 'quiescence'] as const)(
     'uses the real update handoff with strict shutdown (failure: %s)', async failure => {
       const fixture = await createFixture(originalProfileId, {
-        completeStartup: true, skipRestore: true, update: true,
+        completeStartup: true, skipRestore: true, update: true, registryFormatVersion: 2,
       });
       const readHandoff = prepareUpdateBoundary(fixture.root);
       const lifecycle = (await fixture.start())!;
@@ -7460,6 +7493,7 @@ async function createFixture(
     replacementTarget?: boolean;
     selectorReplacement?: boolean;
     completeStartup?: boolean;
+    registryFormatVersion?: 1 | 2;
     smoke?: boolean;
     selectorSmoke?: boolean;
     skipRestore?: boolean;
@@ -7592,7 +7626,7 @@ async function createFixture(
       lineageIdentity: { formatVersion: 1, profileId: foreignProfileId },
     });
   }
-  await registry.write({ formatVersion: 1, activeWorkspaceId: workspaceId, workspaces });
+  await registry.write({ formatVersion: options.registryFormatVersion ?? 1, activeWorkspaceId: workspaceId, workspaces });
   const switchJournal = new WorkspaceSwitchJournalStore(root);
   if (sourceId !== undefined) {
     const switching = {
@@ -7716,7 +7750,7 @@ async function createFixture(
       // The copy matches its source; registry lineage is checked separately by main.
       profileMatchesActive: true, ...receipt } };
   });
-  const stop = vi.fn(async (): Promise<BackendShutdownOutcome> => {
+  const stop = vi.fn(async (_options?: Parameters<DesktopBackendHandle['stop']>[0]): Promise<BackendShutdownOutcome> => {
     events.push('backendStopped');
     return 'exited';
   });
@@ -7838,9 +7872,9 @@ async function createFixture(
           let reclaim: Promise<void> | undefined;
           let stopping = false;
           const reclaimAfterExit = () => reclaim ??= input.reservationTransfer.reclaimAfterExit(signal);
-          const stopOwnedBackend = async () => {
+          const stopOwnedBackend: DesktopBackendHandle['stop'] = async (...args) => {
             stopping = true;
-            const outcome = await stop();
+            const outcome = await stop(...args);
             await reclaimAfterExit();
             return outcome;
           };
@@ -7927,7 +7961,9 @@ describe('actual recovery observation main composition', () => {
         else expect(electronBoundary.loadWindow).toHaveBeenCalledExactlyOnceWith(f.mainWindow);
         expect(f.events).toEqual(mode === 'selector' ? [] : ['backendStarted']);
         expect(f.showMessageBox).not.toHaveBeenCalled();
-        expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(registryBefore);
+        // Discover against the original format; only then may cold main normalize it.
+        expect(await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME))).toEqual(mode === 'legacyActive'
+          ? Buffer.from(registryBefore.toString().replace('"formatVersion":1', '"formatVersion":2')) : registryBefore);
         expect(await readFile(f.databasePath)).toEqual(databaseBefore); expect(await readFile(f.pdfPath)).toEqual(pdfBefore);
       } finally { await outcome.lifecycle?.shutdown(); }
     });
@@ -7990,6 +8026,7 @@ describe('actual recovery observation main composition', () => {
       const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
         ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
         recoveryStartup: entry.port, resolveActiveWorkspace: resolve,
+        registryFormatVersion: mode === 'backendPreparation' ? 2 : 1,
       }));
       if (mode === 'selector') await f.registry.write({ ...(await f.registry.read())!, formatVersion: 2, activeWorkspaceId: null });
       const registryBefore = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
@@ -8050,6 +8087,7 @@ describe('actual recovery observation main composition', () => {
       const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
         ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true,
         recoveryStartup: entry.port, resolveActiveWorkspace: resolve,
+        registryFormatVersion: mode === 'runtimeRecovery' ? 2 : 1,
       }));
       const registryBefore = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
       const databaseBefore = await readFile(f.databasePath), pdfBefore = await readFile(f.pdfPath);
@@ -8229,7 +8267,7 @@ describe('recovery startup presentation main coupling', () => {
       electronBoundary.fetch.mockImplementation(async input => String(input).endsWith('/customers')
         ? new Response(null, { status: 401 }) : new Response(JSON.stringify({ status: 'ok' })));
       const f = await lifetime.step('fixturePreparation', () => createFixture(originalProfileId, {
-        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, recoveryStartup,
+        ownedRoots: lifetime.roots, update: true, skipRestore: true, completeStartup: true, recoveryStartup, registryFormatVersion: 2,
       }));
       if (mode === 'selector') await f.registry.write({ ...(await f.registry.read())!, formatVersion: 2, activeWorkspaceId: null });
       const registryBefore = await readFile(join(f.root, WORKSPACE_REGISTRY_FILE_NAME));
