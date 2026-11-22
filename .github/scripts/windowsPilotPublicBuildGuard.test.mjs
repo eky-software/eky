@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { assertPublicBuildBaseline } from './windowsPilotPublicBuildPolicy.mjs';
@@ -56,16 +58,40 @@ test('importing the policy outside CI does not execute the guard', () => {
 
 test('the CLI checks the fixed checkout files, rejects an override and emits only a bounded denial', () => {
   const desktop = new URL('../../eky_software/apps/desktop/', import.meta.url);
-  let expected = 0;
-  try {
-    assertPublicBuildBaseline(repository, server, readFileSync(new URL('package.json', desktop)),
-      readFileSync(new URL('installer/installer-release.json', desktop)));
-  } catch { expected = 1; }
+  const current = JSON.parse(readFileSync(new URL('package.json', desktop), 'utf8'));
+  const installer = JSON.parse(readFileSync(new URL('installer/installer-release.json', desktop), 'utf8'));
+  const expected = [current.version, installer.appVersion, installer.msiProductVersion].every(v => v === '0.2.81') ? 0 : 1;
   const script = fileURLToPath(new URL('./windowsPilotPublicBuildGuard.mjs', import.meta.url));
   for (const [repo, args, status] of [[repository, [], expected], ['', [], 1], [repository, ['--private=true'], 1]]) {
     const result = spawnSync(process.execPath, [script, ...args], {
       cwd: fileURLToPath(desktop), encoding: 'utf8', timeout: 5000,
       env: { ...process.env, GITHUB_REPOSITORY: repo, GITHUB_SERVER_URL: server },
+    });
+    assert.ifError(result.error);
+    assert.equal(result.status, status);
+    assert.equal(result.stdout, '');
+    assert.equal(result.stderr.trimEnd(), status === 0 ? '' : denial.message);
+  }
+});
+
+test('the CLI admits baseline-sized manifests and rejects a later pilot even when both versions agree', t => {
+  const root = mkdtempSync(join(tmpdir(), 'eky-public-producer-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const scripts = '.github/scripts';
+  const desktop = 'eky_software/apps/desktop';
+  for (const path of [scripts + '/windowsPilotPublicBuildGuard.mjs', scripts + '/windowsPilotPublicBuildPolicy.mjs',
+    desktop + '/installer/windows-acceptance-harness/strictJsonObject.mjs']) {
+    mkdirSync(dirname(join(root, path)), { recursive: true });
+    copyFileSync(fileURLToPath(new URL('../../' + path, import.meta.url)), join(root, path));
+  }
+  for (const [version, status] of [['0.2.81', 0], ['0.3.1', 1]]) {
+    writeFileSync(join(root, desktop, 'package.json'),
+      JSON.stringify({ ...pkg, version, description: 'x'.repeat(24 * 1024) }));
+    writeFileSync(join(root, desktop, 'installer/installer-release.json'),
+      JSON.stringify({ ...release, appVersion: version, msiProductVersion: version }));
+    const result = spawnSync(process.execPath, [join(root, scripts, 'windowsPilotPublicBuildGuard.mjs')], {
+      cwd: root, encoding: 'utf8', timeout: 5000,
+      env: { ...process.env, GITHUB_REPOSITORY: repository, GITHUB_SERVER_URL: server },
     });
     assert.ifError(result.error);
     assert.equal(result.status, status);
