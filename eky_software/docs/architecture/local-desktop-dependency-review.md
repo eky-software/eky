@@ -71,7 +71,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `43.8.1` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
+| `electron` | `44.11.5` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 | `@electron/asar` | `4.2.1` | asennetun ASAR-paketin rajattu testiluku ja aidon arkiston testiaineisto |
@@ -427,8 +427,8 @@ web-featureihin tai backendin liiketoimintamoduuleihin.
 Electronin asennusskripti lataa version mukaisen binäärin. Siksi
 `pnpm-workspace.yaml` sallii build/install-skriptin eksplisiittisesti vain
 nimetylle `electron`-paketille. `better-sqlite3`-asennusskriptiä ei ajeta:
-paketointi käyttää ja validoi version `13.0.2` mukana toimitetun Windows x64
-N-API-binäärin.
+paketointi käyttää ja validoi lukitun paketin mukana toimitetun Windows x64
+N-API-binäärin sekä tarkistaa ladatun SQLite-version.
 
 ### Electron 43 Ja `better-sqlite3`
 
@@ -545,7 +545,7 @@ pienellä riippuvuuspinnalla:
 - turvallinen Electron-konfiguraatio ja fuses
 
 Suora Packager/Fuses-yhdistelmä pitää tämän todentamisen rajattuna.
-`better-sqlite3 13.0.2`:n mukana toimitettava Windows x64 N-API-binääri
+`better-sqlite3`:n mukana toimitettava Windows x64 N-API-binääri
 kopioidaan production-riippuvuuksien mukana ja validoidaan ennen paketointia.
 Erillistä native-rebuild- tai prebuild-install-riippuvuutta ei tarvita.
 Forge tai muu installer-/update-työkalu arvioidaan uudelleen vasta, kun

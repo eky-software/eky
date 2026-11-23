@@ -59,7 +59,7 @@ describe('verifySqliteUpgradeCopy', () => {
       integrityCheckPassed: true,
       migrationCount: 39,
       originalHashUnchanged: true,
-      sqliteVersion: '3.53.4',
+      sqliteVersion: '3.54.1',
       tableCount: expect.any(Number),
       totalRowCount: expect.any(Number),
       transactionRollbackPassed: true,

@@ -128,5 +128,23 @@ test('loads the installed runtime and verifies read, write and transactions', ()
   );
   const Database = backendRequire('better-sqlite3');
 
-  assert.match(verifyBetterSqliteDatabase(Database), /^\d+\.\d+\.\d+$/);
+  assert.equal(verifyBetterSqliteDatabase(Database), '3.54.1');
+});
+
+test('rejects and closes a working database reporting the previous SQLite version', () => {
+  const backendRequire = createRequire(
+    resolve(repositoryRoot, 'backend/package.json'),
+  );
+  const Database = backendRequire('better-sqlite3');
+  const database = new Database(':memory:');
+  database.function('sqlite_version', () => '3.53.4');
+  function DatabaseWithPreviousVersion() {
+    return database;
+  }
+
+  assert.throws(
+    () => verifyBetterSqliteDatabase(DatabaseWithPreviousVersion),
+    /Expected staged SQLite 3\.54\.1, found 3\.53\.4/,
+  );
+  assert.equal(database.open, false);
 });
