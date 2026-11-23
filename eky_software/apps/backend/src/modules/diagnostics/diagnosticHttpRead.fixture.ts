@@ -8,16 +8,21 @@ import type { DiagnosticEventPage, DiagnosticReadyPage } from './domain/diagnost
 export async function readDiagnosticHttpPageForTest(
   app: Pick<Hono<BackendEnvironment>, 'request'>,
 ): Promise<DiagnosticReadyPage> {
+  const result = await readDiagnosticHttpTerminalForTest(app);
+  assert.equal(result.state, 'ready');
+  if (result.state === 'ready') return result;
+  throw new Error('Diagnostic test read did not complete.');
+}
+
+export async function readDiagnosticHttpTerminalForTest(
+  app: Pick<Hono<BackendEnvironment>, 'request'>,
+): Promise<Exclude<DiagnosticEventPage, { state: 'scanning' }>> {
   let path = '/diagnostics/events';
   for (let step = 0; step <= diagnosticBrowsePolicy.maximumSteps; step++) {
     const response = await app.request(path);
     assert.equal(response.status, 200);
     const result: DiagnosticEventPage = await response.json();
-    if (result.state !== 'scanning') {
-      assert.equal(result.state, 'ready');
-      if (result.state === 'ready') return result;
-      throw new Error('Diagnostic test read did not complete.');
-    }
+    if (result.state !== 'scanning') return result;
     assert.ok(isDiagnosticBrowseCursor(result.cursor));
     path = `/diagnostics/events?cursor=${result.cursor}`;
   }
