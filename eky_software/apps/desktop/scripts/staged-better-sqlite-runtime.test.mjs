@@ -26,7 +26,7 @@ afterEach(async () => {
 
 async function createStagedFixture({
   includeNative = true,
-  version = '13.0.2',
+  version = '13.1.1',
 } = {}) {
   const backendStage = await mkdtemp(
     resolve(tmpdir(), 'eky-better-sqlite-stage-'),
@@ -74,7 +74,7 @@ test('accepts the exact staged win32-x64 bundled runtime', async () => {
 
   const result = await inspectStagedBetterSqliteRuntime({ backendStage });
 
-  assert.equal(result.version, '13.0.2');
+  assert.equal(result.version, '13.1.1');
   assert.match(result.nativePath, /prebuilds[\\/]win32-x64\.node$/);
 });
 
@@ -87,12 +87,12 @@ test('rejects a missing staged win32-x64 prebuild', async () => {
   );
 });
 
-test('rejects a staged package with the wrong version', async () => {
-  const backendStage = await createStagedFixture({ version: '13.0.1' });
+test('rejects a staged package with the previous version', async () => {
+  const backendStage = await createStagedFixture({ version: '13.0.2' });
 
   await assert.rejects(
     inspectStagedBetterSqliteRuntime({ backendStage }),
-    /Expected staged better-sqlite3 13\.0\.2, found 13\.0\.1/,
+    /Expected staged better-sqlite3 13\.1\.1, found 13\.0\.2/,
   );
 });
 

@@ -10,7 +10,7 @@ import { resolveElectronE2eRuntime } from '../../src/environment/resolveElectron
 test('DESK-RUNTIME-001 @critical resolves the exact Electron runtime from the desktop package', () => {
   const runtime = resolveElectronE2eRuntime();
 
-  expect(runtime.version).toBe('43.8.1');
+  expect(runtime.version).toBe('44.11.5');
   expect(lstatSync(runtime.executablePath).isSymbolicLink()).toBe(false);
   expect(statSync(runtime.executablePath).isFile()).toBe(true);
 });

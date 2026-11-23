@@ -80,6 +80,7 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
       'createEncryptedProfileBackup',
       'createManualRecoveryPoint',
       'createSupportBundle',
+      'deleteWorkspace',
       'disableInvoicePdfArchive',
       'discardSelectedLocalUpdate',
       'getInvoicePdfArchiveStatus',
@@ -102,7 +103,7 @@ test('DESK-RUNTIME-001 starts an isolated Electron runtime', async ({
   });
 });
 
-test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', async ({
+test('DESK-RUNTIME-002 @critical identifies the approved Electron 44 runtime', async ({
   e2eElectron,
 }) => {
   const runtimeVersions = await e2eElectron.electronApp.evaluate(() => ({
@@ -114,11 +115,11 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
   }));
 
   expect(runtimeVersions).toEqual({
-    chrome: '150.0.7871.250',
-    electron: '43.8.1',
+    chrome: '152.0.7977.169',
+    electron: '44.11.5',
     napi: '10',
-    node: '24.22.0',
-    v8: '15.0.245.31-electron.0',
+    node: '24.22.3',
+    v8: '15.2.124.45-electron.0',
   });
 
   const diagnosticsResponse = await e2eElectron.api.get(
@@ -130,7 +131,7 @@ test('DESK-RUNTIME-002 @critical identifies the approved Electron 43 runtime', a
       appliedMigrationCount: 39,
       databaseHealth: 'ok',
       electronVersion: null,
-      nodeVersion: 'v24.22.0',
+      nodeVersion: 'v24.22.3',
     }),
   );
 });

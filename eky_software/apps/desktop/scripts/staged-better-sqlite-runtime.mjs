@@ -2,7 +2,7 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
-export const EXPECTED_BETTER_SQLITE_VERSION = '13.0.2';
+export const EXPECTED_BETTER_SQLITE_VERSION = '13.1.1';
 
 const MINIMUM_NATIVE_FILE_SIZE_BYTES = 100_000;
 const MAXIMUM_NATIVE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
