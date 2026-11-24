@@ -16,6 +16,34 @@ Päivättyjen kokeiden odotus- ja hylkäysmerkinnät ovat kyseisen revision
 näyttöä, eivät uusi rinnakkainen nykytilalista. Hyväksytyt riippuvuusrajat ja
 tarkistusajurin toimitussopimus säilyvät normatiivisina.
 
+## Electron 44 ja SQLiten tietoturvapäivitys
+
+Omistaja hyväksyi 23.11.2026 Electronin `44.11.5` ja `better-sqlite3`:n
+`13.1.1` päivityksen. Electron sisältää Node.js:n `24.22.3` ja ajuri
+SQLiten `3.54.1`. Päivitys ei lisää uusia riippuvuuksia eikä muuta
+tietomallia, varmuuskopioita tai toimitetun 0.3.1-pilotin tavujonoa.
+
+- [Electron 44.11.5](https://releases.electronjs.org/release/v44.11.5) sisältää
+  [marraskuun Node.js-tietoturvajulkaisun](https://nodejs.org/en/blog/release/v24.22.3).
+- [better-sqlite3 13.1.1](https://github.com/WiseLibs/better-sqlite3/releases/tag/v13.1.1)
+  päivittää sisäisen SQLiten `3.54.1`:een ilman ajurin pääversion vaihtoa.
+  [SQLite-korjaukset](https://sqlite.org/cves.html) arvioidaan erillään npm-auditista.
+
+Windows x64 käyttää tavallisessa backendissä paketin varmennettua N-API-
+binääriä. Varmuuskopioiden tarkistusapu käännetään samasta lukitusta
+lähteestä nykyisellä `SQLITE_DEFAULT_MEMSTATUS=1`-muutoksella. Tarkistuksessa
+vaaditaan oikea binääri, todellinen 256 MiB:n ylityksen torjunta ja tavallinen
+kysely sen jälkeen; puuttuva tarkistusajuri ei vaihdu oletusajuriin.
+Nykyinen Linux-todennus säilyy. Vanhojen asenninfixtureiden versioita ei
+vaihdeta uuteen runtimeen.
+
+Hyväksyntä seuraa nykyisiä auditointi-, Electron E2E-, stressi-, soak- ja
+pakettiportteja. Paikallinen synteettinen päivityskoe käyttää toimitettua
+0.3.1-MSI:tä lähtöpakettina ja erillistä seuraavan version testipakettia.
+Samoilla kohdepaketin tavuilla varmennetaan varmuuskopio, tarkistus,
+palautus, uudelleenkäynnistys ja sisältövertailu. Kokeet eivät ole
+jakelulupa; PR:n ja uuden main-revision tarkistukset säilyvät.
+
 ## Rajaus
 
 Ensimmäisessä spikessä tarvitaan vain:
@@ -43,7 +71,7 @@ Spikessä käytetään tarkasti lukittuja development-riippuvuuksia vain
 
 | Paketti | Versio | Vastuu |
 | --- | --- | --- |
-| `electron` | `43.8.1` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
+| `electron` | `44.11.5` | desktop-runtime ja Windows-binääri; nykyinen hyväksyntätila M1:n Jatka tästä -kohdassa |
 | `@electron/packager` | `20.0.4` | rajattu paketoitu sovellushakemisto |
 | `@electron/fuses` | `2.1.3` | production-fusejen lukitseminen |
 | `@electron/asar` | `4.2.1` | asennetun ASAR-paketin rajattu testiluku ja aidon arkiston testiaineisto |
@@ -399,8 +427,8 @@ web-featureihin tai backendin liiketoimintamoduuleihin.
 Electronin asennusskripti lataa version mukaisen binäärin. Siksi
 `pnpm-workspace.yaml` sallii build/install-skriptin eksplisiittisesti vain
 nimetylle `electron`-paketille. `better-sqlite3`-asennusskriptiä ei ajeta:
-paketointi käyttää ja validoi version `13.0.2` mukana toimitetun Windows x64
-N-API-binäärin.
+paketointi käyttää ja validoi lukitun paketin mukana toimitetun Windows x64
+N-API-binäärin sekä tarkistaa ladatun SQLite-version.
 
 ### Electron 43 Ja `better-sqlite3`
 
@@ -517,7 +545,7 @@ pienellä riippuvuuspinnalla:
 - turvallinen Electron-konfiguraatio ja fuses
 
 Suora Packager/Fuses-yhdistelmä pitää tämän todentamisen rajattuna.
-`better-sqlite3 13.0.2`:n mukana toimitettava Windows x64 N-API-binääri
+`better-sqlite3`:n mukana toimitettava Windows x64 N-API-binääri
 kopioidaan production-riippuvuuksien mukana ja validoidaan ennen paketointia.
 Erillistä native-rebuild- tai prebuild-install-riippuvuutta ei tarvita.
 Forge tai muu installer-/update-työkalu arvioidaan uudelleen vasta, kun

@@ -327,7 +327,7 @@ test('DESK-STARTUP-OBSERVATION-001 @diagnostic-contract reads bounded main check
     await readElectronStartupObservation(e2eElectron.electronApp),
   );
   expect(startup).toBeDefined();
-  expect(startup?.schemaVersion).toBe(2);
+  expect(startup?.schemaVersion).toBe(3);
   expect(startup?.truncated).toBe(false);
   expect(startup?.backendStartup).toEqual({
     status: 'observed', stage: 'readyNotification', elapsedMs: expect.any(Number),

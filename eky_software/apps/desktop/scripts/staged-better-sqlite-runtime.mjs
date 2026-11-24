@@ -2,8 +2,9 @@ import { lstat, readFile, realpath } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import { dirname, isAbsolute, relative, resolve } from 'node:path';
 
-export const EXPECTED_BETTER_SQLITE_VERSION = '13.0.2';
+export const EXPECTED_BETTER_SQLITE_VERSION = '13.1.1';
 
+const EXPECTED_SQLITE_VERSION = '3.54.1';
 const MINIMUM_NATIVE_FILE_SIZE_BYTES = 100_000;
 const MAXIMUM_NATIVE_FILE_SIZE_BYTES = 25 * 1024 * 1024;
 
@@ -181,7 +182,15 @@ export function verifyBetterSqliteDatabase(Database) {
       throw new Error('Staged better-sqlite3 rollback verification failed.');
     }
 
-    return database.prepare('SELECT sqlite_version() AS version').get().version;
+    const sqliteVersion = database
+      .prepare('SELECT sqlite_version() AS version')
+      .get().version;
+    if (sqliteVersion !== EXPECTED_SQLITE_VERSION) {
+      throw new Error(
+        `Expected staged SQLite ${EXPECTED_SQLITE_VERSION}, found ${String(sqliteVersion)}.`,
+      );
+    }
+    return sqliteVersion;
   } finally {
     database.close();
   }

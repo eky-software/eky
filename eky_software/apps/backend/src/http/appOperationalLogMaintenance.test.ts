@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createHttpRequestFailureCapture } from '../../../../test-reporters/httpRequestFailureCapture.mjs';
 
 import * as connections from '../database/connection/createDatabaseConnection.js';
+import { readDiagnosticHttpTerminalForTest } from '../modules/diagnostics/diagnosticHttpRead.fixture.js';
 import { createApp } from './app.js';
 
 const io = vi.hoisted(() => ({ deniedDirectory: '', observed: false,
@@ -99,9 +100,7 @@ describe('backend operational-log maintenance startup wiring', () => {
       httpRequestFailureObserver: { captureOriginalException: observed } });
     expect(observed).not.toHaveBeenCalled();
     io.deniedReadDirectory = join(logsRoot, 'backend');
-    const events = await app.request('/diagnostics/events');
-    expect(events.status).toBe(200);
-    expect(await events.json()).toEqual({ state: 'unavailable', diagnosticEvents: [],
+    expect(await readDiagnosticHttpTerminalForTest(app)).toEqual({ state: 'unavailable', diagnosticEvents: [],
       readState: { status: 'unavailable', reasons: ['sourceUnavailable'] } });
     expect(observed).toHaveBeenCalledOnce();
     expect(observed.mock.calls[0]?.[0] === io.originalReadFailure).toBe(true);

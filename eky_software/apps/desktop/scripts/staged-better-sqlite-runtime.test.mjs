@@ -26,7 +26,7 @@ afterEach(async () => {
 
 async function createStagedFixture({
   includeNative = true,
-  version = '13.0.2',
+  version = '13.1.1',
 } = {}) {
   const backendStage = await mkdtemp(
     resolve(tmpdir(), 'eky-better-sqlite-stage-'),
@@ -74,7 +74,7 @@ test('accepts the exact staged win32-x64 bundled runtime', async () => {
 
   const result = await inspectStagedBetterSqliteRuntime({ backendStage });
 
-  assert.equal(result.version, '13.0.2');
+  assert.equal(result.version, '13.1.1');
   assert.match(result.nativePath, /prebuilds[\\/]win32-x64\.node$/);
 });
 
@@ -87,12 +87,12 @@ test('rejects a missing staged win32-x64 prebuild', async () => {
   );
 });
 
-test('rejects a staged package with the wrong version', async () => {
-  const backendStage = await createStagedFixture({ version: '13.0.1' });
+test('rejects a staged package with the previous version', async () => {
+  const backendStage = await createStagedFixture({ version: '13.0.2' });
 
   await assert.rejects(
     inspectStagedBetterSqliteRuntime({ backendStage }),
-    /Expected staged better-sqlite3 13\.0\.2, found 13\.0\.1/,
+    /Expected staged better-sqlite3 13\.1\.1, found 13\.0\.2/,
   );
 });
 
@@ -128,5 +128,23 @@ test('loads the installed runtime and verifies read, write and transactions', ()
   );
   const Database = backendRequire('better-sqlite3');
 
-  assert.match(verifyBetterSqliteDatabase(Database), /^\d+\.\d+\.\d+$/);
+  assert.equal(verifyBetterSqliteDatabase(Database), '3.54.1');
+});
+
+test('rejects and closes a working database reporting the previous SQLite version', () => {
+  const backendRequire = createRequire(
+    resolve(repositoryRoot, 'backend/package.json'),
+  );
+  const Database = backendRequire('better-sqlite3');
+  const database = new Database(':memory:');
+  database.function('sqlite_version', () => '3.53.4');
+  function DatabaseWithPreviousVersion() {
+    return database;
+  }
+
+  assert.throws(
+    () => verifyBetterSqliteDatabase(DatabaseWithPreviousVersion),
+    /Expected staged SQLite 3\.54\.1, found 3\.53\.4/,
+  );
+  assert.equal(database.open, false);
 });
