@@ -80,8 +80,8 @@ test('legacy semantic evidence rejects changed current evidence', () => {
   );
 });
 
-test('0.3.1 semantic evidence accepts exact promotion and still requires the actual final registry', () => {
-  const value = proof({ targetAppVersion: '0.3.1' });
+for (const targetAppVersion of ['0.3.1', '0.3.2']) test(`${targetAppVersion} semantic evidence accepts exact promotion and still requires the actual final registry`, () => {
+  const value = proof({ targetAppVersion });
   value.firstEvidence.databaseProof.appVersion = value.targetAppVersion;
   value.secondEvidence.databaseProof.appVersion = value.targetAppVersion;
   value.firstEvidence.promotedRegistrySha256 = '5'.repeat(64);

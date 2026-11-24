@@ -2362,7 +2362,7 @@ verifier tarkistaa ennen semanttista cleanupia:
   inventorya
 - source- ja target-artifactien tavut ovat edelleen muuttumattomat.
 
-0.3.1-kohteen legacy-tarkistuksessa ensimmäisen rekisterin on oltava v1.
+0.3.1- ja 0.3.2-kohteen legacy-tarkistuksessa ensimmäisen rekisterin on oltava v1.
 Ainoa sallittu tavumuutos kahden käynnistyksen välillä on hyväksytyn
 buildin v1 → v2 -muunnos.
 Lukija johtaa odotetun v2-tiivisteen ensimmäisen rekisterin samoista
