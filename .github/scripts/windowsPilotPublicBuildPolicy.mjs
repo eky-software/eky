@@ -3,7 +3,7 @@ import { parseStrictJsonObjectBytes } from '../../eky_software/apps/desktop/inst
 export const denied = 'WINDOWS_PUBLIC_BUILD_BASELINE_DENIED';
 export const maximumBytes = 64 * 1024;
 const publicVersion = '0.2.81';
-const publicTestVersion = '0.3.1';
+const publicTestVersions = new Set(['0.3.1', '0.3.2']);
 
 // This allows ordinary public CI only; it is not a release or source attestation.
 export function assertPublicBuildBaseline(repository, server, packageBytes, releaseBytes, releaseCandidate = false) {
@@ -13,7 +13,7 @@ export function assertPublicBuildBaseline(repository, server, packageBytes, rele
   const pkg = parseStrictJsonObjectBytes(packageBytes, options);
   const release = parseStrictJsonObjectBytes(releaseBytes, options);
   const version = pkg.version;
-  const versionAllowed = version === publicVersion || (!releaseCandidate && version === publicTestVersion);
+  const versionAllowed = version === publicVersion || (!releaseCandidate && publicTestVersions.has(version));
   if (pkg.name !== '@eky/desktop' || pkg.private !== true || !versionAllowed ||
       release.appIdentity !== 'Eky' || release.appVersion !== version ||
       release.msiProductVersion !== version || release.platform !== 'win32' ||

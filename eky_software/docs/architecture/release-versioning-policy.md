@@ -315,11 +315,12 @@ varten.
 
 ### V2:n Exact-Byte-Pilotin Toimitus
 
-Julkisen Windows-CI:n clean-, upgrade- ja legacy-paketointi sallii
-nimetyt versiot `0.2.81` ja `0.3.1` tavalliseen testaukseen. Omistajan
-22.11.2026 päätös sallii CI:n itse rakentamat `0.3.1`-testiasentimet
-julkisina Actions-liitteinä vain nykyisellä yhden vuorokauden
-säilytysajalla. Kukin tuottaja ja sen kuluttajat käyttävät edelleen
+Julkisen Windows-CI:n clean-, upgrade- ja legacy-paketoinnin tavalliset
+testilähtöversiot ovat `0.2.81`, `0.3.1` ja `0.3.2`. Omistajan
+22.11.2026 ja 24.11.2026 päätökset sallivat CI:n itse rakentamat
+`0.3.1`- ja `0.3.2`-testiasentimet julkisina Actions-liitteinä vain
+nykyisellä yhden vuorokauden säilytysajalla. Kukin tuottaja ja sen
+kuluttajat käyttävät edelleen
 saman ajon samoja varmennettuja tavuja. Älä siirrä paikallista
 toimitusasenninta CI:hin tai käytä näitä liitteitä sen tilalla.
 Clean-työnkulun erillinen `release_candidate=true` on edelleen rajattu

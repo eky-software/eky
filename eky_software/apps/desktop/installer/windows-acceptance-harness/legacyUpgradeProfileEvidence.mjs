@@ -227,6 +227,8 @@ async function fileIdentity(path, errorCode, maximumBytes) {
   }
 }
 
+const legacyRegistryPromotionTargets = new Set(['0.3.1', '0.3.2']);
+
 export async function readLegacyWorkspaceRegistry(userDataRoot, targetAppVersion, afterFirstStartup = false) {
   const registryPath = resolve(userDataRoot, 'workspace-registry-v1.json');
   const identity = await fileIdentity(
@@ -237,7 +239,7 @@ export async function readLegacyWorkspaceRegistry(userDataRoot, targetAppVersion
   const value = parseStrictJsonObjectBytes(identity.bytes, { errorCode: 'workspaceRegistryInvalid' });
   if (
     !hasExactKeys(value, REGISTRY_KEYS) ||
-    (value.formatVersion !== 1 && !(afterFirstStartup && targetAppVersion === '0.3.1' && value.formatVersion === 2)) ||
+    (value.formatVersion !== 1 && !(afterFirstStartup && legacyRegistryPromotionTargets.has(targetAppVersion) && value.formatVersion === 2)) ||
     !UUID_V4_PATTERN.test(value.activeWorkspaceId) ||
     !Array.isArray(value.workspaces) ||
     value.workspaces.length !== 1
@@ -271,7 +273,7 @@ export async function readLegacyWorkspaceRegistry(userDataRoot, targetAppVersion
     }
   }
   let promotedRegistrySha256 = null;
-  if (targetAppVersion === '0.3.1' && value.formatVersion === 1 &&
+  if (legacyRegistryPromotionTargets.has(targetAppVersion) && value.formatVersion === 1 &&
       identity.bytes.subarray(0, LEGACY_REGISTRY_V1_PREFIX.length).equals(LEGACY_REGISTRY_V1_PREFIX)) {
     // Bind the expected upgrade to the original bytes, not to a normalized registry.
     const promoted = Buffer.from(identity.bytes);
@@ -291,7 +293,7 @@ export async function readLegacyWorkspaceRegistry(userDataRoot, targetAppVersion
 export function legacyRegistryBytesPreserved(first, second, targetAppVersion) {
   return first.registryFormatVersion === 1 && first.registrySize === second.registrySize &&
     ((second.registryFormatVersion === 1 && first.registrySha256 === second.registrySha256) ||
-      (targetAppVersion === '0.3.1' &&
+      (legacyRegistryPromotionTargets.has(targetAppVersion) &&
         second.registryFormatVersion === 2 && first.promotedRegistrySha256 !== null &&
         first.promotedRegistrySha256 === second.registrySha256));
 }

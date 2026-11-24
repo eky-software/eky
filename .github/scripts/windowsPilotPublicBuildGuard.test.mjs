@@ -29,16 +29,16 @@ test('only the canonical public repository and matching desktop and installer id
       assert.throws(() => check(target === pkg ? changed : pkg, target === release ? changed : release), denial);
     }
   }
-  for (const version of ['0.2.80', '0.2.82', '0.3.0', '0.3.2', '0.3.1-rc.1', '0.3.1+build',
+  for (const version of ['0.2.80', '0.2.82', '0.3.0', '0.3.3', '0.3.1-rc.1', '0.3.1+build',
     '0.3.01', '0.2.81-rc.1', '0.2.81+build', '0.2.081']) {
     assert.throws(() => check({ ...pkg, version }, { ...release, appVersion: version, msiProductVersion: version }), denial);
   }
 });
 
-test('0.3.1 is explicitly allowed only as a matching test build, not a public release candidate', () => {
+for (const version of ['0.3.1', '0.3.2']) test(`${version} is allowed only as a matching test build, not a public release candidate`, () => {
   const check = (p, r, candidate) => assertPublicBuildBaseline(repository, server, bytes(p), bytes(r), candidate);
-  const candidatePkg = { ...pkg, version: '0.3.1' };
-  const candidateRelease = { ...release, appVersion: '0.3.1', msiProductVersion: '0.3.1' };
+  const candidatePkg = { ...pkg, version };
+  const candidateRelease = { ...release, appVersion: version, msiProductVersion: version };
   check(candidatePkg, candidateRelease, false);
   check(pkg, release, true);
   assert.throws(() => check(candidatePkg, candidateRelease, true), denial);
@@ -75,7 +75,7 @@ test('the CLI checks the fixed checkout files, rejects an override and emits onl
   const desktop = new URL('../../eky_software/apps/desktop/', import.meta.url);
   const current = JSON.parse(readFileSync(new URL('package.json', desktop), 'utf8'));
   const installer = JSON.parse(readFileSync(new URL('installer/installer-release.json', desktop), 'utf8'));
-  const expected = ['0.2.81', '0.3.1'].includes(current.version) &&
+  const expected = ['0.2.81', '0.3.1', '0.3.2'].includes(current.version) &&
     [installer.appVersion, installer.msiProductVersion].every(v => v === current.version) ? 0 : 1;
   const script = fileURLToPath(new URL('./windowsPilotPublicBuildGuard.mjs', import.meta.url));
   for (const [repo, args, status] of [[repository, [], expected], ['', [], 1], [repository, ['--private=true'], 1]]) {
@@ -103,7 +103,7 @@ test('the CLI admits only the named test versions and denies the new release-can
   for (const [version, mode, status] of [
     ['0.2.81', undefined, 0], ['0.2.81', 'true', 0], ['0.3.1', 'false', 0],
     ['0.3.1', 'true', 1], ['0.3.1', 'False', 1], ['0.3.1', '', 1],
-    ['0.3.0', 'false', 1], ['0.3.2', 'false', 1],
+    ['0.3.0', 'false', 1], ['0.3.2', 'false', 0], ['0.3.2', 'true', 1], ['0.3.3', 'false', 1],
   ]) {
     writeFileSync(join(root, desktop, 'package.json'),
       JSON.stringify({ ...pkg, version, description: 'x'.repeat(24 * 1024) }));

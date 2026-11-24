@@ -158,8 +158,8 @@ test('source and target evidence prove copy adoption and idempotent second start
   assert.equal(second.workspaceId, WORKSPACE_ID);
   assert.notEqual(second.runtimeInstanceId, first.runtimeInstanceId);
 
-  await t.test('0.3.1 second startup accepts only the exact promoted registry bytes', async () => {
-    const identities = { source: SOURCE, target: { ...TARGET, appVersion: '0.3.1' } };
+  for (const appVersion of ['0.3.1', '0.3.2']) await t.test(`${appVersion} second startup accepts only the exact promoted registry bytes`, async () => {
+    const identities = { source: SOURCE, target: { ...TARGET, appVersion } };
     const acceptedPath = resolve(userDataRoot, 'update-state', 'accepted-build-v1.json');
     const oldBuild = await readFile(acceptedPath);
     const original = await readFile(registryPath);
